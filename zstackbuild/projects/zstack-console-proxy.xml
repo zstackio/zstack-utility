@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-console-proxy builder" basedir="../">
+    <property name="consoleproxy.bdir" location="${build.dir}/consoleproxy" />
+    <property name="consoleproxy.salt.dir" location="${salt.dir}/consoleproxy" />
+    <property name="consoleproxy.ansible.dir" location="${ansible.dir}/consoleproxy" />
+
+    <target name="build-consoleproxy" >
+        <makeDir dir="${consoleproxy.bdir}" />
+
+        <checkProperty property="consoleproxy.source" />
+        <checkProperty property="consoleproxy.serviceFile" />
+        <checkFile file="${consoleproxy.source}" />
+        <checkFile file="${consoleproxy.source}/setup.py" />
+        <checkFile file="${consoleproxy.serviceFile}" />
+
+        <delete dir="${consoleproxy.source}/dist" />
+
+        <exec executable="python" dir="${consoleproxy.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${consoleproxy.bdir}/">
+            <fileset dir="${consoleproxy.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="salt/**/*" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-consoleproxy">
+        <makeDir dir="${consoleproxy.salt.dir}" />
+
+        <copy todir="${consoleproxy.salt.dir}">
+            <fileset dir="${consoleproxy.bdir}/salt">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${consoleproxy.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${consoleproxy.serviceFile}" todir="${consoleproxy.salt.dir}" />
+
+        <makeDir dir="${consoleproxy.ansible.dir}" />
+
+        <copy todir="${consoleproxy.ansible.dir}">
+            <fileset dir="${consoleproxy.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${consoleproxy.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${consoleproxy.serviceFile}" todir="${consoleproxy.ansible.dir}" />
+    </target>
+</project>

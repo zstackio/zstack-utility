@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="ZStack build system utils" basedir=".">
+    <macrodef name="checkFile">
+        <attribute name="file"/>
+        <sequential>
+            <echo>checking if file[@{file}] exists ...</echo>
+            <exec executable="ls" failonerror="true">
+                <arg value="@{file}" />
+            </exec>
+        </sequential>
+    </macrodef>
+
+    <macrodef name="checkProperty">
+        <attribute name="property" />
+        <sequential>
+            <fail unless="@{property}" message="property[@{property}] is not set in build.properties file" />
+        </sequential>
+    </macrodef>
+
+    <macrodef name="makeDir">
+        <attribute name="dir" />
+        <sequential>
+            <delete dir="@{dir}" />
+            <mkdir dir="@{dir}" />
+        </sequential>
+    </macrodef>
+</project>

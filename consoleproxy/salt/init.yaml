@@ -1,0 +1,28 @@
+{% import 'zstacklib/utils.sls' as utils with context %}
+
+include:
+  - zstacklib
+
+{% set egg='/var/lib/zstack/consoleproxy/consoleproxy-0.1.tar.gz' %}
+{{egg}}:
+  file.managed:
+    - source: salt://consoleproxy/consoleproxy-0.1.tar.gz
+
+/etc/init.d/zstack-consoleproxy:
+  file.managed:
+    - source: salt://consoleproxy/zstack-consoleproxy
+    - mode: 755
+
+{{ utils.pip_install('consoleproxy', file=egg, pkg_name='consoleproxy') }}
+
+consoleproxy_service:
+  service:
+    - name: zstack-consoleproxy
+    - running
+    - enable: True
+    - watch:
+      - cmd: consoleproxy_install
+      - cmd: consoleproxy_reinstall
+      - cmd: zstacklib_install
+      - cmd: zstacklib_reinstall
+      - file: /etc/init.d/zstack-consoleproxy

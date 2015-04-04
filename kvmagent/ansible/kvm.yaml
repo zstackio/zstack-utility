@@ -1,0 +1,192 @@
+---
+
+- hosts: "{{host}}"
+  vars:
+    - virtenv_path: "{{zstack_root}}/virtualenv/kvm/"
+    - kvm_root: "{{zstack_root}}/kvm"
+    - file_root: "files/kvm"
+    - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
+    - proxy: "{{http_proxy|default()}}"
+    - sproxy: "{{https_proxy|default()}}"
+    - chroot_env: "{{chroot|default('false')}}"
+    - is_init: "{{init|default('false')}}"
+
+  tasks:
+    - include: zstacklib.yaml
+
+    - name: state epel.repo
+      stat: path=/etc/yum.repos.d/epel.repo
+      register: epel_repo
+
+    - name: install epel-release yum repo
+      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true
+      copy: src=files/kvm/epel-release-source.repo
+            dest=/etc/yum.repos.d/
+            owner=root group=root mode=0644
+    
+    - name: install epel-release
+      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true
+      yum: name=epel-release
+           enablerepo=epel-release-source
+           state=present
+    
+    - name: enable epel repository
+      when: ansible_os_family == 'RedHat'
+      ini_file: dest=/etc/yum.repos.d/epel.repo
+                section=epel
+                option=enabled
+                value=1
+
+    - name: create root directories
+      shell: "mkdir -p {{item}}"
+      with_items:
+        - "{{kvm_root}}"
+        - "{{virtenv_path}}"
+
+    - name: install kvm related packages on RedHat based OS
+      when: ansible_os_family == 'RedHat'
+      yum: name="{{item}}"
+      with_items:
+        - qemu-kvm
+        - bridge-utils
+        - wget
+        - qemu-img
+        - libvirt-python
+        - libvirt
+        - nfs-utils
+        - vconfig
+        - libvirt-client
+        - net-tools
+
+    - name: install kvm related packages on Debian based OS
+      when: ansible_os_family == 'Debian'
+      apt: pkg="{{item}}"
+      with_items:
+        - qemu-kvm
+        - bridge-utils
+        - wget
+        - qemu-utils
+        - python-libvirt
+        - libvirt-bin
+        - vlan
+        - nfs-common
+
+    - name: RHEL7 specific packages
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      yum: name="{{item}}"
+      with_items:
+        - iptables-services
+
+    - name: disable firewalld in RHEL7 and Centos7
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      service: name=firewalld state=stopped enabled=no
+
+    - name: copy iptables initial rules in RedHat
+      copy: src="{{file_root}}/iptables" dest=/etc/sysconfig/iptables
+      when: ansible_os_family == "RedHat" and is_init == 'true'
+
+    - name: restart iptables
+      service: name=iptables state=restarted enabled=yes
+      when: chroot_env == 'false' and ansible_os_family == 'RedHat' and is_init == 'true'
+
+    - name: remove libvirt default bridge
+      shell: "(ifconfig virbr0 &> /dev/null && virsh net-destroy default > /dev/null && virsh net-undefine default > /dev/null) || true"
+
+    - name: disable selinux on RedHat based OS
+      when: ansible_os_family == 'RedHat'
+      selinux: state=permissive policy=targeted
+
+    - name: copy sysconfig libvirtd conf in RedHat
+      copy: src="{{file_root}}/libvirtd" dest=/etc/sysconfig/libvirtd
+      when: ansible_os_family == 'RedHat'
+      notify:
+        - restart redhat libvirtd
+        - restart kvmagent
+
+    - name: copy default libvirtd conf in Debian
+      copy: src="{{file_root}}/libvirt-bin" dest=/etc/default/libvirt-bin
+      when: ansible_os_family == 'Debian'
+      notify:
+        - restart debian libvirtd
+        - restart kvmagent
+
+    - name: copy libvirtd conf
+      copy: src="{{file_root}}/libvirtd.conf" dest=/etc/libvirt/libvirtd.conf
+      notify:
+        - restart redhat libvirtd
+        - restart debian libvirtd
+        - restart kvmagent
+
+    - name: copy qemu conf
+      copy: src="{{file_root}}/qemu.conf" dest=/etc/libvirt/qemu.conf
+      notify:
+        - restart redhat libvirtd
+        - restart debian libvirtd
+        - restart kvmagent
+
+    - name: enable libvirt daemon on RedHat based OS
+      when: chroot_env == 'false' and ansible_os_family == 'RedHat'
+      service: name=libvirtd state=started enabled=yes
+
+    - name: enable bridge forward
+      shell: "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding" 
+
+    - name: install virtualenv
+      pip: name=virtualenv extra_args="-i {{pip_url}}"
+
+    - name: create virtualenv dirctory
+      shell: "ls {{virtenv_path}}/bin/activate > /dev/null || virtualenv --system-site-packages {{virtenv_path}}"
+
+    - name: enable libvirt daemon on Debian OS
+      when: ansible_os_family == 'Debian' and chroot_env == 'false'
+      service: name=libvirt-bin enabled=yes state=started
+
+    - name: copy zstacklib
+      copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{kvm_root}}/{{pkg_zstacklib}}"
+      notify:
+        - install zstacklib
+        - restart kvmagent
+
+    - name: copy kvmagent
+      copy: src="{{file_root}}/{{pkg_kvmagent}}" dest="{{kvm_root}}/{{pkg_kvmagent}}"
+      notify:
+        - install kvmagent
+        - restart kvmagent
+
+    # only for os using init.d not systemd
+    - name: copy kvm service file
+      when: ansible_os_family == 'RedHat' or ansible_os_family == 'Debian'
+      copy: src=files/kvm/zstack-kvmagent dest=/etc/init.d/ mode=755
+      notify:
+        - restart kvmagent
+
+    - meta: flush_handlers
+
+    - name: enable kvmagent service
+      service: name=zstack-kvmagent enabled=yes state=started
+      when: chroot_env == 'false' 
+
+  handlers:
+    - name: install zstacklib
+      environment:
+        http_proxy: "{{proxy}}"
+        https_proxy: "{{sproxy}}"
+      pip: name="{{kvm_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+
+    - name: restart redhat libvirtd
+      service: name=libvirtd state=restarted enabled=yes
+      when: chroot_env == 'false' and ansible_os_family == 'RedHat'
+
+    - name: restart debian libvirtd
+      service: name=libvirt-bin state=restarted enabled=yes
+      when: chroot_env == 'false' and ansible_os_family == 'Debian'
+
+    - name: install kvmagent
+      environment:
+        http_proxy: "{{proxy}}"
+        https_proxy: "{{sproxy}}"
+      pip: name="{{kvm_root}}/{{pkg_kvmagent}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+
+    - name: restart kvmagent
+      service: name=zstack-kvmagent state=restarted enabled=yes
+      when: chroot_env == 'false'

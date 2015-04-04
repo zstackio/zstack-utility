@@ -1,0 +1,127 @@
+---
+
+- hosts: "{{host}}"
+  vars:
+    - virtenv_path: "{{zstack_root}}/virtualenv/appliancevm/"
+    - appliancevm_root: "{{zstack_root}}/appliancevm"
+    - file_root: "files/appliancevm"
+    - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
+    - proxy: "{{http_proxy|default()}}"
+    - sproxy: "{{https_proxy|default()}}"
+    - chroot_env: "{{chroot|default('false')}}"
+
+  tasks:
+    - include: zstacklib.yaml
+
+    - name: install appliance vm related packages on RedHat based OS
+      when: ansible_os_family == 'RedHat'
+      yum: name="{{item}}"
+      with_items:
+        - iputils
+        - tcpdump
+        - ethtool
+
+    - name: install appliance vm related packages on Debian based OS
+      when: ansible_os_family == 'Debian'
+      apt: pkg="{{item}}"
+      with_items:
+        - iputils-arping
+        - tcpdump
+        - ethtool
+
+    - name: create root directories
+      shell: "mkdir -p {{item}}"
+      with_items:
+        - "{{appliancevm_root}}"
+        - "{{virtenv_path}}"
+
+    - name: install virtualenv
+      pip: name=virtualenv extra_args="-i {{pip_url}}"
+
+    - name: create virtualenv dirctory
+      shell: "ls {{virtenv_path}}/bin/activate > /dev/null || virtualenv {{virtenv_path}}"
+
+    - name: copy iptables initial rules in RedHat
+      copy: src="{{file_root}}/iptables" dest=/etc/sysconfig/iptables
+      when: ansible_os_family == "RedHat"
+      notify:
+        - restart iptables
+
+    - name: copy iptables initial rules in Debian
+      copy: src="{{file_root}}/iptables" dest=/etc/iptables
+      when: ansible_os_family == "Debian"
+
+    - name: copy iptables initial start script in Debian
+      copy: src="{{file_root}}/iptables.up" dest=/etc/network/if-pre-up.d/iptables.up mode=0777
+      when: ansible_os_family == "Debian"
+      notify:
+        - restore iptables
+
+    - name: workaround RHEL7 iptables service issue
+      shell: 'mkdir -p /var/lock/subsys/'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+
+    - name: remove RHEL7 firewalld
+      yum: name=firewalld state=absent
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+
+    - name: copy zstacklib
+      copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{appliancevm_root}}/{{pkg_zstacklib}}"
+      notify:
+        - install zstacklib
+        - restart appliancevm
+
+    - name: copy appliancevm
+      copy: src="{{file_root}}/{{pkg_appliancevm}}" dest="{{appliancevm_root}}/{{pkg_appliancevm}}"
+      notify:
+        - install appliancevm
+        - restart appliancevm
+
+    - name: copy appliancevm service file
+      copy: src="{{file_root}}/zstack-appliancevm" dest=/etc/init.d/ mode=755
+      notify:
+        - restart appliancevm
+
+    - meta: flush_handlers
+
+    - name: enable appliancevm service for RedHat
+      service: name=zstack-appliancevm enabled=yes state=started
+      when: chroot_env == 'false' and ansible_os_family == 'RedHat'
+
+    - name: enable appliancevm service for RedHat on chroot
+      service: name=zstack-appliancevm enabled=yes state=stopped
+      when: chroot_env != 'false' and ansible_os_family == 'RedHat'
+
+    - name: enable appliancevm service for Debian -1
+      command: sed -i '/zstack-appliancevm start/d' /etc/rc.local 
+      when: ansible_os_family == 'Debian'
+
+    - name: enable appliancevm service for Debian -2
+      command: sed -i 's/^exit 0/\/etc\/init.d\/zstack-appliancevm start\nexit 0/' /etc/rc.local
+      when: ansible_os_family == 'Debian'
+
+  handlers:
+    - name: restart iptables
+      service: name=iptables state=restarted enabled=yes
+      when: chroot_env == 'false' and ansible_os_family == 'RedHat'
+
+    - name: restore iptables
+      command: /etc/network/if-pre-up.d/iptables.up
+
+    - name: install zstacklib
+      environment:
+        http_proxy: "{{proxy}}"
+        https_proxy: "{{sproxy}}"
+      pip: name="{{appliancevm_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+
+    - name: install appliancevm
+      environment:
+        http_proxy: "{{proxy}}"
+        https_proxy: "{{sproxy}}"
+      pip: name="{{appliancevm_root}}/{{pkg_appliancevm}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
+
+    - name: restart appliancevm
+      service: name=zstack-appliancevm enabled=yes state=restarted
+      when: chroot_env == 'false'
+
+

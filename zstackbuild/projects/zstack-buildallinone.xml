@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="zstack all in one package builder" basedir="../">
+    <target name="all-in-one-package">
+        <copy file="${zstack.install}" todir="${build.dir}" />
+        <copy file="${war.file}" todir="${allinone.dir}" />
+        <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
+        <echo file="${allinone.versionfile}" append="true">${allinone.version}</echo>
+        <tar destfile="${allinone.file}" basedir="${allinone.dir}" compression="gzip" />
+        <echo message="successfully build zstack all in one package at ${allinone.file}" />
+    </target>
+</project>

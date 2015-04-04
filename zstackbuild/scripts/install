@@ -1,0 +1,31 @@
+#!/bin/sh
+
+usage() {
+    echo "usage:$0 [zstack-setting]"
+}
+
+if [ "$#" -eq 0 ]; then
+    usage
+    exit 1
+fi
+
+while [ -h "$SCRIPT" ] ; do
+  ls=`ls -ld "$SCRIPT"`
+  # Drop everything prior to ->
+  link=`expr "$ls" : '.*-> \(.*\)$'`
+  if expr "$link" : '/.*' > /dev/null; then
+    SCRIPT="$link"
+  else
+    SCRIPT=`dirname "$SCRIPT"`/"$link"
+  fi
+done
+
+ZS_HOME=`dirname "$SCRIPT"`/..
+
+if [ x$1 == x'zstack-setting' ]; then
+    easy_install $ZS_HOME/lib/zstacklib.egg
+    easy_install $ZS_HOME/lib/zstack-setting.egg
+else
+    usage
+    exit 1
+fi

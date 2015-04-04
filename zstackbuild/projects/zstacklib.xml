@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstacklib builder" basedir="../">
+    <property name="zstacklib.bdir" location="${build.dir}/zstacklib" />
+    <property name="zstacklib.salt.dir" location="${salt.dir}/zstacklib/" />
+    <property name="zstacklib.ansible.dir" location="${ansible.dir}/zstacklib/" />
+
+    <target name="build-zstacklib" >
+        <exec executable="git" dir="${zstackutility.source}" failonerror="true">
+            <arg value="checkout" />
+            <arg value="${zstackutiltiy.build_version}" />
+        </exec>
+
+        <makeDir dir="${zstacklib.bdir}" />
+
+        <checkProperty property="zstacklib.source" />
+        <checkFile file="${zstacklib.source}" />
+        <checkFile file="${zstacklib.source}/setup.py" />
+
+        <delete dir="${zstacklib.source}/dist" />
+
+        <exec executable="python" dir="${zstacklib.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${zstacklib.bdir}/">
+            <fileset dir="${zstacklib.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="salt/**/*" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-zstacklib">
+        <checkProperty property="zstackCommons.source" />
+        <checkFile file="${zstackCommons.source}" />
+
+        <copy todir="${zstacklib.salt.dir}">
+            <fileset dir="${zstacklib.bdir}/salt">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${zstacklib.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <makeDir dir="${zstacklib.ansible.dir}" />
+
+        <copy todir="${zstacklib.ansible.dir}">
+            <fileset dir="${zstacklib.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${zstacklib.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy todir="${tools.dir}">
+            <fileset dir="${zstacklib.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>

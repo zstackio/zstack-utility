@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack war builder" basedir="../">
+    <target name="build-zstack-war">
+        <checkProperty property="zstack.source" />
+        <checkFile file="${zstack.source}" />
+
+        <exec executable="git" dir="${zstack.source}" failonerror="true">
+            <arg value="checkout" />
+            <arg value="${zstack.build_version}" />
+        </exec>
+
+        <exec executable="mvn" dir="${zstack.source}" failonerror="true">
+            <arg value="-DskipTests" />
+            <arg value="clean" />
+            <arg value="install" />
+        </exec>
+
+        <copy file="${zstack.source}/build/target/zstack.war" todir="${build.dir}" overwrite="true" />
+    </target>
+
+</project>

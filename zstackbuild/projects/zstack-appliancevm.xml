@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-appliancevm builder" basedir="../">
+    <property name="appliancevm.bdir" location="${build.dir}/appliancevm" />
+    <property name="appliancevm.ansible.dir" location="${ansible.dir}/appliancevm/" />
+
+    <target name="build-appliancevm" >
+        <makeDir dir="${appliancevm.bdir}" />
+
+        <checkProperty property="appliancevm.source" />
+        <checkProperty property="appliancevm.serviceFile" />
+        <checkFile file="${appliancevm.source}" />
+        <checkFile file="${appliancevm.source}/setup.py" />
+        <checkFile file="${appliancevm.serviceFile}" />
+
+        <delete dir="${appliancevm.source}/dist" />
+
+        <exec executable="python" dir="${appliancevm.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${appliancevm.bdir}/">
+            <fileset dir="${appliancevm.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-appliancevm">
+        <makeDir dir="${appliancevm.ansible.dir}" />
+
+        <copy todir="${appliancevm.ansible.dir}">
+            <fileset dir="${appliancevm.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${appliancevm.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${appliancevm.serviceFile}" todir="${appliancevm.ansible.dir}" />
+    </target>
+</project>

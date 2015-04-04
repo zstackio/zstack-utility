@@ -1,0 +1,17 @@
+<setting>
+	<property>
+		<name>ApiMediator.noFailureIfComponentMissing</name>
+		<default>false</default>
+		<help>debug option. raise error if component specified in api portal file cannot be found</help>
+		<validator>true|false</validator>
+		<errorMessage>the value must be 'true' or 'false'</errorMessage>
+	</property>
+	
+	<property>
+		<name>ApiMediator.dumpApiPropertyInfo</name>
+		<default>false</default>
+		<help>debug option. dump api configuration in log file of zstack management server</help>
+		<validator>true|false</validator>
+		<errorMessage>the value must be 'true' or 'false'</errorMessage>
+	</property>
+</setting>

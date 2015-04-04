@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-setting builder" basedir="../">
+    <property name="setting.bdir" location="${build.dir}/setting" />
+
+    <target name="build-setting" >
+        <makeDir dir="${setting.bdir}" />
+
+        <checkProperty property="setting.source" />
+        <checkProperty property="setting.serviceFile" />
+        <checkFile file="${setting.source}" />
+        <checkFile file="${setting.source}/setup.py" />
+        <checkFile file="${setting.serviceFile}" />
+
+        <delete dir="${setting.source}/dist" />
+
+        <exec executable="python" dir="${setting.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="bdist_egg" />
+        </exec>
+
+        <copy todir="${setting.bdir}">
+            <fileset file="${setting.source}/dist/*.egg" />
+            <regexpmapper from="(.*).egg" to="zstack-setting.egg"/>
+        </copy>
+
+        <copy file="${setting.serviceFile}" todir="${setting.bdir}" />
+    </target>
+</project>

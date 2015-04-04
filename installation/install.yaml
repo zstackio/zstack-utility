@@ -1,0 +1,95 @@
+---
+- hosts: 127.0.0.1
+  connection: local
+  remote_user: root
+
+  vars:
+    rabbitmq_link: "http://192.168.0.220/bits/rabbitmq-server-3.3.5-1.noarch.rpm"
+    tomcat_link: "http://192.168.0.220/bits/apache-tomcat-7.0.32.tar.gz"
+    zstack_link: "http://192.168.0.220/bits/zstack.war"
+    tomcat_home: "apache-tomcat"
+
+  vars_prompt:
+    - name: zstack_root
+      prompt: "Enter ZStack root path[/opt/zstack]:"
+      default: "/opt/zstack"
+
+  tasks:
+     - name: Check ZStack root
+       shell: 'ls {{zstack_root}}'
+       ignore_errors: yes
+       register: check_zstack_root_result
+
+     - name: Ask to delete old zstack root
+       when: check_zstack_root_result.rc == 0
+       pause: prompt="Found old zstack root at {{zstack_root}}. Would you like to delete it and continue? Type 'yes' or press Enter to confirm, or type any other words to abort. [yes]"
+       register: delete_zstack_root_prompt
+       failed_when: delete_zstack_root_prompt.user_input != "" and delete_zstack_root_prompt.user_input != "yes"
+
+     - name: Delete old zstack root
+       when: check_zstack_root_result.rc == 0
+       shell: 'rm -rf {{zstack_root}}'
+
+     - name: Install system dependencies
+       when: ansible_os_family == 'RedHat'
+       yum: name="{{item}}"
+       with_items:
+         - rpm
+         - mysql
+
+     - name: Check MySQL availability
+       when: ansible_os_family == 'RedHat'
+       shell: 'ls /etc/init.d/mysqld'
+       ignore_errors: yes
+       register: mysql_check_result
+
+
+     - name: Ask if install MySQL
+       when: mysql_check_result.rc != 0
+       pause: prompt="Unable to find MySQL server, would you like to install one? Type 'yes' or press Enter to confirm install, or type any other words to skip. [yes]:"
+       register: mysql_install_prompt
+
+     - name: Install MySQL server
+       yum: name="mysql-server"
+       when: mysql_check_result.rc != 0 and (mysql_install_prompt.user_input == "" or mysql_install_prompt.user_input == "yes")
+       register: mysql_install_result
+
+     - debug: var=mysql_install_result
+
+     - name: Start new MySQL installation
+       when: mysql_install_result.changed == True and ansible_os_family == 'RedHat'
+       shell: "service mysqld start"
+
+     - name: Ask root password for new MySQL installation
+       pause: prompt="Please enter root password for new MySQL installation['']"
+       when: mysql_install_result.changed == True
+       register: mysql_password
+
+     - name: Set root password for new MySQL installation
+       when: mysql_install_result.changed == True
+       shell: "mysqladmin password '{{mysql_password.user_input}}'"
+
+     - name: Check RabbitMQ server availability
+       shell: "rpmquery rabbitmq-server"
+       ignore_errors: yes
+       register: rabbitmq_check_result
+
+     - name: Ask if install RabbitMQ server
+       when: rabbitmq_check_result.rc == 1
+       pause: prompt="Unable to find RabbitMQ server, would you like to install one? Type 'yes' or press Enter to confirm install, or type any other words to skip. [yes]"
+       register: rabbitmq_prompt_result
+
+     - name: Install RabbitMQ server
+       when: rabbitmq_check_result.rc == 1 and (rabbitmq_prompt_result.user_input == "" or rabbitmq_prompt_result.user_input == "yes")
+       shell: "rpm --import http://www.rabbitmq.com/rabbitmq-signing-key-public.asc && wget {{rabbitmq_link}} -O /tmp/rabbitmq.rpm && yum -y install /tmp/rabbitmq.rpm && rm -f /tmp/rabbitmq.rpm"
+
+     - name: Create ZStack root directory
+       shell: "mkdir -p {{zstack_root}}"
+
+     - name: Install Tomcat web server
+       shell: "cd {{zstack_root}} && mkdir -p {{tomcat_home}} && wget {{tomcat_link}} && tar -C {{tomcat_home}} -xzf apache-tomcat*.gz --strip-components 1"
+
+     - name: Install zstack.war to tomcat web server
+       shell: "cd {{zstack_root}}/{{tomcat_home}}/webapps/ && wget {{zstack_link}} && unzip zstack.war -d zstack"
+
+     - template: src=bootstrap.j2 dest=/tmp/bootstrap.sh

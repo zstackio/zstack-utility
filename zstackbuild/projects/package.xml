@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="zstack package builder" basedir="../">
+    <target name="do-package">
+        <checkProperty property="tomcat.path" />
+        <checkProperty property="elasticsearch.path" />
+        <checkProperty property="version" />
+        <checkFile file="${tomcat.path}" />
+        <checkFile file="${elasticsearch.path}" />
+
+        <property name="package.base" location="${build.dir}/package" />
+        <property name="package.dir" location="${build.dir}/package/zstack-${version}" />
+        <property name="bin.dir" location="${package.dir}/bin" />
+        <property name="thirdparty.dir" location="${package.dir}/thirdparty" />
+        <property name="lib.dir" location="${package.dir}/lib" />
+        <property name="tar.file" location="${build.dir}/zstack-${version}.tar.bz2" />
+        <property name="scripts.dir" location="${basedir}/scripts" />
+
+        <makeDir dir="${bin.dir}" />
+        <makeDir dir="${thirdparty.dir}" />
+        <makeDir dir="${lib.dir}" />
+
+        <copy file="${war.file}" todir="${lib.dir}" />
+        <copy file="${zstacklib.bdir}/zstacklib.egg" todir="${lib.dir}" />
+        <copy file="${setting.bdir}/zstack-setting.egg" todir="${lib.dir}" />
+
+        <copy file="${tomcat.path}" todir="${thirdparty.dir}" />
+        <copy file="${elasticsearch.path}" todir="${thirdparty.dir}" />
+
+        <copy file="${setting.serviceFile}" todir="${bin.dir}" />
+        <copy todir="${bin.dir}">
+            <fileset dir="${scripts.dir}">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <chmod perm="777" dir="${bin.dir}" includes="**/*" />
+
+        <!--
+        <exec executable="chmod" dir="${bin.dir}" failonerror="true">
+            <arg value="+x" />
+            <arg value="*" />
+        </exec>
+        -->
+
+        <tar destfile="${tar.file}" basedir="${package.base}" compression="bzip2" />
+        <echo message="successfully build zstack package at ${tar.file}" />
+    </target>
+</project>

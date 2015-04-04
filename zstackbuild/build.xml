@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack build system" default="help" basedir=".">
+    <description>
+        builders for all zstack bits
+    </description>
+
+    <property file="build.properties" />
+    <property file="${zstack.source}/VERSION" />
+    <property name="build.dir" location="${basedir}/target" />
+    <property name="war.file" location="${build.dir}/zstack.war" />
+    <property name="war.dir" location="${build.dir}/zstack-assemble" />
+    <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
+    <property name="allinone.file" location="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}-${build_name}.tgz" />
+    <property name="allinone.dir" location="${build.dir}/zstack-all-in-one" />
+    <property name="allinone.versionfile" location="${allinone.dir}/VERSION" />
+    <property name="allinone.version" value="${MAJOR}.${MINOR}-${build_name}" />
+    <property name="war.classpath.dir" location="${build.dir}/zstack-assemble/WEB-INF/classes/" />
+    <property name="componentsHome.dir" location="${war.classpath.dir}/componentsHome" />
+    <property name="commonModules.dir" location="${componentsHome.dir}/puppet/commonModules" />
+    <property name="salt.dir" location="${war.classpath.dir}/salt"/>
+    <property name="ansible.dir" location="${war.classpath.dir}/ansible"/>
+    <property name="tools.dir" location="${war.classpath.dir}/tools"/>
+    <property name="woodpecker.dir" location="${build.dir}/woodpecker" />
+
+    <import file="${basedir}/utils.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-war.xml" optional="false" />
+    <import file="${basedir}/projects/zstacklib.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-kvmagent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-virtualrouter.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-appliancevm.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-sftpbackupstorage.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-console-proxy.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-setting.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-testagent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-buildallinone.xml" optional="false" />
+    <import file="${basedir}/projects/package.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-testconf.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-buildvr.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-apibinding.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-cli.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
+
+    <target name="prepare">
+        <makeDir dir="${build.dir}" />
+        <makeDir dir="${allinone.dir}" />
+        <makeDir dir="${tools.dir}" />
+    </target>
+
+    <target name="unzip-war">
+        <makeDir dir="${war.dir}" />
+
+        <unzip src="${war.file}" dest="${war.dir}" />
+        <makeDir dir="${componentsHome.dir}" />
+        <makeDir dir="${commonModules.dir}" />
+
+        <exec executable="git" dir="${zstack.source}" failonerror="true" output="${war.dir}/git-commit">
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+    </target>
+
+    <target name="zip-war">
+        <jar destfile="${war.file}" basedir="${war.dir}"/>
+
+        <echo message="successfully build zstack.war at ${war.file}" />
+    </target>
+
+    <target name="help">
+        <echo message="usage: ant [build-war|package|all|build-vr] -Dzstack_build_root=YOUR_ZSTACK_PACKAGE_ROOT" />
+        <echo message="[zstack_build_root] default path is /usr/local/zstack/root/, which is defined in build.properties. It should be the same parent folder for zstack-utility and zstack-woodpecker." />
+    </target>
+
+    <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard" />
+    <target name="assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, zip-war" />
+    <target name="build-war" depends="do-build, assemble" />
+    <target name="package" depends="build-war, build-setting, do-package" />
+    <target name="buildtestagent" depends="build-zstacklib, build-testagent, assemble-testagent" />
+    <target name="build-woodpecker" depends="prepare, build-zstacklib, buildtestagent, build-testconf" />
+    <target name="all" depends="build-war, build-testconf, buildtestagent">
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack.war at ${build.dir}/zstack.war" />
+        <echo message="successfully build zstacktestagent.tar.gz at ${testagent.tarfile}" />
+        <echo message="successfully copy zstck.properties conf to ${testconf.dir}" />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+    <target name="build-vr" depends="all, build-vr-image, update-vr-image">
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack-vr.img in /root/build_zstack_vr_image/zstack-vr.img" />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+    <target name="all-in-one" depends="build-war, build-allinone"> 
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack all in one package at ${allinone.file} " />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+    <target name="build-allinone" depends="all-in-one-package">
+    </target>
+</project>

@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# the following is chkconfig init header
+#
+# zstack-virtualrouter:  zstack virtual router agent daemon
+#
+# chkconfig: 345 97 03
+# description:  This is a daemon instructed by zstack management server \
+#               to perform virtual router related operations\
+#               See http://zstack.org
+#
+# processname: virtualrouter
+# pidfile: /var/run/zstack/virtualrouter.pid
+#
+
+check_status() {
+	pidfile='/var/run/zstack/virtualrouter.pid'
+	if [ ! -f $pidfile ]; then
+		echo "zstack virtual router agent is stopped"
+		exit 1
+	else
+		pid=`cat $pidfile`
+		ps -p $pid > /dev/null
+		if [ $? -eq 0 ]; then
+			echo "zstack virtual router agent is running, pid is $pid"
+			exit 0
+		else
+			echo "zstack virtual router is stopped, but pidfile at $pidfile is not cleaned. It may be caused by the agent crashed at last time, manually cleaning it would be ok"
+			exit 1
+		fi
+	fi
+}
+
+if [ $# -eq 0 ]; then
+	echo "usage: $0
+[start|stop|restart|status]"
+	exit 1
+fi
+
+if [ "$@" = "status" ]; then
+	check_status
+else
+	. /var/lib/zstack/virtualenv/virtualrouter/bin/activate && python -c "from virtualrouter import virtualrouterdaemon; virtualrouterdaemon.main()" $@
+fi
+
+if [ $? -eq 0 ]; then
+    echo "$@ zstack virtual router agent .... SUCCESS"
+    exit 0
+else
+    echo "$@ zstack virtual router agent .... FAILED"
+    exit 1
+fi

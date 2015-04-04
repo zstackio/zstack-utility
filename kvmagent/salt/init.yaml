@@ -1,0 +1,66 @@
+{% import 'zstacklib/utils.sls' as utils with context %}
+{% import 'zstacklib/kvm.sls' as kvm with context %}
+
+include:
+  - zstacklib.kvm
+
+{% if pillar['pkg'] is defined %}
+kvm_pkgs:
+  pkg.installed:
+    - pkgs:
+      - qemu-kvm
+      - bridge-utils
+      - wget
+{% if grains['os'] == 'RedHat' or grains['os'] == 'CentOS' or grains['os'] == 'Fedora' %}
+      - qemu-img
+      - libvirt-python
+      - libvirt
+      - vconfig
+      - nfs-utils
+{% elif grains['os'] == 'Ubuntu' %}
+      - qemu-utils
+      - python-libvirt
+      - libvirt-bin
+      - vlan
+      - nfs-common
+{% endif %}
+{% endif %}
+
+
+libvirt:
+  service:
+{% if grains['os'] == 'RedHat' or grains['os'] == 'CentOS' or grains['os'] == 'Fedora' %}
+    - name: libvirtd
+{% elif grains['os'] == 'Ubuntu' %}
+    - name: libvirt-bin
+{% endif %}
+    - running
+    - enable: True
+
+{% if grains['os'] == 'RedHat' or grains['os'] == 'CentOS' or grains['os'] == 'Fedora' %}
+{{ utils.ecmd('disable_selinux', 'setenforce 0', onlyif="ret_val=`setenforce 0`; if [ $? -ne 0 ]; then echo $ret_val|grep 'SELinux is disabled'; if [ $? -ne 0 ]; then exit 1; fi;fi") }}
+{% endif %}
+
+{% set egg = '/var/lib/zstack/kvm/kvmagent-0.1.0.tar.gz' %}
+{{egg}}:
+  file.managed:
+    - source: salt://kvm/kvmagent-0.1.0.tar.gz
+
+/etc/init.d/zstack-kvmagent:
+  file.managed:
+    - source: salt://kvm/zstack-kvmagent
+    - mode: 755
+
+{{ utils.pip_install('kvm', file=egg, pkg_name='kvmagent', activate=kvm.virtualenv_kvm_activate) }}
+
+kvm_agent_service:
+  service:
+    - name: zstack-kvmagent
+    - running
+    - enable: True
+    - watch:
+      - cmd: kvm_install
+      - cmd: kvm_reinstall
+      - cmd: zstacklib_install
+      - cmd: zstacklib_reinstall
+      - file: /etc/init.d/zstack-kvmagent

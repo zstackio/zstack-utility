@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="build zstack test config file" basedir="../">
+    <target name="build-testconf">
+        <checkProperty property="zstack.source" />
+        <checkFile file="${zstack.source}" />
+
+        <property name="testconf.dir" location="${woodpecker.dir}/conf" />
+        <makeDir dir="${testconf.dir}" />
+        <copy file="${zstack.source}/conf/zstack.properties" todir="${testconf.dir}" overwrite="true" />
+        <echo message="successfully build zstack test config files in ${testconf.dir}" />
+    </target>
+</project>

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-sftpbackupstorage builder" basedir="../">
+    <property name="sftpbackupstorage.bdir" location="${build.dir}/sftpbackupstorage" />
+    <property name="sftpbackupstorage.salt.dir" location="${salt.dir}/sftpbackupstorage/" />
+    <property name="sftpbackupstorage.ansible.dir" location="${ansible.dir}/sftpbackupstorage/" />
+
+    <target name="build-sftpbackupstorage" >
+        <makeDir dir="${sftpbackupstorage.bdir}" />
+
+        <checkProperty property="sftpbackupstorage.source" />
+        <checkProperty property="sftpbackupstorage.serviceFile" />
+        <checkFile file="${sftpbackupstorage.source}" />
+        <checkFile file="${sftpbackupstorage.source}/setup.py" />
+        <checkFile file="${sftpbackupstorage.serviceFile}" />
+
+        <delete dir="${sftpbackupstorage.source}/dist" />
+
+        <exec executable="python" dir="${sftpbackupstorage.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${sftpbackupstorage.bdir}/">
+            <fileset dir="${sftpbackupstorage.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="salt/**/*" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-sftpbackupstorage">
+        <makeDir dir="${sftpbackupstorage.salt.dir}" />
+
+        <copy todir="${sftpbackupstorage.salt.dir}">
+            <fileset dir="${sftpbackupstorage.bdir}/salt">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${sftpbackupstorage.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${sftpbackupstorage.serviceFile}" todir="${sftpbackupstorage.salt.dir}" />
+
+        <makeDir dir="${sftpbackupstorage.ansible.dir}" />
+
+        <copy todir="${sftpbackupstorage.ansible.dir}">
+            <fileset dir="${sftpbackupstorage.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${sftpbackupstorage.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${sftpbackupstorage.serviceFile}" todir="${sftpbackupstorage.ansible.dir}" />
+    </target>
+</project>

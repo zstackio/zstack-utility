@@ -1,0 +1,69 @@
+---
+
+- hosts: "{{host}}"
+  vars:
+    - virtenv_path: "{{zstack_root}}/virtualenv/consoleproxy/"
+    - consoleproxy_root: "{{zstack_root}}/console"
+    - file_root: "files/consoleproxy"
+    - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
+    - proxy: "{{http_proxy|default()}}"
+    - sproxy: "{{https_proxy|default()}}"
+    - chroot_env: "{{chroot|default('false')}}"
+
+  tasks:
+    - include: zstacklib.yaml
+
+    - name: create root directories
+      shell: "mkdir -p {{item}}"
+      with_items:
+        - "{{consoleproxy_root}}"
+        - "{{virtenv_path}}"
+
+    - name: install virtualenv
+      pip: name=virtualenv extra_args="-i {{pip_url}}"
+
+    - name: create virtualenv dirctory
+      shell: "ls {{virtenv_path}} > /dev/null || virtualenv {{virtenv_path}}"
+
+    - name: copy zstacklib
+      copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{consoleproxy_root}}/{{pkg_zstacklib}}"
+      notify:
+        - install zstacklib
+        - restart consoleproxy
+
+    - name: copy consoleproxy
+      copy: src="{{file_root}}/{{pkg_consoleproxy}}" dest="{{consoleproxy_root}}/{{pkg_consoleproxy}}"
+      notify:
+        - install consoleproxy
+        - restart consoleproxy
+
+    # only for os using init.d not systemd
+    - name: copy consoleproxy service file
+      when: ansible_os_family == 'RedHat' or ansible_os_family == 'Debian'
+      copy: src="{{file_root}}/zstack-consoleproxy" dest=/etc/init.d/ mode=755
+      notify:
+        - restart consoleproxy
+
+    - meta: flush_handlers
+
+    - name: enable consoleproxy service
+      service: name=zstack-consoleproxy enabled=yes state=started
+      when: chroot_env == 'false'
+
+  handlers:
+    - name: install zstacklib
+      environment:
+        http_proxy: "{{proxy}}"
+        https_proxy: "{{sproxy}}"
+      pip: name="{{consoleproxy_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+
+    - name: install consoleproxy
+      environment:
+        http_proxy: "{{proxy}}"
+        https_proxy: "{{sproxy}}"
+      pip: name="{{consoleproxy_root}}/{{pkg_consoleproxy}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
+
+    - name: restart consoleproxy
+      service: name=zstack-consoleproxy state=restarted enabled=yes
+      when: chroot_env == 'false'
+

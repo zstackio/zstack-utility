@@ -1,0 +1,124 @@
+#!/bin/sh
+
+SCRIPT="$0"
+
+err_exit() {
+    echo $@
+    exit 1
+}
+
+check_file() {
+    if [ ! -f $1 ]; then
+        err_exit "cannot find $1"
+    fi
+}
+
+unzip_elasticsearch() {
+    echo "unzip elasticsearch"
+
+    es_path=$ZS_HOME/thirdparty/elasticsearch*
+    ls $es_path &>/dev/null
+    if [ $? -ne 0 ]; then
+        err_exit "cannot find elasticsearch tarball at $es_path"
+    fi
+    es_path=`ls $es_path`
+    tar xzf $es_path -C $RUNTIME_HOME
+}
+
+unzip_tomcat_deploy_war() {
+    echo "unzip tomcat and deploy zstack.war"
+
+    tomcat_path=$ZS_HOME/thirdparty/apache-tomcat*
+    ls $tomcat_path &>/dev/null
+    if [ $? -ne 0 ]; then
+        err_exit "cannot find tomcat tarball at $es_path"
+    fi
+    tomcat_path=`ls $tomcat_path`
+    tar xzf $tomcat_path -C $RUNTIME_HOME
+    tcathome=`ls -d $RUNTIME_HOME/apache-tomcat*`
+
+    warfile=$ZS_HOME/lib/zstack.war
+    check_file $warfile
+    wardir=$tcathome/webapps/zstack
+
+    mkdir -p $wardir
+    unzip $warfile -d $wardir &>/dev/null
+}
+
+start_elasticsearch() {
+    ps -aux | grep java | grep elasticsearch &>/dev/null
+    if [ $? -eq 0 ]; then
+        return
+    fi
+
+    sh $ES_HOME/bin/elasticsearch
+}
+
+# SCRIPT may be an arbitrarily deep series of symlinks. Loop until we have the concrete path.
+while [ -h "$SCRIPT" ] ; do
+  ls=`ls -ld "$SCRIPT"`
+  # Drop everything prior to ->
+  link=`expr "$ls" : '.*-> \(.*\)$'`
+  if expr "$link" : '/.*' > /dev/null; then
+    SCRIPT="$link"
+  else
+    SCRIPT=`dirname "$SCRIPT"`/"$link"
+  fi
+done
+
+ZS_HOME=`dirname "$SCRIPT"`/..
+RUNTIME_HOME=$ZS_HOME/runtime
+mkdir -p $RUNTIME_HOME
+
+ls -d $RUNTIME_HOME/elasticsearch* &>/dev/null
+if [ $? -ne 0 ]; then
+    unzip_elasticsearch
+fi
+ES_HOME=`ls -d $RUNTIME_HOME/elasticsearch*`
+
+ls -d $RUNTIME_HOME/apache-tomcat* &>/dev/null
+if [ $? -ne 0 ]; then
+    unzip_tomcat_deploy_war
+fi
+TOMCAT_HOME=`ls -d $RUNTIME_HOME/apache-tomcat*`
+
+echo $ES_HOME
+echo $TOMCAT_HOME
+
+start_elasticsearch
+
+usage() {
+    echo "usage: $0
+    [start|stop|restart]"
+    exit 1
+}
+
+if [ $# -eq 0 ]; then
+    usage
+fi
+
+start_tomcat() {
+   sh $TOMCAT_HOME/bin/startup.sh
+   echo "start zstack ... SUCCESS"
+}
+
+stop_tomcat() {
+   sh $TOMCAT_HOME/bin/shutdown.sh
+   echo "start zstack ... SUCCESS"
+}
+
+restart_tomcat() {
+    start_tomcat
+    stop_tomcat
+}
+
+if [ $1 == 'start' ]; then
+    start_tomcat
+elif [ $1 == 'stop' ]; then
+    stop_tomcat
+elif [ $1 == 'restart' ]; then
+    restart_tomcat
+else
+    usage
+fi
+

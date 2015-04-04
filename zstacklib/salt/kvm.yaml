@@ -1,0 +1,30 @@
+{% import 'zstacklib/utils.sls' as utils with context %}
+
+{% if pillar['pkg'] is defined %}
+pydev:
+  pkg.installed:
+    - pkgs:
+    {% if grains['os'] == 'RedHat' or grains['os'] == 'Fedora' or grains['os'] == 'CentOS' %}
+      - python-devel
+    {% elif grains['os'] == 'Ubuntu' %}
+      - python-dev
+    {% endif %}
+      - python-pip
+      - python-setuptools
+      - python
+      - gcc
+{% endif %}
+
+{% set egg = '/var/lib/zstack/kvm/zstacklib-0.1.0.tar.gz' %}
+{{egg}}:
+  file.managed:
+    - source: salt://zstacklib/zstacklib-0.1.0.tar.gz
+
+{% set virtualenv_kvm = '/var/lib/zstack/virtualenv/kvm' %}
+{% set virtualenv_kvm_activate = 'source %s/bin/activate' % virtualenv_kvm %}
+
+{{ utils.ecmd('virtualenv_install', "pip install virtualenv", unless='pip freeze | grep "virtualenv" > /dev/nul') }}
+
+{{ utils.ecmd('virtualenv_create', "virtualenv --system-site-packages %s" % virtualenv_kvm, unless='ls %s > /dev/null' % virtualenv_kvm) }}
+
+{{ utils.pip_install('zstacklib', file=egg, pkg_name='zstacklib', activate=virtualenv_kvm_activate) }}

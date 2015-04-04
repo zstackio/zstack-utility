@@ -1,0 +1,14 @@
+<setting>
+	<property>
+		<name>RESTFacade.url</name>
+		<default>AUTO_DETECT</default>
+		<help>
+			callback url is used by zstack agent sending response to zstack management server
+            in reply to agent command sent by management early. it's key to make management server and agent
+            communicate in asynchronous manner. a value of 'AUTO_DETECT' lets management server to detect ip address automatically.
+            you should not set this url in most cases, a valid url must be in format of 'http://management_server_ip:management_server_port/zstack'
+        </help>
+		<validator>AUTO_DETECT|http://(.*):(\d+)/zstack$</validator>
+		<errorMessage>must be AUTO_DETECT or in format of 'http://management_server_ip:management_server_port/zstack'</errorMessage>
+	</property>
+</setting>

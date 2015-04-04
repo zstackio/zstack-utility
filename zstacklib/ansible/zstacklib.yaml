@@ -1,0 +1,23 @@
+---
+
+- name: install dependency packages for RedHat based OS
+  when: ansible_os_family == 'RedHat'
+  yum: name="{{item}}"
+  with_items:
+    - python-devel
+    - python-setuptools
+    - gcc
+    - autoconf
+    - libselinux-python
+
+- name: install dependency packages for Debian based OS
+  when: ansible_os_family == 'Debian'
+  apt: pkg="{{item}}" update_cache=yes
+  with_items:
+    - python-dev
+    - python-setuptools
+    - gcc
+    - autoconf
+
+- name: install pip
+  easy_install: name=pip

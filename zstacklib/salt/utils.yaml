@@ -1,0 +1,35 @@
+{% import 'variables/var.sls' as vars with context %}
+{% set virtualenv_canonical = '/var/lib/zstack/virtualenv/canonical' %}
+{% set virtualenv_canonical_activate = 'source %s/bin/activate' % virtualenv_canonical %}
+
+{% macro ecmd(name, cmd, action='run', user='root', unless=none, onlyif=none, watch=none) %}
+{{name}}:
+  cmd.{{action}}:
+    - name: {{cmd}}
+    - user: {{user}}
+    {% if unless is not none %}
+    - unless: {{unless}}
+    {% endif %}
+    {% if onlyif is not none %}
+    - onlyif: {{onlyif}}
+    {% endif %}
+    {% if watch is not none %}
+    - watch:
+    {% for w in watch %}
+      - {{w}}
+    {% endfor %}
+    {% endif %}
+    {% if vars.cmd_env is defined %}
+    - env:
+     {% for key, value in vars.cmd_env.iteritems() %}
+      - '{{key}}': '{{value}}'
+     {% endfor%}
+    {% endif %}
+{% endmacro %}
+
+{% macro pip_install(name, file, pkg_name, activate=virtualenv_canonical_activate) %}
+{{ ecmd('%s_install' % name, '%s && pip install %s' % (activate, file), unless='%s && pip freeze | grep -- "%s" > /dev/null' % (activate, pkg_name)) }}
+
+{{ ecmd('%s_reinstall' % name, '%s && pip install %s --no-deps --ignore-installed' % (activate, file), action='wait',
+   onlyif='%s && pip freeze | grep -- "%s" > /dev/null' % (activate, pkg_name), watch=['file: %s' % file]) }}
+{% endmacro %}

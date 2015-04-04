@@ -1,0 +1,1 @@
+zstack-cli -d zstack_deploy_xml_example/deploy.xml -t zstack_deploy_xml_example/deploy.tmpt

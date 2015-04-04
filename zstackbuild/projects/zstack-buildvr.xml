@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstackvr image builder" basedir="../">
+    <target name="build-vr-image" >
+        <checkProperty property="virtualrouter.source" />
+        <checkFile file="${virtualrouter.source}/bootstrap/build_virtualrouter_image.sh" />
+
+        <exec executable="/bin/bash" dir="${virtualrouter.source}" failonerror="true">
+            <arg value="${virtualrouter.source}/bootstrap/build_virtualrouter_image.sh" />
+        </exec>
+    </target>
+
+    <target name="update-vr-image">
+        <checkProperty property="virtualrouter.source" />
+        <checkFile file="${virtualrouter.source}/bootstrap/update_virtualrouter_image.sh" />
+        <exec executable="/bin/bash" dir="${virtualrouter.source}" failonerror="true">
+            <arg value="${virtualrouter.source}/bootstrap/update_virtualrouter_image.sh" />
+            <arg value="-i /root/build_zstack_vr_image/zstack-vr.img -a ${ansible.dir}" />
+        </exec>
+
+    </target>
+</project>

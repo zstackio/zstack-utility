@@ -1,0 +1,68 @@
+{% import 'zstacklib/utils.sls' as utils with context %}
+
+include:
+  - zstacklib
+
+{% if pillar['pkg'] is defined %}
+vr_pkgs:
+  pkg.installed:
+    - pkgs:
+      - dnsmasq
+{% endif %}
+
+/etc/dnsmasq.conf:
+  file.managed:
+    - source: salt://virtualrouter/dnsmasq.conf
+
+dnsmasq_service:
+  service:
+    - name: dnsmasq
+    - running
+    - enable: True
+    - watch:
+      - file: /etc/dnsmasq.conf
+
+
+/etc/sysconfig/iptables:
+  file.managed:
+    - source: salt://virtualrouter/iptables
+
+iptables:
+  service:
+    - name: iptables
+    - running
+    - enable: True
+    - watch:
+      - file: /etc/sysconfig/iptables
+
+create_host_dhcp_file:
+  cmd.run:
+    - name: /bin/touch /etc/hosts.option
+
+create_host_option_file:
+  cmd.run:
+    - name: /bin/touch /etc/hosts.option
+
+/etc/init.d/zstack-virtualrouter:
+  file.managed:
+    - source: salt://virtualrouter/zstack-virtualrouter
+    - mode: 755
+
+{% set egg = '/var/lib/zstack/virtualrouter/virtualrouter-0.1.0.tar.gz' %}
+{{egg}}:
+  file.managed:
+    - source: salt://virtualrouter/virtualrouter-0.1.0.tar.gz
+
+{{ utils.pip_install('vr', file=egg, pkg_name='virtualrouter') }}
+
+vr_service:
+  service:
+    - name: zstack-virtualrouter
+    - running
+    - enable: True
+    - watch:
+      - cmd: vr_install
+      - cmd: vr_reinstall
+      - cmd: zstacklib_install
+      - cmd: zstacklib_reinstall
+      - file: /etc/init.d/zstack-virtualrouter

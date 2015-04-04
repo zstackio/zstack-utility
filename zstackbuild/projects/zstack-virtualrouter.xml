@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-virtualrouter builder" basedir="../">
+    <property name="virtualrouter.bdir" location="${build.dir}/virtualrouter" />
+    <property name="virtualrouter.salt.dir" location="${salt.dir}/virtualrouter/" />
+    <property name="virtualrouter.ansible.dir" location="${ansible.dir}/virtualrouter/" />
+
+    <target name="build-virtualrouter" >
+        <makeDir dir="${virtualrouter.bdir}" />
+
+        <checkProperty property="virtualrouter.source" />
+        <checkProperty property="virtualrouter.serviceFile" />
+        <checkFile file="${virtualrouter.source}" />
+        <checkFile file="${virtualrouter.source}/setup.py" />
+        <checkFile file="${virtualrouter.serviceFile}" />
+
+        <delete dir="${virtualrouter.source}/dist" />
+
+        <exec executable="python" dir="${virtualrouter.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${virtualrouter.bdir}/">
+            <fileset dir="${virtualrouter.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="salt/**/*" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-virtualrouter">
+        <makeDir dir="${virtualrouter.salt.dir}" />
+
+        <copy todir="${virtualrouter.salt.dir}">
+            <fileset dir="${virtualrouter.bdir}/salt">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${virtualrouter.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${virtualrouter.serviceFile}" todir="${virtualrouter.salt.dir}" />
+
+        <makeDir dir="${virtualrouter.ansible.dir}" />
+
+        <copy todir="${virtualrouter.ansible.dir}">
+            <fileset dir="${virtualrouter.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${virtualrouter.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${virtualrouter.serviceFile}" todir="${virtualrouter.ansible.dir}" />
+    </target>
+</project>

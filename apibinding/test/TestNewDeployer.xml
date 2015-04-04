@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<deployerConfig xmlns="http://zstack.org/schema/zstack">
+	<instanceOfferings>
+		<instanceOffering name="TestInstanceOffering"
+			description="Test" memoryCapacity="3G" cpuNum="1" cpuSpeed="3000" />
+		<virtualRouterOffering name="virtualRouterOffering" memoryCapacity="3G" cpuSpeed="1000" cpuNum="1"
+			isDefault="true">
+			<zoneRef>TestZone</zoneRef>
+			<managementL3NetworkRef>TestL3Network1</managementL3NetworkRef>
+			<publicL3NetworkRef>TestL3Network1</publicL3NetworkRef>
+			<imageRef>TestImage</imageRef>
+		</virtualRouterOffering>
+	</instanceOfferings>
+
+
+	<backupStorages>
+		<sftpBackupStorage name="TestBackupStorage"
+			description="Test" url="/home/sftpBackupStorage" username="root" password="password" hostname="localhost"/>
+	</backupStorages>
+	
+	<images>
+		<image name="TestImage" description="Test" format="template" hypervisorType='KVM' url="http://192.168.0.199/templates/centosmini.qcow2">
+			<backupStorageRef>TestBackupStorage</backupStorageRef>
+		</image>
+	</images>
+
+	<diskOffering name="TestRootDiskOffering" description="Test"
+		diskSize="50G" />
+	<diskOffering name="TestDataDiskOffering" description="Test"
+		diskSize="120G" />
+
+	<zones>
+		<zone name="TestZone" description="Test">
+			<clusters>
+				<cluster name="TestCluster" description="Test" hypervisorType="KVM">
+					<hosts>
+						<kvmHost name="TestHost1" description="Test"
+							managementIp="localhost" username="root" password="password" />
+					</hosts>
+					<primaryStorageRef>TestPrimaryStorage</primaryStorageRef>
+					<l2NetworkRef>TestL2Network</l2NetworkRef>
+				</cluster>
+			</clusters>
+
+			<l2Networks>
+				<l2NoVlanNetwork name="TestL2Network" description="Test"
+					physicalInterface="eth0">
+					<l3Networks>
+						<l3BasicNetwork name="TestL3Network1" description="Test">
+							<ipRange name="TestIpRange" description="Test" startIp="10.0.0.100"
+								endIp="10.10.1.200" gateway="10.0.0.1" netmask="255.0.0.0" />
+								
+							<networkService provider="VirtualRouter">
+								<serviceType>DHCP</serviceType>
+								<serviceType>DNS</serviceType>
+								<serviceType>Gateway</serviceType>
+							</networkService>
+						</l3BasicNetwork>
+					</l3Networks>
+				</l2NoVlanNetwork>
+			</l2Networks>
+			
+			<primaryStorages>
+				<nfsPrimaryStorage name="TestPrimaryStorage"
+					description="Test" totalCapacity="1T" url="localhost:/home/primary" />
+			</primaryStorages>
+			
+			<backupStorageRef>TestBackupStorage</backupStorageRef>
+		</zone>
+	</zones>
+</deployerConfig>

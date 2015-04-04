@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstackctl builder" basedir="../">
+    <property name="zstackctl.bdir" location="${build.dir}/zstackctl" />
+
+    <target name="build-ctl" >
+        <makeDir dir="${zstackctl.bdir}" />
+
+        <checkProperty property="zstackctl.source" />
+        <checkFile file="${zstackctl.source}" />
+        <checkFile file="${zstackctl.source}/setup.py" />
+
+        <delete dir="${zstackctl.source}/dist" />
+
+        <exec executable="python" dir="${zstackctl.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${zstackctl.bdir}/">
+            <fileset dir="${zstackctl.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-ctl">
+        <copy todir="${tools.dir}">
+            <fileset dir="${zstackctl.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>

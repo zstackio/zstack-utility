@@ -1,0 +1,21 @@
+<setting>
+	<property>
+		<name>DbFacadeDataSource.jdbcUrl</name>
+		<default>jdbc:mysql://localhost:3306/zstack</default>
+		<help>jdbc url, must be in format of 'jdbc:mysql://mysql_server_ip:mysql_server_port/zstack'</help>
+		<validator>jdbc:mysql://(.*):(\d+)/zstack$</validator>
+		<errorMessage>jdbc url must be in format of 'jdbc:mysql://mysql_server_ip:mysql_server_port/zstack'</errorMessage>
+	</property>
+	
+	<property>
+		<name>DbFacadeDataSource.user</name>
+		<default>root</default>
+		<help>mysql username</help>
+	</property>
+	
+	<property>
+		<name>DbFacadeDataSource.password</name>
+		<default></default>
+		<help>mysql password</help>
+	</property>
+</setting>

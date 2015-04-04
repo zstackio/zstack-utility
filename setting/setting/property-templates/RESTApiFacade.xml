@@ -1,0 +1,23 @@
+<setting>
+	<property>
+		<name>RESTApiDataSource.jdbcUrl</name>
+		<default>jdbc:mysql://localhost:3306/zstack_rest</default>
+		<help>
+			jdbc url, must be in format of 'jdbc:mysql://mysql_server_ip:mysql_server_port/zstack_rest'
+        </help>
+		<validator>jdbc:mysql://(.*):(\d+)/zstack_rest$</validator>
+		<errorMessage>jdbc url, must be in format of 'jdbc:mysql://mysql_server_ip:mysql_server_port/zstack_rest'</errorMessage>
+	</property>
+	
+	<property>
+		<name>RESTApiDataSource.user</name>
+		<default>root</default>
+		<help>mysql username</help>
+	</property>
+	
+	<property>
+		<name>RESTApiDataSource.password</name>
+		<default></default>
+		<help>mysql password</help>
+	</property>
+</setting>

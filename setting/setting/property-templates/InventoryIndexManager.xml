@@ -1,0 +1,21 @@
+<setting>
+	<property>
+		<name>InventoryIndexManager.deleteAllIndexWhenStart</name>
+		<default>false</default>
+		<help>
+			debug option. delete all elasticsearch index when management node starts
+        </help>
+		<validator>true|false</validator>
+		<errorMessage>must be 'true' or 'false'</errorMessage>
+	</property>
+	
+	<property>
+		<name>InventoryIndexManager.stopIfCreateIndexFailed</name>
+		<default>true</default>
+		<help>
+			raise error if management node cannot create index in elasticsearch
+        </help>
+		<validator>true|false</validator>
+		<errorMessage>must be 'true' or 'false'</errorMessage>
+	</property>
+</setting>

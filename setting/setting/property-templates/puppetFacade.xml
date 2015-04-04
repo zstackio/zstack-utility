@@ -1,0 +1,15 @@
+<setting>
+	<property>
+		<name>PuppetFacade.puppetModulesHome</name>
+		<default>/etc/puppet/modules</default>
+		<help>"puppet module path. zstack management node will deploy its puppet modules to this folder"</help>
+		<checkExists />
+	</property>
+	
+	<property>
+		<name>PuppetFacade.puppetNodesHome</name>
+		<default>/etc/puppet/manifests/nodes</default>
+		<help>puppet node path. zstack management node will create node file(e.g zstacklib.pp) in this folder</help>
+		<checkExists />
+	</property>
+</setting>

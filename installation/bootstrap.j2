@@ -1,0 +1,40 @@
+ZSTACK_ROOT={{zstack_root}}
+TOMCAT_HOME={{tomcat_home}}
+ZSTACK_CONF_ROOT=$ZSTACK_ROOT/$TOMCAT_HOME/webapps/zstack/WEB-INF/classes/
+DEPLOY_DB_SCRIPT=$ZSTACK_CONF_ROOT/deploydb.sh
+
+{% if mysql_install_result.changed == True %}
+MYSQL_SERVER_IP=localhost
+MYSQL_ROOT_PASSWORD='{{mysql_password.user_input}}'
+{% else %}
+read -p "Please enter MySQL server IP[localhost]:" MYSQL_SERVER_IP
+MYSQL_SERVER_IP=${MYSQL_SERVER_IP:-localhost}
+read -p "Please enter MySQL root password['']:" MYSQL_ROOT_PASSWORD
+MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-''}
+{% endif %}
+
+exit_err() {
+    echo "$1"
+    exit 1
+}
+
+mysql --user=root --host=$MYSQL_SERVER_IP --password=$MYSQL_ROOT_PASSWORD'' -e "select 1" > /dev/null
+[ $? -ne 0 ] && exit_err "Unable to connect to mysql server[$MYSQL_SERVER_IP] using username[root], password[$MYSQL_ROOT_PASSWORD]"
+
+mysql --user=root --host=$MYSQL_SERVER_IP --password=$MYSQL_ROOT_PASSWORD'' -e "show databases" | grep zstack > /dev/null
+if [ $? -eq 0 ]; then
+    read -p "Found an old zstack database, do you want to erase it and deploy a new one?
+WARNING: erasing will cause all your old data loss, please make sure you have backup it
+Type 'yes' to continue, press Enter or type other words to abort:" confirm
+
+    if [[ $confirm != "yes" ]]; then
+       echo "user abort"
+       exit 0
+    fi
+fi
+
+echo "Deploying zstack database ..."
+chmod 755 $DEPLOY_DB_SCRIPT
+$DEPLOY_DB_SCRIPT root $MYSQL_ROOT_PASSWORD $MYSQL_SERVER_IP 3306
+
+echo $MYSQL_SERVER_IP $MYSQL_ROOT_PASSWORD

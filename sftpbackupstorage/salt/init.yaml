@@ -1,0 +1,47 @@
+{% import 'zstacklib/utils.sls' as utils with context %}
+
+include:
+  - zstacklib
+
+{% if pillar['pkg'] is defined %}
+sftp_pkgs:
+  pkg.installed:
+    - pkgs:
+      - wget
+{% if grains['os'] == 'RedHat' or grains['os'] == 'CentOS' or grains['os'] == 'Fedora' %}
+      - openssh-clients
+{% elif grains['os'] == 'Ubuntu' %}
+      - openssh-client
+{% endif %}
+      - openssh-server
+{% endif %}
+
+sftp_auth:
+  ssh_auth:
+    - present
+    - user: root
+    - source: salt://sftpbackupstorage/id_rsa.sftp.pub
+
+{% set egg = '/var/lib/zstack/sftpbackupstorage/sftpbackupstorage-0.1.0.tar.gz' %}
+{{egg}}:
+  file.managed:
+    - source: salt://sftpbackupstorage/sftpbackupstorage-0.1.0.tar.gz
+
+/etc/init.d/zstack-sftpbackupstorage:
+  file.managed:
+    - source: salt://sftpbackupstorage/zstack-sftpbackupstorage
+    - mode: 755
+
+{{ utils.pip_install('sftp', file=egg, pkg_name='sftpbackupstorage') }}
+
+sftp_service:
+  service:
+    - name: zstack-sftpbackupstorage
+    - running
+    - enable: True
+    - watch:
+      - cmd: sftp_install
+      - cmd: sftp_reinstall
+      - cmd: zstacklib_install
+      - cmd: zstacklib_reinstall
+      - file: /etc/init.d/zstack-sftpbackupstorage

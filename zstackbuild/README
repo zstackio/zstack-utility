@@ -1,0 +1,15 @@
+Preparation:
+-------------
+ant is required to be installed. 
+
+Build zstack.war:
+-------------
+#ant build-war
+
+Build zstack-woodpecker testing libs and config files:
+-------------
+#ant build-woodpecker
+
+Build all:
+-------------
+#ant all

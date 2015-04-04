@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-cli builder" basedir="../">
+    <property name="zstackcli.bdir" location="${build.dir}/zstackcli" />
+
+    <target name="build-cli" >
+        <makeDir dir="${zstackcli.bdir}" />
+
+        <checkProperty property="zstackcli.source" />
+        <checkFile file="${zstackcli.source}" />
+        <checkFile file="${zstackcli.source}/setup.py" />
+
+        <delete dir="${zstackcli.source}/dist" />
+
+        <exec executable="python" dir="${zstackcli.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${zstackcli.bdir}/">
+            <fileset dir="${zstackcli.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-cli">
+        <copy todir="${tools.dir}">
+            <fileset dir="${zstackcli.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>

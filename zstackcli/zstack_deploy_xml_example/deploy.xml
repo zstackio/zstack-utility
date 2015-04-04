@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <instanceOfferings>
+    <instanceOffering name="$instanceOfferingName_s"
+      description="small install offering" 
+      memorySize="$instanceOfferingMemory_s" 
+      cpuNum="$instanceOfferingCpuNum_s" 
+      cpuSpeed="$instanceOfferingCpuSpeed_s" />
+  </instanceOfferings>
+
+  <backupStorages>
+    <sftpBackupStorage name="$sftpBackupStorageName"
+      description="Test" url="$sftpBackupStorageUrl" 
+      username="$sftpBackupStorageUsername" 
+      password="$sftpBackupStoragePassword" 
+      hostname="$sftpBackupStorageHostname"/>
+  </backupStorages>
+  
+  <images>
+    <image name="$imageName_s" description="Test" format="$rootImageFormat" 
+        url="$imageUrl_s" mediaType="$rootMediaType">
+      <backupStorageRef>$sftpBackupStorageName</backupStorageRef>
+    </image>
+  </images>
+
+  <diskOfferings>
+    <diskOffering name="$rootDiskOfferingName" description="Test"
+      diskSize="$rootDiskOfferingSize" />
+    <diskOffering name="$smallDiskOfferingName" 
+      description="Small Disk Offering"
+      diskSize="$smallDiskOfferingSize" />
+  </diskOfferings>
+
+  <zones>
+    <zone name="$zoneName" description="Test">
+      <clusters>
+        <cluster name="$clusterName" description="Test" 
+          hypervisorType="$clusterHypervisorType">
+          <hosts>
+            <host name="$hostName" description="Test"
+              managementIp="$hostIp" username="$hostUsername" 
+              password="$hostPassword" />
+          </hosts>
+          <primaryStorageRef>$nfsPrimaryStorageName</primaryStorageRef>
+          <l2NetworkRef>$l2PublicNetworkName</l2NetworkRef>
+        </cluster>
+      </clusters>
+
+      <l2Networks>
+        <l2NoVlanNetwork name="$l2PublicNetworkName" description="Test"
+          physicalInterface="$l2NetworkPhysicalInterface">
+          <l3Networks>
+            <l3BasicNetwork name="$l3PublicNetworkName" 
+              description="Test">
+              <ipRange name="$ipRangeName" description="Test" 
+                startIp="$ipRangeStartIp" endIp="$ipRangeEndIp"
+                gateway="$ipRangeGateway" 
+                netmask="$ipRangeNetmask" />
+            </l3BasicNetwork>
+          </l3Networks>
+        </l2NoVlanNetwork>
+      </l2Networks>
+      
+      <primaryStorages>
+        <nfsPrimaryStorage name="$nfsPrimaryStorageName"
+          description="Test" url="$nfsPrimaryStorageUrl" />
+      </primaryStorages>
+      
+      <backupStorageRef>$sftpBackupStorageName</backupStorageRef>
+    </zone>
+  </zones>
+</config>

@@ -1,0 +1,11 @@
+<setting>
+	<property>
+		<name>ThreadFacade.totalThreadNum</name>
+		<default>500</default>
+		<help>
+			total number of threads zstack management node uses
+        </help>
+		<validator>^\d+$</validator>
+		<errorMessage>must be a integer</errorMessage>
+	</property>
+</setting>
