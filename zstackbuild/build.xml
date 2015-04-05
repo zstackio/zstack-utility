@@ -11,10 +11,21 @@
     <property name="war.file" location="${build.dir}/zstack.war" />
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
-    <property name="allinone.file" location="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}-${build_name}.tgz" />
+    <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}-${build_name}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.tgz">
+        <and>
+            <isset property="build_name"/>
+        </and>
+    </condition>
+
     <property name="allinone.dir" location="${build.dir}/zstack-all-in-one" />
     <property name="allinone.versionfile" location="${allinone.dir}/VERSION" />
-    <property name="allinone.version" value="${MAJOR}.${MINOR}-${build_name}" />
+
+    <condition property="allinone.version" value="${MAJOR}.${MINOR}-${build_name}" else="${MAJOR}.${MINOR}">
+        <and>
+            <isset property="build_name"/>
+        </and>
+    </condition>
+
     <property name="war.classpath.dir" location="${build.dir}/zstack-assemble/WEB-INF/classes/" />
     <property name="componentsHome.dir" location="${war.classpath.dir}/componentsHome" />
     <property name="commonModules.dir" location="${componentsHome.dir}/puppet/commonModules" />
