@@ -11,7 +11,7 @@
     <property name="war.file" location="${build.dir}/zstack.war" />
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
-    <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}-${build_name}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.tgz">
+    <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}-${build_name}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
         <and>
             <isset property="build_name"/>
         </and>
@@ -20,7 +20,7 @@
     <property name="allinone.dir" location="${build.dir}/zstack-all-in-one" />
     <property name="allinone.versionfile" location="${allinone.dir}/VERSION" />
 
-    <condition property="allinone.version" value="${MAJOR}.${MINOR}-${build_name}" else="${MAJOR}.${MINOR}">
+    <condition property="allinone.version" value="${MAJOR}.${MINOR}.${UPDATE}-${build_name}" else="${MAJOR}.${MINOR}.${UPDATE}">
         <and>
             <isset property="build_name"/>
         </and>
