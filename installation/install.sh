@@ -24,7 +24,7 @@ END_POINT=`expr $WIDTH - $START_POINT - 1`
 STEP="1"
 
 zstack_tmp_file=`mktemp`
-ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.6/zstack-all-in-one-0.6.tgz"}
+ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.6/zstack-all-in-one-0.6.1.tgz"}
 #TODO: change to ZStack WEBSITE
 WEBSITE=${WEBSITE-'www.w3.org'}
 DEFAULT_PYPI='https://pypi.python.org/simple/'
