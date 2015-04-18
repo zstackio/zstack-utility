@@ -741,7 +741,8 @@ class StartCmd(Command):
                 return cmd.return_code == 0
 
             if not check():
-                raise CtlError('no management-node-ready message received within %s seconds, please check error in log file /var/log/zstack/management-server.log' % timeout)
+                log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
+                raise CtlError('no management-node-ready message received within %s seconds, please check error in log file %s' % (timeout, log_path))
 
         user = getpass.getuser()
         if user != 'root':
