@@ -1025,7 +1025,7 @@ if [ -z $MANAGEMENT_INTERFACE ]; then
     exit 1
 fi
 
-MANAGEMENT_IP=`ip -4 addr | grep $MANAGEMENT_INTERFACE | grep inet | awk '{print $2}' | cut -f1  -d'/'`
+MANAGEMENT_IP=`ip -4 addr | grep " ${MANAGEMENT_INTERFACE}: " | grep inet | awk '{print $2}' | cut -f1  -d'/'`
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 echo "Management node network interface: $MANAGEMENT_INTERFACE" >> $ZSTACK_INSTALL_LOG
 
