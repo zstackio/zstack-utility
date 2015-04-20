@@ -393,7 +393,7 @@ def create_check_mgmt_node_command(timeout=10):
 
     what_tool = use_tool()
     if what_tool == USE_CURL:
-        return ShellCmd('''curl --noprox --connect-timeout 1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:8080/zstack/api''' % (timeout, timeout, timeout))
+        return ShellCmd('''curl --noproxy --connect-timeout 1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:8080/zstack/api''' % (timeout, timeout, timeout))
     elif what_tool == USE_WGET:
         return ShellCmd('''wget --no-proxy -O- --tries=%s --timeout=1  --header=Content-Type:application/json --post-data='{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:8080/zstack/api''' % timeout)
     else:
