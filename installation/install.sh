@@ -752,6 +752,8 @@ cs_setup_nfs(){
     fi
     if [ $OS = $CENTOS6 ]; then
         chkconfig nfs on >>$ZSTACK_INSTALL_LOG 2>&1
+        chkconfig rpcbind on >>$ZSTACK_INSTALL_LOG 2>&1
+        service rpcbind restart >>$ZSTACK_INSTALL_LOG 2>&1
         service nfs restart >>$ZSTACK_INSTALL_LOG 2>&1
     elif [ $OS = $CENTOS7 ]; then
         systemctl enable rpcbind >>$ZSTACK_INSTALL_LOG 2>&1
