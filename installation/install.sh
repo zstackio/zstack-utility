@@ -929,13 +929,16 @@ Options:
 
   -i    only install ZStack management node and dependent packages
 
-  -I MANAGEMENT_NODE_NETWORK_INTERFACE  
-        the network interface (e.g. eth0) for management network. The IP address
-        of this interface will be configured as IP of MySQL server and RabbitMQ
-        if they are installed on this machine, remote ZStack managemet nodes
-        will use this IP to access MySQL and RabbitMQ. By default, the installer
-        script will grab the IP of interface providing default routing from
-        routing table.
+  -I MANAGEMENT_NODE_NETWORK_INTERFACE | MANAGEMENT_NODE_IP_ADDRESS
+        e.g. -I eth0, -I eth0:1, -I 192.168.0.1
+        the network interface (e.g. eth0) or IP address for management network.
+        The IP address of this interface will be configured as IP of MySQL 
+        server and RabbitMQ server, if they are installed on this machine.
+        Remote ZStack managemet nodes will use this IP to access MySQL and 
+        RabbitMQ. By default, the installer script will grab the IP of 
+        interface providing default routing from routing table. 
+        If multiple IP addresses share same net device, e.g. em1, em1:1, em1:2.
+        The network interface should be the exact name, like -I em1:1
 
   -k    keep previous zstack DB if it exists.
 
@@ -1021,13 +1024,25 @@ HTTP_FOLDER=$ZSTACK_INSTALL_ROOT/http_root
 echo "HTTP Folder: $HTTP_FODLER" >> $ZSTACK_INSTALL_LOG
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
-    echo "Cannot not identify default network interface. Please add your network interface by '-I NETWORK_INTERFACE'."
+    echo "Cannot not identify default network interface. Please set management
+   node IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'."
     exit 1
 fi
 
-MANAGEMENT_IP=`ip -4 addr | grep " ${MANAGEMENT_INTERFACE}: " | grep inet | awk '{print $2}' | cut -f1  -d'/'`
+ip addr show $MANAGEMENT_INTERFACE >/dev/null 2>&1
+if [ $? -ne 0 ];then
+    ip addr show |grep $MANAGEMENT_INTERFACE |grep inet >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'" 
+        exit 1
+    fi
+    MANAGEMENT_IP=$MANAGEMENT_INTERFACE
+else
+    MANAGEMENT_IP=`ip -4 addr show ${MANAGEMENT_INTERFACE} | grep inet | awk '{print $2}' | cut -f1  -d'/'`
+    echo "Management node network interface: $MANAGEMENT_INTERFACE" >> $ZSTACK_INSTALL_LOG
+fi
+
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
-echo "Management node network interface: $MANAGEMENT_INTERFACE" >> $ZSTACK_INSTALL_LOG
 
 #Set ZSTACK_HOME for zstack-ctl.
 export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
