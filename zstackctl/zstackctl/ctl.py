@@ -1236,6 +1236,12 @@ class InstallManagementNodeCmd(Command):
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
 
+    - name: install EPEL repo for RedHat OS 7
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      copy: src=$epel7_repo
+            dest=/etc/yum.repos.d/epel.repo
+            owner=root group=root mode=0644
+
     - name: install dependencies on RedHat OS
       when: ansible_os_family == 'RedHat'
       yum: pkg={{item}}
@@ -1411,6 +1417,31 @@ enabled=0
 gpgcheck=0
         ''')
 
+        fd, epel7_repo = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write('''[epel]
+name=Extra Packages for Enterprise Linux 7 - $basearch
+#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
+failovermethod=priority
+enabled=1
+gpgcheck=0
+
+[epel-debuginfo]
+name=Extra Packages for Enterprise Linux 7 - $basearch - Debug
+#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch/debug
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-7&arch=$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
+
+[epel-source]
+name=Extra Packages for Enterprise Linux 7 - $basearch - Source
+#baseurl=http://download.fedoraproject.org/pub/epel/7/SRPMS
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-7&arch=$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
+        ''')
         def cleanup_temp_file():
             os.remove(epel6_repo)
 
