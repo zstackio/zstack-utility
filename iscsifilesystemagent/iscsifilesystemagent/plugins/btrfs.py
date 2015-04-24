@@ -206,7 +206,7 @@ write-cache on
 
         sub_vol_path = os.path.dirname(cmd.installPath)
         if os.path.exists(sub_vol_path):
-            raise Exception('cannot create empty volume; %s already existes' % sub_vol_path)
+            raise Exception('cannot create empty volume; %s already exists' % sub_vol_path)
 
         parent_dir = os.path.dirname(sub_vol_path)
         shell.call('mkdir -p %s' % parent_dir)

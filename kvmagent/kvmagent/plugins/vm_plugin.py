@@ -407,13 +407,45 @@ class Vm(object):
             err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 24 allowed" % (self.uuid, volume.deviceId)
             logger.warn(err)
             raise kvmagent.KvmError(err)
-        
-        disk = etree.Element('disk', attrib={'type':'file', 'device':'disk'})
-        e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
-        e(disk, 'source', None, {'file':volume.installPath})
-        e(disk, 'target', None, {'dev':'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'virtio'})
-        
-        xml = etree.tostring(disk)
+
+        def filebased_volume():
+            disk = etree.Element('disk', attrib={'type':'file', 'device':'disk'})
+            e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
+            e(disk, 'source', None, {'file':volume.installPath})
+
+            if volume.useVirtio:
+                e(disk, 'target', None, {'dev':'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'virtio'})
+            else:
+                e(disk, 'target', None, {'dev':'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'ide'})
+
+            return etree.tostring(disk)
+
+        def iscsibased_volume():
+            def virtio_iscsi():
+                vi = VirtioIscsi()
+                portal, vi.target, vi.lun = volume.installPath.lstrip('iscsi://').split('/')
+                vi.server_hostname, vi.server_port = portal.split(':')
+                vi.device_letter = self.DEVICE_LETTERS[volume.deviceId]
+                vi.volume_uuid = volume.volumeUuid
+                vi.chap_username = volume.chapUsername
+                vi.chap_password = volume.chapPassword
+                return etree.tostring(vi.to_xmlobject())
+
+            def blk_iscsi():
+                return None
+
+            if volume.useVirtio:
+                return virtio_iscsi()
+            else:
+                return blk_iscsi()
+
+        if volume.deviceType == 'iscsi':
+            xml = iscsibased_volume()
+        elif volume.deviceType == 'file':
+            xml = filebased_volume()
+        else:
+            raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
+
         logger.debug('attaching volume[%s] to vm[uuid:%s]:\n%s' % (volume.installPath, self.uuid, xml))
         try:
             # libvirt has a bug that if attaching volume just after vm created, it likely fails. So we retry three time here
@@ -428,8 +460,12 @@ class Vm(object):
                 def wait_for_attach(_):
                     me = get_vm_by_uuid(self.uuid)
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                        if disk.source.file_ == volume.installPath:
-                            return True
+                        if volume.deviceType == 'iscsi':
+                            if disk.source.name_ in volume.installPath:
+                                return True
+                        elif volume.deviceType == 'file':
+                            if disk.source.file_ == volume.installPath:
+                                return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
                     return False
@@ -456,7 +492,21 @@ class Vm(object):
     def detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
         target_disk = None
-        disk_name = 'vd%s' % self.DEVICE_LETTERS[volume.deviceId]
+
+        def get_disk_name():
+            if volume.deviceType == 'iscsi':
+                fmt = 'sd%s'
+            elif volume.deviceType == 'file':
+                if volume.useVirtio:
+                    fmt = 'vd%s'
+                else:
+                    fmt = 'hd%s'
+            else:
+                raise Exception('unsupported deviceType[%s]' % volume.deviceType)
+
+            return fmt % self.DEVICE_LETTERS[volume.deviceId]
+
+        disk_name = get_disk_name()
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if disk.target.dev_ == disk_name:
                 target_disk = disk
@@ -481,9 +531,15 @@ class Vm(object):
                 def wait_for_detach(_):
                     me = get_vm_by_uuid(self.uuid)
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                        if disk.source.file_ == volume.installPath:
-                            logger.debug('volume[%s] is still in process of detaching, wait it' % volume.installPath)
-                            return False
+                        if volume.deviceType == 'file':
+                            if disk.source.file_ == volume.installPath:
+                                logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                return False
+                        elif volume.deviceType == 'iscsi':
+                            if disk.source.name_ in volume.installPath:
+                                logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                return False
+
                     return True
 
                 return linux.wait_callback_success(wait_for_detach, None, 5, 1)
