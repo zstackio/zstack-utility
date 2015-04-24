@@ -130,11 +130,51 @@ class MergeSnapshotRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
 
+
+
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
         el.text = value
     return el
+
+class VirtioIscsi(object):
+    def __init__(self):
+        self.volume_uuid = None
+        self.chap_username = None
+        self.chap_password = None
+        self.device_letter = None
+        self.server_hostname = None
+        self.server_port = None
+        self.target = None
+        self.lun = None
+
+    def to_xmlobject(self):
+        root = etree.Element('disk', {'type':'network', 'device':'disk'})
+        e(root, 'driver', attrib={'name':'qemu', 'type':'raw', 'cache':'none'})
+
+        if self.chap_username and self.chap_password:
+            auth = e(root, 'auth', attrib={'username': self.chap_username})
+            e(auth, 'secret', attrib={'type':'iscsi', 'uuid': self._get_secret_uuid()})
+
+        source = e(root, 'source', attrib={'protocol':'iscsi', 'name':'%s/%s' % (self.target, self.lun)})
+        e(source, 'host', attrib={'name': self.server_hostname, 'port':self.server_port})
+        e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter, 'bus': 'scsi'})
+        e(root, 'shareable')
+        return root
+
+    def _get_secret_uuid(self):
+        root = etree.Element('secret', {'ephemeral': 'yes', 'private':' yes'})
+        e(root, 'description', self.volume_uuid)
+        usage = e(root, 'usage', attrib={'type': 'iscsi'})
+        e(usage, 'target', 'libvirtiscsi')
+        xml = etree.tostring(root)
+        logger.debug('create secret for virtio-iscsi volume:\n%s\n' % xml)
+        conn = kvmagent.get_libvirt_connection()
+        secret = conn.secretDefineXML(xml)
+        secret.setValue(self.chap_password)
+        return secret.UUIDString()
+
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True):
     try:
@@ -739,13 +779,8 @@ class Vm(object):
             devices = elements['devices']
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
-            for v in volumes:
-                if v.deviceId >= len(Vm.DEVICE_LETTERS):
-                    err = "%s exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
-                    logger.warn(err)
-                    raise kvmagent.KvmError(err)
-                
-                dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
+
+            def filebased_volume(dev_letter):
                 disk = e(devices, 'disk', None, {'type':'file', 'device':'disk', 'snapshot':'external'})
                 e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
                 e(disk, 'source', None, {'file':v.installPath})
@@ -753,8 +788,40 @@ class Vm(object):
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
                 else:
                     e(disk, 'target', None, {'dev':'hd%s' % dev_letter, 'bus':'ide'})
-                #self._e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'ide'})
+
+            def iscsibased_volume(dev_letter):
+                def blk_iscsi():
+                    pass
+
+                def virtio_iscsi():
+                    vi = VirtioIscsi()
+                    portal, vi.target, vi.lun = v.installPath.lstrip('iscsi://').split('/')
+                    vi.server_hostname, vi.server_port = portal.split(':')
+                    vi.device_letter = dev_letter
+                    vi.volume_uuid = v.volumeUuid
+                    vi.chap_username = v.chapUsername
+                    vi.chap_password = v.chapPassword
+                    devices.append(vi.to_xmlobject())
+
+                if use_virtio:
+                    virtio_iscsi()
+                else:
+                    blk_iscsi()
+
+            for v in volumes:
+                if v.deviceId >= len(Vm.DEVICE_LETTERS):
+                    err = "%s exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
+                    logger.warn(err)
+                    raise kvmagent.KvmError(err)
                 
+                dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
+                if v.deviceType == 'file':
+                    filebased_volume(dev_letter)
+                elif v.deviceType == 'iscsi':
+                    iscsibased_volume(dev_letter)
+                else:
+                    raise Exception('unknown volume deivceType: %s' % v.deviceType)
+
         def make_nics():
             if not cmd.nics:
                 return

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-iscsi builder" basedir="../">
+    <property name="iscsi.bdir" location="${build.dir}/iscsi" />
+    <property name="iscsi.ansible.dir" location="${ansible.dir}/iscsi/" />
+
+    <target name="build-iscsi" >
+        <makeDir dir="${iscsi.bdir}" />
+
+        <checkProperty property="iscsi.source" />
+        <checkProperty property="iscsi.serviceFile" />
+        <checkFile file="${iscsi.source}" />
+        <checkFile file="${iscsi.source}/setup.py" />
+        <checkFile file="${iscsi.serviceFile}" />
+
+        <delete dir="${iscsi.source}/dist" />
+
+        <exec executable="python" dir="${iscsi.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${iscsi.bdir}/">
+            <fileset dir="${iscsi.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-iscsi">
+        <makeDir dir="${iscsi.ansible.dir}" />
+
+        <copy todir="${iscsi.ansible.dir}">
+            <fileset dir="${iscsi.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${iscsi.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${iscsi.serviceFile}" todir="${iscsi.ansible.dir}" />
+    </target>
+</project>

@@ -750,6 +750,18 @@ class DeletePrimaryStorageAction(inventory.APIDeletePrimaryStorageMsg):
         self.out = evt
         return self.out
 
+class ReconnectPrimaryStorageAction(inventory.APIReconnectPrimaryStorageMsg):
+    def __init__(self):
+        super(ReconnectPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ReconnectPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DetachPrimaryStorageFromClusterAction(inventory.APIDetachPrimaryStorageFromClusterMsg):
     def __init__(self):
         super(DetachPrimaryStorageFromClusterAction, self).__init__()
@@ -1792,6 +1804,18 @@ class QueryApplianceVmAction(inventory.APIQueryApplianceVmMsg):
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
+        return self.out
+
+class AddIscsiFileSystemBackendPrimaryStorageAction(inventory.APIAddIscsiFileSystemBackendPrimaryStorageMsg):
+    def __init__(self):
+        super(AddIscsiFileSystemBackendPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddIscsiFileSystemBackendPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
         return self.out
 
 class AddKVMHostAction(inventory.APIAddKVMHostMsg):

@@ -395,7 +395,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         except Exception as e:
             content = traceback.format_exc()
             logger.warn(content)
-            err = "unable to download %s/%s, because %s" % (cmd.sftpBackupStorageHostName, cmd.templatePath, str(e))
+            err = "unable to download %s/%s, because %s" % (cmd.hostname, cmd.backupStorageInstallPath, str(e))
             rsp.error = err
             rsp.success = False
             
