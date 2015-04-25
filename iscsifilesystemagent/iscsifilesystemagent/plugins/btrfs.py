@@ -46,6 +46,16 @@ class CreateEmptyVolumeRsp(AgentCapacityResponse):
         super(CreateEmptyVolumeRsp, self).__init__()
         self.iscsiPath = None
 
+class UploadToSftpRsp(AgentCapacityResponse):
+    def __init__(self):
+        super(UploadToSftpRsp, self).__init__()
+
+class CreateIscsiTargetRsp(AgentCapacityResponse):
+    def __init__(self):
+        super(CreateIscsiTargetRsp, self).__init__()
+        self.target = None
+        self.lun = None
+
 
 class BtrfsPlugin(plugin.Plugin):
     TYPE = "btrfs"
@@ -55,6 +65,8 @@ class BtrfsPlugin(plugin.Plugin):
     DELETE_BITS_EXISTENCE = "/%s/bits/delete" % TYPE
     CREATE_ROOT_VOLUME_PATH = "/%s/volumes/createrootfromtemplate" % TYPE
     CREATE_EMPTY_VOLUME_PATH = "/%s/volumes/createempty" % TYPE
+    UPLOAD_TO_SFTP = "/%s/bits/upload" % TYPE
+    CREATE_TARGET_PATH = "/%s/target/create" % TYPE
 
     def _get_disk_capacity(self):
         total = linux.get_total_disk_size(self.root)
@@ -224,6 +236,32 @@ write-cache on
         logger.debug('created empty volume[path:%s, iscsi target:%s, iscsi conf:%s]' % (cmd.installPath, target_name, conf_file))
         return jsonobject.dumps(rsp)
 
+    @iscsiagent.replyerror
+    def upload_to_sftp(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UploadToSftpRsp()
+
+        if not os.path.exists(cmd.primaryStorageInstallPath):
+            raise Exception('cannot find %s' % cmd.primaryStorageInstallPath)
+
+        linux.scp_upload(cmd.backupStorageHostName, cmd.backupStorageSshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath)
+
+        logger.debug('uploaded %s to sftp backup storage[hostname: %s, path:%s]' % (cmd.primaryStorageInstallPath, cmd.backupStorageHostName, cmd.backupStorageInstallPath))
+        return jsonobject.dumps(rsp)
+
+    @iscsiagent.replyerror
+    def create_target(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateIscsiTargetRsp()
+
+        target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
+        shell.call('tgt-admin --update %s --force' % target_name)
+
+        rsp.target = target_name
+        rsp.lun = 1
+        logger.debug('created ISCSI target[%s] in conf file[%s]' % (target_name, conf_file))
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.root = None
 
@@ -234,6 +272,8 @@ write-cache on
         http_server.register_async_uri(self.DELETE_BITS_EXISTENCE, self.delete_bits)
         http_server.register_async_uri(self.CREATE_ROOT_VOLUME_PATH, self.create_root_volume)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
+        http_server.register_async_uri(self.UPLOAD_TO_SFTP, self.upload_to_sftp)
+        http_server.register_async_uri(self.CREATE_TARGET_PATH, self.create_target)
 
     def stop(self):
         pass

@@ -164,16 +164,26 @@ class VirtioIscsi(object):
         return root
 
     def _get_secret_uuid(self):
-        root = etree.Element('secret', {'ephemeral': 'yes', 'private':' yes'})
+        root = etree.Element('secret', {'ephemeral': 'yes', 'private':'yes'})
         e(root, 'description', self.volume_uuid)
         usage = e(root, 'usage', attrib={'type': 'iscsi'})
-        e(usage, 'target', 'libvirtiscsi')
+        e(usage, 'target', self.target)
         xml = etree.tostring(root)
         logger.debug('create secret for virtio-iscsi volume:\n%s\n' % xml)
         conn = kvmagent.get_libvirt_connection()
         secret = conn.secretDefineXML(xml)
         secret.setValue(self.chap_password)
         return secret.UUIDString()
+
+    @staticmethod
+    def delete_secret(uuid):
+        conn = kvmagent.get_libvirt_connection()
+        try:
+            s = conn.secretLookupByUUIDString(uuid)
+            s.undefine()
+        except libvirt.libvirtError as e:
+            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
+                raise e
 
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True):
@@ -355,7 +365,17 @@ class Vm(object):
                 pass
 
             return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
-        
+
+        def delete_secret():
+            disk_type = self.domain_xmlobject.devices.disk.type_
+            if disk_type != 'network':
+                return
+            auth_type = self.domain_xmlobject.devices.disk.auth.secret.type_
+            if auth_type != 'iscsi':
+                return
+
+            VirtioIscsi.delete_secret(self.domain_xmlobject.devices.disk.auth.secret.uuid_)
+
         def loop_undefine(_):
             if not undefine:
                 return True
@@ -383,6 +403,8 @@ class Vm(object):
         if graceful:
             if linux.wait_callback_success(loop_shutdown, None, timeout=60):
                 do_destroy = False
+
+        delete_secret()
 
         if do_destroy:
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
