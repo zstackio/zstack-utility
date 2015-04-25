@@ -84,12 +84,10 @@ class BtrfsPlugin(plugin.Plugin):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DownloadBitsFromSftpBackupStorageRsp()
         sub_vol_dir = os.path.dirname(cmd.primaryStorageInstallPath)
-        if os.path.exists(sub_vol_dir):
-            raise Exception('cannot download template; %s exists.' % sub_vol_dir)
-
-        parent_dir = os.path.dirname(sub_vol_dir)
-        shell.call('mkdir -p %s' % parent_dir)
-        shell.call('btrfs subvolume create %s' % sub_vol_dir)
+        if not os.path.exists(sub_vol_dir):
+            parent_dir = os.path.dirname(sub_vol_dir)
+            shell.call('mkdir -p %s' % parent_dir)
+            shell.call('btrfs subvolume create %s' % sub_vol_dir)
 
         linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
 
@@ -103,7 +101,8 @@ class BtrfsPlugin(plugin.Plugin):
 
         f = get_image_format()
         if 'qcow2' in f:
-            shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (cmd.primaryStorageInstallPath, cmd.primaryStorageInstallPath))
+            shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s.img' % (cmd.primaryStorageInstallPath, cmd.primaryStorageInstallPath))
+            shell.call('mv %s.img %s' % (cmd.primaryStorageInstallPath, cmd.primaryStorageInstallPath))
         elif 'raw' in f:
             pass
         else:
@@ -128,7 +127,10 @@ class BtrfsPlugin(plugin.Plugin):
         if cmd.volumeUuid:
             conf_file = os.path.join('/etc/tgt/conf.d/%s.conf' % cmd.volumeUuid)
             shell.call('rm -f %s' % conf_file)
-            shell.call('tgt-admin --update ALL --force')
+
+            iscsi_path = cmd.iscsiPath
+            target_name = iscsi_path.lstrip('iscsi://').split('/')[1]
+            shell.call('tgt-admin --update %s --force' % target_name)
 
         sub_vol_dir = os.path.dirname(cmd.installPath)
         shell.call('btrfs subvolume delete %s' % sub_vol_dir)
@@ -190,7 +192,7 @@ write-cache on
         shell.call('mv %s %s' % (src_vol_name, cmd.installPath))
 
         target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
-        shell.call('tgt-admin --update ALL --force')
+        shell.call('tgt-admin --update %s --force' % target_name)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         rsp.iscsiPath = target_name
@@ -214,7 +216,7 @@ write-cache on
 
         target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
         linux.raw_create(cmd.installPath, cmd.size)
-        shell.call('tgt-admin --update ALL --force')
+        shell.call('tgt-admin --update %s --force' % target_name)
 
         rsp.iscsiPath = target_name
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
