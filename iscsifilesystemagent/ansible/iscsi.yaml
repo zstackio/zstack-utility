@@ -47,6 +47,7 @@
       with_items:
         - scsi-target-utils
         - wget
+        - qemu-img
 
     - name: install isci related packages on Debian based OS
       when: ansible_os_family == 'Debian'
@@ -56,6 +57,7 @@
         - iscsitarget-dkms
         - tgt
         - wget
+        - qemu-utils
 
     - name: RHEL7 specific packages
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
