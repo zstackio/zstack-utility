@@ -130,8 +130,6 @@ class MergeSnapshotRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
 
-
-
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
@@ -177,6 +175,19 @@ class BlkIscsi(object):
         e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter})
         return root
 
+    @staticmethod
+    def logout_portal(dev_path):
+        if not os.path.exists(dev_path):
+            return
+
+        device = os.path.basename(dev_path)
+        portal = device[3:device.find('-iscsi')]
+        target = device[device.find('iqn'):device.find('-lun')]
+        try:
+            shell.call('iscsiadm  -m node  --targetname "%s" --portal "%s" --logout' % (target, portal))
+        except Exception as e:
+            logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
+
 class VirtioIscsi(object):
     def __init__(self):
         self.volume_uuid = None
@@ -215,7 +226,7 @@ class VirtioIscsi(object):
         return secret.UUIDString()
 
     @staticmethod
-    def delete_secret(uuid):
+    def delete_iscsi_secret(uuid):
         conn = kvmagent.get_libvirt_connection()
         try:
             s = conn.secretLookupByUUIDString(uuid)
@@ -405,13 +416,10 @@ class Vm(object):
 
             return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
 
-        def delete_secret():
+        def iscsi_cleanup():
             disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
-            for disk in disks:
-                disk_type = disk.type_
-                if disk_type != 'network':
-                    return
 
+            def cleanup_secret():
                 if not xmlobject.has_element(disk, 'auth.secret'):
                     return
 
@@ -419,7 +427,20 @@ class Vm(object):
                 if auth_type != 'iscsi':
                     return
 
-                VirtioIscsi.delete_secret(disk.auth.secret.uuid_)
+                VirtioIscsi.delete_iscsi_secret(disk.auth.secret.uuid_)
+
+            def logout_iscsi():
+                if disk.device_ != 'lun':
+                    return
+
+                BlkIscsi.logout_portal(disk.source.dev_)
+
+            for disk in disks:
+                disk_type = disk.type_
+                if disk_type == 'network':
+                    cleanup_secret()
+                elif disk_type == 'block':
+                    logout_iscsi()
 
         def loop_undefine(_):
             if not undefine:
@@ -449,7 +470,8 @@ class Vm(object):
             if linux.wait_callback_success(loop_shutdown, None, timeout=60):
                 do_destroy = False
 
-        delete_secret()
+        if undefine:
+            iscsi_cleanup()
 
         if do_destroy:
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
@@ -535,8 +557,12 @@ class Vm(object):
                     me = get_vm_by_uuid(self.uuid)
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
                         if volume.deviceType == 'iscsi':
-                            if disk.source.name_ in volume.installPath:
-                                return True
+                            if volume.useVirtio:
+                                if disk.source.name_ in volume.installPath:
+                                    return True
+                            else:
+                                if volume.volumeUuid in disk.source.dev_:
+                                    return True
                         elif volume.deviceType == 'file':
                             if disk.source.file_ == volume.installPath:
                                 return True
@@ -610,25 +636,54 @@ class Vm(object):
                                 logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
                                 return False
                         elif volume.deviceType == 'iscsi':
-                            if disk.source.name_ in volume.installPath:
-                                logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
+                            if volume.useVirtio:
+                                if disk.source.name_ in volume.installPath:
+                                    logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                    return False
+                            else:
+                                if volume.volumeUuid in disk.source.dev_:
+                                    logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                    return False
 
                     return True
 
                 return linux.wait_callback_success(wait_for_detach, None, 5, 1)
 
+            retry = True
             if detach(True):
                 logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
-            if detach(False):
-                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
-            if detach(False):
-                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
+                retry = False
 
-            raise kvmagent.KvmError('libvirt fails to detach volume[deviceId:%s, installPath:%s] from vm[uuid:%s] in 15s, timeout' % (volume.deviceId, volume.installPath, self.uuid))
+            if retry and detach(False):
+                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
+                retry = False
+
+            if retry and detach(False):
+                retry = False
+                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
+
+            if retry:
+                raise kvmagent.KvmError('libvirt fails to detach volume[deviceId:%s, installPath:%s] from vm[uuid:%s] in 15s, timeout' % (volume.deviceId, volume.installPath, self.uuid))
+
+            def delete_iscsi_secret():
+                if not xmlobject.has_element(target_disk, 'auth.secret'):
+                    return
+
+                auth_type = target_disk.auth.secret.type_
+                if auth_type != 'iscsi':
+                    return
+
+                VirtioIscsi.delete_iscsi_secret(target_disk.auth.secret.uuid_)
+
+            def logout_iscsi():
+                BlkIscsi.logout_portal(target_disk.source.dev_)
+
+            if volume.deviceType == 'iscsi':
+                if volume.useVirtio:
+                    delete_iscsi_secret()
+                else:
+                    logout_iscsi()
+
 
         except libvirt.libvirtError as ex:
             vm = get_vm_by_uuid(self.uuid)
