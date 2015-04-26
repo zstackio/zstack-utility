@@ -138,6 +138,45 @@ def e(parent, tag, value=None, attrib={}):
         el.text = value
     return el
 
+class BlkIscsi(object):
+    def __init__(self):
+        self.volume_uuid = None
+        self.chap_username = None
+        self.chap_password = None
+        self.device_letter = None
+        self.server_hostname = None
+        self.server_port = None
+        self.target = None
+        self.lun = None
+
+    def _login_portal(self):
+        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
+
+        if self.chap_username and self.chap_password:
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (self.target, self.server_hostname, self.server_port))
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (self.target, self.server_hostname, self.server_port, self.chap_username))
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (self.target, self.server_hostname, self.server_port, self.chap_password))
+
+        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (self.target, self.server_hostname, self.server_port))
+
+        device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (self.server_hostname, self.server_port, self.target, self.lun))
+
+        def wait_device_to_show(_):
+            return os.path.exists(device_path)
+
+        if not linux.wait_callback_success(wait_device_to_show, timeout=30, interval=0.5):
+            raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
+
+        return device_path
+
+    def to_xmlobject(self):
+        device_path = self._login_portal()
+        root = etree.Element('disk', {'type': 'block', 'device': 'lun'})
+        e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(root, 'source', attrib={'dev': device_path})
+        e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter})
+        return root
+
 class VirtioIscsi(object):
     def __init__(self):
         self.volume_uuid = None
@@ -361,20 +400,26 @@ class Vm(object):
             try:
                 self.domain.shutdown()
             except:
-                #domain has been shutdown
+                #domain has been shut down
                 pass
 
             return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
 
         def delete_secret():
-            disk_type = self.domain_xmlobject.devices.disk.type_
-            if disk_type != 'network':
-                return
-            auth_type = self.domain_xmlobject.devices.disk.auth.secret.type_
-            if auth_type != 'iscsi':
-                return
+            disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
+            for disk in disks:
+                disk_type = disk.type_
+                if disk_type != 'network':
+                    return
 
-            VirtioIscsi.delete_secret(self.domain_xmlobject.devices.disk.auth.secret.uuid_)
+                if not xmlobject.has_element(disk, 'auth.secret'):
+                    return
+
+                auth_type = disk.auth.secret.type_
+                if auth_type != 'iscsi':
+                    return
+
+                VirtioIscsi.delete_secret(disk.auth.secret.uuid_)
 
         def loop_undefine(_):
             if not undefine:
@@ -454,7 +499,14 @@ class Vm(object):
                 return etree.tostring(vi.to_xmlobject())
 
             def blk_iscsi():
-                return None
+                bi = BlkIscsi()
+                portal, bi.target, bi.lun = volume.installPath.lstrip('iscsi://').split('/')
+                bi.server_hostname, bi.server_port = portal.split(':')
+                bi.device_letter = self.DEVICE_LETTERS[volume.deviceId]
+                bi.volume_uuid = volume.volumeUuid
+                bi.chap_username = volume.chapUsername
+                bi.chap_password = volume.chapPassword
+                return etree.tostring(bi.to_xmlobject())
 
             if volume.useVirtio:
                 return virtio_iscsi()
@@ -867,9 +919,16 @@ class Vm(object):
                 else:
                     e(disk, 'target', None, {'dev':'hd%s' % dev_letter, 'bus':'ide'})
 
-            def iscsibased_volume(dev_letter):
+            def iscsibased_volume(dev_letter, virtio):
                 def blk_iscsi():
-                    pass
+                    bi = BlkIscsi()
+                    portal, bi.target, bi.lun = v.installPath.lstrip('iscsi://').split('/')
+                    bi.server_hostname, bi.server_port = portal.split(':')
+                    bi.device_letter = dev_letter
+                    bi.volume_uuid = v.volumeUuid
+                    bi.chap_username = v.chapUsername
+                    bi.chap_password = v.chapPassword
+                    devices.append(bi.to_xmlobject())
 
                 def virtio_iscsi():
                     vi = VirtioIscsi()
@@ -881,7 +940,7 @@ class Vm(object):
                     vi.chap_password = v.chapPassword
                     devices.append(vi.to_xmlobject())
 
-                if use_virtio:
+                if virtio:
                     virtio_iscsi()
                 else:
                     blk_iscsi()
@@ -896,7 +955,7 @@ class Vm(object):
                 if v.deviceType == 'file':
                     filebased_volume(dev_letter)
                 elif v.deviceType == 'iscsi':
-                    iscsibased_volume(dev_letter)
+                    iscsibased_volume(dev_letter, v.useVirtio)
                 else:
                     raise Exception('unknown volume deivceType: %s' % v.deviceType)
 

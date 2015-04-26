@@ -69,14 +69,6 @@
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
       service: name=firewalld state=stopped enabled=no
 
-    - name: copy iptables initial rules in RedHat
-      copy: src="{{file_root}}/iptables" dest=/etc/sysconfig/iptables
-      when: ansible_os_family == "RedHat"
-
-    - name: restart iptables
-      service: name=iptables state=restarted enabled=yes
-      when: ansible_os_family == 'RedHat'
-
     - name: disable selinux on RedHat based OS
       when: ansible_os_family == 'RedHat'
       selinux: state=permissive policy=targeted
