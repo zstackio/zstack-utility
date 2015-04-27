@@ -37,6 +37,8 @@ ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
 ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 
+[ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
+
 NEED_NFS=''
 NEED_HTTP=''
 NEED_DROP_DB=''
@@ -997,7 +999,7 @@ Following command only installs ZStack management node and dependent software.
 }
 
 OPTIND=1
-while getopts "f:I:p:P:r:R:adDHihkln" Option
+while getopts "f:I:p:P:r:R:adDHihklny" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
@@ -1014,6 +1016,7 @@ do
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         R ) export ZSTACK_PYPI_URL=$OPTARG;;
+        y ) HTTP_PROXY=$OPTARG;;
         * ) help;;
     esac
 done
@@ -1075,6 +1078,12 @@ echo_star_line
 sleep 0.3
 echo ""
 
+#set http_proxy if needed
+if [ ! -z $HTTP_PROXY ]; then
+    export http_proxy=$HTTP_PROXY
+    export https_proxy=$HTTP_PROXY
+fi
+
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
 
@@ -1118,8 +1127,22 @@ fi
 #Install Mysql and Rabbitmq
 install_db_msgbus
 
+#set http_proxy for ansible and unset http_proxy for starting zstack
+if [ ! -z $HTTP_PROXY ]; then
+    zstack-ctl configure Ansible.var.http_proxy=$HTTP_PROXY
+    zstack-ctl configure Ansible.var.https_proxy=$HTTP_PROXY
+    unset http_proxy
+    unset https_proxy
+fi
+
 #Start ZStack
 start_zstack
+
+#set http_proxy for install zstack-dashboard if needed.
+if [ ! -z $HTTP_PROXY ]; then
+    export http_proxy=$HTTP_PROXY
+    export https_proxy=$HTTP_PROXY
+fi
 
 #Start ZStack-Dashboard
 start_dashboard
