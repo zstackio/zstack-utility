@@ -6,6 +6,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import shell
 from zstacklib.utils import linux
+from zstacklib.utils import lock
 import cherrypy
 from iscsifilesystemagent import  iscsiagent
 import time
@@ -56,6 +57,9 @@ class CreateIscsiTargetRsp(AgentCapacityResponse):
         self.target = None
         self.lun = None
 
+@lock.lock('tgt-admin-update')
+def update_target(target_name):
+    shell.call('tgt-admin --update %s --force' % target_name)
 
 class BtrfsPlugin(plugin.Plugin):
     TYPE = "btrfs"
@@ -142,7 +146,7 @@ class BtrfsPlugin(plugin.Plugin):
 
             iscsi_path = cmd.iscsiPath
             target_name = iscsi_path.lstrip('iscsi://').split('/')[1]
-            shell.call('tgt-admin --update %s --force' % target_name)
+            update_target(target_name)
 
         sub_vol_dir = os.path.dirname(cmd.installPath)
         shell.call('btrfs subvolume delete %s' % sub_vol_dir)
@@ -204,7 +208,7 @@ write-cache on
         shell.call('mv %s %s' % (src_vol_name, cmd.installPath))
 
         target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
-        shell.call('tgt-admin --update %s --force' % target_name)
+        update_target(target_name)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         rsp.iscsiPath = target_name
@@ -228,7 +232,7 @@ write-cache on
 
         target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
         linux.raw_create(cmd.installPath, cmd.size)
-        shell.call('tgt-admin --update %s --force' % target_name)
+        update_target(target_name)
 
         rsp.iscsiPath = target_name
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
@@ -255,7 +259,7 @@ write-cache on
         rsp = CreateIscsiTargetRsp()
 
         target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
-        shell.call('tgt-admin --update %s --force' % target_name)
+        update_target(target_name)
 
         rsp.target = target_name
         rsp.lun = 1
