@@ -147,6 +147,7 @@ class BlkIscsi(object):
         self.target = None
         self.lun = None
 
+    @lock.lock('iscsiadm')
     def _login_portal(self):
         shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
 
@@ -176,6 +177,7 @@ class BlkIscsi(object):
         return root
 
     @staticmethod
+    @lock.lock('iscsiadm')
     def logout_portal(dev_path):
         if not os.path.exists(dev_path):
             return
