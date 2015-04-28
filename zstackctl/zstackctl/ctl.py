@@ -1444,6 +1444,7 @@ gpgcheck=0
         ''')
         def cleanup_temp_file():
             os.remove(epel6_repo)
+            os.remove(epel7_repo)
 
         self.install_cleanup_routine(cleanup_temp_file)
 
@@ -1478,6 +1479,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'properties_file': ctl.properties_file_path,
             'apache_tomcat_zip_name': apache_tomcat_zip_name,
             'epel6_repo': epel6_repo,
+            'epel7_repo': epel7_repo,
             'setup_account': setup_account_path
         })
 
