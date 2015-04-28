@@ -74,8 +74,17 @@ class BtrfsPlugin(plugin.Plugin):
 
     def _get_disk_capacity(self):
         total = linux.get_total_disk_size(self.root)
-        used = linux.get_used_disk_apparent_size(self.root)
-        return total, total-used
+
+        out = shell.call('df')
+        avail = None
+        for l in out.split('\n'):
+            if self.root in l:
+                _, _, _, avail, _, _ = l.split()
+
+        if not avail:
+            raise Exception('cannot find available capacity, "df" output":\n %s' % out)
+
+        return total, long(avail) * 1024
 
     @iscsiagent.replyerror
     def init(self, req):

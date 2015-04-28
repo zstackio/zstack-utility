@@ -133,7 +133,7 @@ def get_used_disk_size(dir_path):
     return get_total_disk_size(dir_path) - get_free_disk_size(dir_path)
 
 def get_used_disk_apparent_size(dir_path):
-    output = shell.ShellCmd('du --apparent-size --max-depth=1 /tmp/ | tail -1')()
+    output = shell.ShellCmd('du --apparent-size --max-depth=1 %s | tail -1' % dir_path)()
     return long(output.split()[0])
 
 def is_mounted(path=None, url=None):
