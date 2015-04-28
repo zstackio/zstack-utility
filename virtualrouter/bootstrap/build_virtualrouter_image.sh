@@ -148,7 +148,7 @@ create_base_image() {
     # this make system fail to boot. I suspect 'losetup -o' in just above line doesn't work as expected. However, explictly specifying block count makes
     # two size match
     mkfs.ext4 -L ROOT -b 4096 $loopdev2 $FS_BLOCK
-    tune2fs -c 0 -i 0 $loopdev2 >/dev/null
+    tune2fs -c -1 -i 0 $loopdev2 >/dev/null
     loopdev3=`losetup --show -o $OFFSET3 -f $loopdev1`
     mkswap -L SWAP $loopdev3 $SWAP_SIZE
     losetup -d $loopdev3

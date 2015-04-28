@@ -260,32 +260,32 @@ def get_zone(xml_root, session_uuid = None):
             add_xml_items(ip_ranges, 'ipRange', l3_xml, 'l3NetworkUuid')
 
             #dns
-            dnss = l3.dns
-            for dns in dnss:
-                dns_xml = etree.SubElement(l3_xml, "dns")
-                dns_xml.text = dns
+            if l3.dns:
+                for dns in l3.dns:
+                    dns_xml = etree.SubElement(l3_xml, "dns")
+                    dns_xml.text = dns
 
             #network service
-            nss = l3.networkServices
-            nss_dict = {}
-            for ns in nss:
-                if not ns.networkServiceProviderUuid in nss_dict.keys():
-                    nss_dict[ns.networkServiceProviderUuid] \
-                            = [ns.networkServiceType]
-                else:
-                    nss_dict[ns.networkServiceProviderUuid].append(ns.networkServiceType)
+            if l3.networkServices:
+                nss_dict = {}
+                for ns in l3.networkServices:
+                    if not ns.networkServiceProviderUuid in nss_dict.keys():
+                        nss_dict[ns.networkServiceProviderUuid] \
+                                = [ns.networkServiceType]
+                    else:
+                        nss_dict[ns.networkServiceProviderUuid].append(ns.networkServiceType)
 
-            for key in nss_dict.keys():
-                cond = res_ops.gen_query_conditions('uuid', '=', key)
-                ns = res_ops.safely_get_resource(\
-                        res_ops.NETWORK_SERVICE_PROVIDER, cond, session_uuid)
-                ns_name = ns[0].name
-
-                ns_xml = etree.SubElement(l3_xml, "networkService")
-                ns_xml.set('provider', ns_name)
-                for value in nss_dict[key]:
-                    ns_type_xml = etree.SubElement(ns_xml, 'serviceType')
-                    ns_type_xml.text = value
+                for key in nss_dict.keys():
+                    cond = res_ops.gen_query_conditions('uuid', '=', key)
+                    ns = res_ops.safely_get_resource(\
+                            res_ops.NETWORK_SERVICE_PROVIDER, cond, session_uuid)
+                    ns_name = ns[0].name
+    
+                    ns_xml = etree.SubElement(l3_xml, "networkService")
+                    ns_xml.set('provider', ns_name)
+                    for value in nss_dict[key]:
+                        ns_type_xml = etree.SubElement(ns_xml, 'serviceType')
+                        ns_type_xml.text = value
 
     cond = []
     zones = res_ops.safely_get_resource(res_ops.ZONE, cond, session_uuid)
