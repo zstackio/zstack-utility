@@ -133,7 +133,7 @@ def get_used_disk_size(dir_path):
     return get_total_disk_size(dir_path) - get_free_disk_size(dir_path)
 
 def get_used_disk_apparent_size(dir_path):
-    output = shell.ShellCmd('du --apparent-size --max-depth=1 /tmp/ | tail -1')()
+    output = shell.ShellCmd('du --apparent-size --max-depth=1 %s | tail -1' % dir_path)()
     return long(output.split()[0])
 
 def is_mounted(path=None, url=None):
@@ -407,8 +407,16 @@ def qcow2_clone(src, dst):
     shell.ShellCmd('/usr/bin/qemu-img create -b %s -f qcow2 %s' % (src, dst))()
     shell.ShellCmd('chmod 666 %s' % dst)()
 
+def raw_clone(src, dst):
+    shell.ShellCmd('/usr/bin/qemu-img create -b %s -f raw %s' % (src, dst))()
+    shell.ShellCmd('chmod 666 %s' % dst)()
+
 def qcow2_create(dst, size):
     shell.ShellCmd('/usr/bin/qemu-img create -f qcow2 -o preallocation=metadata %s %s' % (dst, size))()
+    shell.ShellCmd('chmod 666 %s' % dst)()
+
+def raw_create(dst, size):
+    shell.ShellCmd('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))()
     shell.ShellCmd('chmod 666 %s' % dst)()
 
 def qcow2_create_template(src, dst):

@@ -136,6 +136,108 @@ def e(parent, tag, value=None, attrib={}):
         el.text = value
     return el
 
+class BlkIscsi(object):
+    def __init__(self):
+        self.volume_uuid = None
+        self.chap_username = None
+        self.chap_password = None
+        self.device_letter = None
+        self.server_hostname = None
+        self.server_port = None
+        self.target = None
+        self.lun = None
+
+    @lock.lock('iscsiadm')
+    def _login_portal(self):
+        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
+
+        if self.chap_username and self.chap_password:
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (self.target, self.server_hostname, self.server_port))
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (self.target, self.server_hostname, self.server_port, self.chap_username))
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (self.target, self.server_hostname, self.server_port, self.chap_password))
+
+        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (self.target, self.server_hostname, self.server_port))
+
+        device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (self.server_hostname, self.server_port, self.target, self.lun))
+
+        def wait_device_to_show(_):
+            return os.path.exists(device_path)
+
+        if not linux.wait_callback_success(wait_device_to_show, timeout=30, interval=0.5):
+            raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
+
+        return device_path
+
+    def to_xmlobject(self):
+        device_path = self._login_portal()
+        root = etree.Element('disk', {'type': 'block', 'device': 'lun'})
+        e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(root, 'source', attrib={'dev': device_path})
+        e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter})
+        return root
+
+    @staticmethod
+    @lock.lock('iscsiadm')
+    def logout_portal(dev_path):
+        if not os.path.exists(dev_path):
+            return
+
+        device = os.path.basename(dev_path)
+        portal = device[3:device.find('-iscsi')]
+        target = device[device.find('iqn'):device.find('-lun')]
+        try:
+            shell.call('iscsiadm  -m node  --targetname "%s" --portal "%s" --logout' % (target, portal))
+        except Exception as e:
+            logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
+
+class VirtioIscsi(object):
+    def __init__(self):
+        self.volume_uuid = None
+        self.chap_username = None
+        self.chap_password = None
+        self.device_letter = None
+        self.server_hostname = None
+        self.server_port = None
+        self.target = None
+        self.lun = None
+
+    def to_xmlobject(self):
+        root = etree.Element('disk', {'type':'network', 'device':'disk'})
+        e(root, 'driver', attrib={'name':'qemu', 'type':'raw', 'cache':'none'})
+
+        if self.chap_username and self.chap_password:
+            auth = e(root, 'auth', attrib={'username': self.chap_username})
+            e(auth, 'secret', attrib={'type':'iscsi', 'uuid': self._get_secret_uuid()})
+
+        source = e(root, 'source', attrib={'protocol':'iscsi', 'name':'%s/%s' % (self.target, self.lun)})
+        e(source, 'host', attrib={'name': self.server_hostname, 'port':self.server_port})
+        e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter, 'bus': 'scsi'})
+        e(root, 'shareable')
+        return root
+
+    def _get_secret_uuid(self):
+        root = etree.Element('secret', {'ephemeral': 'yes', 'private':'yes'})
+        e(root, 'description', self.volume_uuid)
+        usage = e(root, 'usage', attrib={'type': 'iscsi'})
+        e(usage, 'target', self.target)
+        xml = etree.tostring(root)
+        logger.debug('create secret for virtio-iscsi volume:\n%s\n' % xml)
+        conn = kvmagent.get_libvirt_connection()
+        secret = conn.secretDefineXML(xml)
+        secret.setValue(self.chap_password)
+        return secret.UUIDString()
+
+    @staticmethod
+    def delete_iscsi_secret(uuid):
+        conn = kvmagent.get_libvirt_connection()
+        try:
+            s = conn.secretLookupByUUIDString(uuid)
+            s.undefine()
+        except libvirt.libvirtError as e:
+            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
+                raise e
+
+
 def get_vm_by_uuid(uuid, exception_if_not_existing=True):
     try:
         domain = kvmagent.get_libvirt_connection().lookupByName(uuid)
@@ -311,11 +413,37 @@ class Vm(object):
             try:
                 self.domain.shutdown()
             except:
-                #domain has been shutdown
+                #domain has been shut down
                 pass
 
             return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
-        
+
+        def iscsi_cleanup():
+            disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
+
+            def cleanup_secret():
+                if not xmlobject.has_element(disk, 'auth.secret'):
+                    return
+
+                auth_type = disk.auth.secret.type_
+                if auth_type != 'iscsi':
+                    return
+
+                VirtioIscsi.delete_iscsi_secret(disk.auth.secret.uuid_)
+
+            def logout_iscsi():
+                if disk.device_ != 'lun':
+                    return
+
+                BlkIscsi.logout_portal(disk.source.dev_)
+
+            for disk in disks:
+                disk_type = disk.type_
+                if disk_type == 'network':
+                    cleanup_secret()
+                elif disk_type == 'block':
+                    logout_iscsi()
+
         def loop_undefine(_):
             if not undefine:
                 return True
@@ -344,6 +472,9 @@ class Vm(object):
             if linux.wait_callback_success(loop_shutdown, None, timeout=60):
                 do_destroy = False
 
+        if undefine:
+            iscsi_cleanup()
+
         if do_destroy:
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
                 raise kvmagent.KvmError('failed to destroy vm, timeout after 60 secs')
@@ -367,13 +498,52 @@ class Vm(object):
             err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 24 allowed" % (self.uuid, volume.deviceId)
             logger.warn(err)
             raise kvmagent.KvmError(err)
-        
-        disk = etree.Element('disk', attrib={'type':'file', 'device':'disk'})
-        e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
-        e(disk, 'source', None, {'file':volume.installPath})
-        e(disk, 'target', None, {'dev':'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'virtio'})
-        
-        xml = etree.tostring(disk)
+
+        def filebased_volume():
+            disk = etree.Element('disk', attrib={'type':'file', 'device':'disk'})
+            e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
+            e(disk, 'source', None, {'file':volume.installPath})
+
+            if volume.useVirtio:
+                e(disk, 'target', None, {'dev':'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'virtio'})
+            else:
+                e(disk, 'target', None, {'dev':'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'ide'})
+
+            return etree.tostring(disk)
+
+        def iscsibased_volume():
+            def virtio_iscsi():
+                vi = VirtioIscsi()
+                portal, vi.target, vi.lun = volume.installPath.lstrip('iscsi://').split('/')
+                vi.server_hostname, vi.server_port = portal.split(':')
+                vi.device_letter = self.DEVICE_LETTERS[volume.deviceId]
+                vi.volume_uuid = volume.volumeUuid
+                vi.chap_username = volume.chapUsername
+                vi.chap_password = volume.chapPassword
+                return etree.tostring(vi.to_xmlobject())
+
+            def blk_iscsi():
+                bi = BlkIscsi()
+                portal, bi.target, bi.lun = volume.installPath.lstrip('iscsi://').split('/')
+                bi.server_hostname, bi.server_port = portal.split(':')
+                bi.device_letter = self.DEVICE_LETTERS[volume.deviceId]
+                bi.volume_uuid = volume.volumeUuid
+                bi.chap_username = volume.chapUsername
+                bi.chap_password = volume.chapPassword
+                return etree.tostring(bi.to_xmlobject())
+
+            if volume.useVirtio:
+                return virtio_iscsi()
+            else:
+                return blk_iscsi()
+
+        if volume.deviceType == 'iscsi':
+            xml = iscsibased_volume()
+        elif volume.deviceType == 'file':
+            xml = filebased_volume()
+        else:
+            raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
+
         logger.debug('attaching volume[%s] to vm[uuid:%s]:\n%s' % (volume.installPath, self.uuid, xml))
         try:
             # libvirt has a bug that if attaching volume just after vm created, it likely fails. So we retry three time here
@@ -388,8 +558,16 @@ class Vm(object):
                 def wait_for_attach(_):
                     me = get_vm_by_uuid(self.uuid)
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                        if disk.source.file_ == volume.installPath:
-                            return True
+                        if volume.deviceType == 'iscsi':
+                            if volume.useVirtio:
+                                if disk.source.name_ in volume.installPath:
+                                    return True
+                            else:
+                                if volume.volumeUuid in disk.source.dev_:
+                                    return True
+                        elif volume.deviceType == 'file':
+                            if disk.source.file_ == volume.installPath:
+                                return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
                     return False
@@ -416,7 +594,21 @@ class Vm(object):
     def detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
         target_disk = None
-        disk_name = 'vd%s' % self.DEVICE_LETTERS[volume.deviceId]
+
+        def get_disk_name():
+            if volume.deviceType == 'iscsi':
+                fmt = 'sd%s'
+            elif volume.deviceType == 'file':
+                if volume.useVirtio:
+                    fmt = 'vd%s'
+                else:
+                    fmt = 'hd%s'
+            else:
+                raise Exception('unsupported deviceType[%s]' % volume.deviceType)
+
+            return fmt % self.DEVICE_LETTERS[volume.deviceId]
+
+        disk_name = get_disk_name()
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if disk.target.dev_ == disk_name:
                 target_disk = disk
@@ -441,24 +633,59 @@ class Vm(object):
                 def wait_for_detach(_):
                     me = get_vm_by_uuid(self.uuid)
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                        if disk.source.file_ == volume.installPath:
-                            logger.debug('volume[%s] is still in process of detaching, wait it' % volume.installPath)
-                            return False
+                        if volume.deviceType == 'file':
+                            if disk.source.file_ == volume.installPath:
+                                logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                return False
+                        elif volume.deviceType == 'iscsi':
+                            if volume.useVirtio:
+                                if disk.source.name_ in volume.installPath:
+                                    logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                    return False
+                            else:
+                                if volume.volumeUuid in disk.source.dev_:
+                                    logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                    return False
+
                     return True
 
                 return linux.wait_callback_success(wait_for_detach, None, 5, 1)
 
+            retry = True
             if detach(True):
                 logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
-            if detach(False):
-                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
-            if detach(False):
-                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
+                retry = False
 
-            raise kvmagent.KvmError('libvirt fails to detach volume[deviceId:%s, installPath:%s] from vm[uuid:%s] in 15s, timeout' % (volume.deviceId, volume.installPath, self.uuid))
+            if retry and detach(False):
+                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
+                retry = False
+
+            if retry and detach(False):
+                retry = False
+                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
+
+            if retry:
+                raise kvmagent.KvmError('libvirt fails to detach volume[deviceId:%s, installPath:%s] from vm[uuid:%s] in 15s, timeout' % (volume.deviceId, volume.installPath, self.uuid))
+
+            def delete_iscsi_secret():
+                if not xmlobject.has_element(target_disk, 'auth.secret'):
+                    return
+
+                auth_type = target_disk.auth.secret.type_
+                if auth_type != 'iscsi':
+                    return
+
+                VirtioIscsi.delete_iscsi_secret(target_disk.auth.secret.uuid_)
+
+            def logout_iscsi():
+                BlkIscsi.logout_portal(target_disk.source.dev_)
+
+            if volume.deviceType == 'iscsi':
+                if volume.useVirtio:
+                    delete_iscsi_secret()
+                else:
+                    logout_iscsi()
+
 
         except libvirt.libvirtError as ex:
             vm = get_vm_by_uuid(self.uuid)
@@ -739,13 +966,8 @@ class Vm(object):
             devices = elements['devices']
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
-            for v in volumes:
-                if v.deviceId >= len(Vm.DEVICE_LETTERS):
-                    err = "%s exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
-                    logger.warn(err)
-                    raise kvmagent.KvmError(err)
-                
-                dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
+
+            def filebased_volume(dev_letter):
                 disk = e(devices, 'disk', None, {'type':'file', 'device':'disk', 'snapshot':'external'})
                 e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
                 e(disk, 'source', None, {'file':v.installPath})
@@ -753,8 +975,47 @@ class Vm(object):
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
                 else:
                     e(disk, 'target', None, {'dev':'hd%s' % dev_letter, 'bus':'ide'})
-                #self._e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'ide'})
+
+            def iscsibased_volume(dev_letter, virtio):
+                def blk_iscsi():
+                    bi = BlkIscsi()
+                    portal, bi.target, bi.lun = v.installPath.lstrip('iscsi://').split('/')
+                    bi.server_hostname, bi.server_port = portal.split(':')
+                    bi.device_letter = dev_letter
+                    bi.volume_uuid = v.volumeUuid
+                    bi.chap_username = v.chapUsername
+                    bi.chap_password = v.chapPassword
+                    devices.append(bi.to_xmlobject())
+
+                def virtio_iscsi():
+                    vi = VirtioIscsi()
+                    portal, vi.target, vi.lun = v.installPath.lstrip('iscsi://').split('/')
+                    vi.server_hostname, vi.server_port = portal.split(':')
+                    vi.device_letter = dev_letter
+                    vi.volume_uuid = v.volumeUuid
+                    vi.chap_username = v.chapUsername
+                    vi.chap_password = v.chapPassword
+                    devices.append(vi.to_xmlobject())
+
+                if virtio:
+                    virtio_iscsi()
+                else:
+                    blk_iscsi()
+
+            for v in volumes:
+                if v.deviceId >= len(Vm.DEVICE_LETTERS):
+                    err = "%s exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
+                    logger.warn(err)
+                    raise kvmagent.KvmError(err)
                 
+                dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
+                if v.deviceType == 'file':
+                    filebased_volume(dev_letter)
+                elif v.deviceType == 'iscsi':
+                    iscsibased_volume(dev_letter, v.useVirtio)
+                else:
+                    raise Exception('unknown volume deivceType: %s' % v.deviceType)
+
         def make_nics():
             if not cmd.nics:
                 return
