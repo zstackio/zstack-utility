@@ -222,7 +222,7 @@ check_system(){
 
 do_check_system(){
     if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
-        fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ZStack. \n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-dashboard stop"
+        fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ZStack. \n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-dashboard stop"
     fi
 
     if [ `whoami` != 'root' ];then
