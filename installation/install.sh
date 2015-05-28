@@ -460,9 +460,9 @@ EOF
 is_install_virtualenv(){
     echo_subtitle "Install Virtualenv"
     if [ ! -z $DEBUG ]; then
-        pip install -i $ZSTACK_PYPI_URL virtualenv
+        pip install -i $ZSTACK_PYPI_URL virtualenv==12.1.1
     else
-        pip install -i $ZSTACK_PYPI_URL virtualenv >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $ZSTACK_PYPI_URL virtualenv==12.1.1 >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install virtualenv failed"
     pass
