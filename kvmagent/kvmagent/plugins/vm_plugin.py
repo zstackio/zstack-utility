@@ -130,6 +130,10 @@ class MergeSnapshotRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
 
+class LogoutIscsiTargetRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(LogoutIscsiTargetRsp, self).__init__()
+
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
@@ -138,6 +142,7 @@ def e(parent, tag, value=None, attrib={}):
 
 class BlkIscsi(object):
     def __init__(self):
+        self.is_cdrom = None
         self.volume_uuid = None
         self.chap_username = None
         self.chap_password = None
@@ -170,10 +175,16 @@ class BlkIscsi(object):
 
     def to_xmlobject(self):
         device_path = self._login_portal()
-        root = etree.Element('disk', {'type': 'block', 'device': 'lun'})
-        e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
-        e(root, 'source', attrib={'dev': device_path})
-        e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter})
+        if self.is_cdrom:
+            root = etree.Element('disk', {'type': 'block', 'device': 'cdrom'})
+            e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+            e(root, 'source', attrib={'dev': device_path})
+            e(root, 'target', attrib={'dev': self.device_letter})
+        else:
+            root = etree.Element('disk', {'type': 'block', 'device': 'lun'})
+            e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+            e(root, 'source', attrib={'dev': device_path})
+            e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter})
         return root
 
     @staticmethod
@@ -952,15 +963,37 @@ class Vm(object):
             elements['devices'] = devices
         
         def make_cdrom():
-            if not cmd.isoPath__:
+            if not cmd.bootIso:
                 return
-            
+
+            iso = cmd.bootIso
             devices = elements['devices']
-            cdrom = e(devices, 'disk', None, {'type':'file', 'device':'cdrom'})
-            e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
-            e(cdrom, 'source', None, {'file':cmd.isoPath})
-            e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
-            e(cdrom, 'readonly', None)
+            if iso.path.startswith('http'):
+                cdrom = e(devices, 'disk', None, {'type':'network', 'device':'cdrom'})
+                e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
+                hostname, path = iso.path.lstrip('http://').split('/', 1)
+                source = e(cdrom, 'source', None, {'protocol':'http', 'name':path})
+                e(source, 'host', None, {'name':hostname, 'port':'80'})
+                e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
+                e(cdrom, 'readonly', None)
+            elif iso.path.startswith('iscsi'):
+                bi = BlkIscsi()
+                bi.target = iso.target
+                bi.lun = iso.lun
+                bi.server_hostname = iso.hostname
+                bi.server_port = iso.port
+                bi.device_letter = 'hdc'
+                bi.volume_uuid = iso.imageUuid
+                bi.chap_username = iso.chapUsername
+                bi.chap_password = iso.chapPassword
+                bi.is_cdrom = True
+                devices.append(bi.to_xmlobject())
+            else:
+                cdrom = e(devices, 'disk', None, {'type':'file', 'device':'cdrom'})
+                e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
+                e(cdrom, 'source', None, {'file':cmd.isoPath})
+                e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
+                e(cdrom, 'readonly', None)
         
         def make_volumes():
             devices = elements['devices']
@@ -1098,6 +1131,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
+    KVM_LOGOUT_ISCSI_TARGET_PATH = "/iscsi/target/logout"
 
     def _start_vm(self, cmd):
         try:
@@ -1347,6 +1381,14 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @lock.lock('iscsiadm')
+    def logout_iscsi_target(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        shell.call('iscsiadm  -m node  --targetname "%s" --portal "%s:%s" --logout' % (cmd.target, cmd.hostname, cmd.port))
+        rsp = LogoutIscsiTargetRsp()
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
@@ -1360,6 +1402,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
+        http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target)
 
     def stop(self):
         pass

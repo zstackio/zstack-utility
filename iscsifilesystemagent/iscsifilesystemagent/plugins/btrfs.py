@@ -57,6 +57,19 @@ class CreateIscsiTargetRsp(AgentCapacityResponse):
         self.target = None
         self.lun = None
 
+class CreateSubVolumeRsp(AgentCapacityResponse):
+    def __init__(self):
+        super(CreateSubVolumeRsp, self).__init__()
+        self.path = None
+
+class CreateSymlinkRsp(AgentCapacityResponse):
+    def __init__(self):
+        super(CreateSymlinkRsp, self).__init__()
+
+class DeleteSymlinkRsp(AgentCapacityResponse):
+    def __init__(self):
+        super(DeleteSymlinkRsp, self).__init__()
+
 @lock.lock('tgt-admin-update')
 def update_target(target_name):
     shell.call('tgt-admin --update %s --force' % target_name)
@@ -71,6 +84,9 @@ class BtrfsPlugin(plugin.Plugin):
     CREATE_EMPTY_VOLUME_PATH = "/%s/volumes/createempty" % TYPE
     UPLOAD_TO_SFTP = "/%s/bits/upload" % TYPE
     CREATE_TARGET_PATH = "/%s/target/create" % TYPE
+    DELETE_TARGET_PATH = "/%s/target/delete" % TYPE
+    DELETE_SUBVOLUME_PATH = "/%s/subvolume/delete" % TYPE
+    CREATE_SUBVOLUME_PATH = "/%s/subvolume/create" % TYPE
 
     def _get_disk_capacity(self):
         total = linux.get_total_disk_size(self.root)
@@ -144,18 +160,20 @@ class BtrfsPlugin(plugin.Plugin):
         rsp.isExisting = os.path.exists(cmd.path)
         return jsonobject.dumps(rsp)
 
+    def _delete_target(self, target_name, conf_uuid):
+        conf_file = os.path.join('/etc/tgt/conf.d/%s.conf' % conf_uuid)
+        shell.call('rm -f %s' % conf_file)
+        update_target(target_name)
+
     @iscsiagent.replyerror
     def delete_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteBitsRsp()
 
         if cmd.volumeUuid:
-            conf_file = os.path.join('/etc/tgt/conf.d/%s.conf' % cmd.volumeUuid)
-            shell.call('rm -f %s' % conf_file)
-
             iscsi_path = cmd.iscsiPath
             target_name = iscsi_path.lstrip('iscsi://').split('/')[1]
-            update_target(target_name)
+            self._delete_target(target_name, cmd.volumeUuid)
 
         sub_vol_dir = os.path.dirname(cmd.installPath)
         shell.call('btrfs subvolume delete %s' % sub_vol_dir)
@@ -214,7 +232,8 @@ write-cache on
         shell.call('mkdir -p %s' % parent_root_volume_sub_vol)
         shell.call('btrfs subvolume snapshot %s %s' % (template_sub_vol, root_volume_sub_vol))
         src_vol_name = os.path.join(root_volume_sub_vol, os.path.basename(cmd.templatePathInCache))
-        shell.call('mv %s %s' % (src_vol_name, cmd.installPath))
+        if src_vol_name != cmd.installPath:
+            shell.call('mv %s %s' % (src_vol_name, cmd.installPath))
 
         target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
         update_target(target_name)
@@ -225,6 +244,27 @@ write-cache on
         logger.debug('create root volume[path:%s, iscsi target: %s, iscsi conf: %s]' % (cmd.installPath, target_name, conf_file))
         return jsonobject.dumps(rsp)
 
+
+    def _create_subvolume(self, src, dst):
+        src_volume = os.path.dirname(src)
+        shell.call('mkdir -p %s' % dst)
+        shell.call('btrfs subvolume snapshot %s %s' % (src_volume, dst))
+        src_file_name = os.path.basename(src)
+        src_folder_name = os.path.basename(os.path.dirname(src))
+        dst_path = os.path.join(dst, src_folder_name, src_file_name)
+        return dst_path
+
+    @iscsiagent.replyerror
+    def create_subvolume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateSubVolumeRsp()
+        if os.path.exists(cmd.dst):
+            raise Exception('subvolume[%s] existing' % cmd.dst)
+
+        rsp.path = self._create_subvolume(cmd.src, cmd.dst)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        logger.debug('created subvolume[%s]' % cmd.dst)
+        return jsonobject.dumps(rsp)
 
     @iscsiagent.replyerror
     def create_empty_volume(self, req):
@@ -275,6 +315,14 @@ write-cache on
         logger.debug('created ISCSI target[%s] in conf file[%s]' % (target_name, conf_file))
         return jsonobject.dumps(rsp)
 
+    @iscsiagent.replyerror
+    def delete_target(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._delete_target(cmd.target, cmd.uuid)
+        logger.debug('deleted iscsi target[%s]' % cmd.target)
+        rsp = AgentCapacityResponse()
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.root = None
 
@@ -287,6 +335,8 @@ write-cache on
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.UPLOAD_TO_SFTP, self.upload_to_sftp)
         http_server.register_async_uri(self.CREATE_TARGET_PATH, self.create_target)
+        http_server.register_async_uri(self.DELETE_TARGET_PATH, self.delete_target)
+        http_server.register_async_uri(self.CREATE_SUBVOLUME_PATH, self.create_subvolume)
 
     def stop(self):
         pass
