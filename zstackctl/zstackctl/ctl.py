@@ -1184,6 +1184,7 @@ class InstallManagementNodeCmd(Command):
         parser.add_argument('--remote', help='target host IP, for example, 192.168.0.212, to install ZStack management node to a remote machine', required=True)
         parser.add_argument('--install-path', help='the path on remote machine where Apache Tomcat will be installed, which must be an absolute path; [DEFAULT]: /usr/local/zstack', default='/usr/local/zstack')
         parser.add_argument('--source-dir', help='the source folder containing Apache Tomcat package and zstack.war, if omitted, it will default to a path related to $ZSTACK_HOME')
+        parser.add_argument('--pypi-url', help='the python pypi url, if moitted, it will use default python pypi url, like https://pypi.python.org/simple/', default='https://pypi.python.org/simple/')
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
         parser.add_argument('--force-reinstall', help="delete existing Apache Tomcat and resinstall ZStack", action="store_true", default=False)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
@@ -1293,7 +1294,7 @@ class InstallManagementNodeCmd(Command):
         - mysql-client
 
     - name: install virtualenv
-      pip: name=virtualenv
+      pip: name="virtualenv==12.1.1" extra_args="-i $pypi_url"
 
     - name: copy Apache Tomcat
       copy: src=$apache_path dest={{root}}/$apache_tomcat_zip_name
@@ -1372,7 +1373,7 @@ fi
 
 which ansible-playbook &> /dev/null
 if [ $$? -ne 0 ]; then
-   pip install ansible==1.7.2
+   pip install -i $pypi_url ansible==1.7.2
 fi
 '''
         t = string.Template(post_script)
@@ -1380,7 +1381,8 @@ fi
             'install_path': args.install_path,
             'apache': os.path.join(args.install_path, apache_tomcat_zip_name),
             'zstack': os.path.join(args.install_path, 'zstack.war'),
-            'apache_tomcat_zip_name': apache_tomcat_zip_name
+            'apache_tomcat_zip_name': apache_tomcat_zip_name,
+            'pypi_url': args.pypi_url
         })
 
         fd, post_script_path = tempfile.mkstemp(suffix='.sh')
@@ -1480,6 +1482,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'apache_tomcat_zip_name': apache_tomcat_zip_name,
             'epel6_repo': epel6_repo,
             'epel7_repo': epel7_repo,
+            'pypi_url': args.pypi_url,
             'setup_account': setup_account_path
         })
 
@@ -1539,6 +1542,7 @@ class InstallWebUiCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
+        parser.add_argument('--pypi-url', help='the python pypi url, if moitted, it will use default python pypi url, like https://pypi.python.org/simple/', default='https://pypi.python.org/simple/')
 
     def _install_to_local(self):
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
@@ -1625,7 +1629,7 @@ gpgcheck=0
       apt: pkg=python-pip update_cache=yes
 
     - name: install virtualenv
-      pip: name=virtualenv
+      pip: name="virtualenv==12.1.1" extra_args="-i $pypi_url"
 
     - name: create virtualenv directory
       shell: mkdir -p {{virtualenv_root}}
@@ -1634,7 +1638,7 @@ gpgcheck=0
       shell: "ls {{virtualenv_root}}/bin/activate > /dev/null || virtualenv {{virtualenv_root}}"
 
     - name: install zstack-dashboard
-      pip: name=$dest extra_args="--ignore-installed" virtualenv="{{virtualenv_root}}"
+      pip: name=$dest extra_args="--ignore-installed -i $pypi_url" virtualenv="{{virtualenv_root}}"
 '''
 
         t = string.Template(yaml)
@@ -1642,6 +1646,7 @@ gpgcheck=0
             "src": ui_binary_path,
             "dest": os.path.join('/tmp', ui_binary),
             "host": args.host,
+            'pypi_url': args.pypi_url,
             "epel6_repo": epel6_repo
         })
 
