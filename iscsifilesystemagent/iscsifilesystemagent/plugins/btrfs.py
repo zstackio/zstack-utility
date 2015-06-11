@@ -61,6 +61,7 @@ class CreateSubVolumeRsp(AgentCapacityResponse):
     def __init__(self):
         super(CreateSubVolumeRsp, self).__init__()
         self.path = None
+        self.size = None
 
 class CreateSymlinkRsp(AgentCapacityResponse):
     def __init__(self):
@@ -163,6 +164,11 @@ class BtrfsPlugin(plugin.Plugin):
     def _delete_target(self, target_name, conf_uuid):
         conf_file = os.path.join('/etc/tgt/conf.d/%s.conf' % conf_uuid)
         shell.call('rm -f %s' % conf_file)
+
+        output = shell.call('tgt-admin --show')
+        if target_name not in output:
+            return
+
         update_target(target_name)
 
     @iscsiagent.replyerror
@@ -211,7 +217,10 @@ write-cache on
 
         conf_file = os.path.join(conf_dir, '%s.conf' % vol_uuid)
         if os.path.exists(conf_file):
-            raise Exception('ISCSI target configure file[%s] already exists' % conf_file)
+            with open(conf_file, 'r') as fd:
+                current_conf = fd.read()
+                if current_conf == conf:
+                    return target_name, conf_file
 
         with open(conf_file, 'w') as fd:
             fd.write(conf)
@@ -262,6 +271,7 @@ write-cache on
             raise Exception('subvolume[%s] existing' % cmd.dst)
 
         rsp.path = self._create_subvolume(cmd.src, cmd.dst)
+        rsp.size = os.path.getsize(rsp.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         logger.debug('created subvolume[%s]' % cmd.dst)
         return jsonobject.dumps(rsp)
