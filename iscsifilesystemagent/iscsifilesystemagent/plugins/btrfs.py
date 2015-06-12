@@ -190,6 +190,9 @@ class BtrfsPlugin(plugin.Plugin):
     def _create_iscsi_target(self, vol_uuid, install_path, chapUsername=None, chapPassword=None):
         target_name = "iqn.%s.org.zstack:%s" % (time.strftime('%Y-%m'), vol_uuid)
 
+        if not os.path.exists(install_path):
+            raise Exception('unable to create iscsi target, file %s not found' % install_path)
+
         VOLUME_CONF = """\
 <target %s>
 backing-store %s
@@ -256,11 +259,10 @@ write-cache on
 
     def _create_subvolume(self, src, dst):
         src_volume = os.path.dirname(src)
-        shell.call('mkdir -p %s' % dst)
+        shell.call('mkdir -p %s' % os.path.dirname(dst))
         shell.call('btrfs subvolume snapshot %s %s' % (src_volume, dst))
         src_file_name = os.path.basename(src)
-        src_folder_name = os.path.basename(os.path.dirname(src))
-        dst_path = os.path.join(dst, src_folder_name, src_file_name)
+        dst_path = os.path.join(dst, src_file_name)
         return dst_path
 
     @iscsiagent.replyerror
