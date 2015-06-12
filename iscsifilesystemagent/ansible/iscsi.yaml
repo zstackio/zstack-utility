@@ -115,13 +115,13 @@
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
-      pip: name="{{iscsi_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
+      pip: name="{{iscsi_root}}/{{pkg_zstacklib}}" extra_args="--force-reinstall -i {{pip_url}}" virtualenv="{{virtenv_path}}"
 
     - name: install iscsiagent
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
-      pip: name="{{iscsi_root}}/{{pkg_iscsiagent}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
+      pip: name="{{iscsi_root}}/{{pkg_iscsiagent}}" extra_args="--force-reinstall -i {{pip_url}}" virtualenv="{{virtenv_path}}"
 
     - name: restart iscsiagent
       service: name=zstack-iscsi state=restarted enabled=yes

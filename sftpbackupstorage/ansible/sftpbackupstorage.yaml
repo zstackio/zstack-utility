@@ -70,13 +70,13 @@
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
-      pip: name="{{sftp_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
+      pip: name="{{sftp_root}}/{{pkg_zstacklib}}" extra_args="--force-reinstall -i {{pip_url}}" virtualenv="{{virtenv_path}}"
 
     - name: install sftp
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
-      pip: name="{{sftp_root}}/{{pkg_sftpbackupstorage}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
+      pip: name="{{sftp_root}}/{{pkg_sftpbackupstorage}}" extra_args="--force-reinstall -i {{pip_url}}" virtualenv="{{virtenv_path}}"
 
     - name: restart sftp
       service: name=zstack-sftpbackupstorage state=restarted enabled=yes
