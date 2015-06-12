@@ -291,8 +291,8 @@ write-cache on
         shell.call('mkdir -p %s' % parent_dir)
         shell.call('btrfs subvolume create %s' % sub_vol_path)
 
-        target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
         linux.raw_create(cmd.installPath, cmd.size)
+        target_name, conf_file = self._create_iscsi_target(cmd.volumeUuid, cmd.installPath, cmd.chapUsername, cmd.chapPassword)
         update_target(target_name)
 
         rsp.iscsiPath = target_name
