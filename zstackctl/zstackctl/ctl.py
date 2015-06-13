@@ -45,7 +45,7 @@ def warn(msg):
     sys.stdout.write('WARNING: %s\n' % msg)
 
 def error(msg):
-    sys.stdout.write(colored('ERROR: %s\n' % msg, 'red'))
+    sys.stderr.write(colored('ERROR: %s\n' % msg, 'red'))
     sys.exit(1)
 
 def info(*msg):
@@ -221,38 +221,34 @@ class Ctl(object):
         self.commands[cmd.name] = cmd
         self.command_list.append(cmd)
 
+    def _locate_zstack_home(self):
+        env_path = os.path.expanduser(SetEnvironmentVariableCmd.PATH)
+        if os.path.isfile(env_path):
+            env = PropertyFile(env_path)
+            self.zstack_home = env.read_property('ZSTACK_HOME')
+
+        if not self.zstack_home:
+            self.zstack_home = os.environ.get('ZSTACK_HOME', None)
+
+        if not self.zstack_home:
+            warn('ZSTACK_HOME is not set, default to %s' % self.DEFAULT_ZSTACK_HOME)
+            self.zstack_home = self.DEFAULT_ZSTACK_HOME
+
+        if not os.path.isdir(self.zstack_home):
+            raise CtlError('cannot find ZSTACK_HOME at %s, please set it in .bashrc or use zstack-ctl setenv ZSTACK_HOME=path' % self.zstack_home)
+
+        os.environ['ZSTACK_HOME'] = self.zstack_home
+        self.properties_file_path = os.path.join(self.zstack_home, 'WEB-INF/classes/zstack.properties')
+        if not os.path.isfile(self.properties_file_path):
+            warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
+
     def run(self):
         if os.getuid() != 0:
             raise CtlError('zstack-ctl needs root privilege, please run with sudo')
 
-        def locate_zstack_home():
-            env_path = os.path.expanduser(SetEnvironmentVariableCmd.PATH)
-            if os.path.isfile(env_path):
-                env = PropertyFile(env_path)
-                self.zstack_home = env.read_property('ZSTACK_HOME')
-
-            if not self.zstack_home:
-                self.zstack_home = os.environ.get('ZSTACK_HOME', None)
-
-            if not self.zstack_home:
-                warn('ZSTACK_HOME is not set, default to %s' % self.DEFAULT_ZSTACK_HOME)
-                self.zstack_home = self.DEFAULT_ZSTACK_HOME
-
-            if not os.path.isdir(self.zstack_home):
-                raise CtlError('cannot find ZSTACK_HOME at %s, please set it in .bashrc or use zstack-ctl setenv ZSTACK_HOME=path' % self.zstack_home)
-
-            os.environ['ZSTACK_HOME'] = self.zstack_home
-            self.properties_file_path = os.path.join(self.zstack_home, 'WEB-INF/classes/zstack.properties')
-            if not os.path.isfile(self.properties_file_path):
-                warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
-
-        def install_parsers():
-            subparsers = self.main_parser.add_subparsers(help="All sub-commands", dest="sub_command_name")
-            for cmd in self.command_list:
-                cmd.install_argparse_arguments(subparsers.add_parser(cmd.name, help=cmd.description + '\n\n'))
-
-
-        install_parsers()
+        subparsers = self.main_parser.add_subparsers(help="All sub-commands", dest="sub_command_name")
+        for cmd in self.command_list:
+            cmd.install_argparse_arguments(subparsers.add_parser(cmd.name, help=cmd.description + '\n\n'))
 
         args, self.extra_arguments = self.main_parser.parse_known_args(sys.argv[1:])
         self.verbose = args.verbose
@@ -260,12 +256,28 @@ class Ctl(object):
         cmd = self.commands[args.sub_command_name]
 
         if cmd.need_zstack_home():
-            locate_zstack_home()
+            self._locate_zstack_home()
 
         if cmd.need_zstack_user():
             check_zstack_user()
 
         cmd(args)
+
+    def internal_run(self, cmd_name, args=''):
+        cmd = self.commands[cmd_name]
+        assert cmd, 'cannot find command %s' % cmd_name
+
+        params = [cmd_name]
+        params.extend(args.split())
+        args_obj, _ = self.main_parser.parse_known_args(params)
+
+        if cmd.need_zstack_home():
+            self._locate_zstack_home()
+
+        if cmd.need_zstack_user():
+            check_zstack_user()
+
+        cmd(args_obj)
 
     def read_property_list(self, key):
         prop = PropertyFile(self.properties_file_path)
@@ -344,6 +356,9 @@ def shell_return(cmd):
     scmd = ShellCmd(cmd)
     scmd(False)
     return scmd.return_code
+
+def ssh_run(ip, cmd):
+    shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "%s"' % (ip, cmd))
 
 class Command(object):
     def __init__(self):
@@ -1671,6 +1686,330 @@ class BootstrapCmd(Command):
         shell("grep 'zstack' /etc/sudoers || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers")
         shell('mkdir -p %s && chown zstack:zstack %s' % (ctl.USER_ZSTACK_HOME_DIR, ctl.USER_ZSTACK_HOME_DIR))
 
+class MySqlCommandLineQuery(object):
+    def __init__(self):
+        self.user = None
+        self.password = None
+        self.host = 'localhost'
+        self.port = 3306
+        self.sql = None
+
+    def query(self):
+        assert self.user, 'user cannot be None'
+        assert self.sql, 'sql cannot be None'
+
+        sql = "%s\G" % self.sql
+        if self.password:
+            cmd = '''mysql -u %s -p %s --host %s --port %s -e "%s"''' % (self.user, self.password, self.host, self.port, sql)
+        else:
+            cmd = '''mysql -u %s --host %s --port %s -e "%s"''' % (self.user, self.host, self.port, sql)
+
+        output = shell(cmd)
+        ret = []
+
+        current = None
+        for l in output.split('\n'):
+            if not current and not l.startswith('*********'):
+                raise CtlError('cannot parse mysql output generated by the sql "%s", output:\n%s' % (self.sql, output))
+
+            if l.startswith('*********'):
+                if current:
+                    ret.append(current)
+                current = {}
+            else:
+                l = l.strip()
+                key, value = l.split(':', 1)
+                current[key.strip()] = value[1:]
+
+        if current:
+            ret.append(current)
+
+        return ret
+
+class UpgradeManagementNodeCmd(Command):
+    def __init__(self):
+        super(UpgradeManagementNodeCmd, self).__init__()
+        self.name = "upgrade_management_node"
+        self.description = 'upgrade the management node to a specified version'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--war-file', help='path to zstack.war. A HTTP/HTTPS url or a path to a local zstack.war', required=True)
+        parser.add_argument('--host', help='IP or DNS name of the machine to upgrade the management node', default=None)
+        parser.add_argument('--force', help='upgrade even if the old zstack.war not found. This may cause unable to rollback when upgrade fails',
+                            action='store_true', default=False)
+        parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
+        parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
+
+    def run(self, args):
+        error_if_tool_is_missing('unzip')
+        need_download = args.war_file.startswith('http')
+        if need_download:
+            error_if_tool_is_missing('wget')
+
+        upgrade_tmp_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'upgrade', time.strftime('%Y-%m-%d-%H-%M-%S', time.gmtime()))
+        shell('mkdir -p %s' % upgrade_tmp_dir)
+
+        war_backup_path = os.path.join(upgrade_tmp_dir, 'zstack.war')
+        property_file_backup_path = os.path.join(upgrade_tmp_dir, 'zstack.properties')
+        old_war_path = os.path.join(os.path.dirname(ctl.zstack_home), 'zstack.war')
+
+        class NewWarFilePath(object):
+            self.path = None
+
+        new_war = NewWarFilePath()
+
+        if not need_download:
+            if args.war_file.startswith('~'):
+                new_war.path = os.path.expanduser(args.war_file)
+            else:
+                new_war.path = os.path.abspath(args.war_file)
+
+            if not os.path.exists(new_war.path):
+                raise CtlError('%s not found' % new_war.path)
+
+        def local_upgrade():
+            def backup():
+                if not os.path.exists(old_war_path):
+                    if not args.force:
+                        raise CtlError('cannot backup the old zstack.war, %s not found. Use option --force if you want to upgrade anyway' % old_war_path)
+                    else:
+                        info('cannot backup the old zstack.war, %s not found. Continue to upgrade as --force is specified' % old_war_path)
+                else:
+                    shell('cp %s %s' % (old_war_path, war_backup_path))
+                    info('backup old zstack.war[%s] to %s' % (old_war_path, war_backup_path))
+
+                ctl.internal_run('save_config', '--save-to %s' % os.path.dirname(property_file_backup_path))
+
+                shell('cp -r %s %s' % (ctl.zstack_home, upgrade_tmp_dir))
+                info('backup %s to %s' % (ctl.zstack_home, upgrade_tmp_dir))
+
+            def download_war_if_needed():
+                if need_download:
+                    new_war.path = os.path.join(upgrade_tmp_dir, 'new', 'zstack.war')
+                    shell_no_pipe('wget --no-check-certificate %s -O %s' % (args.war_file, new_war.path))
+                    info('downloaded new zstack.war to %s' % new_war.path)
+
+            def stop_node():
+                info('start to stop the management node ...')
+                ctl.internal_run('stop_node')
+
+            def upgrade():
+                info('start to upgrade the management node ...')
+                shell('rm -f %s' % old_war_path)
+                shell('rm -rf %s' % ctl.zstack_home)
+                webapp_dir = os.path.dirname(ctl.zstack_home)
+                shell('cp %s %s' % (new_war.path, webapp_dir))
+                ShellCmd('unzip %s -d zstack' % os.path.basename(new_war.path), workdir=webapp_dir)()
+
+            def restore_config():
+                info('restoring the zstack.properties ...')
+                ctl.internal_run('restore_config', '--restore-from %s' % property_file_backup_path)
+
+            backup()
+            download_war_if_needed()
+            stop_node()
+            upgrade()
+            restore_config()
+
+            info('----------------------------------------------\n'
+                 'Successfully upgraded the ZStack management node to a new version.\n'
+                 'We backup the old zstack as follows:\n'
+                 '\tzstack.war: %s\n'
+                 '\tzstack.properties: %s\n'
+                 '\tzstack folder: %s\n'
+                 'Please test your new ZStack. If everything is OK and stable, you can manually delete those backup by deleting %s.\n'
+                 'Otherwise you can use them to rollback to the previous version\n'
+                 '-----------------------------------------------\n' %
+                 (war_backup_path, property_file_backup_path, os.path.join(upgrade_tmp_dir, 'zstack'), upgrade_tmp_dir))
+
+        def remote_upgrade():
+            need_copy = 'true'
+            src_war = new_war.path
+            dst_war = '/tmp/zstack.war'
+
+            if need_download:
+                need_copy = 'false'
+                src_war = args.war_file
+                dst_war = args.war_file
+
+            upgrade_script = '''
+zstack-ctl upgrade_management_node --war-file=$war_file
+if [ $$? -ne 0 ]; then
+    echo 'failed to upgrade the remote management node'
+    exit 1
+fi
+
+if [ "$need_copy" == "true" ]; then
+    rm -f $war_file
+fi
+'''
+            t = string.Template(upgrade_script)
+            upgrade_script = t.substitute({
+                'war_file': dst_war,
+                'need_copy': need_copy
+            })
+
+            fd, upgrade_script_path = tempfile.mkstemp(suffix='.sh')
+            os.fdopen(fd, 'w').write(upgrade_script)
+
+            def cleanup_upgrade_script():
+                os.remove(upgrade_script_path)
+
+            self.install_cleanup_routine(cleanup_upgrade_script)
+
+            yaml = '''---
+- hosts: $host
+  remote_user: root
+
+  vars:
+    need_copy: "$need_copy"
+
+  tasks:
+    - name: copy zstack.war to remote
+      copy: src=$src_war dest=$dst_war
+      when: need_copy == 'true'
+
+    - name: upgrade management node
+      script: $upgrade_script
+      register: output
+      ignore_errors: yes
+
+    - name: failure
+      fail: msg="failed to upgrade the remote management node. {{ output.stdout }} {{ output.stderr }}"
+      when: output.rc != 0
+'''
+            t = string.Template(yaml)
+            yaml = t.substitute({
+                "src_war": src_war,
+                "dst_war": dst_war,
+                "host": args.host,
+                "need_copy": need_copy,
+                "upgrade_script": upgrade_script_path
+            })
+
+            info('start to upgrade the remote management node; the process may cost several minutes ...')
+            ansible(yaml, args.host, args.debug, ssh_key=args.ssh_key)
+            info('upgraded the remote management node successfully')
+
+
+        if args.host:
+            remote_upgrade()
+        else:
+            local_upgrade()
+
+
+class UpgradeDbCmd(Command):
+    def __init__(self):
+        super(UpgradeDbCmd, self).__init__()
+        self.name = 'upgrade_db'
+        self.description = (
+            'upgrade ZStack from current version to a new version'
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--force', help='bypass management nodes status check.'
+                            '\nNOTE: only use it when you know exactly what it does', action='store_true', default=False)
+
+    def run(self, args):
+        error_if_tool_is_missing('mysqldump')
+        error_if_tool_is_missing('mysql')
+
+        db_user = ctl.read_property('DbFacadeDataSource.user')
+        db_password = ctl.read_property('DbFacadeDataSource.password')
+        db_url = ctl.read_property('DbFacadeDataSource.jdbcUrl')
+
+        db_hostname, db_port = db_url.lstrip('dbc:mysql://').split('/')[0].split(':')
+
+        flyway_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/tools/flyway-3.2.1/flyway')
+        if not os.path.exists(flyway_path):
+            raise CtlError('cannot find %s. Have you run upgrade_management_node?')
+
+        upgrading_schema_dir = os.path.join(ctl.zstack_home, 'WEB-INF/classes/db/upgrade/')
+        if not os.path.exists(upgrading_schema_dir):
+            raise CtlError('cannot find %s. Have you run upgrade_management_node?')
+
+        def check_if_management_node_has_stopped():
+            def get_nodes():
+                query = MySqlCommandLineQuery()
+                query.user = db_user
+                query.password = db_password
+                query.host = db_hostname
+                query.port = db_port
+                query.sql = 'select hostname,heartBeat from ManagementNodeVO'
+
+                return query.query()
+
+            def check():
+                nodes = get_nodes()
+                if nodes:
+                    node_ips = [n['hostname'] for n in nodes]
+                    raise CtlError('there are some management nodes%s are still running. Please stop all of them before performing the database upgrade.'
+                                   'If you are sure they have stopped, use option --force and run this command again.\n'
+                                   'WARNING: the database may crash if you run this command with --force but without stopping management nodes' % node_ips)
+
+            def bypass_check():
+                nodes = get_nodes()
+                if nodes:
+                    node_ips = [n['hostname'] for n in nodes]
+                    info("it seems some nodes%s are still running. As you have specified option --force, let's wait for 10s to make sure those are stale records. Please be patient." % node_ips)
+                    time.sleep(10)
+                    new_nodes = get_nodes()
+
+                    for n in new_nodes:
+                        for o in nodes:
+                            if o['hostname'] == n['hostname'] and o['heartBeat'] != n['heartBeat']:
+                                raise CtlError("node[%s] is still Running! Its heart-beat changed from %s to %s in last 10s. Please make sure you really stop it" %
+                                               (n['hostname'], o['heartBeat'], n['heartBeat']))
+
+            if args.force:
+                bypass_check()
+            else:
+                check()
+
+        def backup_current_database():
+            db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', 'backup.sql')
+            shell('mkdir -p %s' % os.path.dirname(db_backup_path))
+            if db_password:
+                shell('mysqldump -u %s -p %s --host %s --port %s zstack > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
+            else:
+                shell('mysqldump -u %s --host %s --port %s zstack > %s' % (db_user, db_hostname, db_port, db_backup_path))
+
+        def create_schema_version_table_if_needed():
+            if db_password:
+                out = shell('''mysql -u %s -p %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
+                            (db_user, db_password, db_hostname, db_port))
+            else:
+                out = shell('''mysql -u %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
+                            (db_user, db_hostname, db_port))
+
+            if 'schema_version' not in out:
+                return
+
+            info('version table "schema_version" is not existing; initializing a new version table first')
+
+            if db_password:
+                shell_no_pipe('%s baseline -Dflyway.baselineVersion=0.6 -Dflyway.baselineDescription="0.6 version" -user=%s -password %s -url=%s' %
+                      (flyway_path, db_user, db_password, db_url))
+            else:
+                shell_no_pipe('%s baseline -Dflyway.baselineVersion=0.6 -Dflyway.baselineDescription="0.6 version" -user=%s -url=%s' %
+                      (flyway_path, db_user, db_url))
+
+        def migrate():
+            schema_path = 'filesystem:%s' % upgrading_schema_dir
+            if db_password:
+                shell_no_pipe('%s migrate -user=%s -password=%s -url=%s -locations=%s' % (flyway_path, db_user, db_password, db_url, schema_path))
+            else:
+                shell_no_pipe('%s migrate -user=%s -url=%s -locations=%s' % (flyway_path, db_user, db_url, schema_path))
+
+            info('successfully upgraded the database to the latest version')
+
+        check_if_management_node_has_stopped()
+        backup_current_database()
+        create_schema_version_table_if_needed()
+        migrate()
+
 def main():
     BootstrapCmd()
     DeployDBCmd()
@@ -1687,6 +2026,8 @@ def main():
     ShowConfiguration()
     SetEnvironmentVariableCmd()
     InstallWebUiCmd()
+    UpgradeManagementNodeCmd()
+    UpgradeDbCmd()
 
     try:
         ctl.run()
