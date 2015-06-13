@@ -173,7 +173,7 @@
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
-      pip: name="{{kvm_root}}/{{pkg_zstacklib}}" extra_args="--force-reinstall -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+      pip: name="{{kvm_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
 
     - name: restart redhat libvirtd
       service: name=libvirtd state=restarted enabled=yes
@@ -187,7 +187,7 @@
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
-      pip: name="{{kvm_root}}/{{pkg_kvmagent}}" extra_args="--force-reinstall -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+      pip: name="{{kvm_root}}/{{pkg_kvmagent}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
 
     - name: restart kvmagent
       service: name=zstack-kvmagent state=restarted enabled=yes
