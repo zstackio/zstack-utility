@@ -17,6 +17,7 @@ import string
 from configobj import ConfigObj
 import tempfile
 import pwd, grp
+import traceback
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -48,6 +49,9 @@ def error(msg):
     sys.stderr.write(colored('ERROR: %s\n' % msg, 'red'))
     sys.exit(1)
 
+def error_not_exit(msg):
+    sys.stderr.write(colored('ERROR: %s\n' % msg, 'red'))
+
 def info(*msg):
     if len(msg) == 1:
         out = '%s\n' % ''.join(msg)
@@ -63,6 +67,9 @@ class ExceptionWrapper(object):
         pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if globals().get('verbose', False) and exc_type and exc_val and exc_tb:
+            error_not_exit(''.join(traceback.format_exception(exc_type, exc_val, exc_tb)))
+
         if exc_type == CtlError:
             return
 
@@ -258,6 +265,7 @@ class Ctl(object):
 
         args, self.extra_arguments = self.main_parser.parse_known_args(sys.argv[1:])
         self.verbose = args.verbose
+        globals()['verbose'] = self.verbose
 
         cmd = self.commands[args.sub_command_name]
 
@@ -314,9 +322,50 @@ class Ctl(object):
         db_user = self.read_property('DbFacadeDataSource.user')
         db_password = self.read_property('DbFacadeDataSource.password')
         db_url = ctl.read_property('DbFacadeDataSource.jdbcUrl')
-        db_hostname, db_port = db_url.lstrip('jdbc:mysql://').split('/')[0].split(':')
+        db_hostname, db_port = db_url.lstrip('jdbc:mysql:').lstrip('/').split('/')[0].split(':')
 
         return db_hostname, db_port, db_user, db_password
+
+    def check_if_management_node_has_stopped(self, force=False):
+        db_hostname, db_port, db_user, db_password = self.get_database_portal()
+
+        def get_nodes():
+            query = MySqlCommandLineQuery()
+            query.user = db_user
+            query.password = db_password
+            query.host = db_hostname
+            query.port = db_port
+            query.table = 'zstack'
+            query.sql = 'select hostname,heartBeat from ManagementNodeVO'
+
+            return query.query()
+
+        def check():
+            nodes = get_nodes()
+            if nodes:
+                node_ips = [n['hostname'] for n in nodes]
+                raise CtlError('there are some management nodes%s are still running. Please stop all of them before performing the database upgrade.'
+                               'If you are sure they have stopped, use option --force and run this command again.\n'
+                               'WARNING: the database may crash if you run this command with --force but without stopping management nodes' % node_ips)
+
+        def bypass_check():
+            nodes = get_nodes()
+            if nodes:
+                node_ips = [n['hostname'] for n in nodes]
+                info("it seems some nodes%s are still running. As you have specified option --force, let's wait for 10s to make sure those are stale records. Please be patient." % node_ips)
+                time.sleep(10)
+                new_nodes = get_nodes()
+
+                for n in new_nodes:
+                    for o in nodes:
+                        if o['hostname'] == n['hostname'] and o['heartBeat'] != n['heartBeat']:
+                            raise CtlError("node[%s] is still Running! Its heart-beat changed from %s to %s in last 10s. Please make sure you really stop it" %
+                                           (n['hostname'], o['heartBeat'], n['heartBeat']))
+
+        if force:
+            bypass_check()
+        else:
+            check()
 
 ctl = Ctl()
 
@@ -1799,8 +1848,8 @@ class UpgradeManagementNodeCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--war-file', help='path to zstack.war. A HTTP/HTTPS url or a path to a local zstack.war', required=True)
         parser.add_argument('--host', help='IP or DNS name of the machine to upgrade the management node', default=None)
+        parser.add_argument('--war-file', help='path to zstack.war. A HTTP/HTTPS url or a path to a local zstack.war', required=True)
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
@@ -1813,7 +1862,6 @@ class UpgradeManagementNodeCmd(Command):
         upgrade_tmp_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'upgrade', time.strftime('%Y-%m-%d-%H-%M-%S', time.gmtime()))
         shell('mkdir -p %s' % upgrade_tmp_dir)
 
-        war_backup_path = os.path.join(upgrade_tmp_dir, 'zstack.war')
         property_file_backup_path = os.path.join(upgrade_tmp_dir, 'zstack.properties')
 
         class NewWarFilePath(object):
@@ -1855,6 +1903,7 @@ class UpgradeManagementNodeCmd(Command):
                 ctl.internal_run('restore_config', '--restore-from %s' % property_file_backup_path)
 
             def install_tools():
+                info('upgrading zstack-cli, zstack-ctl; this may cost several minutes ...')
                 install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
                 if not os.path.isfile(install_script):
                     raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
@@ -1878,13 +1927,12 @@ class UpgradeManagementNodeCmd(Command):
             info('----------------------------------------------\n'
                  'Successfully upgraded the ZStack management node to a new version.\n'
                  'We backup the old zstack as follows:\n'
-                 '\tzstack.war: %s\n'
                  '\tzstack.properties: %s\n'
                  '\tzstack folder: %s\n'
                  'Please test your new ZStack. If everything is OK and stable, you can manually delete those backup by deleting %s.\n'
                  'Otherwise you can use them to rollback to the previous version\n'
                  '-----------------------------------------------\n' %
-                 (war_backup_path, property_file_backup_path, os.path.join(upgrade_tmp_dir, 'zstack'), upgrade_tmp_dir))
+                 (property_file_backup_path, os.path.join(upgrade_tmp_dir, 'zstack'), upgrade_tmp_dir))
 
         def remote_upgrade():
             need_copy = 'true'
@@ -1974,6 +2022,7 @@ class UpgradeDbCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--force', help='bypass management nodes status check.'
                             '\nNOTE: only use it when you know exactly what it does', action='store_true', default=False)
+        parser.add_argument('--no-backup', help='do NOT backup the database. If the database is very large and you have manually backup it, using this option will fast the upgrade process. [DEFAULT] false', default=False)
 
     def run(self, args):
         error_if_tool_is_missing('mysqldump')
@@ -1990,52 +2039,22 @@ class UpgradeDbCmd(Command):
         if not os.path.exists(upgrading_schema_dir):
             raise CtlError('cannot find %s. Have you run upgrade_management_node?')
 
-        def check_if_management_node_has_stopped():
-            def get_nodes():
-                query = MySqlCommandLineQuery()
-                query.user = db_user
-                query.password = db_password
-                query.host = db_hostname
-                query.port = db_port
-                query.table = 'zstack'
-                query.sql = 'select hostname,heartBeat from ManagementNodeVO'
-
-                return query.query()
-
-            def check():
-                nodes = get_nodes()
-                if nodes:
-                    node_ips = [n['hostname'] for n in nodes]
-                    raise CtlError('there are some management nodes%s are still running. Please stop all of them before performing the database upgrade.'
-                                   'If you are sure they have stopped, use option --force and run this command again.\n'
-                                   'WARNING: the database may crash if you run this command with --force but without stopping management nodes' % node_ips)
-
-            def bypass_check():
-                nodes = get_nodes()
-                if nodes:
-                    node_ips = [n['hostname'] for n in nodes]
-                    info("it seems some nodes%s are still running. As you have specified option --force, let's wait for 10s to make sure those are stale records. Please be patient." % node_ips)
-                    time.sleep(10)
-                    new_nodes = get_nodes()
-
-                    for n in new_nodes:
-                        for o in nodes:
-                            if o['hostname'] == n['hostname'] and o['heartBeat'] != n['heartBeat']:
-                                raise CtlError("node[%s] is still Running! Its heart-beat changed from %s to %s in last 10s. Please make sure you really stop it" %
-                                               (n['hostname'], o['heartBeat'], n['heartBeat']))
-
-            if args.force:
-                bypass_check()
-            else:
-                check()
+        ctl.check_if_management_node_has_stopped(args.force)
 
         def backup_current_database():
-            db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', 'backup.sql')
+            if args.no_backup:
+                return
+
+            info('start to backup the database ...')
+
+            db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', time.strftime('%Y-%m-%d-%H-%M-%S', time.gmtime()), 'backup.sql')
             shell('mkdir -p %s' % os.path.dirname(db_backup_path))
             if db_password:
                 shell('mysqldump -u %s -p %s --host %s --port %s zstack > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
             else:
                 shell('mysqldump -u %s --host %s --port %s zstack > %s' % (db_user, db_hostname, db_port, db_backup_path))
+
+            info('successfully backup the database to %s' % db_backup_path)
 
         def create_schema_version_table_if_needed():
             if db_password:
@@ -2064,9 +2083,8 @@ class UpgradeDbCmd(Command):
             else:
                 shell_no_pipe('bash %s migrate -user=%s -url=%s -locations=%s' % (flyway_path, db_user, db_url, schema_path))
 
-            info('successfully upgraded the database to the latest version')
+            info('Successfully upgraded the database to the latest version.\n')
 
-        check_if_management_node_has_stopped()
         backup_current_database()
         create_schema_version_table_if_needed()
         migrate()
@@ -2085,6 +2103,8 @@ class UpgradeCtlCmd(Command):
         parser.add_argument('--pypi-url', help='the python pypi url, if moitted, it will use default python pypi url, like https://pypi.python.org/simple/', default='https://pypi.python.org/simple/')
 
     def run(self, args):
+        error_if_tool_is_missing('pip')
+
         path = expand_path(args.package)
         if not os.path.exists(path):
             raise CtlError('%s not found' % path)
@@ -2106,6 +2126,219 @@ chmod +x /usr/bin/zstack-ctl
         script(install_script, {"pypi_path": args.pypi_url, "package": args.package})
         info('successfully upgraded zstack-ctl to %s' % args.package)
 
+class RollbackManagementNodeCmd(Command):
+    def __init__(self):
+        super(RollbackManagementNodeCmd, self).__init__()
+        self.name = "rollback_management_node"
+        self.description = "rollback the management node to a previous version if the upgrade fails"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help='the IP or DNS name of machine to rollback the management node')
+        parser.add_argument('--war-file', help='path to zstack.war. A HTTP/HTTPS url or a path to a local zstack.war', required=True)
+        parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
+        parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
+        parser.add_argument('--property-file', help="the path to zstack.properties. If omitted, the current zstack.properties will be used", default=None)
+
+    def run(self, args):
+        error_if_tool_is_missing('unzip')
+
+        rollback_tmp_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'rollback', time.strftime('%Y-%m-%d-%H-%M-%S', time.gmtime()))
+        shell('mkdir -p %s' % rollback_tmp_dir)
+        need_download = args.war_file.startswith('http')
+
+        class Info(object):
+            def __init__(self):
+                self.war_path = None
+                self.property_file = None
+
+        rollbackinfo = Info()
+
+        def local_rollback():
+            def backup_current_zstack():
+                info('start to backup the current zstack ...')
+                shell('cp -r %s %s' % (ctl.zstack_home, rollback_tmp_dir))
+                info('backup %s to %s' % (ctl.zstack_home, rollback_tmp_dir))
+                info('successfully backup the current zstack to %s' % os.path.join(rollback_tmp_dir, os.path.basename(ctl.zstack_home)))
+
+            def download_war_if_needed():
+                if need_download:
+                    rollbackinfo.war_path = os.path.join(rollback_tmp_dir, 'zstack.war')
+                    shell_no_pipe('wget --no-check-certificate %s -O %s' % (args.war_file, rollbackinfo.war_path))
+                    info('downloaded zstack.war to %s' % rollbackinfo.war_path)
+                else:
+                    rollbackinfo.war_path = expand_path(args.war_file)
+                    if not os.path.exists(rollbackinfo.war_path):
+                        raise CtlError('%s not found' % rollbackinfo.war_path)
+
+            def save_property_file_if_needed():
+                if not args.property_file:
+                    ctl.internal_run('save_config', '--save-to %s' % rollback_tmp_dir)
+                    rollbackinfo.property_file = os.path.join(rollback_tmp_dir, 'zstack.properties')
+                else:
+                    rollbackinfo.property_file = args.property_file
+                    if not os.path.exists(rollbackinfo.property_file):
+                        raise CtlError('%s not found' % rollbackinfo.property_file)
+
+            def stop_node():
+                info('start to stop the management node ...')
+                ctl.internal_run('stop_node')
+
+            def rollback():
+                info('start to rollback the management node ...')
+                shell('rm -rf %s' % ctl.zstack_home)
+                shell('unzip %s -d %s' % (rollbackinfo.war_path, ctl.zstack_home))
+
+            def restore_config():
+                info('restoring the zstack.properties ...')
+                ctl.internal_run('restore_config', '--restore-from %s' % rollbackinfo.property_file)
+
+            def install_tools():
+                info('rollback zstack-cli, zstack-ctl to the previous version. This may cost several minutes ...')
+                install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
+                if not os.path.isfile(install_script):
+                    raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
+
+                shell("bash %s zstack-cli" % install_script)
+                shell("bash %s zstack-ctl" % install_script)
+                info('successfully upgraded zstack-cli, zstack-ctl')
+
+            backup_current_zstack()
+            download_war_if_needed()
+            save_property_file_if_needed()
+            stop_node()
+            rollback()
+            restore_config()
+            install_tools()
+
+            info('----------------------------------------------\n'
+                 'Successfully rollback the ZStack management node to a previous version.\n'
+                 'We backup the current zstack as follows:\n'
+                 '\tzstack.properties: %s\n'
+                 '\tzstack folder: %s\n'
+                 'Please test your ZStack. If everything is OK and stable, you can manually delete those backup by deleting %s.\n'
+                 '-----------------------------------------------\n' %
+                 (rollbackinfo.property_file, os.path.join(rollback_tmp_dir, os.path.basename(ctl.zstack_home)), rollback_tmp_dir))
+
+        def remote_rollback():
+            error_if_tool_is_missing('wget')
+
+            need_copy = 'true'
+            src_war = rollbackinfo.war_path
+            dst_war = '/tmp/zstack.war'
+
+            if need_download:
+                need_copy = 'false'
+                src_war = args.war_file
+                dst_war = args.war_file
+
+            rollback_script = '''
+zstack-ctl rollback_management_node --war-file=$war_file
+if [ $$? -ne 0 ]; then
+    echo 'failed to rollback the remote management node'
+    exit 1
+fi
+
+if [ "$need_copy" == "true" ]; then
+    rm -f $war_file
+fi
+'''
+
+            t = string.Template(rollback_script)
+            rollback_script = t.substitute({
+                'war_file': dst_war,
+                'need_copy': need_copy
+            })
+
+            fd, rollback_script_path = tempfile.mkstemp(suffix='.sh')
+            os.fdopen(fd, 'w').write(rollback_script)
+
+            def cleanup_rollback_script():
+                os.remove(rollback_script_path)
+
+            self.install_cleanup_routine(cleanup_rollback_script)
+
+            yaml = '''---
+- hosts: $host
+  remote_user: root
+
+  vars:
+    need_copy: "$need_copy"
+
+  tasks:
+    - name: copy zstack.war to remote
+      copy: src=$src_war dest=$dst_war
+      when: need_copy == 'true'
+
+    - name: rollback the management node
+      script: $rollback_script
+      register: output
+      ignore_errors: yes
+
+    - name: failure
+      fail: msg="failed to rollback the remote management node. {{ output.stdout }} {{ output.stderr }}"
+      when: output.rc != 0
+'''
+
+            t = string.Template(yaml)
+            yaml = t.substitute({
+                "src_war": src_war,
+                "dst_war": dst_war,
+                "host": args.host,
+                "need_copy": need_copy,
+                "rollback_script": rollback_script_path
+            })
+
+            info('start to rollback the remote management node; the process may cost several minutes ...')
+            ansible(yaml, args.host, args.debug, ssh_key=args.ssh_key)
+            info('successfully rollback the remote management node')
+
+        if args.host:
+            remote_rollback()
+        else:
+            local_rollback()
+
+class RollbackDatabaseCmd(Command):
+    def __init__(self):
+        super(RollbackDatabaseCmd, self).__init__()
+        self.name = 'rollback_db'
+        self.description = "rollback the database to the previous version if the upgrade fails"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--db-dump', help="the previous database dump file", required=True)
+        parser.add_argument('--root-password', help="the password for mysql root user. [DEFAULT] empty password")
+        parser.add_argument('--force', help='bypass management nodes status check.'
+                            '\nNOTE: only use it when you know exactly what it does', action='store_true', default=False)
+
+    def run(self, args):
+        error_if_tool_is_missing('mysql')
+
+        ctl.check_if_management_node_has_stopped(args.force)
+
+        if not os.path.exists(args.db_dump):
+            raise CtlError('%s not found' % args.db_dump)
+
+        host, port, _, _ = ctl.get_database_portal()
+
+        if args.root_password:
+            cmd = ShellCmd('mysql -u root -p%s --host %s --port %s -e "select 1"' % (args.root_password, host, port))
+        else:
+            cmd = ShellCmd('mysql -u root --host %s --port %s -e "select 1"' % (host, port))
+
+        cmd(False)
+        if cmd.return_code != 0:
+            error_not_exit('failed to test the mysql server. You may have provided a wrong password of the root user. Please use --root-password to provide the correct password')
+            cmd.raise_error()
+
+        info('start to rollback the database ...')
+
+        if args.root_password:
+            shell('mysql -u root -p%s --host %s --port %s -t zstack < %s' % (args.root_password, host, port, args.db_dump))
+        else:
+            shell('mysql -u root --host %s --port %s -t zstack < %s' % (host, port, args.db_dump))
+
+        info('successfully rollback the database to the dump file %s' % args.db_dump)
 
 def main():
     BootstrapCmd()
@@ -2126,10 +2359,14 @@ def main():
     UpgradeManagementNodeCmd()
     UpgradeDbCmd()
     UpgradeCtlCmd()
+    RollbackManagementNodeCmd()
+    RollbackDatabaseCmd()
 
     try:
         ctl.run()
     except CtlError as e:
+        if ctl.verbose:
+            error_not_exit(traceback.format_exc())
         error(str(e))
 
 if __name__ == '__main__':
