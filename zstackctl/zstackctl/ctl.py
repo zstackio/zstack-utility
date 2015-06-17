@@ -716,6 +716,8 @@ class DeployDBCmd(Command):
             properties = [
                 ("DbFacadeDataSource.user", "zstack"),
                 ("DbFacadeDataSource.password", args.zstack_password),
+                ("RESTApiDataSource.user", "zstack"),
+                ("RESTApiDataSource.password", args.zstack_password),
                 ("DbFacadeDataSource.jdbcUrl", 'jdbc:mysql://%s:%s/zstack' % (args.host, args.port)),
                 ("RESTApiDataSource.jdbcUrl",'jdbc:mysql://%s:%s/zstack_rest' % (args.host, args.port))
             ]
