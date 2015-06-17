@@ -134,6 +134,10 @@ class LogoutIscsiTargetRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(LogoutIscsiTargetRsp, self).__init__()
 
+class LoginIscsiTargetRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(LoginIscsiTargetRsp, self).__init__()
+
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
@@ -1132,6 +1136,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
     KVM_LOGOUT_ISCSI_TARGET_PATH = "/iscsi/target/logout"
+    KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
 
     def _start_vm(self, cmd):
         try:
@@ -1389,6 +1394,20 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = LogoutIscsiTargetRsp()
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @lock.lock('iscsiadm')
+    def login_iscsi_target(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (cmd.hostname, cmd.port))
+
+        if cmd.chapUsername and cmd.chapPassword:
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (cmd.target, cmd.hostname, cmd.port))
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (cmd.target, cmd.hostname, cmd.port, cmd.chapUsername))
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (cmd.target, cmd.hostname, cmd.port, cmd.chapPassword))
+
+        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (cmd.target, cmd.hostname, cmd.port))
+        return jsonobject.dump(LoginIscsiTargetRsp())
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
@@ -1403,6 +1422,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target)
+        http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
 
     def stop(self):
         pass
