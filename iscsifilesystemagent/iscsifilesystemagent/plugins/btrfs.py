@@ -88,6 +88,7 @@ class BtrfsPlugin(plugin.Plugin):
     DELETE_TARGET_PATH = "/%s/target/delete" % TYPE
     DELETE_SUBVOLUME_PATH = "/%s/subvolume/delete" % TYPE
     CREATE_SUBVOLUME_PATH = "/%s/subvolume/create" % TYPE
+    GET_CAPACITY_PATH = "/%s/capacity/get" % TYPE
 
     def _get_disk_capacity(self):
         total = linux.get_total_disk_size(self.root)
@@ -335,6 +336,12 @@ write-cache on
         rsp = AgentCapacityResponse()
         return jsonobject.dumps(rsp)
 
+    @iscsiagent.replyerror
+    def get_capacity(self, req):
+        rsp = AgentCapacityResponse()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.root = None
 
@@ -349,6 +356,7 @@ write-cache on
         http_server.register_async_uri(self.CREATE_TARGET_PATH, self.create_target)
         http_server.register_async_uri(self.DELETE_TARGET_PATH, self.delete_target)
         http_server.register_async_uri(self.CREATE_SUBVOLUME_PATH, self.create_subvolume)
+        http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
 
     def stop(self):
         pass
