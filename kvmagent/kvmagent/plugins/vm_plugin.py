@@ -144,6 +144,39 @@ def e(parent, tag, value=None, attrib={}):
         el.text = value
     return el
 
+class IscsiLogin(object):
+    def __init__(self):
+        self.server_hostname = None
+        self.server_port = None
+        self.target = None
+        self.chap_username = None
+        self.chap_password = None
+
+    @lock.lock('iscsiadm')
+    def login(self):
+        assert self.server_hostname, "hostname cannot be None"
+        assert self.server_port, "port cannot be None"
+        assert self.target, "target cannot be None"
+
+        device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (self.server_hostname, self.server_port, self.target, self.lun))
+
+        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
+
+        if self.chap_username and self.chap_password:
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (self.target, self.server_hostname, self.server_port))
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (self.target, self.server_hostname, self.server_port, self.chap_username))
+            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (self.target, self.server_hostname, self.server_port, self.chap_password))
+
+        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (self.target, self.server_hostname, self.server_port))
+
+        def wait_device_to_show(_):
+            return os.path.exists(device_path)
+
+        if not linux.wait_callback_success(wait_device_to_show, timeout=30, interval=0.5):
+            raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
+
+        return device_path
+
 class BlkIscsi(object):
     def __init__(self):
         self.is_cdrom = None
@@ -156,26 +189,14 @@ class BlkIscsi(object):
         self.target = None
         self.lun = None
 
-    @lock.lock('iscsiadm')
     def _login_portal(self):
-        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
-
-        if self.chap_username and self.chap_password:
-            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (self.target, self.server_hostname, self.server_port))
-            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (self.target, self.server_hostname, self.server_port, self.chap_username))
-            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (self.target, self.server_hostname, self.server_port, self.chap_password))
-
-        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (self.target, self.server_hostname, self.server_port))
-
-        device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (self.server_hostname, self.server_port, self.target, self.lun))
-
-        def wait_device_to_show(_):
-            return os.path.exists(device_path)
-
-        if not linux.wait_callback_success(wait_device_to_show, timeout=30, interval=0.5):
-            raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
-
-        return device_path
+        login = IscsiLogin()
+        login.server_hostname = self.server_hostname
+        login.server_port = self.server_port
+        login.target = self.target
+        login.chap_username = self.chap_username
+        login.chap_password = self.chap_password
+        return login.login()
 
     def to_xmlobject(self):
         device_path = self._login_portal()
@@ -1395,18 +1416,18 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    @lock.lock('iscsiadm')
     def login_iscsi_target(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (cmd.hostname, cmd.port))
 
-        if cmd.chapUsername and cmd.chapPassword:
-            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (cmd.target, cmd.hostname, cmd.port))
-            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (cmd.target, cmd.hostname, cmd.port, cmd.chapUsername))
-            shell.call('iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (cmd.target, cmd.hostname, cmd.port, cmd.chapPassword))
+        login = IscsiLogin()
+        login.server_hostname = cmd.hostname
+        login.server_port = cmd.port
+        login.chap_password = cmd.chapPassword
+        login.chap_username = cmd.chapUsername
+        login.target = cmd.target
+        login.login()
 
-        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (cmd.target, cmd.hostname, cmd.port))
-        return jsonobject.dump(LoginIscsiTargetRsp())
+        return jsonobject.dumps(LoginIscsiTargetRsp())
 
     def start(self):
         http_server = kvmagent.get_http_server()
