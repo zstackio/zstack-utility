@@ -151,6 +151,7 @@ class IscsiLogin(object):
         self.target = None
         self.chap_username = None
         self.chap_password = None
+        self.lun = 1
 
     @lock.lock('iscsiadm')
     def login(self):
