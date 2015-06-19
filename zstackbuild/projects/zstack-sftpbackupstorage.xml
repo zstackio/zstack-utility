@@ -4,6 +4,8 @@
     <property name="sftpbackupstorage.bdir" location="${build.dir}/sftpbackupstorage" />
     <property name="sftpbackupstorage.salt.dir" location="${salt.dir}/sftpbackupstorage/" />
     <property name="sftpbackupstorage.ansible.dir" location="${ansible.dir}/sftpbackupstorage/" />
+    <property name="sftpbackupstorage.virtualenv.file" location="${virtualenv.dir}/sftpbackupstorage-virtualenv.tar.bz" />
+    <property name="sftpbackupstorage.virtualenv.dir" location="${virtualenv.dir}/sftpbackupstorage" />
 
     <target name="build-sftpbackupstorage" >
         <makeDir dir="${sftpbackupstorage.bdir}" />
@@ -32,17 +34,6 @@
     </target>
 
     <target name="assemble-sftpbackupstorage">
-        <makeDir dir="${sftpbackupstorage.salt.dir}" />
-
-        <copy todir="${sftpbackupstorage.salt.dir}">
-            <fileset dir="${sftpbackupstorage.bdir}/salt">
-                <include name="**/*" />
-            </fileset>
-            <fileset dir="${sftpbackupstorage.bdir}/dist">
-                <include name="**/*" />
-            </fileset>
-        </copy>
-
         <copy file="${sftpbackupstorage.serviceFile}" todir="${sftpbackupstorage.salt.dir}" />
 
         <makeDir dir="${sftpbackupstorage.ansible.dir}" />
@@ -56,6 +47,36 @@
             </fileset>
         </copy>
 
+        <makeDir2 dir="${sftpbackupstorage.virtualenv.dir}" />
+        <exec executable="bash" failonerror="true">
+            <arg value="${create.virtualenv}" />
+            <arg value="${sftpbackupstorage.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv}" />
+            <arg value="${sftpbackupstorage.virtualenv.dir}" />
+            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv}" />
+            <arg value="${sftpbackupstorage.virtualenv.dir}" />
+            <arg value="${sftpbackupstorage.ansible.dir}/sftpbackupstorage*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${update.virtualenv}" />
+            <arg value="${sftpbackupstorage.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${sftpbackupstorage.virtualenv.file}" />
+            <arg value="sftpbackupstorage" />
+        </exec>
+
+        <copy file="${sftpbackupstorage.virtualenv.file}" todir="${sftpbackupstorage.ansible.dir}" />
         <copy file="${sftpbackupstorage.serviceFile}" todir="${sftpbackupstorage.ansible.dir}" />
     </target>
 </project>

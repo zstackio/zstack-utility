@@ -2,6 +2,8 @@
 
 <project name="zstack-dashboard builder" basedir="../">
     <property name="zstackdashboard.bdir" location="${build.dir}/zstackdashboard" />
+    <property name="zstackdashboard.virtualenv.file" location="${virtualenv.dir}/zstack-dashboard-virtualenv.tar.bz" />
+    <property name="zstackdashboard.virtualenv.dir" location="${virtualenv.dir}/zstack-dashboard" />
 
     <target name="build-dashboard" >
         <makeDir dir="${zstackdashboard.bdir}" />
@@ -36,5 +38,38 @@
                 <include name="**/*" />
             </fileset>
         </copy>
+
+        <makeDir2 dir="${zstackdashboard.virtualenv.dir}" />
+        <exec executable="bash" failonerror="true">
+            <arg value="${create.virtualenv}" />
+            <arg value="${zstackdashboard.virtualenv.dir}" />
+            <arg value="--system-site-packages" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv}" />
+            <arg value="${zstackdashboard.virtualenv.dir}" />
+            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv}" />
+            <arg value="${zstackdashboard.virtualenv.dir}" />
+            <arg value="${tools.dir}/zstack_dashboard*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${update.virtualenv}" />
+            <arg value="${zstackdashboard.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${zstackdashboard.virtualenv.file}" />
+            <arg value="zstack-dashboard" />
+        </exec>
+
+        <copy file="${zstackdashboard.virtualenv.file}" todir="${tools.dir}" />
+        <copy file="${zstackdashboard.serviceFile}" todir="${tools.dir}" />
     </target>
 </project>

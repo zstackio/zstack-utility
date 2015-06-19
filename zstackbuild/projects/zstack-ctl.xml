@@ -2,6 +2,8 @@
 
 <project name="zstackctl builder" basedir="../">
     <property name="zstackctl.bdir" location="${build.dir}/zstackctl" />
+    <property name="zstackctl.virtualenv.file" location="${virtualenv.dir}/zstackctl-virtualenv.tar.bz" />
+    <property name="zstackctl.virtualenv.dir" location="${virtualenv.dir}/zstackctl" />
 
     <target name="build-ctl" >
         <makeDir dir="${zstackctl.bdir}" />
@@ -31,5 +33,32 @@
                 <include name="**/*" />
             </fileset>
         </copy>
+
+        <makeDir2 dir="${zstackctl.virtualenv.dir}" />
+        <exec executable="bash" failonerror="true">
+            <arg value="${create.virtualenv}" />
+            <arg value="${zstackctl.virtualenv.dir}" />
+            <arg value="--system-site-packages" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv}" />
+            <arg value="${zstackctl.virtualenv.dir}" />
+            <arg value="${tools.dir}/zstackctl*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${update.virtualenv}" />
+            <arg value="${zstackctl.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${zstackctl.virtualenv.file}" />
+            <arg value="zstackctl" />
+        </exec>
+
+        <copy file="${zstackctl.virtualenv.file}" todir="${tools.dir}" />
+        <copy file="${zstackctl.binfile}" todir="${tools.dir}" />
     </target>
 </project>

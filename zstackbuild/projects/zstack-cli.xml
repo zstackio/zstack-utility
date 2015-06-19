@@ -2,6 +2,8 @@
 
 <project name="zstack-cli builder" basedir="../">
     <property name="zstackcli.bdir" location="${build.dir}/zstackcli" />
+    <property name="zstackcli.virtualenv.file" location="${virtualenv.dir}/zstackcli-virtualenv.tar.bz" />
+    <property name="zstackcli.virtualenv.dir" location="${virtualenv.dir}/zstackcli" />
 
     <target name="build-cli" >
         <makeDir dir="${zstackcli.bdir}" />
@@ -31,5 +33,38 @@
                 <include name="**/*" />
             </fileset>
         </copy>
+
+        <makeDir2 dir="${zstackcli.virtualenv.dir}" />
+        <exec executable="bash" failonerror="true">
+            <arg value="${create.virtualenv}" />
+            <arg value="${zstackcli.virtualenv.dir}" />
+            <arg value="--system-site-packages" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv}" />
+            <arg value="${zstackcli.virtualenv.dir}" />
+            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv}" />
+            <arg value="${zstackcli.virtualenv.dir}" />
+            <arg value="${tools.dir}/zstackcli*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${update.virtualenv}" />
+            <arg value="${zstackcli.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${zstackcli.virtualenv.file}" />
+            <arg value="zstackcli" />
+        </exec>
+
+        <copy file="${zstackcli.virtualenv.file}" todir="${tools.dir}" />
+        <copy file="${zstackcli.binfile}" todir="${tools.dir}" />
     </target>
 </project>

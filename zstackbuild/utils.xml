@@ -25,4 +25,15 @@
             <mkdir dir="@{dir}" />
         </sequential>
     </macrodef>
+    <macrodef name="makeDir2">
+        <attribute name="dir" />
+        <sequential>
+            <exec executable="rm">
+                <arg value="-rf" />
+                <arg value="@{dir}" />
+            </exec>
+            <echo message="rm -rf @{dir}" />
+            <mkdir dir="@{dir}" />
+        </sequential>
+    </macrodef>
 </project>
