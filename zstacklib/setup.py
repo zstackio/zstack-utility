@@ -24,7 +24,7 @@ Python support library for zstack""",
           'paramiko',
           'pyparsing<=1.5.7',
           'pickledb',
-          'urllib3>=1.9',
+          'urllib3==1.10.4',
           'netaddr'
       ],
       entry_points="""
