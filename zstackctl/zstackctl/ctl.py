@@ -523,7 +523,7 @@ class MySqlCommandLineQuery(object):
 
         sql = "%s\G" % self.sql
         if self.password:
-            cmd = '''mysql -u %s -p %s --host %s --port %s -t %s -e "%s"''' % (self.user, self.password, self.host,
+            cmd = '''mysql -u %s -p%s --host %s --port %s -t %s -e "%s"''' % (self.user, self.password, self.host,
                                                                                self.port, self.table, sql)
         else:
             cmd = '''mysql -u %s --host %s --port %s -t %s -e "%s"''' % (self.user, self.host, self.port, self.table, sql)
@@ -2052,7 +2052,7 @@ class UpgradeDbCmd(Command):
             db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', time.strftime('%Y-%m-%d-%H-%M-%S', time.gmtime()), 'backup.sql')
             shell('mkdir -p %s' % os.path.dirname(db_backup_path))
             if db_password:
-                shell('mysqldump -u %s -p %s --host %s --port %s zstack > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
+                shell('mysqldump -u %s -p%s --host %s --port %s zstack > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
             else:
                 shell('mysqldump -u %s --host %s --port %s zstack > %s' % (db_user, db_hostname, db_port, db_backup_path))
 
@@ -2060,7 +2060,7 @@ class UpgradeDbCmd(Command):
 
         def create_schema_version_table_if_needed():
             if db_password:
-                out = shell('''mysql -u %s -p %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
+                out = shell('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_password, db_hostname, db_port))
             else:
                 out = shell('''mysql -u %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
