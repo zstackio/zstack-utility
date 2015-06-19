@@ -614,7 +614,7 @@ class ShowStatusCmd(Command):
         def show_version():
             db_hostname, db_port, db_user, db_password = ctl.get_database_portal()
             if db_password:
-                out = shell('''mysql -u %s -p %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
+                out = shell('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_password, db_hostname, db_port))
             else:
                 out = shell('''mysql -u %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
