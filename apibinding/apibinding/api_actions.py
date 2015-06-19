@@ -810,6 +810,18 @@ class ChangePrimaryStorageStateAction(inventory.APIChangePrimaryStorageStateMsg)
         self.out = evt
         return self.out
 
+class SyncPrimaryStorageCapacityAction(inventory.APISyncPrimaryStorageCapacityMsg):
+    def __init__(self):
+        super(SyncPrimaryStorageCapacityAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncPrimaryStorageCapacityAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeletePrimaryStorageAction(inventory.APIDeletePrimaryStorageMsg):
     def __init__(self):
         super(DeletePrimaryStorageAction, self).__init__()
