@@ -3,6 +3,7 @@
 - hosts: "{{host}}"
   vars:
     - virtenv_path: "{{zstack_root}}/virtualenv/kvm/"
+    - virtenv_root: "{{zstack_root}}/virtualenv/"
     - kvm_root: "{{zstack_root}}/kvm"
     - file_root: "files/kvm"
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
@@ -42,6 +43,7 @@
       with_items:
         - "{{kvm_root}}"
         - "{{virtenv_path}}"
+        - "{{virtenv_root}}"
 
     - name: install kvm related packages on RedHat based OS
       when: ansible_os_family == 'RedHat'
@@ -135,9 +137,11 @@
 
     - name: install virtualenv
       pip: name=virtualenv extra_args="-i {{pip_url}}"
+      when: virtualenv_pkg is not defined
 
     - name: create virtualenv dirctory
       shell: "ls {{virtenv_path}}/bin/activate > /dev/null || virtualenv --system-site-packages {{virtenv_path}}"
+      when: virtualenv_pkg is not defined
 
     - name: enable libvirt daemon on Debian OS
       when: ansible_os_family == 'Debian' and chroot_env == 'false'
@@ -148,12 +152,22 @@
       notify:
         - install zstacklib
         - restart kvmagent
+      when: virtualenv_pkg is not defined
 
     - name: copy kvmagent
       copy: src="{{file_root}}/{{pkg_kvmagent}}" dest="{{kvm_root}}/{{pkg_kvmagent}}"
       notify:
         - install kvmagent
         - restart kvmagent
+      when: virtualenv_pkg is not defined
+
+    - name: copy kvm virutalenv package
+      copy: src="{{file_root}}/{{virtualenv_pkg}}" dest="{{kvm_root}}/{{virtualenv_pkg}}"
+      notify:
+        - install kvm virtualenv
+        - restart kvmagent
+      when: virtualenv_pkg is defined
+
 
     # only for os using init.d not systemd
     - name: copy kvm service file
@@ -174,6 +188,7 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{kvm_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+      when: virtualenv_pkg is not defined
 
     - name: restart redhat libvirtd
       service: name=libvirtd state=restarted enabled=yes
@@ -188,6 +203,11 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{kvm_root}}/{{pkg_kvmagent}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+      when: virtualenv_pkg is not defined
+
+    - name: install kvm virtualenv
+      shell: "rm -rf {{virtenv_root}}/kvm; tar jxf {{kvm_root}}/{{virtualenv_pkg}} -C {{virtenv_root}}"
+      when: virtualenv_pkg is defined
 
     - name: restart kvmagent
       service: name=zstack-kvmagent state=restarted enabled=yes

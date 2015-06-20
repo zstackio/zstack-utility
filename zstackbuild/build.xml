@@ -56,9 +56,9 @@
     <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
 
     <target name="prepare">
-        <makeDir dir="${build.dir}" />
-        <makeDir dir="${allinone.dir}" />
-        <makeDir dir="${tools.dir}" />
+        <makeDir2 dir="${build.dir}" />
+        <makeDir2 dir="${allinone.dir}" />
+        <makeDir2 dir="${tools.dir}" />
         <makeDir2 dir="${virtualenv.dir}" />
     </target>
 

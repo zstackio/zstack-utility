@@ -33,3 +33,4 @@ kvmagent/puppet/kvmpuppet/files/*
 test-result
 .idea/*
 *.iml
+zstackbuild/virtualenv/
