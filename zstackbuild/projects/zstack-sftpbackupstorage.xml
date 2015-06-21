@@ -4,8 +4,11 @@
     <property name="sftpbackupstorage.bdir" location="${build.dir}/sftpbackupstorage" />
     <property name="sftpbackupstorage.salt.dir" location="${salt.dir}/sftpbackupstorage/" />
     <property name="sftpbackupstorage.ansible.dir" location="${ansible.dir}/sftpbackupstorage/" />
-    <property name="sftpbackupstorage.virtualenv.file" location="${virtualenv.dir}/sftpbackupstorage-virtualenv.tar.bz" />
-    <property name="sftpbackupstorage.virtualenv.dir" location="${virtualenv.dir}/sftpbackupstorage" />
+    <property name="sftpbackupstorage.py26.virtualenv.file" location="${virtualenv.dir}/sftpbackupstorage-virtualenv-py26.tar.bz" />
+    <property name="sftpbackupstorage.py26.virtualenv.dir" location="${virtualenv.dir}/sftpbackupstorage" />
+    <property name="sftpbackupstorage.py27.virtualenv.file" location="${chroot.virtualenv.dir}/sftpbackupstorage-virtualenv-py27.tar.bz" />
+    <property name="sftpbackupstorage.p27.virtualenv.chroot.dir" location="/virtualenv/sftpbackupstorage" />
+    <property name="sftpbackupstorage.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/sftpbackupstorage" />
 
     <target name="build-sftpbackupstorage" >
         <makeDir dir="${sftpbackupstorage.bdir}" />
@@ -47,36 +50,68 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${sftpbackupstorage.virtualenv.dir}" />
+        <makeDir2 dir="${sftpbackupstorage.py26.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${sftpbackupstorage.virtualenv.dir}" />
+            <arg value="${sftpbackupstorage.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${sftpbackupstorage.virtualenv.dir}" />
+            <arg value="${sftpbackupstorage.py26.virtualenv.dir}" />
             <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${sftpbackupstorage.virtualenv.dir}" />
+            <arg value="${sftpbackupstorage.py26.virtualenv.dir}" />
             <arg value="${sftpbackupstorage.ansible.dir}/sftpbackupstorage*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${sftpbackupstorage.virtualenv.dir}" />
+            <arg value="${sftpbackupstorage.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${sftpbackupstorage.virtualenv.file}" />
+            <arg value="${sftpbackupstorage.py26.virtualenv.file}" />
             <arg value="sftpbackupstorage" />
         </exec>
 
-        <copy file="${sftpbackupstorage.virtualenv.file}" todir="${sftpbackupstorage.ansible.dir}" />
+        <copy file="${sftpbackupstorage.py26.virtualenv.file}" todir="${sftpbackupstorage.ansible.dir}" />
+        <exec executable="bash" failonerror="true">
+            <arg value="${create.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${sftpbackupstorage.p27.virtualenv.chroot.dir}" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${sftpbackupstorage.p27.virtualenv.chroot.dir}" />
+            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${sftpbackupstorage.p27.virtualenv.chroot.dir}" />
+            <arg value="${sftpbackupstorage.ansible.dir}/sftpbackupstorage*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${update.virtualenv}" />
+            <arg value="${sftpbackupstorage.p27.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${sftpbackupstorage.py27.virtualenv.file}" />
+            <arg value="sftpbackupstorage" />
+        </exec>
+
+        <copy file="${sftpbackupstorage.py27.virtualenv.file}" todir="${sftpbackupstorage.ansible.dir}" />
         <copy file="${sftpbackupstorage.serviceFile}" todir="${sftpbackupstorage.ansible.dir}" />
     </target>
 </project>

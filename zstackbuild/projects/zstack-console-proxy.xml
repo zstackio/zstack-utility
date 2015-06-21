@@ -4,8 +4,11 @@
     <property name="consoleproxy.bdir" location="${build.dir}/consoleproxy" />
     <property name="consoleproxy.salt.dir" location="${salt.dir}/consoleproxy" />
     <property name="consoleproxy.ansible.dir" location="${ansible.dir}/consoleproxy" />
-    <property name="consoleproxy.virtualenv.file" location="${virtualenv.dir}/consoleproxy-virtualenv.tar.bz" />
-    <property name="consoleproxy.virtualenv.dir" location="${virtualenv.dir}/consoleproxy" />
+    <property name="consoleproxy.py26.virtualenv.file" location="${virtualenv.dir}/consoleproxy-virtualenv-py26.tar.bz" />
+    <property name="consoleproxy.py26.virtualenv.dir" location="${virtualenv.dir}/consoleproxy" />
+    <property name="consoleproxy.py27.virtualenv.file" location="${chroot.virtualenv.dir}/consoleproxy-virtualenv-py27.tar.bz" />
+    <property name="consoleproxy.p27.virtualenv.chroot.dir" location="/virtualenv/consoleproxy" />
+    <property name="consoleproxy.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/consoleproxy" />
 
     <target name="build-consoleproxy" >
         <makeDir dir="${consoleproxy.bdir}" />
@@ -58,37 +61,68 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${consoleproxy.virtualenv.dir}" />
+        <makeDir2 dir="${consoleproxy.py26.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${consoleproxy.virtualenv.dir}" />
-            <arg value="--system-site-packages" />
+            <arg value="${consoleproxy.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${consoleproxy.virtualenv.dir}" />
+            <arg value="${consoleproxy.py26.virtualenv.dir}" />
             <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${consoleproxy.virtualenv.dir}" />
+            <arg value="${consoleproxy.py26.virtualenv.dir}" />
             <arg value="${consoleproxy.ansible.dir}/consoleproxy*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${consoleproxy.virtualenv.dir}" />
+            <arg value="${consoleproxy.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${consoleproxy.virtualenv.file}" />
+            <arg value="${consoleproxy.py26.virtualenv.file}" />
             <arg value="consoleproxy" />
         </exec>
 
-        <copy file="${consoleproxy.virtualenv.file}" todir="${consoleproxy.ansible.dir}" />
+        <copy file="${consoleproxy.py26.virtualenv.file}" todir="${consoleproxy.ansible.dir}" />
+        <exec executable="bash" failonerror="true">
+            <arg value="${create.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${consoleproxy.p27.virtualenv.chroot.dir}" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${consoleproxy.p27.virtualenv.chroot.dir}" />
+            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${consoleproxy.p27.virtualenv.chroot.dir}" />
+            <arg value="${consoleproxy.ansible.dir}/consoleproxy*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${update.virtualenv}" />
+            <arg value="${consoleproxy.p27.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${consoleproxy.py27.virtualenv.file}" />
+            <arg value="consoleproxy" />
+        </exec>
+
+        <copy file="${consoleproxy.py27.virtualenv.file}" todir="${consoleproxy.ansible.dir}" />
         <copy file="${consoleproxy.serviceFile}" todir="${consoleproxy.ansible.dir}" />
     </target>
 </project>

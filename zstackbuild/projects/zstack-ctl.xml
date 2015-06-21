@@ -2,8 +2,11 @@
 
 <project name="zstackctl builder" basedir="../">
     <property name="zstackctl.bdir" location="${build.dir}/zstackctl" />
-    <property name="zstackctl.virtualenv.file" location="${virtualenv.dir}/zstackctl-virtualenv.tar.bz" />
-    <property name="zstackctl.virtualenv.dir" location="${virtualenv.dir}/zstackctl" />
+    <property name="zstackctl.py26.virtualenv.file" location="${virtualenv.dir}/zstackctl-virtualenv-py26.tar.bz" />
+    <property name="zstackctl.py26.virtualenv.dir" location="${virtualenv.dir}/zstackctl" />
+    <property name="zstackctl.py27.virtualenv.file" location="${chroot.virtualenv.dir}/zstackctl-virtualenv-py27.tar.bz" />
+    <property name="zstackctl.p27.virtualenv.chroot.dir" location="/virtualenv/zstackctl" />
+    <property name="zstackctl.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/zstackctl" />
 
     <target name="build-ctl" >
         <makeDir dir="${zstackctl.bdir}" />
@@ -34,31 +37,56 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${zstackctl.virtualenv.dir}" />
+        <makeDir2 dir="${zstackctl.py26.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${zstackctl.virtualenv.dir}" />
-            <arg value="--system-site-packages" />
+            <arg value="${zstackctl.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${zstackctl.virtualenv.dir}" />
+            <arg value="${zstackctl.py26.virtualenv.dir}" />
             <arg value="${tools.dir}/zstackctl*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${zstackctl.virtualenv.dir}" />
+            <arg value="${zstackctl.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${zstackctl.virtualenv.file}" />
+            <arg value="${zstackctl.py26.virtualenv.file}" />
             <arg value="zstackctl" />
         </exec>
 
-        <copy file="${zstackctl.virtualenv.file}" todir="${tools.dir}" />
+        <copy file="${zstackctl.py26.virtualenv.file}" todir="${tools.dir}" />
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${create.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${zstackctl.p27.virtualenv.chroot.dir}" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${zstackctl.p27.virtualenv.chroot.dir}" />
+            <arg value="${tools.dir}/zstackctl*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${update.virtualenv}" />
+            <arg value="${zstackctl.p27.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${zstackctl.py27.virtualenv.file}" />
+            <arg value="zstackctl" />
+        </exec>
+
+        <copy file="${zstackctl.py27.virtualenv.file}" todir="${tools.dir}" />
         <copy file="${zstackctl.binfile}" todir="${tools.dir}" />
     </target>
 </project>

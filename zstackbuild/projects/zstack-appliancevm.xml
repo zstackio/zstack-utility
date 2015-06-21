@@ -3,8 +3,8 @@
 <project name="zstack-appliancevm builder" basedir="../">
     <property name="appliancevm.bdir" location="${build.dir}/appliancevm" />
     <property name="appliancevm.ansible.dir" location="${ansible.dir}/appliancevm/" />
-    <property name="appliancevm.virtualenv.file" location="${virtualenv.dir}/appliancevm-virtualenv.tar.bz" />
-    <property name="appliancevm.virtualenv.dir" location="${virtualenv.dir}/appliancevm" />
+    <property name="appliancevm.py26.virtualenv.file" location="${virtualenv.dir}/appliancevm-virtualenv-py26.tar.bz" />
+    <property name="appliancevm.py26.virtualenv.dir" location="${virtualenv.dir}/appliancevm" />
 
     <target name="build-appliancevm" >
         <makeDir dir="${appliancevm.bdir}" />
@@ -43,36 +43,36 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${appliancevm.virtualenv.dir}" />
+        <makeDir2 dir="${appliancevm.py26.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${appliancevm.virtualenv.dir}" />
+            <arg value="${appliancevm.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${appliancevm.virtualenv.dir}" />
+            <arg value="${appliancevm.py26.virtualenv.dir}" />
             <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${appliancevm.virtualenv.dir}" />
+            <arg value="${appliancevm.py26.virtualenv.dir}" />
             <arg value="${appliancevm.ansible.dir}/appliancevm*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${appliancevm.virtualenv.dir}" />
+            <arg value="${appliancevm.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${appliancevm.virtualenv.file}" />
+            <arg value="${appliancevm.py26.virtualenv.file}" />
             <arg value="appliancevm" />
         </exec>
 
-        <copy file="${appliancevm.virtualenv.file}" todir="${appliancevm.ansible.dir}" />
+        <copy file="${appliancevm.py26.virtualenv.file}" todir="${appliancevm.ansible.dir}" />
         <copy file="${appliancevm.serviceFile}" todir="${appliancevm.ansible.dir}" />
     </target>
 </project>

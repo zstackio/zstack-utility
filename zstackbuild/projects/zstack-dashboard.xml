@@ -2,8 +2,12 @@
 
 <project name="zstack-dashboard builder" basedir="../">
     <property name="zstackdashboard.bdir" location="${build.dir}/zstackdashboard" />
-    <property name="zstackdashboard.virtualenv.file" location="${virtualenv.dir}/zstack-dashboard-virtualenv.tar.bz" />
-    <property name="zstackdashboard.virtualenv.dir" location="${virtualenv.dir}/zstack-dashboard" />
+    <property name="zstackdashboard.py26.virtualenv.file" location="${virtualenv.dir}/zstack-dashboard-virtualenv-py26.tar.bz" />
+    <property name="zstackdashboard.py26.virtualenv.dir" location="${virtualenv.dir}/zstack-dashboard" />
+    <property name="zstackdashboard.py27.virtualenv.file" location="${chroot.virtualenv.dir}/zstack-dashboard-virtualenv-py27.tar.bz" />
+    <property name="zstackdashboard.p27.virtualenv.chroot.dir" location="/virtualenv/zstack-dashboard" />
+    <property name="zstackdashboard.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/zstack-dashboard" />
+
 
     <target name="build-dashboard" >
         <makeDir dir="${zstackdashboard.bdir}" />
@@ -39,37 +43,68 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${zstackdashboard.virtualenv.dir}" />
+        <makeDir2 dir="${zstackdashboard.py26.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${zstackdashboard.virtualenv.dir}" />
-            <arg value="--system-site-packages" />
+            <arg value="${zstackdashboard.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${zstackdashboard.virtualenv.dir}" />
+            <arg value="${zstackdashboard.py26.virtualenv.dir}" />
             <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${zstackdashboard.virtualenv.dir}" />
+            <arg value="${zstackdashboard.py26.virtualenv.dir}" />
             <arg value="${tools.dir}/zstack_dashboard*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${zstackdashboard.virtualenv.dir}" />
+            <arg value="${zstackdashboard.py26.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${zstackdashboard.virtualenv.file}" />
+            <arg value="${zstackdashboard.py26.virtualenv.file}" />
             <arg value="zstack-dashboard" />
         </exec>
 
-        <copy file="${zstackdashboard.virtualenv.file}" todir="${tools.dir}" />
+        <copy file="${zstackdashboard.py26.virtualenv.file}" todir="${tools.dir}" />
+        <exec executable="bash" failonerror="true">
+            <arg value="${create.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${zstackdashboard.p27.virtualenv.chroot.dir}" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${zstackdashboard.p27.virtualenv.chroot.dir}" />
+            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${install.lib.to.virtualenv.inchroot}" />
+            <arg value="${centos7_chroot_env}" />
+            <arg value="${zstackdashboard.p27.virtualenv.chroot.dir}" />
+            <arg value="${tools.dir}/zstack_dashboard*.tar.gz" />
+        </exec>
+
+        <exec executable="bash" failonerror="true">
+            <arg value="${update.virtualenv}" />
+            <arg value="${zstackdashboard.p27.virtualenv.dir}" />
+        </exec>
+
+        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${zstackdashboard.py27.virtualenv.file}" />
+            <arg value="zstack-dashboard" />
+        </exec>
+
+        <copy file="${zstackdashboard.py27.virtualenv.file}" todir="${tools.dir}" />
         <copy file="${zstackdashboard.serviceFile}" todir="${tools.dir}" />
     </target>
 </project>
