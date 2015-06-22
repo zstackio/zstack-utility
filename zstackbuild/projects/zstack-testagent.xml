@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="zstack-testagent builder" basedir="../">
     <property name="testagent.bdir" location="${woodpecker.dir}/zstacktestagent-dist" />
-    <property name="testagent.tar.dir" location="${woodpecker.dir}/zstacktestagent-tar/" />
+    <property name="testagent.tar.dir" location="${woodpecker.dir}/zstacktestagent/" />
     <property name="testagent.tar.file" location="${woodpecker.dir}/zstacktestagent.tar.bz" />
 
     <target name="build-testagent" depends="build-zstacklib">
@@ -66,7 +66,7 @@
         <exec executable="tar" dir="${woodpecker.dir}" failonerror="true">
             <arg value="jcf" />
             <arg value="${testagent.tar.file}" />
-            <arg value="${testagent.tar.dir}" />
+            <arg value="zstacktestagent-tar" />
         </exec>
 
         <echo message="successfully build zstack-testagent package at ${testagent.tarfile}" />
