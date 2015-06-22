@@ -54,6 +54,7 @@
     <import file="${basedir}/projects/zstack-cli.xml" optional="false" />
     <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
+    <import file="${basedir}/projects/build-pypi-source.xml" optional="false" />
 
     <target name="prepare">
         <makeDir dir="${build.dir}" />

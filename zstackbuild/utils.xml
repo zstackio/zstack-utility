@@ -21,6 +21,7 @@
     <macrodef name="makeDir">
         <attribute name="dir" />
         <sequential>
+            <echo message="rm -rf @{dir}" />
             <exec executable="rm">
                 <arg value="-rf" />
                 <arg value="@{dir}" />

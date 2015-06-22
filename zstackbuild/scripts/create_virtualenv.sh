@@ -7,7 +7,7 @@ ZSTACK_PYPI_URL=${ZSTACK_PYPI_URL-$DEFAULT_PYPI}
 virtualenv_path=$1
 shift
 
-which virtualenv >/dev/null 2>&1 || pip install -i ${ZSTACK_PYPI_URL} virtualenv==12.1.1
+which virtualenv >/dev/null 2>&1 || pip install -i ${ZSTACK_PYPI_URL} virtualenv==13.0.3
 
 virtualenv $virtualenv_path
 
