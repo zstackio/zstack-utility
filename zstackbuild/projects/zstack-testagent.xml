@@ -2,7 +2,7 @@
 <project name="zstack-testagent builder" basedir="../">
     <property name="testagent.bdir" location="${woodpecker.dir}/zstacktestagent-dist" />
     <property name="testagent.tar.dir" location="${woodpecker.dir}/zstacktestagent-tar/" />
-    <property name="testagent.tarfile" location="${woodpecker.dir}/zstacktestagent.tar.bz" />
+    <property name="testagent.tar.file" location="${woodpecker.dir}/zstacktestagent.tar.bz" />
 
     <target name="build-testagent" depends="build-zstacklib">
         <makeDir dir="${testagent.bdir}" />
