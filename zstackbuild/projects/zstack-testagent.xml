@@ -2,7 +2,7 @@
 <project name="zstack-testagent builder" basedir="../">
     <property name="testagent.bdir" location="${woodpecker.dir}/zstacktestagent-dist" />
     <property name="testagent.tar.dir" location="${woodpecker.dir}/zstacktestagent-tar/" />
-    <property name="testagent.tarfile" location="${woodpecker.dir}/zstacktestagent.tar.gz" />
+    <property name="testagent.tarfile" location="${woodpecker.dir}/zstacktestagent.tar.bz" />
 
     <target name="build-testagent" depends="build-zstacklib">
         <makeDir dir="${testagent.bdir}" />
@@ -63,11 +63,12 @@
             <arg value="${pypi.source.tar.file}" />
         </exec>
 
-        <tar destfile="${testagent.tarfile}" compression="gzip">
-            <tarfileset dir="${testagent.tar.dir}" prefix="zstacktestagent">
-                <include name="**/*" />
-            </tarfileset>
-        </tar>
+        <exec executable="tar" dir="${woodpecker.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${testagent.tar.file}" />
+            <arg value="${testagent.tar.dir}" />
+        </exec>
+
         <echo message="successfully build zstack-testagent package at ${testagent.tarfile}" />
     </target>
 
