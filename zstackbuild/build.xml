@@ -8,7 +8,7 @@
     <property file="build.properties" />
     <property file="${zstack.source}/VERSION" />
     <property name="build.dir" location="${basedir}/target" />
-    <property name="virtualenv.dir" location="${build.dir}/virtualenv" />
+    <property name="virtualenv.dir" location="${basedir}/virtualenv" />
     <property name="war.file" location="${build.dir}/zstack.war" />
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
