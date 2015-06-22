@@ -58,6 +58,11 @@
         <!--
         <tar destfile="${testagent.tarfile}" basedir="${testagent.tar.dir}" compression="gzip">
             -->
+        <exec executable="tar" dir="${testagent.tar.dir}" failonerror="true">
+            <arg value="jxf" />
+            <arg value="${pypi.source.tar.file}" />
+        </exec>
+
         <tar destfile="${testagent.tarfile}" compression="gzip">
             <tarfileset dir="${testagent.tar.dir}" prefix="zstacktestagent">
                 <include name="**/*" />

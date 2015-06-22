@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="install all zstack python agent into local virtualenv" basedir="../">
+    <target name="install-all-python-libs">
+        <property name="virtualenv.build.dir" location="${build.dir}/zstack-virtualenv" />
+        <exec executable="bash" dir="${build.dir}" failonerror="true">
+            <arg value="${create.virtualenv}" />
+            <arg value="${virtualenv.build.dir}" />
+            <arg value="${zstacklib.ansible.dir}/*.tar.gz" />
+            <arg value="${sftpbackupstorage.ansible.dir}/*.tar.gz" />
+            <arg value="${iscsi.ansible.dir}/*.tar.gz" />
+            <arg value="${kvmagent.ansible.dir}/*.tar.gz" />
+            <arg value="${consoleproxy.ansible.dir}/*.tar.gz" />
+            <arg value="${appliancevm.ansible.dir}/*.tar.gz" />
+            <arg value="${virtualrouter.ansible.dir}/*.tar.gz" />
+            <arg value="${tools.dir}/*.tar.gz" />
+        </exec>
+        <echo message="successfully install python libs into ${virtualenv.build.dir}. You might want to generate requirements.txt by ${virtualenv.build.dir}/bin/pip freeze > requirements.txt . "/>
+    </target>
+</project>
