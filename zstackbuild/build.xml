@@ -8,7 +8,6 @@
     <property file="build.properties" />
     <property file="${zstack.source}/VERSION" />
     <property name="build.dir" location="${basedir}/target" />
-    <property name="virtualenv.dir" location="${basedir}/virtualenv" />
     <property name="war.file" location="${build.dir}/zstack.war" />
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
@@ -59,7 +58,6 @@
         <makeDir dir="${build.dir}" />
         <makeDir dir="${allinone.dir}" />
         <makeDir dir="${tools.dir}" />
-        <makeDir2 dir="${virtualenv.dir}" />
     </target>
 
     <target name="unzip-war">

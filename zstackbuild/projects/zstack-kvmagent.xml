@@ -4,8 +4,6 @@
     <property name="kvmagent.bdir" location="${build.dir}/kvmagent" />
     <property name="kvmagent.salt.dir" location="${salt.dir}/kvm/" />
     <property name="kvmagent.ansible.dir" location="${ansible.dir}/kvm/" />
-    <property name="kvmagent.virtualenv.file" location="${virtualenv.dir}/kvm-virtualenv.tar.bz" />
-    <property name="kvmagent.virtualenv.dir" location="${virtualenv.dir}/kvm" />
 
     <target name="build-kvmagent" >
         <makeDir dir="${kvmagent.bdir}" />
@@ -41,6 +39,20 @@
     </target>
 
     <target name="assemble-kvmagent">
+        <makeDir dir="${kvmagent.salt.dir}" />
+
+        <copy todir="${kvmagent.salt.dir}">
+            <fileset dir="${kvmagent.bdir}/salt">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${kvmagent.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+
+        <copy file="${kvmagent.serviceFile}" todir="${kvmagent.salt.dir}" />
+
         <makeDir dir="${kvmagent.ansible.dir}" />
 
         <copy todir="${kvmagent.ansible.dir}">
@@ -52,37 +64,7 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${kvmagent.virtualenv.dir}" />
-        <exec executable="bash" failonerror="true">
-            <arg value="${create.virtualenv}" />
-            <arg value="${kvmagent.virtualenv.dir}" />
-            <arg value="--system-site-packages" />
-        </exec>
 
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${kvmagent.virtualenv.dir}" />
-            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${kvmagent.virtualenv.dir}" />
-            <arg value="${kvmagent.ansible.dir}/kvmagent*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${update.virtualenv}" />
-            <arg value="${kvmagent.virtualenv.dir}" />
-        </exec>
-
-        <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
-            <arg value="jcf" />
-            <arg value="${kvmagent.virtualenv.file}" />
-            <arg value="kvm" />
-        </exec>
-
-        <copy file="${kvmagent.virtualenv.file}" todir="${kvmagent.ansible.dir}" />
         <copy file="${kvmagent.serviceFile}" todir="${kvmagent.ansible.dir}" />
     </target>
 </project>
