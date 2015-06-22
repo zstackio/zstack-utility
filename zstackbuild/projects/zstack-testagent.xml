@@ -56,7 +56,7 @@
         </copy>
 
         <!--
-        <tar destfile="${testagent.tarfile}" basedir="${testagent.tar.dir}" compression="gzip">
+        <tar destfile="${testagent.tar.file}" basedir="${testagent.tar.dir}" compression="gzip">
             -->
         <exec executable="tar" dir="${testagent.tar.dir}" failonerror="true">
             <arg value="jxf" />
@@ -69,7 +69,7 @@
             <arg value="zstacktestagent" />
         </exec>
 
-        <echo message="successfully build zstack-testagent package at ${testagent.tarfile}" />
+        <echo message="successfully build zstack-testagent package at ${testagent.tar.file}" />
     </target>
 
     <target name="package-testagent" depends="build-testagent, assemble-testagent" />

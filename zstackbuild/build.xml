@@ -105,7 +105,7 @@
     <target name="all" depends="build-war, build-testconf, buildtestagent">
         <echo message="--------------------------------------------------------------------" />
         <echo message="successfully build zstack.war at ${build.dir}/zstack.war" />
-        <echo message="successfully build zstacktestagent.tar.gz at ${testagent.tarfile}" />
+        <echo message="successfully build zstacktestagent.tar.bz at ${testagent.tar.file}" />
         <echo message="successfully copy zstck.properties conf to ${testconf.dir}" />
         <echo message="--------------------------------------------------------------------" />
     </target>
