@@ -69,7 +69,7 @@
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
             <arg value="${iscsi.virtualenv.file}" />
-            <arg value="iscsi" />
+            <arg value="${iscsi.virtualenv.dir}" />
         </exec>
 
         <copy file="${iscsi.virtualenv.file}" todir="${iscsi.ansible.dir}" />
