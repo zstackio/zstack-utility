@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="build pypi local source based on requirement file" basedir="../">
+    <target name="build-pypi-source">
+        <echo message="build pypi source might be more than 10 mins. export ZSTACK_PYPI_URL to set pypi index-url, before building pypi source." />
+        <property name="build.dir" location="${basedir}/target" />
+        <property name="pypi.build.dir" location="${build.dir}/pypi" />
+        <property name="pypi.new.source.file" location="${build.dir}/pypi.tar.bz" />
+        <makeDir dir="${pypi.build.dir}" />
+        <exec executable="bash" dir="${build.dir}" failonerror="true">
+            <arg value="${create.pypi.source}" />
+            <arg value="${pypi.build.dir}" />
+            <arg value="${pip2pi.requirements.file}" />
+        </exec>
+        <exec executable="tar" dir="${build.dir}" failonerror="true">
+            <arg value="jcf" />
+            <arg value="${pypi.new.source.file}" />
+            <arg value="${pypi.build.dir}" />
+        </exec>
+        <echo message="successfully build pypi source tar ball at ${pypi.new.source.file}. You might want to manually copy it and replace ${pypi.source.tar.file}" />
+    </target>
+</project>
