@@ -4,11 +4,8 @@
     <property name="virtualrouter.bdir" location="${build.dir}/virtualrouter" />
     <property name="virtualrouter.salt.dir" location="${salt.dir}/virtualrouter/" />
     <property name="virtualrouter.ansible.dir" location="${ansible.dir}/virtualrouter/" />
-    <property name="virtualrouter.py26.virtualenv.file" location="${virtualenv.dir}/virtualrouter-virtualenv-py26.tar.bz" />
-    <property name="virtualrouter.py26.virtualenv.dir" location="${virtualenv.dir}/virtualrouter" />
-    <property name="virtualrouter.py27.virtualenv.file" location="${chroot.virtualenv.dir}/virtualrouter-virtualenv-py27.tar.bz" />
-    <property name="virtualrouter.p27.virtualenv.chroot.dir" location="/virtualenv/virtualrouter" />
-    <property name="virtualrouter.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/virtualrouter" />
+    <property name="virtualrouter.virtualenv.file" location="${virtualenv.dir}/virtualrouter-virtualenv.tar.bz" />
+    <property name="virtualrouter.virtualenv.dir" location="${virtualenv.dir}/virtualrouter" />
 
     <target name="build-virtualrouter" >
         <makeDir dir="${virtualrouter.bdir}" />
@@ -61,68 +58,36 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${virtualrouter.py26.virtualenv.dir}" />
+        <makeDir2 dir="${virtualrouter.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${virtualrouter.py26.virtualenv.dir}" />
+            <arg value="${virtualrouter.virtualenv.dir}" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${virtualrouter.py26.virtualenv.dir}" />
+            <arg value="${virtualrouter.virtualenv.dir}" />
             <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${virtualrouter.py26.virtualenv.dir}" />
+            <arg value="${virtualrouter.virtualenv.dir}" />
             <arg value="${virtualrouter.ansible.dir}/virtualrouter*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${virtualrouter.py26.virtualenv.dir}" />
+            <arg value="${virtualrouter.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${virtualrouter.py26.virtualenv.file}" />
+            <arg value="${virtualrouter.virtualenv.file}" />
             <arg value="virtualrouter" />
         </exec>
 
-        <copy file="${virtualrouter.py26.virtualenv.file}" todir="${virtualrouter.ansible.dir}" />
-        <exec executable="bash" failonerror="true">
-            <arg value="${create.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${virtualrouter.p27.virtualenv.chroot.dir}" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${virtualrouter.p27.virtualenv.chroot.dir}" />
-            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${virtualrouter.p27.virtualenv.chroot.dir}" />
-            <arg value="${virtualrouter.ansible.dir}/virtualrouter*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${update.virtualenv}" />
-            <arg value="${virtualrouter.p27.virtualenv.dir}" />
-        </exec>
-
-        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
-            <arg value="jcf" />
-            <arg value="${virtualrouter.py27.virtualenv.file}" />
-            <arg value="virtualrouter" />
-        </exec>
-
-        <copy file="${virtualrouter.py27.virtualenv.file}" todir="${virtualrouter.ansible.dir}" />
+        <copy file="${virtualrouter.virtualenv.file}" todir="${virtualrouter.ansible.dir}" />
         <copy file="${virtualrouter.serviceFile}" todir="${virtualrouter.ansible.dir}" />
     </target>
 </project>

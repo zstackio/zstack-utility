@@ -4,11 +4,8 @@
     <property name="kvmagent.bdir" location="${build.dir}/kvmagent" />
     <property name="kvmagent.salt.dir" location="${salt.dir}/kvm/" />
     <property name="kvmagent.ansible.dir" location="${ansible.dir}/kvm/" />
-    <property name="kvmagent.py26.virtualenv.file" location="${virtualenv.dir}/kvm-virtualenv-py26.tar.bz" />
-    <property name="kvmagent.py26.virtualenv.dir" location="${virtualenv.dir}/kvm" />
-    <property name="kvmagent.py27.virtualenv.file" location="${chroot.virtualenv.dir}/kvm-virtualenv-py27.tar.bz" />
-    <property name="kvmagent.p27.virtualenv.chroot.dir" location="/virtualenv/kvm" />
-    <property name="kvmagent.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/kvm" />
+    <property name="kvmagent.virtualenv.file" location="${virtualenv.dir}/kvm-virtualenv.tar.bz" />
+    <property name="kvmagent.virtualenv.dir" location="${virtualenv.dir}/kvm" />
 
     <target name="build-kvmagent" >
         <makeDir dir="${kvmagent.bdir}" />
@@ -44,8 +41,6 @@
     </target>
 
     <target name="assemble-kvmagent">
-        <checkFile file="${centos7_chroot_env}" />
-
         <makeDir dir="${kvmagent.ansible.dir}" />
 
         <copy todir="${kvmagent.ansible.dir}">
@@ -57,70 +52,37 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${kvmagent.py26.virtualenv.dir}" />
+        <makeDir2 dir="${kvmagent.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${kvmagent.py26.virtualenv.dir}" />
+            <arg value="${kvmagent.virtualenv.dir}" />
             <arg value="--system-site-packages" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${kvmagent.py26.virtualenv.dir}" />
+            <arg value="${kvmagent.virtualenv.dir}" />
             <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${kvmagent.py26.virtualenv.dir}" />
+            <arg value="${kvmagent.virtualenv.dir}" />
             <arg value="${kvmagent.ansible.dir}/kvmagent*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${kvmagent.py26.virtualenv.dir}" />
+            <arg value="${kvmagent.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${kvmagent.py26.virtualenv.file}" />
+            <arg value="${kvmagent.virtualenv.file}" />
             <arg value="kvm" />
         </exec>
 
-        <copy file="${kvmagent.py26.virtualenv.file}" todir="${kvmagent.ansible.dir}" />
-        <exec executable="bash" failonerror="true">
-            <arg value="${create.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${kvmagent.p27.virtualenv.chroot.dir}" />
-            <arg value="--system-site-packages" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${kvmagent.p27.virtualenv.chroot.dir}" />
-            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${kvmagent.p27.virtualenv.chroot.dir}" />
-            <arg value="${kvmagent.ansible.dir}/kvmagent*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${update.virtualenv}" />
-            <arg value="${kvmagent.p27.virtualenv.dir}" />
-        </exec>
-
-        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
-            <arg value="jcf" />
-            <arg value="${kvmagent.py27.virtualenv.file}" />
-            <arg value="kvm" />
-        </exec>
-
-        <copy file="${kvmagent.py27.virtualenv.file}" todir="${kvmagent.ansible.dir}" />
+        <copy file="${kvmagent.virtualenv.file}" todir="${kvmagent.ansible.dir}" />
         <copy file="${kvmagent.serviceFile}" todir="${kvmagent.ansible.dir}" />
     </target>
 </project>

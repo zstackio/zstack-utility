@@ -3,11 +3,8 @@
     <property name="testagent.bdir" location="${woodpecker.dir}/zstacktestagent-dist" />
     <property name="testagent.tar.dir" location="${woodpecker.dir}/zstacktestagent-tar/" />
     <property name="testagent.tarfile" location="${woodpecker.dir}/zstacktestagent.tar.gz" />
-    <property name="testagent.py26.virtualenv.file" location="${virtualenv.dir}/testagent-virtualenv-py26.tar.bz" />
-    <property name="testagent.py26.virtualenv.dir" location="${virtualenv.dir}/testagent" />
-    <property name="testagent.py27.virtualenv.file" location="${chroot.virtualenv.dir}/testagent-virtualenv-py27.tar.bz" />
-    <property name="testagent.p27.virtualenv.chroot.dir" location="/virtualenv/testagent" />
-    <property name="testagent.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/testagent" />
+    <property name="testagent.virtualenv.file" location="${virtualenv.dir}/testagent-virtualenv.tar.bz" />
+    <property name="testagent.virtualenv.dir" location="${virtualenv.dir}/testagent" />
 
     <target name="build-testagent" depends="build-zstacklib">
         <makeDir dir="${testagent.bdir}" />
@@ -57,68 +54,36 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${testagent.py26.virtualenv.dir}" />
+        <makeDir2 dir="${testagent.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${testagent.py26.virtualenv.dir}" />
+            <arg value="${testagent.virtualenv.dir}" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${testagent.py26.virtualenv.dir}" />
+            <arg value="${testagent.virtualenv.dir}" />
             <arg value="${testagent.tar.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${testagent.py26.virtualenv.dir}" />
+            <arg value="${testagent.virtualenv.dir}" />
             <arg value="${testagent.tar.dir}/zstacktestagent*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${testagent.py26.virtualenv.dir}" />
+            <arg value="${testagent.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${testagent.py26.virtualenv.file}" />
+            <arg value="${testagent.virtualenv.file}" />
             <arg value="testagent" />
         </exec>
 
-        <copy file="${testagent.py26.virtualenv.file}" todir="${testagent.tar.dir}" />
-        <exec executable="bash" failonerror="true">
-            <arg value="${create.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${testagent.p27.virtualenv.chroot.dir}" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${testagent.p27.virtualenv.chroot.dir}" />
-            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${testagent.p27.virtualenv.chroot.dir}" />
-            <arg value="${testagent.tar.dir}/zstacktestagent*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${update.virtualenv}" />
-            <arg value="${testagent.p27.virtualenv.dir}" />
-        </exec>
-
-        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
-            <arg value="jcf" />
-            <arg value="${testagent.py27.virtualenv.file}" />
-            <arg value="testagent" />
-        </exec>
-
-        <copy file="${testagent.py27.virtualenv.file}" todir="${testagent.tar.dir}" />
+        <copy file="${testagent.virtualenv.file}" todir="${testagent.tar.dir}" />
         <tar destfile="${testagent.tarfile}" compression="gzip">
             <tarfileset dir="${testagent.tar.dir}" prefix="zstacktestagent">
                 <include name="**/*" />

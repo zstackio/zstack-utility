@@ -2,11 +2,8 @@
 
 <project name="zstack-cli builder" basedir="../">
     <property name="zstackcli.bdir" location="${build.dir}/zstackcli" />
-    <property name="zstackcli.py26.virtualenv.file" location="${virtualenv.dir}/zstackcli-virtualenv-py26.tar.bz" />
-    <property name="zstackcli.py26.virtualenv.dir" location="${virtualenv.dir}/zstackcli" />
-    <property name="zstackcli.py27.virtualenv.file" location="${chroot.virtualenv.dir}/zstackcli-virtualenv-py27.tar.bz" />
-    <property name="zstackcli.p27.virtualenv.chroot.dir" location="/virtualenv/zstackcli" />
-    <property name="zstackcli.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/zstackcli" />
+    <property name="zstackcli.virtualenv.file" location="${virtualenv.dir}/zstackcli-virtualenv.tar.bz" />
+    <property name="zstackcli.virtualenv.dir" location="${virtualenv.dir}/zstackcli" />
 
     <target name="build-cli" >
         <makeDir dir="${zstackcli.bdir}" />
@@ -37,68 +34,37 @@
             </fileset>
         </copy>
 
-        <makeDir2 dir="${zstackcli.py26.virtualenv.dir}" />
+        <makeDir2 dir="${zstackcli.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${zstackcli.py26.virtualenv.dir}" />
+            <arg value="${zstackcli.virtualenv.dir}" />
+            <arg value="--system-site-packages" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${zstackcli.py26.virtualenv.dir}" />
+            <arg value="${zstackcli.virtualenv.dir}" />
             <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${zstackcli.py26.virtualenv.dir}" />
+            <arg value="${zstackcli.virtualenv.dir}" />
             <arg value="${tools.dir}/zstackcli*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${zstackcli.py26.virtualenv.dir}" />
+            <arg value="${zstackcli.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${zstackcli.py26.virtualenv.file}" />
+            <arg value="${zstackcli.virtualenv.file}" />
             <arg value="zstackcli" />
         </exec>
 
-        <copy file="${zstackcli.py26.virtualenv.file}" todir="${tools.dir}" />
-        <exec executable="bash" failonerror="true">
-            <arg value="${create.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${zstackcli.p27.virtualenv.chroot.dir}" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${zstackcli.p27.virtualenv.chroot.dir}" />
-            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${zstackcli.p27.virtualenv.chroot.dir}" />
-            <arg value="${tools.dir}/zstackcli*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${update.virtualenv}" />
-            <arg value="${zstackcli.p27.virtualenv.dir}" />
-        </exec>
-
-        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
-            <arg value="jcf" />
-            <arg value="${zstackcli.py27.virtualenv.file}" />
-            <arg value="zstackcli" />
-        </exec>
-
-        <copy file="${zstackcli.py27.virtualenv.file}" todir="${tools.dir}" />
+        <copy file="${zstackcli.virtualenv.file}" todir="${tools.dir}" />
         <copy file="${zstackcli.binfile}" todir="${tools.dir}" />
     </target>
 </project>

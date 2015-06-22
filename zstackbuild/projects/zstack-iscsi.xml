@@ -3,11 +3,8 @@
 <project name="zstack-iscsi builder" basedir="../">
     <property name="iscsi.bdir" location="${build.dir}/iscsi" />
     <property name="iscsi.ansible.dir" location="${ansible.dir}/iscsi/" />
-    <property name="iscsi.py26.virtualenv.file" location="${virtualenv.dir}/iscsi-virtualenv-py26.tar.bz" />
-    <property name="iscsi.py26.virtualenv.dir" location="${virtualenv.dir}/iscsi" />
-    <property name="iscsi.py27.virtualenv.file" location="${chroot.virtualenv.dir}/iscsi-virtualenv-py27.tar.bz" />
-    <property name="iscsi.p27.virtualenv.chroot.dir" location="/virtualenv/iscsi" />
-    <property name="iscsi.p27.virtualenv.dir" location="${chroot.virtualenv.dir}/iscsi" />
+    <property name="iscsi.virtualenv.file" location="${virtualenv.dir}/iscsi-virtualenv.tar.bz" />
+    <property name="iscsi.virtualenv.dir" location="${virtualenv.dir}/iscsi" />
 
     <target name="build-iscsi" >
         <makeDir dir="${iscsi.bdir}" />
@@ -45,69 +42,38 @@
                 <include name="**/*" />
             </fileset>
         </copy>
-        <makeDir2 dir="${iscsi.py26.virtualenv.dir}" />
+        <makeDir2 dir="${iscsi.virtualenv.dir}" />
         <exec executable="bash" failonerror="true">
             <arg value="${create.virtualenv}" />
-            <arg value="${iscsi.py26.virtualenv.dir}" />
+            <arg value="${iscsi.virtualenv.dir}" />
+            <arg value="--system-site-packages" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${iscsi.py26.virtualenv.dir}" />
+            <arg value="${iscsi.virtualenv.dir}" />
             <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${install.lib.to.virtualenv}" />
-            <arg value="${iscsi.py26.virtualenv.dir}" />
+            <arg value="${iscsi.virtualenv.dir}" />
             <arg value="${iscsi.ansible.dir}/iscsi*.tar.gz" />
         </exec>
 
         <exec executable="bash" failonerror="true">
             <arg value="${update.virtualenv}" />
-            <arg value="${iscsi.py26.virtualenv.dir}" />
+            <arg value="${iscsi.virtualenv.dir}" />
         </exec>
 
         <exec executable="tar" dir="${virtualenv.dir}" failonerror="true">
             <arg value="jcf" />
-            <arg value="${iscsi.py26.virtualenv.file}" />
+            <arg value="${iscsi.virtualenv.file}" />
             <arg value="iscsi" />
         </exec>
 
-        <copy file="${iscsi.py26.virtualenv.file}" todir="${iscsi.ansible.dir}" />
+        <copy file="${iscsi.virtualenv.file}" todir="${iscsi.ansible.dir}" />
 
-        <exec executable="bash" failonerror="true">
-            <arg value="${create.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${iscsi.p27.virtualenv.chroot.dir}" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${iscsi.p27.virtualenv.chroot.dir}" />
-            <arg value="${zstacklib.ansible.dir}/zstacklib*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${install.lib.to.virtualenv.inchroot}" />
-            <arg value="${centos7_chroot_env}" />
-            <arg value="${iscsi.p27.virtualenv.chroot.dir}" />
-            <arg value="${iscsi.ansible.dir}/iscsi*.tar.gz" />
-        </exec>
-
-        <exec executable="bash" failonerror="true">
-            <arg value="${update.virtualenv}" />
-            <arg value="${iscsi.p27.virtualenv.dir}" />
-        </exec>
-
-        <exec executable="tar" dir="${chroot.virtualenv.dir}" failonerror="true">
-            <arg value="jcf" />
-            <arg value="${iscsi.py27.virtualenv.file}" />
-            <arg value="iscsi" />
-        </exec>
-
-        <copy file="${iscsi.py27.virtualenv.file}" todir="${iscsi.ansible.dir}" />
         <copy file="${iscsi.serviceFile}" todir="${iscsi.ansible.dir}" />
     </target>
 </project>
