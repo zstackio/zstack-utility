@@ -3,7 +3,6 @@
 - hosts: "{{host}}"
   vars:
     - virtenv_path: "{{zstack_root}}/virtualenv/sftpbackupstorage/"
-    - virtenv_root: "{{zstack_root}}/virtualenv/"
     - sftp_root: "{{zstack_root}}/sftpbackupstorage"
     - file_root: "files/sftpbackupstorage"
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
@@ -34,11 +33,9 @@
 
     - name: install virtualenv
       pip: name=virtualenv extra_args="-i {{pip_url}}"
-      when: virtualenv_pkg is not defined
 
     - name: create virtualenv dirctory
       shell: "ls {{virtenv_path}}/bin/activate > /dev/null || virtualenv {{virtenv_path}}"
-      when: virtualenv_pkg is not defined
 
     - name: add public key
       authorized_key: user=root key="{{ lookup('file', 'files/sftpbackupstorage/id_rsa.sftp.pub') }}"
@@ -48,21 +45,12 @@
       notify:
         - install zstacklib
         - restart sftp
-      when: virtualenv_pkg is not defined
 
     - name: copy sftp
       copy: src="{{file_root}}/{{pkg_sftpbackupstorage}}" dest="{{sftp_root}}/{{pkg_sftpbackupstorage}}"
       notify:
         - install sftp
         - restart sftp
-      when: virtualenv_pkg is not defined
-
-    - name: copy sftp virtualenv
-      copy: src="{{file_root}}/{{virtualenv_pkg}}" dest="{{sftp_root}}/{{virtualenv_pkg}}"
-      notify:
-        - install sftp virtualenv
-        - restart sftp
-      when: virtualenv_pkg is defined
 
     # only for os using init.d not systemd
     - name: copy sftp backup storage service file
@@ -83,18 +71,12 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{sftp_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-      when: virtualenv_pkg is not defined
 
     - name: install sftp
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{sftp_root}}/{{pkg_sftpbackupstorage}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-      when: virtualenv_pkg is not defined
-
-    - name: install sftp virtualenv
-      shell: "rm -rf {{virtenv_root}}/sftpbackupstorage; tar jxf {{sftp_root}}/{{virtualenv_pkg}} -C {{virtenv_root}}"
-      when: virtualenv_pkg is defined
 
     - name: restart sftp
       service: name=zstack-sftpbackupstorage state=restarted enabled=yes

@@ -3,7 +3,6 @@
 - hosts: "{{host}}"
   vars:
     - virtenv_path: "{{zstack_root}}/virtualenv/iscsi/"
-    - virtenv_root: "{{zstack_root}}/virtualenv/"
     - iscsi_root: "{{zstack_root}}/iscsi"
     - file_root: "files/iscsi"
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
@@ -41,7 +40,6 @@
       with_items:
         - "{{iscsi_root}}"
         - "{{virtenv_path}}"
-        - "{{virtenv_root}}"
 
     - name: install isci related packages on RedHat based OS
       when: ansible_os_family == 'RedHat'
@@ -85,32 +83,21 @@
 
     - name: install virtualenv
       pip: name=virtualenv extra_args="-i {{pip_url}}"
-      when: virtualenv_pkg is not defined
 
     - name: create virtualenv dirctory
       shell: "ls {{virtenv_path}}/bin/activate > /dev/null || virtualenv --system-site-packages {{virtenv_path}}"
-      when: virtualenv_pkg is not defined
 
     - name: copy zstacklib
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{iscsi_root}}/{{pkg_zstacklib}}"
       notify:
         - install zstacklib
         - restart iscsiagent
-      when: virtualenv_pkg is not defined
 
     - name: copy iscsi filesystem agent
       copy: src="{{file_root}}/{{pkg_iscsiagent}}" dest="{{iscsi_root}}/{{pkg_iscsiagent}}"
       notify:
         - install iscsiagent
         - restart iscsiagent
-      when: virtualenv_pkg is not defined
-
-    - name: copy iscsi virtualenv
-      copy: src="{{file_root}}/{{virtualenv_pkg}}" dest="{{iscsi_root}}/{{virtualenv_pkg}}"
-      notify:
-        - install iscsiagent virtualenv
-        - restart iscsiagent
-      when: virtualenv_pkg is defined
 
     - name: copy isci service file
       when: ansible_os_family == 'RedHat' or ansible_os_family == 'Debian'
@@ -129,18 +116,12 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{iscsi_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-      when: virtualenv_pkg is not defined
 
     - name: install iscsiagent
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{iscsi_root}}/{{pkg_iscsiagent}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-      when: virtualenv_pkg is not defined
-
-    - name: install iscsiagent virtualenv
-      shell: "rm -rf {{virtenv_root}}/iscsi; tar jxf {{iscsi_root}}/{{virtualenv_pkg}} -C {{virtenv_root}}"
-      when: virtualenv_pkg is defined
 
     - name: restart iscsiagent
       service: name=zstack-iscsi state=restarted enabled=yes

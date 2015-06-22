@@ -3,7 +3,6 @@
 - hosts: "{{host}}"
   vars:
     - virtenv_path: "{{zstack_root}}/virtualenv/virtualrouter/"
-    - virtenv_root: "{{zstack_root}}/virtualenv/"
     - vr_root: "{{zstack_root}}/virtualrouter"
     - file_root: "files/virtualrouter"
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
@@ -19,7 +18,6 @@
       with_items:
         - "{{vr_root}}"
         - "{{virtenv_path}}"
-        - "{{virtenv_root}}"
 
     - name: install virtual router related packages for RedHat
       yum: name=dnsmasq
@@ -31,11 +29,9 @@
 
     - name: install virtualenv
       pip: name=virtualenv extra_args="-i {{pip_url}}"
-      when: virtualenv_pkg is not defined
 
     - name: create virtualenv dirctory
       shell: "ls {{virtenv_path}}/bin/activate > /dev/null || virtualenv {{virtenv_path}}"
-      when: virtualenv_pkg is not defined
 
     - name: create dnsmasq host dhcp file
       shell: /bin/touch /etc/hosts.dhcp
@@ -63,21 +59,12 @@
       notify:
         - install zstacklib
         - restart vr
-      when: virtualenv_pkg is not defined
 
     - name: copy virtual router
       copy: src="{{file_root}}/{{pkg_virtualrouter}}" dest="{{vr_root}}/{{pkg_virtualrouter}}"
       notify:
         - install vr
         - restart vr
-      when: virtualenv_pkg is not defined
-
-    - name: copy virtualrouter virtualenv
-      copy: src="{{file_root}}/{{virtualenv_pkg}}" dest="{{vr_root}}/{{virtualenv_pkg}}"
-      notify:
-        - install vr virtualenv
-        - restart vr
-      when: virtualenv_pkg is defined
 
     - name: copy virtual rourte service file
       copy: src="{{file_root}}/zstack-virtualrouter" dest=/etc/init.d/ mode=755
@@ -112,19 +99,13 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{vr_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
-      when: virtualenv_pkg is not defined
 
     - name: install vr
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{vr_root}}/{{pkg_virtualrouter}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-      when: virtualenv_pkg is not defined
-
-    - name: install vr virtualenv
-      shell: "rm -rf {{virtenv_root}}/virtualrouter; tar jxf {{vr_root}}/{{virtualenv_pkg}} -C {{virtenv_root}}"
-      when: virtualenv_pkg is defined
 
     - name: restart vr
       service: name=zstack-virtualrouter enabled=yes state=restarted
-      when: chroot_env == 'false'
+      when: chroot_env == 'false' 

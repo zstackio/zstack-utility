@@ -3,7 +3,6 @@
 - hosts: "{{host}}"
   vars:
     - virtenv_path: "{{zstack_root}}/virtualenv/appliancevm/"
-    - virtenv_root: "{{zstack_root}}/virtualenv/"
     - appliancevm_root: "{{zstack_root}}/appliancevm"
     - file_root: "files/appliancevm"
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
@@ -35,15 +34,12 @@
       with_items:
         - "{{appliancevm_root}}"
         - "{{virtenv_path}}"
-        - "{{virtenv_root}}"
 
     - name: install virtualenv
       pip: name=virtualenv extra_args="-i {{pip_url}}"
-      when: virtualenv_pkg is not defined
 
     - name: create virtualenv dirctory
       shell: "ls {{virtenv_path}}/bin/activate > /dev/null || virtualenv {{virtenv_path}}"
-      when: virtualenv_pkg is not defined
 
     - name: copy iptables initial rules in RedHat
       copy: src="{{file_root}}/iptables" dest=/etc/sysconfig/iptables
@@ -74,21 +70,12 @@
       notify:
         - install zstacklib
         - restart appliancevm
-      when: virtualenv_pkg is not defined
 
     - name: copy appliancevm
       copy: src="{{file_root}}/{{pkg_appliancevm}}" dest="{{appliancevm_root}}/{{pkg_appliancevm}}"
       notify:
         - install appliancevm
         - restart appliancevm
-      when: virtualenv_pkg is not defined
-
-    - name: copy appliancevm virtualenv
-      copy: src="{{file_root}}/{{virtualenv_pkg}}" dest="{{appliancevm_root}}/{{virtualenv_pkg}}"
-      notify:
-        - install appliancevm virtualenv
-        - restart appliancevm
-      when: virtualenv_pkg is defined
 
     - name: copy appliancevm service file
       copy: src="{{file_root}}/zstack-appliancevm" dest=/etc/init.d/ mode=755
@@ -126,18 +113,12 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{appliancevm_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
-      when: virtualenv_pkg is not defined
 
     - name: install appliancevm
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{appliancevm_root}}/{{pkg_appliancevm}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-      when: virtualenv_pkg is not defined
-
-    - name: install appliancevm virtualenv
-      shell: "rm -rf {{virtenv_root}}/appliancevm; tar jxf {{appliancevm_root}}/{{virtualenv_pkg}} -C {{virtenv_root}}"
-      when: virtualenv_pkg is defined
 
     - name: restart appliancevm
       service: name=zstack-appliancevm enabled=yes state=restarted

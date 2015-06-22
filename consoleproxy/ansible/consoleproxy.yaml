@@ -3,7 +3,6 @@
 - hosts: "{{host}}"
   vars:
     - virtenv_path: "{{zstack_root}}/virtualenv/consoleproxy/"
-    - virtenv_root: "{{zstack_root}}/virtualenv/"
     - consoleproxy_root: "{{zstack_root}}/console"
     - file_root: "files/consoleproxy"
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
@@ -19,36 +18,24 @@
       with_items:
         - "{{consoleproxy_root}}"
         - "{{virtenv_path}}"
-        - "{{virtenv_root}}"
 
     - name: install virtualenv
       pip: name=virtualenv extra_args="-i {{pip_url}}"
-      when: virtualenv_pkg is not defined
 
     - name: create virtualenv dirctory
       shell: "ls {{virtenv_path}} > /dev/null || virtualenv {{virtenv_path}}"
-      when: virtualenv_pkg is not defined
 
     - name: copy zstacklib
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{consoleproxy_root}}/{{pkg_zstacklib}}"
       notify:
         - install zstacklib
         - restart consoleproxy
-      when: virtualenv_pkg is not defined
 
     - name: copy consoleproxy
       copy: src="{{file_root}}/{{pkg_consoleproxy}}" dest="{{consoleproxy_root}}/{{pkg_consoleproxy}}"
       notify:
         - install consoleproxy
         - restart consoleproxy
-      when: virtualenv_pkg is not defined
-
-    - name: copy consoleproxy virtualenv
-      copy: src="{{file_root}}/{{virtualenv_pkg}}" dest="{{consoleproxy_root}}/{{virtualenv_pkg}}"
-      notify:
-        - install consoleproxy virtualenv
-        - restart consoleproxy
-      when: virtualenv_pkg is defined
 
     # only for os using init.d not systemd
     - name: copy consoleproxy service file
@@ -69,18 +56,12 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{consoleproxy_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
-      when: virtualenv_pkg is not defined
 
     - name: install consoleproxy
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{consoleproxy_root}}/{{pkg_consoleproxy}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-      when: virtualenv_pkg is not defined
-
-    - name: install consoleproxy virtualenv
-      shell: "rm -rf {{virtenv_root}}/consoleproxy; tar jxf {{consoleproxy_root}}/{{virtualenv_pkg}} -C {{virtenv_root}}"
-      when: virtualenv_pkg is defined
 
     - name: restart consoleproxy
       service: name=zstack-consoleproxy state=restarted enabled=yes
