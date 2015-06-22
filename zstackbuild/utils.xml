@@ -21,7 +21,10 @@
     <macrodef name="makeDir">
         <attribute name="dir" />
         <sequential>
-            <delete dir="@{dir}" />
+            <exec executable="rm">
+                <arg value="-rf" />
+                <arg value="@{dir}" />
+            </exec>
             <mkdir dir="@{dir}" />
         </sequential>
     </macrodef>

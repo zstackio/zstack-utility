@@ -10,6 +10,7 @@
     <property name="build.dir" location="${basedir}/target" />
     <property name="war.file" location="${build.dir}/zstack.war" />
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
+    <property name="pypi.parent.dir" location="${war.dir}/static/" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
     <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}-${build_name}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
         <and>
@@ -60,6 +61,14 @@
         <makeDir dir="${tools.dir}" />
     </target>
 
+    <target name="copy-pypi-source" >
+        <makeDir dir="${pypi.parent.dir}" />
+        <exec executable="tar" dir="${pypi.parent.dir}" failonerror="true">
+            <arg value="jxf" />
+            <arg value="${pypi.source.tar.file}" />
+        </exec>
+    </target>
+
     <target name="unzip-war">
         <makeDir dir="${war.dir}" />
 
@@ -86,7 +95,7 @@
     </target>
 
     <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi" />
-    <target name="assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, zip-war" />
+    <target name="assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, copy-pypi-source, zip-war" />
     <target name="build-war" depends="do-build, assemble" />
     <target name="package" depends="build-war, build-setting, do-package" />
     <target name="buildtestagent" depends="build-zstacklib, build-testagent, assemble-testagent" />
