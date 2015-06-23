@@ -35,6 +35,9 @@
         - "{{appliancevm_root}}"
         - "{{virtenv_path}}"
 
+    - shell: pip --version | grep 7.0.3
+      register: pip_ret
+      ignore_errors: True
 
     - name: copy pip 7.0.3
       copy: src="files/pip-7.0.3.tar.gz" dest="{{zstack_root}}/pip-7.0.3.tar.gz"
