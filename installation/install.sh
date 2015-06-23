@@ -485,7 +485,6 @@ EOF
 is_install_virtualenv(){
     echo_subtitle "Install Virtualenv"
     pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible 
     if [ ! -z $DEBUG ]; then
         pip install -i $pypi_source --trusted-host localhost --ignore-installed virtualenv
     else
