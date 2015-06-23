@@ -133,11 +133,28 @@
     - name: enable bridge forward
       shell: "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding" 
 
-    - name: install virtualenv
-      pip: name=virtualenv extra_args="-i {{pip_url}}"
+    - shell: pip --version | grep 7.0.3
+      register: pip_ret
+      ignore_errors: True
 
-    - name: create virtualenv dirctory
-      shell: "ls {{virtenv_path}}/bin/activate > /dev/null || virtualenv --system-site-packages {{virtenv_path}}"
+    - name: copy pip 7.0.3
+      copy: src="files/pip-7.0.3.tar.gz" dest="{{zstack_root}}/pip-7.0.3.tar.gz"
+      when: pip_ret.rc != 0
+
+    - name: install pip 7.0.3
+      pip: name="{{zstack_root}}/pip-7.0.3.tar.gz" extra_args="--ignore-installed"
+      when: pip_ret.rc != 0
+
+    - shell: virtualenv --version | grep "12.1.1"
+      register: virtualenv_ret
+      ignore_errors: True
+
+    - name: install virtualenv
+      pip: name=virtualenv version=12.1.1 extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}"
+      when: virtualenv_ret.rc != 0
+
+    - name: create virtualenv
+      shell: "rm -rf {{virtenv_path}} && virtualenv --system-site-packages {{virtenv_path}}"
 
     - name: enable libvirt daemon on Debian OS
       when: ansible_os_family == 'Debian' and chroot_env == 'false'
@@ -173,7 +190,7 @@
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
-      pip: name="{{kvm_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+      pip: name="{{kvm_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
 
     - name: restart redhat libvirtd
       service: name=libvirtd state=restarted enabled=yes
@@ -187,7 +204,7 @@
       environment:
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
-      pip: name="{{kvm_root}}/{{pkg_kvmagent}}" extra_args="--ignore-installed -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
+      pip: name="{{kvm_root}}/{{pkg_kvmagent}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
 
     - name: restart kvmagent
       service: name=zstack-kvmagent state=restarted enabled=yes
