@@ -1813,8 +1813,11 @@ gpgcheck=0
       when: ansible_os_family == 'Debian'
       apt: pkg=python-pip update_cache=yes
 
+    - name: install pip from local source 
+      shell: "cd $pypi_path; pip install --ignore-installed pip*"
+
     - name: install virtualenv
-      pip: name="virtualenv" extra_args="-i $pypi_url --ignore-installed --trusted-host localhost"
+      pip: name="virtualenv" extra_args="-i file://$pypi_path/simple --ignore-installed --trusted-host localhost"
 
     - name: create virtualenv directory
       shell: mkdir -p {{virtualenv_root}}
@@ -1823,7 +1826,7 @@ gpgcheck=0
       shell: "ls {{virtualenv_root}}/bin/activate > /dev/null || virtualenv {{virtualenv_root}}"
 
     - name: install zstack-dashboard
-      pip: name=$dest extra_args="--ignore-installed --trusted-host localhost -i $pypi_url" virtualenv="{{virtualenv_root}}"
+      pip: name=$dest extra_args="--ignore-installed --trusted-host localhost -i file://$pypi_url/simple" virtualenv="{{virtualenv_root}}"
 
 '''
 
@@ -1834,8 +1837,8 @@ gpgcheck=0
             "host": args.host,
             'pypi_url': args.pypi_url,
             'pypi_tar_path': pypi_tar_path,
-            'pypi_tar_path_dest': '/tmp/pypi.tar.bz'),
-            'pypi_path': 'file:///tmp/pypi/simple',
+            'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
+            'pypi_path': '/tmp/pypi/',
             "epel6_repo": epel6_repo
         })
 
