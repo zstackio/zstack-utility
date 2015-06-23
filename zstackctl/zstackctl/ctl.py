@@ -1354,7 +1354,6 @@ class InstallManagementNodeCmd(Command):
         parser.add_argument('--remote', help='target host IP, for example, 192.168.0.212, to install ZStack management node to a remote machine', required=True)
         parser.add_argument('--install-path', help='the path on remote machine where Apache Tomcat will be installed, which must be an absolute path; [DEFAULT]: /usr/local/zstack', default='/usr/local/zstack')
         parser.add_argument('--source-dir', help='the source folder containing Apache Tomcat package and zstack.war, if omitted, it will default to a path related to $ZSTACK_HOME')
-        parser.add_argument('--pypi-url', help='the python pypi url, if moitted, it will use default python pypi url, like https://pypi.python.org/simple/', default='https://pypi.python.org/simple/')
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
         parser.add_argument('--force-reinstall', help="delete existing Apache Tomcat and resinstall ZStack", action="store_true", default=False)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
@@ -1385,6 +1384,15 @@ class InstallManagementNodeCmd(Command):
 
         if not zstack:
             raise CtlError('cannot find zstack.war in %s, please use --source-dir to specify the directory containing the WAR file' % args.source_dir)
+
+        pypi_path = os.path.join(ctl.zstack_home, "static/pypi/")
+        if not os.path.isdir(pypi_path):
+            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % pypi_path)
+
+        pypi_tar_path = os.path.join(ctl.zstack_home, "static/pypi.tar.bz")
+        if not os.path.isfile(pypi_tar_path):
+            static_path = os.path.join(ctl.zstack_home, "static")
+            os.system('cd %s; tar jcf pypi.tar.bz pypi' % static_path)
 
         yaml = '''---
 - hosts: $host
@@ -1463,8 +1471,17 @@ class InstallManagementNodeCmd(Command):
       with_items:
         - mysql-client
 
+    - name: copy pypi tar file
+      copy: src=$pypi_tar_path dest=$pypi_tar_path_dest
+
+    - name: untar pypi
+      shell: "cd /tmp/; tar jxf $pypi_tar_path_dest"
+
+    - name: install pip from local source 
+      shell: "cd $pypi_path; pip install --ignore-installed pip*.tar.gz"
+
     - name: install virtualenv
-      pip: name="virtualenv==12.1.1" extra_args="-i $pypi_url"
+      pip: name="virtualenv" extra_args="-i file://$pypi_path/simple --ignore-installed --trusted-host localhost"
 
     - name: copy Apache Tomcat
       copy: src=$apache_path dest={{root}}/$apache_tomcat_zip_name
@@ -1543,7 +1560,7 @@ fi
 
 which ansible-playbook &> /dev/null
 if [ $$? -ne 0 ]; then
-   pip install -i $pypi_url ansible==1.7.2
+   pip install -i file://$pypi_path/simple --trusted-host localhost ansible
 fi
 '''
         t = string.Template(post_script)
@@ -1552,7 +1569,7 @@ fi
             'apache': os.path.join(args.install_path, apache_tomcat_zip_name),
             'zstack': os.path.join(args.install_path, 'zstack.war'),
             'apache_tomcat_zip_name': apache_tomcat_zip_name,
-            'pypi_url': args.pypi_url
+            'pypi_path': '/tmp/pypi/'
         })
 
         fd, post_script_path = tempfile.mkstemp(suffix='.sh')
@@ -1652,7 +1669,10 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'apache_tomcat_zip_name': apache_tomcat_zip_name,
             'epel6_repo': epel6_repo,
             'epel7_repo': epel7_repo,
-            'pypi_url': args.pypi_url,
+            'pypi_tar_path': pypi_tar_path,
+            'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
+            'pypi_path': '/tmp/pypi/',
+            "epel6_repo": epel6_repo
             'setup_account': setup_account_path
         })
 
@@ -1712,7 +1732,6 @@ class InstallWebUiCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
-        parser.add_argument('--pypi-url', help='the python pypi url, if moitted, it will use default python pypi url, like https://pypi.python.org/simple/', default='https://pypi.python.org/simple/')
 
     def _install_to_local(self):
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
@@ -1814,7 +1833,7 @@ gpgcheck=0
       apt: pkg=python-pip update_cache=yes
 
     - name: install pip from local source 
-      shell: "cd $pypi_path; pip install --ignore-installed pip*"
+      shell: "cd $pypi_path; pip install --ignore-installed pip*.tar.gz"
 
     - name: install virtualenv
       pip: name="virtualenv" extra_args="-i file://$pypi_path/simple --ignore-installed --trusted-host localhost"
@@ -1826,7 +1845,7 @@ gpgcheck=0
       shell: "ls {{virtualenv_root}}/bin/activate > /dev/null || virtualenv {{virtualenv_root}}"
 
     - name: install zstack-dashboard
-      pip: name=$dest extra_args="--ignore-installed --trusted-host localhost -i file://$pypi_url/simple" virtualenv="{{virtualenv_root}}"
+      pip: name=$dest extra_args="--ignore-installed --trusted-host localhost -i file://$pypi_path/simple" virtualenv="{{virtualenv_root}}"
 
 '''
 
@@ -1835,7 +1854,6 @@ gpgcheck=0
             "src": ui_binary_path,
             "dest": os.path.join('/tmp', ui_binary),
             "host": args.host,
-            'pypi_url': args.pypi_url,
             'pypi_tar_path': pypi_tar_path,
             'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
             'pypi_path': '/tmp/pypi/',
@@ -2124,7 +2142,6 @@ class UpgradeCtlCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--package', help='the path to the new zstack-ctl package', required=True)
-        parser.add_argument('--pypi-url', help='the python pypi url, if moitted, it will use default python pypi url, like https://pypi.python.org/simple/', default='https://pypi.python.org/simple/')
 
     def run(self, args):
         error_if_tool_is_missing('pip')
@@ -2133,21 +2150,25 @@ class UpgradeCtlCmd(Command):
         if not os.path.exists(path):
             raise CtlError('%s not found' % path)
 
+        pypi_path = os.path.join(ctl.zstack_home, "static/pypi/")
+        if not os.path.isdir(pypi_path):
+            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % pypi_path)
+
         install_script = '''set -e
 which virtualenv &>/dev/null
 if [ $$? != 0 ]; then
-    pip install -i $pypi_path virtualenv
+    pip install -i file://$pypi_path/simple --trusted-host localhost virtualenv
 fi
 
 CTL_VIRENV_PATH=/var/lib/zstack/virtualenv/zstackctl
 [ ! -d $$CTL_VIRENV_PATH ] && virtualenv $$CTL_VIRENV_PATH
 . $$CTL_VIRENV_PATH/bin/activate
 
-pip install -i $pypi_path --ignore-installed $package || exit 1
+pip install -i file://$pypi_path/simple --trusted-host --ignore-installed $package || exit 1
 chmod +x /usr/bin/zstack-ctl
 '''
 
-        script(install_script, {"pypi_path": args.pypi_url, "package": args.package})
+        script(install_script, {"pypi_path": pypi_path, "package": args.package})
         info('successfully upgraded zstack-ctl to %s' % args.package)
 
 class RollbackManagementNodeCmd(Command):
