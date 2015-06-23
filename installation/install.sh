@@ -292,9 +292,9 @@ ia_install_pip(){
     echo_subtitle "Install PIP"
     pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
     if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed pip
+        easy_install -i $pypi_source --upgrade pip
     else
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed pip >>$ZSTACK_INSTALL_LOG 2>&1
+        easy_install -i $pypi_source --upgrade pip >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install PIP failed"
     pass
