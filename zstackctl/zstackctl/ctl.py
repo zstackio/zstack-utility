@@ -1672,7 +1672,6 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'pypi_tar_path': pypi_tar_path,
             'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
             'pypi_path': '/tmp/pypi/',
-            "epel6_repo": epel6_repo
             'setup_account': setup_account_path
         })
 
