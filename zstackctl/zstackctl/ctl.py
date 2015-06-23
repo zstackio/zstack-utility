@@ -1742,6 +1742,15 @@ class InstallWebUiCmd(Command):
 
         ui_binary_path = os.path.join(tools_path, ui_binary)
 
+        pypi_path = os.path.join(ctl.zstack_home, "static/pypi/")
+        if not os.path.isdir(pypi_path):
+            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % pypi_path)
+
+        pypi_tar_path = os.path.join(ctl.zstack_home, "static/pypi.tar.bz")
+        if not os.path.isfile(pypi_tar_path):
+            static_path = os.path.join(ctl.zstack_home, "static")
+            os.system('cd %s; tar jcf pypi.tar.bz pypi' % static_path)
+
         fd, epel6_repo = tempfile.mkstemp()
         os.fdopen(fd, 'w').write('''[epel]
 name=Extra Packages for Enterprise Linux 6 - $basearch
@@ -1790,6 +1799,12 @@ gpgcheck=0
     - name: copy zstack-dashboard package
       copy: src=$src dest=$dest
 
+    - name: copy pypi tar file
+      copy: src=$pypi_tar_path dest=$pypi_tar_path_dest
+
+    - name: untar pypi
+      shell: "cd /tmp/; tar jxf $pypi_tar_path_dest"
+
     - name: install Python pip for RedHat OS
       when: ansible_os_family == 'RedHat'
       yum: pkg=python-pip
@@ -1799,7 +1814,7 @@ gpgcheck=0
       apt: pkg=python-pip update_cache=yes
 
     - name: install virtualenv
-      pip: name="virtualenv==12.1.1" extra_args="-i $pypi_url"
+      pip: name="virtualenv" extra_args="-i $pypi_url --ignore-installed --trusted-host localhost"
 
     - name: create virtualenv directory
       shell: mkdir -p {{virtualenv_root}}
@@ -1808,7 +1823,8 @@ gpgcheck=0
       shell: "ls {{virtualenv_root}}/bin/activate > /dev/null || virtualenv {{virtualenv_root}}"
 
     - name: install zstack-dashboard
-      pip: name=$dest extra_args="--ignore-installed -i $pypi_url" virtualenv="{{virtualenv_root}}"
+      pip: name=$dest extra_args="--ignore-installed --trusted-host localhost -i $pypi_url" virtualenv="{{virtualenv_root}}"
+
 '''
 
         t = string.Template(yaml)
@@ -1817,6 +1833,9 @@ gpgcheck=0
             "dest": os.path.join('/tmp', ui_binary),
             "host": args.host,
             'pypi_url': args.pypi_url,
+            'pypi_tar_path': pypi_tar_path,
+            'pypi_tar_path_dest': '/tmp/pypi.tar.bz'),
+            'pypi_path': 'file:///tmp/pypi/simple',
             "epel6_repo": epel6_repo
         })
 

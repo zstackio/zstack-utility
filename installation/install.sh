@@ -273,16 +273,18 @@ ia_check_ip_hijack(){
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
     if [ -z $DEBUG ];then
-        yum -y install python python-devel python-pip python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+        yum -y install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
     else
-        yum -y install python python-devel python-pip python-setuptools gcc
+        yum -y install python python-devel python-setuptools gcc
     fi
     [ $? -ne 0 ] && fail "Install python and gcc fail."
-    which pip >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        easy_install -i $ZSTACK_PYPI_URL pip >>$ZSTACK_INSTALL_LOG 2>&1
-        [ $? -ne 0 ] && fail "Install pip fail"
+    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
+    if [ -z $DEBUG ];then
+        easy_install -i $ZSTACK_PYPI_URL --upgrade pip >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        easy_install -i $ZSTACK_PYPI_URL --upgrade pip 
     fi
+    [ $? -ne 0 ] && fail "Install pip fail"
     pass
 }
 
@@ -313,9 +315,9 @@ ia_install_ansible(){
 ia_install_python_gcc_db(){
     echo_subtitle "Install Python GCC."
     if [ ! -z $DEBUG ]; then
-        apt-get -y install python python-dev python-pip python-setuptools gcc 
+        apt-get -y install python python-dev python-setuptools gcc 
     else
-        apt-get -y install python python-dev python-pip python-setuptools gcc >>$ZSTACK_INSTALL_LOG 2>&1
+        apt-get -y install python python-dev python-setuptools gcc >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "Install python and gcc fail."
     pass

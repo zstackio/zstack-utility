@@ -20,4 +20,4 @@
     - autoconf
 
 - name: install pip
-  easy_install: name=pip
+  shell: easy_install -i {{pip_url}} --upgrade pip

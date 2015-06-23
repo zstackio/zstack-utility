@@ -31,18 +31,6 @@
       with_items:
         - openssh-client
 
-    - shell: pip --version | grep 7.0.3
-      register: pip_ret
-      ignore_errors: True
-
-    - name: copy pip 7.0.3
-      copy: src="files/pip-7.0.3.tar.gz" dest="{{zstack_root}}/pip-7.0.3.tar.gz"
-      when: pip_ret.rc != 0
-
-    - name: install pip 7.0.3
-      pip: name="{{zstack_root}}/pip-7.0.3.tar.gz" extra_args="--ignore-installed"
-      when: pip_ret.rc != 0
-
     - shell: virtualenv --version | grep "12.1.1"
       register: virtualenv_ret
       ignore_errors: True
