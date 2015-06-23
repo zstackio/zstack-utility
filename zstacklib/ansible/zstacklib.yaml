@@ -6,6 +6,7 @@
   with_items:
     - python-devel
     - python-setuptools
+    - python-pip
     - gcc
     - autoconf
     - libselinux-python
@@ -16,8 +17,18 @@
   with_items:
     - python-dev
     - python-setuptools
+    - python-pip
     - gcc
     - autoconf
 
-- name: install pip
-  shell: easy_install -i {{pip_url}} --upgrade pip
+- shell: pip --version | grep 7.0.3
+  register: pip_ret
+  ignore_errors: True
+
+- name: copy pip 7.0.3
+  copy: src="files/pip-7.0.3.tar.gz" dest="{{zstack_root}}/pip-7.0.3.tar.gz"
+  when: pip_ret.rc != 0
+
+- name: install pip 7.0.3
+  pip: name="{{zstack_root}}/pip-7.0.3.tar.gz" extra_args="--ignore-installed"
+  when: pip_ret.rc != 0
