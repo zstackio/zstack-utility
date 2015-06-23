@@ -286,12 +286,25 @@ ia_install_python_gcc_rh(){
     pass
 }
 
+ia_install_pip(){
+    echo_subtitle "Install PIP"
+    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
+    if [ ! -z $DEBUG ]; then
+        pip install -i $pypi_source --trusted-host localhost --ignore-installed pip
+    else
+        pip install -i $pypi_source --trusted-host localhost --ignore-installed pip >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    [ $? -ne 0 ] && fail "install PIP failed"
+    pass
+}
+
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
+    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
     if [ ! -z $DEBUG ]; then
-        pip install -i $ZSTACK_PYPI_URL ansible 
+        pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible 
     else
-        pip install -i $ZSTACK_PYPI_URL ansible >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install Ansible failed"
     pass
@@ -317,6 +330,15 @@ ia_update_apt(){
     pass
 }
 
+download_zstack(){
+    echo_title "Download and Unpack ZStack All In One Package"
+    echo ""
+    show_download iz_download_zstack
+    show_spinner iz_unpack_zstack
+    show_spinner iz_unzip_tomcat
+    show_spinner iz_install_zstack
+}
+
 install_ansible(){
     echo_title "Install Ansible"
     echo ""
@@ -328,6 +350,7 @@ install_ansible(){
         export DEBIAN_FRONTEND=noninteractive
         show_spinner ia_update_apt
         show_spinner ia_install_python_gcc_db
+        show_spinner ia_install_pip
         show_spinner ia_install_ansible
     fi
 }
@@ -459,27 +482,14 @@ EOF
 
 is_install_virtualenv(){
     echo_subtitle "Install Virtualenv"
+    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
+        pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible 
     if [ ! -z $DEBUG ]; then
-        pip install -i $ZSTACK_PYPI_URL virtualenv==12.1.1
+        pip install -i $pypi_source --trusted-host localhost --ignore-installed virtualenv
     else
-        pip install -i $ZSTACK_PYPI_URL virtualenv==12.1.1 >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $pypi_source --trusted-host localhost --ignore-installed virtualenv >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install virtualenv failed"
-    pass
-}
-
-sd_install_dashboard_libs(){
-    echo_subtitle "Install Dashboard Dependent Libs"
-    source $VIRTUAL_ENV/bin/activate >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-        fail "failed to create virtualenv for zstack-dashboard in $VIRTUAL_ENV"
-    fi
-    if [ ! -z $DEBUG ]; then
-        pip install -i $ZSTACK_PYPI_URL Flask pika Flask-Script argparse simplejson 
-    else
-        pip install Flask pika Flask-Script argparse simplejson >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-    [ $? -ne 0 ] && fail "failed to install dashboard dependent libs"
     pass
 }
 
@@ -500,7 +510,17 @@ iz_download_zstack(){
            fail "failed to copy zstack all-in-one package from $ZSTACK_ALL_IN_ONE to $zstack_tmp_file"
         fi
     else
-        wget -w 10 -O $zstack_tmp_file $ZSTACK_ALL_IN_ONE >>$ZSTACK_INSTALL_LOG 2>&1
+        which wget >/dev/null 2>&1 
+        if [ $? -eq 0 ]; then
+            wget -w 10 -O $zstack_tmp_file $ZSTACK_ALL_IN_ONE >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            which curl >/dev/null 2>&1 
+            if [ $? -eq 0 ]; then
+                curl -L $ZSTACK_ALL_IN_ONE -o $zstack_tmp_file >>$ZSTACK_INSTALL_LOG 2>&1
+            else
+                fail "need 'wget' or 'curl' to download zstack all in one package."
+            fi 
+        fi
         if [ $? -ne 0 ];then
            /bin/rm -f $zstack_tmp_file
            fail "failed to download zstack all-in-one package from $ZSTACK_ALL_IN_ONE"
@@ -575,12 +595,8 @@ iz_install_zstackctl(){
 }
 
 install_zstack(){
-    echo_title "Download and Install ZStack"
+    echo_title "Install ZStack Tools"
     echo ""
-    show_download iz_download_zstack
-    show_spinner iz_unpack_zstack
-    show_spinner iz_unzip_tomcat
-    show_spinner iz_install_zstack
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
 }
@@ -1086,6 +1102,9 @@ fi
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
+
+#Download ZStack all in one package
+download_zstack
 
 #Install Ansible 
 install_ansible
