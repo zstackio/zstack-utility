@@ -962,7 +962,7 @@ cs_deploy_db(){
 
 sz_start_zstack(){
     echo_subtitle "Start ZStack management node"
-    /etc/init.d/zstack-server restart >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl start_node >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to start zstack"
     i=1
     while [ $i -lt 120 ]; do
