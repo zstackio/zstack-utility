@@ -211,12 +211,20 @@ check_system(){
                 fail "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
             fi
         fi
+        which unzip >/dev/null 2>&1
+        if [ $? -ne 0 ];then
+            yum install -y unzip  >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
     else
         grep 'Ubuntu 14.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
             OS=$UBUNTU1404
         else
             fail "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
+        fi
+        which unzip >/dev/null 2>&1
+        if [ $? -ne 0 ];then
+            apt-get install unzip  >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
     
