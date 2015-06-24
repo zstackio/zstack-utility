@@ -1938,7 +1938,11 @@ class UpgradeManagementNodeCmd(Command):
             def upgrade():
                 info('start to upgrade the management node ...')
                 shell('rm -rf %s' % ctl.zstack_home)
-                webapp_dir = os.path.dirname(ctl.zstack_home)
+                if ctl.zstack_home.endswith('/'):
+                    webapp_dir = os.path.dirname(os.path.dirname(ctl.zstack_home))
+                else:
+                    webapp_dir = os.path.dirname(ctl.zstack_home)
+
                 shell('cp %s %s' % (new_war.path, webapp_dir))
                 ShellCmd('unzip %s -d zstack' % os.path.basename(new_war.path), workdir=webapp_dir)()
 
