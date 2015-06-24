@@ -7,6 +7,7 @@ ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 CENTOS6='CENTOS6'
 CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
+UPGRADE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
@@ -233,8 +234,10 @@ check_system(){
 }
 
 do_check_system(){
-    if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
-        fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ZStack. \n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-dashboard stop"
+    if [ $UPGRADE = 'n' ]; then
+        if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
+            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ZStack. \n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-dashboard stop"
+        fi
     fi
 
     if [ `whoami` != 'root' ];then
@@ -342,8 +345,20 @@ download_zstack(){
     echo ""
     show_download iz_download_zstack
     show_spinner iz_unpack_zstack
-    show_spinner iz_unzip_tomcat
-    show_spinner iz_install_zstack
+    if [ $UPGRADE = 'n' ]; then
+        show_spinner iz_unzip_tomcat
+        show_spinner iz_install_zstack
+    fi
+}
+
+upgrade_zstack(){
+    echo_title "Upgrade ZStack"
+    echo ""
+    show_download uz_upgrade_zstack
+    if [ $CURRENT_STATUS = 'y' ]; then
+        show_spinner sz_start_zstack
+    fi
+
 }
 
 install_ansible(){
@@ -548,13 +563,64 @@ iz_download_zstack(){
 
 iz_unpack_zstack(){
     echo_subtitle "Unpack ZStack all-in-one package"
-    mkdir -p $ZSTACK_INSTALL_ROOT
-    all_in_one=$ZSTACK_INSTALL_ROOT/zstack_all_in_one.tgz
-    mv $zstack_tmp_file $all_in_one
-    cd $ZSTACK_INSTALL_ROOT
-    tar -zxf $all_in_one >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $UPGRADE = 'n' ]; then
+        mkdir -p $ZSTACK_INSTALL_ROOT
+        all_in_one=$ZSTACK_INSTALL_ROOT/zstack_all_in_one.tgz
+        mv $zstack_tmp_file $all_in_one
+        cd $ZSTACK_INSTALL_ROOT
+        tar -zxf $all_in_one >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -ne 0 ];then
+           fail "failed to unpack ZStack all-in-one package: $all_in_one."
+        fi
+    else
+        all_in_one=$upgrade_folder/zstack_all_in_one.tgz
+        mv $zstack_tmp_file $all_in_one
+        cd $upgrade_folder
+        tar -zxf $all_in_one >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -ne 0 ];then
+            rm -rf $upgrade_folder 
+            fail "failed to unpack ZStack all-in-one package: $all_in_one."
+        fi
+    fi
+    pass
+}
+
+uz_upgrade_zstack(){
+    echo_subtitle "Upgrade ZStack"
+    cd $upgrade_folder
+    unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
-       fail "failed to unpack ZStack all-in-one package: $all_in_one."
+        rm -rf $upgrade_folder
+        fail "failed to unzip zstack.war to $upgrade_folder/zstack"
+    fi
+    if [ ! -z $DEBUG ]; then
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
+    else
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        rm -rf $upgrade_folder
+        fail "failed to upgrade zstack-ctl"
+    fi
+
+    if [ ! -z $DEBUG ]; then
+        zstack-ctl upgrade_management_node --war-file $upgrade_folder/zstack.war 
+    else
+        zstack-ctl upgrade_management_node --war-file $upgrade_folder/zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        rm -rf $upgrade_folder
+        fail "failed to upgrade local management node"
+    fi
+
+    if [ ! -z $DEBUG ]; then
+        zstack-ctl upgrade_db
+    else
+        zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        rm -rf $upgrade_folder
+        fail "failed to upgrade database"
     fi
     pass
 }
@@ -1032,7 +1098,7 @@ Following command only installs ZStack management node and dependent software.
 }
 
 OPTIND=1
-while getopts "f:I:p:P:r:R:adDHihklny" Option
+while getopts "f:I:p:P:r:R:adDHihklnuy" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
@@ -1049,6 +1115,7 @@ do
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         R ) export ZSTACK_PYPI_URL=$OPTARG;;
+        u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
         * ) help;;
     esac
@@ -1117,11 +1184,43 @@ if [ ! -z $HTTP_PROXY ]; then
     export https_proxy=$HTTP_PROXY
 fi
 
+if [ $UPGRADE = 'y' ]; then
+    upgrade_folder=`mktemp`
+    rm -f $upgrade_folder
+    mkdir -p $upgrade_folder
+    zstack-ctl status |grep 'Running' >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        CURRENT_STATUS='y'
+    else
+        CURRENT_STATUS='n'
+    fi
+fi
+
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
 
 #Download ZStack all in one package
 download_zstack
+
+if [ $UPGRADE = 'y' ]; then
+    #only upgrade zstack
+    upgrade_zstack
+    rm -rf $upgrade_zstack
+    if [ -f $ZSTACK_VERSION ]; then
+        VERSION=`cat $ZSTACK_VERSION`' '
+    else
+        VERSION=''
+    fi
+
+    echo ""
+    echo_star_line
+    echo "ZStack in $ZSTACK_INSTALL_ROOT has been upgraded to ${VERSION}"
+    if [ $CURRENT_STATUS = 'y' ]; then
+        echo " Your management node has been started up again"
+    fi
+    echo_star_line
+    exit 0
+fi
 
 #Install Ansible 
 install_ansible
