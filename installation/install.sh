@@ -1060,6 +1060,8 @@ Options:
 
   -R PYTHON_PACKAGE_INDEX
         the repository to install python libs. The default is https://pypi.python.org/simple/
+
+  -u    Upgrade zstack management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
 ------------
 Example:
 
@@ -1218,6 +1220,7 @@ if [ $UPGRADE = 'y' ]; then
     if [ $CURRENT_STATUS = 'y' ]; then
         echo " Your management node has been started up again"
     fi
+    echo " Your old zstack was saved in /home/zstack/backup/"
     echo_star_line
     exit 0
 fi
