@@ -1267,8 +1267,9 @@ class InstallRabbitCmd(Command):
         fd, epel6_repo = tempfile.mkstemp()
         os.fdopen(fd, 'w').write('''[epel]
 name=Extra Packages for Enterprise Linux 6 - $basearch
+baseurl=http://mirrors.aliyun.com/epel/6/$basearch
 #baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
 failovermethod=priority
 enabled=1
 gpgcheck=0
@@ -1583,8 +1584,9 @@ fi
         fd, epel6_repo = tempfile.mkstemp()
         os.fdopen(fd, 'w').write('''[epel]
 name=Extra Packages for Enterprise Linux 6 - $basearch
+baseurl=http://mirrors.aliyun.com/epel/6/$basearch
 #baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
 failovermethod=priority
 enabled=1
 gpgcheck=0
@@ -1609,8 +1611,9 @@ gpgcheck=0
         fd, epel7_repo = tempfile.mkstemp()
         os.fdopen(fd, 'w').write('''[epel]
 name=Extra Packages for Enterprise Linux 7 - $basearch
+baseurl=http://mirrors.aliyun.com/epel/7/$basearch
 #baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
 failovermethod=priority
 enabled=1
 gpgcheck=0
@@ -1772,24 +1775,24 @@ class InstallWebUiCmd(Command):
         fd, epel6_repo = tempfile.mkstemp()
         os.fdopen(fd, 'w').write('''[epel]
 name=Extra Packages for Enterprise Linux 6 - $basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
+baseurl=http://mirrors.aliyun.com/epel/6/$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
 failovermethod=priority
 enabled=1
 gpgcheck=0
 
 [epel-debuginfo]
 name=Extra Packages for Enterprise Linux 6 - $basearch - Debug
-#baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch/debug
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-6&arch=$basearch
+baseurl=http://mirrors.aliyun.com/epel/6/$basearch/debug
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-6&arch=$basearch
 failovermethod=priority
 enabled=0
 gpgcheck=0
 
 [epel-source]
 name=Extra Packages for Enterprise Linux 6 - $basearch - Source
-#baseurl=http://download.fedoraproject.org/pub/epel/6/SRPMS
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-6&arch=$basearch
+baseurl=http://mirrors.aliyun.com/epel/6/SRPMS
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-6&arch=$basearch
 failovermethod=priority
 enabled=0
 gpgcheck=0

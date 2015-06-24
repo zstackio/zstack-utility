@@ -363,14 +363,28 @@ is_install_general_libs(){
 $MNT ansible_connection=localhost
 EOF
 
-    epel_repo_file=`mktemp`
-    cat > $epel_repo_file <<EOF
-[epel-release-source]
-name = epel release source package
-mirrorlist = http://mirrors.fedoraproject.org/mirrorlist?repo=epel-\$releasever&arch=\$basearch
-failovermethod = priority
-enabled = 0
-gpgcheck = 0
+    epel_6_repo_file=`mktemp`
+    cat > $epel_6_repo_file <<EOF
+[epel]
+name=Extra Packages for Enterprise Linux 6 - $basearch
+baseurl=http://mirrors.aliyun.com/epel/6/$basearch
+#baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
+failovermethod=priority
+enabled=1
+gpgcheck=0
+EOF
+
+    epel_7_repo_file=`mktemp`
+    cat > $epel_7_repo_file <<EOF
+[epel]
+name=Extra Packages for Enterprise Linux 7 - $basearch
+baseurl=http://mirrors.aliyun.com/epel/7/$basearch
+#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
+failovermethod=priority
+enabled=1
+gpgcheck=0
 EOF
 
     ansible_yaml=`mktemp`
@@ -389,24 +403,18 @@ EOF
       stat: path=/etc/yum.repos.d/epel.repo
       register: epel_repo
 
-    - name: install epel-release yum repo
-      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true
-      copy: src=$epel_repo_file
-            dest=/etc/yum.repos.d/epel_src.repo
+    - name: install epel 6 repo
+      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true and ansible_distribution_version < '7'
+      copy: src=$epel_6_repo_file
+            dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
     
-    - name: install epel-release
-      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true
-      yum: name=epel-release
-           enablerepo=epel-release-source
-           state=present
+    - name: install epel 6 repo
+      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true and ansible_distribution_version >= '7'
+      copy: src=$epel_7_repo_file
+            dest=/etc/yum.repos.d/epel.repo
+            owner=root group=root mode=0644
     
-    - name: enable epel repository
-      when: ansible_os_family == 'RedHat'
-      ini_file: dest=/etc/yum.repos.d/epel.repo
-                section=epel
-                option=enabled
-                value=1
 
     - name: install ZStack required libraries for RedHat OSes
       when: ansible_os_family == 'RedHat' 
@@ -470,12 +478,14 @@ EOF
     if [ $? -ne 0 ];then
         /bin/rm -f $ansible_inventory
         /bin/rm -f $ansible_yaml
-        /bin/rm -f $epel_repo_file
+        /bin/rm -f $epel_6_repo_file
+        /bin/rm -f $epel_7_repo_file
         fail "install system libraries failed."
     else
         /bin/rm -f $ansible_inventory
         /bin/rm -f $ansible_yaml
-        /bin/rm -f $epel_repo_file
+        /bin/rm -f $epel_6_repo_file
+        /bin/rm -f $epel_7_repo_file
         pass
     fi
 }
