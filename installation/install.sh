@@ -60,7 +60,7 @@ show_download()
     echo -n " ... "
     while [ $? -eq 0 ]; do
         if [ -z $DEBUG ];then
-            local temp=`ls -sh $zstack_tmp_file |awk '{print $1}'`
+            local temp=`ls -sh $zstack_tmp_file 2>/dev/null|awk '{print $1}'`
             to_print="$temp"
             echo -n $to_print
             size=${#to_print} 
