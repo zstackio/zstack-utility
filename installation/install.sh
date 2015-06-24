@@ -282,13 +282,6 @@ ia_install_python_gcc_rh(){
         yum -y install python python-devel python-setuptools gcc
     fi
     [ $? -ne 0 ] && fail "Install python and gcc fail."
-    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
-    if [ -z $DEBUG ];then
-        easy_install -i $ZSTACK_PYPI_URL --upgrade pip >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        easy_install -i $ZSTACK_PYPI_URL --upgrade pip 
-    fi
-    [ $? -ne 0 ] && fail "Install pip fail"
     pass
 }
 
@@ -351,6 +344,7 @@ install_ansible(){
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
         show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
+        show_spinner ia_install_pip
         show_spinner ia_install_ansible
     elif [ $OS = $UBUNTU1404 ]; then
         export DEBIAN_FRONTEND=noninteractive
