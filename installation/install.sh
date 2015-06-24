@@ -358,7 +358,15 @@ upgrade_zstack(){
     if [ $CURRENT_STATUS = 'y' ]; then
         show_spinner sz_start_zstack
     fi
-
+    if [ -f /etc/init.d/zstack-dashboard ]; then
+        /etc/init.d/zstack-dashboard status | grep 'running' > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+            /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
+            show_spinner sd_install_dashboard
+            show_spinner sd_start_dashboard
+        fi
+    fi
 }
 
 install_ansible(){
@@ -622,6 +630,8 @@ uz_upgrade_zstack(){
         rm -rf $upgrade_folder
         fail "failed to upgrade database"
     fi
+
+    /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
     pass
 }
 
