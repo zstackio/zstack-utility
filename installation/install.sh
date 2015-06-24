@@ -203,6 +203,10 @@ check_system(){
             grep 'release 7' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
                 OS=$CENTOS7
+                rpm -q libvirt |grep 1.1.1-29 >/dev/null 2>&1
+                if [ $? -eq 0 ]; then
+                    fail "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
+                fi
             else
                 fail "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
             fi
