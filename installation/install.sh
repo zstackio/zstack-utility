@@ -26,7 +26,7 @@ STEP="1"
 zstack_tmp_file=`mktemp`
 ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.7/zstack-all-in-one-0.7.0.tgz"}
 #TODO: change to ZStack WEBSITE
-WEBSITE=${WEBSITE-'www.w3.org'}
+WEBSITE=${WEBSITE-'mirrors.aliyun.com'}
 DEFAULT_PYPI='https://pypi.python.org/simple/'
 ZSTACK_PYPI_URL=${ZSTACK_PYPI_URL-$DEFAULT_PYPI}
 ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
@@ -366,10 +366,10 @@ EOF
     epel_6_repo_file=`mktemp`
     cat > $epel_6_repo_file <<EOF
 [epel]
-name=Extra Packages for Enterprise Linux 6 - $basearch
-baseurl=http://mirrors.aliyun.com/epel/6/$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
+name=Extra Packages for Enterprise Linux 6 - \$basearch
+baseurl=http://mirrors.aliyun.com/epel/6/\$basearch
+#baseurl=http://download.fedoraproject.org/pub/epel/6/\$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch
 failovermethod=priority
 enabled=1
 gpgcheck=0
@@ -378,10 +378,10 @@ EOF
     epel_7_repo_file=`mktemp`
     cat > $epel_7_repo_file <<EOF
 [epel]
-name=Extra Packages for Enterprise Linux 7 - $basearch
-baseurl=http://mirrors.aliyun.com/epel/7/$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
+name=Extra Packages for Enterprise Linux 7 - \$basearch
+baseurl=http://mirrors.aliyun.com/epel/7/\$basearch
+#baseurl=http://download.fedoraproject.org/pub/epel/7/\$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch
 failovermethod=priority
 enabled=1
 gpgcheck=0
