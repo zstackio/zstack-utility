@@ -1017,7 +1017,7 @@ class Vm(object):
             else:
                 cdrom = e(devices, 'disk', None, {'type':'file', 'device':'cdrom'})
                 e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
-                e(cdrom, 'source', None, {'file':cmd.isoPath})
+                e(cdrom, 'source', None, {'file':iso.path})
                 e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
                 e(cdrom, 'readonly', None)
         
