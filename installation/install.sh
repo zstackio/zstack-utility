@@ -354,7 +354,7 @@ download_zstack(){
 upgrade_zstack(){
     echo_title "Upgrade ZStack"
     echo ""
-    show_download uz_upgrade_zstack
+    show_spinner uz_upgrade_zstack
     if [ $CURRENT_STATUS = 'y' ]; then
         show_spinner sz_start_zstack
     fi
