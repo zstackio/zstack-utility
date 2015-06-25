@@ -364,7 +364,11 @@ upgrade_zstack(){
             echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
             /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
             show_spinner sd_install_dashboard
+            echo "start dashboard" >>$ZSTACK_INSTALL_LOG
             show_spinner sd_start_dashboard
+        else
+            echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+            show_spinner sd_install_dashboard
         fi
     fi
 }
