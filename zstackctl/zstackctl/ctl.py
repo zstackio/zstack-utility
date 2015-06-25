@@ -2081,11 +2081,11 @@ class UpgradeDbCmd(Command):
 
         flyway_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/tools/flyway-3.2.1/flyway')
         if not os.path.exists(flyway_path):
-            raise CtlError('cannot find %s. Have you run upgrade_management_node?')
+            raise CtlError('cannot find %s. Have you run upgrade_management_node?' % flyway_path)
 
         upgrading_schema_dir = os.path.join(ctl.zstack_home, 'WEB-INF/classes/db/upgrade/')
         if not os.path.exists(upgrading_schema_dir):
-            raise CtlError('cannot find %s. Have you run upgrade_management_node?')
+            raise CtlError('cannot find %s. Have you run upgrade_management_node?' % upgrading_schema_dir)
 
         ctl.check_if_management_node_has_stopped(args.force)
 

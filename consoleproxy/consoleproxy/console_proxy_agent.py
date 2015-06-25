@@ -86,6 +86,7 @@ class ConsoleProxyAgent(object):
     
     CHECK_AVAILABILITY_PATH = "/check"
     ESTABLISH_PROXY_PATH = "/establish"
+    DELETE_PROXY_PATH = "/delete"
 
     TOKEN_FILE_DIR = "/var/lib/zstack/consoleProxy/"
     PROXY_LOG_DIR = "/var/log/zstack/consoleProxy/"
@@ -95,7 +96,8 @@ class ConsoleProxyAgent(object):
     def __init__(self):
         self.http_server.register_async_uri(self.CHECK_AVAILABILITY_PATH, self.check_proxy_availability)
         self.http_server.register_async_uri(self.ESTABLISH_PROXY_PATH, self.establish_new_proxy)
-        
+        self.http_server.register_async_uri(self.DELETE_PROXY_PATH, self.delete)
+
         if not os.path.exists(self.PROXY_LOG_DIR):
             os.makedirs(self.PROXY_LOG_DIR, 0755)
         if not os.path.exists(self.TOKEN_FILE_DIR):
@@ -173,6 +175,23 @@ class ConsoleProxyAgent(object):
         rsp = CheckAvailabilityRsp()
         rsp.available = ret
         
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    @lock.lock('console-proxy')
+    def delete(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        keywords = [cmd.token, cmd.proxyHostname, str(cmd.proxyPort)]
+        pid = linux.find_process_by_cmdline(keywords)
+        if pid:
+            shell.call("kill %s" % pid)
+            log_file = self._make_proxy_log_file_name(cmd)
+            shell.call("rm -f %s" % log_file)
+            token_file = self._make_token_file_name(cmd)
+            shell.call("rm -f %s" % token_file)
+            logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
+
+        rsp = AgentResponse()
         return jsonobject.dumps(rsp)
 
     @replyerror
