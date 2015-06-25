@@ -1741,7 +1741,7 @@ class InstallWebUiCmd(Command):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
 
         info('found installation script at %s, start installing ZStack web UI' % install_script)
-        shell('sh %s zstack-dashboard' % install_script)
+        shell('bash %s zstack-dashboard' % install_script)
 
     def run(self, args):
         if not args.host:
