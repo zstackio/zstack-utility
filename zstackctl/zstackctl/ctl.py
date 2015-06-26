@@ -2011,7 +2011,7 @@ gpgcheck=0
       shell: "rm -rf {{virtualenv_root}} && virtualenv {{virtualenv_root}}"
 
     - name: install zstack-dashboard
-      pip: name=$dest extra_args="--ignore-installed --trusted-host localhost -i file://$pypi_path/simple" virtualenv="{{virtualenv_root}}"
+      pip: name=$dest extra_args="--trusted-host localhost -i file://$pypi_path/simple" virtualenv="{{virtualenv_root}}"
 
 '''
 
