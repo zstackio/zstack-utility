@@ -1292,7 +1292,13 @@ class InstallRabbitCmd(Command):
 
     - name: install EPEL repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      copy: src=$epel_repo6
+      copy: src=$epel6_repo
+            dest=/etc/yum.repos.d/epel.repo
+            owner=root group=root mode=0644
+
+    - name: install EPEL repo for RedHat OS 7
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      copy: src=$epel7_repo
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
 
@@ -1352,8 +1358,36 @@ enabled=0
 gpgcheck=0
         ''')
 
+        fd, epel7_repo = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write('''[epel]
+name=Extra Packages for Enterprise Linux 7 - $basearch
+baseurl=http://mirrors.aliyun.com/epel/7/$basearch
+#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
+failovermethod=priority
+enabled=1
+gpgcheck=0
+
+[epel-debuginfo]
+name=Extra Packages for Enterprise Linux 7 - $basearch - Debug
+#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch/debug
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-7&arch=$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
+
+[epel-source]
+name=Extra Packages for Enterprise Linux 7 - $basearch - Source
+#baseurl=http://download.fedoraproject.org/pub/epel/7/SRPMS
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-7&arch=$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
+        ''')
+
         def cleanup_temp_file():
             os.remove(epel6_repo)
+            os.remove(epel7_repo)
 
         self.install_cleanup_routine(cleanup_temp_file)
 
@@ -1414,7 +1448,8 @@ rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
         t = string.Template(yaml)
         yaml = t.substitute({
             'host': args.host,
-            'epel_repo6': epel6_repo,
+            'epel6_repo': epel6_repo,
+            'epel7_repo': epel7_repo,
             'pre_install_script': pre_script_path,
             'post_install_script': post_script_path
         })
@@ -1888,8 +1923,36 @@ enabled=0
 gpgcheck=0
         ''')
 
+        fd, epel7_repo = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write('''[epel]
+name=Extra Packages for Enterprise Linux 7 - $basearch
+baseurl=http://mirrors.aliyun.com/epel/7/$basearch
+#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
+failovermethod=priority
+enabled=1
+gpgcheck=0
+
+[epel-debuginfo]
+name=Extra Packages for Enterprise Linux 7 - $basearch - Debug
+#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch/debug
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-7&arch=$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
+
+[epel-source]
+name=Extra Packages for Enterprise Linux 7 - $basearch - Source
+#baseurl=http://download.fedoraproject.org/pub/epel/7/SRPMS
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-7&arch=$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
+        ''')
+
         def cleanup_temp_file():
             os.remove(epel6_repo)
+            os.remove(epel7_repo)
 
         self.install_cleanup_routine(cleanup_temp_file)
 
@@ -1904,6 +1967,12 @@ gpgcheck=0
     - name: install EPEL repo for RedHat OS 6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       copy: src=$epel6_repo
+            dest=/etc/yum.repos.d/epel.repo
+            owner=root group=root mode=0644
+
+    - name: install EPEL repo for RedHat OS 7
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      copy: src=$epel7_repo
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
 
@@ -1954,7 +2023,8 @@ gpgcheck=0
             'pypi_tar_path': pypi_tar_path,
             'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
             'pypi_path': '/tmp/pypi/',
-            "epel6_repo": epel6_repo
+            "epel6_repo": epel6_repo ,
+            "epel7_repo": epel7_repo
         })
 
         ansible(yaml, args.host, ssh_key=args.ssh_key)
