@@ -18,6 +18,7 @@ from configobj import ConfigObj
 import tempfile
 import pwd, grp
 import traceback
+import uuid
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -38,6 +39,54 @@ def loop_until_timeout(timeout, interval=1):
             return False
         return inner
     return wrap
+
+def find_process_by_cmdline(cmdlines):
+    pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
+    for pid in pids:
+        try:
+            with open(os.path.join('/proc', pid, 'cmdline'), 'r') as fd:
+                cmdline = fd.read()
+
+            is_find = True
+            for c in cmdlines:
+                if c not in cmdline:
+                    is_find = False
+                    break
+
+            if not is_find:
+                continue
+
+            return pid
+        except IOError:
+            continue
+
+    return None
+
+def ssh_run_full(ip, cmd, params=[], pipe=True):
+    remote_path = '/tmp/%s.sh' % uuid.uuid4()
+    script = '''/bin/bash << EOF
+cat << EOF1 > %s
+%s
+EOF1
+/bin/bash %s %s
+ret=$?
+rm -f %s
+exit $ret
+EOF''' % (remote_path, cmd, remote_path, ' '.join(params), remote_path)
+
+    scmd = ShellCmd('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "%s"' % (ip, script), pipe=pipe)
+    scmd(False)
+    return scmd
+
+def ssh_run(ip, cmd, params=[]):
+    scmd = ssh_run_full(ip, cmd, params)
+    scmd.raise_error()
+    return scmd.stdout
+
+def ssh_run_no_pipe(ip, cmd, params=[]):
+    scmd = ssh_run_full(ip, cmd, params, False)
+    scmd.raise_error()
+    return scmd.stdout
 
 class CtlError(Exception):
     pass
@@ -369,7 +418,7 @@ class Ctl(object):
 
 ctl = Ctl()
 
-def script(cmd, args=None):
+def script(cmd, args=None, no_pipe=False):
     if args:
         t = string.Template(cmd)
         cmd = t.substitute(args)
@@ -379,7 +428,10 @@ def script(cmd, args=None):
     try:
         if ctl.verbose:
             info('execute script:\n%s\n' % cmd)
-        shell('bash %s' % script_path)
+        if no_pipe:
+            shell_no_pipe('bash %s' % script_path)
+        else:
+            shell('bash %s' % script_path)
     finally:
         os.remove(script_path)
 
@@ -1219,8 +1271,13 @@ class InstallRabbitCmd(Command):
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
         parser.add_argument('--no-update', help="don't update the IP address to 'CloudBus.serverIp.0' in zstack.properties", action="store_true", default=False)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
+        parser.add_argument('--rabbit-username', help="RabbitMQ username; if set, the username will be created on RabbitMQ. [DEFAULT] rabbitmq default username", default=None)
+        parser.add_argument('--rabbit-password', help="RabbitMQ password; if set, the password will be created on RabbitMQ for username specified by --rabbit-username. [DEFAULT] rabbitmq default password", default=None)
 
     def run(self, args):
+        if (args.rabbit_password is None and args.rabbit_username) or (args.rabbit_username and args.rabbit_password is None):
+            raise CtlError('--rabbit-username and --rabbit-password must be both set or not set')
+
         yaml = '''---
 - hosts: $host
   remote_user: root
@@ -1251,6 +1308,7 @@ class InstallRabbitCmd(Command):
       with_items:
         - rabbitmq-server
 
+
     - name: open 5672 port
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT
 
@@ -1262,6 +1320,9 @@ class InstallRabbitCmd(Command):
 
     - name: enable RabbitMQ
       service: name=rabbitmq-server state=started enabled=yes
+
+    - name: post-install script
+      script: $post_install_script
 '''
 
         fd, epel6_repo = tempfile.mkstemp()
@@ -1328,11 +1389,34 @@ exit 1
 
         self.install_cleanup_routine(cleanup_prescript)
 
+        if args.rabbit_username and args.rabbit_password:
+            post_script = '''set -e
+rabbitmqctl add_user $username $password
+rabbitmqctl set_user_tags $username administrator
+rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
+'''
+            t = string.Template(post_script)
+            post_script = t.substitute({
+                'username': args.rabbit_username,
+                'password': args.rabbit_password
+            })
+        else:
+            post_script = ''
+
+        fd, post_script_path = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write(post_script)
+
+        def cleanup_postscript():
+            os.remove(post_script_path)
+
+        self.install_cleanup_routine(cleanup_postscript)
+
         t = string.Template(yaml)
         yaml = t.substitute({
             'host': args.host,
             'epel_repo6': epel6_repo,
-            'pre_install_script': pre_script_path
+            'pre_install_script': pre_script_path,
+            'post_install_script': post_script_path
         })
 
         ansible(yaml, args.host, args.debug, args.ssh_key)
@@ -1340,6 +1424,12 @@ exit 1
         if not args.no_update:
             ctl.write_property('CloudBus.serverIp.0', args.host)
             info('updated CloudBus.serverIp.0=%s in %s' % (args.host, ctl.properties_file_path))
+
+        if args.rabbit_username and args.rabbit_password:
+            ctl.write_property('CloudBus.rabbitmqUsername', args.rabbit_username)
+            info('updated CloudBus.rabbitmqUsername=%s in %s' % (args.rabbit_username, ctl.properties_file_path))
+            ctl.write_property('CloudBus.rabbitmqPassword', args.rabbit_password)
+            info('updated CloudBus.rabbitmqPassword=%s in %s' % (args.rabbit_password, ctl.properties_file_path))
 
 class InstallManagementNodeCmd(Command):
     def __init__(self):
@@ -1741,7 +1831,7 @@ class InstallWebUiCmd(Command):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
 
         info('found installation script at %s, start installing ZStack web UI' % install_script)
-        shell('bash %s zstack-dashboard' % install_script)
+        shell('sh %s zstack-dashboard' % install_script)
 
     def run(self, args):
         if not args.host:
@@ -1817,6 +1907,13 @@ gpgcheck=0
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
 
+    - name: install Python pip for RedHat OS
+      when: ansible_os_family == 'RedHat'
+      yum: pkg="{{item}}"
+      with_items:
+        - libselinux-python
+        - python-pip
+
     - name: copy zstack-dashboard package
       copy: src=$src dest=$dest
 
@@ -1826,10 +1923,6 @@ gpgcheck=0
     - name: untar pypi
       shell: "cd /tmp/; tar jxf $pypi_tar_path_dest"
 
-    - name: install Python pip for RedHat OS
-      when: ansible_os_family == 'RedHat'
-      yum: pkg=python-pip
-
     - name: install Python pip for Ubuntu
       when: ansible_os_family == 'Debian'
       apt: pkg=python-pip update_cache=yes
@@ -1837,14 +1930,16 @@ gpgcheck=0
     - name: install pip from local source 
       shell: "cd $pypi_path; pip install --ignore-installed pip*.tar.gz"
 
+    - shell: virtualenv --version | grep "12.1.1"
+      register: virtualenv_ret
+      ignore_errors: True
+
     - name: install virtualenv
-      pip: name="virtualenv" extra_args="-i file://$pypi_path/simple --ignore-installed --trusted-host localhost"
+      pip: name=virtualenv version=12.1.1 extra_args="--ignore-installed --trusted-host localhost -i file://$pypi_path/simple"
+      when: virtualenv_ret.rc != 0
 
-    - name: create virtualenv directory
-      shell: mkdir -p {{virtualenv_root}}
-
-    - name: initialize virtualenv
-      shell: "ls {{virtualenv_root}}/bin/activate > /dev/null || virtualenv {{virtualenv_root}}"
+    - name: create virtualenv
+      shell: "rm -rf {{virtualenv_root}} && virtualenv {{virtualenv_root}}"
 
     - name: install zstack-dashboard
       pip: name=$dest extra_args="--ignore-installed --trusted-host localhost -i file://$pypi_path/simple" virtualenv="{{virtualenv_root}}"
@@ -2391,6 +2486,161 @@ class RollbackDatabaseCmd(Command):
 
         info('successfully rollback the database to the dump file %s' % args.db_dump)
 
+class StopUiCmd(Command):
+    def __init__(self):
+        super(StopUiCmd, self).__init__()
+        self.name = 'stop_ui'
+        self.description = "stop UI server on the local or remote host"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
+
+    def _remote_stop(self, host):
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl stop_ui"' % host)
+
+    def run(self, args):
+        if args.host != 'localhost':
+            self._remote_stop(args.host)
+            return
+
+        pidfile = '/var/run/zstack/zstack-dashboard.pid'
+        if os.path.exists(pidfile):
+            with open(pidfile, 'r') as fd:
+                pid = fd.readline()
+                shell('kill %s >/dev/null 2>&1' % pid, is_exception=False)
+
+        def stop_all():
+            pid = find_process_by_cmdline('zstack_dashboard')
+            if pid:
+                shell('kill -9 %s >/dev/null 2>&1' % pid)
+                stop_all()
+            else:
+                return
+
+        stop_all()
+        info('successfully stopped the UI server')
+
+class UiStatusCmd(Command):
+    def __init__(self):
+        super(UiStatusCmd, self).__init__()
+        self.name = "ui_status"
+        self.description = "check the UI server status on the local or remote host."
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
+
+    def _remote_status(self, host):
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl ui_status"' % host)
+
+    def run(self, args):
+        if args.host != 'localhost':
+            self._remote_status(args.host)
+            return
+
+        pidfile = '/var/run/zstack/zstack-dashboard.pid'
+        if os.path.exists(pidfile):
+            with open(pidfile, 'r') as fd:
+                pid = fd.readline()
+                check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
+                check_pid_cmd(is_exception=False)
+                if check_pid_cmd.return_code == 0:
+                    info('%s: [PID:%s]' % (colored('Running', 'green'), pid))
+                    return
+
+        pid = find_process_by_cmdline('zstack_dashboard')
+        if pid:
+            info('%s: [PID: %s]' % (colored('Zombie', 'yellow'), pid))
+        else:
+            info('%s: [PID: %s]' % (colored('Stopped', 'red'), pid))
+
+
+class StartUiCmd(Command):
+    PID_FILE = '/var/run/zstack/zstack-dashboard.pid'
+
+    def __init__(self):
+        super(StartUiCmd, self).__init__()
+        self.name = "start_ui"
+        self.description = "start UI server on the local or remote host"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
+
+    def _remote_start(self, host, params):
+        cmd = '/etc/init.d/zstack-dashboard --rabbitmq %s' % params
+        ssh_run_no_pipe(host, cmd)
+        info('successfully start the UI server on the remote host[%s]' % host)
+
+    def _check_status(self):
+        if os.path.exists(self.PID_FILE):
+            with open(self.PID_FILE, 'r') as fd:
+                pid = fd.readline()
+                check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
+                check_pid_cmd(is_exception=False)
+                if check_pid_cmd.return_code == 0:
+                    info('UI server is still running[PID:%s]' % pid)
+                    return False
+
+        pid = find_process_by_cmdline('zstack_dashboard')
+        if pid:
+            info('found a zombie UI server[PID:%s], kill it and start a new one' % pid)
+            shell('kill -9 %s > /dev/null' % pid)
+
+        return True
+
+    def run(self, args):
+        ips = ctl.read_property_list("CloudBus.serverIp.")
+        if not ips:
+            raise CtlError('no RabbitMQ IPs found in %s. The IPs should be configured as CloudBus.serverIp.0, CloudBus.serverIp.1 ... CloudBus.serverIp.N' % ctl.properties_file_path)
+
+        ips = [v for k, v in ips]
+
+        username = ctl.read_property("CloudBus.rabbitmqUsername")
+        password = ctl.read_property("CloudBus.rabbitmqPassword")
+        if username and not password:
+            raise CtlError('CloudBus.rabbitmqUsername is configured but CloudBus.rabbitmqPassword is not. They must be both set or not set. Check %s' % ctl.properties_file_path)
+        if not username and password:
+            raise CtlError('CloudBus.rabbitmqPassword is configured but CloudBus.rabbitmqUsername is not. They must be both set or not set. Check %s' % ctl.properties_file_path)
+
+        if username and password:
+            urls = ["%s:%s@%s" % (username, password, ip) for ip in ips]
+        else:
+            urls = ips
+
+        param = ','.join(urls)
+
+        if args.host != 'localhost':
+            self._remote_start(args.host, param)
+            return
+
+        virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
+        if not os.path.exists(virtualenv):
+            raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (virtualenv, args.host))
+
+        if not self._check_status():
+            return
+
+        shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5000 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT')
+
+        scmd = '. %s/bin/activate\nnohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, param)
+        script(scmd, no_pipe=True)
+
+        @loop_until_timeout(5, 0.5)
+        def write_pid():
+            pid = find_process_by_cmdline('zstack_dashboard')
+            if pid:
+                with open(self.PID_FILE, 'w') as fd:
+                    fd.write(str(pid))
+                return True
+            else:
+                return False
+
+        write_pid()
+        pid = find_process_by_cmdline('zstack_dashboard')
+        info('successfully started UI server on the local host, PID[%s]' % pid)
+
 def main():
     BootstrapCmd()
     DeployDBCmd()
@@ -2412,6 +2662,9 @@ def main():
     UpgradeCtlCmd()
     RollbackManagementNodeCmd()
     RollbackDatabaseCmd()
+    StartUiCmd()
+    StopUiCmd()
+    UiStatusCmd()
 
     try:
         ctl.run()
