@@ -80,12 +80,14 @@ EOF''' % (remote_path, cmd, remote_path, ' '.join(params), remote_path)
 
 def ssh_run(ip, cmd, params=[]):
     scmd = ssh_run_full(ip, cmd, params)
-    scmd.raise_error()
+    if scmd.return_code != 0:
+        scmd.raise_error()
     return scmd.stdout
 
 def ssh_run_no_pipe(ip, cmd, params=[]):
     scmd = ssh_run_full(ip, cmd, params, False)
-    scmd.raise_error()
+    if scmd.return_code != 0:
+        scmd.raise_error()
     return scmd.stdout
 
 class CtlError(Exception):
@@ -485,9 +487,6 @@ def shell_return(cmd):
     scmd = ShellCmd(cmd)
     scmd(False)
     return scmd.return_code
-
-def ssh_run(ip, cmd):
-    shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "%s"' % (ip, cmd))
 
 class Command(object):
     def __init__(self):
@@ -1982,6 +1981,10 @@ gpgcheck=0
       with_items:
         - libselinux-python
         - python-pip
+        - bzip2
+        - python-devel
+        - gcc
+        - autoconf
 
     - name: copy zstack-dashboard package
       copy: src=$src dest=$dest
@@ -2567,7 +2570,8 @@ class StopUiCmd(Command):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
 
     def _remote_stop(self, host):
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl stop_ui"' % host)
+        cmd = '/etc/init.d/zstack-dashboard stop'
+        ssh_run_no_pipe(host, cmd)
 
     def run(self, args):
         if args.host != 'localhost':
@@ -2602,7 +2606,8 @@ class UiStatusCmd(Command):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
 
     def _remote_status(self, host):
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl ui_status"' % host)
+        cmd = '/etc/init.d/zstack-dashboard status'
+        ssh_run_no_pipe(host, cmd)
 
     def run(self, args):
         if args.host != 'localhost':
@@ -2639,7 +2644,7 @@ class StartUiCmd(Command):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
 
     def _remote_start(self, host, params):
-        cmd = '/etc/init.d/zstack-dashboard --rabbitmq %s' % params
+        cmd = '/etc/init.d/zstack-dashboard start --rabbitmq %s' % params
         ssh_run_no_pipe(host, cmd)
         info('successfully start the UI server on the remote host[%s]' % host)
 
