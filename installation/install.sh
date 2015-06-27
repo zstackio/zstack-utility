@@ -260,8 +260,14 @@ do_check_system(){
     ia_check_ip_hijack
 
     #add user: zstack and add sudo permission for it.
-    id -u zstack >/dev/null 2>&1 || (useradd -d $ZSTACK_INSTALL_ROOT zstack && mkdir -p $ZSTACK_INSTALL_ROOT && chown -R zstack.zstack $ZSTACK_INSTALL_ROOT)
+    id -u zstack >/dev/null 2>&1 || useradd -d $ZSTACK_INSTALL_ROOT zstack 
+    zstack_home=`eval echo ~zstack`
+    if [ ! -d $zstack_home ];then
+        mkdir -p $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
+        chown -R zstack.zstack $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
     grep 'zstack' /etc/sudoers >/dev/null || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
+    grep '^root' /etc/sudoers >/dev/null || echo 'root ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
     sed -i '/requiretty$/d' /etc/sudoers
 
     pass
