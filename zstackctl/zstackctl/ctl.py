@@ -1764,7 +1764,7 @@ gpgcheck=0
 
         self.install_cleanup_routine(cleanup_temp_file)
 
-        setup_account = '''id -u zstack >/dev/null 2>&1 || useradd -d $install_path zstack
+        setup_account = '''id -u zstack >/dev/null 2>&1 || (useradd -d $install_path zstack && mkdir -p $install_path && chown -R zstack.zstack $install_path)
 grep 'zstack' /etc/sudoers >/dev/null || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
 sed -i '/requiretty$$/d' /etc/sudoers
 chown -R zstack.zstack $install_path
@@ -2047,7 +2047,7 @@ class BootstrapCmd(Command):
         return False
 
     def run(self, args):
-        shell('id -u zstack 2>/dev/null || useradd -d %s zstack -s /bin/false' % ctl.USER_ZSTACK_HOME_DIR)
+        shell('id -u zstack 2>/dev/null || (useradd -d %s zstack -s /bin/false && mkdir -p %s && chown -R zstack.zstack %s)' % (ctl.USER_ZSTACK_HOME_DIR, ctl.USER_ZSTACK_HOME_DIR, ctl.USER_ZSTACK_HOME_DIR))
         shell("grep 'zstack' /etc/sudoers || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers")
         shell('mkdir -p %s && chown zstack:zstack %s' % (ctl.USER_ZSTACK_HOME_DIR, ctl.USER_ZSTACK_HOME_DIR))
 

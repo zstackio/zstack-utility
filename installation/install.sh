@@ -260,7 +260,7 @@ do_check_system(){
     ia_check_ip_hijack
 
     #add user: zstack and add sudo permission for it.
-    id -u zstack >/dev/null 2>&1 || useradd -d $ZSTACK_INSTALL_ROOT zstack
+    id -u zstack >/dev/null 2>&1 || (useradd -d $ZSTACK_INSTALL_ROOT zstack && mkdir -p $ZSTACK_INSTALL_ROOT && chown -R zstack.zstack $ZSTACK_INSTALL_ROOT)
     grep 'zstack' /etc/sudoers >/dev/null || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
     sed -i '/requiretty$/d' /etc/sudoers
 
@@ -431,7 +431,7 @@ EOF
   remote_user: root
 
   tasks:
-    - name: install lib-selinux for RedHatOS
+    - name: install lib-selinux for RedHat OS
       when: ansible_os_family == 'RedHat'
       yum: pkg=libselinux-python
 
@@ -451,6 +451,9 @@ EOF
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
     
+    - name: clean up yum old metadata for RedHat OS
+      when: ansible_os_family == 'RedHat'
+      shell: yum clean metadata
 
     - name: install ZStack required libraries for RedHat OSes
       when: ansible_os_family == 'RedHat' 
