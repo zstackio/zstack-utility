@@ -478,6 +478,7 @@ EOF
         - openssh-clients
         - openssh-server
         - sshpass
+        - sudo
 
     - name: install ZStack required libraries for Debian OSes
       when: ansible_os_family == 'Debian'
@@ -502,6 +503,7 @@ EOF
         - unzip
         - apache2
         - sshpass
+        - sudo
 
 EOF
 
