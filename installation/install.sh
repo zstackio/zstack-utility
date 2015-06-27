@@ -28,6 +28,7 @@ zstack_tmp_file=`mktemp`
 ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.7/zstack-all-in-one-0.7.0.tgz"}
 #TODO: change to ZStack WEBSITE
 WEBSITE=${WEBSITE-'mirrors.aliyun.com'}
+[ -z $WEBSITE ] && WEBSITE='mirrors.aliyun.com'
 DEFAULT_PYPI='https://pypi.python.org/simple/'
 ZSTACK_PYPI_URL=${ZSTACK_PYPI_URL-$DEFAULT_PYPI}
 ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
@@ -816,9 +817,9 @@ ia_disable_selinux(){
     echo_subtitle "Disable SELinux"
     which setenforce >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ];then
-        setenforce 0
+        setenforce 0 >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ]; then
-            setenforce 0 2>&1 |grep -i 'selinux is disabled'
+            setenforce 0 2>&1 |grep -i 'selinux is disabled' >>$ZSTACK_INSTALL_LOG 2>&1
             [ $? -ne 0 ] && fail "failed to disable selinux."
         fi
 
