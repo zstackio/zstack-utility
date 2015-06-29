@@ -37,6 +37,10 @@
 
     - name: create virtualenv
       shell: "rm -rf {{virtenv_path}} &&  virtualenv {{virtenv_path}}"
+      notify:
+        - install zstacklib
+        - install vr
+        - restart vr
 
     - name: create dnsmasq host dhcp file
       shell: /bin/touch /etc/hosts.dhcp

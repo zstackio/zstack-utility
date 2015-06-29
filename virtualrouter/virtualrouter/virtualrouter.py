@@ -37,6 +37,11 @@ class InitRsp(AgentResponse):
     def __init__(self):
         super(InitRsp, self).__init__()
 
+class PingRsp(AgentResponse):
+    def __init__(self):
+        super(PingRsp, self).__init__()
+        self.uuid = None
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -59,7 +64,8 @@ class VirtualRouter(object):
     PLUGIN_PATH = "plugin_path"
 
     INIT_PATH = "/init"
-    
+    PING_PATH = "/ping"
+
     def __init__(self, config={}):
         self.config = config
         plugin_path = self.config.get(self.PLUGIN_PATH, None)
@@ -68,18 +74,27 @@ class VirtualRouter(object):
         self.plugin_path = plugin_path
         self.plugin_rgty = plugin.PluginRegistry(self.plugin_path)
         self.init_command = None
+        self.uuid = None
 
     @replyerror
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.init_command = cmd
+        self.uuid = cmd.uuid;
         return jsonobject.dumps(InitRsp())
+
+    @replyerror
+    def ping(self ,req):
+        rsp = PingRsp()
+        rsp.uuid = self.uuid
+        return jsonobject.dumps(rsp)
 
     def start(self, in_thread=True):
         self.plugin_rgty.configure_plugins(self)
         self.plugin_rgty.start_plugins()
 
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
+        self.http_server.register_async_uri(self.PING_PATH, self.ping)
 
         if in_thread:
             self.http_server.start_in_thread()
