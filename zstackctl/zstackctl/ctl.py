@@ -2129,6 +2129,10 @@ class UpgradeManagementNodeCmd(Command):
                 shell("bash %s zstack-ctl" % install_script)
                 info('successfully upgraded zstack-cli, zstack-ctl')
 
+            def save_new_war():
+                sdir = os.path.join(ctl.zstack_home, "../../../")
+                shell('yes | cp %s %s' % (new_war.path, sdir))
+
             def chown_to_zstack():
                 info('change permission to user zstack')
                 shell('chown -R zstack:zstack %s' % os.path.join(ctl.zstack_home, '../../'))
@@ -2139,6 +2143,7 @@ class UpgradeManagementNodeCmd(Command):
             upgrade()
             restore_config()
             install_tools()
+            save_new_war()
             chown_to_zstack()
 
             info('----------------------------------------------\n'
