@@ -2583,6 +2583,7 @@ class StopUiCmd(Command):
         if os.path.exists(pidfile):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
                 shell('kill %s >/dev/null 2>&1' % pid, is_exception=False)
 
         def stop_all():
@@ -2619,6 +2620,7 @@ class UiStatusCmd(Command):
         if os.path.exists(pidfile):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
@@ -2653,6 +2655,7 @@ class StartUiCmd(Command):
         if os.path.exists(self.PID_FILE):
             with open(self.PID_FILE, 'r') as fd:
                 pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
