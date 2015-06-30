@@ -488,6 +488,9 @@ EOF
         - openssh-server
         - sshpass
         - sudo
+        - ntp 
+        - ntpdate
+        - bzip2
 
     - name: install ZStack required libraries for Debian OSes
       when: ansible_os_family == 'Debian'
@@ -513,6 +516,9 @@ EOF
         - apache2
         - sshpass
         - sudo
+        - ntp 
+        - ntpdate
+        - bzip2
 
 EOF
 
