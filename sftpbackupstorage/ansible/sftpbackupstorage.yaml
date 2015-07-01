@@ -40,7 +40,7 @@
       when: virtualenv_ret.rc != 0
 
     - name: create virtualenv
-      shell: "rm -rf {{virtenv_path}} &&  virtualenv {{virtenv_path}}"
+      shell: "rm -rf {{virtenv_path}} && rm -f {{sftp_root}}/{{pkg_sftpbackupstorage}} && rm -f {{sftp_root}}/{{pkg_zstacklib}} && virtualenv {{virtenv_path}}"
 
     - name: add public key
       authorized_key: user=root key="{{ lookup('file', 'files/sftpbackupstorage/id_rsa.sftp.pub') }}"

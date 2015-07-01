@@ -44,11 +44,7 @@
       when: virtualenv_ret.rc != 0
 
     - name: create virtualenv
-      shell: "rm -rf {{virtenv_path}} && virtualenv {{virtenv_path}}"
-      notify:
-        - install zstacklib
-        - install appliancevm
-        - restart appliancevm
+      shell: "rm -rf {{virtenv_path}} && rm -f {{appliancevm_root}}/{{pkg_zstacklib}} && rm -f {{appliancevm_root}}/{{pkg_appliancevm}} && virtualenv {{virtenv_path}}"
 
     - name: copy iptables initial rules in RedHat
       copy: src="{{file_root}}/iptables" dest=/etc/sysconfig/iptables

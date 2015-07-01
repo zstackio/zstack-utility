@@ -36,11 +36,7 @@
       when: virtualenv_ret.rc != 0
 
     - name: create virtualenv
-      shell: "rm -rf {{virtenv_path}} &&  virtualenv {{virtenv_path}}"
-      notify:
-        - install zstacklib
-        - install vr
-        - restart vr
+      shell: "rm -rf {{virtenv_path}} && rm -f {{vr_root}}/{{pkg_zstacklib}} && rm -f {{vr_root}}/{{pkg_virtualrouter}} && virtualenv {{virtenv_path}}"
 
     - name: create dnsmasq host dhcp file
       shell: /bin/touch /etc/hosts.dhcp

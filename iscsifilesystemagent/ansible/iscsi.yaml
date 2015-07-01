@@ -90,7 +90,7 @@
       when: virtualenv_ret.rc != 0
 
     - name: create virtualenv
-      shell: "rm -rf {{virtenv_path}} && virtualenv {{virtenv_path}}"
+      shell: "rm -rf {{virtenv_path}} && rm -rf {{iscsi_root}}/{{pkg_zstacklib}} && rm -f {{pkg_iscsiagent}} && virtualenv {{virtenv_path}}"
 
     - name: copy zstacklib
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{iscsi_root}}/{{pkg_zstacklib}}"

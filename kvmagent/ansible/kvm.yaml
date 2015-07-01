@@ -142,7 +142,7 @@
       when: virtualenv_ret.rc != 0
 
     - name: create virtualenv
-      shell: "rm -rf {{virtenv_path}} && virtualenv --system-site-packages {{virtenv_path}}"
+      shell: "rm -rf {{virtenv_path}} && rm -f {{kvm_root}}/{{pkg_zstacklib}} && rm -f {{kvm_root}}/{{pkg_zstacklib}} && virtualenv --system-site-packages {{virtenv_path}}"
 
     - name: enable libvirt daemon on Debian OS
       when: ansible_os_family == 'Debian' and chroot_env == 'false'
