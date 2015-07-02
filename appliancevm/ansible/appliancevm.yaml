@@ -74,24 +74,20 @@
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{appliancevm_root}}/{{pkg_zstacklib}}"
       notify:
         - install zstacklib
-        - restart appliancevm
 
     - name: copy appliancevm
       copy: src="{{file_root}}/{{pkg_appliancevm}}" dest="{{appliancevm_root}}/{{pkg_appliancevm}}"
       notify:
         - install appliancevm
-        - restart appliancevm
 
     - name: copy appliancevm service file
       copy: src="{{file_root}}/zstack-appliancevm" dest=/etc/init.d/ mode=755
-      notify:
-        - restart appliancevm
 
     - meta: flush_handlers
 
-    - name: enable appliancevm service for RedHat
-      service: name=zstack-appliancevm enabled=yes state=started
-      when: chroot_env == 'false' and ansible_os_family == 'RedHat'
+    - name: restart appliancevm
+      service: name=zstack-appliancevm enabled=yes state=restarted
+      when: chroot_env == 'false'
 
     - name: enable appliancevm service for RedHat on chroot
       service: name=zstack-appliancevm enabled=yes state=stopped
@@ -124,9 +120,5 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{appliancevm_root}}/{{pkg_appliancevm}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-
-    - name: restart appliancevm
-      service: name=zstack-appliancevm enabled=yes state=restarted
-      when: chroot_env == 'false'
 
 

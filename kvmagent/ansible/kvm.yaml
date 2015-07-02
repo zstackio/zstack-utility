@@ -103,28 +103,24 @@
       when: ansible_os_family == 'RedHat'
       notify:
         - restart redhat libvirtd
-        - restart kvmagent
 
     - name: copy default libvirtd conf in Debian
       copy: src="{{file_root}}/libvirt-bin" dest=/etc/default/libvirt-bin
       when: ansible_os_family == 'Debian'
       notify:
         - restart debian libvirtd
-        - restart kvmagent
 
     - name: copy libvirtd conf
       copy: src="{{file_root}}/libvirtd.conf" dest=/etc/libvirt/libvirtd.conf
       notify:
         - restart redhat libvirtd
         - restart debian libvirtd
-        - restart kvmagent
 
     - name: copy qemu conf
       copy: src="{{file_root}}/qemu.conf" dest=/etc/libvirt/qemu.conf
       notify:
         - restart redhat libvirtd
         - restart debian libvirtd
-        - restart kvmagent
 
     - name: enable libvirt daemon on RedHat based OS
       when: chroot_env == 'false' and ansible_os_family == 'RedHat'
@@ -152,26 +148,20 @@
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{kvm_root}}/{{pkg_zstacklib}}"
       notify:
         - install zstacklib
-        - restart kvmagent
 
     - name: copy kvmagent
       copy: src="{{file_root}}/{{pkg_kvmagent}}" dest="{{kvm_root}}/{{pkg_kvmagent}}"
-      notify:
-        - install kvmagent
-        - restart kvmagent
 
     # only for os using init.d not systemd
     - name: copy kvm service file
       when: ansible_os_family == 'RedHat' or ansible_os_family == 'Debian'
       copy: src=files/kvm/zstack-kvmagent dest=/etc/init.d/ mode=755
-      notify:
-        - restart kvmagent
 
     - meta: flush_handlers
 
-    - name: enable kvmagent service
-      service: name=zstack-kvmagent enabled=yes state=started
-      when: chroot_env == 'false' 
+    - name: restart kvmagent
+      service: name=zstack-kvmagent state=restarted enabled=yes
+      when: chroot_env == 'false'
 
   handlers:
     - name: install zstacklib
@@ -194,6 +184,3 @@
         https_proxy: "{{sproxy}}"
       pip: name="{{kvm_root}}/{{pkg_kvmagent}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
 
-    - name: restart kvmagent
-      service: name=zstack-kvmagent state=restarted enabled=yes
-      when: chroot_env == 'false'

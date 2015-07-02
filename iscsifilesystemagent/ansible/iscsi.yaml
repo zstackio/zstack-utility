@@ -96,24 +96,20 @@
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{iscsi_root}}/{{pkg_zstacklib}}"
       notify:
         - install zstacklib
-        - restart iscsiagent
 
     - name: copy iscsi filesystem agent
       copy: src="{{file_root}}/{{pkg_iscsiagent}}" dest="{{iscsi_root}}/{{pkg_iscsiagent}}"
       notify:
         - install iscsiagent
-        - restart iscsiagent
 
     - name: copy isci service file
       when: ansible_os_family == 'RedHat' or ansible_os_family == 'Debian'
       copy: src=files/iscsi/zstack-iscsi dest=/etc/init.d/ mode=755
-      notify:
-        - restart iscsiagent
 
     - meta: flush_handlers
 
-    - name: enable iscsiagent service
-      service: name=zstack-iscsi enabled=yes state=started
+    - name: restart iscsiagent
+      service: name=zstack-iscsi state=restarted enabled=yes
 
   handlers:
     - name: install zstacklib
@@ -128,5 +124,3 @@
         https_proxy: "{{sproxy}}"
       pip: name="{{iscsi_root}}/{{pkg_iscsiagent}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}"
 
-    - name: restart iscsiagent
-      service: name=zstack-iscsi state=restarted enabled=yes

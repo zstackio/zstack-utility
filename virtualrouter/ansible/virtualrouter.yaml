@@ -63,24 +63,20 @@
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{vr_root}}/{{pkg_zstacklib}}"
       notify:
         - install zstacklib
-        - restart vr
 
     - name: copy virtual router
       copy: src="{{file_root}}/{{pkg_virtualrouter}}" dest="{{vr_root}}/{{pkg_virtualrouter}}"
       notify:
         - install vr
-        - restart vr
 
     - name: copy virtual rourte service file
       copy: src="{{file_root}}/zstack-virtualrouter" dest=/etc/init.d/ mode=755
-      notify:
-        - restart vr
 
     - meta: flush_handlers
 
-    - name: enable virtual router service for RedHat
-      service: name=zstack-virtualrouter enabled=yes state=started
-      when: chroot_env == 'false' and ansible_os_family == 'RedHat'
+    - name: restart vr
+      service: name=zstack-virtualrouter enabled=yes state=restarted
+      when: chroot_env == 'false' 
 
     - name: enable virtual router service for RedHat on chroot
       service: name=zstack-virtualrouter enabled=yes state=stopped
@@ -111,6 +107,3 @@
         https_proxy: "{{sproxy}}"
       pip: name="{{vr_root}}/{{pkg_virtualrouter}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}"
 
-    - name: restart vr
-      service: name=zstack-virtualrouter enabled=yes state=restarted
-      when: chroot_env == 'false' 

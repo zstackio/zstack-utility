@@ -49,25 +49,21 @@
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{sftp_root}}/{{pkg_zstacklib}}"
       notify:
         - install zstacklib
-        - restart sftp
 
     - name: copy sftp
       copy: src="{{file_root}}/{{pkg_sftpbackupstorage}}" dest="{{sftp_root}}/{{pkg_sftpbackupstorage}}"
       notify:
         - install sftp
-        - restart sftp
 
     # only for os using init.d not systemd
     - name: copy sftp backup storage service file
       when: ansible_os_family == 'RedHat' or ansible_os_family == 'Debian'
       copy: src="{{file_root}}/zstack-sftpbackupstorage" dest=/etc/init.d/ mode=755
-      notify:
-        - restart sftp
 
     - meta: flush_handlers
 
-    - name: enable sftp backupstorage service
-      service: name=zstack-sftpbackupstorage enabled=yes state=started
+    - name: restart sftp
+      service: name=zstack-sftpbackupstorage state=restarted enabled=yes
       when: chroot_env == 'false'
 
   handlers:
@@ -82,8 +78,4 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{sftp_root}}/{{pkg_sftpbackupstorage}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}"
-
-    - name: restart sftp
-      service: name=zstack-sftpbackupstorage state=restarted enabled=yes
-      when: chroot_env == 'false'
 
