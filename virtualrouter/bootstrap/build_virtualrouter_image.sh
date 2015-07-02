@@ -368,6 +368,26 @@ configure_system() {
     else
         echo "net.ipv4.ip_forward = 1" >> $MNT/etc/sysctl.conf
     fi
+
+    #avoid of ssh slow connection
+    sed -i 's/#UseDNS yes/UseDNS no/' $MNT/etc/ssh/sshd_config
+    sed -i 's/UseDNS yes/UseDNS no/' $MNT/etc/ssh/sshd_config
+
+    #avoid of vr vm boot failure when partition mount time is in the future
+    cat > $MNT/etc/e2fsck.conf <<EOF
+[problems]
+    # Superblock last mount time is in the future (PR_0_FUTURE_SB_LAST_MOUNT).
+    0x000031 = {
+       preen_ok = true
+       preen_nomessage = true
+    }
+                                
+    # Superblock last write time is in the future (PR_0_FUTURE_SB_LAST_WRITE).
+    0x000032 = {
+       preen_ok = true
+       preen_nomessage = true
+    }
+EOF
 }
 
 config_debian(){
@@ -415,10 +435,6 @@ config_centos() {
 
     #disable selinux. following line is not working
     #in_chroot sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
-
-    #avoid of ssh slow connection
-    sed -i 's/#UseDNS yes/UseDNS no/' $MNT/etc/ssh/sshd_config
-    sed -i 's/UseDNS yes/UseDNS no/' $MNT/etc/ssh/sshd_config
 
     #TODO: Need to add DNS resolv.conf
     cat > $MNT/etc/resolv.conf <<EOF
