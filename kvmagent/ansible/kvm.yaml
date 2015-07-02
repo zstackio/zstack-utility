@@ -151,6 +151,8 @@
 
     - name: copy kvmagent
       copy: src="{{file_root}}/{{pkg_kvmagent}}" dest="{{kvm_root}}/{{pkg_kvmagent}}"
+      notify:
+        - install kvmagent
 
     # only for os using init.d not systemd
     - name: copy kvm service file
