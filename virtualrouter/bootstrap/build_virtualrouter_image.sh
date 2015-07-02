@@ -416,6 +416,10 @@ config_centos() {
     #disable selinux. following line is not working
     #in_chroot sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
 
+    #avoid of ssh slow connection
+    sed -i 's/#UseDNS yes/UseDNS no/' $MNT/etc/ssh/sshd_config
+    sed -i 's/UseDNS yes/UseDNS no/' $MNT/etc/ssh/sshd_config
+
     #TODO: Need to add DNS resolv.conf
     cat > $MNT/etc/resolv.conf <<EOF
 nameserver $DNS_SERVER
