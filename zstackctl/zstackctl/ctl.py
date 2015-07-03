@@ -2298,7 +2298,7 @@ class UpgradeDbCmd(Command):
             info('version table "schema_version" is not existing; initializing a new version table first')
 
             if db_password:
-                shell_no_pipe('bash %s baseline -baselineVersion=0.6 -baselineDescription="0.6 version" -user=%s -password %s -url=%s' %
+                shell_no_pipe('bash %s baseline -baselineVersion=0.6 -baselineDescription="0.6 version" -user=%s -password=%s -url=%s' %
                       (flyway_path, db_user, db_password, db_url))
             else:
                 shell_no_pipe('bash %s baseline -baselineVersion=0.6 -baselineDescription="0.6 version" -user=%s -url=%s' %
