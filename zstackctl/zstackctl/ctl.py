@@ -2653,6 +2653,9 @@ class StartUiCmd(Command):
         self.name = "start_ui"
         self.description = "start UI server on the local or remote host"
         ctl.register_command(self)
+        if not os.path.exists(os.path.dirname(PID_FILE)):
+            os.system("mkdir -p %s" % os.path.dirname(PID_FILE))
+            os.system("mkdir -p /var/log/zstack")
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
@@ -2714,7 +2717,7 @@ class StartUiCmd(Command):
 
         shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5000 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT')
 
-        scmd = 'mkdir -p /var/log/zstack\nmkdir -p /var/run/zstack\n. %s/bin/activate\nnohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, param)
+        scmd = '. %s/bin/activate\nnohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, param)
         script(scmd, no_pipe=True)
 
         @loop_until_timeout(5, 0.5)
