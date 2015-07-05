@@ -2714,7 +2714,7 @@ class StartUiCmd(Command):
 
         shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5000 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT')
 
-        scmd = '. %s/bin/activate\nnohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, param)
+        scmd = 'mkdir -p /var/log/zstack\nmkdir -p /var/run/zstack\n. %s/bin/activate\nnohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, param)
         script(scmd, no_pipe=True)
 
         @loop_until_timeout(5, 0.5)
