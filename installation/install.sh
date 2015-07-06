@@ -491,6 +491,7 @@ EOF
         - ntp 
         - ntpdate
         - bzip2
+        - mysql
 
     - name: install ZStack required libraries for Debian OSes
       when: ansible_os_family == 'Debian'
@@ -519,6 +520,7 @@ EOF
         - ntp 
         - ntpdate
         - bzip2
+        - mysql
 
 EOF
 
