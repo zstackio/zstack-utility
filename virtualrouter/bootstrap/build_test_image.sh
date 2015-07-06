@@ -17,16 +17,16 @@ IMG_NAME=${WORKSPACE}/zstack-test-`date +%Y%m%d`.img
 #IMG_SIZE=2500 #2500MB #for general test
 #FS_BLOCK=511744 #2500MB - 1MB; 1block = 4k. #for general test
 IMG_SIZE=3500 #3500MB #for zstack installation test
-FS_BLOCK=767744 #3500MB - 1MB; 1block = 4k. #for general test
+SWAP_SIZE=512000 #500*1024 = 500MB, swap block = 1k
+FS_BLOCK=767744 #(3500 - 500 - 1)* 1024 / 4; 1block = 4k. #for general test
 #IMG_SIZE=1300 #1.3G #smaller image for general test
 #FS_BLOCK=332544 #1.3G-1M #smaller image for general test
 OFFSET=1048576 #1M
 #OFFSET2=2097151999 #2G-1
 #OFFSET3=2097152000 #2G
-OFFSET2=3145727999  #3000M - 1
-OFFSET3=3145728000  #3000M
+OFFSET2=3145727999  #3500M -500M - 1 #filesystem offset
+OFFSET3=3145728000  #3500M -500M
 #
-SWAP_SIZE=512000 #500*1024, swap block = 1k
 #IMG_SIZE=2000 #2G
 #FS_BLOCK=511744 #2G-1M 1block = 4k
 ##IMG_SIZE=1300 #1.3G
