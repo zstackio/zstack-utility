@@ -1775,7 +1775,7 @@ grep 'zstack' /etc/sudoers >/dev/null || echo 'zstack        ALL=(ALL)       NOP
 grep '^root' /etc/sudoers >/dev/null || echo 'root        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
 sed -i '/requiretty$$/d' /etc/sudoers
 chown -R zstack.zstack $install_path
-
+mkdir /home/zstack && chown -R zstack.zstack /home/zstack
 zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
 '''
         t = string.Template(setup_account)
