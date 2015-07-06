@@ -748,7 +748,7 @@ class DeployDBCmd(Command):
             if not args.zstack_password:
                 args.zstack_password = "''"
 
-            cmd = ShellCmd('sh %s root %s %s %s %s' % (script_path, args.root_password, args.host, args.port, args.zstack_password))
+            cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, args.host, args.port, args.zstack_password))
             cmd(False)
             if cmd.return_code != 0:
                 if ('ERROR 1044' in cmd.stdout or 'ERROR 1044' in cmd.stderr) or ('Access denied' in cmd.stdout or 'Access denied' in cmd.stderr):
@@ -1003,7 +1003,7 @@ class StopCmd(Command):
         def wait_stop():
             return get_management_node_pid() is None
 
-        shell('sh %s' % os.path.join(ctl.zstack_home, self.STOP_SCRIPT))
+        shell('bash %s' % os.path.join(ctl.zstack_home, self.STOP_SCRIPT))
         if wait_stop():
             info('successfully stopped management node')
             return
@@ -1678,8 +1678,8 @@ EOF
 
 install_script="$$apache_path/webapps/zstack/WEB-INF/classes/tools/install.sh"
 
-eval "sh $$install_script zstack-ctl"
-eval "sh $$install_script zstack-cli"
+eval "bash $$install_script zstack-ctl"
+eval "bash $$install_script zstack-cli"
 
 set +e
 grep "ZSTACK_HOME" ~/.bashrc > /dev/null
@@ -1872,7 +1872,7 @@ class InstallWebUiCmd(Command):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
 
         info('found installation script at %s, start installing ZStack web UI' % install_script)
-        shell('sh %s zstack-dashboard' % install_script)
+        shell('bash %s zstack-dashboard' % install_script)
 
     def run(self, args):
         if not args.host:
