@@ -2036,6 +2036,18 @@ class UpdateIscsiFileSystemBackendPrimaryStorageAction(inventory.APIUpdateIscsiF
         self.out = evt
         return self.out
 
+class AddLocalPrimaryStorageAction(inventory.APIAddLocalPrimaryStorageMsg):
+    def __init__(self):
+        super(AddLocalPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddLocalPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateKVMHostAction(inventory.APIUpdateKVMHostMsg):
     def __init__(self):
         super(UpdateKVMHostAction, self).__init__()
