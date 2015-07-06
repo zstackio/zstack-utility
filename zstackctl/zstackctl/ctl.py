@@ -2653,8 +2653,8 @@ class StartUiCmd(Command):
         self.name = "start_ui"
         self.description = "start UI server on the local or remote host"
         ctl.register_command(self)
-        if not os.path.exists(os.path.dirname(PID_FILE)):
-            os.system("mkdir -p %s" % os.path.dirname(PID_FILE))
+        if not os.path.exists(os.path.dirname(self.PID_FILE)):
+            os.system("mkdir -p %s" % os.path.dirname(self.PID_FILE))
             os.system("mkdir -p /var/log/zstack")
 
     def install_argparse_arguments(self, parser):
