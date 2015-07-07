@@ -1194,7 +1194,7 @@ class InstallDbCmd(Command):
 
         pre_install_script = '''
 ###################
-Check DNS hijacking
+#Check DNS hijacking
 ###################
 
 hostname=`hostname`
