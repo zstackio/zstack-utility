@@ -16,9 +16,13 @@ mkdir -p $MNT
 IMG_NAME=${WORKSPACE}/zstack-test-`date +%Y%m%d`.img
 #IMG_SIZE=2500 #2500MB #for general test
 #FS_BLOCK=511744 #2500MB - 1MB; 1block = 4k. #for general test
-IMG_SIZE=3500 #3500MB #for zstack installation test
 SWAP_SIZE=512000 #500*1024 = 500MB, swap block = 1k
+IMG_SIZE=3500 #3500MB #for zstack installation test #3.5G image with 500M swap
 FS_BLOCK=767744 #(3500 - 500 - 1)* 1024 / 4; 1block = 4k. #for general test
+
+#IMG_SIZE=4000 #4000MB #for zstack installation test #4G image with 500M swap
+#FS_BLOCK=895744 #3500MB - 1MB; 1block = 4k. #4G image with 500M swap
+
 #IMG_SIZE=1300 #1.3G #smaller image for general test
 #FS_BLOCK=332544 #1.3G-1M #smaller image for general test
 OFFSET=1048576 #1M
@@ -26,6 +30,10 @@ OFFSET=1048576 #1M
 #OFFSET3=2097152000 #2G
 OFFSET2=3145727999  #3500M -500M - 1 #filesystem offset
 OFFSET3=3145728000  #3500M -500M
+
+#OFFSET2=3670015999 #3500M - 1 #4G image with 500M swap
+#OFFSET3=3670016000 #3500M  #4G image with 500M swap
+
 #
 #IMG_SIZE=2000 #2G
 #FS_BLOCK=511744 #2G-1M 1block = 4k
@@ -432,7 +440,7 @@ config_centos() {
     in_chroot chkconfig ntpd on
     in_chroot chkconfig sshd on
     #in_chroot chkconfig ip6tables on
-    [ "$CENTOS_VERSION" = "7" ] && in_chroot chkconfig firewalld off
+    #[ "$CENTOS_VERSION" = "7" ] && (in_chroot chkconfig firewalld off || echo "That's okay that there is not firewalld in centos7 service.")
     in_chroot chkconfig iptables on
 
     #disable selinux. following line is not working

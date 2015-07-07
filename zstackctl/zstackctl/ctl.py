@@ -1392,7 +1392,7 @@ gpgcheck=0
 
         pre_script = '''
 ###################
-Check DNS hijacking
+#Check DNS hijacking
 ###################
 
 hostname=`hostname`
@@ -1561,7 +1561,6 @@ class InstallManagementNodeCmd(Command):
         - python-pip
         - openssh-clients
         - sshpass
-        - mysql
         - bzip2
         - ntp
         - ntpdate

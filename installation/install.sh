@@ -520,7 +520,7 @@ EOF
         - ntp 
         - ntpdate
         - bzip2
-        - mysql
+        - mysql-client
 
 EOF
 
