@@ -1564,6 +1564,7 @@ class InstallManagementNodeCmd(Command):
         - bzip2
         - ntp
         - ntpdate
+        - sudo
 
     - name: install dependencies Debian OS
       when: ansible_os_family == 'Debian'
@@ -1582,6 +1583,7 @@ class InstallManagementNodeCmd(Command):
         - bzip2
         - ntp
         - ntpdate
+        - sudo
 
     - name: install MySQL client for RedHat 6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
