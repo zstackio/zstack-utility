@@ -404,7 +404,7 @@ class Vm(object):
             return 512
     
     def get_memory(self):
-        return long(self.domain_xmlobject.memory.text_)
+        return long(self.domain_xmlobject.memory.text_) * 1024
     
     def get_name(self):
         return self.domain_xmlobject.description.text_
