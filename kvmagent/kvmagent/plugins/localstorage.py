@@ -48,6 +48,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     MERGE_SNAPSHOT_PATH = "/localstorage/snapshot/merge";
     MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase";
     OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge";
+    CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -62,6 +63,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.MERGE_AND_REBASE_SNAPSHOT_PATH, self.merge_and_rebase_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_PATH, self.offline_merge_snapshot)
+        http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME, self.create_template_from_volume)
 
         self.path = None
 
@@ -72,6 +74,19 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         total = linux.get_total_disk_size(self.path)
         used = linux.get_used_disk_apparent_size(self.path)
         return total, total-used
+
+    @kvmagent.replyerror
+    def create_template_from_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+        dirname = os.path.dirname(cmd.installPath)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname, 0755)
+
+        linux.qcow2_create_template(cmd.volumePath, cmd.installPath)
+
+        logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def revert_snapshot(self, req):
