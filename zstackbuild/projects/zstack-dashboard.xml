@@ -12,6 +12,11 @@
 
         <exec executable="git" dir="${zstackdashboard.source}" failonerror="true">
             <arg value="checkout" />
+            <arg value="master" />
+        </exec>
+
+        <exec executable="git" dir="${zstackdashboard.source}" failonerror="true">
+            <arg value="checkout" />
             <arg value="${zstackdashboard.build_version}" />
         </exec>
 

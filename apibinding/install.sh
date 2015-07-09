@@ -5,4 +5,4 @@ rm -rf build dist apibinding.egg-info
 
 python setup.py sdist
 pip uninstall -y apibinding
-pip install  dist/*.tar.gz
+pip install --upgrade dist/*.tar.gz

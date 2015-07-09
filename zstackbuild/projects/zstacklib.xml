@@ -8,6 +8,11 @@
     <target name="build-zstacklib" >
         <exec executable="git" dir="${zstackutility.source}" failonerror="true">
             <arg value="checkout" />
+            <arg value="master" />
+        </exec>
+
+        <exec executable="git" dir="${zstackutility.source}" failonerror="true">
+            <arg value="checkout" />
             <arg value="${zstackutiltiy.build_version}" />
         </exec>
 
