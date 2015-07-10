@@ -880,10 +880,10 @@ cs_install_zstack_service(){
 
 cs_setup_nfs(){
     echo_subtitle "Configure Local NFS Server (primary storage)"
-    mkdir -p $NFS_FODLER
-    grep $NFS_FODLER /etc/exports >>$ZSTACK_INSTALL_LOG 2>&1
+    mkdir -p $NFS_FOLDER
+    grep $NFS_FOLDER /etc/exports >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then 
-        echo "$NFS_FODLER *(rw,sync,no_root_squash)" >> /etc/exports
+        echo "$NFS_FOLDER *(rw,sync,no_root_squash)" >> /etc/exports
     fi
     if [ $OS = $CENTOS6 ]; then
         chkconfig nfs on >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1062,7 +1062,10 @@ Options:
 
   -h    show help message
 
-  -H    setup an Apache HTTP server on this machine
+  -H IMAGE_FOLDER_PATH   
+        setup an Apache HTTP server and use IMAGE_FOLDER_PATH as url:
+        http://CURRENT_MACHINE_IP/image/ . Doesn't effect when use -u to upgrade
+        zstack or -l to install some system libs. 
 
   -i    only install ZStack management node and dependent packages
 
@@ -1081,7 +1084,9 @@ Options:
 
   -l    only just install ZStack dependent libraries
 
-  -n    setup a NFS server on this machine
+  -n NFS_PATH
+        setup a NFS server and export the NFS path. Doesn't effect when use -u 
+        to upgrade zstack or -l to install some system libs. 
 
   -p MYSQL_PASSWORD
         password for MySQL user 'zstack' that is the user ZStack management nodes use to access database. By default, an empty password is applied.
@@ -1134,19 +1139,19 @@ Following command only installs ZStack management node and dependent software.
 }
 
 OPTIND=1
-while getopts "f:I:p:P:r:R:adDHihklnuy" Option
+while getopts "f:H:I:n:p:P:r:R:adDhiklNuy" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
-        n ) NEED_NFS='y';;
-        H ) NEED_HTTP='y';;
         d ) DEBUG='y';;
         D ) NEED_DROP_DB='y';;
+        H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
         f ) ZSTACK_ALL_IN_ONE=$OPTARG;;
         i ) ONLY_INSTALL_ZSTACK='y';;
         I ) MANAGEMENT_INTERFACE=$OPTARG;;
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
+        n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
         P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
@@ -1159,10 +1164,10 @@ done
 OPTIND=1
 
 echo "ZStack install root: $ZSTACK_INSTALL_ROOT" >>$ZSTACK_INSTALL_LOG
-NFS_FODLER=$ZSTACK_INSTALL_ROOT/nfs_root
-echo "NFS Folder: $NFS_FODLER" >> $ZSTACK_INSTALL_LOG
-HTTP_FOLDER=$ZSTACK_INSTALL_ROOT/http_root
-echo "HTTP Folder: $HTTP_FODLER" >> $ZSTACK_INSTALL_LOG
+[ -z $NFS_FOLDER ] && NFS_FOLDER=$ZSTACK_INSTALL_ROOT/nfs_root
+echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG
+[ -z $HTTP_FOLDER ] && HTTP_FOLDER=$ZSTACK_INSTALL_ROOT/http_root
+echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
     echo "Cannot not identify default network interface. Please set management
@@ -1331,7 +1336,7 @@ echo " - ZStack web UI is running, vist http://$MANAGEMENT_IP:5000 in your brows
 echo "      You can use /etc/init.d/zstack-dashboard (stop|start) to stop/start the service"
 echo " - ZStack command line tool is installed: zstack-cli"
 echo " - ZStack control tool is installed: zstack-ctl"
-[ ! -z $NEED_NFS ] && echo " - $MANAGEMENT_IP:$NFS_FODLER is configured for primary storage"
+[ ! -z $NEED_NFS ] && echo " - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage"
 [ ! -z $NEED_HTTP ] && echo " - http://$MANAGEMENT_IP/image is ready for storing images, copy your images to the folder $HTTP_FOLDER"
 echo ' - You can use `zstack-ctl install_management_node --remote=remote_ip` to install more management nodes'
 echo_star_line
