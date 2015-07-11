@@ -737,17 +737,17 @@ class DeployDBCmd(Command):
 
         cmd = ShellCmd(check_existing_db)
         cmd(False)
+        if not args.root_password:
+            args.root_password = "''"
+        if not args.zstack_password:
+            args.zstack_password = "''"
+
         if cmd.return_code == 0 and not args.drop:
             if args.keep_db:
-                info('detected existing zstack database and keep it; if you want to drop it, please append parameter --drop, instead of --keep-db')
+                info('detected existing zstack database and keep it; if you want to drop it, please append parameter --drop, instead of --keep-db\n')
             else:
                 raise CtlError('detected existing zstack database; if you are sure to drop it, please append parameter --drop')
         else:
-            if not args.root_password:
-                args.root_password = "''"
-            if not args.zstack_password:
-                args.zstack_password = "''"
-
             cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, args.host, args.port, args.zstack_password))
             cmd(False)
             if cmd.return_code != 0:
