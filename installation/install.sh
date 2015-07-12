@@ -8,6 +8,7 @@ CENTOS6='CENTOS6'
 CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
 UPGRADE='n'
+FORCE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
@@ -644,18 +645,26 @@ uz_upgrade_zstack(){
         rm -rf $upgrade_folder
         fail "failed to upgrade local management node"
     fi
+    /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+    rm -rf $upgrade_folder
 
     if [ ! -z $DEBUG ]; then
-        zstack-ctl upgrade_db
+        if [ $FORCE = 'n' ];then
+            zstack-ctl upgrade_db
+        else
+            zstack-ctl upgrade_db --force
+        fi
     else
-        zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $FORCE = 'n' ];then
+            zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            zstack-ctl upgrade_db --force >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
     fi
     if [ $? -ne 0 ];then
-        rm -rf $upgrade_folder
         fail "failed to upgrade database"
     fi
 
-    /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
     pass
 }
 
@@ -1060,6 +1069,10 @@ Options:
         You can provide a local file path or a URL with option if you want to
         use a separate all-in-one package.
 
+  -F    force upgrade management node mysql database. This option is only valid
+        when using -u option. It will send --force parameter to 
+        zstack-ctl upgrade_db
+
   -h    show help message
 
   -H IMAGE_FOLDER_PATH   
@@ -1139,7 +1152,7 @@ Following command only installs ZStack management node and dependent software.
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:adDhiklNuy" Option
+while getopts "f:H:I:n:p:P:r:R:adDFhiklNuy" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
@@ -1147,6 +1160,7 @@ do
         D ) NEED_DROP_DB='y';;
         H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
         f ) ZSTACK_ALL_IN_ONE=$OPTARG;;
+        F ) FORCE='y';;
         i ) ONLY_INSTALL_ZSTACK='y';;
         I ) MANAGEMENT_INTERFACE=$OPTARG;;
         k ) NEED_KEEP_DB='y';;
