@@ -63,8 +63,8 @@ def add_backup_storage(deployConfig, session_uuid):
             action.hostname = bs.hostname_
             action.timeout = AddKVMHostTimeOut #for some platform slowly salt execution
             action.type = inventory.SFTP_BACKUP_STORAGE_TYPE
-            if bs.uuid_:
-                action.resourceUuid = bs.uuid_
+            if bs.uuid__:
+                action.resourceUuid = bs.uuid__
             thread = threading.Thread(target = _thread_for_action, args = (action, ))
             wait_for_thread_queue()
             thread.start()
@@ -93,8 +93,8 @@ def add_zone(deployConfig, session_uuid, zone_name = None):
         if zone_duplication == 0:
             action.name = zone.name_
             action.description = zone.description__
-            if zone.uuid_:
-                action.resourceUuid = zone.uuid_
+            if zone.uuid__:
+                action.resourceUuid = zone.uuid__
         else:
             action.name = generate_dup_name(zone.name_, zone_duplication, 'z')
             action.description = generate_dup_name(zone.description__, zone_duplication, 'zone')
@@ -221,8 +221,8 @@ def add_l2_network(deployConfig, session_uuid, l2_name = None, zone_name = None)
                         if is_vlan:
                             action.vlan = l2_vlan
 
-                        if l2.uuid_:
-                            action.resourceUuid = l2.uuid_
+                        if l2.uuid__:
+                            action.resourceUuid = l2.uuid__
 
                         thread = threading.Thread(\
                                 target=_thread_for_action, \
@@ -265,8 +265,8 @@ def add_primary_storage(deployConfig, session_uuid, ps_name = None, \
         action.zoneUuid = zinv.uuid
         action.totalCapacity = sizeunit.get_size(pr.totalCapacity_)
         action.availableCapacity = sizeunit.get_size(pr.availableCapacity_)
-        if inventory.uuid_:
-            action.resourceUuid = inventory.uuid_
+        if pr.uuid__:
+            action.resourceUuid = pr.uuid__
         return action
 
     def _deploy_primary_storage(zone):
@@ -286,8 +286,8 @@ def add_primary_storage(deployConfig, session_uuid, ps_name = None, \
                 action.type = inventory.NFS_PRIMARY_STORAGE_TYPE
                 action.url = pr.url_
                 action.zoneUuid = zinv.uuid
-                if pr.uuid_:
-                    action.resourceUuid = pr.uuid_
+                if pr.uuid__:
+                    action.resourceUuid = pr.uuid__
                 thread = threading.Thread(target=_thread_for_action, args=(action,))
                 wait_for_thread_queue()
                 thread.start()
@@ -415,8 +415,8 @@ def add_cluster(deployConfig, session_uuid, cluster_name = None, \
                     zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid, name=zone_name)
                     zinv = get_first_item_from_list(zinvs, 'Zone', zone_name, 'Cluster')
                     action.zoneUuid = zinv.uuid
-                    if cluster.uuid_:
-                        action.resourceUuid = cluster.uuid_
+                    if cluster.uuid__:
+                        action.resourceUuid = cluster.uuid__
                     thread = threading.Thread(target=_add_cluster, args=(action, zone_ref, cluster, cluster_ref, ))
                     wait_for_thread_queue()
                     thread.start()
@@ -468,8 +468,14 @@ def add_host(deployConfig, session_uuid, host_ip = None, zone_name = None, \
                     action.timeout = AddKVMHostTimeOut
                 elif cluster.hypervisorType_ == inventory.SIMULATOR_HYPERVISOR_TYPE:
                     action = api_actions.AddSimulatorHostAction()
-                    action.cpuCapacity = host.cpuCapacity_
-                    action.memoryCapacity = sizeunit.get_size(host.memoryCapacity_)
+                    if host.cpuCapacity__:
+                        action.cpuCapacity = host.cpuCapacity_
+                    else:
+                        action.cpuCapacity = 416000
+                    if host.memoryCapacity__:
+                        action.memoryCapacity = sizeunit.get_size(host.memoryCapacity_)
+                    else:
+                        action.memoryCapacity = sizeunit.get_size('1024G')
     
                 action.sessionUuid = session_uuid
                 action.clusterUuid = cinv.uuid
@@ -478,8 +484,8 @@ def add_host(deployConfig, session_uuid, host_ip = None, zone_name = None, \
                     action.name = host.name_
                     action.description = host.description__
                     action.managementIp = host.managementIp_
-                    if host.uuid_:
-                        action.resourceUuid = host.uuid_
+                    if host.uuid__:
+                        action.resourceUuid = host.uuid__
                 else:
                     action.name = generate_dup_name(generate_dup_name(generate_dup_name(host.name_, zone_ref, 'z'), cluster_ref, 'c'), i, 'h')
                     action.description = generate_dup_name(generate_dup_name(generate_dup_name(host.description__, zone_ref, 'z'), cluster_ref, 'c'), i, 'h')
@@ -564,8 +570,8 @@ def add_l3_network(deployConfig, session_uuid, l3_name = None, l2_name = None, \
             action.system = 'true'
         action.l2NetworkUuid = l2inv_uuid
         action.name = l3Name
-        if l3.uuid_:
-            action.resourceUuid = l3.uuid_
+        if l3.uuid__:
+            action.resourceUuid = l3.uuid__
         action.type = inventory.L3_BASIC_NETWORK_TYPE
         if l3.domain_name__:
             action.dnsDomain = l3.domain_name__
@@ -717,8 +723,8 @@ def do_add_ip_range(ip_range_xml_obj, l3_uuid, session_uuid, \
         action.name = ir.name_
         action.netmask = ir.netmask_
         action.startIp = ir.startIp_
-        if ir.uuid_:
-            action.resourceUuid = ir.uuid_
+        if ir.uuid__:
+            action.resourceUuid = ir.uuid__
         try:
             evt = action.run()
         except Exception as e:
@@ -838,8 +844,8 @@ def add_image(deployConfig, session_uuid):
             action.name = i.name_
             action.url = i.url_
             action.timeout = 1800000
-            if i.uuid_:
-                action.resourceUuid = i.uuid_
+            if i.uuid__:
+                action.resourceUuid = i.uuid__
             thread = threading.Thread(target = _add_image, args = (action, ))
             print 'before add image1: %s' % i.url_
             wait_for_image_thread_queue()
@@ -859,8 +865,8 @@ def add_disk_offering(deployConfig, session_uuid):
         action.name = disk_offering_xml_obj.name_
         action.description = disk_offering_xml_obj.description_
         action.diskSize = sizeunit.get_size(disk_offering_xml_obj.diskSize_)
-        if disk_offering_xml_obj.uuid_:
-            action.resourceUuid = disk_offering_xml_obj.uuid_
+        if disk_offering_xml_obj.uuid__:
+            action.resourceUuid = disk_offering_xml_obj.uuid__
         evt = action.run()
         dinv = evt.inventory
         deploy_logger(jsonobject.dumps(evt))
@@ -887,8 +893,8 @@ def add_instance_offering(deployConfig, session_uuid):
         action.cpuNum = instance_offering_xml_obj.cpuNum_
         action.cpuSpeed = instance_offering_xml_obj.cpuSpeed_
         action.memorySize = sizeunit.get_size(instance_offering_xml_obj.memorySize_)
-        if instance_offering_xml_obj.uuid_:
-            action.resourceUuid = instance_offering_xml_obj.uuid_
+        if instance_offering_xml_obj.uuid__:
+            action.resourceUuid = instance_offering_xml_obj.uuid__
         evt = action.run()
         deploy_logger(jsonobject.dumps(evt))
 
@@ -937,8 +943,8 @@ def add_virtual_router(deployConfig, session_uuid, l3_name = None, \
         action.memorySize = sizeunit.get_size(i.memorySize_)
         action.isDefault = i.isDefault__
         action.type = 'VirtualRouter'
-        if i.uuid_:
-            action.resourceUuid = i.uuid_
+        if i.uuid__:
+            action.resourceUuid = i.uuid__
 
         zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid, name=i.zoneRef.text_)
         zinv = get_first_item_from_list(zinvs, 'zone', i.zoneRef.text_, 'virtual router offering')
