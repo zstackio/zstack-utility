@@ -152,6 +152,14 @@ def get_backup_storage(xml_root, session_uuid = None):
         add_xml_items(sftp_bs_storages, 'sftpBackupStorage', xml_item, \
                 'attachedZoneUuids availableCapacity totalCapacity')
 
+    cond = res_ops.gen_query_conditions('type', '=', 'SimulatorBackupStorage')
+    simulator_bss = res_ops.safely_get_resource(res_ops.BACKUP_STORAGE, \
+            cond, session_uuid)
+
+    if simulator_bss:
+        add_xml_items(simulator_bss, 'simulatorBackupStorage', xml_item, \
+                'attachedZoneUuids')
+
     return xml_item
 
 def _set_backup_strorage_ref(xml_obj, bs_name):
@@ -199,8 +207,16 @@ def get_zone(xml_root, session_uuid = None):
         cond = res_ops.gen_query_conditions('type', '=', 'NFS', cond)
         pss = res_ops.safely_get_resource(res_ops.PRIMARY_STORAGE, cond, \
                 session_uuid)
-        return add_xml_items(pss, 'nfsPrimaryStorage', pss_xml, \
+        add_xml_items(pss, 'nfsPrimaryStorage', pss_xml, \
                 'availableCapacity mountPath totalCapacity type zoneUuid')
+
+        cond = res_ops.gen_query_conditions('zoneUuid', '=', zone.uuid)
+        cond = res_ops.gen_query_conditions('type', '=', \
+                'SimulatorPrimaryStorage', cond)
+        pss = res_ops.safely_get_resource(res_ops.PRIMARY_STORAGE, cond, \
+                session_uuid)
+        add_xml_items(pss, 'simulatorPrimaryStorage', pss_xml, \
+                'mountPath type zoneUuid')
 
     def _get_cluster(clusters_xml, clusters):
         for cluster in clusters:
