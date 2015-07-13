@@ -646,6 +646,7 @@ uz_upgrade_zstack(){
         fail "failed to upgrade local management node"
     fi
     /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+    cd /
     rm -rf $upgrade_folder
 
     if [ ! -z $DEBUG ]; then
