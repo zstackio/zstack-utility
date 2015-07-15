@@ -53,6 +53,11 @@ class Cli(object):
 
     LOGIN_MESSAGE_NAME = 'APILogInByAccountMsg'
     LOGOUT_MESSAGE_NAME = 'APILogOutMsg'
+    LOGIN_BY_USER_NAME = 'APILogInByUserMsg'
+    CREATE_ACCOUNT_NAME = 'APICreateAccountMsg'
+    CREATE_USER_NAME = 'APICreateUserMsg'
+    ACCOUNT_RESET_PASSWORD_NAME = 'APIResetAccountPasswordMsg'
+    USER_RESET_PASSWORD_NAME = 'APIResetUserPasswordMsg'
     
     @staticmethod
     def register_message_creator(apiname, func):
@@ -204,7 +209,7 @@ class Cli(object):
     
     def do_command(self, line):
         def check_session(apiname):
-            if not self.session_uuid and apiname != self.LOGIN_MESSAGE_NAME:
+            if not self.session_uuid and apiname not in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME]:
                 self.print_error('''Please login before running any API message
 example: %sLogInByAccount accountName=admin password=your_super_secure_admin_password''' % prompt)
                 return False
@@ -394,7 +399,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
         msg = create_msg(apiname, all_params)
         set_session_to_api(msg)
         try:
-            if apiname == self.LOGIN_MESSAGE_NAME:
+            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.CREATE_ACCOUNT_NAME, self.CREATE_USER_NAME, self.ACCOUNT_RESET_PASSWORD_NAME, self.USER_RESET_PASSWORD_NAME]:
                 if not msg.password:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
@@ -407,7 +412,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
             (name, event) = self.api.async_call_wait_for_complete(msg, fail_soon=True)
             end_time = time.time()
             
-            if apiname == self.LOGIN_MESSAGE_NAME:
+            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME]:
                 self.session_uuid = event.inventory.uuid
                 open(SESSION_FILE, 'w').write(self.session_uuid)
 
