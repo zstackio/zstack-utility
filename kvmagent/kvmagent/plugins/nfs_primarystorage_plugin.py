@@ -151,20 +151,23 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.REBASE_MERGE_SNAPSHOT_PATH, self.rebase_and_merge_snapshot)
         http_server.register_async_uri(self.MOVE_BITS_PATH, self.move_bits)
         http_server.register_async_uri(self.OFFLINE_SNAPSHOT_MERGE, self.merge_snapshot_to_volume)
-        self.mount_path = None
+        self.mount_path = {}
         self.image_cache = None
 
     def stop(self):
         pass
     
-    def _get_disk_capacity(self):
-        return linux.get_disk_capacity_by_df(self.mount_path)
+    def _get_disk_capacity(self, uuid):
+        path = self.mount_path.get(uuid)
+        if not path:
+            raise Exception('cannot find mount path of primary storage[uuid: %s]' % uuid)
+        return linux.get_disk_capacity_by_df(path)
 
     def _json_meta_file_name(self, path):
         return path + '.json'
 
-    def _set_capacity_to_response(self, rsp):
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+    def _set_capacity_to_response(self, uuid, rsp):
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(uuid)
 
     @kvmagent.replyerror
     def merge_snapshot_to_volume(self, req):
@@ -177,7 +180,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
-        self._set_capacity_to_response(rsp)
+        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -193,7 +196,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 os.makedirs(dirname)
             shell.call("mv %s %s" % (cmd.srcPath, cmd.destPath))
 
-        self._set_capacity_to_response(rsp)
+        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
 
@@ -217,7 +220,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         try:
             linux.qcow2_create_template(latest, cmd.workspaceInstallPath)
             rsp.size = os.path.getsize(cmd.workspaceInstallPath)
-            self._set_capacity_to_response(rsp)
+            self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -238,7 +241,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         try:
             linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
             rsp.size = os.path.getsize(cmd.workspaceInstallPath)
-            self._set_capacity_to_response(rsp)
+            self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -275,7 +278,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone(install_path, new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
-        self._set_capacity_to_response(rsp)
+        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -297,9 +300,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             pdir = os.path.dirname(cmd.installPath)
             linux.rmdir_if_empty(pdir)
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         logger.debug('successfully delete %s' % cmd.installPath)
-        self._set_capacity_to_response(rsp)
+        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
     
     @kvmagent.replyerror
@@ -311,9 +313,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         if not linux.is_mounted(cmd.mountPath, cmd.url):
             linux.mount(cmd.url, cmd.mountPath)
         
-        self.mount_path = cmd.mountPath
+        self.mount_path[cmd.uuid] = cmd.mountPath
         logger.debug(http.path_msg(self.MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))
-        self._set_capacity_to_response(rsp)
+        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
     
     @kvmagent.replyerror
@@ -328,8 +330,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     
     @kvmagent.replyerror
     def get_capacity(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetCapacityResponse()
-        self._set_capacity_to_response(rsp)
+        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
         
     @kvmagent.replyerror
@@ -358,7 +361,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         with open(meta_path, 'w') as fd:
             fd.write(jsonobject.dumps(meta, pretty=True))
 
-        self._set_capacity_to_response(rsp)
+        self._set_capacity_to_response(cmd.uuid, rsp)
         logger.debug('successfully create empty volume[uuid:%s, name:%s, size:%s] at %s' % (cmd.uuid, cmd.name, cmd.size, cmd.installUrl))
         return jsonobject.dumps(rsp)
         
@@ -378,7 +381,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                                                                                            cmd.installPath, cmd.rootVolumePath, str(e))
             rsp.success = False
 
-        self._set_capacity_to_response(rsp)
+        self._set_capacity_to_response(cmd.uuid, rsp)
         logger.debug('successfully created template[%s] from root volume[%s]' % (cmd.installPath, cmd.rootVolumePath))
         return jsonobject.dumps(rsp)
     
@@ -389,7 +392,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         try:
             linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
             logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
-            self._set_capacity_to_response(rsp)
+            self._set_capacity_to_response(cmd.uuid, rsp)
         except Exception as e:
             content = traceback.format_exc()
             logger.warn(content)
@@ -424,7 +427,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             meta_path = self._json_meta_file_name(cmd.installUrl)
             with open(meta_path, 'w') as fd:
                 fd.write(jsonobject.dumps(meta, pretty=True))
-            self._set_capacity_to_response(rsp)
+            self._set_capacity_to_response(cmd.uuid, rsp)
             logger.debug('successfully create root volume[%s] from template in cache[%s]' % (cmd.installUrl, cmd.templatePathInCache))
         except Exception as e:
             content = traceback.format_exc()

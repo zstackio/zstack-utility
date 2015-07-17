@@ -189,6 +189,7 @@ class ConsoleProxyAgent(object):
             shell.call("rm -f %s" % log_file)
             token_file = self._make_token_file_name(cmd)
             shell.call("rm -f %s" % token_file)
+            shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null && iptables -D INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (cmd.proxyPort, cmd.proxyPort))
             logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
 
         rsp = AgentResponse()
@@ -232,6 +233,7 @@ class ConsoleProxyAgent(object):
         proxy_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('%s'); websockify.websocketproxy.websockify_init()" %s:%s -D --target-config=%s --idle-timeout=%s''' % (log_file, cmd.proxyHostname, proxyPort, token_file, timeout)
         logger.debug(proxy_cmd)
         shell.call(proxy_cmd)
+        shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (proxyPort, proxyPort))
         
         info =  {
                  'proxyHostname': cmd.proxyHostname,
