@@ -136,6 +136,18 @@ class StopVmInstanceAction(inventory.APIStopVmInstanceMsg):
         self.out = evt
         return self.out
 
+class ChangeInstanceOfferingAction(inventory.APIChangeInstanceOfferingMsg):
+    def __init__(self):
+        super(ChangeInstanceOfferingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeInstanceOfferingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVmAttachableDataVolumeAction(inventory.APIGetVmAttachableDataVolumeMsg):
     def __init__(self):
         super(GetVmAttachableDataVolumeAction, self).__init__()
@@ -1760,6 +1772,18 @@ class CreateAccountAction(inventory.APICreateAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAccountAction(inventory.APIDeleteAccountMsg):
+    def __init__(self):
+        super(DeleteAccountAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAccountAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

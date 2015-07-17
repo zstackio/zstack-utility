@@ -1033,7 +1033,7 @@ class Vm(object):
                 if use_virtio:
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
                 else:
-                    e(disk, 'target', None, {'dev':'hd%s' % dev_letter, 'bus':'ide'})
+                    e(disk, 'target', None, {'dev':'sd%s' % dev_letter, 'bus':'scsi'})
 
             def iscsibased_volume(dev_letter, virtio):
                 def blk_iscsi():
