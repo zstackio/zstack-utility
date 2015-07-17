@@ -71,9 +71,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         pass
 
     def _get_disk_capacity(self):
-        total = linux.get_total_disk_size(self.path)
-        used = linux.get_used_disk_apparent_size(self.path)
-        return total, total-used
+        return linux.get_disk_capacity_by_df(self.path)
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):

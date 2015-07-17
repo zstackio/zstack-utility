@@ -158,9 +158,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         pass
     
     def _get_disk_capacity(self):
-        total = linux.get_total_disk_size(self.mount_path)
-        used = linux.get_used_disk_apparent_size(self.mount_path)
-        return total, total-used
+        return linux.get_disk_capacity_by_df(self.mount_path)
 
     def _json_meta_file_name(self, path):
         return path + '.json'

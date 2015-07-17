@@ -136,6 +136,11 @@ def get_used_disk_apparent_size(dir_path):
     output = shell.ShellCmd('du --apparent-size --max-depth=1 %s | tail -1' % dir_path)()
     return long(output.split()[0])
 
+def get_disk_capacity_by_df(dir_path):
+    output = shell.call('df %s' % dir_path)
+    p = output.split('\n')[1].split()
+    return long(p[1]) * 1024, long(p[3]) * 1024
+
 def is_mounted(path=None, url=None):
     if url and path:
         cmdstr = "mount | grep '%s' | grep '%s'" % (url, path)
