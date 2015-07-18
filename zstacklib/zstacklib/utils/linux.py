@@ -137,9 +137,9 @@ def get_used_disk_apparent_size(dir_path):
     return long(output.split()[0])
 
 def get_disk_capacity_by_df(dir_path):
-    output = shell.call('df %s' % dir_path)
-    p = output.split('\n')[1].split()
-    return long(p[1]) * 1024, long(p[3]) * 1024
+    total = shell.call("df %s|tail -1|awk '{print $(NF-4)}'" % dir_path)
+    avail = shell.call("df %s|tail -1|awk '{print $(NF-2)}'" % dir_path)
+    return long(total) * 1024, long(avail) * 1024
 
 def is_mounted(path=None, url=None):
     if url and path:
