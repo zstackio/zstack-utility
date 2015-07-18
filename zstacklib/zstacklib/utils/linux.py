@@ -166,7 +166,7 @@ def mount(url, path):
     shell.ShellCmd("mount %s %s" % (url, path))()
 
 def umount(path, is_exception=True):
-    cmd = shell.ShellCmd('umount -f %s' % path)
+    cmd = shell.ShellCmd('umount -f -l %s' % path)
     cmd(is_exception=is_exception)
     return cmd.return_code == 0
 
