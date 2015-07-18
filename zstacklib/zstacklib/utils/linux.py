@@ -417,7 +417,7 @@ def raw_clone(src, dst):
     shell.ShellCmd('chmod 666 %s' % dst)()
 
 def qcow2_create(dst, size):
-    shell.ShellCmd('/usr/bin/qemu-img create -f qcow2 -o preallocation=metadata %s %s' % (dst, size))()
+    shell.ShellCmd('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))()
     shell.ShellCmd('chmod 666 %s' % dst)()
 
 def raw_create(dst, size):
