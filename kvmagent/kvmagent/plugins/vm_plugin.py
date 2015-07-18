@@ -412,6 +412,9 @@ class Vm(object):
     def refresh(self):
         (state, _, _, _, _) = self.domain.info()
         self.state = self.power_state[state]
+        self.domain_xml = self.domain.XMLDesc(0)
+        self.domain_xmlobject = xmlobject.loads(self.domain_xml)
+        self.uuid = self.domain_xmlobject.name.text_
 
     def is_alive(self):
         try:
@@ -438,7 +441,16 @@ class Vm(object):
         self.domain.createWithFlags(0)    
         if not linux.wait_callback_success(self.wait_for_state_change, self.VM_STATE_RUNNING, timeout=timeout):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to running after %s seconds' % (self.uuid, self.get_name(), timeout))
-    
+
+        vnc_port = self.get_vnc_port()
+        def wait_vnc_port_open(_):
+            cmd = shell.ShellCmd('netstat -na | grep "0.0.0.0:%s" > /dev/null' % vnc_port)
+            cmd(is_exception=False)
+            return cmd.return_code == 0
+
+        if not linux.wait_callback_success(wait_vnc_port_open, None, timeout=30):
+            raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does not open after 30 seconds" % (self.uuid, self.get_name()))
+
     def stop(self, graceful=True, timeout=5, undefine=True):
         def cleanup_addons():
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
@@ -1033,7 +1045,7 @@ class Vm(object):
                 if use_virtio:
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
                 else:
-                    e(disk, 'target', None, {'dev':'sd%s' % dev_letter, 'bus':'scsi'})
+                    e(disk, 'target', None, {'dev':'sd%s' % dev_letter, 'bus':'ide'})
 
             def iscsibased_volume(dev_letter, virtio):
                 def blk_iscsi():
