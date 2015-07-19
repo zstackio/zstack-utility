@@ -112,6 +112,18 @@ class UpdateVmInstanceAction(inventory.APIUpdateVmInstanceMsg):
         self.out = evt
         return self.out
 
+class DetachNicFromVmAction(inventory.APIDetachNicFromVmMsg):
+    def __init__(self):
+        super(DetachNicFromVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachNicFromVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class MigrateVmAction(inventory.APIMigrateVmMsg):
     def __init__(self):
         super(MigrateVmAction, self).__init__()

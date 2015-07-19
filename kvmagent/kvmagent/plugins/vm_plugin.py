@@ -899,6 +899,37 @@ class Vm(object):
 
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
+    def _interface_cmd_to_xml(self, cmd):
+        nic = cmd.nic
+
+        interface = etree.Element('interface', attrib={'type':'bridge'})
+        e(interface, 'mac', None, attrib={'address':nic.mac})
+        e(interface, 'source', None, attrib={'bridge':nic.bridgeName})
+        e(interface, 'rom', None, {'bar':'off'})
+        e(interface, 'target', None, attrib={'dev':nic.nicInternalName})
+        if nic.useVirtio:
+            e(interface, 'model', None, attrib={'type':'virtio'})
+        else:
+            e(interface, 'model', None, attrib={'type':'e1000'})
+
+        return etree.tostring(interface)
+
+    def attach_nic(self, cmd):
+        xml = self._interface_cmd_to_xml(cmd)
+
+        if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
+            self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+        else:
+            self.domain.attachDevice(xml)
+
+    def detach_nic(self, cmd):
+        xml = self._interface_cmd_to_xml(cmd)
+
+        if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
+            self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+        else:
+            self.domain.detachDevice(xml)
+
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
 
@@ -1171,6 +1202,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
     KVM_LOGOUT_ISCSI_TARGET_PATH = "/iscsi/target/logout"
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
+    KVM_ATTACH_NIC_PATH = "/vm/attachnic"
+    KVM_DETACH_NIC_PATH = "/vm/detachnic"
 
     def _start_vm(self, cmd):
         try:
@@ -1200,6 +1233,26 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.debug('clean up defunct vnic chain[%s]' % chain.name)
             return True
         return False
+
+    @kvmagent.replyerror
+    def attach_nic(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm.attach_nic(cmd)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def detach_nic(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm.detach_nic(cmd)
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def start_vm(self, req):
@@ -1457,6 +1510,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target)
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
+        http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
+        http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
 
     def stop(self):
         pass
