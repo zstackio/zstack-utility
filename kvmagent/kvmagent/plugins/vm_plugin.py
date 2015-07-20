@@ -398,7 +398,7 @@ class Vm(object):
     def get_cpu_speed(self):
         cputune = self.domain_xmlobject.get_child_node('cputune')
         if cputune:
-            return int(cputune.shares.text_)
+            return int(cputune.shares.text_) / self.get_cpu_num()
         else:
             #TODO: return system cpu capacity
             return 512
@@ -922,6 +922,15 @@ class Vm(object):
         else:
             self.domain.attachDevice(xml)
 
+        def check_device():
+            s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
+            s(False)
+            return s.return_code == 0
+
+        if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
+            raise Exception('nic device does not show after 30 seconds')
+
+
     def detach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
@@ -929,6 +938,14 @@ class Vm(object):
             self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
         else:
             self.domain.detachDevice(xml)
+
+        def check_device():
+            s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
+            s(False)
+            return s.return_code != 0
+
+        if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
+            raise Exception('nic device is still attached after 30 seconds')
 
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
