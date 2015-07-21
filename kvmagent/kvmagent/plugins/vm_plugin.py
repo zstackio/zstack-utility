@@ -905,7 +905,6 @@ class Vm(object):
         interface = etree.Element('interface', attrib={'type':'bridge'})
         e(interface, 'mac', None, attrib={'address':nic.mac})
         e(interface, 'source', None, attrib={'bridge':nic.bridgeName})
-        e(interface, 'rom', None, {'bar':'off'})
         e(interface, 'target', None, attrib={'dev':nic.nicInternalName})
         if nic.useVirtio:
             e(interface, 'model', None, attrib={'type':'virtio'})
@@ -917,6 +916,7 @@ class Vm(object):
     def attach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
+        logger.debug('attaching nic:\n%s' % xml)
         if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
             self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
         else:
@@ -934,6 +934,7 @@ class Vm(object):
     def detach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
+        logger.debug('detaching nic:\n%s' % xml)
         if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
             self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
         else:

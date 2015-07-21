@@ -112,14 +112,14 @@ class UpdateVmInstanceAction(inventory.APIUpdateVmInstanceMsg):
         self.out = evt
         return self.out
 
-class DetachNicFromVmAction(inventory.APIDetachNicFromVmMsg):
+class GetVmAttachableL3NetworkAction(inventory.APIGetVmAttachableL3NetworkMsg):
     def __init__(self):
-        super(DetachNicFromVmAction, self).__init__()
+        super(GetVmAttachableL3NetworkAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DetachNicFromVmAction] cannot be None')
+            raise Exception('sessionUuid of action[GetVmAttachableL3NetworkAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -186,6 +186,18 @@ class QueryVmNicAction(inventory.APIQueryVmNicMsg):
         self.out = reply.inventories
         return self.out
 
+class AttachL3NetworkToVmAction(inventory.APIAttachL3NetworkToVmMsg):
+    def __init__(self):
+        super(AttachL3NetworkToVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachL3NetworkToVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DestroyVmInstanceAction(inventory.APIDestroyVmInstanceMsg):
     def __init__(self):
         super(DestroyVmInstanceAction, self).__init__()
@@ -224,14 +236,14 @@ class QueryVmInstanceAction(inventory.APIQueryVmInstanceMsg):
         self.out = reply.inventories
         return self.out
 
-class AttachNicToVmAction(inventory.APIAttachNicToVmMsg):
+class DetachL3NetworkFromVmAction(inventory.APIDetachL3NetworkFromVmMsg):
     def __init__(self):
-        super(AttachNicToVmAction, self).__init__()
+        super(DetachL3NetworkFromVmAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AttachNicToVmAction] cannot be None')
+            raise Exception('sessionUuid of action[DetachL3NetworkFromVmAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
