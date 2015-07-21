@@ -10,6 +10,7 @@ import tempfile
 import traceback
 import struct
 import netaddr
+import functools
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -43,6 +44,23 @@ class EthernetInfo(object):
 
     def __str__(self):
         return 'interface:%s, mac:%s, ip:%s, netmask:%s' % (self.interface, self.mac, self.ip, self.netmask)
+
+def retry(times=3, sleep_time=3):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            exception = None
+            for i in range(0, times):
+                try:
+                    ret = f(*args, **kwargs)
+                    return ret
+                except Exception as e:
+                    exception = e
+                    time.sleep(sleep_time)
+
+            raise exception
+        return inner
+    return wrap
 
 def cidr_to_netmask(cidr):
     cidr = int(cidr)
