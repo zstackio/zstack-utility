@@ -923,9 +923,14 @@ class Vm(object):
             self.domain.attachDevice(xml)
 
         def check_device(_):
-            s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
-            s(False)
-            return s.return_code == 0
+            self.refresh()
+            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ == cmd.nic.mac:
+                    s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
+                    s(False)
+                    return s.return_code == 0
+
+            return False
 
         if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
             raise Exception('nic device does not show after 30 seconds')
@@ -941,6 +946,11 @@ class Vm(object):
             self.domain.detachDevice(xml)
 
         def check_device(_):
+            self.refresh()
+            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ == cmd.nic.mac:
+                    return False
+
             s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
             s(False)
             return s.return_code != 0
