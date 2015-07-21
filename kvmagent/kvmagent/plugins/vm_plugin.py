@@ -922,7 +922,7 @@ class Vm(object):
         else:
             self.domain.attachDevice(xml)
 
-        def check_device():
+        def check_device(_):
             s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
             s(False)
             return s.return_code == 0
@@ -940,7 +940,7 @@ class Vm(object):
         else:
             self.domain.detachDevice(xml)
 
-        def check_device():
+        def check_device(_):
             s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
             s(False)
             return s.return_code != 0
