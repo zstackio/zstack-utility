@@ -914,6 +914,7 @@ class Vm(object):
 
         return etree.tostring(interface)
 
+    @lock.lock('l3-network')
     def attach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
@@ -937,6 +938,7 @@ class Vm(object):
             raise Exception('nic device does not show after 30 seconds')
 
 
+    @lock.lock('l3-network')
     def detach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
