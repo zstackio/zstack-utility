@@ -914,7 +914,7 @@ class Vm(object):
 
         return etree.tostring(interface)
 
-    @linux.retry()
+    @linux.retry(times=30, sleep_time=1)
     def attach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
@@ -938,7 +938,7 @@ class Vm(object):
             raise Exception('nic device does not show after 30 seconds')
 
 
-    @linux.retry()
+    @linux.retry(times=30, sleep_time=1)
     def detach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
