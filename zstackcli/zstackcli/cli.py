@@ -48,7 +48,7 @@ class Cli(object):
     '''
     classdocs
     '''
-    
+
     msg_creator = {}
 
     LOGIN_MESSAGE_NAME = 'APILogInByAccountMsg'
@@ -58,11 +58,11 @@ class Cli(object):
     CREATE_USER_NAME = 'APICreateUserMsg'
     ACCOUNT_RESET_PASSWORD_NAME = 'APIResetAccountPasswordMsg'
     USER_RESET_PASSWORD_NAME = 'APIResetUserPasswordMsg'
-    
+
     @staticmethod
     def register_message_creator(apiname, func):
         Cli.msg_creator[apiname] = func
-        
+
     def usage(self):
         print '''
   ZStack command line tool
@@ -72,10 +72,10 @@ class Cli(object):
   Type Tab key for auto-completion
 
 '''
-    
+
     def print_error(self, err):
         print '\033[91m' + err + '\033[0m'
-        
+
     def complete(self, pattern, index):
         '''
         pattern is current input. index is current matched number of list. 
@@ -91,7 +91,7 @@ class Cli(object):
             query_pri_fields = ['%s' % field for field in query_pri_fields]
             temp_fields = list(query_pri_fields)
             query_pri_fields = []
-            for field in temp_fields: 
+            for field in temp_fields:
                 if prefix:
                     query_pri_fields.append('%s%s%s' % (prefix, field, separator))
                 else:
@@ -113,7 +113,7 @@ class Cli(object):
                     query_ext_fields.append('%s%s%s' % (prefix, field, separator))
                 else:
                     query_ext_fields.append('%s%s' % (field, separator))
-                
+
             self.words.extend(query_ext_fields)
             if 'conditions=' in self.words:
                 self.words.remove('conditions=')
@@ -144,12 +144,12 @@ class Cli(object):
             else:
                 self.is_cmd = True
                 self.words = self.words_db
-            
+
         if not self.words:
             return None
-        
+
         prepare_words()
-        
+
         if not self.curr_pattern or pattern.lower() != self.curr_pattern.lower():
             #self.matching_words = [w for w in self.words if w.lower().startswith(pattern.lower())]
             if self.is_cmd:
@@ -187,7 +187,7 @@ class Cli(object):
                         self.words = []
                         pattern_prefix = '.'.join(fields_objects[:-1])
                         prepare_query_words(current_obj_name, '%s.' % pattern_prefix)
-                        
+
                 currtext = readline.get_line_buffer()
                 last_field = currtext.split()[-1]
                 if not currtext.endswith(' ') and last_field.startswith('fields='):
@@ -201,12 +201,12 @@ class Cli(object):
                 self.matching_words = [w for w in self.words if pattern.lower() in w.lower()]
 
             self.curr_pattern = pattern
-            
+
         try:
             return self.matching_words[index]
         except IndexError:
             return None
-    
+
     def do_command(self, line):
         def check_session(apiname):
             if not self.session_uuid and apiname not in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME]:
@@ -214,7 +214,7 @@ class Cli(object):
 example: %sLogInByAccount accountName=admin password=your_super_secure_admin_password''' % prompt)
                 return False
             return True
-                
+
         def is_api_param_a_list(apiname, param):
             optional_list = eval('isinstance(inventory.%s().%s, \
                     inventory.OptionalList)' % (apiname, param))
@@ -222,7 +222,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                     inventory.NotNoneList)' % (apiname, param))
             if optional_list or not_none_list:
                 return True
-                
+
         def build_params():
             pairs = shlex.split(line)
             if pairs[0] in self.cli_cmd:
@@ -235,8 +235,8 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
             apiname = 'API%sMsg' % pairs[0]
             if apiname not in inventory.api_names:
                 raise CliError('"%s" is not an API message' % apiname)
-            
-            #'=' will be used for more meanings than 'equal' in Query API 
+
+            #'=' will be used for more meanings than 'equal' in Query API
             if apiname.startswith('APIQuery'):
                 return apiname, pairs[1:]
 
@@ -246,20 +246,17 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 if len(params) != 2:
                     raise CliError('Invalid parameter[%s], the parameter must be split by "="' % param_str)
 
-                if apiname == 'APIAddSecurityGroupRuleMsg' and \
-			params[0] == 'rules':
+                if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
                     all_params[params[0]] = eval(params[1])
-
-		elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and \
-			params[0] == 'networkServices':
+                elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and params[0] == 'networkServices':
                     all_params[params[0]] = eval(params[1])
-
+                elif apiname == 'APICreatePolicyMsg' and params[0] == 'statements':
+                    all_params[params[0]] = eval(params[1])
                 elif is_api_param_a_list(apiname, params[0]):
                     all_params[params[0]] = params[1].split(',')
-
                 else:
                     all_params[params[0]] = params[1]
-            
+
             return (apiname, all_params)
 
         def generate_query_params(apiname, params):
@@ -285,7 +282,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
             ms = '-'
             perc = '%'
             underscore = '_'
-            
+
             conditions = []
             new_params = {}
 
@@ -343,7 +340,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                         conditions.extend(value)
 
                     elif key == 'fields':
-                        #remove the last ',' 
+                        #remove the last ','
                         if value.endswith(','):
                             value = value[:-1]
                         new_params[key] = value.split(',')
@@ -371,7 +368,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
             creator = self.msg_creator.get(apiname)
             if creator:
                 return creator(apiname, params)
-            
+
             if apiname.startswith('APIQuery'):
                 params = generate_query_params(apiname, params)
 
@@ -380,22 +377,22 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 value = params[key]
                 setattr(msg, key, value)
             return msg
-        
+
         def set_session_to_api(msg):
             session = inventory.Session()
             session.uuid = self.session_uuid
             msg.session = session
-        
-        
+
+
         (apiname, all_params) = build_params()
         if apiname in self.cli_cmd:
             #self.write_more(apiname, None)
             self.cli_cmd_func[apiname](all_params)
-            return 
+            return
 
         if not check_session(apiname):
             raise CliError("No session uuid defined")
-        
+
         msg = create_msg(apiname, all_params)
         set_session_to_api(msg)
         try:
@@ -411,7 +408,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
             start_time = time.time()
             (name, event) = self.api.async_call_wait_for_complete(msg, fail_soon=True)
             end_time = time.time()
-            
+
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME]:
                 self.session_uuid = event.inventory.uuid
                 open(SESSION_FILE, 'w').write(self.session_uuid)
@@ -427,8 +424,8 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
         except Exception as e:
             self.print_error(str(e))
             self.write_more(line, str(e), False)
-            raise e 
-    
+            raise e
+
     def main(self, cmd = None):
         if not cmd:
             self.usage()
@@ -460,7 +457,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
 
             if cmd:
                 sys.exit(exit_code)
-                
+
     def build_api_parameters(self):
         def rule_out_unneeded_params(keys):
             excludes = ['session']
@@ -468,7 +465,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 if k in keys:
                     keys.remove(k)
             return keys
-        
+
         for apiname in inventory.api_names:
             obj = eval("inventory.%s()" % apiname)
             params = []
@@ -490,7 +487,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
     def completer_print(self, substitution, matches, longest_match_length) :
         def print_match(columes, new_matches, max_match_length):
             cur_col = 1
-            
+
             for match in new_matches:
                 if cur_col == columes:
                     end_sign = '\n'
@@ -727,14 +724,14 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
             if not return_result:
                 print "cannot find related command result to save"
                 return
-    
+
             cmd, output = return_result
-    
+
             if not file_folder:
                 new_file_folder = '%s-%s.json' % (cmd.split()[0], num)
             else:
                 new_file_folder = file_folder
-            
+
             dirname = os.path.dirname(new_file_folder)
             if not dirname:
                 file_name = new_file_folder
@@ -914,7 +911,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
         self.session_uuid = None
         if os.path.exists(SESSION_FILE):
             self.session_uuid = open(SESSION_FILE, 'r').readline()
-        
+
         self.hostname = options.host
         self.port = options.port
         self.api = api.Api(host=self.hostname, port=self.port)
@@ -923,43 +920,43 @@ def main():
     parser = optparse.OptionParser()
 
     parser.add_option(
-            "-H", 
+            "-H",
             "--host",
-            dest="host", 
-            default='localhost', 
-            action='store', 
+            dest="host",
+            default='localhost',
+            action='store',
             help="[Optional] IP address or DNS name of a ZStack management node. Default value: localhost")
 
     parser.add_option(
-            "-p", 
+            "-p",
             "--port",
-            dest="port", 
-            default='8080', 
-            action='store', 
+            dest="port",
+            default='8080',
+            action='store',
             help="[Optional] Port that the ZStack management node is listening on. Default value: 8080")
 
     parser.add_option(
-            "-d", 
+            "-d",
             "--deploy",
-            dest="deploy_config_file", 
-            default=None, 
-            action='store', 
+            dest="deploy_config_file",
+            default=None,
+            action='store',
             help="[Optional] deploy a cloud from a XML file.")
 
     parser.add_option(
-            "-t", 
+            "-t",
             "--tempate",
-            dest="deploy_config_template_file", 
-            default=None, 
-            action='store', 
+            dest="deploy_config_template_file",
+            default=None,
+            action='store',
             help="[Optional] variable template file for XML file spcified in option '-d'")
 
     parser.add_option(
-            "-D", 
+            "-D",
             "--dump",
-            dest="zstack_config_dump_file", 
-            default=None, 
-            action='store', 
+            dest="zstack_config_dump_file",
+            default=None,
+            action='store',
             help="[Optional] dump a cloud to a XML file")
 
     (options, args) = parser.parse_args()
@@ -986,7 +983,7 @@ def main():
     else:
         cli = Cli(options)
         cli.main(cmd)
-    
+
 if __name__ == '__main__':
     main()
 
