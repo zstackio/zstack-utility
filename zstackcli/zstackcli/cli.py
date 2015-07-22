@@ -224,6 +224,18 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 return True
 
         def build_params():
+            def eval_string(key, value_string):
+                try:
+                    return eval(value_string)
+                except Exception as e:
+                    err_msg = """
+Parse command parameters error:
+  eval '%s' error for: '%s' 
+  the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]" 
+                          """ % (value_string, key)
+                    self.print_error(err_msg)
+                    raise e
+
             pairs = shlex.split(line)
             if pairs[0] in self.cli_cmd:
                 cmd = pairs[0]
@@ -249,9 +261,9 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and params[0] == 'networkServices':
-                    all_params[params[0]] = eval(params[1])
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreatePolicyMsg' and params[0] == 'statements':
-                    all_params[params[0]] = eval(params[1])
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif is_api_param_a_list(apiname, params[0]):
                     all_params[params[0]] = params[1].split(',')
                 else:
@@ -454,6 +466,7 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 print ''
             except Exception as e:
                 exit_code = 3
+                self.print_error(str(e))
 
             if cmd:
                 sys.exit(exit_code)
