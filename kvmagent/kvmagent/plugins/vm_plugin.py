@@ -423,10 +423,27 @@ class Vm(object):
         except:
             return False
 
+    def _wait_for_vm_running(self, timeout=60):
+        if not linux.wait_callback_success(self.wait_for_state_change, self.VM_STATE_RUNNING, interval=0.5, timeout=timeout):
+            raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
+                                    'running after %s seconds' % (self.uuid, self.get_name(), timeout))
+
+        vnc_port = self.get_vnc_port()
+
+        def wait_vnc_port_open(_):
+            cmd = shell.ShellCmd('netstat -na | grep "0.0.0.0:%s" > /dev/null' % vnc_port)
+            cmd(is_exception=False)
+            return cmd.return_code == 0
+
+        if not linux.wait_callback_success(wait_vnc_port_open, None, interval=0.5, timeout=30):
+            raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
+                                    " not open after 30 seconds" % (self.uuid, self.get_name()))
+
     def reboot(self, timeout=60):
         self.stop(timeout=20, undefine=False)
         try:
             self.domain.createWithFlags(0)
+            self._wait_for_vm_running(timeout)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
             raise kvmagent.KvmError('unable to start vm[uuid:%s], %s' % (self.uuid, str(e)))
@@ -438,18 +455,8 @@ class Vm(object):
         conn = kvmagent.get_libvirt_connection()
         domain = conn.defineXML(self.domain_xml)
         self.domain = domain
-        self.domain.createWithFlags(0)    
-        if not linux.wait_callback_success(self.wait_for_state_change, self.VM_STATE_RUNNING, timeout=timeout):
-            raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to running after %s seconds' % (self.uuid, self.get_name(), timeout))
-
-        vnc_port = self.get_vnc_port()
-        def wait_vnc_port_open(_):
-            cmd = shell.ShellCmd('netstat -na | grep "0.0.0.0:%s" > /dev/null' % vnc_port)
-            cmd(is_exception=False)
-            return cmd.return_code == 0
-
-        if not linux.wait_callback_success(wait_vnc_port_open, None, timeout=30):
-            raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does not open after 30 seconds" % (self.uuid, self.get_name()))
+        self.domain.createWithFlags(0)
+        self._wait_for_vm_running(timeout)
 
     def stop(self, graceful=True, timeout=5, undefine=True):
         def cleanup_addons():
