@@ -914,13 +914,13 @@ class Vm(object):
 
         return etree.tostring(interface)
 
-    @linux.retry(times=30, sleep_time=1)
+    @linux.retry(times=3, sleep_time=5)
     def attach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
         logger.debug('attaching nic:\n%s' % xml)
         if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
-            self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+            self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
         else:
             self.domain.attachDevice(xml)
 
@@ -938,13 +938,13 @@ class Vm(object):
             raise Exception('nic device does not show after 30 seconds')
 
 
-    @linux.retry(times=30, sleep_time=1)
+    @linux.retry(times=3, sleep_time=5)
     def detach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
         logger.debug('detaching nic:\n%s' % xml)
         if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
-            self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+            self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
         else:
             self.domain.detachDevice(xml)
 
@@ -958,7 +958,7 @@ class Vm(object):
             s(False)
             return s.return_code != 0
 
-        if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
+        if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
             raise Exception('nic device is still attached after 30 seconds')
 
     def merge_snapshot(self, cmd):
