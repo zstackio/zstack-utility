@@ -57,8 +57,8 @@ def retry(times=3, sleep_time=3):
                 except Exception as e:
                     exception = e
                     time.sleep(sleep_time)
-
             raise exception
+
         return inner
     return wrap
 
