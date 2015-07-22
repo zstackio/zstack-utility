@@ -596,13 +596,9 @@ class Vm(object):
         logger.debug('attaching volume[%s] to vm[uuid:%s]:\n%s' % (volume.installPath, self.uuid, xml))
         try:
             # libvirt has a bug that if attaching volume just after vm created, it likely fails. So we retry three time here
-            def attach(error_out):
-                try:
-                    self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-                except libvirt.libvirtError as e:
-                    if error_out:
-                        raise e
-                    return True
+            @linux.retry(times=3, sleep_time=5)
+            def attach():
+                self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
 
                 def wait_for_attach(_):
                     me = get_vm_by_uuid(self.uuid)
@@ -621,19 +617,11 @@ class Vm(object):
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
                     return False
 
-                return linux.wait_callback_success(wait_for_attach, None, 5, 1)
+                if not linux.wait_callback_success(wait_for_attach, None, 5, 1):
+                    raise Exception("cannot attach a volume[uuid: %s] to the vm[uuid: %s];"
+                                    "it's still not attached after 5 seconds" % (volume.volumeUuid, self.uuid))
 
-            if attach(True):
-                logger.debug('successfully attached volume[deviceId:%s, installPath:%s] to vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
-            if attach(False):
-                logger.debug('successfully attached volume[deviceId:%s, installPath:%s] to vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
-            if attach(False):
-                logger.debug('successfully attached volume[deviceId:%s, installPath:%s] to vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                return
-
-            raise kvmagent.KvmError('failed to attach volume[deviceId:%s, installPath:%s] to vm[uuid:%s] in 15s, timeout' % (volume.deviceId, volume.installPath, self.uuid))
+            attach()
 
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
@@ -671,13 +659,9 @@ class Vm(object):
         try:
 
             # libvirt has a bug that if detaching volume just after vm created, it likely fails. So we retry three time here
-            def detach(error_out):
-                try:
-                    self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-                except libvirt.libvirtError as e:
-                    if error_out:
-                        raise e
-                    return True
+            @linux.retry(times=3, sleep_time=5)
+            def detach():
+                self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
 
                 def wait_for_detach(_):
                     me = get_vm_by_uuid(self.uuid)
@@ -698,23 +682,12 @@ class Vm(object):
 
                     return True
 
-                return linux.wait_callback_success(wait_for_detach, None, 5, 1)
+                if not linux.wait_callback_success(wait_for_detach, None, 5, 1):
+                    raise Exception("unable to detach the volume[uuid:%s] from the vm[uuid:%s];"
+                                    "it's still attached after 5 seconds" %
+                                    (volume.volumeUuid, self.uuid))
 
-            retry = True
-            if detach(True):
-                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                retry = False
-
-            if retry and detach(False):
-                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-                retry = False
-
-            if retry and detach(False):
-                retry = False
-                logger.debug('successfully detached volume[deviceId:%s, installPath:%s] from vm[uuid:%s]' % (volume.deviceId, volume.installPath, self.uuid))
-
-            if retry:
-                raise kvmagent.KvmError('libvirt fails to detach volume[deviceId:%s, installPath:%s] from vm[uuid:%s] in 15s, timeout' % (volume.deviceId, volume.installPath, self.uuid))
+            detach()
 
             def delete_iscsi_secret():
                 if not xmlobject.has_element(target_disk, 'auth.secret'):
