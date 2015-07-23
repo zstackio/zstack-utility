@@ -929,7 +929,7 @@ class Vm(object):
 
     def attach_nic(self, cmd):
         self.timeout_object.wait_until_object_timeout('%s-attach-nic' % self.uuid)
-        self.attach_nic(cmd)
+        self._attach_nic(cmd)
         # in 10 seconds, no detach-nic operation can be performed,
         # work around libvirt bug
         self.timeout_object.put('%s-detach-nic' % self.uuid, 10)
