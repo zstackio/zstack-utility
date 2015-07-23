@@ -162,6 +162,9 @@ def get_disk_capacity_by_df(dir_path):
     return long(total) * 1024, long(avail) * 1024
 
 def is_mounted(path=None, url=None):
+    if url:
+        url = url.rstrip('/')
+
     if url and path:
         cmdstr = "mount | grep '%s' | grep '%s'" % (url, path)
     elif not url:
