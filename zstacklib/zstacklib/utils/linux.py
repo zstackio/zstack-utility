@@ -665,6 +665,32 @@ def wait_callback_success(callback, callback_data=None, timeout=60,
     
     return False
 
+def get_process_up_time_in_second(pid):
+    output = shell.call('ps -p %s -o etime=' % pid)
+    output = output.strip()
+    if '-' in output:
+        day, output = output.split('-')
+        day = int(day)
+    else:
+        day = 0
+
+    time_pair = output.split(':')
+    if len(time_pair) == 3:
+        hour = int(time_pair[0])
+        minute = int(time_pair[1])
+        second = int(time_pair[2])
+    elif len(time_pair) == 2:
+        hour = 0
+        minute = int(time_pair[0])
+        second = int(time_pair[1])
+    else:
+        hour = 0
+        minute = 0
+        second = int(time_pair[0])
+
+    return day * 24 * 3600 + hour * 3600 + minute * 60 + second
+
+
 def get_cpu_num():
     out = shell.ShellCmd("cat /proc/cpuinfo | grep 'processor' | wc -l")()
     return int(out)

@@ -888,8 +888,24 @@ class Vm(object):
 
         return etree.tostring(interface)
 
+    def _wait_vm_run_until_seconds(self, sec):
+        vm_pid = linux.find_process_by_cmdline(['qemu-kvm', self.uuid])
+        if not vm_pid:
+            raise Exception('cannot find pid for vm[uuid:%s]' % self.uuid)
+
+        up_time = linux.get_process_up_time_in_second(vm_pid)
+
+        def wait(_):
+            return linux.get_process_up_time_in_second(vm_pid) > sec
+
+        if up_time < sec and not linux.wait_callback_success(wait, timeout=sec):
+            raise Exception("vm[uuid:%s] seems hang, its process[pid:%s] up-time is not increasing" %
+                            (self.uuid, vm_pid))
+
     @linux.retry(times=3, sleep_time=5)
     def attach_nic(self, cmd):
+        self._wait_vm_run_until_seconds(10)
+
         xml = self._interface_cmd_to_xml(cmd)
 
         logger.debug('attaching nic:\n%s' % xml)
@@ -914,6 +930,8 @@ class Vm(object):
 
     @linux.retry(times=3, sleep_time=5)
     def detach_nic(self, cmd):
+        self._wait_vm_run_until_seconds(10)
+
         xml = self._interface_cmd_to_xml(cmd)
 
         logger.debug('detaching nic:\n%s' % xml)
