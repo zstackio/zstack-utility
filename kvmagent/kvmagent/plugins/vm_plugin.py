@@ -928,6 +928,7 @@ class Vm(object):
             raise Exception('nic device does not show after 30 seconds')
 
     def attach_nic(self, cmd):
+        self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('%s-attach-nic' % self.uuid)
         self._attach_nic(cmd)
         # in 10 seconds, no detach-nic operation can be performed,
@@ -958,6 +959,7 @@ class Vm(object):
             raise Exception('nic device is still attached after 30 seconds')
 
     def detach_nic(self, cmd):
+        self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('%s-detach-nic' % self.uuid)
         self._detach_nic(cmd)
         # in 10 seconds, no attach-nic operation can be performed,
