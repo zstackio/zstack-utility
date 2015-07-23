@@ -373,6 +373,8 @@ class Vm(object):
     
     # letter 'c' is reserved for cdrom
     DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
+
+    timeout_object = linux.TimeoutObject()
      
     def __init__(self):
         self.uuid = None
@@ -904,7 +906,9 @@ class Vm(object):
 
     @linux.retry(times=3, sleep_time=5)
     def attach_nic(self, cmd):
-        self._wait_vm_run_until_seconds(10)
+        #self._wait_vm_run_until_seconds(10)
+
+        self.timeout_object.wait_until_object_timeout('%s-attach-nic' % self.uuid)
 
         xml = self._interface_cmd_to_xml(cmd)
 
@@ -927,10 +931,16 @@ class Vm(object):
         if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
             raise Exception('nic device does not show after 30 seconds')
 
+        # in 10 seconds, no detach-nic operation can be performed
+        # work around libvirt bug
+        self.timeout_object.put('%s-detach-nic' % self.uuid, 10)
+
 
     @linux.retry(times=3, sleep_time=5)
     def detach_nic(self, cmd):
-        self._wait_vm_run_until_seconds(10)
+        #self._wait_vm_run_until_seconds(10)
+
+        self.timeout_object.wait_until_object_timeout('%s-detach-nic' % self.uuid)
 
         xml = self._interface_cmd_to_xml(cmd)
 
@@ -952,6 +962,10 @@ class Vm(object):
 
         if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
             raise Exception('nic device is still attached after 30 seconds')
+
+        # in 10 seconds, no attach-nic operation can be performed
+        # work around libvirt bug
+        self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
 
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)

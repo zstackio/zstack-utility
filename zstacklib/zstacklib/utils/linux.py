@@ -11,9 +11,11 @@ import traceback
 import struct
 import netaddr
 import functools
+import threading
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
+from zstacklib.utils import lock
 
 
 logger = log.get_logger(__name__)
@@ -1040,3 +1042,32 @@ def is_systemd_enabled():
     except:
         return False
     return True
+
+class TimeoutObject(object):
+    def __init__(self):
+        self.objects = {}
+        self.timer = None
+        self._start()
+
+    def put(self, name, timeout=30):
+        self.objects[name] = time.time() + timeout
+
+    def has(self, name):
+        return name in self.objects.keys()
+
+    def wait_until_object_timeout(self, name, timeout=60):
+        def wait(_):
+            return not self.has(name)
+
+        if not wait_callback_success(wait, timeout=timeout):
+            raise Exception('after %s seconds, the object[%s] is still there, not timeout' % (timeout, name))
+
+    def _start(self):
+        def clean_timeout_object():
+            current_time = time.time()
+            for name, timeout in self.objects.items():
+                if current_time >= timeout:
+                    del self.objects[name]
+
+        self.timer = threading.Timer(1, clean_timeout_object)
+        self.timer.start()
