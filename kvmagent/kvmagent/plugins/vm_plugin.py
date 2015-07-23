@@ -440,15 +440,9 @@ class Vm(object):
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
     def reboot(self, timeout=60):
-        self.stop(timeout=20, undefine=False)
-        try:
-            self.domain.createWithFlags(0)
-            self._wait_for_vm_running(timeout)
-        except libvirt.libvirtError as e:
-            logger.warn(linux.get_exception_stacktrace())
-            raise kvmagent.KvmError('unable to start vm[uuid:%s], %s' % (self.uuid, str(e)))
-        
-        
+        self.stop(timeout=timeout)
+        self.start(timeout)
+
     def start(self, timeout=60):
         #TODO: 1. enbale hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
