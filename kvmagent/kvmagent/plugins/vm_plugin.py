@@ -905,11 +905,7 @@ class Vm(object):
                             (self.uuid, vm_pid))
 
     @linux.retry(times=3, sleep_time=5)
-    def attach_nic(self, cmd):
-        #self._wait_vm_run_until_seconds(10)
-
-        self.timeout_object.wait_until_object_timeout('%s-attach-nic' % self.uuid)
-
+    def _attach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
         logger.debug('attaching nic:\n%s' % xml)
@@ -931,17 +927,15 @@ class Vm(object):
         if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
             raise Exception('nic device does not show after 30 seconds')
 
-        # in 10 seconds, no detach-nic operation can be performed
+    def attach_nic(self, cmd):
+        self.timeout_object.wait_until_object_timeout('%s-attach-nic' % self.uuid)
+        self.attach_nic(cmd)
+        # in 10 seconds, no detach-nic operation can be performed,
         # work around libvirt bug
         self.timeout_object.put('%s-detach-nic' % self.uuid, 10)
 
-
     @linux.retry(times=3, sleep_time=5)
-    def detach_nic(self, cmd):
-        #self._wait_vm_run_until_seconds(10)
-
-        self.timeout_object.wait_until_object_timeout('%s-detach-nic' % self.uuid)
-
+    def _detach_nic(self, cmd):
         xml = self._interface_cmd_to_xml(cmd)
 
         logger.debug('detaching nic:\n%s' % xml)
@@ -963,8 +957,11 @@ class Vm(object):
         if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
             raise Exception('nic device is still attached after 30 seconds')
 
-        # in 10 seconds, no attach-nic operation can be performed
-        # work around libvirt bug
+    def detach_nic(self, cmd):
+        self.timeout_object.wait_until_object_timeout('%s-detach-nic' % self.uuid)
+        self._detach_nic(cmd)
+        # in 10 seconds, no attach-nic operation can be performed,
+        # to work around libvirt bug
         self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
 
     def merge_snapshot(self, cmd):

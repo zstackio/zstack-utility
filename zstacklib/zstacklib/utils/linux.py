@@ -1049,7 +1049,6 @@ def is_systemd_enabled():
 class TimeoutObject(object):
     def __init__(self):
         self.objects = {}
-        self.timer = None
         self._start()
 
     def put(self, name, timeout=30):
@@ -1072,5 +1071,6 @@ class TimeoutObject(object):
                 if current_time >= timeout:
                     del self.objects[name]
 
-        self.timer = threading.Timer(1, clean_timeout_object)
-        self.timer.start()
+            threading.Timer(1, clean_timeout_object).start()
+
+        clean_timeout_object()
