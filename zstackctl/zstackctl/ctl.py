@@ -1527,6 +1527,10 @@ class InstallManagementNodeCmd(Command):
       root: $install_path
 
   tasks:
+    - name: check remote env on RedHat OS 6
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+      script: $pre_script_on_rh6
+
     - name: prepare remote environment
       script: $pre_script
 
@@ -1662,6 +1666,22 @@ mkdir -p $install_path
 
         self.install_cleanup_routine(cleanup_pre_script)
 
+        pre_script_on_rh6 = '''
+rpm -qi python-crypto >/dev/null 2>&1
+if [ $? -eq 0 ]; then 
+    echo "Management node remote installation failed. You need to manually remove python-crypto by \n\n \`rpm -ev python-crypto\` \n\n in remote management node; otherwise it will conflict with ansible's pycrypto." >>$ZSTACK_INSTALL_LOG
+    exit 1
+fi
+'''
+        t = string.Template(pre_script_on_rh6)
+
+        fd, pre_script_on_rh6_path = tempfile.mkstemp(suffix='.sh')
+        os.fdopen(fd, 'w').write(pre_script_on_rh6)
+
+        def cleanup_pre_script():
+            os.remove(pre_script_on_rh6_path)
+
+        self.install_cleanup_routine(cleanup_pre_script)
         post_script = '''
 set -e
 filename=$apache_tomcat_zip_name
@@ -1685,14 +1705,14 @@ eval "bash $$install_script zstack-cli"
 set +e
 grep "ZSTACK_HOME" ~/.bashrc > /dev/null
 if [ $$? -eq 0 ]; then
-   sed -i "s#export ZSTACK_HOME=.*#export ZSTACK_HOME=$$apache_path/webapps/zstack#" ~/.bashrc
+    sed -i "s#export ZSTACK_HOME=.*#export ZSTACK_HOME=$$apache_path/webapps/zstack#" ~/.bashrc
 else
-   echo "export ZSTACK_HOME=$$apache_path/webapps/zstack" >> ~/.bashrc
+    echo "export ZSTACK_HOME=$$apache_path/webapps/zstack" >> ~/.bashrc
 fi
 
 which ansible-playbook &> /dev/null
 if [ $$? -ne 0 ]; then
-   pip install -i file://$pypi_path/simple --trusted-host localhost ansible
+    pip install -i file://$pypi_path/simple --trusted-host localhost ansible
 fi
 '''
         t = string.Template(post_script)
@@ -1799,6 +1819,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'apache_path': apache_tomcat,
             'zstack_path': zstack,
             'pre_script': pre_script_path,
+            'pre_script_on_rh6': pre_script_on_rh6_path,
             'post_script': post_script_path,
             'properties_file': ctl.properties_file_path,
             'apache_tomcat_zip_name': apache_tomcat_zip_name,
