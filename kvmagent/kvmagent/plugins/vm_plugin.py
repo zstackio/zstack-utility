@@ -900,9 +900,9 @@ class Vm(object):
         def wait(_):
             return linux.get_process_up_time_in_second(vm_pid) > sec
 
-        if up_time < sec and not linux.wait_callback_success(wait, timeout=sec):
-            raise Exception("vm[uuid:%s] seems hang, its process[pid:%s] up-time is not increasing" %
-                            (self.uuid, vm_pid))
+        if up_time < sec and not linux.wait_callback_success(wait, timeout=60):
+            raise Exception("vm[uuid:%s] seems hang, its process[pid:%s] up-time is not increasing after %s seconds" %
+                            (self.uuid, vm_pid, 60))
 
     @linux.retry(times=3, sleep_time=5)
     def _attach_nic(self, cmd):
