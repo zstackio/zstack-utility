@@ -492,7 +492,7 @@ def remove_device_ip(dev):
 
 def is_ip_existing(ip):
     ip_str = ':%s ' % ip
-    cmd = shell.ShellCmd("ifconfig|grep %s" % ip_str)
+    cmd = shell.ShellCmd('ifconfig|grep "%s"' % ip_str)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
