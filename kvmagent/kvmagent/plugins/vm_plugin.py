@@ -633,8 +633,14 @@ class Vm(object):
             attach()
 
         except libvirt.libvirtError as ex:
+            err = str(ex)
+            if 'Duplicate ID' in err:
+                err = ('unable to attach the volume[%s] to vm[uuid: %s], %s. This is a KVM issue, please reboot'
+                       ' the VM and try again' % (volume.volumeUuid, self.uuid, err))
+            else:
+                err = 'unable to attach the volume[%s] to vm[uuid: %s], %s.' % (volume.volumeUuid, self.uuid, err)
             logger.warn(linux.get_exception_stacktrace())
-            raise kvmagent.KvmError('unable to attach volume[%s] to vm[uuid:%s], %s' % (volume.installPath, self.uuid, str(ex)))
+            raise kvmagent.KvmError(err)
 
 
     def detach_data_volume(self, volume):
@@ -942,7 +948,17 @@ class Vm(object):
     def attach_nic(self, cmd):
         self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('%s-attach-nic' % self.uuid)
-        self._attach_nic(cmd)
+        try :
+            self._attach_nic(cmd)
+        except libvirt.libvirtError as ex:
+            err = str(ex)
+            if 'Duplicate ID' in err:
+                err = ('unable to attach a L3 network to the vm[uuid:%s], %s. This is a KVM issue, please reboot'
+                       ' the vm and try again' % (self.uuid, err))
+            else:
+                err = 'unable to attach a L3 network to the vm[uuid:%s], %s' % (self.uuid, err)
+            raise kvmagent.KvmError(err)
+
         # in 10 seconds, no detach-nic operation can be performed,
         # work around libvirt bug
         self.timeout_object.put('%s-detach-nic' % self.uuid, 10)
