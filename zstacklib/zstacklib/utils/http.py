@@ -179,32 +179,30 @@ class HttpServer(object):
             self._add_mapping(sval)
         
         self.server_conf = {'request.dispatch': self.mapper}
-        if self.logfile_path:
-            self.server_conf['log.access_file'] = self.logfile_path
-            self.server_conf['log.error_file'] = self.logfile_path
-            
+
         cherrypy.engine.autoreload.unsubscribe()
         site_config = {}
         site_config['server.socket_host'] = '0.0.0.0'
         site_config['server.socket_port'] = self.port
         cherrypy.config.update(site_config)
 
-        app = self.server =  cherrypy.tree.mount(root=None, config={'/' : self.server_conf})
-        log = app.log
-        formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s')
+        app = self.server = cherrypy.tree.mount(root=None, config={'/' : self.server_conf})
 
-        fname = getattr(log, "rot_error_file", "error.log")
-        h = logging.handlers.RotatingFileHandler(fname, 'a', maxBytes=10*1024*1024, backupCount=3)
-        h.setLevel(logging.DEBUG)
-        h.setFormatter(formatter)
-        log.error_log.addHandler(h)
+        if self.logfile_path:
+            log = app.log
+            log.error_file = ""
+            log.access_file = ""
+            formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s')
 
-        # Make a new RotatingFileHandler for the access log.
-        fname = getattr(log, "rot_access_file", "access.log")
-        h = logging.handlers.RotatingFileHandler(fname, 'a',  maxBytes=10*1024*1024, backupCount=3)
-        h.setLevel(logging.DEBUG)
-        h.setFormatter(formatter)
-        log.access_log.addHandler(h)
+            h = logging.handlers.RotatingFileHandler(self.logfile_path, 'a', maxBytes=10*1024*1024, backupCount=3)
+            h.setLevel(logging.DEBUG)
+            h.setFormatter(formatter)
+            log.error_log.addHandler(h)
+
+            h = logging.handlers.RotatingFileHandler(self.logfile_path, 'a',  maxBytes=10*1024*1024, backupCount=3)
+            h.setLevel(logging.DEBUG)
+            h.setFormatter(formatter)
+            log.access_log.addHandler(h)
     
     def start(self):
         self._build()
