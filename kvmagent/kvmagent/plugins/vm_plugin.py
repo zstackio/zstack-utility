@@ -544,8 +544,14 @@ class Vm(object):
                 return g.port_
         
         raise kvmagent.KvmError['no vnc console defined for vm[uuid:%s]' % self.uuid]
-    
+
     def attach_data_volume(self, volume):
+        self._wait_vm_run_until_seconds(10)
+        self.timeout_object.wait_until_object_timeout('detach-volume-%s' % self.uuid)
+        self._attach_data_volume(volume)
+        self.timeout_object.put('attach-volume-%s' % self.uuid, 10)
+
+    def _attach_data_volume(self, volume):
         if volume.deviceId >= len(self.DEVICE_LETTERS):
             err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 24 allowed" % (self.uuid, volume.deviceId)
             logger.warn(err)
@@ -629,9 +635,15 @@ class Vm(object):
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
             raise kvmagent.KvmError('unable to attach volume[%s] to vm[uuid:%s], %s' % (volume.installPath, self.uuid, str(ex)))
-        
+
 
     def detach_data_volume(self, volume):
+        self._wait_vm_run_until_seconds(10)
+        self.timeout_object.wait_until_object_timeout('attach-volume-%s' % self.uuid)
+        self._detach_data_volume(volume)
+        self.timeout_object.put('detach-volume-%s' % self.uuid, 10)
+
+    def _detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
         target_disk = None
 
