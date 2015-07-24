@@ -1351,7 +1351,7 @@ echo " - ZStack web UI is running, vist http://$MANAGEMENT_IP:5000 in your brows
 echo "      You can use /etc/init.d/zstack-dashboard (stop|start) to stop/start the service"
 echo " - ZStack command line tool is installed: zstack-cli"
 echo " - ZStack control tool is installed: zstack-ctl"
-[ ! -z $NEED_NFS ] && echo " - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage"
-[ ! -z $NEED_HTTP ] && echo " - http://$MANAGEMENT_IP/image is ready for storing images, copy your images to the folder $HTTP_FOLDER"
-echo ' - You can use `zstack-ctl install_management_node --remote=remote_ip` to install more management nodes'
+[ ! -z $NEED_NFS ] && echo " - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE"
+[ ! -z $NEED_HTTP ] && echo " - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your images to the folder $HTTP_FOLDER", your image local url is http://$MANAGEMENT_IP/image/your_image_name
+echo ' - You can use `zstack-ctl install_management_node --host=remote_ip` to install more management nodes'
 echo_star_line

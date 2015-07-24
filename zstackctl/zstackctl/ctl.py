@@ -612,13 +612,13 @@ class ShowStatusCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--remote', help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
 
     def _stop_remote(self, args):
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl status"' % args.remote)
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl status"' % args.host)
 
     def run(self, args):
-        if args.remote:
+        if args.host:
             self._stop_remote(args)
             return
 
@@ -801,12 +801,12 @@ class ConfigureCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--remote', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.properties on the remote machine')
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.properties on the remote machine')
         parser.add_argument('--duplicate-to-remote', help='SSH URL, for example, root@192.168.0.10, to copy zstack.properties on this machine to the remote machine')
         parser.add_argument('--use-file', help='path to a file that will be used to as zstack.properties')
 
     def _configure_remote_node(self, args):
-        shell_no_pipe('ssh %s "/usr/bin/zstack-ctl configure %s"' % (args.remote, ' '.join(ctl.extra_arguments)))
+        shell_no_pipe('ssh %s "/usr/bin/zstack-ctl configure %s"' % (args.host, ' '.join(ctl.extra_arguments)))
 
     def _duplicate_remote_node(self, args):
         tmp_file_name = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(8))
@@ -851,7 +851,7 @@ EOF
         if not ctl.extra_arguments:
             raise CtlError('please input properties that are in format of "key=value" split by space')
 
-        if args.remote:
+        if args.host:
             self._configure_remote_node(args)
             return
 
@@ -894,14 +894,14 @@ class StartCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--remote', help='SSH URL, for example, root@192.168.0.10, to start the management node on a remote machine')
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to start the management node on a remote machine')
 
     def _start_remote(self, args):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl start_node"' % args.remote)
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl start_node"' % args.host)
 
     def run(self, args):
-        if args.remote:
+        if args.host:
             self._start_remote(args)
             return
 
@@ -983,13 +983,13 @@ class StopCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--remote', help='SSH URL, for example, root@192.168.0.10, to stop the management node on a remote machine')
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to stop the management node on a remote machine')
 
     def _stop_remote(self, args):
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl stop_node"' % args.remote)
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl stop_node"' % args.host)
 
     def run(self, args):
-        if args.remote:
+        if args.host:
             self._stop_remote(args)
             return
 
@@ -1476,7 +1476,7 @@ class InstallManagementNodeCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--remote', help='target host IP, for example, 192.168.0.212, to install ZStack management node to a remote machine', required=True)
+        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack management node to a remote machine', required=True)
         parser.add_argument('--install-path', help='the path on remote machine where Apache Tomcat will be installed, which must be an absolute path; [DEFAULT]: /usr/local/zstack', default='/usr/local/zstack')
         parser.add_argument('--source-dir', help='the source folder containing Apache Tomcat package and zstack.war, if omitted, it will default to a path related to $ZSTACK_HOME')
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
@@ -1815,7 +1815,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
 
         t = string.Template(yaml)
         yaml = t.substitute({
-            'host': args.remote,
+            'host': args.host,
             'install_path': args.install_path,
             'apache_path': apache_tomcat,
             'zstack_path': zstack,
@@ -1832,8 +1832,8 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'setup_account': setup_account_path
         })
 
-        ansible(yaml, args.remote, args.debug, args.ssh_key)
-        info('successfully installed new management node on machine(%s)' % args.remote)
+        ansible(yaml, args.host, args.debug, args.ssh_key)
+        info('successfully installed new management node on machine(%s)' % args.host)
 
 class ShowConfiguration(Command):
     def __init__(self):
