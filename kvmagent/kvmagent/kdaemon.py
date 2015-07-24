@@ -3,7 +3,6 @@
 @author: frank
 '''
 import sys, os, os.path
-import kvmagent
 from zstacklib.utils import log
 from zstacklib.utils import linux
 import zstacklib.utils.iptables as iptables
@@ -11,6 +10,8 @@ import zstacklib.utils.iptables as iptables
 pidfile = '/var/run/zstack/kvmagent.pid'
 log.configure_log('/var/log/zstack/zstack-kvmagent.log')
 logger = log.get_logger(__name__)
+
+import kvmagent
 
 def prepare_pid_dir(path):
     pdir = os.path.dirname(path)

@@ -22,6 +22,8 @@ REQUEST_HEADER = 'header'
 REQUEST_BODY = 'body'
 CALLBACK_URI = 'callbackurl'
 
+logger = log.get_logger(__name__)
+
 class SyncUri(object):
     def __init__(self):
         self.uri = None
@@ -60,7 +62,7 @@ class SyncUriHandler(object):
         task_uuid = cherrypy.request.headers.get(TASK_UUID)
         if task_uuid:
             err = '[ERROR]: find async task uuid[%s] in header, did you wrongly register sync uri for async call???' % task_uuid
-            cherrypy.log(err)
+            logger.debug(err)
             raise Exception(err)
 
         entity = {REQUEST_HEADER : req.headers}
@@ -70,7 +72,7 @@ class SyncUriHandler(object):
     @cherrypy.expose
     def index(self):
         req = Request.from_cherrypy_request(cherrypy.request)
-        cherrypy.log('sync http call: %s' % req.body)
+        logger.debug('sync http call: %s' % req.body)
         rsp = self._do_index(req)
         self._check_response(rsp)
         return rsp
@@ -88,7 +90,7 @@ class AsyncUirHandler(SyncUriHandler):
             self._check_response(content)
         except Exception:
             content = traceback.format_exc()
-            cherrypy.log('[WARN]: %s]' % content)
+            logger.warn('[WARN]: %s]' % content)
             headers[ERROR_CODE] = content
             
         json_post(callback_uri, content, headers)
@@ -108,14 +110,13 @@ class AsyncUirHandler(SyncUriHandler):
     @cherrypy.expose
     def index(self):
         if not cherrypy.request.headers.has_key(TASK_UUID):
-            err = '[WARN]: taskUuid missing in request header'
-            cherrypy.log(err)
+            err = 'taskUuid missing in request header'
+            logger.warn(err)
             raise cherrypy.HTTPError(400, err)
         
         task_uuid = cherrypy.request.headers[TASK_UUID]
-        cherrypy.log('Received async uri call[taskUuid:%s]' % task_uuid)
         req = Request.from_cherrypy_request(cherrypy.request)
-        cherrypy.log('async http call: %s' % req.body)
+        logger.debug('async http call[task uuid: %s], body: %s' % (task_uuid, req.body))
         self._run_index(task_uuid, req)
         
 class HttpServer(object):
@@ -160,15 +161,15 @@ class HttpServer(object):
     def _add_mapping(self, uri_obj):
         if not self.mapper: self.mapper = cherrypy.dispatch.RoutesDispatcher()
         self.mapper.connect(name=uri_obj.uri, route=uri_obj.uri, controller=uri_obj.controller, action="index")
-        cherrypy.log('function[%s] registered uri: %s' % (uri_obj.func.__name__, uri_obj.uri))
+        logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, uri_obj.uri))
         if not uri_obj.uri.endswith('/'):
             nuri = uri_obj.uri + '/'
             self.mapper.connect(name=nuri, route=nuri, controller=uri_obj.controller, action="index")
-            cherrypy.log('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
+            logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
         else:
             nuri = uri_obj.uri.rstrip('/')
             self.mapper.connect(name=nuri, route=nuri, controller=uri_obj.controller, action="index")
-            cherrypy.log('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
+            logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
         
     def _build(self):
         for akey in self.async_uri_handlers.keys():
@@ -186,24 +187,20 @@ class HttpServer(object):
         site_config['server.socket_port'] = self.port
         cherrypy.config.update(site_config)
 
-        app = self.server = cherrypy.tree.mount(root=None, config={'/' : self.server_conf})
+        self.server = cherrypy.tree.mount(root=None, config={'/' : self.server_conf})
 
-        if self.logfile_path:
-            log = app.log
-            log.error_file = ""
-            log.access_file = ""
-            formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s')
+        if not self.logfile_path:
+            self.logfile_path = '/var/log/zstack/zstack.log'
 
-            h = logging.handlers.RotatingFileHandler(self.logfile_path, 'a', maxBytes=10*1024*1024, backupCount=3)
-            h.setLevel(logging.DEBUG)
-            h.setFormatter(formatter)
-            log.error_log.addHandler(h)
+        cherrypy.log.error_file = ""
+        cherrypy.log.access_file = ""
+        cherrypy.log.screen = False
+        self.server.log.error_file = ''
+        self.server.log.access_file = ''
+        self.server.log.screen = False
+        self.server.log.access_log = log.get_logger(__name__)
+        self.server.log.error_log = log.get_logger(__name__)
 
-            h = logging.handlers.RotatingFileHandler(self.logfile_path, 'a',  maxBytes=10*1024*1024, backupCount=3)
-            h.setLevel(logging.DEBUG)
-            h.setFormatter(formatter)
-            log.access_log.addHandler(h)
-    
     def start(self):
         self._build()
         cherrypy.quickstart(self.server)
@@ -251,7 +248,7 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
             if fail_soon:
                 raise e
 
-            cherrypy.log('[WARN]: %s' % linux.get_exception_stacktrace())
+            logger.warn('[WARN]: %s' % linux.get_exception_stacktrace())
             return False
 
     if fail_soon:
