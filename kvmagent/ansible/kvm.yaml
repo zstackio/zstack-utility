@@ -14,29 +14,6 @@
   tasks:
     - include: zstacklib.yaml
 
-    - name: state epel.repo
-      stat: path=/etc/yum.repos.d/epel.repo
-      register: epel_repo
-
-    - name: install epel-release yum repo
-      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true
-      copy: src=files/kvm/epel-release-source.repo
-            dest=/etc/yum.repos.d/
-            owner=root group=root mode=0644
-    
-    - name: install epel-release
-      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true
-      yum: name=epel-release
-           enablerepo=epel-release-source
-           state=present
-    
-    - name: enable epel repository
-      when: ansible_os_family == 'RedHat'
-      ini_file: dest=/etc/yum.repos.d/epel.repo
-                section=epel
-                option=enabled
-                value=1
-
     - name: create root directories
       shell: "mkdir -p {{item}}"
       with_items:

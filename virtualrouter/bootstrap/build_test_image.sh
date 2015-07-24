@@ -278,7 +278,7 @@ EOF
     yum --installroot=$MNT -y --releasever=$CENTOS_VERSION groupinstall Base || call_exception "Fail to install Base system."
     yum --installroot=$MNT -y --releasever=$CENTOS_VERSION install kernel || call_exception "Fail to install kernel."
     #yum --installroot=$MNT -y --releasever=$CENTOS_VERSION install vim-enhanced vim-minimal openssh-server openssh-clients dhclient curl ntp dnsmasq dnsmasq-utils python-setuptools gcc python-devel autoconf tcpdump iputils|| call_exception "Fail to install vim-minimal openssh-server dhclient curl ntp dnsmasq."
-    yum --installroot=$MNT -y --releasever=$CENTOS_VERSION install openssh-server openssh-clients dhclient curl ntp python-setuptools gcc python-devel autoconf tcpdump iputils vim-minimal|| call_exception "Fail to install vim-minimal openssh-server dhclient curl ntp dnsmasq."
+    yum --installroot=$MNT -y --releasever=$CENTOS_VERSION install net-tools openssh-server openssh-clients dhclient curl ntp python-setuptools gcc python-devel autoconf tcpdump iputils vim-minimal|| call_exception "Fail to install vim-minimal openssh-server dhclient curl ntp dnsmasq."
     yum --installroot=$MNT -y --releasever=$CENTOS_VERSION install telnet nc python-pip|| call_exception "Fail to install network tools. "
     #yum --installroot=$MNT -y upgrade dnsmasq-2.66-3.1.x86_64.rpm || call_exception "Fail to upgrade dnsmasq."
     #yum --installroot=$MNT -y install dnsmasq-2.68-1.x86_64.rpm || call_exception "Fail to upgrade dnsmasq."
