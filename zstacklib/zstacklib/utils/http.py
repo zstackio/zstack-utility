@@ -8,6 +8,8 @@ import types
 
 import cherrypy
 import thread
+import logging
+import logging.handlers
 
 import urllib3
 from zstacklib.utils import jsonobject
@@ -187,7 +189,22 @@ class HttpServer(object):
         site_config['server.socket_port'] = self.port
         cherrypy.config.update(site_config)
 
-        self.server =  cherrypy.tree.mount(root=None, config={'/' : self.server_conf})
+        app = self.server =  cherrypy.tree.mount(root=None, config={'/' : self.server_conf})
+        log = app.log
+        formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s')
+
+        fname = getattr(log, "rot_error_file", "error.log")
+        h = logging.handlers.RotatingFileHandler(fname, 'a', maxBytes=10*1024*1024, backupCount=3)
+        h.setLevel(logging.DEBUG)
+        h.setFormatter(formatter)
+        log.error_log.addHandler(h)
+
+        # Make a new RotatingFileHandler for the access log.
+        fname = getattr(log, "rot_access_file", "access.log")
+        h = logging.handlers.RotatingFileHandler(fname, 'a',  maxBytes=10*1024*1024, backupCount=3)
+        h.setLevel(logging.DEBUG)
+        h.setFormatter(formatter)
+        log.access_log.addHandler(h)
     
     def start(self):
         self._build()
