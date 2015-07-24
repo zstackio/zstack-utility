@@ -41,6 +41,9 @@ class LogConfig(object):
         logger = logging.getLogger(name)
         logger.setLevel(logging.DEBUG)
         max_rotate_handler = logging.handlers.RotatingFileHandler(self.log_path, maxBytes=10*1024*1024, backupCount=3)
+        formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s')
+        max_rotate_handler.setFormatter(formatter)
+        max_rotate_handler.setLevel(logging.DEBUG)
         logger.addHandler(max_rotate_handler)
         if self.log_to_console:
             formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s')
