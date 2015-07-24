@@ -2,30 +2,23 @@
 
 @author: frank
 '''
-import cherrypy
-import simplejson
-import urlparse
-import inspect
-import logging
-import thread
 import copy
 import traceback
 import types
-import re
-#import httplib2
+
+import cherrypy
+import thread
+
 import urllib3
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import linux
-from cherrypy import HTTPError
 
 TASK_UUID = 'taskuuid'
 ERROR_CODE = 'error'
 REQUEST_HEADER = 'header'
 REQUEST_BODY = 'body'
 CALLBACK_URI = 'callbackurl'
-
-logger = log.get_logger(__name__)
 
 class SyncUri(object):
     def __init__(self):
@@ -62,14 +55,10 @@ class SyncUriHandler(object):
         self.uri_obj = uri_obj
     
     def _do_index(self, req):
-#        (args, x, x, x) = inspect.getargspec(self.uri_obj.func)
-#        if not args or (len(args) == 1 and args[0] == "self"):
-#            return self.uri_obj.func()
-#        else:
         task_uuid = cherrypy.request.headers.get(TASK_UUID)
         if task_uuid:
-            err = 'find async task uuid[%s] in header, did you wrongly register sync uri for async call???' % task_uuid
-            logger.warn(err)
+            err = '[ERROR]: find async task uuid[%s] in header, did you wrongly register sync uri for async call???' % task_uuid
+            cherrypy.log(err)
             raise Exception(err)
 
         entity = {REQUEST_HEADER : req.headers}
@@ -79,7 +68,7 @@ class SyncUriHandler(object):
     @cherrypy.expose
     def index(self):
         req = Request.from_cherrypy_request(cherrypy.request)
-        logger.debug('sync http call: %s' % req.body)
+        cherrypy.log('sync http call: %s' % req.body)
         rsp = self._do_index(req)
         self._check_response(rsp)
         return rsp
@@ -97,7 +86,7 @@ class AsyncUirHandler(SyncUriHandler):
             self._check_response(content)
         except Exception:
             content = traceback.format_exc()
-            logger.warn(content)
+            cherrypy.log('[WARN]: %s]' % content)
             headers[ERROR_CODE] = content
             
         json_post(callback_uri, content, headers)
@@ -117,14 +106,14 @@ class AsyncUirHandler(SyncUriHandler):
     @cherrypy.expose
     def index(self):
         if not cherrypy.request.headers.has_key(TASK_UUID):
-            err = 'taskUuid missing in request header'
-            logger.warn(err)
+            err = '[WARN]: taskUuid missing in request header'
+            cherrypy.log(err)
             raise cherrypy.HTTPError(400, err)
         
         task_uuid = cherrypy.request.headers[TASK_UUID]
-        logger.debug('Received async uri call[taskUuid:%s]' % task_uuid)
+        cherrypy.log('Received async uri call[taskUuid:%s]' % task_uuid)
         req = Request.from_cherrypy_request(cherrypy.request)
-        logger.debug('async http call: %s' % req.body)
+        cherrypy.log('async http call: %s' % req.body)
         self._run_index(task_uuid, req)
         
 class HttpServer(object):
@@ -150,8 +139,8 @@ class HttpServer(object):
         async_uri_obj.callback_uri = callback_uri
         if async_uri_obj.callback_uri is None:
             async_uri_obj.callback_uri = self.async_callback_uri
-        async_uri_obj.uri = uri;
-        async_uri_obj.func = func;
+        async_uri_obj.uri = uri
+        async_uri_obj.func = func
         async_uri_obj.controller = AsyncUirHandler(async_uri_obj)
         
         self.async_uri_handlers[uri] = async_uri_obj
@@ -169,15 +158,15 @@ class HttpServer(object):
     def _add_mapping(self, uri_obj):
         if not self.mapper: self.mapper = cherrypy.dispatch.RoutesDispatcher()
         self.mapper.connect(name=uri_obj.uri, route=uri_obj.uri, controller=uri_obj.controller, action="index")
-        logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, uri_obj.uri))
+        cherrypy.log('function[%s] registered uri: %s' % (uri_obj.func.__name__, uri_obj.uri))
         if not uri_obj.uri.endswith('/'):
             nuri = uri_obj.uri + '/'
             self.mapper.connect(name=nuri, route=nuri, controller=uri_obj.controller, action="index")
-            logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
+            cherrypy.log('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
         else:
             nuri = uri_obj.uri.rstrip('/')
             self.mapper.connect(name=nuri, route=nuri, controller=uri_obj.controller, action="index")
-            logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
+            cherrypy.log('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
         
     def _build(self):
         for akey in self.async_uri_handlers.keys():
@@ -240,7 +229,6 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
                 #(resp, content) = http_obj.request(uri, 'POST', headers=header)
                 content = pool.urlopen(method, uri, headers=header).data
 
-            #logger.debug('post to %s, with content: %s, with header: %s' % (uri, body, header))
             pool.clear()
             ret.append(content)
             return True
@@ -248,7 +236,7 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
             if fail_soon:
                 raise e
 
-            logger.warn(linux.get_exception_stacktrace())
+            cherrypy.log('[WARN]: %s' % linux.get_exception_stacktrace())
             return False
 
     if fail_soon:
