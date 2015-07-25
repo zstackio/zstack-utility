@@ -698,6 +698,18 @@ class GenerateTestLinkDocumentAction(inventory.APIGenerateTestLinkDocumentMsg):
         self.out = evt
         return self.out
 
+class GetGlobalPropertyAction(inventory.APIGetGlobalPropertyMsg):
+    def __init__(self):
+        super(GetGlobalPropertyAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetGlobalPropertyAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeInstanceOfferingStateAction(inventory.APIChangeInstanceOfferingStateMsg):
     def __init__(self):
         super(ChangeInstanceOfferingStateAction, self).__init__()
