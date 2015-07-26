@@ -1750,18 +1750,6 @@ class AttachPolicyToUserAction(inventory.APIAttachPolicyToUserMsg):
         self.out = evt
         return self.out
 
-class ResetUserPasswordAction(inventory.APIResetUserPasswordMsg):
-    def __init__(self):
-        super(ResetUserPasswordAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ResetUserPasswordAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class AddUserToGroupAction(inventory.APIAddUserToGroupMsg):
     def __init__(self):
         super(AddUserToGroupAction, self).__init__()
@@ -1958,18 +1946,6 @@ class RevokeResourceSharingAction(inventory.APIRevokeResourceSharingMsg):
         self.out = evt
         return self.out
 
-class ResetAccountPasswordAction(inventory.APIResetAccountPasswordMsg):
-    def __init__(self):
-        super(ResetAccountPasswordAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ResetAccountPasswordAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class LogInByAccountAction(inventory.APILogInByAccountMsg):
     def __init__(self):
         super(LogInByAccountAction, self).__init__()
@@ -1998,6 +1974,30 @@ class DeleteUserAction(inventory.APIDeleteUserMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateUserAction(inventory.APIUpdateUserMsg):
+    def __init__(self):
+        super(UpdateUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateAccountAction(inventory.APIUpdateAccountMsg):
+    def __init__(self):
+        super(UpdateAccountAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAccountAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
