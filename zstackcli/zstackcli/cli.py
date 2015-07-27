@@ -60,8 +60,8 @@ class Cli(object):
     LOGIN_BY_USER_NAME = 'APILogInByUserMsg'
     CREATE_ACCOUNT_NAME = 'APICreateAccountMsg'
     CREATE_USER_NAME = 'APICreateUserMsg'
-    ACCOUNT_RESET_PASSWORD_NAME = 'APIResetAccountPasswordMsg'
-    USER_RESET_PASSWORD_NAME = 'APIResetUserPasswordMsg'
+    ACCOUNT_RESET_PASSWORD_NAME = 'APIUpdateAccountMsg'
+    USER_RESET_PASSWORD_NAME = 'APIUpdateUserMsg'
 
     @staticmethod
     def register_message_creator(apiname, func):
