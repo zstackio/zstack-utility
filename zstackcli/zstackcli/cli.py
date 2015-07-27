@@ -13,6 +13,10 @@ import pydoc
 import time
 import urllib3
 
+import zstacklib.utils.log as log
+#comment out next line to print detail zstack cli http command to screen.
+log.configure_log('/var/log/zstack/zstack-cli', log_to_console=False)
+
 import apibinding.inventory as inventory
 import apibinding.api as api
 import zstacklib.utils.jsonobject as jsonobject
