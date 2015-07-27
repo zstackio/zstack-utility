@@ -70,10 +70,9 @@ class Cli(object):
     def usage(self):
         print '''
   ZStack command line tool
-
   Type "help" for more information
-
   Type Tab key for auto-completion
+  Type "quit" or "exit" or Ctrl-d to exit
 
 '''
 
@@ -912,6 +911,8 @@ Parse command parameters error:
         self.cli_cmd_func = {'help': self.show_help, \
                 'history':  self.show_help, \
                 'more':     self.show_more, \
+                'quit':     sys.exit, \
+                'exit':     sys.exit, \
                 'save':     self.save_json_to_file}
         self.cli_cmd = self.cli_cmd_func.keys()
 
