@@ -13,3 +13,7 @@ Build zstack-woodpecker testing libs and config files:
 Build all:
 -------------
 #ant all
+
+Build all-in-one package with special build name, e.g. rc1 :
+-------------
+#ant -Dzstack_build_root=/root/zstackorg/ -Dbuild_name=rc1 all-in-one
