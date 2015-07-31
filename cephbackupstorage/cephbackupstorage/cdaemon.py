@@ -8,8 +8,8 @@ from zstacklib.utils import log
 from zstacklib.utils import linux
 import zstacklib.utils.iptables as iptables
 
-pidfile = '/var/run/zstack/ceph-backupstorage-agent.pid'
-log.configure_log('/var/log/zstack/ceph-backupstorage-agent.log')
+pidfile = '/var/run/zstack/ceph-backupstorage.pid'
+log.configure_log('/var/log/zstack/ceph-backupstorage.log')
 logger = log.get_logger(__name__)
 
 def prepare_pid_dir(path):

@@ -51,6 +51,7 @@ class CephAgent(object):
     DOWNLOAD_IMAGE_PATH = "/ceph/backupstorage/image/download"
     DELETE_IMAGE_PATH = "/ceph/backupstorage/image/delete"
     PING_PATH = "/ceph/backupstorage/ping"
+    ECHO_PATH = "/ceph/backupstorage/echo"
 
     http_server = http.HttpServer(port=7761)
     http_server.logfile_path = log.get_logfile_path()
@@ -64,17 +65,6 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
 
-    def start(self, in_thread=True):
-        self.plugin_rgty.configure_plugins(self)
-        self.plugin_rgty.start_plugins()
-        if in_thread:
-            self.http_server.start_in_thread()
-        else:
-            self.http_server.start()
-
-    def stop(self):
-        self.plugin_rgty.stop_plugins()
-        self.http_server.stop()
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -84,6 +74,11 @@ class CephAgent(object):
         avail = long(df.stats.total_avail_bytes_)
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
+
+    @replyerror
+    def echo(self, req):
+        logger.debug('get echoed')
+        return ''
 
     @replyerror
     def init(self, req):
@@ -162,7 +157,7 @@ class CephAgent(object):
 
     @replyerror
     def ping(self, req):
-        pass
+        return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def delete(self, req):
@@ -181,6 +176,6 @@ class CephDaemon(daemon.Daemon):
 
     def run(self):
         self.agent = CephAgent()
-        self.agent.start(in_thread=False)
+        self.agent.http_server.start()
 
 
