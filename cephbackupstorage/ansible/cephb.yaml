@@ -55,7 +55,7 @@
       when: virtualenv_ret.rc != 0
 
     - name: create virtualenv
-      shell: "rm -rf {{virtenv_path}} && rm -rf {{cephb_root}}/{{pkg_zstacklib}} && rm -f {{cephb_root}}/{{pkg_cephbagent}} && virtualenv {{virtenv_path}}"
+      shell: "rm -rf {{virtenv_path}} && rm -rf {{cephb_root}}/{{pkg_zstacklib}} && rm -f {{cephb_root}}/{{pkg_cephbagent}} && virtualenv --system-site-packages {{virtenv_path}}"
 
     - name: copy zstacklib
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{cephb_root}}/{{pkg_zstacklib}}"
