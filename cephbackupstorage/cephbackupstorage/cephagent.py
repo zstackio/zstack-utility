@@ -57,14 +57,10 @@ class CephAgent(object):
     http_server.logfile_path = log.get_logfile_path()
 
     def __init__(self):
-        self.plugin_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plugins')
-        self.plugin_rgty = plugin.PluginRegistry(self.plugin_path)
-
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
-
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
