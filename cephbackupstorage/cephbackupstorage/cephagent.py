@@ -61,7 +61,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
-        self.http_server.register_async_uri(self.ECHO_PATH, self.echo)
+        self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
