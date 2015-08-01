@@ -318,6 +318,19 @@ def write_to_temp_file(content):
     tmp_fd.close()
     return tmp_path
 
+def ssh(hostname, sshkey, cmd, user='root'):
+    def create_ssh_key_file():
+        return write_to_temp_file(sshkey)
+
+    sshkey_file = create_ssh_key_file()
+    shell.call('chmod 600 %s' % sshkey_file)
+
+    try:
+        return shell.call('ssh -o StrictHostKeyChecking=no -i %s %s@%s "%s"' % (sshkey_file, user, hostname, cmd))
+    finally:
+        if sshkey_file:
+            os.remove(sshkey_file)
+
 def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root'):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)

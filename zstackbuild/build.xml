@@ -97,8 +97,8 @@
         <echo message="[zstack_build_root] default path is /usr/local/zstack/root/, which is defined in build.properties. It should be the same parent folder for zstack-utility and zstack-woodpecker." />
     </target>
 
-    <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb" />
-    <target name="assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, copy-pypi-source, zip-war" />
+    <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb, build-cephp" />
+    <target name="assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, copy-pypi-source, zip-war" />
     <target name="build-war" depends="do-build, assemble" />
     <target name="package" depends="build-war, build-setting, do-package" />
     <target name="buildtestagent" depends="build-zstacklib, build-testagent, assemble-testagent" />
