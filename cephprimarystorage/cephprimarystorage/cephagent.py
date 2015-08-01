@@ -66,7 +66,7 @@ class CephAgent(object):
     PROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/protect"
 
 
-    http_server = http.HttpServer(port=7761)
+    http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
 
     def __init__(self):
