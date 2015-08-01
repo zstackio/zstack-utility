@@ -31,6 +31,11 @@ class InitRsp(AgentResponse):
         super(InitRsp, self).__init__()
         self.fsid = None
 
+class DownloadRsp(AgentResponse):
+    def __init__(self):
+        super(DownloadRsp, self).__init__()
+        self.size = None
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -125,13 +130,14 @@ class CephAgent(object):
 
         @rollbackable
         def _1():
-            shell.call('rbd rm %s' % tmp_image_name)
+            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         _1()
 
-        rbd_path = shell.call('rbd map %s' % tmp_image_name)
+        rbd_path = shell.call('rbd map %s/%s' % (pool, tmp_image_name))
+        rbd_path = rbd_path.strip(' \t\n\r')
         @rollbackable
         def _2():
-            shell.call('ls %s && rbd unmap %s' % (rbd_path, rbd_path))
+            shell.call('ls %s &> /dev/null && rbd unmap %s' % (rbd_path, rbd_path), exception=False)
         _2()
 
         shell.call('wget --no-check-certificate %s -O %s' % (cmd.url, rbd_path))
@@ -144,11 +150,16 @@ class CephAgent(object):
         if file_format == 'qcow2':
             shell.call('qemu-img convert -f qcow2 -O raw %s rbd:%s/%s' % (rbd_path, pool, image_name))
             shell.call('rbd unmap %s' % rbd_path)
+            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         else:
             shell.call('rbd unmap %s' % rbd_path)
-            shell.call('rbd mv %s:%s %s:%s' % (pool, tmp_image_name, pool, image_name))
+            shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
 
-        rsp = AgentResponse()
+        o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
+        image_stats = jsonobject.loads(o)
+
+        rsp = DownloadRsp()
+        rsp.size = long(image_stats.size_)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
