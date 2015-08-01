@@ -566,7 +566,7 @@ def add_l3_network(deployConfig, session_uuid, l3_name = None, l2_name = None, \
         action = api_actions.CreateL3NetworkAction()
         action.sessionUuid = session_uuid
         action.description = l3.description__
-        if l3.system__:
+        if l3.system__ and l3.system__ != 'False':
             action.system = 'true'
         action.l2NetworkUuid = l2inv_uuid
         action.name = l3Name

@@ -73,15 +73,12 @@ def get_instance_offering(xml_root, session_uuid = None):
     cond = []
     vr_inst_offerings = res_ops.safely_get_resource(res_ops.VR_OFFERING, cond, \
             session_uuid)
+    uuids = ''
     if vr_inst_offerings:
         vr_offering_uuids = res_ops.safely_get_resource(res_ops.VR_OFFERING, \
                 [], session_uuid, ['uuid'])
-    else:
-        return
-
-    uuids = ''
-    for vr_uuid in vr_offering_uuids:
-        uuids += ' %s' % vr_uuid.uuid
+        for vr_uuid in vr_offering_uuids:
+            uuids += ' %s' % vr_uuid.uuid
 
     cond = res_ops.gen_query_conditions('uuid', 'not in', uuids)
     inst_offerings = res_ops.safely_get_resource(res_ops.INSTANCE_OFFERING, \
