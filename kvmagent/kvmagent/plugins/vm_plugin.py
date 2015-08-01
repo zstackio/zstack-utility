@@ -1168,6 +1168,22 @@ class Vm(object):
                 else:
                     blk_iscsi()
 
+            def ceph_volume(dev_letter, virtio):
+                def ceph_virtio():
+                    disk = e(devices, 'disk', None, {'type':'network', 'device':'disk'})
+                    source = e(disk, 'source', None, {'name': v.installPath.lstrip('ceph://')})
+                    for minfo in v.monInfo:
+                        e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
+                    e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
+
+                def ceph_blk():
+                    raise Exception("not implemented")
+
+                if virtio:
+                    ceph_virtio()
+                else:
+                    ceph_blk()
+
             for v in volumes:
                 if v.deviceId >= len(Vm.DEVICE_LETTERS):
                     err = "%s exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
@@ -1179,6 +1195,8 @@ class Vm(object):
                     filebased_volume(dev_letter)
                 elif v.deviceType == 'iscsi':
                     iscsibased_volume(dev_letter, v.useVirtio)
+                elif v.deviceType == 'ceph':
+                    ceph_volume(dev_letter, v.useVirtio)
                 else:
                     raise Exception('unknown volume deivceType: %s' % v.deviceType)
 
