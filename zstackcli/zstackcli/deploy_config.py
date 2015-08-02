@@ -197,6 +197,9 @@ def add_l2_network(deployConfig, session_uuid, l2_name = None, zone_name = None)
                                 , cluster_ref, 'c')\
                                 , j, 'n')
 
+                        if not l2.description__:
+                            l2.description_ = 'l2'
+
                         l2Des = generate_dup_name(\
                                 generate_dup_name(\
                                 generate_dup_name(\
