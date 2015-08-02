@@ -126,7 +126,7 @@ class CephAgent(object):
         tmp_image_name = 'tmp-%s' % image_name
         # additional 1M
         image_size_M = sizeunit.Byte.toMegaByte(image_size) + 1
-        shell.call('rbd create --size %s %s/%s' % (image_size_M, pool, tmp_image_name))
+        shell.call('rbd create --size %s --image-format 2 %s/%s' % (image_size_M, pool, tmp_image_name))
 
         @rollbackable
         def _1():
