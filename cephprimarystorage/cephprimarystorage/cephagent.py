@@ -73,6 +73,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.DELETE_PATH, self.delete)
         self.http_server.register_async_uri(self.CREATE_VOLUME_PATH, self.create)
+        self.http_server.register_async_uri(self.CLONE_PATH, self.clone)
         self.http_server.register_async_uri(self.CREATE_SNAPSHOT_PATH, self.create_snapshot)
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
         self.http_server.register_async_uri(self.PROTECT_SNAPSHOT_PATH, self.protect_snapshot)
