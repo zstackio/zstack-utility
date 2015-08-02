@@ -102,8 +102,7 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     def _parse_install_path(self, path):
-        path = path.lstrip('ceph://')
-        return path.split('/')
+        return path.lstrip('ceph:').lstrip('//')
 
     @replyerror
     @rollback

@@ -171,10 +171,10 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     def _normalize_install_path(self, path):
-        return path.lstrip('ceph://')
+        return path.lstrip('ceph:').lstrip('//')
 
     def _parse_install_path(self, path):
-        return path.lstrip('ceph://').split('/')
+        return self._normalize_install_path(path).split('/')
 
     @replyerror
     def create(self, req):
