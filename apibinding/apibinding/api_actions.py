@@ -2298,30 +2298,6 @@ class AddLocalPrimaryStorageAction(inventory.APIAddLocalPrimaryStorageMsg):
         self.out = evt
         return self.out
 
-class AddCephPrimaryStorageAction(inventory.APIAddCephPrimaryStorageMsg):
-    def __init__(self):
-        super(AddCephPrimaryStorageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AddCephPrimaryStorageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class AddCephBackupStorageAction(inventory.APIAddCephBackupStorageMsg):
-    def __init__(self):
-        super(AddCephBackupStorageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AddCephBackupStorageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class UpdateKVMHostAction(inventory.APIUpdateKVMHostMsg):
     def __init__(self):
         super(UpdateKVMHostAction, self).__init__()
@@ -2470,6 +2446,18 @@ class QueryVirtualRouterVmAction(inventory.APIQueryVirtualRouterVmMsg):
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
+        return self.out
+
+class UpdateVirtualRouterOfferingAction(inventory.APIUpdateVirtualRouterOfferingMsg):
+    def __init__(self):
+        super(UpdateVirtualRouterOfferingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateVirtualRouterOfferingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
         return self.out
 
 class AttachPortForwardingRuleAction(inventory.APIAttachPortForwardingRuleMsg):
