@@ -603,48 +603,36 @@ def create_bridge(bridge_name, interface, move_route=True):
         return
 
     if not is_network_device_existing(bridge_name):
-        shell.ShellCmd("brctl addbr %s" % bridge_name)()
-        shell.ShellCmd("brctl setfd %s 0" % bridge_name)()
-        shell.ShellCmd("brctl stp %s off" % bridge_name)()
-        shell.ShellCmd("ip link set %s up" % bridge_name)()
+        shell.call("brctl addbr %s" % bridge_name)
+        shell.call("brctl setfd %s 0" % bridge_name)
+        shell.call("brctl stp %s off" % bridge_name)
+        shell.call("ip link set %s up" % bridge_name)
 
     if not is_network_device_existing(interface):
         raise LinuxError("network device[%s] is not existing" % interface)
 
-    shell.ShellCmd("brctl addif %s %s" % (bridge_name, interface))()
+    shell.call("brctl addif %s %s" % (bridge_name, interface))
     
     if not move_route:
         return
     
     #record old routes
     routes = []
-    out = shell.ShellCmd('ip route show dev %s' % interface)()
+    out = shell.call('ip route show dev %s' % interface)
     for line in out.split('\n'):
-        fields = line.split()
-        if fields and 'via' in fields:
-            routes.append(fields)
-            shell.ShellCmd('ip route del %s' % ' '.join(fields))()
-            
+        if 'via' in line:
+            routes.append(line)
+            shell.call('ip route del %s' % line)
+
     #mv ip on interface to bridge
-    out = shell.ShellCmd('ip addr show dev %s scope global' % interface)()
-    for line in out.split('\n'):
-        fields = line.split()
-        if fields and fields[0] == 'inet':
-            params = fields[1:-1] 
-            cmds = ['ip', 'addr', 'del']
-            cmds.extend(params)
-            cmds.extend(['dev', interface])
-            shell.ShellCmd(' '.join(cmds))()
-            
-            cmds = ['ip', 'addr', 'add']
-            cmds.extend(params)
-            cmds.extend(['dev', bridge_name])
-            shell.ShellCmd(' '.join(cmds))()
-            break
-           
-    #restore routes on bridge 
-    for fields in routes:
-        shell.ShellCmd('ip route add %s' % ' '.join(fields))()
+    out = shell.call('ip addr show dev %s | grep "inet "' % interface)
+    ip = out.strip().split()[1]
+    shell.call('ip addr del %s dev %s' % (ip, interface))
+    shell.call('ip addr add %s dev %s' % (ip, interface))
+
+    #restore routes on bridge
+    for r in routes:
+        shell.call('ip route add %s' % r)
 
 def pretty_xml(xmlstr):
     # dom cannot handle namespace tag like <qemu:commandline>
