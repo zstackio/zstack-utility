@@ -1171,7 +1171,7 @@ class Vm(object):
             def ceph_volume(dev_letter, virtio):
                 def ceph_virtio():
                     disk = e(devices, 'disk', None, {'type':'network', 'device':'disk'})
-                    source = e(disk, 'source', None, {'name': v.installPath.lstrip('ceph://')})
+                    source = e(disk, 'source', None, {'name': v.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
                     for minfo in v.monInfo:
                         e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
