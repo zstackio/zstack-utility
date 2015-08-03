@@ -240,7 +240,9 @@ class VirtioCeph(object):
         logger.debug('create secret for virtio-ceph volume:\n%s\n' % xml)
         conn = kvmagent.get_libvirt_connection()
         secret = conn.secretDefineXML(xml)
+        logger.debug('xxxxxxxxxxxxxxxxxxxxxxxx %s' % self.volume.userKey)
         secret.setValue(self.volume.userKey)
+        logger.debug('yyyyyyyyyyyyyyyyyyyyyyyy %s' % secret.value())
         return secret.UUIDString()
 
     def to_xmlobject(self):
