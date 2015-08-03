@@ -232,6 +232,23 @@ def print_secret(uuid):
     ss = conn.secretLookupByUUIDString(uuid)
     logger.debug('zzzzzzzzzzzzzzzzzzzzzzzzzzzzz %s' % ss.value())
 
+def create_secret_by_virsh(name, value):
+    content = '''<secret ephemeral='no' private='no'>
+   <usage type='ceph'>
+     <name>%s</name>
+   </usage>
+</secret>
+''' % name
+
+    spath = linux.write_to_temp_file(content)
+    try:
+        uuid = shell.call("virsh secret-define %s | cut -d ' ' -f 2" % spath)
+        uuid = uuid.strip(' \n\t\r')
+        shell.call('virsh secret-set-value %s %s' % (uuid, value))
+        return uuid
+    finally:
+        os.remove(spath)
+
 class VirtioCeph(object):
     def __init__(self):
         self.volume = None
@@ -250,12 +267,15 @@ class VirtioCeph(object):
         logger.debug('yyyyyyyyyyyyyyyyyyyyyyyy %s' % secret.value())
         return secret.UUIDString()
 
+    def _get_secret_uuid1(self):
+        return create_secret_by_virsh(self.volume.volumeUuid, self.volume.userKey)
+
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
         auth = e(disk, 'auth', attrib={'username': 'zstack'})
 
-        suuid = self._get_secret_uuid()
+        suuid = self._get_secret_uuid1()
         print_secret(suuid)
 
         e(auth, 'secret', attrib={'type':'ceph', 'uuid':suuid})
