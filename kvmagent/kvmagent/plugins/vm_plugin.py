@@ -227,6 +227,33 @@ class BlkIscsi(object):
         except Exception as e:
             logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
 
+class VirtioCeph(object):
+    def __init__(self):
+        self.volume = None
+        self.dev_letter = None
+        self.user_key = None
+
+    def _get_secret_uuid(self):
+        root = etree.Element('secret', {'ephemeral': 'yes', 'private':'yes'})
+        usage = e(root, 'usage', attrib={'type': 'ceph'})
+        e(usage, 'target', self.volume.volumeUuid)
+        xml = etree.tostring(root)
+        logger.debug('create secret for virtio-ceph volume:\n%s\n' % xml)
+        conn = kvmagent.get_libvirt_connection()
+        secret = conn.secretDefineXML(xml)
+        secret.setValue(self.user_key)
+        return secret.UUIDString()
+
+    def to_xmlobject(self):
+        disk = etree.Element('disk', {'type':'network', 'device':'disk'})
+        source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
+        auth = e(disk, 'auth', attrib={'username': 'zstack'})
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid':self._get_secret_uuid()})
+        for minfo in self.volume.monInfo:
+            e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
+        e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
+        return disk
+
 class VirtioIscsi(object):
     def __init__(self):
         self.volume_uuid = None
@@ -263,17 +290,6 @@ class VirtioIscsi(object):
         secret = conn.secretDefineXML(xml)
         secret.setValue(self.chap_password)
         return secret.UUIDString()
-
-    @staticmethod
-    def delete_iscsi_secret(uuid):
-        conn = kvmagent.get_libvirt_connection()
-        try:
-            s = conn.secretLookupByUUIDString(uuid)
-            s.undefine()
-        except libvirt.libvirtError as e:
-            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
-                raise e
-
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True):
     try:
@@ -441,6 +457,15 @@ class Vm(object):
             raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
+    def _delete_secret(self, uuid):
+        conn = kvmagent.get_libvirt_connection()
+        try:
+            s = conn.secretLookupByUUIDString(uuid)
+            s.undefine()
+        except libvirt.libvirtError as e:
+            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
+                raise
+
     def reboot(self, timeout=60):
         self.stop(timeout=timeout)
         self.start(timeout)
@@ -481,7 +506,7 @@ class Vm(object):
                 if auth_type != 'iscsi':
                     return
 
-                VirtioIscsi.delete_iscsi_secret(disk.auth.secret.uuid_)
+                self._delete_secret(disk.auth.secret.uuid_)
 
             def logout_iscsi():
                 if disk.device_ != 'lun':
@@ -710,23 +735,17 @@ class Vm(object):
 
             detach()
 
-            def delete_iscsi_secret():
+            def delete_secret():
                 if not xmlobject.has_element(target_disk, 'auth.secret'):
                     return
-
-                auth_type = target_disk.auth.secret.type_
-                if auth_type != 'iscsi':
-                    return
-
-                VirtioIscsi.delete_iscsi_secret(target_disk.auth.secret.uuid_)
+                self._delete_secret(target_disk.auth.secret.uuid_)
 
             def logout_iscsi():
                 BlkIscsi.logout_portal(target_disk.source.dev_)
 
+            delete_secret()
             if volume.deviceType == 'iscsi':
-                if volume.useVirtio:
-                    delete_iscsi_secret()
-                else:
+                if not volume.useVirtio:
                     logout_iscsi()
 
 
@@ -1170,11 +1189,11 @@ class Vm(object):
 
             def ceph_volume(dev_letter, virtio):
                 def ceph_virtio():
-                    disk = e(devices, 'disk', None, {'type':'network', 'device':'disk'})
-                    source = e(disk, 'source', None, {'name': v.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
-                    for minfo in v.monInfo:
-                        e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
-                    e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
+                    vc = VirtioCeph()
+                    vc.volume = v
+                    vc.user_key = cmd.userKey
+                    vc.dev_letter = dev_letter
+                    devices.append(vc.to_xmlobject())
 
                 def ceph_blk():
                     raise Exception("not implemented")
