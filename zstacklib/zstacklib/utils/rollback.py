@@ -24,9 +24,9 @@ def rollback(func):
     def wrap(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except Exception as e:
+        except:
             if not hasattr(tlocal, 'rollback_structs'):
-                raise e
+                raise
 
             tlocal.rollback_structs.reverse()
 
@@ -39,6 +39,6 @@ def rollback(func):
 
             tlocal.rollback_structs = []
 
-            raise e
+            raise
 
     return wrap

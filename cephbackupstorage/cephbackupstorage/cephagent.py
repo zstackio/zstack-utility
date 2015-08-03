@@ -109,49 +109,35 @@ class CephAgent(object):
     def download(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        def get_file_size(url):
-            output = shell.call('curl --head %s' % url)
-            for l in output.split('\n'):
-                if 'Content-Length' in l:
-                    filesize = l.split(':')[1].strip()
-                    return long(filesize)
-            return None
-
-        image_size = get_file_size(cmd.url)
-        if not image_size:
-            raise Exception('cannot get the size of %s through http header; we cannot create a rbd image because of this' % cmd.url)
-
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
-        # additional 1M
-        image_size_M = sizeunit.Byte.toMegaByte(image_size) + 1
-        shell.call('rbd create --size %s --image-format 2 %s/%s' % (image_size_M, pool, tmp_image_name))
+
+        shell.call('wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s' % (cmd.url, pool, tmp_image_name))
 
         @rollbackable
         def _1():
             shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         _1()
 
-        rbd_path = shell.call('rbd map %s/%s' % (pool, tmp_image_name))
-        rbd_path = rbd_path.strip(' \t\n\r')
-        @rollbackable
-        def _2():
-            shell.call('ls %s &> /dev/null && rbd unmap %s' % (rbd_path, rbd_path), exception=False)
-        _2()
-
-        shell.call('wget --no-check-certificate %s -O %s' % (cmd.url, rbd_path))
-
-        file_format = shell.call("qemu-img info %s | grep 'file format' | cut -d ':' -f 2" % rbd_path)
+        file_format = shell.call("qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
         file_format = file_format.strip()
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
 
         if file_format == 'qcow2':
-            shell.call('qemu-img convert -f qcow2 -O raw %s rbd:%s/%s' % (rbd_path, pool, image_name))
-            shell.call('rbd unmap %s' % rbd_path)
-            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+            conf_path = None
+            try:
+                with open('/etc/ceph/ceph.conf', 'r') as fd:
+                    conf = fd.read()
+                    conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
+                    conf_path = linux.write_to_temp_file(conf)
+
+                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
+                shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+            finally:
+                if conf_path:
+                    os.remove(conf_path)
         else:
-            shell.call('rbd unmap %s' % rbd_path)
             shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
 
         o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
