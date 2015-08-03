@@ -231,7 +231,6 @@ class VirtioCeph(object):
     def __init__(self):
         self.volume = None
         self.dev_letter = None
-        self.user_key = None
 
     def _get_secret_uuid(self):
         root = etree.Element('secret', {'ephemeral': 'yes', 'private':'yes'})
@@ -241,7 +240,7 @@ class VirtioCeph(object):
         logger.debug('create secret for virtio-ceph volume:\n%s\n' % xml)
         conn = kvmagent.get_libvirt_connection()
         secret = conn.secretDefineXML(xml)
-        secret.setValue(self.user_key)
+        secret.setValue(self.volume.userKey)
         return secret.UUIDString()
 
     def to_xmlobject(self):
@@ -1191,7 +1190,6 @@ class Vm(object):
                 def ceph_virtio():
                     vc = VirtioCeph()
                     vc.volume = v
-                    vc.user_key = cmd.userKey
                     vc.dev_letter = dev_letter
                     devices.append(vc.to_xmlobject())
 
