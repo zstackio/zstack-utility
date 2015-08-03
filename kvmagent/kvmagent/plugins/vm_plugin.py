@@ -227,6 +227,11 @@ class BlkIscsi(object):
         except Exception as e:
             logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
 
+def print_secret(uuid):
+    conn = kvmagent.get_libvirt_connection()
+    ss = conn.secretLookupByUUIDString(uuid)
+    logger.debug('zzzzzzzzzzzzzzzzzzzzzzzzzzzzz %s' % ss.value())
+
 class VirtioCeph(object):
     def __init__(self):
         self.volume = None
@@ -249,7 +254,11 @@ class VirtioCeph(object):
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
         auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type':'ceph', 'uuid':self._get_secret_uuid()})
+
+        suuid = self._get_secret_uuid()
+        print_secret(suuid)
+
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid':suuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
@@ -477,8 +486,12 @@ class Vm(object):
         conn = kvmagent.get_libvirt_connection()
         domain = conn.defineXML(self.domain_xml)
         self.domain = domain
-        self.domain.createWithFlags(0)
-        self._wait_for_vm_running(timeout)
+        try:
+            self.domain.createWithFlags(0)
+            self._wait_for_vm_running(timeout)
+        except:
+            print_secret(self.domain_xmlobject.devices.disk.auth.secret.uuid_)
+            raise
 
     def stop(self, graceful=True, timeout=5, undefine=True):
         def cleanup_addons():
