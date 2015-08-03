@@ -233,7 +233,7 @@ class VirtioCeph(object):
         self.dev_letter = None
 
     def _get_secret_uuid(self):
-        root = etree.Element('secret', {'ephemeral': 'yes', 'private':'yes'})
+        root = etree.Element('secret', {'ephemeral': 'no', 'private':'no'})
         usage = e(root, 'usage', attrib={'type': 'ceph'})
         e(usage, 'name', self.volume.volumeUuid)
         xml = etree.tostring(root)
