@@ -630,10 +630,10 @@ class Vm(object):
                     if not linux.wait_callback_success(wait_for_attach, None, 5, 1):
                         raise Exception("cannot attach a volume[uuid: %s] to the vm[uuid: %s];"
                                         "it's still not attached after 5 seconds" % (volume.volumeUuid, self.uuid))
-                except Exception as e:
+                except:
                     # check one more time
                     if not wait_for_attach(None):
-                        raise e
+                        raise
 
             attach()
 
@@ -712,10 +712,10 @@ class Vm(object):
                         raise Exception("unable to detach the volume[uuid:%s] from the vm[uuid:%s];"
                                         "it's still attached after 5 seconds" %
                                         (volume.volumeUuid, self.uuid))
-                except Exception as e:
+                except:
                     # check one more time
                     if not wait_for_detach(None):
-                        raise e
+                        raise
 
             detach()
 
@@ -895,9 +895,9 @@ class Vm(object):
         try:
             if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=300):
                 raise kvmagent.KvmError('timeout after 300 seconds')
-        except kvmagent.KvmError as ke:
-            raise ke
-        except Exception as e:
+        except kvmagent.KvmError:
+            raise
+        except:
             logger.debug(linux.get_exception_stacktrace())
 
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
@@ -956,10 +956,10 @@ class Vm(object):
 
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
                 raise Exception('nic device does not show after 30 seconds')
-        except Exception as e:
+        except:
             #  check one more time
             if not check_device(None):
-                raise e
+                raise
 
     def attach_nic(self, cmd):
         self._wait_vm_run_until_seconds(10)
@@ -1004,11 +1004,10 @@ class Vm(object):
 
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
                 raise Exception('nic device is still attached after 30 seconds')
-
-        except Exception as e:
+        except:
             # check one more time
             if not check_device(None):
-                raise e
+                raise
 
 
     def detach_nic(self, cmd):
