@@ -1003,10 +1003,11 @@ class Vm(object):
                 self.domain.detachDevice(xml)
 
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
-                raise Exception('nic device is still attached after 30 seconds')
+                raise Exception('nic device is still attached after 10 seconds')
         except:
             # check one more time
             if not check_device(None):
+                logger.warn('failed to detach a nic[mac:%s], dump vm xml:\n%s' % (cmd.nic.mac, self.domain_xml))
                 raise
 
 
