@@ -26,7 +26,7 @@ END_POINT=`expr $WIDTH - $START_POINT - 1`
 STEP="1"
 
 zstack_tmp_file=`mktemp`
-ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.7/zstack-all-in-one-0.7.1.tgz"}
+ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.8/zstack-all-in-one-0.8.0.tgz"}
 #TODO: change to ZStack WEBSITE
 WEBSITE=${WEBSITE-'mirrors.aliyun.com'}
 [ -z $WEBSITE ] && WEBSITE='mirrors.aliyun.com'
