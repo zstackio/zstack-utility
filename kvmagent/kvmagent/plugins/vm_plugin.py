@@ -607,8 +607,6 @@ class Vm(object):
             # libvirt has a bug that if attaching volume just after vm created, it likely fails. So we retry three time here
             @linux.retry(times=3, sleep_time=5)
             def attach():
-                self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-
                 def wait_for_attach(_):
                     me = get_vm_by_uuid(self.uuid)
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -626,9 +624,16 @@ class Vm(object):
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
                     return False
 
-                if not linux.wait_callback_success(wait_for_attach, None, 5, 1):
-                    raise Exception("cannot attach a volume[uuid: %s] to the vm[uuid: %s];"
-                                    "it's still not attached after 5 seconds" % (volume.volumeUuid, self.uuid))
+                try:
+                    self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+
+                    if not linux.wait_callback_success(wait_for_attach, None, 5, 1):
+                        raise Exception("cannot attach a volume[uuid: %s] to the vm[uuid: %s];"
+                                        "it's still not attached after 5 seconds" % (volume.volumeUuid, self.uuid))
+                except Exception as e:
+                    # check one more time
+                    if not wait_for_attach(None):
+                        raise e
 
             attach()
 
@@ -678,12 +683,9 @@ class Vm(object):
         xmlstr = target_disk.dump()
         logger.debug('detaching volume from vm[uuid:%s]:\n%s' % (self.uuid, xmlstr))
         try:
-
             # libvirt has a bug that if detaching volume just after vm created, it likely fails. So we retry three time here
             @linux.retry(times=3, sleep_time=5)
             def detach():
-                self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-
                 def wait_for_detach(_):
                     me = get_vm_by_uuid(self.uuid)
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -703,10 +705,17 @@ class Vm(object):
 
                     return True
 
-                if not linux.wait_callback_success(wait_for_detach, None, 5, 1):
-                    raise Exception("unable to detach the volume[uuid:%s] from the vm[uuid:%s];"
-                                    "it's still attached after 5 seconds" %
-                                    (volume.volumeUuid, self.uuid))
+                try:
+                    self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+
+                    if not linux.wait_callback_success(wait_for_detach, None, 5, 1):
+                        raise Exception("unable to detach the volume[uuid:%s] from the vm[uuid:%s];"
+                                        "it's still attached after 5 seconds" %
+                                        (volume.volumeUuid, self.uuid))
+                except Exception as e:
+                    # check one more time
+                    if not wait_for_detach(None):
+                        raise e
 
             detach()
 
@@ -934,19 +943,23 @@ class Vm(object):
 
             return False
 
-        if check_device(None):
-            return
+        try:
+            if check_device(None):
+                return
 
-        xml = self._interface_cmd_to_xml(cmd)
-        logger.debug('attaching nic:\n%s' % xml)
-        if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
-            self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-        else:
-            self.domain.attachDevice(xml)
+            xml = self._interface_cmd_to_xml(cmd)
+            logger.debug('attaching nic:\n%s' % xml)
+            if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
+                self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+            else:
+                self.domain.attachDevice(xml)
 
-
-        if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
-            raise Exception('nic device does not show after 30 seconds')
+            if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
+                raise Exception('nic device does not show after 30 seconds')
+        except Exception as e:
+            #  check one more time
+            if not check_device(None):
+                raise e
 
     def attach_nic(self, cmd):
         self._wait_vm_run_until_seconds(10)
@@ -981,15 +994,22 @@ class Vm(object):
         if check_device(None):
             return
 
-        xml = self._interface_cmd_to_xml(cmd)
-        logger.debug('detaching nic:\n%s' % xml)
-        if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
-            self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-        else:
-            self.domain.detachDevice(xml)
+        try:
+            xml = self._interface_cmd_to_xml(cmd)
+            logger.debug('detaching nic:\n%s' % xml)
+            if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
+                self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+            else:
+                self.domain.detachDevice(xml)
 
-        if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
-            raise Exception('nic device is still attached after 30 seconds')
+            if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
+                raise Exception('nic device is still attached after 30 seconds')
+
+        except Exception as e:
+            # check one more time
+            if not check_device(None):
+                raise e
+
 
     def detach_nic(self, cmd):
         self._wait_vm_run_until_seconds(10)
