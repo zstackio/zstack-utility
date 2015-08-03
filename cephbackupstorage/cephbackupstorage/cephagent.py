@@ -30,7 +30,6 @@ class InitRsp(AgentResponse):
     def __init__(self):
         super(InitRsp, self).__init__()
         self.fsid = None
-        self.userKey = None
 
 class DownloadRsp(AgentResponse):
     def __init__(self):
@@ -96,13 +95,8 @@ class CephAgent(object):
             if pool not in existing_pools:
                 shell.call('ceph osd pool create %s 100' % pool)
 
-        o = shell.call("ceph -f json auth get-or-create client.zstack mon 'allow r' osd 'allow rwx pool=%s' 2>/dev/null" %
-                   ','.join(cmd.poolNames)).strip(' \n\r\t')
-        o = jsonobject.loads(o)
-
         rsp = InitRsp()
         rsp.fsid = fsid
-        rsp.userKey = o[0].key_
         self._set_capacity_to_response(rsp)
 
         return jsonobject.dumps(rsp)
