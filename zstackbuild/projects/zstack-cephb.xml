@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-cephb builder" basedir="../">
+    <property name="cephb.bdir" location="${build.dir}/cephb" />
+    <property name="cephb.ansible.dir" location="${ansible.dir}/cephb/" />
+
+    <target name="build-cephb" >
+        <makeDir dir="${cephb.bdir}" />
+
+        <checkProperty property="cephb.source" />
+        <checkProperty property="cephb.serviceFile" />
+        <checkFile file="${cephb.source}" />
+        <checkFile file="${cephb.source}/setup.py" />
+        <checkFile file="${cephb.serviceFile}" />
+
+        <delete dir="${cephb.source}/dist" />
+
+        <exec executable="python" dir="${cephb.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${cephb.bdir}/">
+            <fileset dir="${cephb.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-cephb">
+        <makeDir dir="${cephb.ansible.dir}" />
+
+        <copy todir="${cephb.ansible.dir}">
+            <fileset dir="${cephb.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${cephb.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${cephb.serviceFile}" todir="${cephb.ansible.dir}" />
+    </target>
+</project>

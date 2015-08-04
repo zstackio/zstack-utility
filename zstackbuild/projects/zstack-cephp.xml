@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-cephp builder" basedir="../">
+    <property name="cephp.bdir" location="${build.dir}/cephp" />
+    <property name="cephp.ansible.dir" location="${ansible.dir}/cephp/" />
+
+    <target name="build-cephp" >
+        <makeDir dir="${cephp.bdir}" />
+
+        <checkProperty property="cephp.source" />
+        <checkProperty property="cephp.serviceFile" />
+        <checkFile file="${cephp.source}" />
+        <checkFile file="${cephp.source}/setup.py" />
+        <checkFile file="${cephp.serviceFile}" />
+
+        <delete dir="${cephp.source}/dist" />
+
+        <exec executable="python" dir="${cephp.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${cephp.bdir}/">
+            <fileset dir="${cephp.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-cephp">
+        <makeDir dir="${cephp.ansible.dir}" />
+
+        <copy todir="${cephp.ansible.dir}">
+            <fileset dir="${cephp.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${cephp.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${cephp.serviceFile}" todir="${cephp.ansible.dir}" />
+    </target>
+</project>

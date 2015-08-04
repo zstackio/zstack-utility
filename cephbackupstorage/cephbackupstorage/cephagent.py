@@ -1,0 +1,174 @@
+__author__ = 'frank'
+
+import zstacklib.utils.daemon as daemon
+import zstacklib.utils.http as http
+import zstacklib.utils.log as log
+import zstacklib.utils.shell as shell
+import zstacklib.utils.iptables as iptables
+import zstacklib.utils.jsonobject as jsonobject
+import zstacklib.utils.lock as lock
+import zstacklib.utils.linux as linux
+import zstacklib.utils.sizeunit as sizeunit
+from zstacklib.utils import plugin
+from zstacklib.utils.rollback import rollback, rollbackable
+import os
+import functools
+import traceback
+import pprint
+import threading
+
+logger = log.get_logger(__name__)
+
+class AgentResponse(object):
+    def __init__(self, success=True, error=None):
+        self.success = success
+        self.error = error if error else ''
+        self.totalCapacity = None
+        self.availableCapacity = None
+
+class InitRsp(AgentResponse):
+    def __init__(self):
+        super(InitRsp, self).__init__()
+        self.fsid = None
+
+class DownloadRsp(AgentResponse):
+    def __init__(self):
+        super(DownloadRsp, self).__init__()
+        self.size = None
+
+def replyerror(func):
+    @functools.wraps(func)
+    def wrap(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            content = traceback.format_exc()
+            err = '%s\n%s\nargs:%s' % (str(e), content, pprint.pformat([args, kwargs]))
+            rsp = AgentResponse()
+            rsp.success = False
+            rsp.error = str(e)
+            logger.warn(err)
+            return jsonobject.dumps(rsp)
+    return wrap
+
+class CephAgent(object):
+    INIT_PATH = "/ceph/backupstorage/init"
+    DOWNLOAD_IMAGE_PATH = "/ceph/backupstorage/image/download"
+    DELETE_IMAGE_PATH = "/ceph/backupstorage/image/delete"
+    PING_PATH = "/ceph/backupstorage/ping"
+    ECHO_PATH = "/ceph/backupstorage/echo"
+
+    http_server = http.HttpServer(port=7761)
+    http_server.logfile_path = log.get_logfile_path()
+
+    def __init__(self):
+        self.http_server.register_async_uri(self.INIT_PATH, self.init)
+        self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
+        self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
+        self.http_server.register_async_uri(self.PING_PATH, self.ping)
+        self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
+
+    def _set_capacity_to_response(self, rsp):
+        o = shell.call('ceph df -f json')
+        df = jsonobject.loads(o)
+
+        total = long(df.stats.total_bytes_)
+        avail = long(df.stats.total_avail_bytes_)
+        rsp.totalCapacity = total
+        rsp.availableCapacity = avail
+
+    @replyerror
+    def echo(self, req):
+        logger.debug('get echoed')
+        return ''
+
+    @replyerror
+    def init(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        o = shell.call('ceph mon_status')
+        mon_status = jsonobject.loads(o)
+        fsid = mon_status.monmap.fsid_
+
+        existing_pools = shell.call('ceph osd lspools')
+        for pool in cmd.poolNames:
+            if pool not in existing_pools:
+                shell.call('ceph osd pool create %s 100' % pool)
+
+        rsp = InitRsp()
+        rsp.fsid = fsid
+        self._set_capacity_to_response(rsp)
+
+        return jsonobject.dumps(rsp)
+
+    def _parse_install_path(self, path):
+        return path.lstrip('ceph:').lstrip('//').split('/')
+
+    @replyerror
+    @rollback
+    def download(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        pool, image_name = self._parse_install_path(cmd.installPath)
+        tmp_image_name = 'tmp-%s' % image_name
+
+        shell.call('wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s' % (cmd.url, pool, tmp_image_name))
+
+        @rollbackable
+        def _1():
+            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+        _1()
+
+        file_format = shell.call("qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+        file_format = file_format.strip()
+        if file_format not in ['qcow2', 'raw']:
+            raise Exception('unknown image format: %s' % file_format)
+
+        if file_format == 'qcow2':
+            conf_path = None
+            try:
+                with open('/etc/ceph/ceph.conf', 'r') as fd:
+                    conf = fd.read()
+                    conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
+                    conf_path = linux.write_to_temp_file(conf)
+
+                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
+                shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+            finally:
+                if conf_path:
+                    os.remove(conf_path)
+        else:
+            shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
+
+        o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
+        image_stats = jsonobject.loads(o)
+
+        rsp = DownloadRsp()
+        rsp.size = long(image_stats.size_)
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def ping(self, req):
+        return jsonobject.dumps(AgentResponse())
+
+    @replyerror
+    def delete(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        pool, image_name = self._parse_install_path(cmd.installPath)
+        shell.call('rbd rm %s/%s' % (pool, image_name))
+
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+
+class CephDaemon(daemon.Daemon):
+    def __init__(self, pidfile):
+        super(CephDaemon, self).__init__(pidfile)
+
+    def run(self):
+        self.agent = CephAgent()
+        self.agent.http_server.start()
+
+

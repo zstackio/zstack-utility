@@ -227,6 +227,47 @@ class BlkIscsi(object):
         except Exception as e:
             logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
 
+
+
+class VirtioCeph(object):
+    def __init__(self):
+        self.volume = None
+        self.dev_letter = None
+
+    # the secretDefineXML seems to have bug
+    # the value of the secret gets changed silently
+    def _create_secret_by_virsh(self):
+        content = '''
+<secret ephemeral='no' private='no'>
+    <usage type='ceph'>
+        <name>%s</name>
+    </usage>
+</secret>
+    ''' % self.volume.volumeUuid
+
+        spath = linux.write_to_temp_file(content)
+        try:
+            o = shell.call("virsh secret-define %s" % spath)
+            o = o.strip(' \n\t\r')
+            _, uuid, _ = o.split()
+            shell.call('virsh secret-set-value %s %s' % (uuid, self.volume.userKey))
+            return uuid
+        finally:
+            os.remove(spath)
+
+    def _get_secret_uuid(self):
+        return self._create_secret_by_virsh()
+
+    def to_xmlobject(self):
+        disk = etree.Element('disk', {'type':'network', 'device':'disk'})
+        source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
+        auth = e(disk, 'auth', attrib={'username': 'zstack'})
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid': self._get_secret_uuid()})
+        for minfo in self.volume.monInfo:
+            e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
+        e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
+        return disk
+
 class VirtioIscsi(object):
     def __init__(self):
         self.volume_uuid = None
@@ -263,17 +304,6 @@ class VirtioIscsi(object):
         secret = conn.secretDefineXML(xml)
         secret.setValue(self.chap_password)
         return secret.UUIDString()
-
-    @staticmethod
-    def delete_iscsi_secret(uuid):
-        conn = kvmagent.get_libvirt_connection()
-        try:
-            s = conn.secretLookupByUUIDString(uuid)
-            s.undefine()
-        except libvirt.libvirtError as e:
-            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
-                raise e
-
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True):
     try:
@@ -441,6 +471,15 @@ class Vm(object):
             raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
+    def _delete_secret(self, uuid):
+        conn = kvmagent.get_libvirt_connection()
+        try:
+            s = conn.secretLookupByUUIDString(uuid)
+            s.undefine()
+        except libvirt.libvirtError as e:
+            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
+                raise
+
     def reboot(self, timeout=60):
         self.stop(timeout=timeout)
         self.start(timeout)
@@ -470,31 +509,20 @@ class Vm(object):
 
             return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
 
-        def iscsi_cleanup():
+        def cleanup_secret():
             disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
-
-            def cleanup_secret():
+            for disk in disks:
                 if not xmlobject.has_element(disk, 'auth.secret'):
                     return
 
-                auth_type = disk.auth.secret.type_
-                if auth_type != 'iscsi':
-                    return
+                self._delete_secret(disk.auth.secret.uuid_)
 
-                VirtioIscsi.delete_iscsi_secret(disk.auth.secret.uuid_)
-
-            def logout_iscsi():
-                if disk.device_ != 'lun':
-                    return
-
-                BlkIscsi.logout_portal(disk.source.dev_)
+        def iscsi_cleanup():
+            disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
 
             for disk in disks:
-                disk_type = disk.type_
-                if disk_type == 'network':
-                    cleanup_secret()
-                elif disk_type == 'block':
-                    logout_iscsi()
+                if disk.type_ == 'block' and disk.device_ == 'lun':
+                    BlkIscsi.logout_portal(disk.source.dev_)
 
         def loop_undefine(_):
             if not undefine:
@@ -524,8 +552,8 @@ class Vm(object):
             if linux.wait_callback_success(loop_shutdown, None, timeout=60):
                 do_destroy = False
 
-        if undefine:
-            iscsi_cleanup()
+        iscsi_cleanup()
+        cleanup_secret()
 
         if do_destroy:
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
@@ -595,10 +623,27 @@ class Vm(object):
             else:
                 return blk_iscsi()
 
+        def ceph_volume():
+            def virtoio_ceph():
+                vc = VirtioCeph()
+                vc.volume = volume
+                vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                return etree.tostring(vc.to_xmlobject())
+
+            def blk_ceph():
+                raise Exception('not implemented')
+
+            if volume.useVirtio:
+                return virtoio_ceph()
+            else:
+                return blk_ceph()
+
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
         elif volume.deviceType == 'file':
             xml = filebased_volume()
+        elif volume.deviceType == 'ceph':
+            xml = ceph_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -620,6 +665,10 @@ class Vm(object):
                         elif volume.deviceType == 'file':
                             if disk.source.file_ == volume.installPath:
                                 return True
+                        elif volume.deviceType == 'ceph':
+                            if volume.useVirtio:
+                                if disk.source.name_ in volume.installPath:
+                                    return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
                     return False
@@ -661,7 +710,7 @@ class Vm(object):
         def get_disk_name():
             if volume.deviceType == 'iscsi':
                 fmt = 'sd%s'
-            elif volume.deviceType == 'file':
+            elif volume.deviceType in ['file', 'ceph']:
                 if volume.useVirtio:
                     fmt = 'vd%s'
                 else:
@@ -719,23 +768,17 @@ class Vm(object):
 
             detach()
 
-            def delete_iscsi_secret():
+            def delete_secret():
                 if not xmlobject.has_element(target_disk, 'auth.secret'):
                     return
-
-                auth_type = target_disk.auth.secret.type_
-                if auth_type != 'iscsi':
-                    return
-
-                VirtioIscsi.delete_iscsi_secret(target_disk.auth.secret.uuid_)
+                self._delete_secret(target_disk.auth.secret.uuid_)
 
             def logout_iscsi():
                 BlkIscsi.logout_portal(target_disk.source.dev_)
 
+            delete_secret()
             if volume.deviceType == 'iscsi':
-                if volume.useVirtio:
-                    delete_iscsi_secret()
-                else:
+                if not volume.useVirtio:
                     logout_iscsi()
 
 
@@ -1193,6 +1236,21 @@ class Vm(object):
                 else:
                     blk_iscsi()
 
+            def ceph_volume(dev_letter, virtio):
+                def ceph_virtio():
+                    vc = VirtioCeph()
+                    vc.volume = v
+                    vc.dev_letter = dev_letter
+                    devices.append(vc.to_xmlobject())
+
+                def ceph_blk():
+                    raise Exception("not implemented")
+
+                if virtio:
+                    ceph_virtio()
+                else:
+                    ceph_blk()
+
             for v in volumes:
                 if v.deviceId >= len(Vm.DEVICE_LETTERS):
                     err = "%s exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
@@ -1204,6 +1262,8 @@ class Vm(object):
                     filebased_volume(dev_letter)
                 elif v.deviceType == 'iscsi':
                     iscsibased_volume(dev_letter, v.useVirtio)
+                elif v.deviceType == 'ceph':
+                    ceph_volume(dev_letter, v.useVirtio)
                 else:
                     raise Exception('unknown volume deivceType: %s' % v.deviceType)
 
