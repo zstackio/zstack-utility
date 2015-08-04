@@ -669,9 +669,8 @@ class Vm(object):
                                 return True
                         elif volume.deviceType == 'ceph':
                             if volume.useVirtio:
-                                return disk.source.name_ in volume.installPath
-                            else:
-                                raise Exception("not implemented")
+                                if disk.source.name_ in volume.installPath:
+                                    return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
                     return False
