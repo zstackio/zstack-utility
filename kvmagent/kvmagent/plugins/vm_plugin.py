@@ -227,58 +227,42 @@ class BlkIscsi(object):
         except Exception as e:
             logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
 
-def print_secret(uuid):
-    conn = kvmagent.get_libvirt_connection()
-    ss = conn.secretLookupByUUIDString(uuid)
-    logger.debug('zzzzzzzzzzzzzzzzzzzzzzzzzzzzz %s' % ss.value())
 
-def create_secret_by_virsh(name, value):
-    content = '''<secret ephemeral='no' private='no'>
-   <usage type='ceph'>
-     <name>%s</name>
-   </usage>
-</secret>
-''' % name
-
-    spath = linux.write_to_temp_file(content)
-    try:
-        uuid = shell.call("virsh secret-define %s | cut -d ' ' -f 2" % spath)
-        uuid = uuid.strip(' \n\t\r')
-        shell.call('virsh secret-set-value %s %s' % (uuid, value))
-        return uuid
-    finally:
-        os.remove(spath)
 
 class VirtioCeph(object):
     def __init__(self):
         self.volume = None
         self.dev_letter = None
 
-    def _get_secret_uuid(self):
-        root = etree.Element('secret', {'ephemeral': 'no', 'private':'no'})
-        usage = e(root, 'usage', attrib={'type': 'ceph'})
-        e(usage, 'name', self.volume.volumeUuid)
-        xml = etree.tostring(root)
-        logger.debug('create secret for virtio-ceph volume:\n%s\n' % xml)
-        conn = kvmagent.get_libvirt_connection()
-        secret = conn.secretDefineXML(xml)
-        logger.debug('xxxxxxxxxxxxxxxxxxxxxxxx %s' % self.volume.userKey)
-        secret.setValue(self.volume.userKey)
-        logger.debug('yyyyyyyyyyyyyyyyyyyyyyyy %s' % secret.value())
-        return secret.UUIDString()
+    # the secretDefineXML seems to have bug
+    # the value of the secret gets changed silently
+    def _create_secret_by_virsh(self):
+        content = '''
+<secret ephemeral='no' private='no'>
+    <usage type='ceph'>
+        <name>%s</name>
+    </usage>
+</secret>
+    ''' % self.volume.volumeUuid
 
-    def _get_secret_uuid1(self):
-        return create_secret_by_virsh(self.volume.volumeUuid, self.volume.userKey)
+        spath = linux.write_to_temp_file(content)
+        try:
+            o = shell.call("virsh secret-define %s" % spath)
+            o = uuid.strip(' \n\t\r')
+            _, uuid, _ = o.split()
+            shell.call('virsh secret-set-value %s %s' % (uuid, self.volume.userKey))
+            return uuid
+        finally:
+            os.remove(spath)
+
+    def _get_secret_uuid(self):
+        return self._create_secret_by_virsh()
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
         auth = e(disk, 'auth', attrib={'username': 'zstack'})
-
-        suuid = self._get_secret_uuid1()
-        print_secret(suuid)
-
-        e(auth, 'secret', attrib={'type':'ceph', 'uuid':suuid})
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid': self._get_secret_uuid()})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
@@ -506,12 +490,8 @@ class Vm(object):
         conn = kvmagent.get_libvirt_connection()
         domain = conn.defineXML(self.domain_xml)
         self.domain = domain
-        try:
-            self.domain.createWithFlags(0)
-            self._wait_for_vm_running(timeout)
-        except:
-            print_secret(self.domain_xmlobject.devices.disk.auth.secret.uuid_)
-            raise
+        self.domain.createWithFlags(0)
+        self._wait_for_vm_running(timeout)
 
     def stop(self, graceful=True, timeout=5, undefine=True):
         def cleanup_addons():
@@ -529,31 +509,20 @@ class Vm(object):
 
             return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
 
-        def iscsi_cleanup():
+        def cleanup_secret():
             disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
-
-            def cleanup_secret():
+            for disk in disks:
                 if not xmlobject.has_element(disk, 'auth.secret'):
-                    return
-
-                auth_type = disk.auth.secret.type_
-                if auth_type != 'iscsi':
                     return
 
                 self._delete_secret(disk.auth.secret.uuid_)
 
-            def logout_iscsi():
-                if disk.device_ != 'lun':
-                    return
-
-                BlkIscsi.logout_portal(disk.source.dev_)
+        def iscsi_cleanup():
+            disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
 
             for disk in disks:
-                disk_type = disk.type_
-                if disk_type == 'network':
-                    cleanup_secret()
-                elif disk_type == 'block':
-                    logout_iscsi()
+                if disk.type_ == 'block' and disk.device_ == 'lun':
+                    BlkIscsi.logout_portal(disk.source.dev_)
 
         def loop_undefine(_):
             if not undefine:
@@ -583,8 +552,8 @@ class Vm(object):
             if linux.wait_callback_success(loop_shutdown, None, timeout=60):
                 do_destroy = False
 
-        if undefine:
-            iscsi_cleanup()
+        iscsi_cleanup()
+        cleanup_secret()
 
         if do_destroy:
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
