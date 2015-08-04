@@ -623,10 +623,27 @@ class Vm(object):
             else:
                 return blk_iscsi()
 
+        def ceph_volume():
+            def virtoio_ceph():
+                vc = VirtioCeph()
+                vc.volume = volume
+                vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                return etree.tostring(vc.to_xmlobject())
+
+            def blk_ceph():
+                raise Exception('not implemented')
+
+            if volume.useVirtio:
+                return virtoio_ceph()
+            else:
+                return blk_ceph()
+
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
         elif volume.deviceType == 'file':
             xml = filebased_volume()
+        elif volume.deviceType == 'ceph':
+            xml = ceph_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -684,7 +701,7 @@ class Vm(object):
         def get_disk_name():
             if volume.deviceType == 'iscsi':
                 fmt = 'sd%s'
-            elif volume.deviceType == 'file':
+            elif volume.deviceType in ['file', 'ceph']:
                 if volume.useVirtio:
                     fmt = 'vd%s'
                 else:
