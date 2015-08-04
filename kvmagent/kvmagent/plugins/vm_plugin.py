@@ -248,7 +248,7 @@ class VirtioCeph(object):
         spath = linux.write_to_temp_file(content)
         try:
             o = shell.call("virsh secret-define %s" % spath)
-            o = uuid.strip(' \n\t\r')
+            o = o.strip(' \n\t\r')
             _, uuid, _ = o.split()
             shell.call('virsh secret-set-value %s %s' % (uuid, self.volume.userKey))
             return uuid
