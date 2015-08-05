@@ -37,6 +37,16 @@ class DownloadRsp(AgentResponse):
         super(DownloadRsp, self).__init__()
         self.size = None
 
+class CpRsp(AgentResponse):
+    def __init__(self):
+        super(CpRsp, self).__init__()
+        self.size = None
+
+class CreateSnapshotRsp(AgentResponse):
+    def __init__(self):
+        super(CreateSnapshotRsp, self).__init__()
+        self.size = None
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -65,6 +75,7 @@ class CephAgent(object):
     CREATE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/create"
     DELETE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/delete"
     PROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/protect"
+    ROLLBACK_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/rollback"
     UNPROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/unprotect"
     CP_PATH = "/ceph/primarystorage/volume/cp"
 
@@ -81,6 +92,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
         self.http_server.register_async_uri(self.PROTECT_SNAPSHOT_PATH, self.protect_snapshot)
         self.http_server.register_async_uri(self.UNPROTECT_SNAPSHOT_PATH, self.unprotect_snapshot)
+        self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
         self.http_server.register_async_uri(self.FLATTEN_PATH, self.flatten)
         self.http_server.register_async_uri(self.SFTP_DOWNLOAD_PATH, self.sftp_download)
         self.http_server.register_async_uri(self.SFTP_UPLOAD_PATH, self.sftp_upload)
@@ -96,6 +108,21 @@ class CephAgent(object):
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
 
+    def _get_file_size(self, path):
+        o = shell.call('rbd --format json info %s' % path)
+        o = jsonobject.loads(o)
+        return long(o.size_)
+
+    @replyerror
+    def rollback_snapshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        spath = self._normalize_install_path(cmd.snapshotPath)
+
+        shell.call('rbd snap rollback %s' % spath)
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
     @replyerror
     def cp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -104,7 +131,8 @@ class CephAgent(object):
 
         shell.call('rbd cp %s %s' % (src_path, dst_path))
 
-        rsp = AgentResponse()
+        rsp = CpRsp()
+        rsp.size = self._get_file_size(dst_path)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
@@ -115,7 +143,8 @@ class CephAgent(object):
 
         shell.call('rbd snap create %s' % spath)
 
-        rsp = AgentResponse()
+        rsp = CreateSnapshotRsp()
+        rsp.size = self._get_file_size(spath)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
