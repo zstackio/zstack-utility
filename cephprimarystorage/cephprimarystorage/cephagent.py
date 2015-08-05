@@ -65,6 +65,7 @@ class CephAgent(object):
     CREATE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/create"
     DELETE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/delete"
     PROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/protect"
+    UNPROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/unprotect"
 
 
     http_server = http.HttpServer(port=7762)
@@ -78,8 +79,10 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.CREATE_SNAPSHOT_PATH, self.create_snapshot)
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
         self.http_server.register_async_uri(self.PROTECT_SNAPSHOT_PATH, self.protect_snapshot)
+        self.http_server.register_async_uri(self.UNPROTECT_SNAPSHOT_PATH, self.unprotect_snapshot)
         self.http_server.register_async_uri(self.FLATTEN_PATH, self.flatten)
         self.http_server.register_async_uri(self.SFTP_DOWNLOAD_PATH, self.sftp_download)
+        self.http_server.register_async_uri(self.SFTP_UPLOAD_PATH, self.sftp_upload)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -113,6 +116,15 @@ class CephAgent(object):
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    def unprotect_snapshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        spath = self._normalize_install_path(cmd.snapshotPath)
+
+        shell.call('rbd snap unprotect %s' % spath)
+
+        return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def protect_snapshot(self, req):
@@ -192,6 +204,26 @@ class CephAgent(object):
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    def sftp_upload(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        src_path = self._normalize_install_path(cmd.primaryStorageInstallPath)
+        prikey_file = linux.write_to_temp_file(cmd.sshKey)
+
+        bs_folder = os.path.dirname(cmd.backupStorageInstallPath)
+        shell.call('ssh -o StrictHostKeyChecking=no -i %s root@%s "mkdir -p %s"' %
+                   (prikey_file, cmd.hostname, bs_folder))
+
+        try:
+            shell.call("set -o pipefail; rbd export %s - | ssh -o StrictHostKeyChecking=no -i %s root@%s 'cat > %s'" %
+                        (src_path, prikey_file, cmd.hostname, cmd.backupStorageInstallPath))
+        finally:
+            os.remove(prikey_file)
+
+        return jsonobject.dumps(AgentResponse())
+
 
     @replyerror
     @rollback
