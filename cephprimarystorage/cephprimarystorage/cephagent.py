@@ -66,6 +66,7 @@ class CephAgent(object):
     DELETE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/delete"
     PROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/protect"
     UNPROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/unprotect"
+    CP_PATH = "/ceph/primarystorage/volume/cp"
 
 
     http_server = http.HttpServer(port=7762)
@@ -83,6 +84,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.FLATTEN_PATH, self.flatten)
         self.http_server.register_async_uri(self.SFTP_DOWNLOAD_PATH, self.sftp_download)
         self.http_server.register_async_uri(self.SFTP_UPLOAD_PATH, self.sftp_upload)
+        self.http_server.register_async_uri(self.CP_PATH, self.cp)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -93,6 +95,18 @@ class CephAgent(object):
         avail = long(df.stats.total_avail_bytes_)
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
+
+    @replyerror
+    def cp(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        src_path = self._normalize_install_path(cmd.srcPath)
+        dst_path = self._normalize_install_path(cmd.dstPath)
+
+        shell.call('rbd cp %s %s' % (src_path, dst_path))
+
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def create_snapshot(self, req):
