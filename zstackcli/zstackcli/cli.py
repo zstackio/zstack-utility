@@ -2,8 +2,10 @@
 
 @author: Frank
 '''
-import readline
 import os
+if os.environ['TERM'].startswith('xterm'):
+    os.environ['TERM'] = 'vt100'
+import readline
 import sys
 import shlex
 import hashlib
