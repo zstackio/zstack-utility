@@ -330,6 +330,12 @@ class CephAgent(object):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
+
+        o = shell.call('rbd snap ls --format json %s' % path)
+        o = jsonobject.loads(o)
+        if len(o) > 0:
+            raise Exception('unable to delete %s; the volume still has snapshots' % cmd.installPath)
+
         shell.call('rbd rm %s' % path)
 
         rsp = AgentResponse()
