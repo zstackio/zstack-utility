@@ -613,16 +613,20 @@ def create_bridge(bridge_name, interface, move_route=True):
     if not move_route:
         return
     
+    out = shell.call('ip addr show dev %s | grep "inet "' % interface, exception=False)
+    if not out:
+    	logger.debug("Interface %s doesn't set ip address yet. No need to move route. " % interface)
+        return
+
     #record old routes
     routes = []
-    out = shell.call('ip route show dev %s' % interface)
-    for line in out.split('\n'):
+    r_out = shell.call('ip route show dev %s' % interface)
+    for line in r_out.split('\n'):
         if 'via' in line:
             routes.append(line)
             shell.call('ip route del %s' % line)
 
     #mv ip on interface to bridge
-    out = shell.call('ip addr show dev %s | grep "inet "' % interface)
     ip = out.strip().split()[1]
     shell.call('ip addr del %s dev %s' % (ip, interface))
     shell.call('ip addr add %s dev %s' % (ip, bridge_name))
