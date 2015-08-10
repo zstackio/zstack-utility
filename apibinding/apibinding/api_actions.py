@@ -2298,6 +2298,20 @@ class AddLocalPrimaryStorageAction(inventory.APIAddLocalPrimaryStorageMsg):
         self.out = evt
         return self.out
 
+class QueryCephPrimaryStorageAction(inventory.APIQueryCephPrimaryStorageMsg):
+    def __init__(self):
+        super(QueryCephPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryCephPrimaryStorageAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class AddCephPrimaryStorageAction(inventory.APIAddCephPrimaryStorageMsg):
     def __init__(self):
         super(AddCephPrimaryStorageAction, self).__init__()
@@ -2356,6 +2370,20 @@ class AddMonToCephBackupStorageAction(inventory.APIAddMonToCephBackupStorageMsg)
             raise Exception('sessionUuid of action[AddMonToCephBackupStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
+        return self.out
+
+class QueryCephBackupStorageAction(inventory.APIQueryCephBackupStorageMsg):
+    def __init__(self):
+        super(QueryCephBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryCephBackupStorageAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
         return self.out
 
 class RemoveMonFromCephBackupStorageAction(inventory.APIRemoveMonFromCephBackupStorageMsg):
@@ -2724,6 +2752,102 @@ class AttachEipAction(inventory.APIAttachEipMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AttachEipAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveNicFromLoadBalancerAction(inventory.APIRemoveNicFromLoadBalancerMsg):
+    def __init__(self):
+        super(RemoveNicFromLoadBalancerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveNicFromLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteLoadBalancerAction(inventory.APIDeleteLoadBalancerMsg):
+    def __init__(self):
+        super(DeleteLoadBalancerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateLoadBalancerListenerAction(inventory.APICreateLoadBalancerListenerMsg):
+    def __init__(self):
+        super(CreateLoadBalancerListenerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateLoadBalancerListenerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddVipToLoadBalancerAction(inventory.APIAddVipToLoadBalancerMsg):
+    def __init__(self):
+        super(AddVipToLoadBalancerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddVipToLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddVmNicToLoadBalancerAction(inventory.APIAddVmNicToLoadBalancerMsg):
+    def __init__(self):
+        super(AddVmNicToLoadBalancerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddVmNicToLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateLoadBalancerAction(inventory.APICreateLoadBalancerMsg):
+    def __init__(self):
+        super(CreateLoadBalancerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveVipFromLoadBalancerAction(inventory.APIRemoveVipFromLoadBalancerMsg):
+    def __init__(self):
+        super(RemoveVipFromLoadBalancerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveVipFromLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteLoadBalancerListenerAction(inventory.APIDeleteLoadBalancerListenerMsg):
+    def __init__(self):
+        super(DeleteLoadBalancerListenerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteLoadBalancerListenerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
