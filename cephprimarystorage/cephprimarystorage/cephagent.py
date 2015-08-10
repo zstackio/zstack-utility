@@ -106,14 +106,14 @@ class CephAgent(object):
         if df.stats.total_bytes__:
             total = long(df.stats.total_bytes_)
         elif df.stats.total_space__:
-            total = long(df.stats.total_space__)
+            total = long(df.stats.total_space__) * 1024
         else:
             raise Exception('unknown ceph df output: %s' % o)
 
         if df.stats.total_avail_bytes__:
             avail = long(df.stats.total_avail_bytes_)
         elif df.stats.total_avail__:
-            avail = long(df.stats.total_avail_)
+            avail = long(df.stats.total_avail_) * 1024
         else:
             raise Exception('unknown ceph df output: %s' % o)
 
