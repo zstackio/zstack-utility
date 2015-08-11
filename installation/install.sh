@@ -48,6 +48,7 @@ NEED_DROP_DB=''
 NEED_KEEP_DB=''
 ONLY_INSTALL_LIBS=''
 ONLY_INSTALL_ZSTACK=''
+NOT_START_ZSTACK=''
 
 MYSQL_ROOT_PASSWORD=''
 MYSQL_ZSTACK_PASSWORD=''
@@ -364,7 +365,9 @@ upgrade_zstack(){
     echo ""
     show_spinner uz_upgrade_zstack
     if [ $CURRENT_STATUS = 'y' ]; then
-        show_spinner sz_start_zstack
+        if [ $NOT_START_ZSTACK != 'y' ]; then
+            show_spinner sz_start_zstack
+        fi
     fi
     if [ -f /etc/init.d/zstack-dashboard ]; then
         /etc/init.d/zstack-dashboard status | grep 'running' > /dev/null 2>&1
@@ -1173,6 +1176,7 @@ do
         R ) export ZSTACK_PYPI_URL=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
+        z ) NOT_START_ZSTACK='y';;
         * ) help;;
     esac
 done
@@ -1328,7 +1332,9 @@ if [ ! -z $HTTP_PROXY ]; then
 fi
 
 #Start ZStack
-start_zstack
+if [ $NOT_START_ZSTACK != 'y' ]; then
+    start_zstack
+fi
 
 #set http_proxy for install zstack-dashboard if needed.
 if [ ! -z $HTTP_PROXY ]; then
