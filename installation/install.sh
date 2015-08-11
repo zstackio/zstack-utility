@@ -1156,7 +1156,7 @@ Following command only installs ZStack management node and dependent software.
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:y:adDFhiklNu" Option
+while getopts "f:H:I:n:p:P:r:R:y:adDFhiklNuz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
