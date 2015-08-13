@@ -486,7 +486,7 @@ def set_device_ip(dev, ip, netmask):
         shell.call("ifconfig %s %s netmask %s" % (dev, ip, netmask))
 
 def get_device_ip(dev):
-    cmd = shell.ShellCmd("ifconfig %s|grep inet|grep netmask|awk -F 'netmask' '{print $1}'|awk -F 'inet ' '{print $2}'" % dev)
+    cmd = shell.ShellCmd("ip addr show dev %s|grep inet|grep -v inet6|awk -F'inet' '{print $2}'|awk '{print $1}'|awk -F'/24' '{print $1}'" % dev)
     cmd(is_exception=False)
     return cmd.stdout if cmd.stdout != "" else None
 
@@ -501,8 +501,8 @@ def remove_device_ip(dev):
         return cmd.return_code == 0
 
 def is_ip_existing(ip):
-    ip_str = ':%s ' % ip
-    cmd = shell.ShellCmd('ifconfig|grep "%s"' % ip_str)
+    ip_str = ' %s/24' % ip
+    cmd = shell.ShellCmd('ip a|grep inet|grep "%s"' % ip_str)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
@@ -886,6 +886,9 @@ def get_command_by_pid(pid):
 
 def get_netmask_of_nic(nic_name):
     netmask = shell.call("ifconfig %s | grep Mask | sed s/^.*Mask://" % nic_name)
+    if not netmask:
+        netmask = shell.call("ifconfig %s | grep netmask|awk -F'netmask' '{print $2}'|awk '{print $1}'" % nic_name)
+
     netmask = netmask.strip()
     if netmask == '':
         raise LinuxError('cannot find netmask of %s, it may have no ip assigned' % nic_name)
