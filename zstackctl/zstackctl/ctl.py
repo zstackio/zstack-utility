@@ -1289,14 +1289,18 @@ class InstallRabbitCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       yum: pkg=libselinux-python
 
+    - name: state epel.repo
+      stat: path=/etc/yum.repos.d/epel.repo
+      register: epel_repo
+
     - name: install EPEL repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and epel_repo.stat.exists != true
       copy: src=$epel6_repo
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
 
     - name: install EPEL repo for RedHat OS 7
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and epel_repo.stat.exists != true
       copy: src=$epel7_repo
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
@@ -1538,14 +1542,18 @@ class InstallManagementNodeCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       yum: pkg=libselinux-python
 
+    - name: state epel.repo
+      stat: path=/etc/yum.repos.d/epel.repo
+      register: epel_repo
+
     - name: install EPEL repo for RedHat OS 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and epel_repo.stat.exists != true
       copy: src=$epel6_repo
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
 
     - name: install EPEL repo for RedHat OS 7
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and epel_repo.stat.exists != true
       copy: src=$epel7_repo
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
@@ -1993,14 +2001,18 @@ gpgcheck=0
       virtualenv_root: /var/lib/zstack/virtualenv/zstack-dashboard
 
   tasks:
+    - name: state epel.repo
+      stat: path=/etc/yum.repos.d/epel.repo
+      register: epel_repo
+
     - name: install EPEL repo for RedHat OS 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and epel_repo.stat.exists != true
       copy: src=$epel6_repo
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
 
     - name: install EPEL repo for RedHat OS 7
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and epel_repo.stat.exists != true
       copy: src=$epel7_repo
             dest=/etc/yum.repos.d/epel.repo
             owner=root group=root mode=0644
