@@ -481,7 +481,7 @@ class Vm(object):
                 raise
 
     def reboot(self, timeout=60):
-        self.stop(timeout=timeout)
+        self.stop(timeout=timeout, delete_secret=False)
         self.start(timeout)
 
     def start(self, timeout=60):
@@ -493,7 +493,7 @@ class Vm(object):
         self.domain.createWithFlags(0)
         self._wait_for_vm_running(timeout)
 
-    def stop(self, graceful=True, timeout=5, undefine=True):
+    def stop(self, graceful=True, timeout=5, undefine=True, delete_secret=True):
         def cleanup_addons():
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
                 if chan.type_ == 'unix':
@@ -553,7 +553,9 @@ class Vm(object):
                 do_destroy = False
 
         iscsi_cleanup()
-        cleanup_secret()
+
+        if delete_secret:
+            cleanup_secret()
 
         if do_destroy:
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
