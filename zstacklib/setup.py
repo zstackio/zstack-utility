@@ -25,7 +25,8 @@ Python support library for zstack""",
           'pyparsing<=1.5.7',
           'pickledb',
           'urllib3==1.10.4',
-          'netaddr'
+          'netaddr',
+          'Jinja2'
       ],
       entry_points="""
       # -*- Entry points: -*-
