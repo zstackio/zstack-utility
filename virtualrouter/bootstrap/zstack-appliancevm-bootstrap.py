@@ -266,6 +266,7 @@ class VRBootStrap(object):
                 
                 bootstrap_obj = json.loads(text)
                 data['ret'] = bootstrap_obj
+                shell('mkdir -p %s' % os.path.dirname(self.BOOTSTRAP_INFO_CACHE))
                 with open(self.BOOTSTRAP_INFO_CACHE, 'w') as bd:
                     bd.write(text)
 
