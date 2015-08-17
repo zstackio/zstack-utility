@@ -228,41 +228,16 @@ class BlkIscsi(object):
             logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
 
 
-
 class VirtioCeph(object):
     def __init__(self):
         self.volume = None
         self.dev_letter = None
 
-    # the secretDefineXML seems to have bug
-    # the value of the secret gets changed silently
-    def _create_secret_by_virsh(self):
-        content = '''
-<secret ephemeral='no' private='no'>
-    <usage type='ceph'>
-        <name>%s</name>
-    </usage>
-</secret>
-    ''' % self.volume.volumeUuid
-
-        spath = linux.write_to_temp_file(content)
-        try:
-            o = shell.call("virsh secret-define %s" % spath)
-            o = o.strip(' \n\t\r')
-            _, uuid, _ = o.split()
-            shell.call('virsh secret-set-value %s %s' % (uuid, self.volume.userKey))
-            return uuid
-        finally:
-            os.remove(spath)
-
-    def _get_secret_uuid(self):
-        return self._create_secret_by_virsh()
-
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
         auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type':'ceph', 'uuid': self._get_secret_uuid()})
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
@@ -471,17 +446,17 @@ class Vm(object):
             raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
-    def _delete_secret(self, uuid):
-        conn = kvmagent.get_libvirt_connection()
-        try:
-            s = conn.secretLookupByUUIDString(uuid)
-            s.undefine()
-        except libvirt.libvirtError as e:
-            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
-                raise
+#    def _delete_secret(self, uuid):
+#        conn = kvmagent.get_libvirt_connection()
+#        try:
+#            s = conn.secretLookupByUUIDString(uuid)
+#            s.undefine()
+#        except libvirt.libvirtError as e:
+#            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
+#                raise
 
     def reboot(self, timeout=60):
-        self.stop(timeout=timeout, delete_secret=False)
+        self.stop(timeout=timeout)
         self.start(timeout)
 
     def start(self, timeout=60):
@@ -493,7 +468,7 @@ class Vm(object):
         self.domain.createWithFlags(0)
         self._wait_for_vm_running(timeout)
 
-    def stop(self, graceful=True, timeout=5, undefine=True, delete_secret=True):
+    def stop(self, graceful=True, timeout=5, undefine=True):
         def cleanup_addons():
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
                 if chan.type_ == 'unix':
@@ -508,14 +483,6 @@ class Vm(object):
                 pass
 
             return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
-
-        def cleanup_secret():
-            disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
-            for disk in disks:
-                if not xmlobject.has_element(disk, 'auth.secret'):
-                    return
-
-                self._delete_secret(disk.auth.secret.uuid_)
 
         def iscsi_cleanup():
             disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
@@ -553,9 +520,6 @@ class Vm(object):
                 do_destroy = False
 
         iscsi_cleanup()
-
-        if delete_secret:
-            cleanup_secret()
 
         if do_destroy:
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
@@ -770,15 +734,9 @@ class Vm(object):
 
             detach()
 
-            def delete_secret():
-                if not xmlobject.has_element(target_disk, 'auth.secret'):
-                    return
-                self._delete_secret(target_disk.auth.secret.uuid_)
-
             def logout_iscsi():
                 BlkIscsi.logout_portal(target_disk.source.dev_)
 
-            delete_secret()
             if volume.deviceType == 'iscsi':
                 if not volume.useVirtio:
                     logout_iscsi()
@@ -1355,6 +1313,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
     KVM_ATTACH_NIC_PATH = "/vm/attachnic"
     KVM_DETACH_NIC_PATH = "/vm/detachnic"
+    KVM_CREATE_SECRET = "/vm/createcephsecret"
 
     def _start_vm(self, cmd):
         try:
@@ -1646,6 +1605,36 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(LoginIscsiTargetRsp())
 
+    @kvmagent.replyerror
+    def create_ceph_secret_key(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        sh_cmd = shell.ShellCmd('virsh secret-list | grep %s > /dev/null' % cmd.uuid)
+        sh_cmd(False)
+        if sh_cmd.return_code == 0:
+            return jsonobject.dumps(kvmagent.AgentResponse())
+
+        # for some reason, ceph doesn't work with the secret created by libvirt
+        # we have to use the command line here
+        content = '''
+<secret ephemeral='yes' private='no'>
+    <uuid>%s</uuid>
+    <usage type='ceph'>
+        <name>%s</name>
+    </usage>
+</secret>
+    ''' % (cmd.uuid, cmd.uuid)
+
+        spath = linux.write_to_temp_file(content)
+        try:
+            o = shell.call("virsh secret-define %s" % spath)
+            o = o.strip(' \n\t\r')
+            _, uuid, _ = o.split()
+            shell.call('virsh secret-set-value %s %s' % (uuid, cmd.userKey))
+        finally:
+            os.remove(spath)
+
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
@@ -1663,6 +1652,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
         http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
+        http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
 
     def stop(self):
         pass
