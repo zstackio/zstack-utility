@@ -895,6 +895,7 @@ class StartCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to start the management node on a remote machine')
+        parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 120 seconds.', default=120)
 
     def _start_remote(self, args):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
@@ -951,7 +952,7 @@ class StartCmd(Command):
             info("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 
         def wait_mgmt_node_start():
-            timeout = 120
+            timeout = args.timeout
             @loop_until_timeout(timeout)
             def check():
                 cmd = create_check_mgmt_node_command(1)
