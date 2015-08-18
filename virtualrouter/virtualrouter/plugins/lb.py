@@ -115,7 +115,7 @@ listen {{listenerUuid}}
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for to in cmd.lbs:
             if len(to.nicIps) == 0:
-                self._kill_lb(to.lbUuid, to.listenerUuid)
+                self._kill_lb(to)
             else:
                 self._refresh(to)
 
