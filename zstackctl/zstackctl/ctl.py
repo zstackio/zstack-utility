@@ -952,7 +952,7 @@ class StartCmd(Command):
             info("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 
         def wait_mgmt_node_start():
-            timeout = args.timeout
+            timeout = int(args.timeout)
             @loop_until_timeout(timeout)
             def check():
                 cmd = create_check_mgmt_node_command(1)
