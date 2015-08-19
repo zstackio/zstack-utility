@@ -227,6 +227,35 @@ class BlkIscsi(object):
         except Exception as e:
             logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
 
+class IsoCeph(object):
+    def __init__(self):
+        self.iso = None
+
+    def to_xmlobject(self):
+        disk = etree.Element('disk', {'type':'network', 'device':'cdrom'})
+        source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
+        auth = e(disk, 'auth', attrib={'username': 'zstack'})
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid': self.iso.secretUuid})
+        for minfo in self.iso.monInfo:
+            e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
+        e(disk, 'target', None, {'dev':'hdc', 'bus':'ide'})
+        e(disk, 'readonly', None)
+        return disk
+
+class IdeCeph(object):
+    def __init__(self):
+        self.volume = None
+        self.dev_letter = None
+
+    def to_xmlobject(self):
+        disk = etree.Element('disk', {'type':'network', 'device':'disk'})
+        source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
+        auth = e(disk, 'auth', attrib={'username': 'zstack'})
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid': self.volume.secretUuid})
+        for minfo in self.volume.monInfo:
+            e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
+        e(disk, 'target', None, {'dev':'hd%s' % self.dev_letter, 'bus':'ide'})
+        return disk
 
 class VirtioCeph(object):
     def __init__(self):
@@ -597,7 +626,10 @@ class Vm(object):
                 return etree.tostring(vc.to_xmlobject())
 
             def blk_ceph():
-                raise Exception('not implemented')
+                ic = IdeCeph()
+                ic.volume = volume
+                ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                return etree.tostring(ic.to_xmlobject())
 
             if volume.useVirtio:
                 return virtoio_ceph()
@@ -1149,6 +1181,10 @@ class Vm(object):
                 bi.chap_password = iso.chapPassword
                 bi.is_cdrom = True
                 devices.append(bi.to_xmlobject())
+            elif iso.path.startswith('ceph'):
+                ic = IsoCeph()
+                ic.iso = iso
+                devices.append(ic.to_xmlobject())
             else:
                 cdrom = e(devices, 'disk', None, {'type':'file', 'device':'cdrom'})
                 e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
@@ -1204,7 +1240,10 @@ class Vm(object):
                     devices.append(vc.to_xmlobject())
 
                 def ceph_blk():
-                    raise Exception("not implemented")
+                    ic = IdeCeph()
+                    ic.volume = v
+                    ic.dev_letter = dev_letter
+                    devices.append(ic.to_xmlobject())
 
                 if virtio:
                     ceph_virtio()
