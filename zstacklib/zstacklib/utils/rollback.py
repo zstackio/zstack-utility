@@ -24,9 +24,12 @@ def rollback(func):
     def wrap(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except:
+        except Exception as e:
             if not hasattr(tlocal, 'rollback_structs'):
                 raise
+
+            origin = traceback.format_exc()
+            logger.warn('a unhandled exception happens:\n%s' % origin)
 
             tlocal.rollback_structs.reverse()
 
@@ -35,10 +38,10 @@ def rollback(func):
                     f(*fargs, **fkwargs)
                 except:
                     content = traceback.format_exc()
-                    logger.warn(content)
+                    logger.warn('exception when calling rollback functions' % content)
 
             tlocal.rollback_structs = []
 
-            raise
+            raise e
 
     return wrap
