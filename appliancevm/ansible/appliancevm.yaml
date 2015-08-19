@@ -70,6 +70,9 @@
       yum: name=firewalld state=absent
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
 
+    - name: copy bootstrap script
+      copy: src="{{file_root}}/zstack-appliancevm-bootstrap.py" dest=/sbin/zstack-appliancevm-bootstrap.py mode=0777
+
     - name: copy zstacklib
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{appliancevm_root}}/{{pkg_zstacklib}}"
       notify:

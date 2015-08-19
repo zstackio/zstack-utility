@@ -20,7 +20,10 @@
         - "{{virtenv_path}}"
 
     - name: install virtual router related packages for RedHat
-      yum: name=dnsmasq
+      yum: name="{{item}}"
+      with_items:
+        - haproxy
+        - dnsmasq
       when: ansible_os_family == "RedHat"
 
     - name: install virtual router related packages for Debian
