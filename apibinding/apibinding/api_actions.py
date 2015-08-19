@@ -1612,6 +1612,18 @@ class CreateSystemTagAction(inventory.APICreateSystemTagMsg):
         self.out = evt
         return self.out
 
+class UpdateSystemTagAction(inventory.APIUpdateSystemTagMsg):
+    def __init__(self):
+        super(UpdateSystemTagAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateSystemTagAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QueryTagAction(inventory.APIQueryTagMsg):
     def __init__(self):
         super(QueryTagAction, self).__init__()
@@ -2756,16 +2768,18 @@ class AttachEipAction(inventory.APIAttachEipMsg):
         self.out = evt
         return self.out
 
-class RemoveNicFromLoadBalancerAction(inventory.APIRemoveNicFromLoadBalancerMsg):
+class QueryLoadBalancerListenerAction(inventory.APIQueryLoadBalancerListenerMsg):
     def __init__(self):
-        super(RemoveNicFromLoadBalancerAction, self).__init__()
+        super(QueryLoadBalancerListenerAction, self).__init__()
         self.sessionUuid = None
+        self.reply = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[RemoveNicFromLoadBalancerAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
+            raise Exception('sessionUuid of action[QueryLoadBalancerListenerAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
         return self.out
 
 class DeleteLoadBalancerAction(inventory.APIDeleteLoadBalancerMsg):
@@ -2792,14 +2806,14 @@ class CreateLoadBalancerListenerAction(inventory.APICreateLoadBalancerListenerMs
         self.out = evt
         return self.out
 
-class AddVipToLoadBalancerAction(inventory.APIAddVipToLoadBalancerMsg):
+class RemoveVmNicFromLoadBalancerAction(inventory.APIRemoveVmNicFromLoadBalancerMsg):
     def __init__(self):
-        super(AddVipToLoadBalancerAction, self).__init__()
+        super(RemoveVmNicFromLoadBalancerAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AddVipToLoadBalancerAction] cannot be None')
+            raise Exception('sessionUuid of action[RemoveVmNicFromLoadBalancerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2828,14 +2842,14 @@ class CreateLoadBalancerAction(inventory.APICreateLoadBalancerMsg):
         self.out = evt
         return self.out
 
-class RemoveVipFromLoadBalancerAction(inventory.APIRemoveVipFromLoadBalancerMsg):
+class RefreshLoadBalancerAction(inventory.APIRefreshLoadBalancerMsg):
     def __init__(self):
-        super(RemoveVipFromLoadBalancerAction, self).__init__()
+        super(RefreshLoadBalancerAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[RemoveVipFromLoadBalancerAction] cannot be None')
+            raise Exception('sessionUuid of action[RefreshLoadBalancerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2850,6 +2864,20 @@ class DeleteLoadBalancerListenerAction(inventory.APIDeleteLoadBalancerListenerMs
             raise Exception('sessionUuid of action[DeleteLoadBalancerListenerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
+        return self.out
+
+class QueryLoadBalancerAction(inventory.APIQueryLoadBalancerMsg):
+    def __init__(self):
+        super(QueryLoadBalancerAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryLoadBalancerAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
         return self.out
 
 class ChangeSecurityGroupStateAction(inventory.APIChangeSecurityGroupStateMsg):
