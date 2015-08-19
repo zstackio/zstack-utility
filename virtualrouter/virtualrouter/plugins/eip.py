@@ -64,17 +64,17 @@ class Eip(virtualrouter.VRAgent):
         snat_name = self._make_snat_name(vip_nic_name, private_nic_name)
         fwd_name = self._make_fwd_name(vip_nic_name, private_nic_name)
 
-        def check_eip(table):
-            if not table:
-                return
+        #def check_eip(table):
+            #if not table:
+                #return
 
-            for chain in table.children:
-                vip_nic = self._get_vip_nic_name_from_chain_name(chain.name)
-                if vip_nic == vip_nic_name:
-                    raise virtualrouter.VirtualRouterError('eip[%s] has been occupied, this is an internal error' % vip)
+            #for chain in table.children:
+                #vip_nic = self._get_vip_nic_name_from_chain_name(chain.name)
+                #if vip_nic == vip_nic_name:
+                    #raise virtualrouter.VirtualRouterError('eip[%s] has been occupied, this is an internal error' % vip)
 
-        check_eip(ipt.get_table(ipt.NAT_TABLE_NAME))
-        check_eip(ipt.get_table(ipt.FILTER_TABLE_NAME))
+        #check_eip(ipt.get_table(ipt.NAT_TABLE_NAME))
+        #check_eip(ipt.get_table(ipt.FILTER_TABLE_NAME))
 
         order = 999
         ipt.add_rule('-A PREROUTING -d {0} -j {1}'.format(vip, dnat_name), ipt.NAT_TABLE_NAME, order=order)
