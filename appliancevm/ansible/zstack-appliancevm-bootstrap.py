@@ -58,7 +58,7 @@ class ShellCmd(object):
         self.return_code = None
         
     def __call__(self, is_exception=True):
-        logger.debug(self.cmd)
+        logger.debug('start executing shell: %s', self.cmd)
 
         (self.stdout, self.stderr) = self.process.communicate()
         if is_exception and self.process.returncode != 0:
@@ -70,6 +70,7 @@ class ShellCmd(object):
             raise BootStrapError('\n'.join(err))
             
         self.return_code = self.process.returncode
+        logger.debug("shell done[cmd :%s, return code: %s, stdout: %s, stderr:%s" % (self.cmd, self.return_code, self.stdout, self.stderr))
         return self.stdout
 
 def shell(cmd, is_exception=True):
@@ -331,7 +332,7 @@ class VRBootStrap(object):
             logger.debug("udev is ready")
             for nic in nics:
                 self.configure_nic(nic)
-                logger.debug("configured nic[name: %s, ip:%s]" % (nic['name'], nic['ip']))
+                logger.debug("configured nic[name: %s, ip:%s]" % (nic['deviceName'], nic['ip']))
 
 
             shell('grep "^ListenAddress" /etc/ssh/sshd_config >/dev/null || echo "ListenAddress 0.0.0.0" >> /etc/ssh/sshd_config')
