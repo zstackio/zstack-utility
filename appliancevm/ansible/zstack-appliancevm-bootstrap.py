@@ -58,6 +58,8 @@ class ShellCmd(object):
         self.return_code = None
         
     def __call__(self, is_exception=True):
+        logger.debug(self.cmd)
+
         (self.stdout, self.stderr) = self.process.communicate()
         if is_exception and self.process.returncode != 0:
             err = []
@@ -312,9 +314,12 @@ class VRBootStrap(object):
         public_key_info = None
         try:
             self.wait_for_iptables_come_up()
+            logger.debug("iptables is ready")
             self.wait_for_virtio_port_come_up()
+            logger.debug("virtio-channel is ready")
 
             bootstrap_info = self.read_bootstrap_info()
+            logger.debug("bootstrap info is loaded")
             public_key_info = bootstrap_info['publicKey']
 
             nics = []
@@ -323,8 +328,10 @@ class VRBootStrap(object):
             nics.extend(bootstrap_info['additionalNics'])
 
             self.marshal_udev(nics)
+            logger.debug("udev is ready")
             for nic in nics:
                 self.configure_nic(nic)
+                logger.debug("configured nic[name: %s, ip:%s]" % (nic['name'], nic['ip']))
 
 
             shell('grep "^ListenAddress" /etc/ssh/sshd_config >/dev/null || echo "ListenAddress 0.0.0.0" >> /etc/ssh/sshd_config')
@@ -332,7 +339,9 @@ class VRBootStrap(object):
             shell('service sshd restart')
 
             self.configure_public_key(public_key_info)
+            logger.debug("configured public ssh-key")
             shell('rm -f %s' % self.ERROR_LOG)
+            logger.debug("the appliance vm initialized successfully")
         except Exception as e:
             logger.warn(traceback.format_exc())
 
