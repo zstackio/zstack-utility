@@ -326,6 +326,8 @@ class VRBootStrap(object):
             for nic in nics:
                 self.configure_nic(nic)
 
+
+            shell('grep "^ListenAddress" /etc/ssh/sshd_config >/dev/null || echo "ListenAddress 0.0.0.0" >> /etc/ssh/sshd_config')
             shell('sed -i "s/ListenAddress.*/ListenAddress %s/g" /etc/ssh/sshd_config' % mgmt_nic_info['ip'])
             shell('service sshd restart')
 
