@@ -130,7 +130,7 @@ class CephAgent(object):
     def delete_pool(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for p in cmd.poolNames:
-            shell.call('ceph osd pool delete %s --yes-i-really-really-mean-it' % p)
+            shell.call('ceph osd pool delete %s %s --yes-i-really-really-mean-it' % (p, p))
         return jsonobject.dumps(AgentResponse())
 
     @replyerror
