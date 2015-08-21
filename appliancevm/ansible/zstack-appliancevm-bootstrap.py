@@ -194,12 +194,12 @@ class VRBootStrap(object):
         shell('/sbin/ifdown {0} ; /sbin/ifup {0}'.format(nicinfo['name']))
 
     def ping(self, target):
-        cmd = ShellCmd('ping %s -c 5' % target)
+        cmd = ShellCmd('ping -c 3 -W 1' % target)
         cmd(is_exception=False)
         if cmd.return_code != 0:
-            logger.warn("ping target: %s failed. Error Logs: %s" % (target, cmd.stderr))
+            logger.warn("failed to ping target: %s" % target)
         else:
-            logger.warn("ping successful")
+            logger.debug("ping %s successfully" % target)
 
     def configure_nic(self, nic):
         nicname = self.get_nicname_by_mac(nic['mac'])
