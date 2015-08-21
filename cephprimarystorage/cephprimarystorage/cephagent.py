@@ -78,7 +78,7 @@ class CephAgent(object):
     ROLLBACK_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/rollback"
     UNPROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/unprotect"
     CP_PATH = "/ceph/primarystorage/volume/cp"
-
+    DELETE_POOL_PATH = "/ceph/primarystorage/deletepool"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -97,6 +97,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.SFTP_DOWNLOAD_PATH, self.sftp_download)
         self.http_server.register_async_uri(self.SFTP_UPLOAD_PATH, self.sftp_upload)
         self.http_server.register_async_uri(self.CP_PATH, self.cp)
+        self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -124,6 +125,13 @@ class CephAgent(object):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
         return long(o.size_)
+
+    @replyerror
+    def delete_pool(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for p in cmd.poolNames:
+            shell.call('ceph osd pool delete %s --yes-i-really-really-mean-it' % p)
+        return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def rollback_snapshot(self, req):
