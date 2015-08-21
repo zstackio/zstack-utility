@@ -194,7 +194,7 @@ class VRBootStrap(object):
         shell('/sbin/ifdown {0} ; /sbin/ifup {0}'.format(nicinfo['name']))
 
     def ping(self, target):
-        cmd = ShellCmd('ping -c 3 -W 1' % target)
+        cmd = ShellCmd('ping %s -c 3 -W 1' % target)
         cmd(is_exception=False)
         if cmd.return_code != 0:
             logger.warn("failed to ping target: %s" % target)
