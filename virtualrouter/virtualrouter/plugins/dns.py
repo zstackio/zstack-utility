@@ -51,8 +51,27 @@ class Dns(virtualrouter.VRAgent):
                 lines = [l.strip() for l in lines]
         return lines
 
+    def _do_dnsmasq_start(self):
+        if linux.is_systemd_enabled():
+            cmd = shell.ShellCmd('systemctl start dnsmasq')
+        else:
+            cmd = shell.ShellCmd('/etc/init.d/dnsmasq start')
+        return cmd(False)
+
+    def _refresh_dnsmasq(self):
+        dnsmasq_pid = linux.get_pid_by_process_name('dnsmasq')
+        if not dnsmasq_pid:
+            logger.debug('dnsmasq is not running, try to start it ...')
+            output = self._do_dnsmasq_start()
+            dnsmasq_pid = linux.get_pid_by_process_name('dnsmasq')
+            if not dnsmasq_pid:
+                raise virtualrouter.VirtualRouterError('dnsmasq in virtual router is not running, we try to start it but fail, error is %s' % output)
+
+        shell.call('kill -1 %s' % dnsmasq_pid)
+
     @virtualrouter.replyerror
     @lock.lock('dns')
+    @lock.lock('dnsmasq')
     def remove_dns(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         lines = self._readin_dns_conf()
@@ -75,11 +94,13 @@ class Dns(virtualrouter.VRAgent):
             with open(self.DNS_CONF, 'w') as fd:
                 fd.write('\n'.join(ret))
 
+        self._refresh_dnsmasq()
         rsp = RemoveDnsRsp()
         return jsonobject.dumps(rsp)
 
     @virtualrouter.replyerror
     @lock.lock('dns')
+    @lock.lock('dnsmasq')
     def set_dns(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         
@@ -94,6 +115,7 @@ class Dns(virtualrouter.VRAgent):
         if rewrite:
             with open(self.DNS_CONF, 'w') as fd:
                 fd.write('\n'.join(lines))
-        
+
+        self._refresh_dnsmasq()
         rsp = SetDnsRsp()
         return jsonobject.dumps(rsp)
