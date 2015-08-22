@@ -161,7 +161,17 @@ class CephAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
 
-        shell.call('rbd snap create %s' % spath)
+        do_create = True
+        if cmd.skipOnExisting:
+            image_name, sp_name = spath.split('@')
+            o = shell.call('rbd --format json snap ls %s' % image_name)
+            o = jsonobject.loads(o)
+            for s in o:
+                if s.name_ == sp_name:
+                    do_create = False
+
+        if do_create:
+            shell.call('rbd snap create %s' % spath)
 
         rsp = CreateSnapshotRsp()
         rsp.size = self._get_file_size(spath)
@@ -194,7 +204,7 @@ class CephAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
 
-        shell.call('rbd snap protect %s' % spath)
+        shell.call('rbd snap protect %s' % spath, exception=not cmd.ignoreError)
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
