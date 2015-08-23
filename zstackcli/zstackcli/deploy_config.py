@@ -69,6 +69,21 @@ def add_backup_storage(deployConfig, session_uuid):
             wait_for_thread_queue()
             thread.start()
 
+    if xmlobject.has_element(deployConfig, 'backupStorages.cephBackupStorage'):
+        for bs in xmlobject.safe_list(deployConfig.backupStorages.cephBackupStorage):
+            action = api_actions.AddCephBackupStorageAction()
+            action.sessionUuid = session_uuid
+            action.name = bs.name_
+            action.description = bs.description__
+            action.monUrls = bs.monUrls_.split(';')
+            if bs.poolName__:
+                action.poolName = bs.poolName_
+            action.timeout = AddKVMHostTimeOut #for some platform slowly salt execution
+            action.type = inventory.CEPH_BACKUP_STORAGE_TYPE
+            thread = threading.Thread(target = _thread_for_action, args = (action, ))
+            wait_for_thread_queue()
+            thread.start()
+
     if xmlobject.has_element(deployConfig, 'backupStorages.simulatorBackupStorage'):
         for bs in xmlobject.safe_list(deployConfig.backupStorages.simulatorBackupStorage):
             action = api_actions.AddSimulatorBackupStorageAction()
@@ -291,6 +306,52 @@ def add_primary_storage(deployConfig, session_uuid, ps_name = None, \
                 action.zoneUuid = zinv.uuid
                 if pr.uuid__:
                     action.resourceUuid = pr.uuid__
+                thread = threading.Thread(target=_thread_for_action, args=(action,))
+                wait_for_thread_queue()
+                thread.start()
+
+        if xmlobject.has_element(zone, 'primaryStorages.localPrimaryStorage'):
+            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid, \
+                    name=zone.name_)
+            zinv = get_first_item_from_list(zinvs, 'Zone', zone.name_, 'primary storage')
+
+            for pr in xmlobject.safe_list(zone.primaryStorages.localPrimaryStorage):
+                if ps_name and ps_name != pr.name_:
+                    continue
+
+                action = api_actions.AddLocalPrimaryStorageAction()
+                action.sessionUuid = session_uuid
+                action.name = pr.name_
+                action.description = pr.description__
+                action.type = inventory.LOCAL_STORAGE_TYPE
+                action.url = pr.url_
+                action.zoneUuid = zinv.uuid
+                thread = threading.Thread(target=_thread_for_action, args=(action,))
+                wait_for_thread_queue()
+                thread.start()
+
+        if xmlobject.has_element(zone, 'primaryStorages.cephPrimaryStorage'):
+            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid, \
+                    name=zone.name_)
+            zinv = get_first_item_from_list(zinvs, 'Zone', zone.name_, 'primary storage')
+
+            for pr in xmlobject.safe_list(zone.primaryStorages.cephPrimaryStorage):
+                if ps_name and ps_name != pr.name_:
+                    continue
+
+                action = api_actions.AddCephPrimaryStorageAction()
+                action.sessionUuid = session_uuid
+                action.name = pr.name_
+                action.description = pr.description__
+                action.type = inventory.CEPH_PRIMARY_STORAGE_TYPE
+                action.monUrls = pr.monUrls_.split(';')
+                if pr.dataVolumePoolName__:
+                    action.dataVolumePoolName = pr.dataVolumePoolName__
+                if pr.rootVolumePoolName__:
+                    action.rootVolumePoolName = pr.rootVolumePoolName__
+                if pr.imageCachePoolName__:
+                    action.imageCachePoolName = pr.imageCachePoolName__
+                action.zoneUuid = zinv.uuid
                 thread = threading.Thread(target=_thread_for_action, args=(action,))
                 wait_for_thread_queue()
                 thread.start()
