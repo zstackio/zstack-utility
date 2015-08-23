@@ -16,6 +16,7 @@ zstack appliance vm""",
       license='Apache License 2',
       packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
       include_package_data=True,
+      package_data={'':['appliancevm/upgradescripts/*']},
       zip_safe=True,
       install_requires=[
           # -*- Extra requirements: -*-

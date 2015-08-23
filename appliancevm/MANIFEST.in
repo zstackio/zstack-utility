@@ -1,0 +1,2 @@
+include appliancevm
+recursive-include appliancevm/upgradescripts *

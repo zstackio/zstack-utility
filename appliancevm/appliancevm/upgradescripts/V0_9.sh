@@ -12,6 +12,18 @@ if [ $? -ne 0 ]; then
     echo "ListenAddress $ipaddr" >> /etc/ssh/sshd_config
     set -u
     /etc/init.d/sshd restart
+
+    for i in {1..30}
+    do
+        /etc/init.d/sshd status
+        if [ $? -eq 0 ]; then
+            exit 0
+        fi
+        sleep 0.5
+    done
+
+    >$2 echo "failed sshd is not running after 15s"
+    exit 1
 fi
 
 exit 0

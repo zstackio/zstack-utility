@@ -45,6 +45,7 @@ class ApplianceVm(object):
 
     REFRESH_FIREWALL_PATH = "/appliancevm/refreshfirewall"
     ECHO_PATH = "/appliancevm/echo"
+    INIT_PATH = "/appliancevm/init"
 
     @lock.file_lock('iptables')
     def set_default_iptable_rules(self):
@@ -60,6 +61,36 @@ class ApplianceVm(object):
         ipt.add_rule('-A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT')
         ipt.add_rule('-A POSTROUTING -p udp --dport bootpc -j CHECKSUM --checksum-fill', iptables.IPTables.MANGLE_TABLE_NAME)
         ipt.iptable_restore()
+
+    @replyerror
+    def init(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        upgrade_script_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'upgradescripts')
+        list_file = os.path.join(upgrade_script_path, 'scriptlist')
+
+        def upgrade():
+            script_names = []
+            with open(list_file, 'r') as fd:
+                ls = fd.readlines()
+                for l in ls:
+                    l = l.strip(' \t\r\n')
+                    if l:
+                        script_names.append(l)
+
+            for s in script_names:
+                script = os.path.join(upgrade_script_path, s)
+                if not os.path.exists(script):
+                    raise Exception('cannot find upgrade script[%s]' % script)
+
+                try:
+                    shell.call('bash %s' % script)
+                except shell.ShellError as e:
+                    raise Exception('failed to execute upgrade script[%s], %s', script, str(e))
+
+        if os.path.exists(list_file):
+            upgrade()
+
+        return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def echo(self, req):
@@ -119,6 +150,7 @@ class ApplianceVm(object):
         self.set_default_iptable_rules()
 
         self.http_server.register_async_uri(self.REFRESH_FIREWALL_PATH, self.refresh_rule)
+        self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
         if in_thread:

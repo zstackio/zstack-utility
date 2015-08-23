@@ -104,11 +104,6 @@
       command: sed -i 's/^exit 0/\/etc\/init.d\/zstack-appliancevm start\nexit 0/' /etc/rc.local
       when: ansible_os_family == 'Debian'
 
-    - name: execute upgrade scripts
-      script: "{{item}}"
-      with_items:
-        - "{{file_root}}/upgradescripts/V0_9.sh"
-
   handlers:
     - name: restart iptables
       service: name=iptables state=restarted enabled=yes
