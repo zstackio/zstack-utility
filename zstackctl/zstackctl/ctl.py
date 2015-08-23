@@ -369,10 +369,29 @@ class Ctl(object):
         prop = PropertyFile(self.properties_file_path)
         prop.write_property(key, value)
 
+    def get_db_url(self):
+        db_url = self.read_property("DB.url")
+        if not db_url:
+            db_url = self.read_property('DbFacadeDataSource.jdbcUrl')
+        if not db_url:
+            raise CtlError("cannot find DB url in %s. please set DB.url" % self.properties_file_path)
+        return db_url
+
     def get_database_portal(self):
-        db_user = self.read_property('DbFacadeDataSource.user')
-        db_password = self.read_property('DbFacadeDataSource.password')
-        db_url = ctl.read_property('DbFacadeDataSource.jdbcUrl')
+        db_user = self.read_property("DB.user")
+        if not db_user:
+            db_user = self.read_property('DbFacadeDataSource.user')
+        if not db_user:
+            raise CtlError("cannot find DB user in %s. please set DB.user" % self.properties_file_path)
+
+        db_password = self.read_property("DB.password")
+        if db_password is None:
+            db_password = self.read_property('DbFacadeDataSource.password')
+
+        if db_password is None:
+            raise CtlError("cannot find DB password in %s. please set DB.password" % self.properties_file_path)
+
+        db_url = self.get_db_url()
         db_hostname, db_port = db_url.lstrip('jdbc:mysql:').lstrip('/').split('/')[0].split(':')
 
         return db_hostname, db_port, db_user, db_password
@@ -765,12 +784,9 @@ class DeployDBCmd(Command):
                 args.zstack_password = ''
 
             properties = [
-                ("DbFacadeDataSource.user", "zstack"),
-                ("DbFacadeDataSource.password", args.zstack_password),
-                ("RESTApiDataSource.user", "zstack"),
-                ("RESTApiDataSource.password", args.zstack_password),
-                ("DbFacadeDataSource.jdbcUrl", 'jdbc:mysql://%s:%s/zstack' % (args.host, args.port)),
-                ("RESTApiDataSource.jdbcUrl",'jdbc:mysql://%s:%s/zstack_rest' % (args.host, args.port))
+                ("DB.user", "zstack"),
+                ("DB.password", args.zstack_password),
+                ("DB.url", 'jdbc:mysql://%s:%s' % (args.host, args.port)),
             ]
 
             ctl.write_properties(properties)
@@ -918,22 +934,13 @@ class StartCmd(Command):
             return result == 0
 
         def check_msyql():
-            with on_error('check "DbFacadeDataSource.jdbcUrl" in %s' % ctl.properties_file_path):
-                db_url = ctl.read_property('DbFacadeDataSource.jdbcUrl')
-                host_string = db_url.replace('jdbc:mysql://', '').replace('/zstack', '')
-                host, port = host_string.split(':')
+            db_hostname, db_port, db_user, db_password = ctl.get_database_portal()
 
-            if not check_ip_port(host, port):
-                raise CtlError('unable to connect to %s, please check if the MySQL is running and the firewall rules' % host_string)
-
-            with on_error('check "DbFacadeDataSource.user" in %s' % ctl.properties_file_path):
-                username = ctl.read_property("DbFacadeDataSource.user")
-
-            with on_error('check "DbFacadeDataSource.password" in %s' % ctl.properties_file_path):
-                password = ctl.read_property("DbFacadeDataSource.password")
+            if not check_ip_port(db_hostname, db_port):
+                raise CtlError('unable to connect to %s:%s, please check if the MySQL is running and the firewall rules' % (db_hostname, db_port))
 
             with on_error('unable to connect to MySQL'):
-                shell('mysql --host=%s --user=%s --password=%s --port=%s -e "select 1"' % (host, username, password, port))
+                shell('mysql --host=%s --user=%s --password=%s --port=%s -e "select 1"' % (db_hostname, db_user, db_password, db_port))
 
         def check_rabbitmq():
             RABBIT_PORT = 5672
@@ -2292,7 +2299,10 @@ class UpgradeDbCmd(Command):
         error_if_tool_is_missing('mysqldump')
         error_if_tool_is_missing('mysql')
 
-        db_url = ctl.read_property('DbFacadeDataSource.jdbcUrl')
+        db_url = ctl.get_db_url()
+        if 'zstack' not in db_url:
+            db_url = '%s/zstack' % db_url.rstrip('/')
+
         db_hostname, db_port, db_user, db_password = ctl.get_database_portal()
 
         flyway_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/tools/flyway-3.2.1/flyway')
