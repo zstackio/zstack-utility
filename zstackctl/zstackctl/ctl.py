@@ -915,7 +915,7 @@ class StartCmd(Command):
 
     def _start_remote(self, args):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl start_node"' % args.host)
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl start_node --timeout=%s"' % (args.host, args.timeout))
 
     def run(self, args):
         if args.host:
