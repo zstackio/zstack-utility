@@ -147,11 +147,13 @@ def get_backup_storage(xml_root, session_uuid = None):
 
     for bs in bs_storages:
         if bs.type == inventory.SFTP_BACKUP_STORAGE_TYPE:
-            add_xml_items(bs, 'sftpBackupStorage', xml_item, \
-                    'attachedZoneUuids availableCapacity totalCapacity')
+       	    json_to_xml = JsonToXml(bs, 'sftpBackupStorage', xml_item, \
+                   'attachedZoneUuids availableCapacity totalCapacity')
+            json_to_xml.generate_xml()
         elif bs.type == inventory.CEPH_BACKUP_STORAGE_TYPE:
-            add_xml_items(bs, 'cephBackupStorage', xml_item, \
-                    'attachedZoneUuids availableCapacity totalCapacity')
+       	    json_to_xml = JsonToXml(bs, 'cephBackupStorage', xml_item, \
+                   'attachedZoneUuids availableCapacity totalCapacity')
+            json_to_xml.generate_xml()
 
     cond = res_ops.gen_query_conditions('type', '=', 'SimulatorBackupStorage')
     simulator_bss = res_ops.safely_get_resource(res_ops.BACKUP_STORAGE, \
@@ -205,19 +207,21 @@ def get_image(xml_root, session_uuid = None):
 def get_zone(xml_root, session_uuid = None):
     def _get_primary_storage(pss_xml, zone):
         cond = res_ops.gen_query_conditions('zoneUuid', '=', zone.uuid)
-        cond = res_ops.gen_query_conditions('type', '=', 'NFS', cond)
         pss = res_ops.safely_get_resource(res_ops.PRIMARY_STORAGE, cond, \
                 session_uuid)
         for ps in pss:
             if ps.type == inventory.NFS_PRIMARY_STORAGE_TYPE:
-                add_xml_items(ps, 'nfsPrimaryStorage', pss_xml, \
+       	        json_to_xml = JsonToXml(bs, 'nfsPrimaryStorage', pss_xml, \
                         'availableCapacity mountPath totalCapacity type zoneUuid')
+                json_to_xml.generate_xml()
             elif ps.type == inventory.CEPH_PRIMARY_STORAGE_TYPE:
-                add_xml_items(ps, 'cephPrimaryStorage', pss_xml, \
+       	        json_to_xml = JsonToXml(bs, 'cephPrimaryStorage', pss_xml, \
                         'availableCapacity mountPath totalCapacity type zoneUuid')
+                json_to_xml.generate_xml()
             elif ps.type == inventory.LOCAL_STORAGE_TYPE:
-                add_xml_items(ps, 'localPrimaryStorage', pss_xml, \
+       	        json_to_xml = JsonToXml(bs, 'localPrimaryStorage', pss_xml, \
                         'availableCapacity mountPath totalCapacity type zoneUuid')
+                json_to_xml.generate_xml()
 
         cond = res_ops.gen_query_conditions('zoneUuid', '=', zone.uuid)
         cond = res_ops.gen_query_conditions('type', '=', \
@@ -336,6 +340,7 @@ def get_zone(xml_root, session_uuid = None):
         cond = res_ops.gen_query_conditions('zoneUuid', '=', zone.uuid)
         pss = res_ops.safely_get_resource(res_ops.PRIMARY_STORAGE, cond, \
                 session_uuid)
+
         if pss:
             pss_xml = etree.SubElement(zone_xml, "primaryStorages")
             _get_primary_storage(pss_xml, zone)
