@@ -3,8 +3,12 @@
 @author: Frank
 '''
 import os
-if os.environ['TERM'].startswith('xterm'):
+try:
+    if os.environ['TERM'].startswith('xterm'):
+        os.environ['TERM'] = 'vt100'
+except:
     os.environ['TERM'] = 'vt100'
+
 import readline
 import sys
 import shlex
