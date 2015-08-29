@@ -365,7 +365,7 @@ upgrade_zstack(){
     echo ""
     show_spinner uz_upgrade_zstack
     if [ $CURRENT_STATUS = 'y' ]; then
-        if [ $NOT_START_ZSTACK != 'y' ]; then
+        if [ -z $NOT_START_ZSTACK ]; then
             show_spinner sz_start_zstack
         fi
     fi
