@@ -1332,7 +1332,7 @@ if [ ! -z $HTTP_PROXY ]; then
 fi
 
 #Start ZStack
-if [ $NOT_START_ZSTACK != 'y' ]; then
+if [ ! -z $NOT_START_ZSTACK ]; then
     start_zstack
 fi
 
