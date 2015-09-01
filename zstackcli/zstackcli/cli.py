@@ -983,6 +983,14 @@ def main():
             action='store',
             help="[Optional] dump a cloud to a XML file")
 
+    parser.add_option(
+            "-P",
+            "--password",
+            dest="admin_password",
+            default='password',
+            action='store',
+            help="[Optional] admin account password. Default is 'password'.")
+
     (options, args) = parser.parse_args()
     cmd = ' '.join(args)
 
@@ -990,17 +998,22 @@ def main():
     os.environ['ZSTACK_BUILT_IN_HTTP_SERVER_PORT'] = options.port
 
     if options.zstack_config_dump_file:
-        read_config.dump_zstack(options.zstack_config_dump_file)
+        admin_passwd = hashlib.sha512(options.admin_password).hexdigest()
+        read_config.dump_zstack(options.zstack_config_dump_file, \
+                admin_passwd)
     elif options.deploy_config_file:
         #deploy ZStack pre-configed environment.
-        xml_config = parse_config.DeployConfig(options.deploy_config_file, options.deploy_config_template_file)
+        xml_config = parse_config.DeployConfig(options.deploy_config_file, \
+                options.deploy_config_template_file)
         deploy_xml_obj = xml_config.get_deploy_config()
+        admin_passwd = hashlib.sha512(options.admin_password).hexdigest()
         try:
             deploy_xml_obj.deployerConfig
         except:
-            deploy_config.deploy_initial_database(deploy_xml_obj)
+            deploy_config.deploy_initial_database(deploy_xml_obj, admin_passwd)
         else:
-            deploy_config.deploy_initial_database(deploy_xml_obj.deployerConfig)
+            deploy_config.deploy_initial_database(deploy_xml_obj.deployerConfig\
+                    , admin_passwd)
 
         print('Successfully deployed a cloud from: %s' % options.deploy_config_file)
 

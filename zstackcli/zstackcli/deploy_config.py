@@ -1043,7 +1043,7 @@ def add_virtual_router(deployConfig, session_uuid, l3_name = None, \
 
     wait_for_thread_done()
 
-def deploy_initial_database(deploy_config):
+def deploy_initial_database(deploy_config, admin_passwd = None):
     operations = [
             add_backup_storage,
             add_zone,
@@ -1058,7 +1058,7 @@ def deploy_initial_database(deploy_config):
             add_virtual_router
             ]
     for operation in operations:
-        session_uuid = account_operations.login_as_admin()
+        session_uuid = account_operations.login_as_admin(admin_passwd)
         try:
             operation(deploy_config, session_uuid)
         except Exception as e:

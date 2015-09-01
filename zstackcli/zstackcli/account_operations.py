@@ -6,10 +6,13 @@ import apibinding.inventory as inventory
 import traceback
 import sys
 
-def login_as_admin():
+def login_as_admin(password = inventory.INITIAL_SYSTEM_ADMIN_PASSWORD):
     login = api_actions.LogInByAccountAction()
     login.accountName = inventory.INITIAL_SYSTEM_ADMIN_NAME
-    login.password = inventory.INITIAL_SYSTEM_ADMIN_PASSWORD
+    if not password:
+        password = inventory.INITIAL_SYSTEM_ADMIN_PASSWORD
+
+    login.password = password
     #login.timeout = 15000
     #since system might be hang for a while, when archive system log in 00:00:00
     #, it is better to increase timeout time to 60000 to avoid of no response

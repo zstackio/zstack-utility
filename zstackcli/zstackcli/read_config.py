@@ -409,18 +409,25 @@ def make_xml_editable(xml_str):
 
     return '\n'.join(new_list)
 
-def dump_zstack(save_to_file = None):
+def dump_zstack(save_to_file = None, admin_passwd = None):
     xml_root = etree.Element("deployerConfig")
     try:
-        session_uuid = account_operations.login_as_admin()
+        session_uuid = account_operations.login_as_admin(admin_passwd)
         get_node(xml_root, session_uuid)
         get_instance_offering(xml_root, session_uuid)
         get_disk_offering(xml_root, session_uuid)
         get_backup_storage(xml_root, session_uuid)
         get_image(xml_root, session_uuid)
         get_zone(xml_root, session_uuid)
-    finally:
-        account_operations.logout(session_uuid)
+    except Exception as e:
+        try:
+            account_operations.logout(session_uuid)
+        except:
+            print ' '
+        raise e
+
+    account_operations.logout(session_uuid)
+
     new_xml = str(beautify_xml_element(xml_root))
 #    new_xml = new_xml.replace('" ', '"\n')
     new_xml = make_xml_editable(new_xml)
