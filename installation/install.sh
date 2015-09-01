@@ -198,7 +198,7 @@ echo_subtitle(){
 #Do preinstallation checking for CentOS and Ubuntu
 check_system(){
     echo_title "Check System"
-    cat /etc/*-release |grep -i centos >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep 'release 6' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
