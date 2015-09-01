@@ -989,7 +989,7 @@ def main():
             dest="admin_password",
             default='password',
             action='store',
-            help="[Optional] admin account password. Default is 'password'.")
+            help="[Optional] admin account password for dumping and recovering cloud environment. It can only be used when set -D or -d option. Default is 'password'.")
 
     (options, args) = parser.parse_args()
     cmd = ' '.join(args)
