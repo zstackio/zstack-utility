@@ -63,22 +63,21 @@ class NetworkPlugin(kvmagent.KvmAgent):
     classdocs
     '''
     
-    def _get_presented_interfaces(self):
-        net = '/sys/class/net/'
-        return os.listdir(net)
-        
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        presented_ifaces = self._get_presented_interfaces()
-        failed_ifaces = [i for i in cmd.interfaceNames if i not in presented_ifaces]
         rsp = CheckPhysicalNetworkInterfaceResponse()
-        if failed_ifaces:
-            rsp.failedInterfaceNames = failed_ifaces
-            rsp.success = False
-        logger.debug(http.path_msg(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, 'checked physical interfaces: %s, failed interfaces: %s' % (cmd.interfaceNames, failed_ifaces)))
+        for i in cmd.interfaceNames:
+            shell_cmd = shell.ShellCmd("ip link | grep '%s'" % i)
+            shell_cmd(False)
+            if shell_cmd.return_code != 0:
+                rsp.failedInterfaceNames = [i]
+                rsp.success = False
+                return jsonobject.dumps(rsp)
+
+        logger.debug(http.path_msg(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, 'checked physical interfaces: %s' % cmd.interfaceNames))
         return jsonobject.dumps(rsp)
-    
+
     @lock.lock('create_bridge')
     @kvmagent.replyerror
     def create_bridge(self, req):
