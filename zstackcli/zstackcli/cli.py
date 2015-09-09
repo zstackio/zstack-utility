@@ -625,6 +625,16 @@ Parse command parameters error:
 
         result_file = '%s%d' % (CLI_RESSULT_FILE, start_value)
         open(result_file, 'w').write(result)
+        if not self.no_secure and 'password=' in cmd:
+            cmds = cmd.split()
+            cmds2 = []
+            for cmd2 in cmds:
+                if not 'password=' in cmd2:
+                    cmds2.append(cmd2)
+                else:
+                    cmds2.append(cmd2.split('=')[0] + '=')
+            cmd = ' '.join(cmds2)
+
         self.hd.set(str(start_value), [cmd, success])
 
     def read_more(self, num=None, need_print=True, full_info=True):
@@ -938,6 +948,7 @@ Parse command parameters error:
 
         self.hostname = options.host
         self.port = options.port
+        self.no_secure = options.no_secure
         self.api = api.Api(host=self.hostname, port=self.port)
 
 def main():
@@ -990,6 +1001,14 @@ def main():
             default='password',
             action='store',
             help="[Optional] admin account password for dumping and recovering cloud environment. It can only be used when set -D or -d option. Default is 'password'.")
+
+    parser.add_option(
+            "-s",
+            "--no-secure",
+            dest="no_secure",
+            default=False,
+            action='store_true',
+            help="[Optional] if setting -s, will save password information in command history. ")
 
     (options, args) = parser.parse_args()
     cmd = ' '.join(args)
