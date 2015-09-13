@@ -178,6 +178,11 @@ fail(){
     exit 1
 }
 
+fail2(){
+    echo -e "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " |tee -a $INSTALLATION_FAILURE
+    exit 1
+}
+
 pass(){
     #echo -e "$(tput setaf 2) PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     return
@@ -198,21 +203,22 @@ echo_subtitle(){
 #Do preinstallation checking for CentOS and Ubuntu
 check_system(){
     echo_title "Check System"
+    echo ""
     cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep 'release 6' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
+        grep 'release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
             OS=$CENTOS6
         else
-            grep 'release 7' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
+            grep 'release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
                 OS=$CENTOS7
                 rpm -q libvirt |grep 1.1.1-29 >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
-                    fail "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
+                    fail2 "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
                 fi
             else
-                fail "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
+                fail2 "Host OS checking failure: your system is: `cat /etc/system-release`, we can only support $SUPPORTED_OS currently"
             fi
         fi
         which unzip >/dev/null 2>&1
@@ -224,7 +230,7 @@ check_system(){
         if [ $? -eq 0 ]; then
             OS=$UBUNTU1404
         else
-            fail "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
+            fail2 "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
         fi
         which unzip >/dev/null 2>&1
         if [ $? -ne 0 ];then
