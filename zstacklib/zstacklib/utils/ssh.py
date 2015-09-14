@@ -86,14 +86,15 @@ def ssh_execute_script_file(src, hostname, username, password, port=22):
     ssh_cmd = 'sh %s; rm -f %s' % (temp_file, temp_file)
     execute(ssh_cmd, hostname, username, password)
 
-def execute(command, hostname, username, password, exception_if_error=True):
+def execute(command, hostname, username, password, exception_if_error=True, \
+        port = 22):
     if logcmd:
         logger.debug('ssh execute[%s]' % command)
         
     ssh = paramiko.SSHClient()
     try:
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(hostname, username=username, password=password)
+        ssh.connect(hostname, port=port, username=username, password=password)
         
         chan = ssh.get_transport().open_session()
         chan.exec_command(command)
@@ -103,7 +104,7 @@ def execute(command, hostname, username, password, exception_if_error=True):
         output = stdout.read()
         erroutput = stderr.read()
         if retcode != 0 and exception_if_error:
-            err = 'command[%s] failed on host[%s], stdout: %s, stderr: %s, return code: %s' % (command, hostname, output, erroutput, retcode)
+            err = 'command[%s] failed on host:[%s], port:[%s], stdout: %s, stderr: %s, return code: %s' % (command, hostname, output, erroutput, retcode)
             raise SshError(err)
         return (retcode, output, erroutput)
     finally:
