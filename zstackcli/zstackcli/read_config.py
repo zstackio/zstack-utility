@@ -211,16 +211,16 @@ def get_zone(xml_root, session_uuid = None):
                 session_uuid)
         for ps in pss:
             if ps.type == inventory.NFS_PRIMARY_STORAGE_TYPE:
-       	        json_to_xml = JsonToXml(bs, 'nfsPrimaryStorage', pss_xml, \
-                        'availableCapacity mountPath totalCapacity type zoneUuid')
+       	        json_to_xml = JsonToXml(ps, 'nfsPrimaryStorage', pss_xml, \
+                        'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
                 json_to_xml.generate_xml()
             elif ps.type == inventory.CEPH_PRIMARY_STORAGE_TYPE:
-       	        json_to_xml = JsonToXml(bs, 'cephPrimaryStorage', pss_xml, \
-                        'availableCapacity mountPath totalCapacity type zoneUuid')
+       	        json_to_xml = JsonToXml(ps, 'cephPrimaryStorage', pss_xml, \
+                        'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
                 json_to_xml.generate_xml()
             elif ps.type == inventory.LOCAL_STORAGE_TYPE:
-       	        json_to_xml = JsonToXml(bs, 'localPrimaryStorage', pss_xml, \
-                        'availableCapacity mountPath totalCapacity type zoneUuid')
+       	        json_to_xml = JsonToXml(ps, 'localPrimaryStorage', pss_xml, \
+                        'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
                 json_to_xml.generate_xml()
 
         cond = res_ops.gen_query_conditions('zoneUuid', '=', zone.uuid)
