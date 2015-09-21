@@ -55,8 +55,6 @@
 
     - name: copy dnsmasq conf file
       copy: src="{{file_root}}/dnsmasq.conf" dest=/etc/dnsmasq.conf
-      notify:
-        - restart dnsmasq
 
     - name: enable dnsmasq service
       service: name=dnsmasq enabled=yes state=started
@@ -93,11 +91,11 @@
       command: sed -i 's/^exit 0/\/etc\/init.d\/zstack-virtualrouter start\nexit 0/' /etc/rc.local
       when: ansible_os_family == 'Debian'
 
-  handlers:
     - name: restart dnsmasq
       service: name=dnsmasq state=restarted enabled=yes
       when: chroot_env == 'false'
 
+  handlers:
     - name: install zstacklib
       environment:
         http_proxy: "{{proxy}}"
