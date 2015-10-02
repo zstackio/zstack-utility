@@ -1079,3 +1079,19 @@ class TimeoutObject(object):
             threading.Timer(1, clean_timeout_object).start()
 
         clean_timeout_object()
+
+def kill_process(pid, timeout=5):
+    shell.call("kill %s" % pid)
+
+    def check():
+        cmd = shell.ShellCmd('ps %s > /dev/null' % pid)
+        cmd(False)
+        return cmd.return_code != 0
+
+    if wait_callback_success(check, None, timeout):
+        return
+
+    shell.call("kill -9 %s" % pid)
+    if not wait_callback_success(check, None, timeout):
+        raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
+
