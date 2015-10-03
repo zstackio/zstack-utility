@@ -37,6 +37,15 @@ class Mevoco(kvmagent.KvmAgent):
     def __init__(self):
         self.signal_count = 0
 
+    def start(self):
+        http_server = kvmagent.get_http_server()
+
+        http_server.register_async_uri(self.APPLY_DHCP_PATH, self.apply_dhcp)
+        http_server.register_async_uri(self.RELEASE_DHCP_PATH, self.release_dhcp)
+
+    def stop(self):
+        pass
+
     def _make_conf_path(self, bridge_name):
         return os.path.join(self.DNSMASQ_CONF_FOLDER, bridge_name, 'dnsmasq.conf')
 
