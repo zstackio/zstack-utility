@@ -58,6 +58,7 @@ class Mevoco(kvmagent.KvmAgent):
         for d in cmd.dhcp:
             lst = bridge_dhcp.get(d.bridgeName, [])
             lst.append(d)
+            bridge_dhcp[d.bridgeName] = lst
 
         def apply(bridge_name, dhcp):
             conf_file_path = self._make_conf_path(bridge_name)
