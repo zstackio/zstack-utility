@@ -107,7 +107,7 @@ dhcp-range={{g}},static
                 dhcp_info = {'dns': ','.join(d.dns)}
                 info.append(dhcp_info)
 
-            logger.debug('xxxxxxxxxxx %s' % jsonobject.dumps(info))
+            logger.debug('xxxxxxxxxxx %s' % jsonobject.dumps({'info':info}))
 
             dhcp_conf = '''\
 {% for d in dhcp %}
