@@ -16,6 +16,8 @@ import threading
 import time
 from jinja2 import Template
 
+logger = log.get_logger(__name__)
+
 class ApplyDhcpRsp(kvmagent.AgentResponse):
     pass
 
@@ -56,9 +58,11 @@ class Mevoco(kvmagent.KvmAgent):
 
         bridge_dhcp = {}
         for d in cmd.dhcp:
-            lst = bridge_dhcp.get(d.bridgeName, [])
+            lst = bridge_dhcp.get(d.bridgeName)
+            if not lst:
+                lst = []
+                bridge_dhcp[d.bridgeName] = lst
             lst.append(d)
-            bridge_dhcp[d.bridgeName] = lst
 
         def apply(bridge_name, dhcp):
             conf_file_path = self._make_conf_path(bridge_name)
@@ -67,7 +71,7 @@ class Mevoco(kvmagent.KvmAgent):
 domain-needed
 bogus-priv
 no-hosts
-addn-hosts=%s
+addn-hosts={{dns}}
 dhcp-option=vendor:MSFT,2,1i
 dhcp-lease-max=65535
 dhcp-hostsfile={{dhcp}}
@@ -76,7 +80,7 @@ log-facility={{log}}
 interface={{bridge_name}}
 leasefile-ro
 {% for g in gateways %}
-dhcp-range={{g}},static'
+dhcp-range={{g}},static
 {% endfor %}
 '''
             if not os.path.exists(conf_file_path) or cmd.rebuild:
@@ -86,6 +90,7 @@ dhcp-range={{g}},static'
                     log_path = os.path.join(folder_path, 'dnsmasq.log')
                     tmpt = Template(conf_file)
                     conf_file = tmpt.render({
+                        'dns': self.DNS_FILE,
                         'dhcp': self.DHCP_FILE,
                         'option': self.DHCP_OPTION_FILE,
                         'log': log_path,
@@ -94,6 +99,15 @@ dhcp-range={{g}},static'
                     })
 
                     fd.write(conf_file)
+
+            info = []
+            for d in dhcp:
+                dhcp_info = {'tag': d.mac.replace(':', '')}
+                dhcp_info.update(d.__dict__)
+                dhcp_info = {'dns': ','.join(d.dns)}
+                info.append(dhcp_info)
+
+            logger.debug('xxxxxxxxxxx %s' % jsonobject.dumps(info))
 
             dhcp_conf = '''\
 {% for d in dhcp %}
@@ -104,16 +118,10 @@ dhcp-range={{g}},static'
 {% endif %}
 {% endfor %}
 '''
-            info = []
-            for d in dhcp:
-                dhcp_info = {'tag': d.mac.replace(':', '')}
-                dhcp_info.update(d.__dict__)
-                dhcp_info = {'dns': ','.join(d.dns)}
-                info.append(dhcp_info)
 
             tmpt = Template(dhcp_conf)
             dhcp_conf = tmpt.render({'dhcp': info})
-            mode = 'a'
+            mode = 'a+'
             if cmd.rebuild:
                 mode = 'w'
 
@@ -123,28 +131,20 @@ dhcp-range={{g}},static'
             option_conf = '''\
 {% for o in options %}
 {% if o.isDefaultL3Network %}
-
 {% if o.gateway %}
 tag:{{o.tag}},option:router,{{o.gateway}}
 {% endif %}
-
 {% if o.dns %}
 tag:{{o.tag}},option:dns-server,{{o.dns}}
 {% endif %}
-
 {% if o.dnsDomain %}
 tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
 {% endif %}
-
 {% else %}
-
 tag:{{o.tag}},3
 tag:{{o.tag}},6
-
 {% endif %}
-
 tag:{{o.tag}},option:netmask,{{o.netmask}}
-
 {% endfor %}
     '''
             tmpt = Template(option_conf)
