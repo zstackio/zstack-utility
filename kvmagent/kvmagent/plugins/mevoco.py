@@ -108,7 +108,8 @@ dhcp-range={{g}},static
                 dhcp_info['dns'] = ','.join(d.dns)
                 info.append(dhcp_info)
 
-            logger.debug('xxxxxxxxxxx %s' % jsonobject.dumps({'info': info}))
+                if not cmd.rebuild:
+                    self._erase_configurations(d.mac, d.ip)
 
             dhcp_conf = '''\
 {% for d in dhcp -%}
@@ -207,6 +208,28 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
         shell.call('kill -1 %s' % pid)
         self.signal_count += 1
 
+    def _erase_configurations(self, mac, ip):
+        cmd = '''\
+sed -i '/{{mac}}/d' {{dhcp}};
+sed -i '/^$/d' {{dhcp}};
+sed -i '/{{tag}}/d' {{option}};
+sed -i '/^$/d' {{option}};
+sed -i '/{{ip}}/d' {{dns}};
+sed -i '/^$/d' {{dns}}
+'''
+        tmpt = Template(cmd)
+        context = {
+            'tag': mac.replace(':', ''),
+            'mac': mac,
+            'dhcp': self.DHCP_FILE,
+            'option': self.DHCP_OPTION_FILE,
+            'ip': ip,
+            'dns': self.DNS_FILE,
+            }
+
+        cmd = tmpt.render(context)
+        shell.call(cmd)
+
     @lock.lock('dnsmasq')
     @kvmagent.replyerror
     def release_dhcp(self, req):
@@ -214,36 +237,18 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
 
         bridge_dhcp = {}
         for d in cmd.dhcp:
-            lst = bridge_dhcp.get(d.bridgeName, [])
+            lst = bridge_dhcp.get(d.bridgeName)
+            if not lst:
+                lst = []
+                bridge_dhcp[d.bridgeName] = lst
             lst.append(d)
 
         def release(bridge_name, dhcp):
             conf_file_path = self._make_conf_path(bridge_name)
 
             for d in dhcp:
-                shell_cmd = '''\
-    sed -i '/{{mac}}/d' {{dhcp}};
-    sed -i '/^$/d' {{dhcp}};
-    sed -i '/{{tag}}/d' {{option}};
-    sed -i '/^$/d' {{option}};
-    sed -i '/{{ip}}/d' {{dns}};
-    sed -i '/^$/d' {{dns}};
-    dhcp_release {{bridge_name}} {{ip}} {{mac}}"
-    '''
-                tmpt = Template(shell_cmd)
-                context = {
-                    'tag': d.mac.replace(':', ''),
-                    'mac': d.mac,
-                    'dhcp': self.DHCP_FILE,
-                    'option': self.DHCP_OPTION_FILE,
-                    'ip': d.ip,
-                    'dns': self.DNS_FILE,
-                    'bridge_name': bridge_name,
-                }
-
-                shell_cmd = tmpt.render(context)
-                shell.call(shell_cmd)
-
+                self._erase_configurations(d.mac, d.ip)
+                shell.call("dhcp_release %s %s %s" % (bridge_name, d.ip, d.mac))
                 self._restart_dnsmasq(conf_file_path)
 
         for k, v in bridge_dhcp.iteritems():
