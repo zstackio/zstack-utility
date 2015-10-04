@@ -77,7 +77,7 @@ interface={{bridge_name}}
 leasefile-ro
 {% for g in gateways %}
 dhcp-range={{g}},static'
-{% endif %}
+{% endfor %}
 '''
             if not os.path.exists(conf_file_path) or cmd.rebuild:
                 folder_path = os.path.dirname(conf_file_path)
