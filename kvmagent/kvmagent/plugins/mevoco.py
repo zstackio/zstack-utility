@@ -104,7 +104,7 @@ dhcp-range={{g}},static
             for d in dhcp:
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
-                dhcp_info = {'dns': ','.join(d.dns)}
+                dhcp_info['dns'] = ','.join(d.dns)
                 info.append(dhcp_info)
 
             logger.debug('xxxxxxxxxxx %s' % jsonobject.dumps({'info':info}))
@@ -185,7 +185,7 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
 
         shell.call('/sbin/dnsmasq --conf-file=%s' % conf_file_path)
 
-        def check():
+        def check(_):
             cmd = shell.ShellCmd('ps %s > /dev/null' % pid)
             cmd(False)
             return cmd.return_code == 0

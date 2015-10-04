@@ -1083,7 +1083,7 @@ class TimeoutObject(object):
 def kill_process(pid, timeout=5):
     shell.call("kill %s" % pid)
 
-    def check():
+    def check(_):
         cmd = shell.ShellCmd('ps %s > /dev/null' % pid)
         cmd(False)
         return cmd.return_code != 0
