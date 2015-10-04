@@ -80,9 +80,9 @@ dhcp-optsfile={{option}}
 log-facility={{log}}
 interface={{bridge_name}}
 leasefile-ro
-{%- for g in gateways -%}
+{% for g in gateways -%}
 dhcp-range={{g}},static
-{%- endfor -%}
+{% endfor -%}
 '''
             if not os.path.exists(conf_file_path) or cmd.rebuild:
                 folder_path = os.path.dirname(conf_file_path)
@@ -111,13 +111,13 @@ dhcp-range={{g}},static
             logger.debug('xxxxxxxxxxx %s' % jsonobject.dumps({'info': info}))
 
             dhcp_conf = '''\
-{%- for d in dhcp -%}
-{%- if d.isDefaultL3Network -%}
+{% for d in dhcp -%}
+{% if d.isDefaultL3Network -%}
 {{d.mac}},set:{{d.tag}},{{d.ip}},{{d.hostname}},infinite
-{%- else -%}
+{% else -%}
 {{d.mac}},set:{{d.tag}},{{d.ip}},infinite
-{%- endif -%}
-{%- endfor -%}
+{% endif -%}
+{% endfor -%}
 '''
 
             tmpt = Template(dhcp_conf)
@@ -130,23 +130,23 @@ dhcp-range={{g}},static
                 fd.write(dhcp_conf)
 
             option_conf = '''\
-{%- for o in options -%}
-{%- if o.isDefaultL3Network -%}
-{%- if o.gateway -%}
+{% for o in options -%}
+{% if o.isDefaultL3Network -%}
+{% if o.gateway -%}
 tag:{{o.tag}},option:router,{{o.gateway}}
-{%- endif -%}
-{%- if o.dns -%}
+{% endif -%}
+{% if o.dns -%}
 tag:{{o.tag}},option:dns-server,{{o.dns}}
-{%- endif -%}
-{%- if o.dnsDomain -%}
+{% endif -%}
+{% if o.dnsDomain -%}
 tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
-{%- endif -%}
-{%- else -%}
+{% endif -%}
+{% else -%}
 tag:{{o.tag}},3
 tag:{{o.tag}},6
-{%- endif -%}
+{% endif -%}
 tag:{{o.tag}},option:netmask,{{o.netmask}}
-{%- endfor -%}
+{% endfor -%}
     '''
             tmpt = Template(option_conf)
             option_conf = tmpt.render({'options': info})
@@ -155,11 +155,11 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
                 fd.write(option_conf)
 
             hostname_conf = '''\
-{%- for h in hostnames -%}
-{%- if h.isDefaultL3Network and h.hostname -%}
+{% for h in hostnames -%}
+{% if h.isDefaultL3Network and h.hostname -%}
 {{h.ip}} {{h.hostname}}
-{%- endif -%}
-{%- endfor -%}
+{% endif -%}
+{% endfor -%}
     '''
             tmpt = Template(hostname_conf)
             hostname_conf = tmpt.render({'hostnames': info})
