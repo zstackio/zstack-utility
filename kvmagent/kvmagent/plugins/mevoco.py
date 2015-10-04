@@ -18,15 +18,16 @@ from jinja2 import Template
 
 logger = log.get_logger(__name__)
 
+
 class ApplyDhcpRsp(kvmagent.AgentResponse):
     pass
+
 
 class ReleaseDhcpRsp(kvmagent.AgentResponse):
     pass
 
 
 class Mevoco(kvmagent.KvmAgent):
-
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
     RELEASE_DHCP_PATH = "/flatnetworkprovider/dhcp/release"
 
@@ -67,7 +68,7 @@ class Mevoco(kvmagent.KvmAgent):
         def apply(bridge_name, dhcp):
             conf_file_path = self._make_conf_path(bridge_name)
 
-            conf_file='''\
+            conf_file = '''\
 domain-needed
 bogus-priv
 no-hosts
@@ -79,9 +80,9 @@ dhcp-optsfile={{option}}
 log-facility={{log}}
 interface={{bridge_name}}
 leasefile-ro
-{% for g in gateways %}
+{%- for g in gateways -%}
 dhcp-range={{g}},static
-{% endfor %}
+{%- endfor -%}
 '''
             if not os.path.exists(conf_file_path) or cmd.rebuild:
                 folder_path = os.path.dirname(conf_file_path)
@@ -107,16 +108,16 @@ dhcp-range={{g}},static
                 dhcp_info['dns'] = ','.join(d.dns)
                 info.append(dhcp_info)
 
-            logger.debug('xxxxxxxxxxx %s' % jsonobject.dumps({'info':info}))
+            logger.debug('xxxxxxxxxxx %s' % jsonobject.dumps({'info': info}))
 
             dhcp_conf = '''\
-{% for d in dhcp %}
-{% if d.isDefaultL3Network %}
+{%- for d in dhcp -%}
+{%- if d.isDefaultL3Network -%}
 {{d.mac}},set:{{d.tag}},{{d.ip}},{{d.hostname}},infinite
-{% else %}
+{%- else -%}
 {{d.mac}},set:{{d.tag}},{{d.ip}},infinite
-{% endif %}
-{% endfor %}
+{%- endif -%}
+{%- endfor -%}
 '''
 
             tmpt = Template(dhcp_conf)
@@ -129,39 +130,39 @@ dhcp-range={{g}},static
                 fd.write(dhcp_conf)
 
             option_conf = '''\
-{% for o in options %}
-{% if o.isDefaultL3Network %}
-{% if o.gateway %}
+{%- for o in options -%}
+{%- if o.isDefaultL3Network -%}
+{%- if o.gateway -%}
 tag:{{o.tag}},option:router,{{o.gateway}}
-{% endif %}
-{% if o.dns %}
+{%- endif -%}
+{%- if o.dns -%}
 tag:{{o.tag}},option:dns-server,{{o.dns}}
-{% endif %}
-{% if o.dnsDomain %}
+{%- endif -%}
+{%- if o.dnsDomain -%}
 tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
-{% endif %}
-{% else %}
+{%- endif -%}
+{%- else -%}
 tag:{{o.tag}},3
 tag:{{o.tag}},6
-{% endif %}
+{%- endif -%}
 tag:{{o.tag}},option:netmask,{{o.netmask}}
-{% endfor %}
+{%- endfor -%}
     '''
             tmpt = Template(option_conf)
-            option_conf = tmpt.render({'options':info})
+            option_conf = tmpt.render({'options': info})
 
             with open(self.DHCP_OPTION_FILE, mode) as fd:
                 fd.write(option_conf)
 
             hostname_conf = '''\
-{% for h in hostnames %}
-{% if h.isDefaultL3Network %}
+{%- for h in hostnames -%}
+{%- if h.isDefaultL3Network and h.hostname -%}
 {{h.ip}} {{h.hostname}}
-{% endif %}
-{% endfor %}
+{%- endif -%}
+{%- endfor -%}
     '''
             tmpt = Template(hostname_conf)
-            hostname_conf = tmpt.render({'hostnames':info})
+            hostname_conf = tmpt.render({'hostnames': info})
 
             with open(self.DNS_FILE, mode) as fd:
                 fd.write(hostname_conf)
@@ -186,9 +187,8 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
         shell.call('/sbin/dnsmasq --conf-file=%s' % conf_file_path)
 
         def check(_):
-            cmd = shell.ShellCmd('ps %s > /dev/null' % pid)
-            cmd(False)
-            return cmd.return_code == 0
+            pid = linux.find_process_by_cmdline([conf_file_path])
+            return pid is not None
 
         if not linux.wait_callback_success(check, None, 5):
             raise Exception('dnsmasq[conf-file:%s] is not running after being started %s seconds' % (conf_file_path, 5))
@@ -232,7 +232,7 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
     '''
                 tmpt = Template(shell_cmd)
                 context = {
-                    'tag': d.mac.replace(':',''),
+                    'tag': d.mac.replace(':', ''),
                     'mac': d.mac,
                     'dhcp': self.DHCP_FILE,
                     'option': self.DHCP_OPTION_FILE,
