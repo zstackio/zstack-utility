@@ -58,9 +58,10 @@
         <!--
         <tar destfile="${testagent.tar.file}" basedir="${testagent.tar.dir}" compression="gzip">
             -->
-        <exec executable="tar" dir="${testagent.tar.dir}" failonerror="true">
-            <arg value="jxf" />
-            <arg value="${pypi.source.tar.file}" />
+        <exec executable="cp" dir="${testagent.tar.dir}" failonerror="true">
+            <arg value="-a" />
+            <arg value="${pypi.source.folder}" />
+            <arg value="./" />
         </exec>
 
         <exec executable="tar" dir="${woodpecker.dir}" failonerror="true">

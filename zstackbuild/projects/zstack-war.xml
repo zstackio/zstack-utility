@@ -17,7 +17,6 @@
 
         <exec executable="mvn" dir="${zstack.source}" failonerror="true">
             <arg value="-DskipTests" />
-            <arg value="clean" />
             <arg value="install" />
         </exec>
 

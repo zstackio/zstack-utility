@@ -67,9 +67,10 @@
 
     <target name="copy-pypi-source" >
         <makeDir dir="${pypi.parent.dir}" />
-        <exec executable="tar" dir="${pypi.parent.dir}" failonerror="true">
-            <arg value="jxf" />
-            <arg value="${pypi.source.tar.file}" />
+        <exec executable="cp" dir="${pypi.parent.dir}" failonerror="true">
+            <arg value="-a" />
+            <arg value="${pypi.source.folder}" />
+            <arg value="./" />
         </exec>
     </target>
 
