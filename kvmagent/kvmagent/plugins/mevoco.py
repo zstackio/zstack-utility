@@ -185,7 +185,7 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
         if pid:
             linux.kill_process(pid)
 
-        shell.call('/sbin/dnsmasq --conf-file=%s' % conf_file_path)
+        shell.call('/sbin/dnsmasq --conf-file=%s | /usr/sbin/dnsmasq --conf-file=%s' % (conf_file_path, conf_file_path))
 
         def check(_):
             pid = linux.find_process_by_cmdline([conf_file_path])
