@@ -1209,6 +1209,8 @@ class Vm(object):
                 else:
                     e(disk, 'target', None, {'dev':'sd%s' % dev_letter, 'bus':'ide'})
 
+                return disk
+
             def iscsibased_volume(dev_letter, virtio):
                 def blk_iscsi():
                     bi = BlkIscsi()
@@ -1218,7 +1220,8 @@ class Vm(object):
                     bi.volume_uuid = v.volumeUuid
                     bi.chap_username = v.chapUsername
                     bi.chap_password = v.chapPassword
-                    devices.append(bi.to_xmlobject())
+
+                    return bi.to_xmlobject()
 
                 def virtio_iscsi():
                     vi = VirtioIscsi()
@@ -1228,30 +1231,53 @@ class Vm(object):
                     vi.volume_uuid = v.volumeUuid
                     vi.chap_username = v.chapUsername
                     vi.chap_password = v.chapPassword
-                    devices.append(vi.to_xmlobject())
+
+                    return vi.to_xmlobject()
 
                 if virtio:
-                    virtio_iscsi()
+                    return virtio_iscsi()
                 else:
-                    blk_iscsi()
+                    return blk_iscsi()
 
             def ceph_volume(dev_letter, virtio):
                 def ceph_virtio():
                     vc = VirtioCeph()
                     vc.volume = v
                     vc.dev_letter = dev_letter
-                    devices.append(vc.to_xmlobject())
+                    return vc.to_xmlobject()
 
                 def ceph_blk():
                     ic = IdeCeph()
                     ic.volume = v
                     ic.dev_letter = dev_letter
-                    devices.append(ic.to_xmlobject())
+                    return ic.to_xmlobject()
 
                 if virtio:
-                    ceph_virtio()
+                    return ceph_virtio()
                 else:
-                    ceph_blk()
+                    return ceph_blk()
+
+            def volume_qos(volume_xml_obj):
+                if not cmd.addons:
+                    return
+
+                vol_qos = cmd.addons.get('VolumeQos')
+                if not vol_qos:
+                    return
+
+                qos = vol_qos.get(v.volumeUuid)
+                if not qos:
+                    return
+
+                if not qos.totalBandwidth and not qos.totalIops:
+                    return
+
+                iotune = e(volume_xml_obj, 'iotune')
+                if qos.totalBandwidth:
+                    e(iotune, 'total_bytes_sec', qos.totalBandwidth)
+                if qos.totalIops:
+                    e(iotune, 'total_iops_sec', qos.totalIops)
+
 
             for v in volumes:
                 if v.deviceId >= len(Vm.DEVICE_LETTERS):
@@ -1261,18 +1287,41 @@ class Vm(object):
                 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.deviceType == 'file':
-                    filebased_volume(dev_letter)
+                    vol = filebased_volume(dev_letter)
                 elif v.deviceType == 'iscsi':
-                    iscsibased_volume(dev_letter, v.useVirtio)
+                    vol = iscsibased_volume(dev_letter, v.useVirtio)
                 elif v.deviceType == 'ceph':
-                    ceph_volume(dev_letter, v.useVirtio)
+                    vol = ceph_volume(dev_letter, v.useVirtio)
                 else:
                     raise Exception('unknown volume deivceType: %s' % v.deviceType)
+
+                assert vol is not None, 'vol cannot be None'
+                volume_qos(vol)
+                devices.append(vol)
 
         def make_nics():
             if not cmd.nics:
                 return
-            
+
+            def nic_qos(nic_xml_object):
+                if not cmd.addons:
+                    return
+
+                nqos = cmd.addons.get('NicQos')
+                if not nqos:
+                    return
+
+                qos = nqos.get(nic.uuid)
+                if not qos:
+                    return
+
+                if not qos.outboundBandwidth:
+                    return
+
+                bandwidth = e(nic_xml_object, 'bandwidth')
+                if qos.outboundBandwidth:
+                    e(bandwidth, 'outbound', None, {'average': qos.outboundBandwidth})
+
             devices = elements['devices']
             for nic in cmd.nics:
                 interface = e(devices, 'interface', None, {'type':'bridge'})
@@ -1284,8 +1333,9 @@ class Vm(object):
                 else:
                     e(interface, 'model', None, {'type':'e1000'})
                 e(interface, 'target', None, {'dev':nic.nicInternalName})
-                #self._e(interface, 'model', None, {'type':'e1000'})
-        
+
+                nic_qos(interface)
+
         def make_meta():
             root = elements['root']
             e(root, 'name', cmd.vmInstanceUuid)
@@ -1316,7 +1366,7 @@ class Vm(object):
                 chan = e(devices, 'channel', None, {'type':'unix'})
                 e(chan, 'source', None, {'mode':'bind', 'path':channel.socketPath})
                 e(chan, 'target', None, {'type':'virtio', 'name':channel.targetName})
-        
+
         make_root()
         make_meta()
         make_cpu()
