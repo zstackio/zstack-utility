@@ -99,6 +99,8 @@ dhcp-hostsfile={{dhcp}}
 dhcp-optsfile={{option}}
 log-facility={{log}}
 interface={{bridge_name}}
+except-interface=lo
+bind-interfaces
 leasefile-ro
 {% for g in gateways -%}
 dhcp-range={{g}},static
