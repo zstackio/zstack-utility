@@ -1201,7 +1201,7 @@ class Vm(object):
             volumes.extend(cmd.dataVolumes)
 
             def filebased_volume(dev_letter):
-                disk = e(devices, 'disk', None, {'type':'file', 'device':'disk', 'snapshot':'external'})
+                disk = etree.Element('disk', {'type':'file', 'device':'disk', 'snapshot':'external'})
                 e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
                 e(disk, 'source', None, {'file':v.installPath})
                 if use_virtio:
