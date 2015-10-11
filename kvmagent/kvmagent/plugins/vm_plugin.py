@@ -1261,11 +1261,11 @@ class Vm(object):
                 if not cmd.addons:
                     return
 
-                vol_qos = cmd.addons.get('VolumeQos')
+                vol_qos = cmd.addons['VolumeQos']
                 if not vol_qos:
                     return
 
-                qos = vol_qos.get(v.volumeUuid)
+                qos = vol_qos[v.volumeUuid]
                 if not qos:
                     return
 
@@ -1307,11 +1307,11 @@ class Vm(object):
                 if not cmd.addons:
                     return
 
-                nqos = cmd.addons.get('NicQos')
+                nqos = cmd.addons['NicQos']
                 if not nqos:
                     return
 
-                qos = nqos.get(nic.uuid)
+                qos = nqos[nic.uuid]
                 if not qos:
                     return
 
