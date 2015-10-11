@@ -31,10 +31,6 @@ class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
     RELEASE_DHCP_PATH = "/flatnetworkprovider/dhcp/release"
 
-    DHCP_FILE = "/var/lib/zstack/dnsmasq/hosts.dhcp"
-    DHCP_LEASE_FILE = "/var/lib/zstack/dnsmasq/hosts.leases"
-    DHCP_OPTION_FILE = "/var/lib/zstack/dnsmasq/hosts.option"
-    DNS_FILE = "/var/lib/zstack/dnsmasq/hosts.dns"
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
 
     def __init__(self):
@@ -50,7 +46,31 @@ class Mevoco(kvmagent.KvmAgent):
         pass
 
     def _make_conf_path(self, bridge_name):
-        return os.path.join(self.DNSMASQ_CONF_FOLDER, bridge_name, 'dnsmasq.conf')
+        folder = os.path.join(self.DNSMASQ_CONF_FOLDER, bridge_name)
+        if not os.path.exists(folder):
+            shell.call('mkdir -p %s' % folder)
+
+        # the conf is created at the initializing time
+        conf = os.path.join(folder, 'dnsmasq.conf')
+
+        dhcp = os.path.join(folder, 'hosts.dhcp')
+        if not os.path.exists(dhcp):
+            shell.call('touch %s' % dhcp)
+
+        dns = os.path.join(folder, 'hosts.dns')
+        if not os.path.exists(dns):
+            shell.call('touch %s' % dns)
+
+        option = os.path.join(folder, 'hosts.option')
+        if not os.path.exists(option):
+            shell.call('touch %s' % option)
+
+        log = os.path.join(folder, 'dnsmasq.log')
+        if not os.path.exists(log):
+            shell.call('touch %s' % log)
+
+        return conf, dhcp, dns, option, log
+
 
     @lock.lock('dnsmasq')
     @kvmagent.replyerror
@@ -66,7 +86,7 @@ class Mevoco(kvmagent.KvmAgent):
             lst.append(d)
 
         def apply(bridge_name, dhcp):
-            conf_file_path = self._make_conf_path(bridge_name)
+            conf_file_path, dhcp_path, dns_path, option_path, log_path = self._make_conf_path(bridge_name)
 
             conf_file = '''\
 domain-needed
@@ -85,15 +105,12 @@ dhcp-range={{g}},static
 {% endfor -%}
 '''
             if not os.path.exists(conf_file_path) or cmd.rebuild:
-                folder_path = os.path.dirname(conf_file_path)
-                shell.call('mkdir -p %s' % folder_path)
                 with open(conf_file_path, 'w') as fd:
-                    log_path = os.path.join(folder_path, 'dnsmasq.log')
                     tmpt = Template(conf_file)
                     conf_file = tmpt.render({
-                        'dns': self.DNS_FILE,
-                        'dhcp': self.DHCP_FILE,
-                        'option': self.DHCP_OPTION_FILE,
+                        'dns': dns_path,
+                        'dhcp': dhcp_path,
+                        'option': option_path,
                         'log': log_path,
                         'bridge_name': bridge_name,
                         'gateways': [d.gateway for d in dhcp if d.gateway]
@@ -109,7 +126,7 @@ dhcp-range={{g}},static
                 info.append(dhcp_info)
 
                 if not cmd.rebuild:
-                    self._erase_configurations(d.mac, d.ip)
+                    self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
 
             dhcp_conf = '''\
 {% for d in dhcp -%}
@@ -127,7 +144,7 @@ dhcp-range={{g}},static
             if cmd.rebuild:
                 mode = 'w'
 
-            with open(self.DHCP_FILE, mode) as fd:
+            with open(dhcp_path, mode) as fd:
                 fd.write(dhcp_conf)
 
             option_conf = '''\
@@ -152,7 +169,7 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
             tmpt = Template(option_conf)
             option_conf = tmpt.render({'options': info})
 
-            with open(self.DHCP_OPTION_FILE, mode) as fd:
+            with open(option_path, mode) as fd:
                 fd.write(option_conf)
 
             hostname_conf = '''\
@@ -165,7 +182,7 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
             tmpt = Template(hostname_conf)
             hostname_conf = tmpt.render({'hostnames': info})
 
-            with open(self.DNS_FILE, mode) as fd:
+            with open(dns_path, mode) as fd:
                 fd.write(hostname_conf)
 
             if cmd.rebuild:
@@ -208,7 +225,7 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
         shell.call('kill -1 %s' % pid)
         self.signal_count += 1
 
-    def _erase_configurations(self, mac, ip):
+    def _erase_configurations(self, mac, ip, dhcp_path, dns_path, option_path):
         cmd = '''\
 sed -i '/{{mac}}/d' {{dhcp}};
 sed -i '/^$/d' {{dhcp}};
@@ -221,10 +238,10 @@ sed -i '/^$/d' {{dns}}
         context = {
             'tag': mac.replace(':', ''),
             'mac': mac,
-            'dhcp': self.DHCP_FILE,
-            'option': self.DHCP_OPTION_FILE,
+            'dhcp': dhcp_path,
+            'option': option_path,
             'ip': ip,
-            'dns': self.DNS_FILE,
+            'dns': dns_path,
             }
 
         cmd = tmpt.render(context)
@@ -244,10 +261,10 @@ sed -i '/^$/d' {{dns}}
             lst.append(d)
 
         def release(bridge_name, dhcp):
-            conf_file_path = self._make_conf_path(bridge_name)
+            conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(bridge_name)
 
             for d in dhcp:
-                self._erase_configurations(d.mac, d.ip)
+                self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
                 shell.call("dhcp_release %s %s %s" % (bridge_name, d.ip, d.mac))
                 self._restart_dnsmasq(conf_file_path)
 
