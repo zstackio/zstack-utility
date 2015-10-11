@@ -1274,9 +1274,9 @@ class Vm(object):
 
                 iotune = e(volume_xml_obj, 'iotune')
                 if qos.totalBandwidth:
-                    e(iotune, 'total_bytes_sec', qos.totalBandwidth)
+                    e(iotune, 'total_bytes_sec', str(qos.totalBandwidth))
                 if qos.totalIops:
-                    e(iotune, 'total_iops_sec', qos.totalIops)
+                    e(iotune, 'total_iops_sec', str(qos.totalIops))
 
 
             for v in volumes:
@@ -1320,7 +1320,7 @@ class Vm(object):
 
                 bandwidth = e(nic_xml_object, 'bandwidth')
                 if qos.outboundBandwidth:
-                    e(bandwidth, 'outbound', None, {'average': qos.outboundBandwidth})
+                    e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth)})
 
             devices = elements['devices']
             for nic in cmd.nics:
