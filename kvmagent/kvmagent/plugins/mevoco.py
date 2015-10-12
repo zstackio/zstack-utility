@@ -213,7 +213,7 @@ dhcp-range={{g}},static
                         'dhcp': dhcp_path,
                         'option': option_path,
                         'log': log_path,
-                        'iface_name': 'outer%s' % br_num,
+                        'iface_name': 'inner%s' % br_num,
                         'gateways': [d.gateway for d in dhcp if d.gateway]
                     })
 
