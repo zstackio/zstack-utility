@@ -26,9 +26,94 @@ class ApplyDhcpRsp(kvmagent.AgentResponse):
 class ReleaseDhcpRsp(kvmagent.AgentResponse):
     pass
 
+class PrepareDhcpRsp(kvmagent.AgentResponse):
+    pass
+
+class DhcpEnv(object):
+    def __init__(self):
+        self.bridge_name = None
+        self.dhcp_server_ip = None
+        self.dhcp_netmask = None
+
+    def prepare(self):
+        cmd = '''\
+BR_NAME={{bridge_name}}
+DHCP_IP={{dhcp_server_ip}}
+DHCP_NETMASK={{dhcp_netmask}}
+
+BR_NUM=`ip link show $BR_NAME | grep $BR_NAME | cut -d":" -f1`
+OUTER_DEV="outer$BR_NUM"
+INNER_DEV="inner$BR_NUM"
+
+exit_on_error() {
+    [ $? -ne 0 ] && exit 1
+}
+
+ip netns list | grep $BR_NAME > /dev/null
+if [ $? -ne 0 ]; then
+    ip netns add $BR_NAME
+    exit_on_error
+fi
+
+ip link | grep $OUTER_DEV > /dev/null
+if [ $? -ne 0 ]; then
+    ip link add $OUTER_DEV type veth peer name $INNER_DEV
+    exit_on_error
+    ip link set $OUTER_DEV up
+    exit_on_error
+fi
+
+brctl show $BR_NAME | grep $OUTER_DEV > /dev/null
+if [ $? -ne 0 ]; then
+    brctl addif $BR_NAME $OUTER_DEV
+    exit_on_error
+fi
+
+ip netns exec $BR_NAME ip link | grep $INNER_DEV > /dev/null
+if [ $? -ne 0 ]; then
+    ip link set $INNER_DEV netns $BR_NAME
+    exit_on_error
+fi
+
+ip netns exec $BR_NAME ip addr show $INNER_DEV | grep inet > /dev/null
+if [ $? -ne 0 ]; then
+    ip netns exec $BR_NAME ip addr add $DHCP_IP/$DHCP_NETMASK dev $INNER_DEV
+    ip netns exec $BR_NAME ip link set $INNER_DEV up
+    exit_on_error
+fi
+
+BR_PHY_DEV=`brctl show $BR_NAME  | grep $BR_NAME | sed 's/\s\s*/ /g' | cut -d' ' -f4`
+if [ x$BR_PHY_DEV == "x" ]; then
+   echo "cannot find the physical interface of the bridge $BR_NAME"
+   exit 1
+fi
+
+ebtables-save | grep "FORWARD -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
+if [ $? -ne 0 ]; then
+    ebtables -I FORWARD -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
+    exit_on_error
+fi
+
+ebtables-save | grep "FORWARD -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
+if [ $? -ne 0 ]; then
+    ebtables -I FORWARD -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP
+    exit_on_error
+fi
+
+exit 0
+'''
+        tmpt = Template(cmd)
+        cmd = tmpt.render({
+            'bridge_name': self.bridge_name,
+            'dhcp_server_ip': self.dhcp_server_ip,
+            'dhcp_netmask': self.dhcp_netmask
+        })
+
+        shell.call(cmd)
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
+    PREPARE_DHCP_PATH = "/flatnetworkprovider/dhcp/prepare"
     RELEASE_DHCP_PATH = "/flatnetworkprovider/dhcp/release"
 
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
@@ -41,6 +126,7 @@ class Mevoco(kvmagent.KvmAgent):
 
         http_server.register_async_uri(self.APPLY_DHCP_PATH, self.apply_dhcp)
         http_server.register_async_uri(self.RELEASE_DHCP_PATH, self.release_dhcp)
+        http_server.register_async_uri(self.PREPARE_DHCP_PATH, self.prepare_dhcp)
 
     def stop(self):
         pass
@@ -71,6 +157,17 @@ class Mevoco(kvmagent.KvmAgent):
 
         return conf, dhcp, dns, option, log
 
+    @lock.lock('prepare_dhcp')
+    @kvmagent.replyerror
+    def prepare_dhcp(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        p = DhcpEnv()
+        p.bridge_name = cmd.bridgeName
+        p.dhcp_server_ip = cmd.dhcpServerIp
+        p.dhcp_netmask = cmd.dhcpNetmask
+        p.prepare()
+
+        return jsonobject.dumps(PrepareDhcpRsp())
 
     @lock.lock('dnsmasq')
     @kvmagent.replyerror
@@ -188,10 +285,9 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
                 fd.write(hostname_conf)
 
             if cmd.rebuild:
-                self._restart_dnsmasq(conf_file_path)
+                self._restart_dnsmasq(bridge_name, conf_file_path)
             else:
-                self._refresh_dnsmasq(conf_file_path)
-
+                self._refresh_dnsmasq(bridge_name, conf_file_path)
 
         for k, v in bridge_dhcp.iteritems():
             apply(k, v)
@@ -199,12 +295,17 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
         rsp = ApplyDhcpRsp()
         return jsonobject.dumps(rsp)
 
-    def _restart_dnsmasq(self, conf_file_path):
+    def _restart_dnsmasq(self, ns_name, conf_file_path):
         pid = linux.find_process_by_cmdline([conf_file_path])
         if pid:
             linux.kill_process(pid)
 
-        shell.call('/sbin/dnsmasq --conf-file=%s | /usr/sbin/dnsmasq --conf-file=%s' % (conf_file_path, conf_file_path))
+        cmd = '''\
+ip netns exec {{ns_name}} /sbin/dnsmasq --conf-file={{conf_file}} || ip netns exec {{ns_name}} /usr/sbin/dnsmasq --conf-file={{conf_file}}
+'''
+        tmpt = Template(cmd)
+        cmd = tmpt.render({'ns_name': ns_name, 'conf_file': conf_file_path})
+        shell.call(cmd)
 
         def check(_):
             pid = linux.find_process_by_cmdline([conf_file_path])
@@ -213,14 +314,14 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
         if not linux.wait_callback_success(check, None, 5):
             raise Exception('dnsmasq[conf-file:%s] is not running after being started %s seconds' % (conf_file_path, 5))
 
-    def _refresh_dnsmasq(self, conf_file_path):
+    def _refresh_dnsmasq(self, ns_name, conf_file_path):
         pid = linux.find_process_by_cmdline([conf_file_path])
         if not pid:
-            self._restart_dnsmasq(conf_file_path)
+            self._restart_dnsmasq(ns_name, conf_file_path)
             return
 
         if self.signal_count > 50:
-            self._restart_dnsmasq(conf_file_path)
+            self._restart_dnsmasq(ns_name, conf_file_path)
             self.signal_count = 0
             return
 
@@ -267,8 +368,8 @@ sed -i '/^$/d' {{dns}}
 
             for d in dhcp:
                 self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
-                shell.call("dhcp_release %s %s %s" % (bridge_name, d.ip, d.mac))
-                self._restart_dnsmasq(conf_file_path)
+                shell.call("which dhcp_release &>/dev/null && dhcp_release %s %s %s" % (bridge_name, d.ip, d.mac))
+                self._restart_dnsmasq(bridge_name, conf_file_path)
 
         for k, v in bridge_dhcp.iteritems():
             release(k, v)
