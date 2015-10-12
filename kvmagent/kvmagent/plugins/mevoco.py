@@ -55,6 +55,13 @@ if [ $? -ne 0 ]; then
     exit_on_error
 fi
 
+# in case the namespace deleted and the orphan outer link leaves in the system,
+# deleting the orphan link and recreate it
+ip netns exec $BR_NAME ip link | grep $INNER_DEV > /dev/null
+if [ $? -ne 0 ]; then
+   ip link del $OUTER_DEV &> /dev/null
+fi
+
 ip link | grep $OUTER_DEV > /dev/null
 if [ $? -ne 0 ]; then
     ip link add $OUTER_DEV type veth peer name $INNER_DEV
