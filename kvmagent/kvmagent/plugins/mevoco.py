@@ -210,21 +210,31 @@ leasefile-ro
 dhcp-range={{g}},static
 {% endfor -%}
 '''
+
+            br_num = shell.call('ip link show %s | grep %s | cut -d":" -f1' % (bridge_name, bridge_name))
+            br_num = br_num.strip('\t\n\r ')
+            tmpt = Template(conf_file)
+            conf_file = tmpt.render({
+                'dns': dns_path,
+                'dhcp': dhcp_path,
+                'option': option_path,
+                'log': log_path,
+                'iface_name': 'inner%s' % br_num,
+                'gateways': [d.gateway for d in dhcp if d.gateway]
+            })
+
+            restart_dnsmasq = cmd.rebuild
             if not os.path.exists(conf_file_path) or cmd.rebuild:
-                br_num = shell.call('ip link show %s | grep %s | cut -d":" -f1' % (bridge_name, bridge_name))
-
                 with open(conf_file_path, 'w') as fd:
-                    tmpt = Template(conf_file)
-                    conf_file = tmpt.render({
-                        'dns': dns_path,
-                        'dhcp': dhcp_path,
-                        'option': option_path,
-                        'log': log_path,
-                        'iface_name': 'inner%s' % br_num,
-                        'gateways': [d.gateway for d in dhcp if d.gateway]
-                    })
-
                     fd.write(conf_file)
+            else:
+                if not restart_dnsmasq:
+                    with open(conf_file_path, 'r') as fd:
+                        c = fd.read()
+                        if c != conf_file:
+                            log.debug('dnsmasq configure file for bridge[%s] changed, restart it' % bridge_name)
+                            restart_dnsmasq = True
+
 
             info = []
             for d in dhcp:
@@ -293,7 +303,7 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
             with open(dns_path, mode) as fd:
                 fd.write(hostname_conf)
 
-            if cmd.rebuild:
+            if restart_dnsmasq:
                 self._restart_dnsmasq(bridge_name, conf_file_path)
             else:
                 self._refresh_dnsmasq(bridge_name, conf_file_path)
