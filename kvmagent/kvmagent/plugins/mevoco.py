@@ -229,10 +229,11 @@ dhcp-range={{g}},static
                     fd.write(conf_file)
             else:
                 if not restart_dnsmasq:
-                    with open(conf_file_path, 'r') as fd:
+                    with open(conf_file_path, 'r+') as fd:
                         c = fd.read()
                         if c != conf_file:
                             logger.debug('dnsmasq configure file for bridge[%s] changed, restart it' % bridge_name)
+                            fd.write(conf_file)
                             restart_dnsmasq = True
 
 
