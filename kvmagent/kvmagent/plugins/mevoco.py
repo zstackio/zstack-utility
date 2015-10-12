@@ -204,7 +204,7 @@ dhcp-range={{g}},static
 {% endfor -%}
 '''
             if not os.path.exists(conf_file_path) or cmd.rebuild:
-                br_num = shell.call('ip link show $BR_NAME | grep $BR_NAME | cut -d":" -f1')
+                br_num = shell.call('ip link show %s | grep %s | cut -d":" -f1' % (bridge_name, bridge_name))
 
                 with open(conf_file_path, 'w') as fd:
                     tmpt = Template(conf_file)
