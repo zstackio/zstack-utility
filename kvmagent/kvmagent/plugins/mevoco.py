@@ -195,7 +195,7 @@ dhcp-lease-max=65535
 dhcp-hostsfile={{dhcp}}
 dhcp-optsfile={{option}}
 log-facility={{log}}
-interface={{bridge_name}}
+interface={{iface_name}}
 except-interface=lo
 bind-interfaces
 leasefile-ro
@@ -204,6 +204,8 @@ dhcp-range={{g}},static
 {% endfor -%}
 '''
             if not os.path.exists(conf_file_path) or cmd.rebuild:
+                br_num = shell.call('ip link show $BR_NAME | grep $BR_NAME | cut -d":" -f1')
+
                 with open(conf_file_path, 'w') as fd:
                     tmpt = Template(conf_file)
                     conf_file = tmpt.render({
@@ -211,7 +213,7 @@ dhcp-range={{g}},static
                         'dhcp': dhcp_path,
                         'option': option_path,
                         'log': log_path,
-                        'bridge_name': bridge_name,
+                        'iface_name': 'outer%s' % br_num,
                         'gateways': [d.gateway for d in dhcp if d.gateway]
                     })
 
