@@ -389,7 +389,7 @@ sed -i '/^$/d' {{dns}}
 
             for d in dhcp:
                 self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
-                shell.call("(which dhcp_release &>/dev/null && dhcp_release %s %s %s) || true" % (bridge_name, d.ip, d.mac))
+                #shell.call("(which dhcp_release &>/dev/null && dhcp_release %s %s %s) || true" % (bridge_name, d.ip, d.mac))
                 self._restart_dnsmasq(bridge_name, conf_file_path)
 
         for k, v in bridge_dhcp.iteritems():
