@@ -22,11 +22,16 @@ logger = log.get_logger(__name__)
 class ApplyDhcpRsp(kvmagent.AgentResponse):
     pass
 
-
 class ReleaseDhcpRsp(kvmagent.AgentResponse):
     pass
 
 class PrepareDhcpRsp(kvmagent.AgentResponse):
+    pass
+
+class ApplyUserdataRsp(kvmagent.AgentResponse):
+    pass
+
+class ReleaseUserdataRsp(kvmagent.AgentResponse):
     pass
 
 class DhcpEnv(object):
@@ -123,7 +128,12 @@ class Mevoco(kvmagent.KvmAgent):
     PREPARE_DHCP_PATH = "/flatnetworkprovider/dhcp/prepare"
     RELEASE_DHCP_PATH = "/flatnetworkprovider/dhcp/release"
 
+    APPLY_USER_DATA = "/flatnetworkprovider/userdata/apply"
+    RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
+
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
+
+    USERDATA_ROOT = "/var/lib/zstack/userdata/"
 
     def __init__(self):
         self.signal_count = 0
@@ -134,9 +144,95 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.APPLY_DHCP_PATH, self.apply_dhcp)
         http_server.register_async_uri(self.RELEASE_DHCP_PATH, self.release_dhcp)
         http_server.register_async_uri(self.PREPARE_DHCP_PATH, self.prepare_dhcp)
+        http_server.register_async_uri(self.APPLY_USER_DATA, self.apply_userdata)
+        http_server.register_async_uri(self.RELEASE_USER_DATA, self.release_userdata)
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def apply_userdata(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        conf_folder = os.path.join(self.USERDATA_ROOT, cmd.bridgeName)
+        if not os.path.exists(conf_folder):
+            shell.call('mkdir -p ' % conf_folder)
+
+        conf_path = os.path.join(conf_folder, 'lighttpd.conf')
+        http_root = os.path.join(conf_folder, 'html')
+
+        def write_conf():
+            conf = '''\
+server.document-root = "{{http_root}}"
+
+server.port = 80
+server.bind = "{{dhcp_server_ip}}"
+dir-listing.activate = "enable"
+index-file.names = ( "index.html" )
+
+server.modules += ( "mod_rewrite" )
+
+$HTTP["remoteip"] =~ "^(.*)$" {
+    url.rewrite-once = (
+        "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
+        "^/.*/meta-data$" => "../%1/meta-data",
+        "^/.*/meta-data/$" => "../%1/meta-data/",
+        "^/.*/user-data$" => "../%1/user-data"
+    )
+}
+
+mimetype.assign = (
+  ".html" => "text/html",
+  ".txt" => "text/plain",
+  ".jpg" => "image/jpeg",
+  ".png" => "image/png"
+)'''
+
+            tmpt = Template(conf)
+            conf = tmpt.render({
+                'http_root': http_root,
+                'dhcp_server_ip': cmd.dhcpServerIp
+            })
+
+            with open(conf_path, 'w') as fd:
+                fd.write(conf)
+
+        if not os.path.exists(conf_path):
+            write_conf()
+
+        root = os.path.join(http_root, cmd.vmIp)
+        meta_root = os.path.join(root, 'meta-data')
+        index_file_path = os.path.join(meta_root, 'index.html')
+        with open(index_file_path, 'w') as fd:
+            fd.write('instance-id')
+
+        instance_id_file_path = os.path.join(meta_root, 'instance-id')
+        with open(instance_id_file_path, 'w') as fd:
+            fd.write(cmd.metadata.vmUuid)
+
+        userdata_file_path = os.path.join(root, 'user-data')
+        with open(userdata_file_path, 'w') as fd:
+            fd.write(cmd.userdata)
+
+        pid = linux.find_process_by_cmdline([conf_path])
+        if not pid:
+            shell.call('ip netns exec %s lighttpd -f %s' % (cmd.bridgeName, conf_path))
+
+            def check(_):
+                pid = linux.find_process_by_cmdline([conf_path])
+                return pid is not None
+
+            if not linux.wait_callback_success(check, None, 5):
+                raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
+
+        return jsonobject.dumps(ApplyUserdataRsp())
+
+    @kvmagent.replyerror
+    def release_userdata(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        html_folder = os.path.join(self.USERDATA_ROOT, cmd.bridgeName, 'html', cmd.vmIp)
+        shell.call('rm -rf %s' % html_folder)
+        return jsonobject.dumps(ReleaseUserdataRsp())
 
     def _make_conf_path(self, bridge_name):
         folder = os.path.join(self.DNSMASQ_CONF_FOLDER, bridge_name)
