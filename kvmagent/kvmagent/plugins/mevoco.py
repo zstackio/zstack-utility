@@ -202,6 +202,9 @@ mimetype.assign = (
 
         root = os.path.join(http_root, cmd.vmIp)
         meta_root = os.path.join(root, 'meta-data')
+        if not os.path.exists(meta_root):
+            shell.call('mkdir -p %s' % meta_root)
+
         index_file_path = os.path.join(meta_root, 'index.html')
         with open(index_file_path, 'w') as fd:
             fd.write('instance-id')
