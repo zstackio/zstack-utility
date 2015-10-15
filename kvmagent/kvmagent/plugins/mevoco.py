@@ -213,6 +213,9 @@ mimetype.assign = (
         with open(instance_id_file_path, 'w') as fd:
             fd.write(cmd.metadata.vmUuid)
 
+        if not cmd.userdata:
+            cmd.userdata = ''
+
         userdata_file_path = os.path.join(root, 'user-data')
         with open(userdata_file_path, 'w') as fd:
             fd.write(cmd.userdata)
