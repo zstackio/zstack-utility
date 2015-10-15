@@ -156,7 +156,7 @@ class Mevoco(kvmagent.KvmAgent):
 
         conf_folder = os.path.join(self.USERDATA_ROOT, cmd.bridgeName)
         if not os.path.exists(conf_folder):
-            shell.call('mkdir -p ' % conf_folder)
+            shell.call('mkdir -p %s' % conf_folder)
 
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         http_root = os.path.join(conf_folder, 'html')
