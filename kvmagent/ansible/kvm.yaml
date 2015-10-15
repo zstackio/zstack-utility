@@ -35,6 +35,7 @@
         - libvirt-client
         - net-tools
         - iscsi-initiator-utils
+        - lighttpd
 
     - name: install kvm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
@@ -49,6 +50,7 @@
         - vlan
         - nfs-common
         - open-iscsi
+        - lighttpd
 
     - name: RHEL7 specific packages
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
