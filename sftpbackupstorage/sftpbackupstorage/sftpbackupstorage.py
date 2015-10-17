@@ -8,6 +8,7 @@ from zstacklib.utils import log
 from zstacklib.utils import jsonobject
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
+from zstacklib.utils import shell
 from zstacklib.utils import daemon
 import functools
 import traceback
@@ -130,6 +131,7 @@ class SftpBackupStorageAgent(object):
     IMAGE_ISO = 'iso'
     URL_HTTP = 'http'
     URL_HTTPS = 'https'
+    URL_FILE = 'file'
     URL_NFS = 'nfs'
     PORT = 7171
     SSHKEY_PATH = "~/.ssh/id_rsa.sftp"
@@ -198,7 +200,7 @@ class SftpBackupStorageAgent(object):
         
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DownloadResponse()
-        supported_schemes = [self.URL_HTTP, self.URL_HTTPS]
+        supported_schemes = [self.URL_HTTP, self.URL_HTTPS, self.URL_FILE]
         if cmd.urlScheme not in supported_schemes:
             rsp.success = False
             rsp.error = 'unsupported url scheme[%s], SimpleSftpBackupStorage only supports %s' % (cmd.urlScheme, supported_schemes)
@@ -223,7 +225,14 @@ class SftpBackupStorageAgent(object):
                 rsp.success = False
                 rsp.error = str(e)
                 return jsonobject.dumps(rsp)
-            
+        elif cmd.urlScheme == self.URL_FILE:
+            src_path = cmd.url.lstrip('file:')
+            src_path = os.path.normpath(src_path)
+            if not os.path.isfile(src_path):
+                raise Exception('cannot find the file[%s]' % src_path)
+
+            shell.call('mv %s %s' % (src_path, install_path))
+
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
