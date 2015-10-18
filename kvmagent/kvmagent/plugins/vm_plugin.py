@@ -1003,6 +1003,9 @@ class Vm(object):
             e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
+
+        logger.debug('attaching ISO to the vm[uuid:%s]:\n%s' % (self.uuid, xml))
+
         self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
         def check(_):
             me = get_vm_by_uuid(self.uuid)
@@ -1016,10 +1019,7 @@ class Vm(object):
                             (iso.path, cmd.vmUuid))
 
     def detach_iso(self, cmd):
-        cdrom = etree.Element('disk', {'type':'file', 'device':'cdrom'})
-        e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
-        e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
-        e(cdrom, 'readonly', None)
+        cdrom = None
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if disk.device_ == "cdrom":
                 cdrom = disk
@@ -1028,7 +1028,15 @@ class Vm(object):
         if not cdrom:
             return
 
+        cdrom = etree.Element('disk', {'type':'file', 'device':'cdrom'})
+        e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
+        e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
+        e(cdrom, 'readonly', None)
+
         xml = etree.tostring(cdrom)
+
+        logger.debug('detaching ISO from the vm[uuid:%s]:\n%s' % (self.uuid, xml))
+
         try:
             self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
         except libvirt.libvirtError as ex:
