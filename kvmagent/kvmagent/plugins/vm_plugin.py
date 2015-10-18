@@ -1047,8 +1047,9 @@ class Vm(object):
                                 ', please umount it first' % self.uuid)
 
         def check(_):
-            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                if disk.device_ == "cdrom":
+            me = get_vm_by_uuid(self.uuid)
+            for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                if disk.device_ == "cdrom" and disk.source.file__:
                     return False
             return True
 
