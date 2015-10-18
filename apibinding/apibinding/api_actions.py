@@ -148,6 +148,18 @@ class StopVmInstanceAction(inventory.APIStopVmInstanceMsg):
         self.out = evt
         return self.out
 
+class AttachIsoToVmInstanceAction(inventory.APIAttachIsoToVmInstanceMsg):
+    def __init__(self):
+        super(AttachIsoToVmInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachIsoToVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeInstanceOfferingAction(inventory.APIChangeInstanceOfferingMsg):
     def __init__(self):
         super(ChangeInstanceOfferingAction, self).__init__()
@@ -244,6 +256,18 @@ class DetachL3NetworkFromVmAction(inventory.APIDetachL3NetworkFromVmMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DetachL3NetworkFromVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DetachIsoFromVmInstanceAction(inventory.APIDetachIsoFromVmInstanceMsg):
+    def __init__(self):
+        super(DetachIsoFromVmInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachIsoFromVmInstanceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

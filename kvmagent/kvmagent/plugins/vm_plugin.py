@@ -969,6 +969,75 @@ class Vm(object):
             raise Exception("vm[uuid:%s] seems hang, its process[pid:%s] up-time is not increasing after %s seconds" %
                             (self.uuid, vm_pid, 60))
 
+    def attach_iso(self, cmd):
+        iso = cmd.iso
+        if iso.path.startswith('http'):
+            cdrom = etree.Element('disk', {'type':'network', 'device':'cdrom'})
+            e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
+            hostname, path = iso.path.lstrip('http://').split('/', 1)
+            source = e(cdrom, 'source', None, {'protocol':'http', 'name':path})
+            e(source, 'host', None, {'name':hostname, 'port':'80'})
+            e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
+            e(cdrom, 'readonly', None)
+        elif iso.path.startswith('iscsi'):
+            bi = BlkIscsi()
+            bi.target = iso.target
+            bi.lun = iso.lun
+            bi.server_hostname = iso.hostname
+            bi.server_port = iso.port
+            bi.device_letter = 'hdc'
+            bi.volume_uuid = iso.imageUuid
+            bi.chap_username = iso.chapUsername
+            bi.chap_password = iso.chapPassword
+            bi.is_cdrom = True
+            cdrom = bi.to_xmlobject()
+        elif iso.path.startswith('ceph'):
+            ic = IsoCeph()
+            ic.iso = iso
+            cdrom = ic.to_xmlobject()
+        else:
+            cdrom = etree.Element('disk', {'type':'file', 'device':'cdrom'})
+            e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
+            e(cdrom, 'source', None, {'file':iso.path})
+            e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
+            e(cdrom, 'readonly', None)
+
+        xml = etree.tostring(cdrom)
+        self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        def check(_):
+            me = get_vm_by_uuid(self.uuid)
+            for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                if disk.device_ == "cdrom":
+                    return True
+            return False
+
+        if not linux.wait_callback_success(check, None, 30, 1):
+            raise Exception('cannot attach the iso[%s] for the VM[uuid:%s]. The device is not present after 30s' %
+                            (iso.path, cmd.vmUuid))
+
+    def detach_iso(self, cmd):
+        cdrom = None
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if disk.device_ == "cdrom":
+                cdrom = disk
+                break
+
+        if not cdrom:
+            return
+
+        xml = etree.tostring(cdrom)
+        self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+
+        def check(_):
+            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                if disk.device_ == "cdrom":
+                    return False
+            return True
+
+        if not linux.wait_callback_success(check, None, 30, 1):
+            raise Exception('cannot detach the cdrom from the VM[uuid:%s]. The device is still present after 30s' %
+                            self.uuid)
+
     @linux.retry(times=3, sleep_time=5)
     def _attach_nic(self, cmd):
         def check_device(_):
@@ -1406,6 +1475,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_NIC_PATH = "/vm/attachnic"
     KVM_DETACH_NIC_PATH = "/vm/detachnic"
     KVM_CREATE_SECRET = "/vm/createcephsecret"
+    KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
+    KVM_DETACH_ISO_PATH = "/vm/iso/detach"
 
     def _start_vm(self, cmd):
         try:
@@ -1435,6 +1506,24 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.debug('clean up defunct vnic chain[%s]' % chain.name)
             return True
         return False
+
+    @kvmagent.replyerror
+    def attach_iso(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm.attach_iso(cmd)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def detach_iso(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm.detach_iso(cmd)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def attach_nic(self, req):
@@ -1737,6 +1826,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_VM_SYNC_PATH, self.vm_sync)
         http_server.register_async_uri(self.KVM_ATTACH_VOLUME, self.attach_data_volume)
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)
+        http_server.register_async_uri(self.KVM_ATTACH_ISO_PATH, self.attach_iso)
+        http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
