@@ -1228,11 +1228,15 @@ class Vm(object):
             elements['devices'] = devices
         
         def make_cdrom():
+            devices = elements['devices']
             if not cmd.bootIso:
+                cdrom = e(devices, 'disk', None, {'type':'file', 'device':'cdrom'})
+                e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
+                e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
+                e(cdrom, 'readonly', None)
                 return
 
             iso = cmd.bootIso
-            devices = elements['devices']
             if iso.path.startswith('http'):
                 cdrom = e(devices, 'disk', None, {'type':'network', 'device':'cdrom'})
                 e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
