@@ -1003,7 +1003,7 @@ class Vm(object):
             e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
-        self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
         def check(_):
             me = get_vm_by_uuid(self.uuid)
             for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -1016,7 +1016,10 @@ class Vm(object):
                             (iso.path, cmd.vmUuid))
 
     def detach_iso(self, cmd):
-        cdrom = None
+        cdrom = etree.Element('disk', {'type':'file', 'device':'cdrom'})
+        e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
+        e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
+        e(cdrom, 'readonly', None)
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if disk.device_ == "cdrom":
                 cdrom = disk
@@ -1026,7 +1029,14 @@ class Vm(object):
             return
 
         xml = etree.tostring(cdrom)
-        self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        try:
+            self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        except libvirt.libvirtError as ex:
+            err = str(ex)
+            logger.warn('unable to detach the iso from the VM[uuid:%s], %s' % (self.uuid, err))
+            if 'is locked' in err and 'eject' in err:
+                raise Exception('unable to detach the iso from the VM[uuid:%s]. It seems the ISO is still mounted in the operating system'
+                                ', please umount it first' % self.uuid)
 
         def check(_):
             for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
