@@ -54,7 +54,7 @@ exit_on_error() {
     [ $? -ne 0 ] && exit 1
 }
 
-ip netns list | grep $BR_NAME > /dev/null
+ip netns list | grep "^$BR_NAME$" > /dev/null
 if [ $? -ne 0 ]; then
     ip netns add $BR_NAME
     exit_on_error
