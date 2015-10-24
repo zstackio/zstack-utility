@@ -35,6 +35,11 @@ class RebaseAndMergeSnapshotsRsp(AgentResponse):
         super(RebaseAndMergeSnapshotsRsp, self).__init__()
         self.size = None
 
+class CheckBitsRsp(AgentResponse):
+    def __init__(self):
+        super(CheckBitsRsp, self).__init__()
+        self.existing = False
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
 
     INIT_PATH = "/localstorage/init";
@@ -49,6 +54,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase";
     OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge";
     CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
+    CHECK_BITS_PATH = "/localstorage/checkbits"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -64,6 +70,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_AND_REBASE_SNAPSHOT_PATH, self.merge_and_rebase_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_PATH, self.offline_merge_snapshot)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME, self.create_template_from_volume)
+        http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
 
         self.path = None
 
@@ -72,6 +79,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
+
+    @kvmagent.replyerror
+    def check_bits(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckBitsRsp()
+        rsp.existing = os.path.exists(cmd.path)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
