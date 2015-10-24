@@ -655,16 +655,16 @@ class Vm(object):
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
                         if volume.deviceType == 'iscsi':
                             if volume.useVirtio:
-                                if disk.source.name__ and disk.source.name_ in volume.installPath:
+                                if xmlobject.has_element(disk, 'source.name') and disk.source.name_ in volume.installPath:
                                     return True
                             else:
-                                if disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
+                                if xmlobject.has_element(disk, 'source.dev') and volume.volumeUuid in disk.source.dev_:
                                     return True
                         elif volume.deviceType == 'file':
-                            if disk.source.file__ and disk.source.file_ == volume.installPath:
+                            if xmlobject.has_element(disk, 'source.file') and disk.source.file_ == volume.installPath:
                                 return True
                         elif volume.deviceType == 'ceph':
-                            if disk.source.name__ and disk.source.name_ in volume.installPath:
+                            if xmlobject.has_element(disk, 'source.name') and disk.source.name_ in volume.installPath:
                                 return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
@@ -736,20 +736,20 @@ class Vm(object):
                     me = get_vm_by_uuid(self.uuid)
                     for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
                         if volume.deviceType == 'file':
-                            if disk.source.file__ and disk.source.file_ == volume.installPath:
+                            if xmlobject.has_element(disk, 'source.file') and disk.source.file_ == volume.installPath:
                                 logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
                                 return False
                         elif volume.deviceType == 'iscsi':
                             if volume.useVirtio:
-                                if disk.source.name__ and disk.source.name_ in volume.installPath:
+                                if xmlobject.has_element(disk, 'source.name') and disk.source.name_ in volume.installPath:
                                     logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
                                     return False
                             else:
-                                if disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
+                                if xmlobject.has_element(disk, 'source.dev') and volume.volumeUuid in disk.source.dev_:
                                     logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
                                     return False
                         elif volume.deviceType == 'ceph':
-                                if disk.source.name__ and disk.source.name_ in volume.installPath:
+                                if xmlobject.has_element(disk, 'source.name') and disk.source.name_ in volume.installPath:
                                     logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
                                     return False
 
