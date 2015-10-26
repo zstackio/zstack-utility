@@ -929,13 +929,7 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
 
         try:
-            self.domain.migrateToURI2(destUrl, tcpUri, None,
-                                      libvirt.VIR_MIGRATE_LIVE|
-                                      libvirt.VIR_MIGRATE_PEER2PEER|
-                                      libvirt.VIR_MIGRATE_UNDEFINE_SOURCE|
-                                      libvirt.VIR_MIGRATE_PERSIST_DEST |
-                                      libvirt.VIR_MIGRATE_TUNNELLED,
-                                      None, 0)
+            self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
             raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
