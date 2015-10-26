@@ -915,9 +915,19 @@ class Vm(object):
         else:
             return take_delta_snapshot()
 
-    def migrate(self, destHostIp):
+    def migrate(self, cmd):
+        destHostIp = cmd.destHostIp
         destUrl = "qemu+tcp://{0}/system".format(destHostIp)
         tcpUri = "tcp://{0}".format(destHostIp)
+        flag = (libvirt.VIR_MIGRATE_LIVE|
+                libvirt.VIR_MIGRATE_PEER2PEER|
+                libvirt.VIR_MIGRATE_UNDEFINE_SOURCE|
+                libvirt.VIR_MIGRATE_PERSIST_DEST |
+                libvirt.VIR_MIGRATE_TUNNELLED)
+
+        if cmd.withStorage:
+            flag |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
+
         try:
             self.domain.migrateToURI2(destUrl, tcpUri, None,
                                       libvirt.VIR_MIGRATE_LIVE|
@@ -1705,7 +1715,7 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = MigrateVmResponse()
         try:
             vm = get_vm_by_uuid(cmd.vmUuid)
-            vm.migrate(cmd.destHostIp)
+            vm.migrate(cmd)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
