@@ -925,8 +925,10 @@ class Vm(object):
                 libvirt.VIR_MIGRATE_PERSIST_DEST |
                 libvirt.VIR_MIGRATE_TUNNELLED)
 
-        if cmd.withStorage:
+        if cmd.withStorage == 'FullCopy':
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
+        elif cmd.withStorage == 'IncCopy':
+            flag |= libvirt.VIR_MIGRATE_NON_SHARED_INC
 
         try:
             self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)

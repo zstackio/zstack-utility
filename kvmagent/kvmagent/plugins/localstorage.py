@@ -55,6 +55,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge";
     CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
     CHECK_BITS_PATH = "/localstorage/checkbits"
+    REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH = "/localstorage/volume/rebaserootvolumetobackingfile"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -71,6 +72,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.OFFLINE_MERGE_PATH, self.offline_merge_snapshot)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME, self.create_template_from_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
+        http_server.register_async_uri(self.REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH, self.rebase_root_volume_to_backing_file)
 
         self.path = None
 
@@ -165,6 +167,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def rebase_root_volume_to_backing_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        linux.qcow2_rebase_no_check(cmd.backingFilePath, cmd.rootVolumePath)
+        return jsonobject.dumps(AgentResponse())
 
     @kvmagent.replyerror
     def init(self, req):
