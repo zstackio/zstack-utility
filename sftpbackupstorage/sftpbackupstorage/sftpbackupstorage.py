@@ -231,7 +231,7 @@ class SftpBackupStorageAgent(object):
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
 
-            shell.call('mv %s %s' % (src_path, install_path))
+            shell.call('yes | cp %s %s' % (src_path, install_path))
 
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
