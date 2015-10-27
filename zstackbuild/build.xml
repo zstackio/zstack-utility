@@ -79,8 +79,8 @@
     </target>
 
     <target name="copy-centos6-repo" >
-        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6.bin" />
-        <copydir src="${centos6.repo.dir}" dest="${pypi.parent.dir}/repo/" />
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6-${product.version}.bin" />
+        <copydir src="${centos6.repo.dir}" dest="${pypi.parent.dir}/centos6_repo/" />
         <makeDir dir="${libs.dir}" />
         <copy todir="${libs.dir}" overwrite="true" >
             <fileset dir="${centos6.repo.dir}">
@@ -90,8 +90,8 @@
     </target>
 
     <target name="copy-centos7-repo" >
-        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7.bin" />
-        <copydir src="${centos7.repo.dir}" dest="${pypi.parent.dir}/repo" />
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7-${product.version}.bin" />
+        <copydir src="${centos7.repo.dir}" dest="${pypi.parent.dir}/centos7_repo" />
         <makeDir dir="${libs.dir}" />
         <copy todir="${libs.dir}" overwrite="true" >
             <fileset dir="${centos7.repo.dir}">

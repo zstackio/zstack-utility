@@ -22,7 +22,7 @@
 
     - name: install kvm related packages on RedHat based OS
       when: ansible_os_family == 'RedHat'
-      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq; yum clean metadata
 
     - name: install kvm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
@@ -42,7 +42,7 @@
 
     - name: RHEL7 specific packages
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y iptables-services
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y iptables-services; yum clean metadata
 
     - name: disable firewalld in RHEL7 and Centos7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'

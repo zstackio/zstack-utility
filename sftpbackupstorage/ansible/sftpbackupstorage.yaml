@@ -21,7 +21,7 @@
 
     - name: install sftp backup storage related packages on RedHat based OS
       when: ansible_os_family == 'CentOS' or ansible_os_family == 'RedHat' or ansible_os_family == 'Fedora'
-      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y openssh-clients
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y openssh-clients; yum clean metadata
 
     - name: install sftp backup storage related packages on Debian based OS
       when: ansible_os_family == 'Debian'

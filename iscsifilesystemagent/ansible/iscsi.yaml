@@ -20,7 +20,7 @@
 
     - name: install isci related packages on RedHat based OS
       when: ansible_os_family == 'RedHat'
-      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y wget qemu-img scsi-target-utils
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y wget qemu-img scsi-target-utils; yum clean metadata
 
     - name: install isci related packages on Debian based OS
       when: ansible_os_family == 'Debian'
@@ -34,7 +34,7 @@
 
     - name: RHEL7 specific packages
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y iptables-services
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y iptables-services; yum clean metadata
 
     - name: disable firewalld in RHEL7 and Centos7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'

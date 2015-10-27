@@ -9,7 +9,7 @@
 
 - name: install libselinux-python, since next step might use it.
   when: ansible_os_family == 'RedHat'
-  shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y  libselinux-python python-devel python-setuptools python-pip gcc autoconf
+  shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y  libselinux-python python-devel python-setuptools python-pip gcc autoconf; yum clean metadata
 
 - name: install dependency packages for Debian based OS
   when: ansible_os_family == 'Debian'

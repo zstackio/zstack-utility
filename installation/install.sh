@@ -40,6 +40,7 @@ ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
 ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 zstack_local_repo_file=/etc/yum.repos.d/zstack-local.repo
+PRODUCT_TITLE_FILE='./product_title_file'
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
 
@@ -1112,6 +1113,9 @@ echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 #Set ZSTACK_HOME for zstack-ctl.
 export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
 
+if [ -f $PRODUCT_TITLE_FILE ]; then
+    cat $PRODUCT_TITLE_FILE
+else
 echo ""
 echo_star_line
 echo ' _________ _____  _    ____ _  __'
@@ -1137,6 +1141,7 @@ echo '                                                                   '
 echo_star_line
 sleep 0.3
 echo ""
+fi
 
 #set http_proxy if needed
 if [ ! -z $HTTP_PROXY ]; then
