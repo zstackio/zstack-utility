@@ -1,5 +1,5 @@
 #!/bin/bash
-# ZStack All-In-One Installer
+# Mevoco Installer
 # Usage: bash install.sh
 #DEBUG='y'
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
@@ -26,7 +26,7 @@ END_POINT=`expr $WIDTH - $START_POINT - 1`
 STEP="1"
 
 zstack_tmp_file=`mktemp`
-ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.9/0.9.0/zstack-all-in-one-0.9.0.tgz"}
+ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.8/0.8.0/zstack-all-in-one-0.8.0.tgz"}
 #TODO: change to ZStack WEBSITE
 WEBSITE=${WEBSITE-'mirrors.aliyun.com'}
 [ -z $WEBSITE ] && WEBSITE='mirrors.aliyun.com'
@@ -39,6 +39,7 @@ ZSTACK_PROPERTIES=$CATALINA_ZSTACK_CLASSES/zstack.properties
 ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
 ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
+zstack_local_repo_file=/etc/yum.repos.d/zstack-local.repo
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
 
@@ -51,7 +52,7 @@ ONLY_INSTALL_ZSTACK=''
 NOT_START_ZSTACK=''
 
 MYSQL_ROOT_PASSWORD=''
-MYSQL_ZSTACK_PASSWORD=''
+MYSQL_USER_PASSWORD=''
 
 show_download()
 {
@@ -178,11 +179,6 @@ fail(){
     exit 1
 }
 
-fail2(){
-    echo -e "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " |tee -a $INSTALLATION_FAILURE
-    exit 1
-}
-
 pass(){
     #echo -e "$(tput setaf 2) PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     return
@@ -203,38 +199,29 @@ echo_subtitle(){
 #Do preinstallation checking for CentOS and Ubuntu
 check_system(){
     echo_title "Check System"
-    echo ""
     cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep 'release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
+        grep 'release 6' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
             OS=$CENTOS6
         else
-            grep 'release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
+            grep 'release 7' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
                 OS=$CENTOS7
                 rpm -q libvirt |grep 1.1.1-29 >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
-                    fail2 "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
+                    fail "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
                 fi
             else
-                fail2 "Host OS checking failure: your system is: `cat /etc/system-release`, we can only support $SUPPORTED_OS currently"
+                fail "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
             fi
-        fi
-        which unzip >/dev/null 2>&1
-        if [ $? -ne 0 ];then
-            yum install -y unzip  >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     else
         grep 'Ubuntu 14.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
             OS=$UBUNTU1404
         else
-            fail2 "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
-        fi
-        which unzip >/dev/null 2>&1
-        if [ $? -ne 0 ];then
-            apt-get install unzip  >>$ZSTACK_INSTALL_LOG 2>&1
+            fail "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
         fi
     fi
     
@@ -253,16 +240,16 @@ do_check_system(){
         fail "User checking failure: ZStack installation must be run with user: root . Current user is: `whoami`. Please append 'sudo'."
     fi
 
-    ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ]; then
-        fail "Network checking failure: can not reach $WEBSITE. Please make sure your DNS is configured correctly."
-    fi
+    #ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
+    #if [ $? -ne 0 ]; then
+    #    fail "Network checking failure: can not reach $WEBSITE. Please make sure your DNS is configured correctly."
+    #fi
 
     rpm -qi python-crypto >/dev/null 2>&1
     if [ $? -eq 0 ]; then 
-        fail "need to manually remove python-crypto by \n\n \`rpm -ev python-crypto\` \n\n; otherwise it will conflict with ansible's pycrypto." >>$ZSTACK_INSTALL_LOG
-        #rpm -ev python-crypto >>$ZSTACK_INSTALL_LOG 2>&1
-        #[ $? -ne 0 ] && fail "Uninstall python-crypto fail"
+        #fail "need to manually remove python-crypto by \n\n \`rpm -ev python-crypto\` \n\n; otherwise it will conflict with ansible's pycrypto." >>$ZSTACK_INSTALL_LOG
+        rpm -ev python-crypto --nodeps >>$ZSTACK_INSTALL_LOG 2>&1
+        [ $? -ne 0 ] && fail "Uninstall python-crypto fail"
     fi
 
     ia_check_ip_hijack
@@ -303,9 +290,9 @@ ia_check_ip_hijack(){
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
     if [ -z $DEBUG ];then
-        yum -y install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+        yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
     else
-        yum -y install python python-devel python-setuptools gcc
+        yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc
     fi
     [ $? -ne 0 ] && fail "Install python and gcc fail."
     pass
@@ -313,7 +300,6 @@ ia_install_python_gcc_rh(){
 
 ia_install_pip(){
     echo_subtitle "Install PIP"
-    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
     if [ ! -z $DEBUG ]; then
         easy_install -i $pypi_source --upgrade pip
     else
@@ -325,7 +311,6 @@ ia_install_pip(){
 
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
-    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
     if [ ! -z $DEBUG ]; then
         pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible 
     else
@@ -356,14 +341,21 @@ ia_update_apt(){
 }
 
 download_zstack(){
-    echo_title "Download and Unpack ZStack All In One Package"
+    echo_title "Download ZStack"
     echo ""
     show_download iz_download_zstack
     show_spinner iz_unpack_zstack
-    if [ $UPGRADE = 'n' ]; then
-        show_spinner iz_unzip_tomcat
-        show_spinner iz_install_zstack
+}
+
+unpack_zstack_into_tomcat(){
+    echo_title "Unpack ZStack All In One Package"
+    echo ""
+    which unzip >/dev/null 2>&1
+    if [ $? -ne 0 ];then
+        show_spinner iz_install_unzip
     fi
+    show_spinner iz_unzip_tomcat
+    show_spinner iz_install_zstack
 }
 
 upgrade_zstack(){
@@ -407,157 +399,54 @@ install_ansible(){
     fi
 }
 
+iz_install_unzip(){
+    echo_subtitle "Install unzip"
+    rpm -ivh $unzip_rpm >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "Install unzip fail."
+    pass
+}
+
 is_install_general_libs(){
     echo_subtitle "Install General Libraries"
-    ansible_inventory=`mktemp`
-    cat > $ansible_inventory << EOF
-[localhost]
-$MNT ansible_connection=localhost
-EOF
-
-    epel_6_repo_file=`mktemp`
-    cat > $epel_6_repo_file <<EOF
-[epel]
-name=Extra Packages for Enterprise Linux 6 - \$basearch
-baseurl=http://mirrors.aliyun.com/epel/6/\$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/6/\$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch
-failovermethod=priority
-enabled=1
-gpgcheck=0
-EOF
-
-    epel_7_repo_file=`mktemp`
-    cat > $epel_7_repo_file <<EOF
-[epel]
-name=Extra Packages for Enterprise Linux 7 - \$basearch
-baseurl=http://mirrors.aliyun.com/epel/7/\$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/7/\$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch
-failovermethod=priority
-enabled=1
-gpgcheck=0
-EOF
-
-    ansible_yaml=`mktemp`
-    cat > $ansible_yaml <<EOF
----
-- hosts: 127.0.0.1
-  connection: local
-  remote_user: root
-
-  tasks:
-    - name: install lib-selinux for RedHat OS
-      when: ansible_os_family == 'RedHat'
-      yum: pkg=libselinux-python
-
-    - name: state epel.repo
-      stat: path=/etc/yum.repos.d/epel.repo
-      register: epel_repo
-
-    - name: install epel 6 repo
-      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true and ansible_distribution_version < '7'
-      copy: src=$epel_6_repo_file
-            dest=/etc/yum.repos.d/epel.repo
-            owner=root group=root mode=0644
-    
-    - name: install epel 6 repo
-      when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true and ansible_distribution_version >= '7'
-      copy: src=$epel_7_repo_file
-            dest=/etc/yum.repos.d/epel.repo
-            owner=root group=root mode=0644
-    
-    - name: clean up yum old metadata for RedHat OS
-      when: ansible_os_family == 'RedHat'
-      shell: yum clean metadata
-
-    - name: install ZStack required libraries for RedHat OSes
-      when: ansible_os_family == 'RedHat' 
-      yum: pkg={{item}}
-      with_items:
-        - java-1.7.0-openjdk
-        - qemu-kvm
-        - bridge-utils
-        - wget
-        - qemu-img
-        - libvirt-python
-        - libvirt
-        - nfs-utils
-        - vconfig
-        - libvirt-client
-        - python-devel
-        - gcc
-        - autoconf
-        - libselinux-python
-        - iptables
-        - tar
-        - gzip
-        - unzip
-        - httpd
-        - openssh-clients
-        - openssh-server
-        - sshpass
-        - sudo
-        - ntp 
-        - ntpdate
-        - bzip2
-        - mysql
-
-    - name: install ZStack required libraries for Debian OSes
-      when: ansible_os_family == 'Debian'
-      apt: pkg={{item}}
-      with_items:
-        - openjdk-7-jdk
-        - qemu-kvm
-        - bridge-utils
-        - wget
-        - qemu-utils
-        - python-libvirt
-        - libvirt-bin
-        - vlan
-        - nfs-common
-        - nfs-kernel-server
-        - python-dev
-        - gcc
-        - autoconf
-        - iptables
-        - tar
-        - gzip
-        - unzip
-        - apache2
-        - sshpass
-        - sudo
-        - ntp 
-        - ntpdate
-        - bzip2
-        - mysql-client
-
-EOF
-
-    if [ -z $DEBUG ]; then
-        ansible-playbook $ansible_yaml -i $ansible_inventory -e "gather_facts=No pypi_url=$ZSTACK_PYPI_URL" >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        ansible-playbook $ansible_yaml -i $ansible_inventory -e "gather_facts=No pypi_url=$ZSTACK_PYPI_URL" 
-    fi
+    yum install --disablerepo="*" --enablerepo="zstack-local" -y \
+        libselinux-python \
+        java-1.7.0-openjdk \
+        qemu-kvm \
+        bridge-utils \
+        wget \
+        qemu-img \
+        libvirt-python \
+        libvirt \
+        nfs-utils \
+        vconfig \
+        libvirt-client \
+        python-devel \
+        gcc \
+        autoconf \
+        iptables \
+        tar \
+        gzip \
+        unzip \
+        httpd \
+        openssh-clients \
+        openssh-server \
+        sshpass \
+        sudo \
+        ntp \
+        ntpdate \
+        bzip2 \
+        mysql \
+        >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
-        /bin/rm -f $ansible_inventory
-        /bin/rm -f $ansible_yaml
-        /bin/rm -f $epel_6_repo_file
-        /bin/rm -f $epel_7_repo_file
         fail "install system libraries failed."
     else
-        /bin/rm -f $ansible_inventory
-        /bin/rm -f $ansible_yaml
-        /bin/rm -f $epel_6_repo_file
-        /bin/rm -f $epel_7_repo_file
         pass
     fi
 }
 
 is_install_virtualenv(){
     echo_subtitle "Install Virtualenv"
-    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
     if [ ! -z $DEBUG ]; then
         pip install -i $pypi_source --trusted-host localhost --ignore-installed virtualenv
     else
@@ -821,7 +710,7 @@ cs_install_mysql(){
     if [ -z $MYSQL_ROOT_PASSWORD ]; then
         zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_ROOT_PASSWORD" --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+        zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_USER_PASSWORD" --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         cs_clean_ssh_tmp_key $1
@@ -1194,6 +1083,11 @@ echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG
 [ -z $HTTP_FOLDER ] && HTTP_FOLDER=$ZSTACK_INSTALL_ROOT/http_root
 echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 
+pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
+unzip_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*.rpm"
+yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/repo"
+yum_source="file://${yum_repo_folder}"
+
 if [ -z $MANAGEMENT_INTERFACE ]; then
     echo "Cannot not identify default network interface. Please set management
    node IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'."
@@ -1288,6 +1182,20 @@ if [ $UPGRADE = 'y' ]; then
     echo_star_line
     exit 0
 fi
+
+#Install unzip and unpack zstack war into apache tomcat
+unpack_zstack_into_tomcat
+
+#create zstack log yum repo
+cat > $zstack_local_repo_file <<EOF
+[zstack-local]
+name=ZStack Local Yum Repo
+baseurl=$yum_source
+enabled=0
+gpgcheck=0
+EOF
+
+chmod 644 $zstack_local_repo_file
 
 #Install Ansible 
 install_ansible

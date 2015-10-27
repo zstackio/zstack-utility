@@ -20,6 +20,10 @@
 
     <property name="allinone.dir" location="${build.dir}/zstack-all-in-one" />
     <property name="allinone.versionfile" location="${allinone.dir}/VERSION" />
+    <property name="allinone.bin.dir" location="${build.dir}/zstack" />
+    <property name="allinone.offline.file" location="${build.dir}/zstack-offline.tgz" />
+    <property name="allinone.bin.product.title" location="${allinone.bin.dir}/product_title_file" />
+    <property name="libs.dir" location="${allinone.dir}/libs" />
 
     <condition property="allinone.version" value="${MAJOR}.${MINOR}.${UPDATE}-${build_name}" else="${MAJOR}.${MINOR}.${UPDATE}">
         <and>
@@ -74,6 +78,28 @@
         </exec>
     </target>
 
+    <target name="copy-centos6-repo" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6.bin" />
+        <copydir src="${centos6.repo.dir}" dest="${pypi.parent.dir}/repo/" />
+        <makeDir dir="${libs.dir}" />
+        <copy todir="${libs.dir}" overwrite="true" >
+            <fileset dir="${centos6.repo.dir}">
+                <include name="unzip*.rpm"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="copy-centos7-repo" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7.bin" />
+        <copydir src="${centos7.repo.dir}" dest="${pypi.parent.dir}/repo" />
+        <makeDir dir="${libs.dir}" />
+        <copy todir="${libs.dir}" overwrite="true" >
+            <fileset dir="${centos7.repo.dir}">
+                <include name="unzip*.rpm"/>
+            </fileset>
+        </copy>
+    </target>
+
     <target name="unzip-war">
         <makeDir dir="${war.dir}" />
 
@@ -100,8 +126,21 @@
     </target>
 
     <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb, build-cephp" />
-    <target name="assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, copy-pypi-source, zip-war" />
+
+    <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, copy-pypi-source" />
+
+    <target name="assemble" depends="pre-assemble, zip-war" />
+
+    <target name="assemble-centos6-offline" depends="pre-assemble, copy-centos6-repo, zip-war" />
+
+    <target name="assemble-centos7-offline" depends="pre-assemble, copy-centos7-repo, zip-war" />
+
     <target name="build-war" depends="do-build, assemble" />
+
+    <target name="build-war-centos6-offline" depends="do-build, assemble-centos6-offline" />
+
+    <target name="build-war-centos7-offline" depends="do-build, assemble-centos7-offline" />
+
     <target name="package" depends="build-war, build-setting, do-package" />
     <target name="buildtestagent" depends="build-zstacklib, build-testagent, assemble-testagent" />
     <target name="build-woodpecker" depends="prepare, build-zstacklib, buildtestagent, build-testconf" />
@@ -117,11 +156,25 @@
         <echo message="successfully build zstack-vr.img in /root/build_zstack_vr_image/zstack-vr.img" />
         <echo message="--------------------------------------------------------------------" />
     </target>
+
     <target name="all-in-one" depends="build-war, build-allinone"> 
         <echo message="--------------------------------------------------------------------" />
         <echo message="successfully build zstack all in one package at ${allinone.file} " />
         <echo message="--------------------------------------------------------------------" />
     </target>
+
     <target name="build-allinone" depends="all-in-one-package">
+    </target>
+
+    <target name="offline-centos6" depends="build-war-centos6-offline, build-centos-offline">
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack centos6 offline package at ${allinone.bin.file} " />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+
+    <target name="offline-centos7" depends="build-war-centos7-offline, build-centos-offline"> 
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack centos7 offline package at ${allinone.bin.file} " />
+        <echo message="--------------------------------------------------------------------" />
     </target>
 </project>

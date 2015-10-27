@@ -1,11 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="zstack all in one package builder" basedir="../">
-    <target name="all-in-one-package">
+    <target name="all-in-one-package" >
         <copy file="${zstack.install}" todir="${build.dir}" />
         <copy file="${war.file}" todir="${allinone.dir}" />
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
         <echo file="${allinone.versionfile}" append="true">${allinone.version}</echo>
         <tar destfile="${allinone.file}" basedir="${allinone.dir}" compression="gzip" />
+        <echo message="successfully build zstack all in one package at ${allinone.file}" />
+    </target>
+
+    <target name="build-centos-offline" >
+        <copy file="${zstack.install}" todir="${build.dir}" />
+        <copy file="${war.file}" todir="${allinone.dir}" />
+        <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
+        <echo file="${allinone.versionfile}" append="true">${allinone.version}</echo>
+        <tar destfile="${allinone.file}" basedir="${allinone.dir}" compression="gzip" />
+
+        <makeDir dir="${allinone.bin.dir}" />
+        <move file="${allinone.file}" todir="${allinone.bin.dir}" />
+        <copy file="${zstack.install}" todir="${allinone.bin.dir}" />
+        <exec executable="bash" dir="${allinone.bin.dir}" failonerror="true">
+            <arg value="${gen.product.title.script}" />
+            <arg value="${product.name}" />
+            <arg value="${product.version}" />
+            <arg value="${allinone.bin.product.title}" />
+        </exec>
+        <tar destfile="${allinone.offline.file}" basedir="${allinone.bin.dir}" />
+        <exec executable="bash" dir="${build.dir}" failonerror="true">
+            <arg value="${build.installation.bin.script}" />
+            <arg value="${offline.bin.setup.script}" />
+            <arg value="${allinone.offline.file}" />
+            <arg value="${allinone.bin.file}" />
+        </exec>
+
         <echo message="successfully build zstack all in one package at ${allinone.file}" />
     </target>
 </project>

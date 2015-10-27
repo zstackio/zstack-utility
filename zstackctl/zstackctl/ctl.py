@@ -1108,20 +1108,22 @@ class InstallDbCmd(Command):
     - name: pre-install script
       script: $pre_install_script
 
+    - name: set RHEL7 yum repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=file://$yum_folder/static/centos7_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
+    
+    - name: set RHEL6 yum repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
+      shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=file://$yum_folder/static/centos6_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
+
     - name: install MySQL for RedHat 6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      yum: pkg={{item}}
-      with_items:
-        - mysql
-        - mysql-server
+      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mysql mysql-server
       register: install_result
 
     - name: install MySQL for RedHat 7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      yum: pkg={{item}}
-      with_items:
-        - mariadb
-        - mariadb-server
+      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y  mariadb mariadb-server
       register: install_result
 
     - name: install MySQL for Ubuntu
@@ -1161,17 +1163,11 @@ class InstallDbCmd(Command):
 
     - name: rollback MySQL installation on RedHat 6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and change_root_result.rc != 0 and install_result.changed == True
-      yum: pkg={{item}} state=absent
-      with_items:
-        - mysql
-        - mysql-server
+      shell: rpm -ev mysql mysql-server
 
     - name: rollback MySQL installation on RedHat 7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and change_root_result.rc != 0 and install_result.changed == True
-      yum: pkg={{item}} state=absent
-      with_items:
-        - mariadb
-        - mariadb-server
+      shell: rpm -ev mariadb mariadb-server
 
     - name: rollback MySql installation on Ubuntu
       when: ansible_os_family == 'Debian' and change_root_result.rc != 0 and install_result.changed == True
@@ -1261,6 +1257,7 @@ fi
             'login_password': args.login_password,
             'grant_access_cmd': grant_access_cmd,
             'pre_install_script': pre_install_script_path,
+            'yum_folder': ctl.zstack_home,
             'post_install_script': post_install_script_path
         })
 
@@ -1293,31 +1290,17 @@ class InstallRabbitCmd(Command):
     - name: pre-install script
       script: $pre_install_script
 
-    - name: install libselinux-python for RedHat OS 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      yum: pkg=libselinux-python
-
-    - name: state epel.repo
-      stat: path=/etc/yum.repos.d/epel.repo
-      register: epel_repo
-
-    - name: install EPEL repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and epel_repo.stat.exists != true
-      copy: src=$epel6_repo
-            dest=/etc/yum.repos.d/epel.repo
-            owner=root group=root mode=0644
-
-    - name: install EPEL repo for RedHat OS 7
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and epel_repo.stat.exists != true
-      copy: src=$epel7_repo
-            dest=/etc/yum.repos.d/epel.repo
-            owner=root group=root mode=0644
+    - name: set RHEL7 yum repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=file://$yum_folder/static/centos7_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
+    
+    - name: set RHEL6 yum repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
+      shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=file://$yum_folder/static/centos6_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
 
     - name: install RabbitMQ on RedHat OS
       when: ansible_os_family == 'RedHat'
-      yum: pkg={{item}}
-      with_items:
-        - rabbitmq-server
+      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y rabbitmq-server libselinux-python
 
     - name: install RabbitMQ on Ubuntu OS
       when: ansible_os_family == 'Debian'
@@ -1462,6 +1445,7 @@ rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
             'epel6_repo': epel6_repo,
             'epel7_repo': epel7_repo,
             'pre_install_script': pre_script_path,
+            'yum_folder': ctl.zstack_home,
             'post_install_script': post_script_path
         })
 
@@ -1546,45 +1530,17 @@ class InstallManagementNodeCmd(Command):
     - name: prepare remote environment
       script: $pre_script
 
-    - name: install libselinux-python for RedHat OS 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      yum: pkg=libselinux-python
-
-    - name: state epel.repo
-      stat: path=/etc/yum.repos.d/epel.repo
-      register: epel_repo
-
-    - name: install EPEL repo for RedHat OS 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and epel_repo.stat.exists != true
-      copy: src=$epel6_repo
-            dest=/etc/yum.repos.d/epel.repo
-            owner=root group=root mode=0644
-
-    - name: install EPEL repo for RedHat OS 7
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and epel_repo.stat.exists != true
-      copy: src=$epel7_repo
-            dest=/etc/yum.repos.d/epel.repo
-            owner=root group=root mode=0644
+    - name: set RHEL7 yum repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=file://$yum_folder/static/centos7_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
+    
+    - name: set RHEL6 yum repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
+      shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=file://$yum_folder/static/centos6_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
 
     - name: install dependencies on RedHat OS
       when: ansible_os_family == 'RedHat'
-      yum: pkg={{item}}
-      with_items:
-        - java-1.7.0-openjdk
-        - wget
-        - python-devel
-        - gcc
-        - autoconf
-        - tar
-        - gzip
-        - unzip
-        - python-pip
-        - openssh-clients
-        - sshpass
-        - bzip2
-        - ntp
-        - ntpdate
-        - sudo
+      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python
 
     - name: install dependencies Debian OS
       when: ansible_os_family == 'Debian'
@@ -1607,15 +1563,11 @@ class InstallManagementNodeCmd(Command):
 
     - name: install MySQL client for RedHat 6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      yum: pkg={{item}}
-      with_items:
-        - mysql
+      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mysql
 
     - name: install MySQL client for RedHat 7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      yum: pkg={{item}}
-      with_items:
-        - mariadb
+      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mariadb
 
     - name: install MySQL client for Ubuntu
       when: ansible_os_family == 'Debian'
@@ -1845,6 +1797,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'pypi_tar_path': pypi_tar_path,
             'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
             'pypi_path': '/tmp/pypi/',
+            'yum_folder': ctl.zstack_home,
             'setup_account': setup_account_path
         })
 
@@ -2009,32 +1962,17 @@ gpgcheck=0
       virtualenv_root: /var/lib/zstack/virtualenv/zstack-dashboard
 
   tasks:
-    - name: state epel.repo
-      stat: path=/etc/yum.repos.d/epel.repo
-      register: epel_repo
-
-    - name: install EPEL repo for RedHat OS 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and epel_repo.stat.exists != true
-      copy: src=$epel6_repo
-            dest=/etc/yum.repos.d/epel.repo
-            owner=root group=root mode=0644
-
-    - name: install EPEL repo for RedHat OS 7
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and epel_repo.stat.exists != true
-      copy: src=$epel7_repo
-            dest=/etc/yum.repos.d/epel.repo
-            owner=root group=root mode=0644
+    - name: set RHEL7 yum repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=file://$yum_folder/static/centos7_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
+    
+    - name: set RHEL6 yum repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
+      shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=file://$yum_folder/static/centos6_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
 
     - name: install Python pip for RedHat OS
       when: ansible_os_family == 'RedHat'
-      yum: pkg="{{item}}"
-      with_items:
-        - libselinux-python
-        - python-pip
-        - bzip2
-        - python-devel
-        - gcc
-        - autoconf
+      shell: yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf
 
     - name: copy zstack-dashboard package
       copy: src=$src dest=$dest
@@ -2077,6 +2015,7 @@ gpgcheck=0
             'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
             'pypi_path': '/tmp/pypi/',
             "epel6_repo": epel6_repo ,
+            'yum_folder': ctl.zstack_home,
             "epel7_repo": epel7_repo
         })
 
