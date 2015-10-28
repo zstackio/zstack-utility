@@ -300,13 +300,15 @@ ia_install_python_gcc_rh(){
     if [ -z $DEBUG ];then
         yum clean metadata >/dev/null 2>&1
         yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
-        yum clean metadata >/dev/null 2>&1
     else
         yum clean metadata >/dev/null 2>&1
         yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc
-        yum clean metadata >/dev/null 2>&1
     fi
-    [ $? -ne 0 ] && fail "Install python and gcc fail."
+    if [ $? -ne 0 ]; then
+        yum clean metadata >/dev/null 2>&1
+        fail "Install python and gcc fail."
+    fi
+    yum clean metadata >/dev/null 2>&1
     pass
 }
 
@@ -431,6 +433,7 @@ is_install_general_libs(){
         libvirt-python \
         libvirt \
         nfs-utils \
+        rpcbind \
         vconfig \
         libvirt-client \
         python-devel \
@@ -451,10 +454,11 @@ is_install_general_libs(){
         mysql \
         >>$ZSTACK_INSTALL_LOG 2>&1
 
-    yum clean metadata >/dev/null 2>&1
     if [ $? -ne 0 ];then
+        yum clean metadata >/dev/null 2>&1
         fail "install system libraries failed."
     else
+        yum clean metadata >/dev/null 2>&1
         pass
     fi
 }

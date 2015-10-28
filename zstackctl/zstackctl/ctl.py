@@ -1118,12 +1118,12 @@ class InstallDbCmd(Command):
 
     - name: install MySQL for RedHat 6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mysql mysql-server; yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mysql mysql-server && yum clean metadata
       register: install_result
 
     - name: install MySQL for RedHat 7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y  mariadb mariadb-server; yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y  mariadb mariadb-server && yum clean metadata
       register: install_result
 
     - name: install MySQL for Ubuntu
@@ -1301,7 +1301,7 @@ class InstallRabbitCmd(Command):
 
     - name: install RabbitMQ on RedHat OS
       when: ansible_os_family == 'RedHat'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y rabbitmq-server libselinux-python; yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y rabbitmq-server libselinux-python && yum clean metadata
 
     - name: install RabbitMQ on Ubuntu OS
       when: ansible_os_family == 'Debian'
@@ -1541,7 +1541,7 @@ class InstallManagementNodeCmd(Command):
 
     - name: install dependencies on RedHat OS
       when: ansible_os_family == 'RedHat'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python; yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python && yum clean metadata
 
     - name: install dependencies Debian OS
       when: ansible_os_family == 'Debian'
@@ -1564,11 +1564,11 @@ class InstallManagementNodeCmd(Command):
 
     - name: install MySQL client for RedHat 6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mysql; yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mysql && yum clean metadata
 
     - name: install MySQL client for RedHat 7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mariadb; yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mariadb && yum clean metadata
 
     - name: install MySQL client for Ubuntu
       when: ansible_os_family == 'Debian'
@@ -1973,7 +1973,7 @@ gpgcheck=0
 
     - name: install Python pip for RedHat OS
       when: ansible_os_family == 'RedHat'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf; yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf && yum clean metadata
 
     - name: copy zstack-dashboard package
       copy: src=$src dest=$dest
