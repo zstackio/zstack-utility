@@ -226,6 +226,13 @@ check_system(){
         fi
     fi
     
+    if [ $OS = $CENTOS6 ]; then
+        yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos6_repo"
+        yum_source="file://${yum_repo_folder}"
+    elif [ $OS = $CENTOS7 ]; then
+        yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos7_repo"
+        yum_source="file://${yum_repo_folder}"
+    fi
     debug "Your system is: $OS"
     show_spinner do_check_system
 }
@@ -1086,8 +1093,6 @@ echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 
 pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
 unzip_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*.rpm"
-yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/repo"
-yum_source="file://${yum_repo_folder}"
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
     echo "Cannot not identify default network interface. Please set management
