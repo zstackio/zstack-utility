@@ -298,9 +298,13 @@ ia_check_ip_hijack(){
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
     if [ -z $DEBUG ];then
+        yum clean metadata >/dev/null 2>&1
         yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+        yum clean metadata >/dev/null 2>&1
     else
+        yum clean metadata >/dev/null 2>&1
         yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc
+        yum clean metadata >/dev/null 2>&1
     fi
     [ $? -ne 0 ] && fail "Install python and gcc fail."
     pass
@@ -416,6 +420,7 @@ iz_install_unzip(){
 
 is_install_general_libs(){
     echo_subtitle "Install General Libraries"
+    yum clean metadata >/dev/null 2>&1
     yum install --disablerepo="*" --enablerepo="zstack-local" -y \
         libselinux-python \
         java-1.7.0-openjdk \
@@ -446,6 +451,7 @@ is_install_general_libs(){
         mysql \
         >>$ZSTACK_INSTALL_LOG 2>&1
 
+    yum clean metadata >/dev/null 2>&1
     if [ $? -ne 0 ];then
         fail "install system libraries failed."
     else
