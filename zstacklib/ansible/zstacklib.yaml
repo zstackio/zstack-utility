@@ -1,11 +1,11 @@
 ---
 - name: set RHEL7 yum repo
   when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-  shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=http://{{yum_server}}/static/centos7_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
+  shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=http://{{yum_server}}/zstack/static/centos7_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
 
 - name: set RHEL6 yum repo
   when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
-  shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=http://{{yum_server}}/static/centos6_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
+  shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=http://{{yum_server}}/zstack/static/centos6_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
 
 - name: install libselinux-python, since next step might use it.
   when: ansible_os_family == 'RedHat'

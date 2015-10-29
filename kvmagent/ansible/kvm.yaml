@@ -22,7 +22,7 @@
 
     - name: install kvm related packages on RedHat based OS
       when: ansible_os_family == 'RedHat'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq; yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute; yum clean metadata
 
     - name: install kvm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
