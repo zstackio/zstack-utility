@@ -992,9 +992,13 @@ class StopCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to stop the management node on a remote machine')
+        parser.add_argument('--force', '-f', help='force kill the java process, without waiting.', action="store_true", default=False)
 
     def _stop_remote(self, args):
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl stop_node"' % args.host)
+        if args.force:
+            shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl stop_node --force"' % args.host)
+        else:
+            shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl stop_node"' % args.host)
 
     def run(self, args):
         if args.host:
@@ -1007,18 +1011,20 @@ class StopCmd(Command):
             return
 
         timeout = 30
-        @loop_until_timeout(timeout)
-        def wait_stop():
-            return get_management_node_pid() is None
+        if not args.force:
+            @loop_until_timeout(timeout)
+            def wait_stop():
+                return get_management_node_pid() is None
 
-        shell('bash %s' % os.path.join(ctl.zstack_home, self.STOP_SCRIPT))
-        if wait_stop():
-            info('successfully stopped management node')
-            return
+            shell('bash %s' % os.path.join(ctl.zstack_home, self.STOP_SCRIPT))
+            if wait_stop():
+                info('successfully stopped management node')
+                return
 
         pid = get_management_node_pid()
         if pid:
-            info('unable to stop management node within %s seconds, kill it' % timeout)
+            if not args.force:
+                info('unable to stop management node within %s seconds, kill it' % timeout)
             with on_error('unable to kill -9 %s' % pid):
                 shell('kill -9 %s' % pid)
 
