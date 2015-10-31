@@ -34,3 +34,7 @@ test-result
 .idea/*
 *.iml
 zstackbuild/virtualenv
+zstackbuild/centos6_repo.tgz
+zstackbuild/centos7_repo.tgz
+centos6_repo
+centos7_repo
