@@ -52,6 +52,7 @@ NEED_KEEP_DB=''
 ONLY_INSTALL_LIBS=''
 ONLY_INSTALL_ZSTACK=''
 NOT_START_ZSTACK=''
+NEED_SET_MN_IP=''
 
 MYSQL_ROOT_PASSWORD=''
 MYSQL_USER_PASSWORD=''
@@ -1081,7 +1082,7 @@ do
         f ) ZSTACK_ALL_IN_ONE=$OPTARG;;
         F ) FORCE='y';;
         i ) ONLY_INSTALL_ZSTACK='y';;
-        I ) MANAGEMENT_INTERFACE=$OPTARG;;
+        I ) MANAGEMENT_INTERFACE=$OPTARG && NEED_SET_MN_IP='y';;
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
@@ -1259,12 +1260,8 @@ fi
 #Install Mysql and Rabbitmq
 install_db_msgbus
 
-#set http_proxy for ansible and unset http_proxy for starting zstack
-if [ ! -z $HTTP_PROXY ]; then
-    zstack-ctl configure Ansible.var.http_proxy=$HTTP_PROXY
-    zstack-ctl configure Ansible.var.https_proxy=$HTTP_PROXY
-    unset http_proxy
-    unset https_proxy
+if [ ! -z $NEED_SET_MN_IP ];then
+    zstack-ctl configure management.server.ip=${MANAGEMENT_IP}
 fi
 
 #Start ${PRODUCT_NAME} 
