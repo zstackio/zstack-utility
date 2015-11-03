@@ -2,6 +2,7 @@
 # Mevoco Installer
 # Usage: bash install.sh
 #DEBUG='y'
+PRODUCT_NAME=${PRODUCT_NAME:-"ZStack"}
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 
 CENTOS6='CENTOS6'
@@ -20,7 +21,7 @@ WIDTH=`tput cols`
 [ -z $WIDTH ] && WIDTH=80
 HEIGHT=`tput lines`
 [ -z $HEIGHT ] && HEIGHT=25
-ZSTACK_INSTALLATION='ZStack Intallation'
+ZSTACK_INSTALLATION='$PRODUCT_NAME Intallation'
 START_POINT=`expr $WIDTH / 2 + 9`
 END_POINT=`expr $WIDTH - $START_POINT - 1`
 STEP="1"
@@ -240,12 +241,12 @@ check_system(){
 do_check_system(){
     if [ $UPGRADE = 'n' ]; then
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
-            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ZStack. \n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-dashboard stop"
+            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ${PRODUCT_NAME}\n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-dashboard stop"
         fi
     fi
 
     if [ `whoami` != 'root' ];then
-        fail "User checking failure: ZStack installation must be run with user: root . Current user is: `whoami`. Please append 'sudo'."
+        fail "User checking failure: ${PRODUCT_NAME} installation must be run with user: root . Current user is: `whoami`. Please append 'sudo'."
     fi
 
     #ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
@@ -355,14 +356,14 @@ ia_update_apt(){
 }
 
 download_zstack(){
-    echo_title "Download ZStack"
+    echo_title "Get ${PRODUCT_NAME}"
     echo ""
     show_download iz_download_zstack
     show_spinner iz_unpack_zstack
 }
 
 unpack_zstack_into_tomcat(){
-    echo_title "Unpack ZStack All In One Package"
+    echo_title "Unpack ${PRODUCT_NAME} Package"
     echo ""
     which unzip >/dev/null 2>&1
     if [ $? -ne 0 ];then
@@ -373,7 +374,7 @@ unpack_zstack_into_tomcat(){
 }
 
 upgrade_zstack(){
-    echo_title "Upgrade ZStack"
+    echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
     show_spinner uz_upgrade_zstack
     if [ $CURRENT_STATUS = 'y' ]; then
@@ -483,7 +484,7 @@ install_system_libs(){
 }
 
 iz_download_zstack(){
-    echo_subtitle "Download ZStack all-in-one package"
+    echo_subtitle "Download ${PRODUCT_NAME} package"
     if [ -f $ZSTACK_ALL_IN_ONE ]; then
         cp $ZSTACK_ALL_IN_ONE $zstack_tmp_file >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
@@ -511,7 +512,7 @@ iz_download_zstack(){
 }
 
 iz_unpack_zstack(){
-    echo_subtitle "Unpack ZStack all-in-one package"
+    echo_subtitle "Unpack ${PRODUCT_NAME} package"
     if [ $UPGRADE = 'n' ]; then
         mkdir -p $ZSTACK_INSTALL_ROOT
         all_in_one=$ZSTACK_INSTALL_ROOT/zstack_all_in_one.tgz
@@ -519,7 +520,7 @@ iz_unpack_zstack(){
         cd $ZSTACK_INSTALL_ROOT
         tar -zxf $all_in_one >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
-           fail "failed to unpack ZStack all-in-one package: $all_in_one."
+           fail "failed to unpack ${PRODUCT_NAME} package: $all_in_one."
         fi
     else
         all_in_one=$upgrade_folder/zstack_all_in_one.tgz
@@ -528,14 +529,14 @@ iz_unpack_zstack(){
         tar -zxf $all_in_one >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
             rm -rf $upgrade_folder 
-            fail "failed to unpack ZStack all-in-one package: $all_in_one."
+            fail "failed to unpack ${PRODUCT_NAME} package: $all_in_one."
         fi
     fi
     pass
 }
 
 uz_upgrade_zstack(){
-    echo_subtitle "Upgrade ZStack"
+    echo_subtitle "Upgrade ${PRODUCT_NAME}"
     cd $upgrade_folder
     unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
@@ -606,7 +607,7 @@ iz_unzip_tomcat(){
 }
 
 iz_install_zstack(){
-    echo_subtitle "Install ZStack into Tomcat"
+    echo_subtitle "Install ${PRODUCT_NAME} into Tomcat"
     cd $ZSTACK_INSTALL_ROOT
     unzip -d $CATALINA_ZSTACK_PATH zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
@@ -616,7 +617,7 @@ iz_install_zstack(){
 }
 
 iz_install_zstackcli(){
-    echo_subtitle "Install ZStack Command Line"
+    echo_subtitle "Install ${PRODUCT_NAME} Command Line"
     cd $ZSTACK_INSTALL_ROOT
     bash $ZSTACK_TOOLS_INSTALLER zstack-cli >$ZSTACK_INSTALL_LOG 2>&1
 
@@ -627,7 +628,7 @@ iz_install_zstackcli(){
 }
 
 iz_install_zstackctl(){
-    echo_subtitle "Install ZStack Control"
+    echo_subtitle "Install ${PRODUCT_NAME} Control Tool"
     cd $ZSTACK_INSTALL_ROOT
     bash $ZSTACK_TOOLS_INSTALLER zstack-ctl >$ZSTACK_INSTALL_LOG 2>&1
 
@@ -638,7 +639,7 @@ iz_install_zstackctl(){
 }
 
 install_zstack(){
-    echo_title "Install ZStack Tools"
+    echo_title "Install ${PRODUCT_NAME} Tools"
     echo ""
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
@@ -690,7 +691,7 @@ cs_config_zstack_properties(){
 }
 
 cs_chown_install_root(){
-    echo_subtitle "Change Ownership of ZStack Install Root"
+    echo_subtitle "Change Ownership of ${PRODUCT_NAME} Install Root"
     chown -R zstack.zstack $ZSTACK_INSTALL_ROOT >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to chown for $ZSTACK_INSTALL_ROOT with zstack.zstack"
@@ -793,12 +794,12 @@ EOF
 }
 
 cs_install_zstack_service(){
-    echo_subtitle "Install ZStack management node"
+    echo_subtitle "Install ${PRODUCT_NAME} management node"
     /bin/cp -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/install/zstack-server /etc/init.d
     chmod a+x /etc/init.d/zstack-server
     tomcat_folder_path=$ZSTACK_INSTALL_ROOT/apache-tomcat
     sed -i "s#^TOMCAT_PATH=.*#TOMCAT_PATH=$tomcat_folder_path#" /etc/init.d/zstack-server
-    [ $? -ne 0 ] && fail "failed to install ZStack management node."
+    [ $? -ne 0 ] && fail "failed to install ${PRODUCT_NAME} management node."
     zstack-ctl setenv ZSTACK_HOME=$ZSTACK_HOME >> $ZSTACK_INSTALL_LOG 2>&1 
     [ $? -ne 0 ] && fail "failed to set ZSTACK_HOME path by zstack-ctl"
     pass
@@ -898,13 +899,13 @@ check_zstack_server(){
 }
 
 start_zstack(){
-    echo_title "Start ZStack Server"
+    echo_title "Start ${PRODUCT_NAME} Server"
     echo ""
     show_spinner sz_start_zstack
 }
 
 cs_deploy_db(){
-    echo_subtitle "Deploy ZStack Database"
+    echo_subtitle "Deploy Database"
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
             zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACK_INSTALL_LOG 2>&1
@@ -915,13 +916,13 @@ cs_deploy_db(){
         zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
-        fail "failed to deploy ZStack database. You might want to add -D to drop previous ZStack database or -k to keep previous zstack database"
+        fail "failed to deploy ${PRODUCT_NAME} database. You might want to add -D to drop previous ${PRODUCT_NAME} database or -k to keep previous zstack database"
     fi
     pass
 }
 
 sz_start_zstack(){
-    echo_subtitle "Start ZStack management node"
+    echo_subtitle "Start ${PRODUCT_NAME} management node"
     zstack-ctl stop_node -f >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl start_node >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to start zstack"
@@ -935,7 +936,7 @@ sz_start_zstack(){
 }
 
 start_dashboard(){
-    echo_title "Start ZStack Web UI"
+    echo_title "Start ${PRODUCT_NAME} Web UI"
     echo ""
     show_spinner sd_install_dashboard
     #show_spinner sd_install_dashboard_libs
@@ -943,7 +944,7 @@ start_dashboard(){
 }
 
 sd_install_dashboard(){
-    echo_subtitle "Install ZStack Web UI"
+    echo_subtitle "Install ${PRODUCT_NAME} Web UI"
     cd $ZSTACK_INSTALL_ROOT
     bash $ZSTACK_TOOLS_INSTALLER zstack-dashboard >$ZSTACK_INSTALL_LOG 2>&1
 
@@ -954,7 +955,7 @@ sd_install_dashboard(){
 }
 
 sd_start_dashboard(){
-    echo_subtitle "Start ZStack Dashboard"
+    echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
     chmod a+x /etc/init.d/zstack-dashboard
     /etc/init.d/zstack-dashboard restart >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to zstack dashboard start"
@@ -964,9 +965,9 @@ sd_start_dashboard(){
 
 help (){
     echo "
-ZStack All-In-One Installer.
+${PRODUCT_NAME} Installer.
 
-The script can install ZStack related software.
+The script can install ${PRODUCT_NAME} related software.
 
 Warning: This script will disable SELinux on RedHat series OS (CentOS/Redhat RHEL)
 
@@ -978,12 +979,12 @@ Options:
   -d    print detailed installation log to screen
         By default the installation log will be saved to $ZSTACK_INSTALL_LOG
 
-  -D    drop previous ZStack database if it exists. An error will be raised
-        if a previous ZStack DB is detected and no -D or -k option is provided.
+  -D    drop previous ${PRODUCT_NAME} database if it exists. An error will be raised
+        if a previous ${PRODUCT_NAME} database is detected and no -D or -k option is provided.
 
   -f LOCAL_PATH_OR_URL_OF_ZSTACK_ALL_IN_ONE_PACKAGE
-        file path to ZStack all-in-one package. By default the script
-        will download the all-in-one package from ZStack's official website.
+        file path to ${PRODUCT_NAME} all-in-one package. By default the script
+        will download the all-in-one package from ${PRODUCT_NAME} official website.
         You can provide a local file path or a URL with option if you want to
         use a separate all-in-one package.
 
@@ -998,14 +999,14 @@ Options:
         http://CURRENT_MACHINE_IP/image/ . Doesn't effect when use -u to upgrade
         zstack or -l to install some system libs. 
 
-  -i    only install ZStack management node and dependent packages
+  -i    only install ${PRODUCT_NAME} management node and dependent packages
 
   -I MANAGEMENT_NODE_NETWORK_INTERFACE | MANAGEMENT_NODE_IP_ADDRESS
         e.g. -I eth0, -I eth0:1, -I 192.168.0.1
         the network interface (e.g. eth0) or IP address for management network.
         The IP address of this interface will be configured as IP of MySQL 
         server and RabbitMQ server, if they are installed on this machine.
-        Remote ZStack managemet nodes will use this IP to access MySQL and 
+        Remote ${PRODUCT_NAME} managemet nodes will use this IP to access MySQL and 
         RabbitMQ. By default, the installer script will grab the IP of 
         interface providing default routing from routing table. 
         If multiple IP addresses share same net device, e.g. em1, em1:1, em1:2.
@@ -1013,20 +1014,20 @@ Options:
 
   -k    keep previous zstack DB if it exists.
 
-  -l    only just install ZStack dependent libraries
+  -l    only just install ${PRODUCT_NAME} dependent libraries
 
   -n NFS_PATH
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
         to upgrade zstack or -l to install some system libs. 
 
   -p MYSQL_PASSWORD
-        password for MySQL user 'zstack' that is the user ZStack management nodes use to access database. By default, an empty password is applied.
+        password for MySQL user 'zstack' that is the user ${PRODUCT_NAME} management nodes use to access database. By default, an empty password is applied.
 
   -P MYSQL_PASSWORD
         password for MySQL root user. By default, an empty password is applied.
 
   -r ZSTACK_INSTALLATION_PATH
-        the path where to install ZStack management node.  The default path is $ZSTACK_INSTALL_ROOT
+        the path where to install ${PRODUCT_NAME} management node.  The default path is $ZSTACK_INSTALL_ROOT
 
   -R PYTHON_PACKAGE_INDEX
         the repository to install python libs. The default is https://pypi.python.org/simple/
@@ -1035,12 +1036,12 @@ Options:
 ------------
 Example:
 
-Following command will install the ZStack management node to /usr/local/zstack and all dependent packages:
+Following command will install the ${PRODUCT_NAME} management node to /usr/local/zstack and all dependent packages:
 
 . Apache Tomcat 7 with zstack.war deployed
-. ZStack web UI
-. ZStack command line tool (zstack-cli)
-. ZStack control tool (zstack-ctl)
+. ${PRODUCT_NAME} web UI
+. ${PRODUCT_NAME} command line tool (zstack-cli)
+. ${PRODUCT_NAME} control tool (zstack-ctl)
 . MySQL
 . RabbitMQ server
 . NFS server
@@ -1060,7 +1061,7 @@ deploying MySQL and RabbitMQ.
 
 --
 
-Following command only installs ZStack management node and dependent software.
+Following command only installs ${PRODUCT_NAME} management node and dependent software.
 
 # $0 -i
 
@@ -1096,7 +1097,7 @@ do
 done
 OPTIND=1
 
-echo "ZStack install root: $ZSTACK_INSTALL_ROOT" >>$ZSTACK_INSTALL_LOG
+echo "${PRODUCT_NAME} installation root path: $ZSTACK_INSTALL_ROOT" >>$ZSTACK_INSTALL_LOG
 [ -z $NFS_FOLDER ] && NFS_FOLDER=$ZSTACK_INSTALL_ROOT/nfs_root
 echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG
 [ -z $HTTP_FOLDER ] && HTTP_FOLDER=$ZSTACK_INSTALL_ROOT/http_root
@@ -1180,7 +1181,7 @@ fi
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
 
-#Download ZStack all in one package
+#Download ${PRODUCT_NAME} all in one package
 download_zstack
 
 if [ $UPGRADE = 'y' ]; then
@@ -1195,7 +1196,7 @@ if [ $UPGRADE = 'y' ]; then
 
     echo ""
     echo_star_line
-    echo "ZStack in $ZSTACK_INSTALL_ROOT has been upgraded to ${VERSION}"
+    echo "${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been upgraded to ${VERSION}"
     if [ $CURRENT_STATUS = 'y' ]; then
         echo " Your management node has been started up again"
     fi
@@ -1209,8 +1210,8 @@ unpack_zstack_into_tomcat
 
 #create zstack log yum repo
 cat > $zstack_local_repo_file <<EOF
-[zstack-local]
-name=ZStack Local Yum Repo
+[${PRODUCT_NAME}-local]
+name=${PRODUCT_NAME} Local Yum Repo
 baseurl=$yum_source
 enabled=0
 gpgcheck=0
@@ -1221,20 +1222,20 @@ chmod 644 $zstack_local_repo_file
 #Install Ansible 
 install_ansible
 
-#Install ZStack required system libs through ansible
+#Install ${PRODUCT_NAME} required system libs through ansible
 install_system_libs
 
 if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo ""
     echo_star_line
-    echo "Finish installing ZStack dependent software."
-    echo "ZStack management node and Tomcat are not installed."
+    echo "Finish installing ${PRODUCT_NAME} dependent software."
+    echo "${PRODUCT_NAME} management node and Tomcat are not installed."
     echo "P.S.: selinux is disabled!"
     echo_star_line
     exit 0
 fi
 
-#Download and install ZStack All-In-One Package
+#Download and install ${PRODUCT_NAME} Package
 install_zstack
 
 #Post Configuration, including apache, zstack-server, NFS Server, HTTP Server
@@ -1249,8 +1250,8 @@ fi
 if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo ""
     echo_star_line
-    echo "ZStack ${VERSION}management node is installed to $ZSTACK_INSTALL_ROOT."
-    echo "Mysql and RabbitMQ are not installed. You can use zstack-ctl to install them and start ZStack service later. "
+    echo "${PRODUCT_NAME} ${VERSION}management node is installed to $ZSTACK_INSTALL_ROOT."
+    echo "Mysql and RabbitMQ are not installed. You can use zstack-ctl to install them and start ${PRODUCT_NAME} service later. "
     echo_star_line
     exit 0
 fi
@@ -1266,7 +1267,7 @@ if [ ! -z $HTTP_PROXY ]; then
     unset https_proxy
 fi
 
-#Start ZStack
+#Start ${PRODUCT_NAME} 
 if [ -z $NOT_START_ZSTACK ]; then
     start_zstack
 fi
@@ -1277,21 +1278,21 @@ if [ ! -z $HTTP_PROXY ]; then
     export https_proxy=$HTTP_PROXY
 fi
 
-#Start ZStack-Dashboard
+#Start ${PRODUCT_NAME}-Dashboard
 start_dashboard
 
 #Print all installation message
 
 echo ""
 echo_star_line
-echo "ZStack All In One ${VERSION}Installation Completed:"
-echo " - ZStack management node is successfully installed in $ZSTACK_INSTALL_ROOT"
+echo "${PRODUCT_NAME} All In One ${VERSION}Installation Completed:"
+echo " - ${PRODUCT_NAME} management node is successfully installed in $ZSTACK_INSTALL_ROOT"
 echo " - the management node is running now"
 echo "      You can use /etc/init.d/zstack-server (stop|start) to stop/start it"
-echo " - ZStack web UI is running, vist http://$MANAGEMENT_IP:5000 in your browser"
+echo " - ${PRODUCT_NAME} web UI is running, vist http://$MANAGEMENT_IP:5000 in your browser"
 echo "      You can use /etc/init.d/zstack-dashboard (stop|start) to stop/start the service"
-echo " - ZStack command line tool is installed: zstack-cli"
-echo " - ZStack control tool is installed: zstack-ctl"
+echo " - ${PRODUCT_NAME} command line tool is installed: zstack-cli"
+echo " - ${PRODUCT_NAME} control tool is installed: zstack-ctl"
 [ ! -z $NEED_NFS ] && echo " - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE"
 [ ! -z $NEED_HTTP ] && echo " - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your images to the folder $HTTP_FOLDER", your image local url is http://$MANAGEMENT_IP/image/your_image_name
 echo ' - You can use `zstack-ctl install_management_node --host=remote_ip` to install more management nodes'

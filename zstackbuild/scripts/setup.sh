@@ -6,7 +6,7 @@ tmpdir=`mktemp`
 mkdir -p $tmpdir
 tail -n $line $0 |tar x -C $tmpdir
 cd $tmpdir
-bash ./install.sh -a -f zstack*.tgz $*
+PRODUCT_NAME=Zizhu bash ./install.sh -a -f zstack*.tgz $*
 ret=$?
 rm -rf $tmpdir
 exit $ret
