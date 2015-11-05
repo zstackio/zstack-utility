@@ -1062,6 +1062,9 @@ class TimeoutObject(object):
     def has(self, name):
         return name in self.objects.keys()
 
+    def remove(self, name):
+        del self.objects[name]
+
     def wait_until_object_timeout(self, name, timeout=60):
         def wait(_):
             return not self.has(name)

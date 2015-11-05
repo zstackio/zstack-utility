@@ -138,6 +138,12 @@ class LoginIscsiTargetRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(LoginIscsiTargetRsp, self).__init__()
 
+class ReportVmStateCmd(object):
+    def __init__(self):
+        self.hostUuid = None
+        self.vmUuid = None
+        self.vmState = None
+
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
@@ -1506,6 +1512,19 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_CREATE_SECRET = "/vm/createcephsecret"
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
+    KVM_REPORT_VM_STATE_PATH = "/vm/reportstate"
+
+    VM_OP_START = "started"
+    VM_OP_STOP = "stopped"
+    VM_OP_MIGRATE = "migrated"
+
+    timeout_object = linux.TimeoutObject()
+
+    def _record_operation(self, uuid, op):
+        self.timeout_object.put('%s-%s' % (uuid, op), 300)
+
+    def _remove_operation(self, uuid,op):
+        self.timeout_object.remove('%s-%s' % (uuid, op))
 
     def _start_vm(self, cmd):
         try:
@@ -1579,6 +1598,8 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = StartVmResponse()
         try:
+            self._record_operation(cmd.vmInstanceUuid, self.VM_OP_START)
+
             self._start_vm(cmd)
             logger.debug('successfully started vm[uuid:%s, name:%s]' % (cmd.vmInstanceUuid, cmd.vmName))
         except kvmagent.KvmError as e:
@@ -1631,6 +1652,8 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = StopVmResponse()
         try:
+            self._record_operation(cmd.uuid, self.VM_OP_STOP)
+
             self._stop_vm(cmd)
             logger.debug("successfully stopped vm[uuid:%s]" % cmd.uuid)
         except kvmagent.KvmError as e:
@@ -1845,8 +1868,49 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    def report_vm_state(self, req):
+        body = req[http.REQUEST_BODY]
+        vm_uuid, op, _, _ = body.split()
+        key = '%s-%s' % (vm_uuid, op)
+        if self.timeout_object.has('%s-%s' % (vm_uuid, op)):
+            self.timeout_object.remove(key)
+            return
+
+        if op == self.VM_OP_STOP:
+            migrate_key = '%s-%s' % (vm_uuid, self.VM_OP_MIGRATE)
+            if self.timeout_object.has(migrate_key):
+                self.timeout_object.remove(migrate_key)
+                return
+
+        if op not in [self.VM_OP_START, self.VM_OP_STOP]:
+            raise Exception('unknown op[%s] for the vm[uuid:%s]' % (op, vm_uuid))
+
+        # this is an operation outside zstack, report it
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            logger.warn('cannot find SEND_COMMAND_URL, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, op))
+            return
+
+        host_uuid = self.config.get(kvmagent.HOST_UUID)
+        if not host_uuid:
+            logger.warn('cannot find HOST_UUID, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, op))
+            return
+
+        cmd = ReportVmStateCmd()
+        cmd.vmUuid = vm_uuid
+        cmd.hostUuid = host_uuid
+        if op == self.VM_OP_START:
+            cmd.vmState = Vm.VM_STATE_RUNNING
+        elif op == self.VM_OP_STOP:
+            cmd.vmState = Vm.VM_STATE_SHUTDOWN
+
+        logger.debug('detected an abnormal vm operation[uuid:%s, op:%s], report it to %s' % (vm_uuid, op, url))
+        return http.json_dump_post(url, cmd, {'commandpath':'/kvm/reportvmstate'})
+
     def start(self):
         http_server = kvmagent.get_http_server()
+        http_server.register_sync_uri(self.KVM_REPORT_VM_STATE_PATH, self.report_vm_state)
+
         http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
         http_server.register_async_uri(self.KVM_STOP_VM_PATH, self.stop_vm)
         http_server.register_async_uri(self.KVM_REBOOT_VM_PATH, self.reboot_vm)
@@ -1868,3 +1932,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
     def stop(self):
         pass
+
+    def configure(self, config):
+        self.config = config
