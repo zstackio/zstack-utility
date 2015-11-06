@@ -34,6 +34,7 @@ def post():
             if res.status != 200:
                 raise Exception(res.read())
             conn.close()
+            return
         except Exception as e:
             content = traceback.format_exc()
             logging.warn('unable to post to http://%s:%s%s with params[%s], %s.\n %s' % (URL, PORT, PATH, params, str(e), content))
