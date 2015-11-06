@@ -1200,9 +1200,17 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
 
-            def filebased_volume(dev_letter):
+            def filebased_volume(dev_letter, volume):
                 disk = e(devices, 'disk', None, {'type':'file', 'device':'disk', 'snapshot':'external'})
-                e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
+                if volume.cacheMode == 0:
+                    e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
+                elif volume.cacheMode == 1:
+                    e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'writethrough'})
+                elif volume.cacheMode == 2:
+                    e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'writeback'})
+                else:
+                    raise kvmagent.KvmError['dev_letter[%s] invalide cacheMode[%d]' % dev_letter, volume.cacheMode]
+
                 e(disk, 'source', None, {'file':v.installPath})
                 if use_virtio:
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
@@ -1261,7 +1269,7 @@ class Vm(object):
                 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.deviceType == 'file':
-                    filebased_volume(dev_letter)
+                    vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
                     iscsibased_volume(dev_letter, v.useVirtio)
                 elif v.deviceType == 'ceph':
