@@ -574,17 +574,38 @@ class Vm(object):
         
         raise kvmagent.KvmError['no vnc console defined for vm[uuid:%s]' % self.uuid]
 
-    def attach_data_volume(self, volume):
+    def attach_data_volume(self, volume, addons):
         self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('detach-volume-%s' % self.uuid)
-        self._attach_data_volume(volume)
+        self._attach_data_volume(volume, addons)
         self.timeout_object.put('attach-volume-%s' % self.uuid, 10)
 
-    def _attach_data_volume(self, volume):
+    def _attach_data_volume(self, volume, addons):
         if volume.deviceId >= len(self.DEVICE_LETTERS):
             err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 24 allowed" % (self.uuid, volume.deviceId)
             logger.warn(err)
             raise kvmagent.KvmError(err)
+
+        def volume_qos(volume_xml_obj):
+            if not addons:
+                return
+
+            vol_qos = addons['VolumeQos']
+            if not vol_qos:
+                return
+
+            qos = vol_qos[volume.volumeUuid]
+            if not qos:
+                return
+
+            if not qos.totalBandwidth and not qos.totalIops:
+                return
+
+            iotune = e(volume_xml_obj, 'iotune')
+            if qos.totalBandwidth:
+                e(iotune, 'total_bytes_sec', str(qos.totalBandwidth))
+            if qos.totalIops:
+                e(iotune, 'total_iops_sec', str(qos.totalIops))
 
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type':'file', 'device':'disk'})
@@ -596,6 +617,7 @@ class Vm(object):
             else:
                 e(disk, 'target', None, {'dev':'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'ide'})
 
+            volume_qos(disk)
             return etree.tostring(disk)
 
         def iscsibased_volume():
@@ -607,6 +629,7 @@ class Vm(object):
                 vi.volume_uuid = volume.volumeUuid
                 vi.chap_username = volume.chapUsername
                 vi.chap_password = volume.chapPassword
+                volume_qos(vi)
                 return etree.tostring(vi.to_xmlobject())
 
             def blk_iscsi():
@@ -617,6 +640,7 @@ class Vm(object):
                 bi.volume_uuid = volume.volumeUuid
                 bi.chap_username = volume.chapUsername
                 bi.chap_password = volume.chapPassword
+                volume_qos(bi)
                 return etree.tostring(bi.to_xmlobject())
 
             if volume.useVirtio:
@@ -629,12 +653,14 @@ class Vm(object):
                 vc = VirtioCeph()
                 vc.volume = volume
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                volume_qos(vc)
                 return etree.tostring(vc.to_xmlobject())
 
             def blk_ceph():
                 ic = IdeCeph()
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                volume_qos(ic)
                 return etree.tostring(ic.to_xmlobject())
 
             if volume.useVirtio:
@@ -1703,7 +1729,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(cmd.vmInstanceUuid)
             if vm.state != Vm.VM_STATE_RUNNING:
                 raise kvmagent.KvmError('unable to attach volume[%s] to vm[uuid:%s], vm must be running' % (volume.installPath, vm.uuid))
-            vm.attach_data_volume(cmd.volume)
+            vm.attach_data_volume(cmd.volume, cmd.addons)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
