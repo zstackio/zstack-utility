@@ -1239,14 +1239,14 @@ if [ -f /etc/mysql/my.cnf ]; then
     # Ubuntu
     sed -i 's/^bind-address/#bind-address/' /etc/mysql/my.cnf
     sed -i 's/^skip-networking/#skip-networking/' /etc/mysql/my.cnf
-    sed -i '/\[mysqld\]/a default-character-set = utf8\' /etc/mysql/my.cnf
+    sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/mysql/my.cnf
 fi
 
 if [ -f /etc/my.cnf ]; then
     # CentOS
     sed -i 's/^bind-address/#bind-address/' /etc/my.cnf
     sed -i 's/^skip-networking/#skip-networking/' /etc/my.cnf
-    sed -i '/\[mysqld\]/a default-character-set = utf8\' /etc/my.cnf
+    sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/my.cnf
 fi
 '''
         fd, post_install_script_path = tempfile.mkstemp()
