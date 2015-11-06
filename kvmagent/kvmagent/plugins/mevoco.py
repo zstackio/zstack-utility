@@ -327,14 +327,13 @@ dhcp-range={{g}},static
                 with open(conf_file_path, 'w') as fd:
                     fd.write(conf_file)
             else:
-                if not restart_dnsmasq:
-                    with open(conf_file_path, 'r+') as fd:
-                        c = fd.read()
-                        if c != conf_file:
-                            logger.debug('dnsmasq configure file for bridge[%s] changed, restart it' % bridge_name)
-                            fd.seek(0)
-                            fd.write(conf_file)
-                            restart_dnsmasq = True
+                with open(conf_file_path, 'r+') as fd:
+                    c = fd.read()
+                    if c != conf_file:
+                        logger.debug('dnsmasq configure file for bridge[%s] changed, restart it' % bridge_name)
+                        fd.seek(0)
+                        fd.write(conf_file)
+                        restart_dnsmasq = True
 
 
             info = []
