@@ -13,6 +13,7 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import linux
 import zstacklib.utils.lock as lock
+from zstacklib.utils import thread
 import zstacklib.utils.iptables as iptables
 import os.path
 import re
@@ -1923,16 +1924,20 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn('cannot find HOST_UUID, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, op))
             return
 
-        cmd = ReportVmStateCmd()
-        cmd.vmUuid = vm_uuid
-        cmd.hostUuid = host_uuid
-        if op == self.VM_OP_START:
-            cmd.vmState = Vm.VM_STATE_RUNNING
-        elif op == self.VM_OP_STOP:
-            cmd.vmState = Vm.VM_STATE_SHUTDOWN
+        @thread.AsyncThread
+        def report_to_management_node():
+            cmd = ReportVmStateCmd()
+            cmd.vmUuid = vm_uuid
+            cmd.hostUuid = host_uuid
+            if op == self.VM_OP_START:
+                cmd.vmState = Vm.VM_STATE_RUNNING
+            elif op == self.VM_OP_STOP:
+                cmd.vmState = Vm.VM_STATE_SHUTDOWN
 
-        logger.debug('detected an abnormal vm operation[uuid:%s, op:%s], report it to %s' % (vm_uuid, op, url))
-        return http.json_dump_post(url, cmd, {'commandpath':'/kvm/reportvmstate'})
+            logger.debug('detected an abnormal vm operation[uuid:%s, op:%s], report it to %s' % (vm_uuid, op, url))
+            http.json_dump_post(url, cmd, {'commandpath':'/kvm/reportvmstate'})
+
+        report_to_management_node()
 
     def start(self):
         http_server = kvmagent.get_http_server()
