@@ -19,7 +19,8 @@ op = sys.argv[2]
 if op not in ops:
     sys.exit(0)
 
-URL = "http://127.0.0.1:7070"
+URL = "127.0.0.1"
+PORT = 7070
 PATH = "/vm/reportstate"
 
 params = ' '.join(sys.argv[1:])
@@ -27,7 +28,7 @@ params = ' '.join(sys.argv[1:])
 def post():
     for i in range(0, 5):
         try:
-            conn = httplib.HTTPSConnection(URL)
+            conn = httplib.HTTPConnection(URL, PORT, timeout=5)
             conn.request('POST', PATH, params)
             res = conn.getresponse()
             if res.status != 200:
@@ -35,7 +36,7 @@ def post():
             conn.close()
         except Exception as e:
             content = traceback.format_exc()
-            logging.warn('unable to post to %s%s with params[%s], %s.\n %s' % (URL, PATH, params, str(e), content))
+            logging.warn('unable to post to http://%s:%s%s with params[%s], %s.\n %s' % (URL, PORT, PATH, params, str(e), content))
             time.sleep(1)
 
 try:

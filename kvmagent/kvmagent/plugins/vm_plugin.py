@@ -1870,7 +1870,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
     def report_vm_state(self, req):
         body = req[http.REQUEST_BODY]
-        vm_uuid, op, _, _ = body.split()
+        params = body.split()
+        vm_uuid, op = params[0:2]
         key = '%s-%s' % (vm_uuid, op)
         if self.timeout_object.has('%s-%s' % (vm_uuid, op)):
             self.timeout_object.remove(key)
