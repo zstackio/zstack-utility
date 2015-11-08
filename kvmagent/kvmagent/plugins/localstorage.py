@@ -56,6 +56,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
     CHECK_BITS_PATH = "/localstorage/checkbits"
     REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH = "/localstorage/volume/rebaserootvolumetobackingfile"
+    VERIFY_SNAPSHOT_CHAIN_PATH = "/localstorage/snapshot/verifychain"
+    REBASE_SNAPSHOT_BACKING_FILES_PATH = "/localstorage/snapshot/rebasebackingfiles"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -73,6 +75,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME, self.create_template_from_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH, self.rebase_root_volume_to_backing_file)
+        http_server.register_async_uri(self.VERIFY_SNAPSHOT_CHAIN_PATH, self.verify_backing_file_chain)
 
         self.path = None
 
@@ -81,6 +84,35 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
+
+    @kvmagent.replyerror
+    def verify_backing_file_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for sp in cmd.snapshots:
+            if not os.path.exists(sp.path):
+                raise Exception('cannot find the file[%s]' % sp.path)
+
+            if sp.parentPath and not os.path.exists(sp.parentPath):
+                raise Exception('cannot find the backing file[%s]' % sp.parentPath)
+
+            if sp.parentPath:
+                out = shell.call("qemu-img info %s | grep 'backing file' | cut -d ':' -f 2")
+                out = out.strip()
+
+                if sp.parentPath != out:
+                    raise Exception("resource[Snapshot or Volume, uuid:%s, path:%s]'s backing file is not equal to %s" %
+                                (sp.snapshotUuid, sp.path, sp.parentPath))
+
+        return jsonobject.dumps(AgentResponse())
+
+    @kvmagent.replyerror
+    def rebase_backing_files(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for sp in cmd.snapshots:
+            if sp.parentPath:
+                linux.qcow2_rebase_no_check(sp.parentPath, sp.path)
+
+        return jsonobject.dumps(AgentResponse())
 
     @kvmagent.replyerror
     def check_bits(self, req):
