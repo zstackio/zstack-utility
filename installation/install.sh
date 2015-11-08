@@ -1211,7 +1211,7 @@ unpack_zstack_into_tomcat
 
 #create zstack log yum repo
 cat > $zstack_local_repo_file <<EOF
-[${PRODUCT_NAME}-local]
+[zstack-local]
 name=${PRODUCT_NAME} Local Yum Repo
 baseurl=$yum_source
 enabled=0
