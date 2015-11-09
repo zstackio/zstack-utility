@@ -58,6 +58,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH = "/localstorage/volume/rebaserootvolumetobackingfile"
     VERIFY_SNAPSHOT_CHAIN_PATH = "/localstorage/snapshot/verifychain"
     REBASE_SNAPSHOT_BACKING_FILES_PATH = "/localstorage/snapshot/rebasebackingfiles"
+    COPY_TO_REMOTE_BITS_PATH = "/localstorage/copytoremote"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -76,6 +77,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH, self.rebase_root_volume_to_backing_file)
         http_server.register_async_uri(self.VERIFY_SNAPSHOT_CHAIN_PATH, self.verify_backing_file_chain)
+        http_server.register_async_uri(self.REBASE_SNAPSHOT_BACKING_FILES_PATH, self.rebase_backing_files)
+        http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote)
 
         self.path = None
 
@@ -84,6 +87,17 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
+
+    @kvmagent.replyerror
+    def copy_bits_to_remote(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for path in cmd.paths:
+            shell.call('rsync -a --relative %s --rsh="/usr/bin/sshpass -p %s ssh -o StrictHostKeyChecking=no -l %s" %s:/' %
+                       (path, cmd.dstPassword, cmd.dstUsername, cmd.dstIp))
+
+        rsp = AgentResponse()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def verify_backing_file_chain(self, req):
@@ -96,12 +110,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 raise Exception('cannot find the backing file[%s]' % sp.parentPath)
 
             if sp.parentPath:
-                out = shell.call("qemu-img info %s | grep 'backing file' | cut -d ':' -f 2")
-                out = out.strip()
+                out = shell.call("qemu-img info %s | grep 'backing file' | cut -d ':' -f 2" % sp.path)
+                out = out.strip(' \t\r\n')
 
                 if sp.parentPath != out:
-                    raise Exception("resource[Snapshot or Volume, uuid:%s, path:%s]'s backing file is not equal to %s" %
-                                (sp.snapshotUuid, sp.path, sp.parentPath))
+                    raise Exception("resource[Snapshot or Volume, uuid:%s, path:%s]'s backing file[%s] is not equal to %s" %
+                                (sp.snapshotUuid, sp.path, out, sp.parentPath))
 
         return jsonobject.dumps(AgentResponse())
 
