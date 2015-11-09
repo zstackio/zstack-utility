@@ -145,6 +145,11 @@ class ReportVmStateCmd(object):
         self.vmUuid = None
         self.vmState = None
 
+class CheckVmStateRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckVmStateRsp, self).__init__()
+        self.states = {}
+
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
@@ -1540,6 +1545,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
     KVM_REPORT_VM_STATE_PATH = "/vm/reportstate"
+    KVM_VM_CHECK_STATE = "/vm/checkstate"
 
     VM_OP_START = "started"
     VM_OP_STOP = "stopped"
@@ -1635,7 +1641,19 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
             
         return jsonobject.dumps(rsp)
-    
+
+    @kvmagent.replyerror
+    def check_vm_state(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        states = get_all_vm_states()
+        rsp = CheckVmStateRsp()
+        for uuid in cmd.vmUuids:
+            s = states.get(uuid)
+            if not s:
+                s = Vm.VM_STATE_SHUTDOWN
+            rsp.states[uuid] = s
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     def vm_sync(self, req):
         rsp = VmSyncResponse()
@@ -1961,6 +1979,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
+        http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
 
     def stop(self):
         pass
