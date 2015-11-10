@@ -89,7 +89,10 @@ fi
 
 ip netns exec $BR_NAME ip addr show $INNER_DEV | grep $DHCP_IP > /dev/null
 if [ $? -ne 0 ]; then
+    ip netns exec $BR_NAME ip addr flush dev $$INNER_DEV
+    exit_on_error
     ip netns exec $BR_NAME ip addr add $DHCP_IP/$DHCP_NETMASK dev $INNER_DEV
+    exit_on_error
     ip netns exec $BR_NAME ip link set $INNER_DEV up
     exit_on_error
 fi
