@@ -1082,7 +1082,7 @@ class Vm(object):
         logger.debug('detaching ISO from the vm[uuid:%s]:\n%s' % (self.uuid, xml))
 
         try:
-            self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+            self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG | libvirt.VIR_DOMAIN_DEVICE_MODIFY_FORCE)
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to detach the iso from the VM[uuid:%s], %s' % (self.uuid, err))
