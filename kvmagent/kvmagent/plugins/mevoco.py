@@ -42,9 +42,9 @@ class DhcpEnv(object):
 
     def prepare(self):
         cmd = '''\
-BR_NAME={{bridge_name}}
-DHCP_IP={{dhcp_server_ip}}
-DHCP_NETMASK={{dhcp_netmask}}
+BR_NAME="{{bridge_name}}"
+DHCP_IP="{{dhcp_server_ip}}"
+DHCP_NETMASK="{{dhcp_netmask}}"
 
 BR_NUM=`ip link show $BR_NAME | grep $BR_NAME | cut -d":" -f1`
 OUTER_DEV="outer$BR_NUM"
@@ -89,7 +89,7 @@ fi
 
 ip netns exec $BR_NAME ip addr show $INNER_DEV | grep $DHCP_IP > /dev/null
 if [ $? -ne 0 ]; then
-    ip netns exec $BR_NAME ip addr flush dev $$INNER_DEV
+    ip netns exec $BR_NAME ip addr flush dev $INNER_DEV
     exit_on_error
     ip netns exec $BR_NAME ip addr add $DHCP_IP/$DHCP_NETMASK dev $INNER_DEV
     exit_on_error
