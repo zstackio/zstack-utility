@@ -35,7 +35,6 @@ class KvmAgent(plugin.Plugin):
         pass
 
 _rest_service = None
-_libvirt_conn = None
 _qemu_path = None
 
 def new_rest_service(config={}):
@@ -46,16 +45,6 @@ def new_rest_service(config={}):
 
 def get_http_server():
     return _rest_service.http_server
-
-def get_libvirt_connection():
-    global _libvirt_conn
-    if not _libvirt_conn:
-        _libvirt_conn = libvirt.open('qemu:///system')
-    
-    if not _libvirt_conn:
-        raise KvmError('unable to get libvirt connection')
-    
-    return _libvirt_conn
 
 def get_qemu_path():
     global _qemu_path

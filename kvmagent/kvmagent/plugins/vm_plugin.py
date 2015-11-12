@@ -14,6 +14,7 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import linux
 import zstacklib.utils.lock as lock
 from zstacklib.utils import thread
+import functools
 import zstacklib.utils.iptables as iptables
 import os.path
 import re
@@ -155,6 +156,60 @@ def e(parent, tag, value=None, attrib={}):
     if value:
         el.text = value
     return el
+
+class LibvirtAutoReconnect(object):
+    conn = libvirt.open('qemu:///system')
+    if not conn:
+        raise Exception('unable to get libvirt connection')
+
+    def __init__(self, func):
+        self.func = func
+        self.exception = None
+
+    @lock.lock('libvirt-reconnect')
+    def _reconnect(self):
+        def test_connection():
+            try:
+                LibvirtAutoReconnect.conn.getLibVersion()
+                return None
+            except libvirt.libvirtError as ex:
+                return ex
+
+        ex = test_connection()
+        if not ex:
+            # the connection is ok
+            return
+
+        old_conn = LibvirtAutoReconnect.conn
+        LibvirtAutoReconnect.conn = libvirt.open('qemu:///system')
+        if not LibvirtAutoReconnect.conn:
+            raise Exception('unable to get a libvirt connection')
+
+        # try to close the old connection anyway
+        try:
+            old_conn.close()
+        except Exception as ee:
+            logger.warn('unable to close an old libvirt exception, %s' % str(ee))
+
+        ex = test_connection()
+        if ex:
+            # unable to reconnect, raise the error
+            raise Exception('unable to get a libvirt connection, %s' % str(ex))
+
+        logger.debug('successfully reconnected to the libvirt')
+
+    def __call__(self, *args, **kwargs):
+        try:
+            return self.func(LibvirtAutoReconnect.conn)
+        except libvirt.libvirtError as ex:
+            err = str(ex)
+            if 'client socket is closed' in err or 'Broken pipe' in err:
+                logger.debug('socket to the libvirt is broken[%s], try reconnecting' % err)
+                self._reconnect()
+                return self.func(LibvirtAutoReconnect.conn)
+            else:
+                raise
+
 
 class IscsiLogin(object):
     def __init__(self):
@@ -316,15 +371,19 @@ class VirtioIscsi(object):
         e(usage, 'target', self.target)
         xml = etree.tostring(root)
         logger.debug('create secret for virtio-iscsi volume:\n%s\n' % xml)
-        conn = kvmagent.get_libvirt_connection()
-        secret = conn.secretDefineXML(xml)
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.secretDefineXML(xml)
+        secret = call_libvirt()
         secret.setValue(self.chap_password)
         return secret.UUIDString()
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True):
     try:
-        domain = kvmagent.get_libvirt_connection().lookupByName(uuid)
-        vm = Vm.from_virt_domain(domain)
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.lookupByName(uuid)
+        vm = Vm.from_virt_domain(call_libvirt())
         return vm
     except libvirt.libvirtError as e:
         error_code = e.get_error_code()
@@ -338,15 +397,21 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True):
         raise libvirt.libvirtError(err)
 
 def get_running_vm_uuids():
-    ids = kvmagent.get_libvirt_connection().listDomainsID()
+    @LibvirtAutoReconnect
+    def call_libvirt(conn):
+        return conn.listDomainsID()
+    ids = call_libvirt()
     uuids = []
-    for i in ids:
-        domain = kvmagent.get_libvirt_connection().lookupByID(i)
-        uuids.append(domain.name())
-    return uuids
 
-def get_stopped_vm_uuids():
-    uuids = kvmagent.get_libvirt_connection().listDefinedDomains()
+    @LibvirtAutoReconnect
+    def get_domain(conn):
+        # i is for..loop's control variable
+        # it's Python's local scope tricky
+        return conn.lookupByID(i)
+
+    for i in ids:
+        domain = get_domain()
+        uuids.append(domain.name())
     return uuids
 
 def get_all_vm_states():
@@ -354,29 +419,22 @@ def get_all_vm_states():
     running = get_running_vm_uuids()
     for r in running:
         ret[r] = Vm.VM_STATE_RUNNING
-    stopped = get_stopped_vm_uuids()
-    for s in stopped:
-        ret[s] = Vm.VM_STATE_SHUTDOWN
     return ret
 
 def get_running_vms():
-    ids = kvmagent.get_libvirt_connection().listDomainsID()
+    @LibvirtAutoReconnect
+    def get_all_ids(conn):
+        return conn.listDomainsID()
+    ids = get_all_ids()
     vms = []
+
+    @LibvirtAutoReconnect
+    def get_domain(conn):
+        return conn.lookupByID(i)
+
     for i in ids:
-        vm = Vm.from_virt_domain(kvmagent.get_libvirt_connection().lookupByID(i))
+        vm = Vm.from_virt_domain(get_domain())
         vms.append(vm)
-    return vms
-
-def get_stopped_vms():
-    vmnames = kvmagent.get_libvirt_connection().listDefinedDomains()
-    vms = []
-    for name in vmnames:
-        vms.append(get_vm_by_uuid(name))
-    return vms
-
-def get_all_vms():
-    vms = get_running_vms()
-    vms.extend(get_stopped_vms())
     return vms
 
 def get_cpu_memory_used_by_running_vms():
@@ -487,15 +545,6 @@ class Vm(object):
             raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
-#    def _delete_secret(self, uuid):
-#        conn = kvmagent.get_libvirt_connection()
-#        try:
-#            s = conn.secretLookupByUUIDString(uuid)
-#            s.undefine()
-#        except libvirt.libvirtError as e:
-#            if e.get_error_code() != libvirt.VIR_ERR_NO_SECRET:
-#                raise
-
     def reboot(self, timeout=60):
         self.stop(timeout=timeout)
         self.start(timeout)
@@ -503,8 +552,12 @@ class Vm(object):
     def start(self, timeout=60):
         #TODO: 1. enbale hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
-        conn = kvmagent.get_libvirt_connection()
-        domain = conn.defineXML(self.domain_xml)
+
+        @LibvirtAutoReconnect
+        def define_xml(conn):
+            return conn.defineXML(self.domain_xml)
+
+        domain = define_xml()
         self.domain = domain
         self.domain.createWithFlags(0)
         self._wait_for_vm_running(timeout)
