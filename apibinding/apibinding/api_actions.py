@@ -124,6 +124,18 @@ class GetVmAttachableL3NetworkAction(inventory.APIGetVmAttachableL3NetworkMsg):
         self.out = evt
         return self.out
 
+class ExpungeVmInstanceAction(inventory.APIExpungeVmInstanceMsg):
+    def __init__(self):
+        super(ExpungeVmInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ExpungeVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class MigrateVmAction(inventory.APIMigrateVmMsg):
     def __init__(self):
         super(MigrateVmAction, self).__init__()
@@ -144,6 +156,18 @@ class StopVmInstanceAction(inventory.APIStopVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[StopVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RecoverVmInstanceAction(inventory.APIRecoverVmInstanceMsg):
+    def __init__(self):
+        super(RecoverVmInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoverVmInstanceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -536,6 +560,18 @@ class GetVolumeFormatAction(inventory.APIGetVolumeFormatMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVolumeFormatAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RecoverDataVolumeAction(inventory.APIRecoverDataVolumeMsg):
+    def __init__(self):
+        super(RecoverDataVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoverDataVolumeAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1662,6 +1698,18 @@ class QueryTagAction(inventory.APIQueryTagMsg):
         self.out = reply.inventories
         return self.out
 
+class GetVersionAction(inventory.APIGetVersionMsg):
+    def __init__(self):
+        super(GetVersionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVersionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QueryManagementNodeAction(inventory.APIQueryManagementNodeMsg):
     def __init__(self):
         super(QueryManagementNodeAction, self).__init__()
@@ -2344,6 +2392,20 @@ class AddLocalPrimaryStorageAction(inventory.APIAddLocalPrimaryStorageMsg):
             raise Exception('sessionUuid of action[AddLocalPrimaryStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
+        return self.out
+
+class QueryLocalStorageResourceRefAction(inventory.APIQueryLocalStorageResourceRefMsg):
+    def __init__(self):
+        super(QueryLocalStorageResourceRefAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryLocalStorageResourceRefAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
         return self.out
 
 class QueryCephPrimaryStorageAction(inventory.APIQueryCephPrimaryStorageMsg):
