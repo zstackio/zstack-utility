@@ -356,6 +356,18 @@ class UpdateImageAction(inventory.APIUpdateImageMsg):
         self.out = evt
         return self.out
 
+class RecoverImageAction(inventory.APIRecoverImageMsg):
+    def __init__(self):
+        super(RecoverImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoverImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteImageAction(inventory.APIDeleteImageMsg):
     def __init__(self):
         super(DeleteImageAction, self).__init__()
@@ -364,6 +376,18 @@ class DeleteImageAction(inventory.APIDeleteImageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ExpungeImageAction(inventory.APIExpungeImageMsg):
+    def __init__(self):
+        super(ExpungeImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ExpungeImageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
