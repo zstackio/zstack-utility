@@ -612,6 +612,18 @@ class DeleteDataVolumeAction(inventory.APIDeleteDataVolumeMsg):
         self.out = evt
         return self.out
 
+class ExpungeDataVolumeAction(inventory.APIExpungeDataVolumeMsg):
+    def __init__(self):
+        super(ExpungeDataVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ExpungeDataVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateVolumeSnapshotAction(inventory.APICreateVolumeSnapshotMsg):
     def __init__(self):
         super(CreateVolumeSnapshotAction, self).__init__()
