@@ -40,6 +40,11 @@ class CheckBitsRsp(AgentResponse):
         super(CheckBitsRsp, self).__init__()
         self.existing = False
 
+class GetMd5Rsp(AgentResponse):
+    def __init__(self):
+        super(GetMd5Rsp, self).__init__()
+        self.md5s = None
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
 
     INIT_PATH = "/localstorage/init";
@@ -59,6 +64,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     VERIFY_SNAPSHOT_CHAIN_PATH = "/localstorage/snapshot/verifychain"
     REBASE_SNAPSHOT_BACKING_FILES_PATH = "/localstorage/snapshot/rebasebackingfiles"
     COPY_TO_REMOTE_BITS_PATH = "/localstorage/copytoremote"
+    GET_MD5_PATH = "/localstorage/getmd5"
+    CHECK_MD5_PATH = "/localstorage/checkmd5"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -79,11 +86,41 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.VERIFY_SNAPSHOT_CHAIN_PATH, self.verify_backing_file_chain)
         http_server.register_async_uri(self.REBASE_SNAPSHOT_BACKING_FILES_PATH, self.rebase_backing_files)
         http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote)
+        http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
+        http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
 
         self.path = None
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def get_md5(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetMd5Rsp()
+        rsp.md5s = []
+        for to in cmd.md5s:
+            md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % to.path)
+            rsp.md5s.append({
+                'resourceUuid': to.resourceUuid,
+                'path': to.path,
+                'md5': md5
+            })
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_md5(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for to in cmd.md5s:
+            dst_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % to.path)
+            if dst_md5 != to.md5:
+                raise Exception("MD5 unmatch. The file[uuid:%s, path:%s]'s md5 (src host:%s, dst host:%s)" %
+                                (to.resourceUuid, to.path, to.md5, dst_md5))
+
+        rsp = AgentResponse()
+        return jsonobject.dumps(rsp)
+
 
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
