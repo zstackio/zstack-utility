@@ -45,6 +45,12 @@ class GetMd5Rsp(AgentResponse):
         super(GetMd5Rsp, self).__init__()
         self.md5s = None
 
+class GetBackingFileRsp(AgentResponse):
+    def __init__(self):
+        super(GetBackingFileRsp, self).__init__()
+        self.size = None
+        self.backingFilePath = None
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
 
     INIT_PATH = "/localstorage/init";
@@ -66,6 +72,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     COPY_TO_REMOTE_BITS_PATH = "/localstorage/copytoremote"
     GET_MD5_PATH = "/localstorage/getmd5"
     CHECK_MD5_PATH = "/localstorage/checkmd5"
+    GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -88,11 +95,25 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote)
         http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
+        http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
 
         self.path = None
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def get_backing_file_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        out = shell.call("qemu-img info %s | grep 'backing file' | cut -d ':' -f 2" % cmd.path)
+        out = out.strip(' \t\r\n')
+        rsp = GetBackingFileRsp()
+
+        if out:
+            rsp.backingFilePath = out
+            rsp.size = os.path.getsize(out)
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def get_md5(self, req):
