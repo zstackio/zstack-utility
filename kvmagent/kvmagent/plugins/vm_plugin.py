@@ -545,9 +545,13 @@ class Vm(object):
             raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
-    def reboot(self, timeout=60):
-        self.stop(timeout=timeout)
-        self.start(timeout)
+    def reboot(self, cmd):
+        self.stop(timeout=cmd.timeout)
+        boot_device = 'hd'
+        if cmd.bootDevice == 'CdRom':
+            boot_device = 'cdrom'
+        self.domain_xmlobject.os.boot.dev = boot_device
+        self.start(cmd.timeout)
 
     def start(self, timeout=60):
         #TODO: 1. enbale hair_pin mode
@@ -1767,7 +1771,7 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = RebootVmResponse()
         try:
             vm = get_vm_by_uuid(cmd.uuid)
-            vm.reboot(cmd.timeout)
+            vm.reboot(cmd)
             logger.debug('successfully, reboot vm[uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
