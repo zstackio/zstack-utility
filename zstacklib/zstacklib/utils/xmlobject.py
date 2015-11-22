@@ -26,7 +26,10 @@ class XmlObject(object):
     
     def hasattr(self, name):
         return hasattr(self, name)
-    
+
+    def replace_node(self, name, val):
+        setattr(self, name, val)
+
     def put_node(self, name, val):
         if not hasattr(self, name):
             setattr(self, name, val)

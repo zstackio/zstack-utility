@@ -23,5 +23,4 @@ ZStack KVM agent REST service""",
       entry_points="""
       # -*- Entry points: -*-
       """,
-      data_files=[('/etc/libvirt/hooks', ['qemu'])]
       )

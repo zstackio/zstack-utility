@@ -157,14 +157,59 @@ def e(parent, tag, value=None, attrib={}):
         el.text = value
     return el
 
+class LibvirtEventManager(object):
+    EVENT_DEFINED = "Defined"
+    EVENT_UNDEFINED = "Undefined"
+    EVENT_STARTED = "Started"
+    EVENT_SUSPENDED = "Suspended"
+    EVENT_RESUMED = "Resumed"
+    EVENT_STOPPED = "Stopped"
+    EVENT_SHUTDOWN = "Shutdown"
+
+    event_strings = (
+        EVENT_DEFINED,
+        EVENT_UNDEFINED,
+        EVENT_STARTED,
+        EVENT_SUSPENDED,
+        EVENT_RESUMED,
+        EVENT_STOPPED,
+        EVENT_SHUTDOWN
+    )
+
+    def __init__(self):
+        libvirt.virEventRegisterDefaultImpl()
+
+        @thread.AsyncThread
+        def run():
+            while True:
+                libvirt.virEventRunDefaultImpl()
+
+        run()
+
+    @staticmethod
+    def event_to_string(index):
+        return LibvirtEventManager.event_strings[index]
+
 class LibvirtAutoReconnect(object):
     conn = libvirt.open('qemu:///system')
+
     if not conn:
         raise Exception('unable to get libvirt connection')
+
+    LibvirtEventManager()
+
+    libvirt_event_callbacks = {}
 
     def __init__(self, func):
         self.func = func
         self.exception = None
+
+    @staticmethod
+    def register_libvirt_callbacks():
+        for id, cb in LibvirtAutoReconnect.libvirt_event_callbacks.items():
+            LibvirtAutoReconnect.conn.domainEventRegisterAny(None, id, cb, None)
+
+        LibvirtAutoReconnect.conn.setKeepAlive(5, 3)
 
     @lock.lock('libvirt-reconnect')
     def _reconnect(self):
@@ -184,6 +229,8 @@ class LibvirtAutoReconnect(object):
         LibvirtAutoReconnect.conn = libvirt.open('qemu:///system')
         if not LibvirtAutoReconnect.conn:
             raise Exception('unable to get a libvirt connection')
+
+        LibvirtAutoReconnect.register_libvirt_callbacks()
 
         # try to close the old connection anyway
         try:
@@ -209,6 +256,8 @@ class LibvirtAutoReconnect(object):
                 return self.func(LibvirtAutoReconnect.conn)
             else:
                 raise
+
+
 
 
 class IscsiLogin(object):
@@ -447,6 +496,43 @@ def get_cpu_memory_used_by_running_vms():
         
     return (used_cpu, used_memory)
 
+class VmOperationJudger(object):
+    def __init__(self, op):
+        self.op = op
+        self.expected_events = {}
+
+        if self.op == VmPlugin.VM_OP_START:
+            self.expected_events[LibvirtEventManager.EVENT_STARTED] = LibvirtEventManager.EVENT_STARTED
+        elif self.op == VmPlugin.VM_OP_MIGRATE:
+            self.expected_events[LibvirtEventManager.EVENT_STOPPED] = LibvirtEventManager.EVENT_STOPPED
+        elif self.op == VmPlugin.VM_OP_STOP:
+            self.expected_events[LibvirtEventManager.EVENT_STOPPED] = LibvirtEventManager.EVENT_STOPPED
+        elif self.op == VmPlugin.VM_OP_DESTROY:
+            self.expected_events[LibvirtEventManager.EVENT_STOPPED] = LibvirtEventManager.EVENT_STOPPED
+        elif self.op == VmPlugin.VM_OP_REBOOT:
+            self.expected_events[LibvirtEventManager.EVENT_STARTED] = LibvirtEventManager.EVENT_STARTED
+            self.expected_events[LibvirtEventManager.EVENT_STOPPED] = LibvirtEventManager.EVENT_STOPPED
+        else:
+            raise Exception('unknown vm operation[%s]' % self.op)
+
+    def remove_expected_event(self, evt):
+        del self.expected_events[evt]
+        return len(self.expected_events)
+
+    def ignore_libvirt_events(self):
+        if self.op == VmPlugin.VM_OP_START:
+            return [LibvirtEventManager.EVENT_STARTED]
+        elif self.op == VmPlugin.VM_OP_MIGRATE:
+            return [LibvirtEventManager.EVENT_STOPPED, LibvirtEventManager.EVENT_UNDEFINED]
+        elif self.op == VmPlugin.VM_OP_STOP:
+            return [LibvirtEventManager.EVENT_STOPPED, LibvirtEventManager.EVENT_SHUTDOWN]
+        elif self.op == VmPlugin.VM_OP_DESTROY:
+            return [LibvirtEventManager.EVENT_STOPPED, LibvirtEventManager.EVENT_SHUTDOWN, LibvirtEventManager.EVENT_UNDEFINED]
+        elif self.op == VmPlugin.VM_OP_REBOOT:
+            return [LibvirtEventManager.EVENT_STARTED, LibvirtEventManager.EVENT_STOPPED]
+        else:
+            raise Exception('unknown vm operation[%s]' % self.op)
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -479,6 +565,8 @@ class Vm(object):
     DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
 
     timeout_object = linux.TimeoutObject()
+
+    REBOOT_ACTION_WITH_CDROM = 'bootFromHardDisk'
      
     def __init__(self):
         self.uuid = None
@@ -1549,6 +1637,8 @@ class Vm(object):
             meta = e(root, 'metadata')
             e(meta, 'zstack', 'True')
             e(meta, 'internalId', str(cmd.vmInternalId))
+            if cmd.bootDev == 'cdrom':
+                e(meta, 'reboot', Vm.REBOOT_ACTION_WITH_CDROM)
         
         def make_vnc():
             devices = elements['devices']
@@ -1612,17 +1702,26 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_REPORT_VM_STATE_PATH = "/vm/reportstate"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
 
-    VM_OP_START = "started"
-    VM_OP_STOP = "stopped"
-    VM_OP_MIGRATE = "migrated"
+    VM_OP_START = "start"
+    VM_OP_STOP = "stop"
+    VM_OP_REBOOT = "reboot"
+    VM_OP_MIGRATE = "migrate"
+    VM_OP_DESTROY = "destroy"
 
     timeout_object = linux.TimeoutObject()
 
     def _record_operation(self, uuid, op):
-        self.timeout_object.put('%s-%s' % (uuid, op), 300)
+        j = VmOperationJudger(op)
+        self.timeout_object.put(uuid, j, 300)
 
-    def _remove_operation(self, uuid,op):
-        self.timeout_object.remove('%s-%s' % (uuid, op))
+    def _remove_operation(self, uuid):
+        self.timeout_object.remove(uuid)
+
+    def _get_operation(self, uuid):
+        o = self.timeout_object.get(uuid)
+        if not o:
+            return None
+        return o[0]
 
     def _start_vm(self, cmd):
         try:
@@ -1778,6 +1877,8 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RebootVmResponse()
         try:
+            self._record_operation(cmd.uuid, self.VM_OP_REBOOT)
+
             vm = get_vm_by_uuid(cmd.uuid)
             vm.reboot(cmd)
             logger.debug('successfully, reboot vm[uuid:%s]' % cmd.uuid)
@@ -1793,6 +1894,8 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DestroyVmResponse()
         try:
+            self._record_operation(cmd.uuid, self.VM_OP_DESTROY)
+
             vm = get_vm_by_uuid(cmd.uuid, False)
             if vm:
                 vm.destroy()
@@ -1843,6 +1946,8 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MigrateVmResponse()
         try:
+            self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
+
             vm = get_vm_by_uuid(cmd.vmUuid)
             vm.migrate(cmd)
         except kvmagent.KvmError as e:
@@ -1979,48 +2084,7 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     def report_vm_state(self, req):
-        body = req[http.REQUEST_BODY]
-        params = body.split()
-        vm_uuid, op = params[0:2]
-        key = '%s-%s' % (vm_uuid, op)
-        if self.timeout_object.has('%s-%s' % (vm_uuid, op)):
-            self.timeout_object.remove(key)
-            return
-
-        if op == self.VM_OP_STOP:
-            migrate_key = '%s-%s' % (vm_uuid, self.VM_OP_MIGRATE)
-            if self.timeout_object.has(migrate_key):
-                self.timeout_object.remove(migrate_key)
-                return
-
-        if op not in [self.VM_OP_START, self.VM_OP_STOP]:
-            raise Exception('unknown op[%s] for the vm[uuid:%s]' % (op, vm_uuid))
-
-        # this is an operation outside zstack, report it
-        url = self.config.get(kvmagent.SEND_COMMAND_URL)
-        if not url:
-            logger.warn('cannot find SEND_COMMAND_URL, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, op))
-            return
-
-        host_uuid = self.config.get(kvmagent.HOST_UUID)
-        if not host_uuid:
-            logger.warn('cannot find HOST_UUID, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, op))
-            return
-
-        @thread.AsyncThread
-        def report_to_management_node():
-            cmd = ReportVmStateCmd()
-            cmd.vmUuid = vm_uuid
-            cmd.hostUuid = host_uuid
-            if op == self.VM_OP_START:
-                cmd.vmState = Vm.VM_STATE_RUNNING
-            elif op == self.VM_OP_STOP:
-                cmd.vmState = Vm.VM_STATE_SHUTDOWN
-
-            logger.debug('detected an abnormal vm operation[uuid:%s, op:%s], report it to %s' % (vm_uuid, op, url))
-            http.json_dump_post(url, cmd, {'commandpath':'/kvm/reportvmstate'})
-
-        report_to_management_node()
+        return
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -2045,6 +2109,79 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
+
+        self.register_libvirt_event()
+
+    def _vm_lifecycle_event(self, conn, dom, event, detail, opaque):
+        evstr = LibvirtEventManager.event_to_string(event)
+        vm_uuid = dom.name()
+        if evstr not in (LibvirtEventManager.EVENT_STARTED, LibvirtEventManager.EVENT_STOPPED):
+            logger.debug("ignore event[%s] of the vm[uuid:%s]" % (evstr, vm_uuid))
+            return
+
+        vm_op_judger = self._get_operation(vm_uuid)
+        if vm_op_judger and evstr in vm_op_judger.ignore_libvirt_events():
+            # this is an operation originated from ZStack itself
+            logger.debug('ignore event[%s] for the vm[uuid:%s], this operation is from ZStack itself' % (evstr, vm_uuid))
+
+            if vm_op_judger.remove_expected_event(evstr) == 0:
+                self._remove_operation(vm_uuid)
+                logger.debug('events happened of the vm[uuid:%s] meet the expectation, delete the the operation judger' % vm_uuid)
+
+            return
+
+        # this is an operation outside zstack, report it
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            logger.warn('cannot find SEND_COMMAND_URL, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, evstr))
+            return
+
+        host_uuid = self.config.get(kvmagent.HOST_UUID)
+        if not host_uuid:
+            logger.warn('cannot find HOST_UUID, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, evstr))
+            return
+
+        @thread.AsyncThread
+        def report_to_management_node():
+            cmd = ReportVmStateCmd()
+            cmd.vmUuid = vm_uuid
+            cmd.hostUuid = host_uuid
+            if evstr == LibvirtEventManager.EVENT_STARTED:
+                cmd.vmState = Vm.VM_STATE_RUNNING
+            elif evstr == LibvirtEventManager.EVENT_STOPPED:
+                cmd.vmState = Vm.VM_STATE_SHUTDOWN
+
+            logger.debug('detected an abnormal vm operation[uuid:%s, op:%s], report it to %s' % (vm_uuid, evstr, url))
+            http.json_dump_post(url, cmd, {'commandpath':'/kvm/reportvmstate'})
+
+        report_to_management_node()
+
+    def _vm_reboot_event(self, conn, dom, opaque):
+        domain_xml = dom.XMLDesc(0)
+        domain_xmlobject = xmlobject.loads(domain_xml)
+        if not domain_xmlobject.has_element("metadata.reboot"):
+            return
+
+        vm_uuid = dom.name()
+        action = domain_xmlobject.metadata.reboot.text_
+        if action != Vm.REBOOT_ACTION_WITH_CDROM:
+            logger.warn('unknown metadata.reboot[%s]' % action)
+            return
+
+        logger.debug('the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will'
+                     ' boot from hdd' % vm_uuid)
+        self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
+        boot = etree.Element('boot', {'dev': 'hd'})
+        domain_xmlobject.os.replace_node('boot', boot)
+        dom.destroy()
+
+        domain = conn.defineXML(domain_xmlobject.dump())
+        domain.createWithFlags(0)
+
+    def register_libvirt_event(self):
+        LibvirtAutoReconnect.libvirt_event_callbacks[libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE] = self._vm_lifecycle_event
+        LibvirtAutoReconnect.libvirt_event_callbacks[libvirt.VIR_DOMAIN_EVENT_ID_REBOOT] = self._vm_reboot_event
+        LibvirtAutoReconnect.register_libvirt_callbacks()
 
     def stop(self):
         pass

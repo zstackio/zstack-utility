@@ -1056,11 +1056,14 @@ class TimeoutObject(object):
         self.objects = {}
         self._start()
 
-    def put(self, name, timeout=30):
-        self.objects[name] = time.time() + timeout
+    def put(self, name, val=None, timeout=30):
+        self.objects[name] = (val, time.time() + timeout)
 
     def has(self, name):
         return name in self.objects.keys()
+
+    def get(self, name):
+        return self.objects.get(name)
 
     def remove(self, name):
         del self.objects[name]
@@ -1075,7 +1078,8 @@ class TimeoutObject(object):
     def _start(self):
         def clean_timeout_object():
             current_time = time.time()
-            for name, timeout in self.objects.items():
+            for name, obj in self.objects.items():
+                timeout = obj[1]
                 if current_time >= timeout:
                     del self.objects[name]
 
