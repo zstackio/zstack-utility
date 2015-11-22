@@ -1699,7 +1699,6 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_CREATE_SECRET = "/vm/createcephsecret"
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
-    KVM_REPORT_VM_STATE_PATH = "/vm/reportstate"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
 
     VM_OP_START = "start"
@@ -2083,12 +2082,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
-    def report_vm_state(self, req):
-        return
-
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_sync_uri(self.KVM_REPORT_VM_STATE_PATH, self.report_vm_state)
 
         http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
         http_server.register_async_uri(self.KVM_STOP_VM_PATH, self.stop_vm)
