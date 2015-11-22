@@ -547,10 +547,11 @@ class Vm(object):
 
     def reboot(self, cmd):
         self.stop(timeout=cmd.timeout)
-        boot_device = 'hd'
-        if cmd.bootDevice == 'CdRom':
-            boot_device = 'cdrom'
-        self.domain_xmlobject.os.boot.dev = boot_device
+        #boot_device = 'hd'
+        #if cmd.bootDevice == 'CdRom':
+        #    boot_device = 'cdrom'
+        #self.domain_xmlobject.os.boot.put_attr('dev', boot_device)
+        #self.domain_xml = self.domain_xmlobject.dump()
         self.start(cmd.timeout)
 
     def start(self, timeout=60):
@@ -1131,7 +1132,7 @@ class Vm(object):
 
         cdrom = etree.Element('disk', {'type':'file', 'device':'cdrom'})
         e(cdrom, 'driver', None, {'name':'qemu', 'type':'raw'})
-        e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
+        e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide', 'tray':'open'})
         e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -1332,8 +1333,15 @@ class Vm(object):
             root = elements['root']
             os = e(root, 'os')
             e(os, 'type', 'hvm')
-            e(os, 'boot', None, {'dev':cmd.bootDev})
-        
+            if cmd.bootDev == 'cdrom':
+                e(os, 'boot', None, {'dev':'cdrom'})
+                e(os, 'boot', None, {'dev':'hd'})
+            elif cmd.bootDev == 'hd':
+                e(os, 'boot', None, {'dev':'hd'})
+            else:
+                raise Exception("unknown boot device[%s]" % cmd.bootDev)
+
+
         def make_features():
             root = elements['root']
             features = e(root, 'features')
