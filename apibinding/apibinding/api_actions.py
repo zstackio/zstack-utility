@@ -184,6 +184,30 @@ class AttachIsoToVmInstanceAction(inventory.APIAttachIsoToVmInstanceMsg):
         self.out = evt
         return self.out
 
+class GetVmBootOrderAction(inventory.APIGetVmBootOrderMsg):
+    def __init__(self):
+        super(GetVmBootOrderAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmBootOrderAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVmBootOrderAction(inventory.APISetVmBootOrderMsg):
+    def __init__(self):
+        super(SetVmBootOrderAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmBootOrderAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeInstanceOfferingAction(inventory.APIChangeInstanceOfferingMsg):
     def __init__(self):
         super(ChangeInstanceOfferingAction, self).__init__()

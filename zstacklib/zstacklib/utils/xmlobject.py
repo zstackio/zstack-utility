@@ -23,6 +23,9 @@ class XmlObject(object):
     def put_text(self, val):
         val = val.strip().strip('\n').strip('\t')
         setattr(self, 'text_', val)
+
+    def del_node(self, name):
+        delattr(self, name)
     
     def hasattr(self, name):
         return hasattr(self, name)

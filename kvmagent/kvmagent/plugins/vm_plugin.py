@@ -20,6 +20,7 @@ import os.path
 import re
 import xml.etree.ElementTree as etree
 import libvirt
+import traceback
 
 logger = log.get_logger(__name__)
 
@@ -566,8 +567,6 @@ class Vm(object):
 
     timeout_object = linux.TimeoutObject()
 
-    REBOOT_ACTION_WITH_CDROM = 'bootFromHardDisk'
-     
     def __init__(self):
         self.uuid = None
         self.domain_xmlobject = None
@@ -635,11 +634,17 @@ class Vm(object):
 
     def reboot(self, cmd):
         self.stop(timeout=cmd.timeout)
-        #boot_device = 'hd'
-        #if cmd.bootDevice == 'CdRom':
-        #    boot_device = 'cdrom'
-        #self.domain_xmlobject.os.boot.put_attr('dev', boot_device)
-        #self.domain_xml = self.domain_xmlobject.dump()
+
+        # set boot order
+        boot_dev = []
+        for bdev in cmd.bootDev:
+            xo = xmlobject.XmlObject('boot')
+            xo.put_attr('dev', bdev)
+            boot_dev.append(xo)
+
+        self.domain_xmlobject.os.replace_node('boot', boot_dev)
+        self.domain_xml = self.domain_xmlobject.dump()
+
         self.start(cmd.timeout)
 
     def start(self, timeout=60):
@@ -1421,13 +1426,8 @@ class Vm(object):
             root = elements['root']
             os = e(root, 'os')
             e(os, 'type', 'hvm')
-            if cmd.bootDev == 'cdrom':
-                e(os, 'boot', None, {'dev':'cdrom'})
-                e(os, 'boot', None, {'dev':'hd'})
-            elif cmd.bootDev == 'hd':
-                e(os, 'boot', None, {'dev':'hd'})
-            else:
-                raise Exception("unknown boot device[%s]" % cmd.bootDev)
+            for boot_dev in cmd.bootDev:
+                e(os, 'boot', None, {'dev': boot_dev})
 
 
         def make_features():
@@ -1637,9 +1637,7 @@ class Vm(object):
             meta = e(root, 'metadata')
             e(meta, 'zstack', 'True')
             e(meta, 'internalId', str(cmd.vmInternalId))
-            if cmd.bootDev == 'cdrom':
-                e(meta, 'reboot', Vm.REBOOT_ACTION_WITH_CDROM)
-        
+
         def make_vnc():
             devices = elements['devices']
             vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes'})
@@ -2108,70 +2106,78 @@ class VmPlugin(kvmagent.KvmAgent):
         self.register_libvirt_event()
 
     def _vm_lifecycle_event(self, conn, dom, event, detail, opaque):
-        evstr = LibvirtEventManager.event_to_string(event)
-        vm_uuid = dom.name()
-        if evstr not in (LibvirtEventManager.EVENT_STARTED, LibvirtEventManager.EVENT_STOPPED):
-            logger.debug("ignore event[%s] of the vm[uuid:%s]" % (evstr, vm_uuid))
-            return
+        try:
+            evstr = LibvirtEventManager.event_to_string(event)
+            vm_uuid = dom.name()
+            if evstr not in (LibvirtEventManager.EVENT_STARTED, LibvirtEventManager.EVENT_STOPPED):
+                logger.debug("ignore event[%s] of the vm[uuid:%s]" % (evstr, vm_uuid))
+                return
 
-        vm_op_judger = self._get_operation(vm_uuid)
-        if vm_op_judger and evstr in vm_op_judger.ignore_libvirt_events():
-            # this is an operation originated from ZStack itself
-            logger.debug('ignore event[%s] for the vm[uuid:%s], this operation is from ZStack itself' % (evstr, vm_uuid))
+            vm_op_judger = self._get_operation(vm_uuid)
+            if vm_op_judger and evstr in vm_op_judger.ignore_libvirt_events():
+                # this is an operation originated from ZStack itself
+                logger.debug('ignore event[%s] for the vm[uuid:%s], this operation is from ZStack itself' % (evstr, vm_uuid))
 
-            if vm_op_judger.remove_expected_event(evstr) == 0:
-                self._remove_operation(vm_uuid)
-                logger.debug('events happened of the vm[uuid:%s] meet the expectation, delete the the operation judger' % vm_uuid)
+                if vm_op_judger.remove_expected_event(evstr) == 0:
+                    self._remove_operation(vm_uuid)
+                    logger.debug('events happened of the vm[uuid:%s] meet the expectation, delete the the operation judger' % vm_uuid)
 
-            return
+                return
 
-        # this is an operation outside zstack, report it
-        url = self.config.get(kvmagent.SEND_COMMAND_URL)
-        if not url:
-            logger.warn('cannot find SEND_COMMAND_URL, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, evstr))
-            return
+            # this is an operation outside zstack, report it
+            url = self.config.get(kvmagent.SEND_COMMAND_URL)
+            if not url:
+                logger.warn('cannot find SEND_COMMAND_URL, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, evstr))
+                return
 
-        host_uuid = self.config.get(kvmagent.HOST_UUID)
-        if not host_uuid:
-            logger.warn('cannot find HOST_UUID, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, evstr))
-            return
+            host_uuid = self.config.get(kvmagent.HOST_UUID)
+            if not host_uuid:
+                logger.warn('cannot find HOST_UUID, unable to report abnormal operation[vm:%s, op:%s]' % (vm_uuid, evstr))
+                return
 
-        @thread.AsyncThread
-        def report_to_management_node():
-            cmd = ReportVmStateCmd()
-            cmd.vmUuid = vm_uuid
-            cmd.hostUuid = host_uuid
-            if evstr == LibvirtEventManager.EVENT_STARTED:
-                cmd.vmState = Vm.VM_STATE_RUNNING
-            elif evstr == LibvirtEventManager.EVENT_STOPPED:
-                cmd.vmState = Vm.VM_STATE_SHUTDOWN
+            @thread.AsyncThread
+            def report_to_management_node():
+                cmd = ReportVmStateCmd()
+                cmd.vmUuid = vm_uuid
+                cmd.hostUuid = host_uuid
+                if evstr == LibvirtEventManager.EVENT_STARTED:
+                    cmd.vmState = Vm.VM_STATE_RUNNING
+                elif evstr == LibvirtEventManager.EVENT_STOPPED:
+                    cmd.vmState = Vm.VM_STATE_SHUTDOWN
 
-            logger.debug('detected an abnormal vm operation[uuid:%s, op:%s], report it to %s' % (vm_uuid, evstr, url))
-            http.json_dump_post(url, cmd, {'commandpath':'/kvm/reportvmstate'})
+                logger.debug('detected an abnormal vm operation[uuid:%s, op:%s], report it to %s' % (vm_uuid, evstr, url))
+                http.json_dump_post(url, cmd, {'commandpath':'/kvm/reportvmstate'})
 
-        report_to_management_node()
+            report_to_management_node()
+        except:
+            content = traceback.format_exc()
+            logger.warn(content)
 
     def _vm_reboot_event(self, conn, dom, opaque):
-        domain_xml = dom.XMLDesc(0)
-        domain_xmlobject = xmlobject.loads(domain_xml)
-        if not domain_xmlobject.has_element("metadata.reboot"):
-            return
+        try:
+            domain_xml = dom.XMLDesc(0)
+            domain_xmlobject = xmlobject.loads(domain_xml)
+            vm_uuid = dom.name()
+            boot_dev = domain_xmlobject.os.get_child_node_as_list('boot')[0]
+            if boot_dev.dev_ != 'cdrom':
+                logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (vm_uuid, boot_dev))
+                return
 
-        vm_uuid = dom.name()
-        action = domain_xmlobject.metadata.reboot.text_
-        if action != Vm.REBOOT_ACTION_WITH_CDROM:
-            logger.warn('unknown metadata.reboot[%s]' % action)
-            return
+            logger.debug('the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will'
+                         ' boot from hdd' % vm_uuid)
 
-        logger.debug('the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will'
-                     ' boot from hdd' % vm_uuid)
-        self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
-        boot = etree.Element('boot', {'dev': 'hd'})
-        domain_xmlobject.os.replace_node('boot', boot)
-        dom.destroy()
+            self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
+            boot_dev = xmlobject.XmlObject('boot')
+            boot_dev.put_attr('dev', 'hd')
+            domain_xmlobject.os.replace_node('boot', boot_dev)
+            dom.destroy()
 
-        domain = conn.defineXML(domain_xmlobject.dump())
-        domain.createWithFlags(0)
+            xml = domain_xmlobject.dump()
+            domain = conn.defineXML(xml)
+            domain.createWithFlags(0)
+        except:
+            content = traceback.format_exc()
+            logger.warn(content)
 
     def register_libvirt_event(self):
         LibvirtAutoReconnect.libvirt_event_callbacks[libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE] = self._vm_lifecycle_event
