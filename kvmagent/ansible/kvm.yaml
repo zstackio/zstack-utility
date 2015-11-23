@@ -89,6 +89,9 @@
         - restart redhat libvirtd
         - restart debian libvirtd
 
+    - name: delete A2 qemu hook
+      shell: "rm -f /etc/libvirt/hooks/qemu"
+
     - name: enable libvirt daemon on RedHat based OS
       when: chroot_env == 'false' and ansible_os_family == 'RedHat'
       service: name=libvirtd state=started enabled=yes
