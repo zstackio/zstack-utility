@@ -10,6 +10,7 @@
     - sproxy: "{{https_proxy|default()}}"
     - chroot_env: "{{chroot|default('false')}}"
     - is_init: "{{init|default('false')}}"
+    - yum_online: "{{yum_online_repo|default('false')}}"
 
   tasks:
     - include: zstacklib.yaml
@@ -20,9 +21,13 @@
         - "{{kvm_root}}"
         - "{{virtenv_path}}"
 
-    - name: install kvm related packages on RedHat based OS
-      when: ansible_os_family == 'RedHat'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass rsync; yum clean metadata
+    - name: install kvm related packages on RedHat based OS from local
+      when: ansible_os_family == 'RedHat' and yum_online == 'false'
+      shell: "yum clean metadata && yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass rsync && yum clean metadata"
+
+    - name: install kvm related packages on RedHat based OS from online
+      when: ansible_os_family == 'RedHat' and yum_online != 'false'
+      shell: "yum clean metadata && yum --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass rsync "
 
     - name: install kvm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
@@ -42,9 +47,13 @@
         - sshpass
         - rsync
 
-    - name: RHEL7 specific packages
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y iptables-services; yum clean metadata
+    - name: RHEL7 specific packages from local
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_online == 'false'
+      shell: "yum clean metadata && yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y iptables-services && yum clean metadata"
+
+    - name: RHEL7 specific packages from online
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_online != 'false'
+      shell: "yum clean metadata && yum --nogpgcheck install -y iptables-services "
 
     - name: disable firewalld in RHEL7 and Centos7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'

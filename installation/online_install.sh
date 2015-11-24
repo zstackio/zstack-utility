@@ -54,6 +54,7 @@ MYSQL_ROOT_PASSWORD=''
 MYSQL_USER_PASSWORD=''
 
 NEED_SET_MN_IP=''
+YUM_ONLINE_REPO=''
 
 show_download()
 {
@@ -537,9 +538,9 @@ EOF
 EOF
 
     if [ -z $DEBUG ]; then
-        ansible-playbook $ansible_yaml -i $ansible_inventory -e "gather_facts=No pypi_url=$ZSTACK_PYPI_URL" >>$ZSTACK_INSTALL_LOG 2>&1
+        ansible-playbook $ansible_yaml -i $ansible_inventory -e "gather_facts=No" >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        ansible-playbook $ansible_yaml -i $ansible_inventory -e "gather_facts=No pypi_url=$ZSTACK_PYPI_URL" 
+        ansible-playbook $ansible_yaml -i $ansible_inventory -e "gather_facts=No" 
     fi
 
     if [ $? -ne 0 ];then
@@ -775,8 +776,8 @@ config_system(){
 
 cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
-    if [ $ZSTACK_PYPI_URL != $DEFAULT_PYPI ];then
-        zstack-ctl configure Ansible.var.pypi_url=$ZSTACK_PYPI_URL
+    if [ ! -z $YUM_ONLINE_REPO ];then
+        zstack-ctl configure Ansible.var.yum_online_repo=true
     fi
     if [ $? -ne 0 ];then
         fail "failed to add user pypi config to $ZSTACK_PROPERTIES"
@@ -1164,10 +1165,10 @@ Following command only installs ZStack management node and dependent software.
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:y:adDFhiklNuz" Option
+while getopts "f:H:I:n:p:P:r:R:y:adDFhiklNuYz" Option
 do
     case $Option in
-        a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
+        a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y' && YUM_ONLINE_REPO='y';;
         d ) DEBUG='y';;
         D ) NEED_DROP_DB='y';;
         H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
@@ -1184,6 +1185,7 @@ do
         R ) export ZSTACK_PYPI_URL=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
+        Y ) YUM_ONLINE_REPO='y';;
         z ) NOT_START_ZSTACK='y';;
         * ) help;;
     esac
