@@ -377,7 +377,7 @@ upgrade_zstack(){
         fi
     fi
     if [ -f /etc/init.d/zstack-dashboard ]; then
-        /etc/init.d/zstack-dashboard status | grep 'running' > /dev/null 2>&1
+        /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
         if [ $? -eq 0 ]; then
             echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
             /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
@@ -716,7 +716,7 @@ iz_install_zstack(){
 iz_install_zstackcli(){
     echo_subtitle "Install ZStack Command Line"
     cd $ZSTACK_INSTALL_ROOT
-    bash $ZSTACK_TOOLS_INSTALLER zstack-cli >$ZSTACK_INSTALL_LOG 2>&1
+    bash $ZSTACK_TOOLS_INSTALLER zstack-cli >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
        fail "failed to install zstackcli in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
@@ -727,7 +727,7 @@ iz_install_zstackcli(){
 iz_install_zstackctl(){
     echo_subtitle "Install ZStack Control"
     cd $ZSTACK_INSTALL_ROOT
-    bash $ZSTACK_TOOLS_INSTALLER zstack-ctl >$ZSTACK_INSTALL_LOG 2>&1
+    bash $ZSTACK_TOOLS_INSTALLER zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
        fail "failed to install zstackctl in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
@@ -1042,7 +1042,7 @@ start_dashboard(){
 sd_install_dashboard(){
     echo_subtitle "Install ZStack Web UI"
     cd $ZSTACK_INSTALL_ROOT
-    bash $ZSTACK_TOOLS_INSTALLER zstack-dashboard >$ZSTACK_INSTALL_LOG 2>&1
+    bash $ZSTACK_TOOLS_INSTALLER zstack-dashboard >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
         fail "failed to install zstack-dashboard in $ZSTACK_INSTALL_ROOT"
