@@ -632,6 +632,10 @@ iz_unzip_tomcat(){
     mv $apache_zip $apache_temp
     ln -s apache-tomcat* apache-tomcat
     mv $apache_temp $apache_zip
+
+    #delete unused web app folders 
+    rm -rf $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps/*
+
     chmod a+x apache-tomcat/bin/*
     if [ $? -ne 0 ];then
        fail "chmod failed in: $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/*."

@@ -30,8 +30,6 @@ ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.9/0
 #TODO: change to ZStack WEBSITE
 WEBSITE=${WEBSITE-'mirrors.aliyun.com'}
 [ -z $WEBSITE ] && WEBSITE='mirrors.aliyun.com'
-DEFAULT_PYPI='https://pypi.python.org/simple/'
-ZSTACK_PYPI_URL=${ZSTACK_PYPI_URL-$DEFAULT_PYPI}
 ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
 CATALINA_ZSTACK_PATH=apache-tomcat/webapps/zstack
 CATALINA_ZSTACK_CLASSES=$CATALINA_ZSTACK_PATH/WEB-INF/classes
@@ -693,6 +691,10 @@ iz_unzip_tomcat(){
     mv $apache_zip $apache_temp
     ln -s apache-tomcat* apache-tomcat
     mv $apache_temp $apache_zip
+
+    #delete unused web app folders 
+    rm -rf $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps/*
+
     chmod a+x apache-tomcat/bin/*
     if [ $? -ne 0 ];then
        fail "chmod failed in: $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/*."
@@ -1123,10 +1125,11 @@ Options:
   -r ZSTACK_INSTALLATION_PATH
         the path where to install ZStack management node.  The default path is $ZSTACK_INSTALL_ROOT
 
-  -R PYTHON_PACKAGE_INDEX
-        the repository to install python libs. The default is https://pypi.python.org/simple/
-
   -u    Upgrade zstack management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
+
+  -Y    Use user defined yum repository. Default will use ZStack offline yum repository. If user system's libraries are newer than ZStack offline yum packages, user should set -Y to ask ZStack to use yum repo in /etc/yum.repo.d/* , instead of ZStack local repository.
+
+  -z    Only install ZStack, without start ZStack management node.
 ------------
 Example:
 
@@ -1165,7 +1168,7 @@ Following command only installs ZStack management node and dependent software.
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:y:adDFhiklNuYz" Option
+while getopts "f:H:I:n:p:P:r:y:adDFhiklNuYz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y' && YUM_ONLINE_REPO='y';;
@@ -1182,7 +1185,6 @@ do
         P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
-        R ) export ZSTACK_PYPI_URL=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
         Y ) YUM_ONLINE_REPO='y';;
