@@ -788,6 +788,7 @@ cs_config_zstack_properties(){
     rsa_key_folder=${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/rsaKeys
     /bin/rm -f ${rsa_key_folder}/*
     ssh-keygen -f ${rsa_key_folder}/id_rsa -N '' -q
+    chmod -R zstack.zstack ${rsa_key_folder}
     pass
 }
 
