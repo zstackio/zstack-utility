@@ -1552,9 +1552,8 @@ class InstallManagementNodeCmd(Command):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % pypi_path)
 
         pypi_tar_path = os.path.join(ctl.zstack_home, "static/pypi.tar.bz")
-        if not os.path.isfile(pypi_tar_path):
-            static_path = os.path.join(ctl.zstack_home, "static")
-            os.system('cd %s; tar jcf pypi.tar.bz pypi' % static_path)
+        static_path = os.path.join(ctl.zstack_home, "static")
+        os.system('cd %s; tar jcf pypi.tar.bz pypi' % static_path)
 
         yaml = '''---
 - hosts: $host
