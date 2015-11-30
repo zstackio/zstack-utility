@@ -710,6 +710,10 @@ iz_install_zstack(){
     if [ $? -ne 0 ];then
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
+    #generate local ssh key
+    rsa_key_folder=${CATALINA_ZSTACK_CLASSES}/ansible/rsaKeys
+    /bin/rm -f ${rsa_key_folder}/*
+    ssh-keygen -f $rsa_key -N '' -q
     pass
 }
 
@@ -1070,7 +1074,7 @@ Warning: This script will disable SELinux on RedHat series OS (CentOS/Redhat RHE
 Usage: $0 [options]
 
 Options:
-  -a    equal to -nHD
+  -a    equal to -nHDo
 
   -d    print detailed installation log to screen
         By default the installation log will be saved to $ZSTACK_INSTALL_LOG
@@ -1168,7 +1172,7 @@ Following command only installs ZStack management node and dependent software.
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:y:adDFhiklNuYz" Option
+while getopts "f:H:I:n:p:P:r:y:adDFhiklNouz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y' && YUM_ONLINE_REPO='y';;
@@ -1182,12 +1186,12 @@ do
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
+        o ) YUM_ONLINE_REPO='y';;
         P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
-        Y ) YUM_ONLINE_REPO='y';;
         z ) NOT_START_ZSTACK='y';;
         * ) help;;
     esac

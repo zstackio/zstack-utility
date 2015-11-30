@@ -447,6 +447,7 @@ is_install_general_libs(){
             gzip \
             unzip \
             httpd \
+            openssh \
             openssh-clients \
             openssh-server \
             sshpass \
@@ -478,6 +479,7 @@ is_install_general_libs(){
             gzip \
             unzip \
             httpd \
+            openssh \
             openssh-clients \
             openssh-server \
             sshpass \
@@ -651,6 +653,10 @@ iz_install_zstack(){
     if [ $? -ne 0 ];then
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
+    #generate local ssh key
+    rsa_key_folder=${CATALINA_ZSTACK_CLASSES}/ansible/rsaKeys
+    /bin/rm -f ${rsa_key_folder}/*
+    ssh-keygen -f $rsa_key -N '' -q
     pass
 }
 
@@ -1110,7 +1116,7 @@ Following command only installs ${PRODUCT_NAME} management node and dependent so
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:y:adDFhiklNuYz" Option
+while getopts "f:H:I:n:p:P:r:R:y:adDFhikloNuz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
@@ -1124,12 +1130,12 @@ do
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
+        o ) YUM_ONLINE_REPO='y';;
         P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
-        Y ) YUM_ONLINE_REPO='y';;
         z ) NOT_START_ZSTACK='y';;
         * ) help;;
     esac

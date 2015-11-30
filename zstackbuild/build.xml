@@ -79,7 +79,6 @@
     </target>
 
     <target name="copy-centos6-repo" >
-        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6-${product.version}.bin" />
         <copydir src="${centos6.repo.dir}" dest="${pypi.parent.dir}/centos6_repo/" />
         <makeDir dir="${libs.dir}" />
         <copy todir="${libs.dir}" overwrite="true" >
@@ -90,7 +89,6 @@
     </target>
 
     <target name="copy-centos7-repo" >
-        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7-${product.version}.bin" />
         <copydir src="${centos7.repo.dir}" dest="${pypi.parent.dir}/centos7_repo" />
         <makeDir dir="${libs.dir}" />
         <copy todir="${libs.dir}" overwrite="true" >
@@ -135,11 +133,21 @@
 
     <target name="assemble-centos7-offline" depends="pre-assemble, copy-centos7-repo, zip-war" />
 
+    <target name="assemble-centos-offline" depends="pre-assemble, copy-centos6-repo, copy-centos7-repo, zip-war" />
+
     <target name="build-war" depends="do-build, assemble" />
 
-    <target name="build-war-centos6-offline" depends="do-build, assemble-centos6-offline" />
+    <target name="build-war-centos6-offline" depends="do-build, assemble-centos6-offline" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6-${product.version}.bin" />
+    </target>
 
-    <target name="build-war-centos7-offline" depends="do-build, assemble-centos7-offline" />
+    <target name="build-war-centos7-offline" depends="do-build, assemble-centos7-offline" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7-${product.version}.bin" />
+    </target>
+
+    <target name="build-war-centos-offline" depends="do-build, assemble-centos-offline" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos-6-and-7-${product.version}.bin" />
+    </target>
 
     <target name="package" depends="build-war, build-setting, do-package" />
     <target name="buildtestagent" depends="build-zstacklib, build-testagent, assemble-testagent" />
@@ -177,4 +185,11 @@
         <echo message="successfully build zstack centos7 offline package at ${allinone.bin.file} " />
         <echo message="--------------------------------------------------------------------" />
     </target>
+
+    <target name="offline-centos-all" depends="build-war-centos-offline, build-centos-offline"> 
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack centos6/centos7 offline package at ${allinone.bin.file} " />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+
 </project>
