@@ -710,10 +710,6 @@ iz_install_zstack(){
     if [ $? -ne 0 ];then
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
-    #generate local ssh key
-    rsa_key_folder=${CATALINA_ZSTACK_CLASSES}/ansible/rsaKeys
-    /bin/rm -f ${rsa_key_folder}/*
-    ssh-keygen -f $rsa_key -N '' -q
     pass
 }
 
@@ -788,6 +784,10 @@ cs_config_zstack_properties(){
     if [ $? -ne 0 ];then
         fail "failed to add user pypi config to $ZSTACK_PROPERTIES"
     fi
+    #generate local ssh key
+    rsa_key_folder=${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/rsaKeys
+    /bin/rm -f ${rsa_key_folder}/*
+    ssh-keygen -f ${rsa_key_folder}/id_rsa -N '' -q
     pass
 }
 
