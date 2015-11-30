@@ -21,3 +21,16 @@ Build all-in-one package with special build name, e.g. rc1 :
 Build all-in-one offline binary installer for CentOS6 (need to install figlet):
 -------------
 #ant -Dzstack_build_root=/root/zstackorg/ offline-centos6
+
+Build all-in-one offline binary installer for CentOS7 (need to install figlet):
+-------------
+#ant -Dzstack_build_root=/root/zstackorg/ offline-centos7
+
+Build all-in-one offline binary installer for CentOS6 and CentOS7 (need to install figlet):
+-------------
+#ant -Dzstack_build_root=/root/zstackorg/ offline-centos-all
+
+Build all-in-one offline binary installer for CentOS6 and CentOS7, with specific branch version:
+#ant -Dzstack_build_root=/root/zstackorg/ -Dzstackdashboard.build_version=master  offline-centos-all
+
+
