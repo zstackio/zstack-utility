@@ -625,7 +625,7 @@ class Vm(object):
         vnc_port = self.get_vnc_port()
 
         def wait_vnc_port_open(_):
-            cmd = shell.ShellCmd('netstat -na | grep "0.0.0.0:%s" > /dev/null' % vnc_port)
+            cmd = shell.ShellCmd('netstat -na | grep ":%s" > /dev/null' % vnc_port)
             cmd(is_exception=False)
             return cmd.return_code == 0
 
@@ -1642,7 +1642,7 @@ class Vm(object):
         def make_vnc():
             devices = elements['devices']
             vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes'})
-            e(vnc, "listen", None, {'type':'address', 'address':'0.0.0.0'})
+            e(vnc, "listen", None, {'type':'address', 'address':'%s' % cmd.hostManagementIp})
         
         def make_addons():
             if not cmd.addons:
