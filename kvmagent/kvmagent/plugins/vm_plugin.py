@@ -238,6 +238,8 @@ class LibvirtAutoReconnect(object):
             old_conn.close()
         except Exception as ee:
             logger.warn('unable to close an old libvirt exception, %s' % str(ee))
+        finally:
+            del old_conn
 
         ex = test_connection()
         if ex:
@@ -257,9 +259,6 @@ class LibvirtAutoReconnect(object):
                 return self.func(LibvirtAutoReconnect.conn)
             else:
                 raise
-
-
-
 
 class IscsiLogin(object):
     def __init__(self):
