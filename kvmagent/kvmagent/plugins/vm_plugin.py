@@ -182,8 +182,10 @@ class LibvirtEventManager(object):
 
         @thread.AsyncThread
         def run():
+            logger.debug("virEventRunDefaultImpl starts")
             while True:
-                libvirt.virEventRunDefaultImpl()
+                if libvirt.virEventRunDefaultImpl() < 0:
+                    logger.warn("virEventRunDefaultImpl quit with error")
 
         run()
 
