@@ -1111,7 +1111,7 @@ class InstallDbCmd(Command):
   vars:
       root_password: $root_password
       login_password: $login_password
-      yum_online: $yum_online_repo
+      yum_online: "$yum_online_repo"
 
   tasks:
     - name: pre-install script
@@ -1315,7 +1315,7 @@ class InstallRabbitCmd(Command):
   remote_user: root
 
   vars:
-      yum_online: $yum_online_repo
+      yum_online: "$yum_online_repo"
 
   tasks:
     - name: pre-install script
@@ -1561,7 +1561,7 @@ class InstallManagementNodeCmd(Command):
 
   vars:
       root: $install_path
-      yum_online: $yum_online_repo
+      yum_online: "$yum_online_repo"
 
   tasks:
     - name: check remote env on RedHat OS 6
@@ -2019,7 +2019,7 @@ gpgcheck=0
 
   vars:
       virtualenv_root: /var/lib/zstack/virtualenv/zstack-dashboard
-      yum_online: $yum_online_repo
+      yum_online: "$yum_online_repo"
 
   tasks:
     - name: set RHEL7 yum repo
