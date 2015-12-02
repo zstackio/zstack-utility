@@ -34,8 +34,10 @@
     - name: copy name space supported iproute for RHEL6
       copy: src="{{iproute_pkg}}" dest={{iproute_local_pkg}}
       when: ansible_os_family == "RedHat" and ansible_distribution_version < '7'
-      notify:
-        - Update iproute for RHEL6
+
+    - name: Update iproute for RHEL6
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+      shell: "yum install -y {{iproute_local_pkg}}"
 
     - name: install kvm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
@@ -172,8 +174,4 @@
         http_proxy: "{{proxy}}"
         https_proxy: "{{sproxy}}"
       pip: name="{{kvm_root}}/{{pkg_kvmagent}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}" virtualenv_site_packages=yes
-
-    - name: Update iproute for RHEL6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      shell: "yum install -y {{iproute_local_pkg}}"
 
