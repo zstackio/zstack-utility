@@ -31,7 +31,7 @@
       shell: "yum clean metadata && yum --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass rsync "
 
     - name: Update iproute for RHEL6.
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version == '6'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       shell: "yum install -y {{iproute_pkg}}"
 
     - name: install kvm related packages on Debian based OS
