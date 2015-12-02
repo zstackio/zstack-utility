@@ -239,6 +239,14 @@ check_system(){
     show_spinner do_check_system
 }
 
+do_enable_sudo(){
+    if [ -f /etc/sudoers ]; then
+        grep 'zstack' /etc/sudoers &>/dev/null || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
+        grep '^root' /etc/sudoers &>/dev/null || echo 'root ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
+        sed -i '/requiretty$/d' /etc/sudoers
+    fi
+}
+
 do_check_system(){
     if [ $UPGRADE = 'n' ]; then
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
@@ -271,10 +279,7 @@ do_check_system(){
         mkdir -p $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
         chown -R zstack.zstack $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-    grep 'zstack' /etc/sudoers >/dev/null || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
-    grep '^root' /etc/sudoers >/dev/null || echo 'root ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
-    sed -i '/requiretty$/d' /etc/sudoers
-
+    do_enable_sudo
     pass
 }
 
@@ -717,6 +722,7 @@ config_system(){
     if [ ! -z $NEED_HTTP ];then
         show_spinner cs_setup_http
     fi
+    do_enable_sudo
 }
 
 cs_config_zstack_properties(){
