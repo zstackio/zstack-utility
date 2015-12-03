@@ -1347,7 +1347,7 @@ class Vm(object):
         make_volumes()
         make_cdrom()
         make_addons()
-		make_console()
+        make_console()
         
         root = elements['root']
         xml = etree.tostring(root)
