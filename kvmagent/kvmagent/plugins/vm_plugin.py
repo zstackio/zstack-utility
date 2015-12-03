@@ -471,7 +471,7 @@ class Vm(object):
             cmd(is_exception=False)
             return cmd.return_code == 0
 
-        if not linux.wait_callback_success(wait_vm_display_port_open, None, interval=0.5, timeout=30):
+        if not linux.wait_callback_success(wait_display_port_open, None, interval=0.5, timeout=30):
             raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vm_display port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
@@ -563,8 +563,8 @@ class Vm(object):
 
     def get_console_port(self):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
-            if (g.type_ =='vnc')or(g.type_=='spice'):
-            return g.port_
+            if (g.type_ == 'vnc') or (g.type_ == 'spice'):
+                return g.port_
         
         raise kvmagent.KvmError['no vm_display console defined for vm[uuid:%s]' % self.uuid]
 
@@ -1132,6 +1132,10 @@ class Vm(object):
             e(root, 'vcpu', str(cmd.cpuNum), {'placement':'static'})
             tune = e(root, 'cputune')
             e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
+            #enable nested virtualization
+            if cmd.nestedVirtualization:
+                cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                e(cpu, 'model', attrib={'fallback': 'allow'})
         
         def make_memory():
             root = elements['root']
@@ -1306,7 +1310,7 @@ class Vm(object):
             meta = e(root, 'metadata')
             e(meta, 'zstack', 'True')
             e(meta, 'internalId', str(cmd.vmInternalId))
-		
+
         def make_console():
             if cmd.consoleMode == 'spice':
                 make_spice()
