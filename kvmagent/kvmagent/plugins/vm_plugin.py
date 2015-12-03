@@ -464,15 +464,15 @@ class Vm(object):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
                                     'running after %s seconds' % (self.uuid, self.get_name(), timeout))
 
-        vnc_port = self.get_vnc_port()
+        vm_display_port = self.get_console_port()
 
-        def wait_vnc_port_open(_):
-            cmd = shell.ShellCmd('netstat -na | grep "0.0.0.0:%s" > /dev/null' % vnc_port)
+        def wait_display_port_open(_):
+            cmd = shell.ShellCmd('netstat -na | grep "0.0.0.0:%s" > /dev/null' % vm_display_port)
             cmd(is_exception=False)
             return cmd.return_code == 0
 
-        if not linux.wait_callback_success(wait_vnc_port_open, None, interval=0.5, timeout=30):
-            raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
+        if not linux.wait_callback_success(wait_vm_display_port_open, None, interval=0.5, timeout=30):
+            raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vm_display port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
 #    def _delete_secret(self, uuid):
@@ -561,12 +561,12 @@ class Vm(object):
     def destroy(self):
         self.stop(graceful=False)
 
-    def get_vnc_port(self):
+    def get_console_port(self):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
-            if g.type_ == 'vnc':
-                return g.port_
+            if (g.type_ =='vnc')or(g.type_=='spice'):
+            return g.port_
         
-        raise kvmagent.KvmError['no vnc console defined for vm[uuid:%s]' % self.uuid]
+        raise kvmagent.KvmError['no vm_display console defined for vm[uuid:%s]' % self.uuid]
 
     def attach_data_volume(self, volume):
         self._wait_vm_run_until_seconds(10)
@@ -1306,12 +1306,23 @@ class Vm(object):
             meta = e(root, 'metadata')
             e(meta, 'zstack', 'True')
             e(meta, 'internalId', str(cmd.vmInternalId))
-        
+		
+        def make_console():
+            if cmd.consoleMode == 'spice':
+                make_spice()
+            else:
+                make_vnc()
+
         def make_vnc():
             devices = elements['devices']
             vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes'})
             e(vnc, "listen", None, {'type':'address', 'address':'0.0.0.0'})
         
+        def make_spice():
+            devices = elements['devices']
+            spice = e(devices, 'graphics', None, {'type':'spice', 'port':'5900', 'autoport':'yes'})
+            e(spice, "listen", None, {'type':'address', 'address':'0.0.0.0'})
+
         def make_addons():
             if not cmd.addons:
                 return
@@ -1335,8 +1346,8 @@ class Vm(object):
         make_nics()
         make_volumes()
         make_cdrom()
-        make_vnc()
         make_addons()
+        make_console()
         
         root = elements['root']
         xml = etree.tostring(root)
@@ -1441,14 +1452,14 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
         
     @kvmagent.replyerror
-    def get_vnc_port(self, req):
+    def get_console_port(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVncPortResponse()
         try:
             vm = get_vm_by_uuid(cmd.vmUuid)
-            port = vm.get_vnc_port()
+            port = vm.get_console_port()
             rsp.port = port
-            logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.uuid))
+            logger.debug('successfully get vm_display port[%s] of vm[uuid:%s]' % (port, cmd.uuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -1691,7 +1702,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_STOP_VM_PATH, self.stop_vm)
         http_server.register_async_uri(self.KVM_REBOOT_VM_PATH, self.reboot_vm)
         http_server.register_async_uri(self.KVM_DESTROY_VM_PATH, self.destroy_vm)
-        http_server.register_async_uri(self.KVM_GET_VNC_PORT_PATH, self.get_vnc_port)
+        http_server.register_async_uri(self.KVM_GET_VNC_PORT_PATH, self.get_console_port)
         http_server.register_async_uri(self.KVM_VM_SYNC_PATH, self.vm_sync)
         http_server.register_async_uri(self.KVM_ATTACH_VOLUME, self.attach_data_volume)
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)
