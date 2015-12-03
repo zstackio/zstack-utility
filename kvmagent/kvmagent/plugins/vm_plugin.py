@@ -464,15 +464,15 @@ class Vm(object):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
                                     'running after %s seconds' % (self.uuid, self.get_name(), timeout))
 
-        vnc_port = self.get_console_port()
+        vm_display_port = self.get_console_port()
 
-        def wait_vnc_port_open(_):
-            cmd = shell.ShellCmd('netstat -na | grep "0.0.0.0:%s" > /dev/null' % vnc_port)
+        def wait_display_port_open(_):
+            cmd = shell.ShellCmd('netstat -na | grep "0.0.0.0:%s" > /dev/null' % vm_display_port)
             cmd(is_exception=False)
             return cmd.return_code == 0
 
-        if not linux.wait_callback_success(wait_vnc_port_open, None, interval=0.5, timeout=30):
-            raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
+        if not linux.wait_callback_success(wait_vm_display_port_open, None, interval=0.5, timeout=30):
+            raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vm_display port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
 #    def _delete_secret(self, uuid):
@@ -561,12 +561,12 @@ class Vm(object):
     def destroy(self):
         self.stop(graceful=False)
 
-	def get_console_port(self):
+    def get_console_port(self):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
             if (g.type_ =='vnc')or(g.type_=='spice'):
-                return g.port_
+            return g.port_
         
-        raise kvmagent.KvmError['no vnc console defined for vm[uuid:%s]' % self.uuid]
+        raise kvmagent.KvmError['no vm_display console defined for vm[uuid:%s]' % self.uuid]
 
     def attach_data_volume(self, volume):
         self._wait_vm_run_until_seconds(10)
@@ -1318,7 +1318,7 @@ class Vm(object):
             vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes'})
             e(vnc, "listen", None, {'type':'address', 'address':'0.0.0.0'})
         
-		def make_spice():
+        def make_spice():
             devices = elements['devices']
             spice = e(devices, 'graphics', None, {'type':'spice', 'port':'5900', 'autoport':'yes'})
             e(spice, "listen", None, {'type':'address', 'address':'0.0.0.0'})
@@ -1346,7 +1346,6 @@ class Vm(object):
         make_nics()
         make_volumes()
         make_cdrom()
-        make_vnc()
         make_addons()
 		make_console()
         
@@ -1460,7 +1459,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(cmd.vmUuid)
             port = vm.get_console_port()
             rsp.port = port
-            logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.uuid))
+            logger.debug('successfully get vm_display port[%s] of vm[uuid:%s]' % (port, cmd.uuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
