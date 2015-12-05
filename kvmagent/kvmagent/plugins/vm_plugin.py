@@ -1657,6 +1657,12 @@ class Vm(object):
                 e(chan, 'source', None, {'mode':'bind', 'path':channel.socketPath})
                 e(chan, 'target', None, {'type':'virtio', 'name':channel.targetName})
 
+        def make_balloon_memory():
+            devices = elements['devices']
+            b = e(devices, 'memballoon', None, {'model':'virtio'})
+            e(b, 'stats', None, {'period':'1'})
+            
+
         make_root()
         make_meta()
         make_cpu()
@@ -1669,6 +1675,7 @@ class Vm(object):
         make_cdrom()
         make_vnc()
         make_addons()
+        make_balloon_memory()
         
         root = elements['root']
         xml = etree.tostring(root)
