@@ -830,7 +830,7 @@ class ConfigureCmd(Command):
         with open(ctl.properties_file_path, 'r') as fd:
             txt = fd.read()
             cmd = '''ssh -T %s << EOF
-cat <<EOT >> %s
+cat <<EOT > %s
 %s
 EOT
 

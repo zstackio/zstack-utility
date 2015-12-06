@@ -184,8 +184,12 @@ class LibvirtEventManager(object):
         def run():
             logger.debug("virEventRunDefaultImpl starts")
             while True:
-                if libvirt.virEventRunDefaultImpl() < 0:
-                    logger.warn("virEventRunDefaultImpl quit with error")
+                try:
+                    if libvirt.virEventRunDefaultImpl() < 0:
+                        logger.warn("virEventRunDefaultImpl quit with error")
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
 
         run()
 
