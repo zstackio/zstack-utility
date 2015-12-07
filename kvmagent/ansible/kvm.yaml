@@ -37,7 +37,7 @@
 
     - name: Update iproute for RHEL6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
-      shell: "yum install -y {{iproute_local_pkg}}"
+      shell: "rpm -q iproute-2.6.32-130.el6ost.netns.2 || yum install -y {{iproute_local_pkg}}"
 
     - name: install kvm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
