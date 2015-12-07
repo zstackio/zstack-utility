@@ -21,6 +21,9 @@ import re
 import xml.etree.ElementTree as etree
 import libvirt
 import traceback
+import Queue
+import sys
+import time
 
 logger = log.get_logger(__name__)
 
@@ -84,11 +87,11 @@ class DestroyVmCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(DestroyVmCmd, self).__init__()
         self.uuid = None
-        
+
 class DestroyVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(DestroyVmResponse, self).__init__()
-        
+
 class VmSyncCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(VmSyncCmd, self).__init__()
@@ -152,6 +155,11 @@ class CheckVmStateRsp(kvmagent.AgentResponse):
         super(CheckVmStateRsp, self).__init__()
         self.states = {}
 
+class ReconnectMeCmd(object):
+    def __init__(self):
+        self.hostUuid = None
+        self.reason = None
+
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
@@ -178,12 +186,13 @@ class LibvirtEventManager(object):
     )
 
     def __init__(self):
+        self.stopped = False
         libvirt.virEventRegisterDefaultImpl()
 
         @thread.AsyncThread
         def run():
             logger.debug("virEventRunDefaultImpl starts")
-            while True:
+            while not self.stopped:
                 try:
                     if libvirt.virEventRunDefaultImpl() < 0:
                         logger.warn("virEventRunDefaultImpl quit with error")
@@ -191,7 +200,12 @@ class LibvirtEventManager(object):
                     content = traceback.format_exc()
                     logger.warn(content)
 
+            logger.debug("virEventRunDefaultImpl stopped")
+
         run()
+
+    def stop(self):
+        self.stopped = True
 
     @staticmethod
     def event_to_string(index):
@@ -203,7 +217,7 @@ class LibvirtAutoReconnect(object):
     if not conn:
         raise Exception('unable to get libvirt connection')
 
-    LibvirtEventManager()
+    evtMgr = LibvirtEventManager()
 
     libvirt_event_callbacks = {}
 
@@ -213,6 +227,7 @@ class LibvirtAutoReconnect(object):
 
     @staticmethod
     def register_libvirt_callbacks():
+        LibvirtAutoReconnect.callback_id = []
         for id, cb in LibvirtAutoReconnect.libvirt_event_callbacks.items():
             LibvirtAutoReconnect.conn.domainEventRegisterAny(None, id, cb, None)
 
@@ -232,27 +247,39 @@ class LibvirtAutoReconnect(object):
             # the connection is ok
             return
 
-        old_conn = LibvirtAutoReconnect.conn
-        LibvirtAutoReconnect.conn = libvirt.open('qemu:///system')
-        if not LibvirtAutoReconnect.conn:
-            raise Exception('unable to get a libvirt connection')
+        logger.warn("the libvirt connection is broken, there is no safeway to auto-reconnect without fd leak, we"
+                    " will ask the mgmt server to reconnect us after self quit")
+        VmPlugin.queue.put("exit")
 
-        LibvirtAutoReconnect.register_libvirt_callbacks()
-
-        # try to close the old connection anyway
-        try:
-            old_conn.close()
-        except Exception as ee:
-            logger.warn('unable to close an old libvirt exception, %s' % str(ee))
-        finally:
-            del old_conn
-
-        ex = test_connection()
-        if ex:
-            # unable to reconnect, raise the error
-            raise Exception('unable to get a libvirt connection, %s' % str(ex))
-
-        logger.debug('successfully reconnected to the libvirt')
+        # old_conn = LibvirtAutoReconnect.conn
+        # LibvirtAutoReconnect.conn = libvirt.open('qemu:///system')
+        # if not LibvirtAutoReconnect.conn:
+        #     raise Exception('unable to get a libvirt connection')
+        #
+        # for cid in LibvirtAutoReconnect.callback_id:
+        #     logger.debug("remove libvirt event callback[id:%s]" % cid)
+        #     old_conn.domainEventDeregisterAny(cid)
+        #
+        # # stop old event manager
+        # LibvirtAutoReconnect.evtMgr.stop()
+        # # create a new event manager
+        # LibvirtAutoReconnect.evtMgr = LibvirtEventManager()
+        # LibvirtAutoReconnect.register_libvirt_callbacks()
+        #
+        # # try to close the old connection anyway
+        # try:
+        #     old_conn.close()
+        # except Exception as ee:
+        #     logger.warn('unable to close an old libvirt exception, %s' % str(ee))
+        # finally:
+        #     del old_conn
+        #
+        # ex = test_connection()
+        # if ex:
+        #     # unable to reconnect, raise the error
+        #     raise Exception('unable to get a libvirt connection, %s' % str(ex))
+        #
+        # logger.debug('successfully reconnected to the libvirt')
 
     def __call__(self, *args, **kwargs):
         try:
@@ -447,7 +474,7 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True):
                 raise kvmagent.KvmError('unable to find vm[uuid:%s]' % uuid)
             else:
                 return None
-        
+
         err = 'error happened when looking up vm[uuid:%(uuid)s], libvirt error code: %(error_code)s, %(e)s' % locals()
         raise libvirt.libvirtError(err)
 
@@ -494,12 +521,12 @@ def get_running_vms():
 
 def get_cpu_memory_used_by_running_vms():
     runnings = get_running_vms()
-    used_cpu = 0 
-    used_memory = 0 
+    used_cpu = 0
+    used_memory = 0
     for vm  in runnings:
         used_cpu += (vm.get_cpu_num() * vm.get_cpu_speed())
         used_memory += vm.get_memory()
-        
+
     return (used_cpu, used_memory)
 
 class VmOperationJudger(object):
@@ -548,14 +575,14 @@ class Vm(object):
     VIR_DOMAIN_SHUTOFF = 5
     VIR_DOMAIN_CRASHED = 6
     VIR_DOMAIN_PMSUSPENDED = 7
-    
+
     VM_STATE_NO_STATE = 'NoState'
     VM_STATE_RUNNING = 'Running'
     VM_STATE_PAUSED = 'Paused'
     VM_STATE_SHUTDOWN = 'Shutdown'
     VM_STATE_CRASHED = 'Crashed'
     VM_STATE_SUSPENDED = 'Suspended'
-    
+
     power_state = {
         VIR_DOMAIN_NOSTATE:VM_STATE_NO_STATE,
         VIR_DOMAIN_RUNNING:VM_STATE_RUNNING,
@@ -566,7 +593,7 @@ class Vm(object):
         VIR_DOMAIN_CRASHED:VM_STATE_CRASHED,
         VIR_DOMAIN_PMSUSPENDED:VM_STATE_SUSPENDED,
     }
-    
+
     # letter 'c' is reserved for cdrom
     DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
 
@@ -577,7 +604,7 @@ class Vm(object):
         self.domain_xmlobject = None
         self.domain_xml = None
         self.domain = None
-        
+
         self.state = None
 
     def wait_for_state_change(self, state):
@@ -592,7 +619,7 @@ class Vm(object):
 
     def get_cpu_num(self):
         return int(self.domain_xmlobject.vcpu.text_)
-    
+
     def get_cpu_speed(self):
         cputune = self.domain_xmlobject.get_child_node('cputune')
         if cputune:
@@ -600,13 +627,13 @@ class Vm(object):
         else:
             #TODO: return system cpu capacity
             return 512
-    
+
     def get_memory(self):
         return long(self.domain_xmlobject.memory.text_) * 1024
-    
+
     def get_name(self):
         return self.domain_xmlobject.description.text_
-    
+
     def refresh(self):
         (state, _, _, _, _) = self.domain.info()
         self.state = self.power_state[state]
@@ -733,7 +760,7 @@ class Vm(object):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
             if g.type_ == 'vnc':
                 return g.port_
-        
+
         raise kvmagent.KvmError['no vnc console defined for vm[uuid:%s]' % self.uuid]
 
     def attach_data_volume(self, volume, addons):
@@ -916,10 +943,10 @@ class Vm(object):
             if disk.target.dev_ == disk_name:
                 target_disk = disk
                 break
-        
+
         if not target_disk:
             raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
-        
+
         xmlstr = target_disk.dump()
         logger.debug('detaching volume from vm[uuid:%s]:\n%s' % (self.uuid, xmlstr))
         try:
@@ -1400,9 +1427,9 @@ class Vm(object):
         vm.domain_xml = domain.XMLDesc(0)
         vm.domain_xmlobject = xmlobject.loads(vm.domain_xml)
         vm.uuid = vm.domain_xmlobject.name.text_
-        
-        return vm     
-    
+
+        return vm
+
     @staticmethod
     def from_StartVmCmd(cmd):
         use_virtio = cmd.useVirtio
@@ -1414,19 +1441,19 @@ class Vm(object):
             #self._root.set('type', 'qemu')
             root.set('xmlns:qemu', 'http://libvirt.org/schemas/domain/qemu/1.0')
             elements['root'] = root
-        
+
         def make_cpu():
             root = elements['root']
             e(root, 'vcpu', str(cmd.cpuNum), {'placement':'static'})
             tune = e(root, 'cputune')
             e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
-        
+
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
             e(root, 'memory', str(mem), {'unit':'k'})
             e(root, 'currentMemory', str(mem), {'unit':'k'})
-        
+
         def make_os():
             root = elements['root']
             os = e(root, 'os')
@@ -1440,14 +1467,14 @@ class Vm(object):
             features = e(root, 'features')
             for f in ['acpi', 'apic', 'pae']:
                 e(features, f)
-        
+
         def make_devices():
             root = elements['root']
             devices = e(root, 'devices')
             e(devices, 'emulator', kvmagent.get_qemu_path())
             e(devices, 'input', None, {'type':'tablet', 'bus':'usb'})
             elements['devices'] = devices
-        
+
         def make_cdrom():
             devices = elements['devices']
             if not cmd.bootIso:
@@ -1488,7 +1515,7 @@ class Vm(object):
                 e(cdrom, 'source', None, {'file':iso.path})
                 e(cdrom, 'target', None, {'dev':'hdc', 'bus':'ide'})
                 e(cdrom, 'readonly', None)
-        
+
         def make_volumes():
             devices = elements['devices']
             volumes = [cmd.rootVolume]
@@ -1578,7 +1605,7 @@ class Vm(object):
                     err = "%s exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
                     logger.warn(err)
                     raise kvmagent.KvmError(err)
-                
+
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.deviceType == 'file':
                     vol = filebased_volume(dev_letter)
@@ -1647,7 +1674,7 @@ class Vm(object):
             devices = elements['devices']
             vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes'})
             e(vnc, "listen", None, {'type':'address', 'address':'%s' % cmd.hostManagementIp})
-        
+
         def make_addons():
             if not cmd.addons:
                 return
@@ -1665,7 +1692,7 @@ class Vm(object):
             devices = elements['devices']
             b = e(devices, 'memballoon', None, {'model':'virtio'})
             e(b, 'stats', None, {'period':'1'})
-            
+
 
         make_root()
         make_meta()
@@ -1680,16 +1707,16 @@ class Vm(object):
         make_vnc()
         make_addons()
         make_balloon_memory()
-        
+
         root = elements['root']
         xml = etree.tostring(root)
-        
+
         vm = Vm()
         vm.uuid = cmd.vmInstanceUuid
         vm.domain_xml = xml
         vm.domain_xmlobject = xmlobject.loads(xml)
         return vm
-        
+
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
     KVM_STOP_VM_PATH = "/vm/stop"
@@ -1718,6 +1745,7 @@ class VmPlugin(kvmagent.KvmAgent):
     VM_OP_DESTROY = "destroy"
 
     timeout_object = linux.TimeoutObject()
+    queue = Queue.Queue()
 
     def _record_operation(self, uuid, op):
         j = VmOperationJudger(op)
@@ -1744,7 +1772,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     raise kvmagent.KvmError('vm[uuid:%s, name:%s] is already running' % (cmd.vmInstanceUuid, vm.get_name()))
                 else:
                     vm.destroy()
-                
+
             vm = Vm.from_StartVmCmd(cmd)
             vm.start(cmd.timeout)
         except libvirt.libvirtError as e:
@@ -1812,7 +1840,7 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1836,9 +1864,9 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
-        
+
     @kvmagent.replyerror
     def get_vnc_port(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1852,9 +1880,9 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
-    
+
     def _stop_vm(self, cmd):
         try:
             vm = get_vm_by_uuid(cmd.uuid)
@@ -1862,9 +1890,9 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.debug(linux.get_exception_stacktrace())
             logger.debug('however, the stop operation is still considered as success')
             return
-        
+
         vm.stop(timeout=cmd.timeout / 2)
-            
+
     @kvmagent.replyerror
     def stop_vm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1878,9 +1906,9 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def reboot_vm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1895,7 +1923,7 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1913,9 +1941,9 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def attach_data_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1930,9 +1958,9 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def detach_data_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1947,7 +1975,7 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2116,6 +2144,49 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
 
         self.register_libvirt_event()
+
+        @thread.AsyncThread
+        def wait_end_signal():
+            while True:
+                try:
+                    self.queue.get(True)
+
+                    # the libvirt has been stopped or restarted
+                    # to prevent fd leak caused by broken libvirt connection
+                    # we have to ask mgmt server to reboot the agent
+                    url = self.config.get(kvmagent.SEND_COMMAND_URL)
+                    if not url:
+                        logger.warn('cannot find SEND_COMMAND_URL, unable to ask the mgmt server to reconnect us')
+                        os._exit(1)
+
+                    host_uuid = self.config.get(kvmagent.HOST_UUID)
+                    if not host_uuid:
+                        logger.warn('cannot find HOST_UUID, unable to ask the mgmt server to reconnect us')
+                        os._exit(1)
+
+                    logger.warn("libvirt has been rebooted or stopped, ask the mgmt server to reconnt us")
+                    cmd = ReconnectMeCmd()
+                    cmd.hostUuid = host_uuid
+                    cmd.reason = "libvirt rebooted or stopped"
+                    http.json_dump_post(url, cmd, {'commandpath':'/kvm/reconnectme'})
+                    os._exit(1)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        wait_end_signal()
+
+        @thread.AsyncThread
+        def monitor_libvirt():
+            while True:
+                pid = linux.get_pid_by_process_param("/usr/sbin/libvirtd")
+                if not pid:
+                    logger.warn("cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
+                    self.queue.put("exit")
+
+                time.sleep(20)
+
+        monitor_libvirt()
 
     def _vm_lifecycle_event(self, conn, dom, event, detail, opaque):
         try:
