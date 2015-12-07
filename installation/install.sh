@@ -902,6 +902,7 @@ cs_setup_http(){
     echo_subtitle "Configure Local HTTP Server (for storing images)"
     mkdir $HTTP_FOLDER
     chmod 777 $HTTP_FOLDER
+    chmod o+x $ZSTACK_INSTALL_ROOT
     if [ $OS = $CENTOS7 ]; then
         chkconfig httpd on >>$ZSTACK_INSTALL_LOG 2>&1
         cat > /etc/httpd/conf.d/zstack-http.conf <<EOF
