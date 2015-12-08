@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-agent builder" basedir="../">
+    <property name="agent.bdir" location="${build.dir}/zstack-agent" />
+    <property name="agent.ansible.dir" location="${ansible.dir}/zstack-agent/" />
+    <property name="agent.plugin.ansible.dir" location="${ansible.dir}/zstack-agent/plugins/" />
+
+    <target name="build-zstack-agent" >
+        <makeDir dir="${agent.bdir}" />
+
+        <checkProperty property="agent.source" />
+        <checkFile file="${agent.source}" />
+
+        <delete dir="${agent.source}/target" />
+
+        <exec executable="make" dir="${agent.source}" failonerror="true">
+            <arg value="package" />
+        </exec>
+
+        <copy todir="${agent.bdir}/">
+            <fileset dir="${agent.source}/target/package">
+                <exclude name="**/*~" />
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-agent-server">
+        <makeDir dir="${agent.ansible.dir}/server" />
+
+        <copy todir="${agent.ansible.dir}/server">
+            <fileset dir="${agent.bdir}/server">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-agent-collectd">
+        <makeDir dir="${agent.plugin.ansible.dir}/collectd" />
+
+        <copy todir="${agent.plugin.ansible.dir}/collectd">
+            <fileset dir="${agent.bdir}/plugins/collectd">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>
