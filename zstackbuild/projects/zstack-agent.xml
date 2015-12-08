@@ -14,6 +14,10 @@
         <delete dir="${agent.source}/target" />
 
         <exec executable="make" dir="${agent.source}" failonerror="true">
+            <arg value="clean" />
+        </exec>
+
+        <exec executable="make" dir="${agent.source}" failonerror="true">
             <arg value="package" />
         </exec>
 
