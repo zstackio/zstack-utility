@@ -178,7 +178,9 @@ fail(){
     #tput cub 6
     #echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     #echo -e "$(tput setaf 1)  Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
+    echo "-------------"
     exit 1
 }
 
@@ -197,6 +199,19 @@ echo_title(){
 echo_subtitle(){
     echo "\n----------------" >> $ZSTACK_INSTALL_LOG
     echo -n "    $*:"|tee -a $ZSTACK_INSTALL_LOG
+}
+
+cs_check_hostname(){
+    current_hostname=`hostname`
+    ip addr | grep $current_hostname > /dev/null
+    [ $? -ne 0 ] && return 0
+    fail 'Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
+Please fix it by running:
+
+    hostname MY_REAL_HOSTNAME
+    echo "$current_hostname MY_REAL_HOSTNAME" >>/etc/hosts
+
+Then restart installation. '
 }
 
 #Do preinstallation checking for CentOS and Ubuntu
@@ -270,6 +285,7 @@ do_check_system(){
         [ $? -ne 0 ] && fail "Uninstall python-crypto fail"
     fi
 
+    cs_check_hostname
     ia_check_ip_hijack
 
     #add user: zstack and add sudo permission for it.
