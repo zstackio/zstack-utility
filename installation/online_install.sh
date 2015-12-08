@@ -205,14 +205,15 @@ echo_subtitle(){
 
 cs_check_hostname(){
     current_hostname=`hostname`
-    ip addr | grep $current_hostname > /dev/null
+    ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
     [ $? -ne 0 ] && return 0
     fail 'Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
-Please fix it by running:
+Please fix it by running following commands in CentOS7:
 
-    hostname MY_REAL_HOSTNAME
+    hostnamectl set-hostname MY_REAL_HOSTNAME
     echo "$current_hostname MY_REAL_HOSTNAME" >>/etc/hosts
 
+Or use other hostname setting method in other system. 
 Then restart installation. '
 }
 
