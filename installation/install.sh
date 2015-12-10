@@ -321,13 +321,24 @@ ia_check_ip_hijack(){
 
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
-    if [ -z $DEBUG ];then
-        yum clean metadata >/dev/null 2>&1
-        yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+    if [ ! -z $YUM_ONLINE_REPO ];then
+        if [ -z $DEBUG ];then
+            yum clean metadata >/dev/null 2>&1
+            yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            yum clean metadata >/dev/null 2>&1
+            yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc
+        fi
     else
-        yum clean metadata >/dev/null 2>&1
-        yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc
+        if [ -z $DEBUG ];then
+            yum clean metadata >/dev/null 2>&1
+            yum -y install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            yum clean metadata >/dev/null 2>&1
+            yum -y install python python-devel python-setuptools gcc
+        fi
     fi
+
     if [ $? -ne 0 ]; then
         yum clean metadata >/dev/null 2>&1
         fail "Install python and gcc fail."
@@ -1089,6 +1100,9 @@ Options:
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
         to upgrade zstack or -l to install some system libs. 
 
+  -o    Use user defined yum repository. Default will use ZStack offline yum repository. If user system's libraries are newer than ZStack offline yum packages, user should set -Y to ask ZStack to use yum repo in /etc/yum.repo.d/* , instead of ZStack local repository.
+
+
   -p MYSQL_PASSWORD
         password for MySQL user 'zstack' that is the user ${PRODUCT_NAME} management nodes use to access database. By default, an empty password is applied.
 
@@ -1099,8 +1113,6 @@ Options:
         the path where to install ${PRODUCT_NAME} management node.  The default path is $ZSTACK_INSTALL_ROOT
 
   -u    Upgrade zstack management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
-
-  -Y    Use user defined yum repository. Default will use ZStack offline yum repository. If user system's libraries are newer than ZStack offline yum packages, user should set -Y to ask ZStack to use yum repo in /etc/yum.repo.d/* , instead of ZStack local repository.
 
   -z    Only install ZStack, without start ZStack management node.
 ------------
