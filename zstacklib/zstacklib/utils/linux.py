@@ -724,7 +724,7 @@ def get_pid_by_process_param(param):
     cmd = shell.ShellCmd('''set -o pipefail; ps -aux | grep "[%s]%s" | sed 's/\s\s*/ /g' | cut -f 2 -d " "''' % (param[0], param[1:]))
     output = cmd(False)
     if cmd.return_code != 0:
-       return None
+        return None
     output = output.strip(" \t\n\r")
     return int(output)
 

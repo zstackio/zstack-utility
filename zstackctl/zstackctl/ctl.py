@@ -317,6 +317,14 @@ class Ctl(object):
         if not os.path.isfile(self.properties_file_path):
             warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
 
+    def get_env(self, name):
+        env = PropertyFile(SetEnvironmentVariableCmd.PATH)
+        return env.read_property(name)
+
+    def put_envs(self, vs):
+        env = PropertyFile(SetEnvironmentVariableCmd.PATH)
+        env.write_properties(vs)
+
     def run(self):
         if os.getuid() != 0:
             raise CtlError('zstack-ctl needs root privilege, please run with sudo')
@@ -1513,8 +1521,10 @@ rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
             info('updated CloudBus.rabbitmqPassword=%s in %s' % (args.rabbit_password, ctl.properties_file_path))
 
 class InstallKairosdbCmd(Command):
-    RPM_NAME = "kairosdb-1.0.0-1.rpm"
-    INSTALL_PATH = "/opt/kairosdb/"
+    PACKAGE_NAME = "kairosdb-1.1.1-1.tar.gz"
+    KAIROSDB_EXEC = 'KAIROSDB_EXEC'
+    KAIROSDB_CONF = 'KAIROSDB_CONF'
+    KAIROSDB_LOG = 'KAIROSDB_LOG'
 
     def __init__(self):
         super(InstallKairosdbCmd, self).__init__()
@@ -1525,30 +1535,33 @@ class InstallKairosdbCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--file', help='path to the %s' % self.RPM_NAME, required=False)
+        parser.add_argument('--file', help='path to the %s' % self.PACKAGE_NAME, required=False)
         parser.add_argument('--listen-address', help='the IP kairosdb listens to, which cannot be 0.0.0.0', required=True)
+        parser.add_argument('--cassandra-rpc-address', help='the RPC address of cassandra, which must be in the format of'
+                                                            '\nIP:port, for example, 192.168.0.199:9160. If omitted, the'
+                                                            '\naddress will be retrieved from local cassandra YAML config,'
+                                                            '\nor an error will be raised if the YAML config cannot be found', required=False)
         parser.add_argument('--listen-port', help='the port kairosdb listens to, default to 18080', default=18080, required=False)
-        parser.add_argument('--update-zstack-config', action='store_true', help='update kairosdb config to zstack.properties', required=False)
+        parser.add_argument('--update-zstack-config', action='store_true', default=True, help='update kairosdb config to zstack.properties', required=False)
 
     def run(self, args):
         if not args.file:
-            args.file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, self.RPM_NAME)
+            args.file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, self.PACKAGE_NAME)
 
         if not os.path.exists(args.file):
             raise CtlError('cannot find %s, you may need to specify the option[--file]' % args.file)
 
-        if not args.file.endswith(self.RPM_NAME):
-            raise CtlError('at this version, zstack only supports %s' % self.RPM_NAME)
+        if not args.file.endswith(self.PACKAGE_NAME):
+            raise CtlError('at this version, zstack only supports %s' % self.PACKAGE_NAME)
 
-        if shell_return('rpm -q %s' % self.RPM_NAME.rstrip(".rpm")) != 0:
-            shell_no_pipe("yum -y install %s" % args.file)
-        else:
-            info('%s is already installed, skip it' % self.RPM_NAME)
+        shell('su - zstack -c "tar xzf %s -C %s"' % (args.file, ctl.USER_ZSTACK_HOME_DIR))
+        kairosdb_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "kairosdb")
+        info("successfully installed %s to %s" % (args.file, os.path.join(ctl.USER_ZSTACK_HOME_DIR, kairosdb_dir)))
 
         if args.listen_address == '0.0.0.0':
             raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
 
-        original_conf_path = os.path.join(self.INSTALL_PATH, "conf/kairosdb.properties")
+        original_conf_path = os.path.join(kairosdb_dir, "conf/kairosdb.properties")
         shell("yes | cp %s %s.bak" % (original_conf_path, original_conf_path))
 
         all_configs = []
@@ -1559,37 +1572,72 @@ class InstallKairosdbCmd(Command):
                     raise CtlError('invalid config[%s]. The config must be in the format of key=value without spaces around the =' % l)
                 all_configs.append(l)
 
+        if args.cassandra_rpc_address and ':' not in args.cassandra_rpc_address:
+            raise CtlError('invalid --cassandra-rpc-address[%s]. It must be in the format of IP:port' % args.cassandra_rpc_address)
+        elif not args.cassandra_rpc_address:
+            cassandra_conf = ctl.get_env(InstallCassandraCmd.CASSANDRA_CONF)
+            if not cassandra_conf:
+                raise CtlError('cannot find cassandra conf[%s] in %s, have you installed cassandra? or'
+                               ' you can use --cassandra-rpc-address to set the address explicitly' % (InstallCassandraCmd.CASSANDRA_CONF, SetEnvironmentVariableCmd.PATH))
+
+            with open(cassandra_conf, 'r') as fd:
+                with on_error('cannot YAML load %s, it seems corrupted' % InstallCassandraCmd.CASSANDRA_CONF):
+                    c_conf = yaml.load(fd.read())
+
+            addr = c_conf['rpc_address']
+            if not addr:
+                raise CtlError('rpc_address is not set in %s. Please fix it otherwise kairosdb cannot boot later' % InstallCassandraCmd.CASSANDRA_CONF)
+
+            port = c_conf['rpc_port']
+            if not port:
+                raise CtlError('rpc_port is not set in %s. Please fix it otherwise kairosdb cannot boot later' % InstallCassandraCmd.CASSANDRA_CONF)
+
+            args.cassandra_rpc_address = '%s:%s' % (addr, port)
+
         all_configs.extend([
           ('kairosdb.service.datastore', 'org.kairosdb.datastore.cassandra.CassandraModule'),
           ('kairosdb.jetty.address', args.listen_address),
-          ('kairosdb.jetty.port', args.listen_port)
+          ('kairosdb.jetty.port', args.listen_port),
+          ('kairosdb.datastore.cassandra.host_list', args.cassandra_rpc_address)
         ])
         prop = PropertyFile(original_conf_path)
-        prop.use_zstack = False
         prop.write_properties(all_configs)
 
         if args.update_zstack_config:
             ctl.write_properties([
-              ('Kairosdb.exec', os.path.normpath('%s/bin/kairosdb.sh' % self.INSTALL_PATH)),
+              ('Kairosdb.exec', os.path.normpath('%s/bin/kairosdb.sh' % kairosdb_dir)),
               ('Kairosdb.ip', args.listen_address),
               ('Kairosdb.port', args.listen_port),
             ])
             info('successfully wrote kairosdb properties to %s' % ctl.properties_file_path)
 
+        ctl.put_envs([
+            (self.KAIROSDB_EXEC, os.path.normpath('%s/bin/kairosdb.sh' % kairosdb_dir)),
+            (self.KAIROSDB_CONF, original_conf_path),
+            (self.KAIROSDB_LOG, os.path.join(kairosdb_dir, 'log')),
+        ])
+
         info('successfully installed kairosdb, the config file is written to %s' % original_conf_path)
 
 class InstallCassandraCmd(Command):
+    CASSANDRA_EXEC = 'CASSANDRA_EXEC'
+    CASSANDRA_CONF = 'CASSANDRA_CONF'
+    CASSANDRA_LOG = 'CASSANDRA_LOG'
+
     def __init__(self):
         super(InstallCassandraCmd, self).__init__()
         self.name = "install_cassandra"
         self.description = (
-            "install cassandra nosql database"
+            "install cassandra nosql database."
+            "\nNOTE: you can pass an extra JSON string that will be converted to the cassandra YAML config. The string must"
+            "\nbe quoted by a single quote('), and the content must be the valid JSON format, for example:"
+            "\n\nzstack-ctl  install_cassandra --file /tmp/apache-cassandra-2.2.3-bin.tar.gz '{\"rpc_address\":\"192.168.0.199\", \"listen_address\":\"192.168.0.199\"}'"
         )
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--file', help='path to the apache-cassandra-2.2.3-bin.tar.gz', required=False)
-        parser.add_argument('--update-zstack-config', action='store_true', help='update cassandra config to zstack.properties', required=False)
+        parser.add_argument('--user-zstack', help='do all operations with user zstack', default=True, action='store_true', required=False)
 
     def run(self, args):
         if not args.file:
@@ -1605,52 +1653,273 @@ class InstallCassandraCmd(Command):
         cassandra_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3")
         info("successfully installed %s to %s" % (args.file, os.path.join(ctl.USER_ZSTACK_HOME_DIR, cassandra_dir)))
 
-        zstack_yaml_conf = os.path.join(cassandra_dir, "conf/cassandra-zstack.yaml")
-        original_yaml_conf = os.path.join(cassandra_dir, "conf/cassandra.yaml")
+        yaml_conf = os.path.join(cassandra_dir, "conf/cassandra.yaml")
+        shell('yes | cp %s %s.bak' % (yaml_conf, yaml_conf))
 
-        with open(original_yaml_conf, 'r') as fd:
-            conf = yaml.load(fd.read())
-
-        # default data path
-        conf['commitlog_directory'] = "/var/lib/cassandra/commitlog"
-        conf['data_file_directories'] = "/var/lib/cassandra/data"
-        conf['saved_caches_directory'] = "/var/lib/cassandra/saved_caches"
         if ctl.extra_arguments:
-            configs = [l.split('=', 1) for l in ctl.extra_arguments]
-            for c in configs:
-                if len(c) != 2:
-                    raise CtlError('invalid config[%s]. A config must be in the format of key=value with no spaces around the =' % c)
+            extra = ' '.join(ctl.extra_arguments)
+            with on_error("%s is not a valid JSON string" % extra):
+                conf = simplejson.loads(extra)
+        else:
+            conf = {}
 
-                k, v = c
-                key_pairs = k.split(":::")
-                if len(key_pairs) == 1:
-                    conf[k] = v
-                else:
-                    conf[key_pairs[0]] = m = {}
-                    for kp in key_pairs[1:]:
-                        if not kp:
-                            raise CtlError("invalid config[%s=%s], the key for nested data must be split by :::, and each"
-                                           " level key cannot be empty string" % (k, v))
+        if 'commitlog_directory' not in conf:
+            conf['commitlog_directory'] = ['/var/lib/cassandra/commitlog']
+        if 'data_file_directories' not in conf:
+            conf['data_file_directories'] = ['/var/lib/cassandra/data']
+        if 'commitlog_directory' not in conf:
+            conf['saved_caches_directory'] = ['/var/lib/cassandra/saved_caches']
+        conf['start_rpc'] = True
 
-                        ck = kp
-                        cm = m
-                        m[kp] = {}
-                        m = m[kp]
+        if args.user_zstack:
+            with use_user_zstack():
+                with open(yaml_conf, 'r') as fd:
+                    c_conf = yaml.load(fd.read())
+        else:
+            with open(yaml_conf, 'r') as fd:
+                c_conf = yaml.load(fd.read())
 
-                    cm[ck] = v
+        for k, v in conf.items():
+            c_conf[k] = v
 
-        with use_user_zstack():
-            with open(zstack_yaml_conf, 'w') as fd:
-                fd.write(yaml.dump(conf))
+        listen_address = c_conf['listen_address']
+        rpc_address = c_conf['rpc_address']
+        if listen_address != rpc_address:
+            raise CtlError('listen_address[%s] and rpc_address[%s] do not match' % (listen_address, rpc_address))
 
-        if args.update_zstack_config:
-            ctl.write_properties([
-              ('Cassandra.exec', os.path.join(cassandra_dir, 'bin/cassandra')),
-            ])
-            info('successfully wrote cassandra configs to %s' % ctl.properties_file_path)
+        seed_provider = c_conf['seed_provider']
+        with on_error("cannot find parameter[seeds] in %s" % yaml_conf):
+            # check if the parameter is in the YAML conf
+            _ = seed_provider[0]['parameters'][0]['seeds']
 
-        info('configs are written into %s' % zstack_yaml_conf)
+        seed_provider[0]['parameters'][0]['seeds'] = listen_address
+        info("change parameter['seeds'] to listen_address[%s], otherwise cassandra may fail to get seeds" % listen_address)
 
+        if args.user_zstack:
+            with use_user_zstack():
+                with open(yaml_conf, 'w') as fd:
+                    fd.write(yaml.dump(c_conf, default_flow_style=False))
+        else:
+            with open(yaml_conf, 'w') as fd:
+                fd.write(yaml.dump(c_conf, default_flow_style=False))
+
+        ctl.put_envs([
+          (self.CASSANDRA_EXEC, os.path.join(cassandra_dir, 'bin/cassandra')),
+          (self.CASSANDRA_CONF, yaml_conf),
+          (self.CASSANDRA_LOG, os.path.join(cassandra_dir, 'log')),
+        ])
+        info('configs are written into %s' % yaml_conf)
+
+class KairosdbCmd(Command):
+    NAME = 'kairosdb'
+
+    def __init__(self):
+        super(KairosdbCmd, self).__init__()
+        self.name = self.NAME
+        self.description = (
+            'control kairosdb life cycle'
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--start', help='start kairosdb', action="store_true", required=False)
+        parser.add_argument('--stop', help='stop kairosdb', action="store_true", required=False)
+        parser.add_argument('--status', help='show kairosdb status', action="store_true", required=False)
+        parser.add_argument('--wait-timeout', type=int, help='wait timeout(in seconds) until kairosdb web port is available. This is normally used'
+                                                           ' with --start option to make sure cassandra successfully starts.',
+                            default=-1, required=False)
+
+    def _status(self, args):
+        return find_process_by_cmdline('org.kairosdb.core.Main')
+
+    def start(self, args):
+        pid = self._status(args)
+        if pid:
+            info('kairosdb[PID:%s] is already running' % pid)
+            return
+
+        exe = ctl.get_env(InstallKairosdbCmd.KAIROSDB_EXEC)
+        if not os.path.exists(exe):
+            raise CtlError('cannot find the variable[%s] in %s. Have you installed kaiosdb?' %
+                           (InstallKairosdbCmd.KAIROSDB_EXEC, SetEnvironmentVariableCmd.PATH))
+
+        shell('bash %s start' % exe)
+        info('successfully starts kairosdb')
+
+        if args.wait_timeout < 0:
+            return
+
+        info('waiting for kairosdb to listen on web port until %s seconds timeout' % args.wait_timeout)
+        conf = ctl.get_env(InstallKairosdbCmd.KAIROSDB_CONF)
+        if not conf:
+            warn('cannot find the variable[%s] in %s, ignore --wait-timeout' %
+                (InstallKairosdbCmd.KAIROSDB_CONF, SetEnvironmentVariableCmd.PATH))
+            return
+
+        if not os.path.exists(conf):
+            warn('cannot find kairosdb conf at %s, ignore --wait-timeout' % conf)
+            return
+
+        prop = PropertyFile(conf)
+        port = prop.read_property('kairosdb.jetty.port')
+        if not port:
+            raise CtlError('kairosdb.jetty.port is not set in %s' % InstallKairosdbCmd.KAIROSDB_CONF)
+
+        while args.wait_timeout > 0:
+            ret = shell_return('netstat -nap | grep %s > /dev/null' % port)
+            if ret == 0:
+                info('kairosdb is listening on the web port[%s] now' % port)
+                return
+            time.sleep(1)
+            args.wait_timeout -= 1
+
+        raise CtlError("kairosdb is not listening on the web port[%s] after %s seconds, it may not successfully start,"
+                        "please check the log file in %s" % (port, args.wait_timeout, ctl.get_env(InstallKairosdbCmd.KAIROSDB_CONF)))
+
+    def stop(self, args):
+        pid = self._status(args)
+        if not pid:
+            info('kairosdb is already stopped')
+            return
+
+        exe = ctl.get_env(InstallKairosdbCmd.KAIROSDB_EXEC)
+        if not os.path.exists(exe):
+            shell('kill %s' % pid)
+        else:
+            shell('bash %s stop' % exe)
+
+        count = 30
+        while count > 0:
+            pid = self._status(args)
+            if not pid:
+                info('successfully stopped kairosdb')
+                return
+            time.sleep(1)
+            count -= 1
+
+        info('kairosdb is still running after %s seconds, kill -9 it' % count)
+        shell('kill -9 %s' % pid)
+
+    def status(self, args):
+        pid = self._status(args)
+        if pid:
+            info('kairosdb[PID:%s] is running' % pid)
+        else:
+            info('kairosdb is stopped')
+
+    def run(self, args):
+        if args.start:
+            self.start(args)
+        elif args.stop:
+            self.stop(args)
+        elif args.status:
+            self.status(args)
+        else:
+            self.status(args)
+
+class CassandraCmd(Command):
+    def __init__(self):
+        super(CassandraCmd, self).__init__()
+        self.name = "cassandra"
+        self.description = (
+            "control cassandra's life cycle"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--start', help='start cassandra', action="store_true", required=False)
+        parser.add_argument('--stop', help='stop cassandra', action="store_true", required=False)
+        parser.add_argument('--status', help='show cassandra status', action="store_true", required=False)
+        parser.add_argument('--wait-timeout', type=int, help='wait timeout(in seconds) until cassandra RPC port is available. This is normally used'
+                                           ' with --start option to make sure cassandra successfully starts.',
+                            default=-1, required=False)
+
+    def start(self, args):
+        pid = self._status(args)
+        if pid:
+            info('cassandra[PID:%s] is already running' % pid)
+            return
+
+        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+        if not exe:
+            raise CtlError('cannot find the variable[%s] in %s. Have you installed cassandra?' %
+                           (InstallCassandraCmd.CASSANDRA_EXEC, SetEnvironmentVariableCmd.PATH))
+
+        # cd to the /bin folder to start cassandra, otherwise the command line
+        # will be too long to be truncated by the linux /proc/[pid]/cmdline, which
+        # leads _status() not working
+        shell('cd %s && bash %s' % (os.path.dirname(exe), os.path.basename(exe)))
+        info('successfully starts cassandra')
+
+        if args.wait_timeout <= 0:
+            return
+
+        info('waiting for cassandra to listen on the RPC port until timeout after %s seconds' % args.wait_timeout)
+        conf = ctl.get_env(InstallCassandraCmd.CASSANDRA_CONF)
+        if not conf:
+            warn('cannot find the variable[%s] in %s, ignore --wait-timeout' %
+                (InstallCassandraCmd.CASSANDRA_CONF, SetEnvironmentVariableCmd.PATH))
+            return
+
+        if not os.path.exists(conf):
+            warn('cannot find cassandra conf at %s, ignore --wait-timeout' % conf)
+            return
+
+        with open(conf, 'r') as fd:
+            m = yaml.load(fd.read())
+            port = m['rpc_port']
+            if not port:
+                warn('cannot find parameter[rpc_port] in %s, ignore --wait-timeout' % conf)
+
+            while args.wait_timeout > 0:
+                ret = shell_return('netstat -nap | grep %s > /dev/null' % port)
+                if ret == 0:
+                    info('cassandra is listening on RPC port[%s] now' % port)
+                    return
+                args.wait_timeout -= 1
+
+            raise CtlError("cassandra is not listening on RPC port[%s] after %s seconds, it may not successfully start,"
+                           "please check the log file in %s" % ctl.get_env(InstallCassandraCmd.CASSANDRA_LOG))
+
+    def stop(self, args):
+        pid = self._status(args)
+        if not pid:
+            info('cassandra is already stopped')
+            return
+
+        shell('kill %s' % pid)
+
+        count = 30
+        while count > 0:
+            pid = self._status(args)
+            if not pid:
+                info('successfully stopped cassandra')
+                return
+            time.sleep(1)
+            count -= 1
+
+        info('cassandra is still running after %s seconds, kill -9 it' % count)
+        shell('kill -9 %s' % pid)
+
+    def _status(self, args):
+        return find_process_by_cmdline('org.apache.cassandra.service.CassandraDaemon')
+
+    def status(self, args):
+        pid = self._status(args)
+        if not pid:
+            info('cassandra is stopped')
+        else:
+            info('cassandra[PID:%s] is running' % pid)
+
+    def run(self, args):
+        if args.start:
+            self.start(args)
+        elif args.stop:
+            self.stop(args)
+        elif args.status:
+            self.status(args)
+        else:
+            self.status(args)
 
 class InstallManagementNodeCmd(Command):
     def __init__(self):
@@ -2054,6 +2323,36 @@ class SetEnvironmentVariableCmd(Command):
         env = PropertyFile(self.PATH)
         vars = [l.split('=', 1) for l in ctl.extra_arguments]
         env.write_properties(vars)
+
+class GetEnvironmentVariableCmd(Command):
+    NAME = 'getenv'
+
+    def __init__(self):
+        super(GetEnvironmentVariableCmd, self).__init__()
+        self.name = self.NAME
+        self.description = (
+              "get variables from %s" % SetEnvironmentVariableCmd.PATH
+        )
+        ctl.register_command(self)
+
+    def run(self, args):
+        if not os.path.exists(SetEnvironmentVariableCmd.PATH):
+            raise CtlError('cannot find the environment variable file at %s' % SetEnvironmentVariableCmd.PATH)
+
+        ret = []
+        if ctl.extra_arguments:
+            env = PropertyFile(SetEnvironmentVariableCmd.PATH)
+            for key in ctl.extra_arguments:
+                value = env.read_property(key)
+                if value:
+                    ret.append('%s=%s' % (key, value))
+        else:
+            env = PropertyFile(SetEnvironmentVariableCmd.PATH)
+            for k, v in env.read_all_properties():
+                ret.append('%s=%s' % (k, v))
+
+        info('\n'.join(ret))
+
 
 class InstallWebUiCmd(Command):
 
@@ -2954,6 +3253,7 @@ def main():
     InstallManagementNodeCmd()
     ShowConfiguration()
     SetEnvironmentVariableCmd()
+    GetEnvironmentVariableCmd()
     InstallWebUiCmd()
     UpgradeManagementNodeCmd()
     UpgradeDbCmd()
@@ -2965,6 +3265,8 @@ def main():
     UiStatusCmd()
     InstallCassandraCmd()
     InstallKairosdbCmd()
+    CassandraCmd()
+    KairosdbCmd()
 
     try:
         ctl.run()
