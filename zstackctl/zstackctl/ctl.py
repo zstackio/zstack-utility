@@ -19,6 +19,7 @@ import tempfile
 import pwd, grp
 import traceback
 import uuid
+import yaml
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -230,10 +231,11 @@ def use_user_zstack():
     return UseUserZstack()
 
 class PropertyFile(object):
-    def __init__(self, path):
+    def __init__(self, path, use_zstack=True):
         self.path = path
+        self.use_zstack = use_zstack
         if not os.path.isfile(self.path):
-            raise CtlError('cannot find zstack.properties at %s' % self.path)
+            raise CtlError('cannot find property file at %s' % self.path)
 
         with on_error("errors on reading %s" % self.path):
             self.config = ConfigObj(self.path, write_empty_values=True)
@@ -248,13 +250,22 @@ class PropertyFile(object):
 
     def write_property(self, key, value):
         with on_error("errors on writing (%s=%s) to %s" % (key, value, self.path)):
-            with use_user_zstack():
+            if self.use_zstack:
+                with use_user_zstack():
+                    self.config[key] = value
+                    self.config.write()
+            else:
                 self.config[key] = value
                 self.config.write()
 
     def write_properties(self, lst):
         with on_error("errors on writing list of key-value%s to %s" % (lst, self.path)):
-            with use_user_zstack():
+            if self.use_zstack:
+                with use_user_zstack():
+                    for key, value in lst:
+                        self.config[key] = value
+                        self.config.write()
+            else:
                 for key, value in lst:
                     self.config[key] = value
                     self.config.write()
@@ -1120,7 +1131,7 @@ class InstallDbCmd(Command):
     - name: set RHEL7 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-    
+
     - name: set RHEL6 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
@@ -1142,7 +1153,7 @@ class InstallDbCmd(Command):
 
     - name: install MySQL for RedHat 7 from local
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_online != 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server 
+      shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server
       register: install_result
 
     - name: install MySQL for Ubuntu
@@ -1324,7 +1335,7 @@ class InstallRabbitCmd(Command):
     - name: set RHEL7 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-    
+
     - name: set RHEL6 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
@@ -1501,6 +1512,146 @@ rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
             ctl.write_property('CloudBus.rabbitmqPassword', args.rabbit_password)
             info('updated CloudBus.rabbitmqPassword=%s in %s' % (args.rabbit_password, ctl.properties_file_path))
 
+class InstallKairosdbCmd(Command):
+    RPM_NAME = "kairosdb-1.0.0-1.rpm"
+    INSTALL_PATH = "/opt/kairosdb/"
+
+    def __init__(self):
+        super(InstallKairosdbCmd, self).__init__()
+        self.name = "install_kairosdb"
+        self.description = (
+            "install kairosdb"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--file', help='path to the %s' % self.RPM_NAME, required=False)
+        parser.add_argument('--listen-address', help='the IP kairosdb listens to, which cannot be 0.0.0.0', required=True)
+        parser.add_argument('--listen-port', help='the port kairosdb listens to, default to 18080', default=18080, required=False)
+        parser.add_argument('--update-zstack-config', action='store_true', help='update kairosdb config to zstack.properties', required=False)
+
+    def run(self, args):
+        if not args.file:
+            args.file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, self.RPM_NAME)
+
+        if not os.path.exists(args.file):
+            raise CtlError('cannot find %s, you may need to specify the option[--file]' % args.file)
+
+        if not args.file.endswith(self.RPM_NAME):
+            raise CtlError('at this version, zstack only supports %s' % self.RPM_NAME)
+
+        if shell_return('rpm -q %s' % self.RPM_NAME.rstrip(".rpm")) != 0:
+            shell_no_pipe("yum -y install %s" % args.file)
+        else:
+            info('%s is already installed, skip it' % self.RPM_NAME)
+
+        if args.listen_address == '0.0.0.0':
+            raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
+
+        original_conf_path = os.path.join(self.INSTALL_PATH, "conf/kairosdb.properties")
+        shell("yes | cp %s %s.bak" % (original_conf_path, original_conf_path))
+
+        all_configs = []
+        if ctl.extra_arguments:
+            configs = [l.split('=', 1) for l in ctl.extra_arguments]
+            for l in configs:
+                if len(l) != 2:
+                    raise CtlError('invalid config[%s]. The config must be in the format of key=value without spaces around the =' % l)
+                all_configs.append(l)
+
+        all_configs.extend([
+          ('kairosdb.service.datastore', 'org.kairosdb.datastore.cassandra.CassandraModule'),
+          ('kairosdb.jetty.address', args.listen_address),
+          ('kairosdb.jetty.port', args.listen_port)
+        ])
+        prop = PropertyFile(original_conf_path)
+        prop.use_zstack = False
+        prop.write_properties(all_configs)
+
+        if args.update_zstack_config:
+            ctl.write_properties([
+              ('Kairosdb.exec', os.path.normpath('%s/bin/kairosdb.sh' % self.INSTALL_PATH)),
+              ('Kairosdb.ip', args.listen_address),
+              ('Kairosdb.port', args.listen_port),
+            ])
+            info('successfully wrote kairosdb properties to %s' % ctl.properties_file_path)
+
+        info('successfully installed kairosdb, the config file is written to %s' % original_conf_path)
+
+class InstallCassandraCmd(Command):
+    def __init__(self):
+        super(InstallCassandraCmd, self).__init__()
+        self.name = "install_cassandra"
+        self.description = (
+            "install cassandra nosql database"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--file', help='path to the apache-cassandra-2.2.3-bin.tar.gz', required=False)
+        parser.add_argument('--update-zstack-config', action='store_true', help='update cassandra config to zstack.properties', required=False)
+
+    def run(self, args):
+        if not args.file:
+            args.file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3-bin.tar.gz")
+
+        if not os.path.exists(args.file):
+            raise CtlError('cannot find %s, you may need to specify the option[--file]' % args.file)
+
+        if not args.file.endswith("apache-cassandra-2.2.3-bin.tar.gz"):
+            raise CtlError('at this version, zstack only support apache-cassandra-2.2.3-bin.tar.gz')
+
+        shell('su - zstack -c "tar xzf %s -C %s"' % (args.file, ctl.USER_ZSTACK_HOME_DIR))
+        cassandra_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3")
+        info("successfully installed %s to %s" % (args.file, os.path.join(ctl.USER_ZSTACK_HOME_DIR, cassandra_dir)))
+
+        zstack_yaml_conf = os.path.join(cassandra_dir, "conf/cassandra-zstack.yaml")
+        original_yaml_conf = os.path.join(cassandra_dir, "conf/cassandra.yaml")
+
+        with open(original_yaml_conf, 'r') as fd:
+            conf = yaml.load(fd.read())
+
+        # default data path
+        conf['commitlog_directory'] = "/var/lib/cassandra/commitlog"
+        conf['data_file_directories'] = "/var/lib/cassandra/data"
+        conf['saved_caches_directory'] = "/var/lib/cassandra/saved_caches"
+        if ctl.extra_arguments:
+            configs = [l.split('=', 1) for l in ctl.extra_arguments]
+            for c in configs:
+                if len(c) != 2:
+                    raise CtlError('invalid config[%s]. A config must be in the format of key=value with no spaces around the =' % c)
+
+                k, v = c
+                key_pairs = k.split(":::")
+                if len(key_pairs) == 1:
+                    conf[k] = v
+                else:
+                    conf[key_pairs[0]] = m = {}
+                    for kp in key_pairs[1:]:
+                        if not kp:
+                            raise CtlError("invalid config[%s=%s], the key for nested data must be split by :::, and each"
+                                           " level key cannot be empty string" % (k, v))
+
+                        ck = kp
+                        cm = m
+                        m[kp] = {}
+                        m = m[kp]
+
+                    cm[ck] = v
+
+        with use_user_zstack():
+            with open(zstack_yaml_conf, 'w') as fd:
+                fd.write(yaml.dump(conf))
+
+        if args.update_zstack_config:
+            ctl.write_properties([
+              ('Cassandra.exec', os.path.join(cassandra_dir, 'bin/cassandra')),
+            ])
+            info('successfully wrote cassandra configs to %s' % ctl.properties_file_path)
+
+        info('configs are written into %s' % zstack_yaml_conf)
+
+
 class InstallManagementNodeCmd(Command):
     def __init__(self):
         super(InstallManagementNodeCmd, self).__init__()
@@ -1553,7 +1704,7 @@ class InstallManagementNodeCmd(Command):
 
         pypi_tar_path = os.path.join(ctl.zstack_home, "static/pypi.tar.bz")
         static_path = os.path.join(ctl.zstack_home, "static")
-        os.system('cd %s; tar jcf pypi.tar.bz pypi' % static_path)
+        shell('cd %s; tar jcf pypi.tar.bz pypi' % static_path)
 
         yaml = '''---
 - hosts: $host
@@ -1574,7 +1725,7 @@ class InstallManagementNodeCmd(Command):
     - name: set RHEL7 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-    
+
     - name: set RHEL6 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
@@ -1634,7 +1785,7 @@ class InstallManagementNodeCmd(Command):
     - name: untar pypi
       shell: "cd /tmp/; tar jxf $pypi_tar_path_dest"
 
-    - name: install pip from local source 
+    - name: install pip from local source
       shell: "cd $pypi_path; pip install --ignore-installed pip*.tar.gz"
 
     - name: install virtualenv
@@ -1690,7 +1841,7 @@ mkdir -p $install_path
         pre_script_on_rh6 = '''
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 rpm -qi python-crypto >/dev/null 2>&1
-if [ $? -eq 0 ]; then 
+if [ $? -eq 0 ]; then
     echo "Management node remote installation failed. You need to manually remove python-crypto by \n\n \`rpm -ev python-crypto\` \n\n in remote management node; otherwise it will conflict with ansible's pycrypto." >>$ZSTACK_INSTALL_LOG
     exit 1
 fi
@@ -2025,7 +2176,7 @@ gpgcheck=0
     - name: set RHEL7 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-    
+
     - name: set RHEL6 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
@@ -2051,7 +2202,7 @@ gpgcheck=0
       when: ansible_os_family == 'Debian'
       apt: pkg=python-pip update_cache=yes
 
-    - name: install pip from local source 
+    - name: install pip from local source
       shell: "cd $pypi_path; pip install --ignore-installed pip*.tar.gz"
 
     - shell: virtualenv --version | grep "12.1.1"
@@ -2812,6 +2963,8 @@ def main():
     StartUiCmd()
     StopUiCmd()
     UiStatusCmd()
+    InstallCassandraCmd()
+    InstallKairosdbCmd()
 
     try:
         ctl.run()
