@@ -1605,7 +1605,6 @@ class InstallKairosdbCmd(Command):
 
         if args.update_zstack_config:
             ctl.write_properties([
-              ('Kairosdb.exec', os.path.normpath('%s/bin/kairosdb.sh' % kairosdb_dir)),
               ('Kairosdb.ip', args.listen_address),
               ('Kairosdb.port', args.listen_port),
             ])
