@@ -202,6 +202,8 @@ echo_subtitle(){
 }
 
 cs_check_hostname(){
+    which hostname &>/dev/null
+    [ $? -ne 0 ] && return 
     current_hostname=`hostname`
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
     [ $? -ne 0 ] && return 0
@@ -488,6 +490,7 @@ is_install_general_libs(){
             ntp \
             ntpdate \
             bzip2 \
+            net-tools \
             mysql \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
@@ -520,6 +523,7 @@ is_install_general_libs(){
             ntp \
             ntpdate \
             bzip2 \
+            net-tools \
             mysql \
             >>$ZSTACK_INSTALL_LOG 2>&1
     fi
@@ -731,6 +735,7 @@ install_db_msgbus(){
     #deploy initial database
     show_spinner cs_deploy_db
     #install rabbitmq server
+    cs_check_hostname
     show_spinner cs_install_rabbitmq $ssh_tmp_dir
     cs_clean_ssh_tmp_key $ssh_tmp_dir
     #show_spinner cs_start_rabbitmq
@@ -1101,7 +1106,6 @@ Options:
         to upgrade zstack or -l to install some system libs. 
 
   -o    Use user defined yum repository. Default will use ZStack offline yum repository. If user system's libraries are newer than ZStack offline yum packages, user should set -Y to ask ZStack to use yum repo in /etc/yum.repo.d/* , instead of ZStack local repository.
-
 
   -p MYSQL_PASSWORD
         password for MySQL user 'zstack' that is the user ${PRODUCT_NAME} management nodes use to access database. By default, an empty password is applied.

@@ -204,6 +204,8 @@ echo_subtitle(){
 }
 
 cs_check_hostname(){
+    which hostname &>/dev/null
+    [ $? -ne 0 ] && return 
     current_hostname=`hostname`
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
     [ $? -ne 0 ] && return 0
@@ -772,6 +774,7 @@ install_db_msgbus(){
     #deploy initial database
     show_spinner cs_deploy_db
     #install rabbitmq server
+    cs_check_hostname
     show_spinner cs_install_rabbitmq $ssh_tmp_dir
     cs_clean_ssh_tmp_key $ssh_tmp_dir
     #show_spinner cs_start_rabbitmq
