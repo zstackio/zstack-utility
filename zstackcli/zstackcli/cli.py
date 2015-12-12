@@ -87,7 +87,7 @@ class Cli(object):
 
     def complete(self, pattern, index):
         '''
-        pattern is current input. index is current matched number of list. 
+        pattern is current input. index is current matched number of list.
         complete will be kept calling, until it return None.
         '''
         def prepare_primitive_fields_words(apiname, separator='=', prefix=''):
@@ -239,8 +239,8 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 except Exception as e:
                     err_msg = """
 Parse command parameters error:
-  eval '%s' error for: '%s' 
-  the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]" 
+  eval '%s' error for: '%s'
+  the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]"
                           """ % (value_string, key)
                     self.print_error(err_msg)
                     raise e
@@ -268,6 +268,8 @@ Parse command parameters error:
                     raise CliError('Invalid parameter[%s], the parameter must be split by "="' % param_str)
 
                 if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
+                    all_params[params[0]] = eval(params[1])
+                elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg', 'APIMonitoringPassThroughMsg'] and params[0] == 'query':
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and params[0] == 'networkServices':
                     all_params[params[0]] = eval_string(params[0], params[1])

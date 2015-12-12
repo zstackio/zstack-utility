@@ -3297,3 +3297,39 @@ class QueryVipAction(inventory.APIQueryVipMsg):
         self.reply = reply
         self.out = reply.inventories
         return self.out
+
+class GetVmMonitoringDataAction(inventory.APIGetVmMonitoringDataMsg):
+    def __init__(self):
+        super(GetVmMonitoringDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmMonitoringDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class MonitoringPassThroughAction(inventory.APIMonitoringPassThroughMsg):
+    def __init__(self):
+        super(MonitoringPassThroughAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[MonitoringPassThroughAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetHostMonitoringDataAction(inventory.APIGetHostMonitoringDataMsg):
+    def __init__(self):
+        super(GetHostMonitoringDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetHostMonitoringDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
