@@ -11,6 +11,8 @@ except:
 
 import readline
 import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
 import shlex
 import hashlib
 import optparse
