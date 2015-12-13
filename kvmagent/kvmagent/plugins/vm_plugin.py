@@ -2179,7 +2179,7 @@ class VmPlugin(kvmagent.KvmAgent):
         @thread.AsyncThread
         def monitor_libvirt():
             while True:
-                if shell.run('pid=$(cat /var/run/libvirtd.pid); ps -p $pid > /dev/null', False) != 0:
+                if shell.run('pid=$(cat /var/run/libvirtd.pid); ps -p $pid > /dev/null') != 0:
                     logger.warn("cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
                     self.queue.put("exit")
 
