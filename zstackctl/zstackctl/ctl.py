@@ -941,6 +941,10 @@ class StartCmd(Command):
             self._start_remote(args)
             return
 
+        # clean the error log before booting
+        boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
+        shell('rm -f %s' % boot_error_log)
+
         pid = get_management_node_pid()
         if pid:
             info('the management node[pid:%s] is already running' % pid)
@@ -978,15 +982,20 @@ class StartCmd(Command):
             info("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 
         def wait_mgmt_node_start():
+            log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
             timeout = int(args.timeout)
             @loop_until_timeout(timeout)
             def check():
+                if os.path.exists(boot_error_log):
+                    with open(boot_error_log, 'r') as fd:
+                        raise CtlError('the management server fails to boot; details can be found in the log[%s],'
+                                       'here is a brief of the error:\n%s' % (log_path, fd.read()))
+
                 cmd = create_check_mgmt_node_command(1)
                 cmd(False)
                 return cmd.return_code == 0
 
             if not check():
-                log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
                 raise CtlError('no management-node-ready message received within %s seconds, please check error in log file %s' % (timeout, log_path))
 
         user = getpass.getuser()
