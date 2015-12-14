@@ -1219,7 +1219,7 @@ if [ $? -ne 0 ];then
     fi
     MANAGEMENT_IP=$MANAGEMENT_INTERFACE
 else
-    MANAGEMENT_IP=`ip -4 addr show ${MANAGEMENT_INTERFACE} | grep inet | awk '{print $2}' | cut -f1  -d'/'`
+    MANAGEMENT_IP=`ip -4 addr show ${MANAGEMENT_INTERFACE} | grep inet | head -1 | awk '{print $2}' | cut -f1  -d'/'`
     echo "Management node network interface: $MANAGEMENT_INTERFACE" >> $ZSTACK_INSTALL_LOG
 fi
 
