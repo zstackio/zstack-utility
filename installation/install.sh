@@ -810,10 +810,18 @@ cs_gen_sshkey(){
 cs_install_mysql(){
     echo_subtitle "Install Mysql Server"
     dsa_key_file=$1/id_dsa
-    if [ -z $MYSQL_ROOT_PASSWORD ]; then
-        zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ -z $YUM_ONLINE_REPO ];then
+        if [ -z $MYSQL_ROOT_PASSWORD ]; then
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_USER_PASSWORD" --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
     else
-        zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_USER_PASSWORD" --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ -z $MYSQL_ROOT_PASSWORD ]; then
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_USER_PASSWORD" --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
     fi
     if [ $? -ne 0 ];then
         cs_clean_ssh_tmp_key $1
@@ -825,7 +833,11 @@ cs_install_mysql(){
 cs_install_rabbitmq(){
     echo_subtitle "Install Rabbitmq Server"
     dsa_key_file=$1/id_dsa
-    zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ -z $YUM_ONLINE_REPO ];then
+        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
     if [ $? -ne 0 ];then
         cs_clean_ssh_tmp_key $1
         fail "failed to install rabbitmq server."
