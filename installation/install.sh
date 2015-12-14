@@ -323,7 +323,7 @@ ia_check_ip_hijack(){
 
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
-    if [ ! -z $YUM_ONLINE_REPO ];then
+    if [ -z $YUM_ONLINE_REPO ];then
         if [ -z $DEBUG ];then
             yum clean metadata >/dev/null 2>&1
             yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
