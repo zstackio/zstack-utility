@@ -322,6 +322,9 @@ class Ctl(object):
         return env.read_property(name)
 
     def put_envs(self, vs):
+        if not os.path.exists(SetEnvironmentVariableCmd.PATH):
+            shell('su - zstack -c "mkdir -p %s"' % os.path.dirname(SetEnvironmentVariableCmd.PATH))
+            shell('su - zstack -c "touch %s"' % SetEnvironmentVariableCmd.PATH)
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
         env.write_properties(vs)
 

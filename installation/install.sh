@@ -56,6 +56,7 @@ MYSQL_ROOT_PASSWORD=''
 MYSQL_USER_PASSWORD=''
 
 YUM_ONLINE_REPO=''
+INSTALL_MONITOR=''
 
 show_download()
 {
@@ -715,11 +716,33 @@ iz_install_zstackctl(){
     pass
 }
 
+iz_install_cassandra(){
+    echo_subtitle "Install Cassandra"
+    zstack-ctl install_cassandra "{\"rpc_address\":\"$MANAGEMENT_IP\", \"listen_address\":\"$MANAGEMENT_IP\"}" >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to install Cassandra"
+    fi
+    pass
+}
+
+iz_install_kairosdb(){
+    echo_subtitle "Install Kairosdb"
+    zstack-ctl install_kairosdb --listen-address $MANAGEMENT_IP  >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to install Kairosdb"
+    fi
+    pass
+}
+
 install_zstack(){
     echo_title "Install ${PRODUCT_NAME} Tools"
     echo ""
+    show_spinner iz_chown_install_root
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
+    [ -z $INSTALL_MONITOR ] && return
+    show_spinner iz_install_cassandra
+    show_spinner iz_install_kairosdb
 }
 
 install_db_msgbus(){
@@ -745,7 +768,6 @@ config_system(){
     echo_title "Configure System"
     echo ""
     #show_spinner cs_flush_iptables
-    show_spinner cs_chown_install_root
     show_spinner cs_config_zstack_properties
     show_spinner cs_config_tomcat
     show_spinner cs_install_zstack_service
@@ -774,7 +796,7 @@ cs_config_zstack_properties(){
     pass
 }
 
-cs_chown_install_root(){
+iz_chown_install_root(){
     echo_subtitle "Change Ownership of ${PRODUCT_NAME} Install Root"
     chown -R zstack.zstack $ZSTACK_INSTALL_ROOT >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
@@ -995,6 +1017,33 @@ check_zstack_server(){
     return $?
 }
 
+sz_cassandra(){
+    echo_subtitle "Start Cassandra"
+    zstack-ctl cassandra --stop
+    zstack-ctl cassandra --start --wait-timeout=30 >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to start Cassandra"
+    fi
+    pass
+}
+
+sz_kairosdb(){
+    echo_subtitle "Start Kairosdb"
+    zstack-ctl kairosdb --stop
+    zstack-ctl kairosdb --start --wait-timeout 15 >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to start Kairosdb"
+    fi
+    pass
+}
+
+start_monitor(){
+    echo_title "Start monitor"
+    echo ""
+    show_spinner sz_cassandra
+    show_spinner sz_kairosdb
+}
+
 start_zstack(){
     echo_title "Start ${PRODUCT_NAME} Server"
     echo ""
@@ -1113,6 +1162,8 @@ Options:
 
   -l    only just install ${PRODUCT_NAME} dependent libraries
 
+  -m    install monitor. Depends on monitor capability in package.
+
   -n NFS_PATH
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
         to upgrade zstack or -l to install some system libs. 
@@ -1169,7 +1220,7 @@ Following command only installs ${PRODUCT_NAME} management node and dependent so
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:y:adDFhikloNuz" Option
+while getopts "f:H:I:n:p:P:r:R:y:adDFhiklmoNuz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
@@ -1182,6 +1233,7 @@ do
         I ) MANAGEMENT_INTERFACE=$OPTARG && NEED_SET_MN_IP='y';;
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
+        m ) INSTALL_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
         o ) YUM_ONLINE_REPO='y';;
         P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
@@ -1359,6 +1411,10 @@ install_db_msgbus
 
 if [ ! -z $NEED_SET_MN_IP ];then
     zstack-ctl configure management.server.ip=${MANAGEMENT_IP}
+fi
+
+if [ ! -z $INSTALL_MONITOR ]; then
+    start_monitor
 fi
 
 #Start ${PRODUCT_NAME} 
