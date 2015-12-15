@@ -414,8 +414,18 @@ upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
     show_spinner uz_upgrade_zstack
+
+    if [ ! -z $INSTALL_MONITOR ]; then
+        show_spinner iz_install_cassandra
+        show_spinner iz_install_kairosdb
+    fi
+
     if [ $CURRENT_STATUS = 'y' ]; then
         if [ -z $NOT_START_ZSTACK ]; then
+            if [ ! -z $INSTALL_MONITOR ]; then
+                show_spinner sz_start_cassandra
+                show_spinner sz_start_kairosdb
+            fi
             show_spinner sz_start_zstack
         fi
     fi
@@ -1017,9 +1027,9 @@ check_zstack_server(){
     return $?
 }
 
-sz_cassandra(){
+sz_start_cassandra(){
     echo_subtitle "Start Cassandra"
-    zstack-ctl cassandra --stop
+    zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl cassandra --start --wait-timeout=30 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Cassandra"
@@ -1027,9 +1037,9 @@ sz_cassandra(){
     pass
 }
 
-sz_kairosdb(){
+sz_start_kairosdb(){
     echo_subtitle "Start Kairosdb"
-    zstack-ctl kairosdb --stop
+    zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl kairosdb --start --wait-timeout 15 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Kairosdb"
@@ -1040,8 +1050,8 @@ sz_kairosdb(){
 start_monitor(){
     echo_title "Start monitor"
     echo ""
-    show_spinner sz_cassandra
-    show_spinner sz_kairosdb
+    show_spinner sz_start_cassandra
+    show_spinner sz_start_kairosdb
 }
 
 start_zstack(){
