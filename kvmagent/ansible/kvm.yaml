@@ -77,7 +77,7 @@
 
     - name: disable firewalld in RHEL7 and Centos7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: "which firewalld && service firewalld stop && chkconfig firewalld off"
+      shell: "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
 
     - name: copy iptables initial rules in RedHat
       copy: src="{{file_root}}/iptables" dest=/etc/sysconfig/iptables
