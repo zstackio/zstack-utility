@@ -1,10 +1,39 @@
 ---
-- name: set RHEL7 yum repo
-  when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+- name: state epel.repo
+  stat: path=/etc/yum.repos.d/epel.repo
+  register: epel_repo
+
+- name: install libselinux-python, since next step might use it.
+  when: ansible_os_family == 'RedHat' and yum_online != 'false'
+  yum: name="{{item}}"
+  with_items:
+    - libselinux-python
+
+- name: install epel-release yum repo
+  when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true and yum_online != 'false'
+  copy: src=files/zstacklib/epel-release-source.repo
+        dest=/etc/yum.repos.d/
+        owner=root group=root mode=0644
+
+- name: install epel-release
+  when: ansible_os_family == 'RedHat' and epel_repo.stat.exists != true and yum_online != 'false'
+  yum: name=epel-release
+       enablerepo=epel-release-source
+       state=present
+
+- name: enable epel repository
+  when: ansible_os_family == 'RedHat' and yum_online != 'false'
+  ini_file: dest=/etc/yum.repos.d/epel.repo
+            section=epel
+            option=enabled
+            value=1
+
+- name: set RHEL7 zstack local yum repo
+  when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_online == 'false'
   shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=http://{{yum_server}}/zstack/static/centos7_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
 
-- name: set RHEL6 yum repo
-  when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
+- name: set RHEL6 zstack local yum repo
+  when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7' and yum_online == 'false'
   shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=http://{{yum_server}}/zstack/static/centos6_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
 
 - name: install libselinux-python and other command system libs from local
