@@ -1420,15 +1420,18 @@ start_dashboard
 
 echo ""
 echo_star_line
-echo "ZStack All In One ${VERSION}Installation Completed:"
-echo " - ZStack management node is successfully installed in $ZSTACK_INSTALL_ROOT"
-echo " - the management node is running now"
-echo "      You can use /etc/init.d/zstack-server (stop|start) to stop/start it"
-echo " - ZStack web UI is running, vist http://$MANAGEMENT_IP:5000 in your browser"
-echo "      You can use /etc/init.d/zstack-dashboard (stop|start) to stop/start the service"
-echo " - ZStack command line tool is installed: zstack-cli"
-echo " - ZStack control tool is installed: zstack-ctl"
-[ ! -z $NEED_NFS ] && echo " - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE"
-[ ! -z $NEED_HTTP ] && echo " - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your images to the folder $HTTP_FOLDER", your image local url is http://$MANAGEMENT_IP/image/your_image_name
-echo ' - You can use `zstack-ctl install_management_node --host=remote_ip` to install more management nodes'
+echo "${PRODUCT_NAME} All In One ${VERSION}Installation Completed:"
+echo " - Installation path: $ZSTACK_INSTALL_ROOT"
+echo ""
+echo -e " - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome or Firefox"
+echo "      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service"
+echo ""
+echo -e " - Management node is running"
+echo "      Use $(tput setaf 3)zstack-ctl [stop_node|start_node]$(tput sgr0) to stop/start it"
+echo ""
+echo " - ${PRODUCT_NAME} command line tool is installed: zstack-cli"
+echo " - ${PRODUCT_NAME} control tool is installed: zstack-ctl"
+[ ! -z $NEED_NFS ] && echo -e "$(tput setaf 7) - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE$(tput sgr0)"
+[ ! -z $NEED_HTTP ] && echo -e "$(tput setaf 7) - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your_image_name to the folder $HTTP_FOLDER, your image local url is http://$MANAGEMENT_IP/image/your_image_name$(tput sgr0)"
+echo -e "$(tput setaf 7) - You can use \`zstack-ctl install_management_node --host=remote_ip\` to install more management nodes$(tput sgr0)"
 echo_star_line

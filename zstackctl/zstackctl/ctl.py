@@ -1008,6 +1008,8 @@ class StartCmd(Command):
         check_msyql()
         check_rabbitmq()
         start_mgmt_node()
+        #sleep a while, since zstack won't start up so quick
+        time.sleep(15)
         wait_mgmt_node_start()
 
         info('successfully started management node')

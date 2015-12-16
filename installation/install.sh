@@ -401,7 +401,7 @@ download_zstack(){
 }
 
 unpack_zstack_into_tomcat(){
-    echo_title "Unpack ${PRODUCT_NAME} Package"
+    echo_title "Install ${PRODUCT_NAME} Package"
     echo ""
     which unzip >/dev/null 2>&1
     if [ $? -ne 0 ];then
@@ -470,7 +470,7 @@ iz_install_unzip(){
 }
 
 is_install_general_libs(){
-    echo_subtitle "Install General Libraries"
+    echo_subtitle "Install General Libraries (takes a couple of minutes)"
     yum clean metadata >/dev/null 2>&1
     if [ -z $YUM_ONLINE_REPO ]; then
         yum install --disablerepo="*" --enablerepo="zstack-local" -y \
@@ -706,7 +706,7 @@ iz_install_zstack(){
 }
 
 iz_install_zstackcli(){
-    echo_subtitle "Install ${PRODUCT_NAME} Command Line"
+    echo_subtitle "Install ${PRODUCT_NAME} Command Line Tool"
     cd $ZSTACK_INSTALL_ROOT
     bash $ZSTACK_TOOLS_INSTALLER zstack-cli >>$ZSTACK_INSTALL_LOG 2>&1
 
@@ -808,7 +808,7 @@ cs_config_zstack_properties(){
 }
 
 iz_chown_install_root(){
-    echo_subtitle "Change Ownership of ${PRODUCT_NAME} Install Root"
+    echo_subtitle "Change Owner in ${PRODUCT_NAME}"
     chown -R zstack.zstack $ZSTACK_INSTALL_ROOT >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to chown for $ZSTACK_INSTALL_ROOT with zstack.zstack"
@@ -935,7 +935,7 @@ cs_install_zstack_service(){
 }
 
 cs_setup_nfs(){
-    echo_subtitle "Configure Local NFS Server (primary storage)"
+    echo_subtitle "Configure Local NFS Server"
     mkdir -p $NFS_FOLDER
     grep $NFS_FOLDER /etc/exports >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then 
@@ -977,7 +977,7 @@ cs_setup_nfs(){
 }
 
 cs_setup_http(){
-    echo_subtitle "Configure Local HTTP Server (for storing images)"
+    echo_subtitle "Configure Local HTTP Server"
     mkdir $HTTP_FOLDER
     chmod 777 $HTTP_FOLDER
     chmod o+x $ZSTACK_INSTALL_ROOT
@@ -1049,7 +1049,7 @@ sz_start_kairosdb(){
 }
 
 start_monitor(){
-    echo_title "Start monitor"
+    echo_title "Start Monitor"
     echo ""
     show_spinner sz_start_cassandra
     show_spinner sz_start_kairosdb
@@ -1062,7 +1062,7 @@ start_zstack(){
 }
 
 cs_deploy_db(){
-    echo_subtitle "Deploy Database"
+    echo_subtitle "Initialize Database"
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
             zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1079,7 +1079,7 @@ cs_deploy_db(){
 }
 
 sz_start_zstack(){
-    echo_subtitle "Start ${PRODUCT_NAME} management node"
+    echo_subtitle "Start ${PRODUCT_NAME} management node (takes a couple of minutes)"
     zstack-ctl stop_node -f >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl start_node --timeout=$ZSTACK_START_TIMEOUT >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to start zstack"
@@ -1451,14 +1451,17 @@ start_dashboard
 echo ""
 echo_star_line
 echo "${PRODUCT_NAME} All In One ${VERSION}Installation Completed:"
-echo " - ${PRODUCT_NAME} management node is successfully installed in $ZSTACK_INSTALL_ROOT"
-echo " - the management node is running now"
-echo "      You can use /etc/init.d/zstack-server (stop|start) to stop/start it"
-echo " - ${PRODUCT_NAME} web UI is running, vist http://$MANAGEMENT_IP:5000 in your browser"
-echo "      You can use /etc/init.d/zstack-dashboard (stop|start) to stop/start the service"
+echo " - Installation path: $ZSTACK_INSTALL_ROOT"
+echo ""
+echo -e " - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome or Firefox"
+echo "      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service"
+echo ""
+echo -e " - Management node is running"
+echo "      Use $(tput setaf 3)zstack-ctl [stop_node|start_node]$(tput sgr0) to stop/start it"
+echo ""
 echo " - ${PRODUCT_NAME} command line tool is installed: zstack-cli"
 echo " - ${PRODUCT_NAME} control tool is installed: zstack-ctl"
-[ ! -z $NEED_NFS ] && echo " - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE"
-[ ! -z $NEED_HTTP ] && echo " - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your images to the folder $HTTP_FOLDER", your image local url is http://$MANAGEMENT_IP/image/your_image_name
-echo ' - You can use `zstack-ctl install_management_node --host=remote_ip` to install more management nodes'
+[ ! -z $NEED_NFS ] && echo -e "$(tput setaf 7) - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE$(tput sgr0)"
+[ ! -z $NEED_HTTP ] && echo -e "$(tput setaf 7) - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your_image_name to the folder $HTTP_FOLDER, your image local url is http://$MANAGEMENT_IP/image/your_image_name$(tput sgr0)"
+echo -e "$(tput setaf 7) - You can use \`zstack-ctl install_management_node --host=remote_ip\` to install more management nodes$(tput sgr0)"
 echo_star_line
