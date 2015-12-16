@@ -57,6 +57,7 @@ MYSQL_USER_PASSWORD=''
 
 YUM_ONLINE_REPO=''
 INSTALL_MONITOR=''
+ZSTACK_START_TIMEOUT=120
 
 show_download()
 {
@@ -1030,7 +1031,7 @@ check_zstack_server(){
 sz_start_cassandra(){
     echo_subtitle "Start Cassandra"
     zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl cassandra --start --wait-timeout=30 >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl cassandra --start --wait-timeout=40 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Cassandra"
     fi
@@ -1040,7 +1041,7 @@ sz_start_cassandra(){
 sz_start_kairosdb(){
     echo_subtitle "Start Kairosdb"
     zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl kairosdb --start --wait-timeout 15 >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl kairosdb --start --wait-timeout 20 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Kairosdb"
     fi
@@ -1080,7 +1081,7 @@ cs_deploy_db(){
 sz_start_zstack(){
     echo_subtitle "Start ${PRODUCT_NAME} management node"
     zstack-ctl stop_node -f >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl start_node >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl start_node --timeout=$ZSTACK_START_TIMEOUT >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to start zstack"
     i=1
     while [ $i -lt 120 ]; do
@@ -1189,6 +1190,9 @@ Options:
   -r ZSTACK_INSTALLATION_PATH
         the path where to install ${PRODUCT_NAME} management node.  The default path is $ZSTACK_INSTALL_ROOT
 
+  -t ZSTACK_START_TIMEOUT
+        The timeout for waiting ZStack start. The default value is $ZSTACK_START_TIMEOUT
+
   -u    Upgrade zstack management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
 
   -z    Only install ZStack, without start ZStack management node.
@@ -1230,7 +1234,7 @@ Following command only installs ${PRODUCT_NAME} management node and dependent so
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:y:adDFhiklmoNuz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmoNuz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
@@ -1249,6 +1253,7 @@ do
         P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
+        t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
         z ) NOT_START_ZSTACK='y';;
