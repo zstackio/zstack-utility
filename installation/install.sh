@@ -853,13 +853,13 @@ cs_install_mysql(){
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
             zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_USER_PASSWORD" --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_ROOT_PASSWORD" --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     else
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
             zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_USER_PASSWORD" --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_ROOT_PASSWORD" --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
     if [ $? -ne 0 ];then
