@@ -648,6 +648,12 @@ uz_upgrade_zstack(){
         fail "failed to upgrade local management node"
     fi
     /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+
+    if [ ! -z $INSTALL_MONITOR ]; then
+        /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+        /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
     cd /
     rm -rf $upgrade_folder
 
