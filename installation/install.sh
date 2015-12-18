@@ -1377,8 +1377,8 @@ done
 OPTIND=1
 
 if [ ! -z $ZSTACK_YUM_MIRROR ]; then
-    if [ $ZSTACK_YUM_MIRROR != $YUM_MIRROR_163 -o $ZSTACK_YUM_MIRROR != $YUM_MIRROR_ALIYUN ]; then
-        echo -e "\n\tYou want the yum mirror from '$ZSTACK_YUM_MIRROR' . But we only support yum mirrors for '$YUM_MIRROR_163' or '$YUM_MIRROR_ALIYUN'. Please fix it and rerun the installation.\n\n"
+    if [ "$ZSTACK_YUM_MIRROR" != "$YUM_MIRROR_163" -a "$ZSTACK_YUM_MIRROR" != "$YUM_MIRROR_ALIYUN" ]; then
+        echo -e "\n\tYou want to use yum mirror from '$ZSTACK_YUM_MIRROR' . But we only support yum mirrors for '$YUM_MIRROR_163' or '$YUM_MIRROR_ALIYUN'. Please fix it and rerun the installation.\n\n"
         exit 1
     fi
     if [ $ZSTACK_YUM_MIRROR = $YUM_MIRROR_163 ]; then
@@ -1461,8 +1461,6 @@ if [ ! -z $HTTP_PROXY ]; then
     export https_proxy=$HTTP_PROXY
 fi
 
-create_yum_repo
-
 if [ $UPGRADE = 'y' ]; then
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
@@ -1477,6 +1475,8 @@ fi
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
+
+create_yum_repo
 
 #Download ${PRODUCT_NAME} all in one package
 download_zstack
