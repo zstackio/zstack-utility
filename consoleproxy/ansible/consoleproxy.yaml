@@ -9,7 +9,7 @@
     - proxy: "{{http_proxy|default()}}"
     - sproxy: "{{https_proxy|default()}}"
     - chroot_env: "{{chroot|default('false')}}"
-    - yum_online: "{{yum_online_repo|default('false')}}"
+    - yum_repos: "{{yum_repo|default('false')}}"
 
   tasks:
     - include: zstacklib.yaml

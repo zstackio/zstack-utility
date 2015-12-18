@@ -1132,7 +1132,7 @@ class InstallDbCmd(Command):
                             "\n[NOTE] this option is needed only when the machine has MySQL previously installed and removed; the old MySQL root password will be left in the system,"
                             "you need to input it in order to reset root password for the new installed MySQL.", default=None)
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
-        parser.add_argument('--yum-online', help="Use yum repositories defined in /etc/yum.repo.d/* , instead of ZStack local offline repository. NOTE: only use it when you know exactly what it doesr", action='store_true', default=False)
+        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         parser.add_argument('--no-backup', help='do NOT backup the database. If the database is very large and you have manually backup it, using this option will fast the upgrade process. [DEFAULT] false', default=False)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
@@ -1144,7 +1144,7 @@ class InstallDbCmd(Command):
   vars:
       root_password: $root_password
       login_password: $login_password
-      yum_online: "$yum_online_repo"
+      yum_repo: "$yum_repo"
 
   tasks:
     - name: pre-install script
@@ -1158,23 +1158,23 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
 
-    - name: install MySQL for RedHat 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_online == 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mysql mysql-server && yum clean metadata
+    - name: install MySQL for RedHat 6 through user defined repos
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql mysql-server && yum clean metadata
       register: install_result
 
-    - name: install MySQL for RedHat 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_online != 'false'
+    - name: install MySQL for RedHat 6 through system defined repos
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo == 'false'
       shell: "yum clean metadata; yum --nogpgcheck install -y mysql mysql-server "
       register: install_result
 
     - name: install MySQL for RedHat 7 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_online == 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y  mariadb mariadb-server && yum clean metadata
       register: install_result
 
     - name: install MySQL for RedHat 7 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_online != 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server
       register: install_result
 
@@ -1304,10 +1304,10 @@ fi
         self.install_cleanup_routine(cleanup_post_install_script)
 
         t = string.Template(yaml)
-        if args.yum_online:
-            yum_online_repo = 'true'
+        if args.yum:
+            yum_repo = args.yum
         else:
-            yum_online_repo = 'false'
+            yum_repo = 'false'
         yaml = t.substitute({
             'host': args.host,
             'change_password_cmd': change_root_password_cmd,
@@ -1316,11 +1316,10 @@ fi
             'grant_access_cmd': grant_access_cmd,
             'pre_install_script': pre_install_script_path,
             'yum_folder': ctl.zstack_home,
-            'yum_online_repo': yum_online_repo,
+            'yum_repo': yum_repo,
             'post_install_script': post_install_script_path
         })
 
-        open('/tmp/1', 'w').write(yaml)
         ansible(yaml, args.host, args.debug, args.ssh_key)
 
 class InstallRabbitCmd(Command):
@@ -1337,7 +1336,7 @@ class InstallRabbitCmd(Command):
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
         parser.add_argument('--rabbit-username', help="RabbitMQ username; if set, the username will be created on RabbitMQ. [DEFAULT] rabbitmq default username", default=None)
         parser.add_argument('--rabbit-password', help="RabbitMQ password; if set, the password will be created on RabbitMQ for username specified by --rabbit-username. [DEFAULT] rabbitmq default password", default=None)
-        parser.add_argument('--yum-online', help="Use yum repositories defined in /etc/yum.repo.d/* , instead of ZStack local offline repository. NOTE: only use it when you know exactly what it doesr", action='store_true', default=False)
+        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
 
     def run(self, args):
         if (args.rabbit_password is None and args.rabbit_username) or (args.rabbit_username and args.rabbit_password is None):
@@ -1348,7 +1347,7 @@ class InstallRabbitCmd(Command):
   remote_user: root
 
   vars:
-      yum_online: "$yum_online_repo"
+      yum_repo: "$yum_repo"
 
   tasks:
     - name: pre-install script
@@ -1362,12 +1361,12 @@ class InstallRabbitCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
 
-    - name: install RabbitMQ on RedHat OS from local
-      when: ansible_os_family == 'RedHat' and yum_online == 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y rabbitmq-server libselinux-python && yum clean metadata
+    - name: install RabbitMQ on RedHat OS from user defined yum repo
+      when: ansible_os_family == 'RedHat' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y rabbitmq-server libselinux-python && yum clean metadata
 
     - name: install RabbitMQ on RedHat OS from online
-      when: ansible_os_family == 'RedHat' and yum_online != 'false'
+      when: ansible_os_family == 'RedHat' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y rabbitmq-server libselinux-python
 
     - name: install RabbitMQ on Ubuntu OS
@@ -1508,17 +1507,17 @@ rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
         self.install_cleanup_routine(cleanup_postscript)
 
         t = string.Template(yaml)
-        if args.yum_online:
-            yum_online_repo = 'true'
+        if args.yum:
+            yum_repo = args.yum
         else:
-            yum_online_repo = 'false'
+            yum_repo = 'false'
         yaml = t.substitute({
             'host': args.host,
             'epel6_repo': epel6_repo,
             'epel7_repo': epel7_repo,
             'pre_install_script': pre_script_path,
             'yum_folder': ctl.zstack_home,
-            'yum_online_repo': yum_online_repo,
+            'yum_repo': yum_repo,
             'post_install_script': post_script_path
         })
 
@@ -1950,7 +1949,7 @@ class InstallManagementNodeCmd(Command):
         parser.add_argument('--source-dir', help='the source folder containing Apache Tomcat package and zstack.war, if omitted, it will default to a path related to $ZSTACK_HOME')
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
         parser.add_argument('--force-reinstall', help="delete existing Apache Tomcat and resinstall ZStack", action="store_true", default=False)
-        parser.add_argument('--yum-online', help="Use yum repositories defined in /etc/yum.repo.d/* , instead of ZStack local offline repository. NOTE: only use it when you know exactly what it doesr", action='store_true', default=False)
+        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def run(self, args):
@@ -1994,7 +1993,7 @@ class InstallManagementNodeCmd(Command):
 
   vars:
       root: $install_path
-      yum_online: "$yum_online_repo"
+      yum_repo: "$yum_repo"
 
   tasks:
     - name: check remote env on RedHat OS 6
@@ -2012,12 +2011,12 @@ class InstallManagementNodeCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
 
-    - name: install dependencies on RedHat OS from local
-      when: ansible_os_family == 'RedHat' and yum_online == 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python && yum clean metadata
+    - name: install dependencies on RedHat OS from user defined repo
+      when: ansible_os_family == 'RedHat' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python && yum clean metadata
 
-    - name: install dependencies on RedHat OS from online
-      when: ansible_os_family == 'RedHat' and yum_online != 'false'
+    - name: install dependencies on RedHat OS from system repos
+      when: ansible_os_family == 'RedHat' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python
 
     - name: install dependencies Debian OS
@@ -2039,20 +2038,20 @@ class InstallManagementNodeCmd(Command):
         - ntpdate
         - sudo
 
-    - name: install MySQL client for RedHat 6 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_online == 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mysql && yum clean metadata
+    - name: install MySQL client for RedHat 6 from user defined repos
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql && yum clean metadata
 
-    - name: install MySQL client for RedHat 6 from online
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_online != 'false'
+    - name: install MySQL client for RedHat 6 from system repo
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y mysql
 
-    - name: install MySQL client for RedHat 7 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_online == 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y mariadb && yum clean metadata
+    - name: install MySQL client for RedHat 7 from user defined repos
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mariadb && yum clean metadata
 
-    - name: install MySQL client for RedHat 7 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_online != 'false'
+    - name: install MySQL client for RedHat 7 from system repos
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y mariadb
 
     - name: install MySQL client for Ubuntu
@@ -2268,10 +2267,10 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
         self.install_cleanup_routine(clean_up)
 
         t = string.Template(yaml)
-        if args.yum_online:
-            yum_online_repo = 'true'
+        if args.yum:
+            yum_repo = 'true'
         else:
-            yum_online_repo = 'false'
+            yum_repo = 'false'
         yaml = t.substitute({
             'host': args.host,
             'install_path': args.install_path,
@@ -2288,7 +2287,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
             'pypi_path': '/tmp/pypi/',
             'yum_folder': ctl.zstack_home,
-            'yum_online_repo': yum_online_repo,
+            'yum_repo': yum_repo,
             'setup_account': setup_account_path
         })
 
@@ -2378,7 +2377,7 @@ class InstallWebUiCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
-        parser.add_argument('--yum-online', help="Use yum repositories defined in /etc/yum.repo.d/* , instead of ZStack local offline repository. NOTE: only use it when you know exactly what it doesr", action='store_true', default=False)
+        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
 
     def _install_to_local(self):
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
@@ -2482,7 +2481,7 @@ gpgcheck=0
 
   vars:
       virtualenv_root: /var/lib/zstack/virtualenv/zstack-dashboard
-      yum_online: "$yum_online_repo"
+      yum_repo: "$yum_repo"
 
   tasks:
     - name: set RHEL7 yum repo
@@ -2493,12 +2492,12 @@ gpgcheck=0
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
 
-    - name: install Python pip for RedHat OS from local
-      when: ansible_os_family == 'RedHat' and yum_online == 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf && yum clean metadata
+    - name: install Python pip for RedHat OS from user defined repo
+      when: ansible_os_family == 'RedHat' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf && yum clean metadata
 
-    - name: install Python pip for RedHat OS from online
-      when: ansible_os_family == 'RedHat' and yum_online != 'false'
+    - name: install Python pip for RedHat OS from system repo
+      when: ansible_os_family == 'RedHat' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf
 
     - name: copy zstack-dashboard package
@@ -2534,10 +2533,10 @@ gpgcheck=0
 '''
 
         t = string.Template(yaml)
-        if args.yum_online:
-            yum_online_repo = 'true'
+        if args.yum:
+            yum_repo = args.yum
         else:
-            yum_online_repo = 'false'
+            yum_repo = 'false'
         yaml = t.substitute({
             "src": ui_binary_path,
             "dest": os.path.join('/tmp', ui_binary),
@@ -2547,7 +2546,7 @@ gpgcheck=0
             'pypi_path': '/tmp/pypi/',
             "epel6_repo": epel6_repo ,
             'yum_folder': ctl.zstack_home,
-            'yum_online_repo': yum_online_repo,
+            'yum_repo': yum_repo,
             "epel7_repo": epel7_repo
         })
 

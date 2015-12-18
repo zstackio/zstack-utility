@@ -39,6 +39,8 @@ ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
 ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 zstack_local_repo_file=/etc/yum.repos.d/zstack-local.repo
+zstack_163_repo_file=/etc/yum.repos.d/163-yum.repo
+zstack_ali_repo_file=/etc/yum.repos.d/aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
@@ -58,6 +60,13 @@ MYSQL_USER_PASSWORD=''
 YUM_ONLINE_REPO=''
 INSTALL_MONITOR=''
 ZSTACK_START_TIMEOUT=120
+ZSTACK_YUM_MIRROR=''
+YUM_MIRROR_163='163'
+YUM_MIRROR_ALIYUN='aliyun'
+ZSTACK_YUM_REPOS=''
+ZSTACK_LOCAL_YUM_REPOS='zstack-local'
+MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel'
+MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel'
 
 show_download()
 {
@@ -325,13 +334,13 @@ ia_check_ip_hijack(){
 
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
-    if [ -z $YUM_ONLINE_REPO ];then
+    if [ ! -z $ZSTACK_YUM_REPOS ];then
         if [ -z $DEBUG ];then
             yum clean metadata >/dev/null 2>&1
-            yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+            yum -y --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
         else
             yum clean metadata >/dev/null 2>&1
-            yum -y --disablerepo="*" --enablerepo="zstack-local" install python python-devel python-setuptools gcc
+            yum -y --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS install python python-devel python-setuptools gcc
         fi
     else
         if [ -z $DEBUG ];then
@@ -472,8 +481,8 @@ iz_install_unzip(){
 is_install_general_libs(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
     yum clean metadata >/dev/null 2>&1
-    if [ -z $YUM_ONLINE_REPO ]; then
-        yum install --disablerepo="*" --enablerepo="zstack-local" -y \
+    if [ ! -z $ZSTACK_YUM_REPOS ]; then
+        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y \
             libselinux-python \
             java-1.7.0-openjdk \
             qemu-kvm \
@@ -799,8 +808,8 @@ config_system(){
 
 cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
-    if [ ! -z $YUM_ONLINE_REPO ];then
-        zstack-ctl configure Ansible.var.yum_online_repo=true
+    if [ ! -z $ZSTACK_YUM_REPOS ];then
+        zstack-ctl configure Ansible.var.yum_repo=$ZSTACK_YUM_REPOS
     fi
     if [ $? -ne 0 ];then
         fail "failed to add user pypi config to $ZSTACK_PROPERTIES"
@@ -849,7 +858,7 @@ cs_gen_sshkey(){
 cs_install_mysql(){
     echo_subtitle "Install Mysql Server"
     dsa_key_file=$1/id_dsa
-    if [ -z $YUM_ONLINE_REPO ];then
+    if [ -z $ZSTACK_YUM_REPOS ];then
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
             zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
         else
@@ -857,9 +866,9 @@ cs_install_mysql(){
         fi
     else
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
-            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS >>$ZSTACK_INSTALL_LOG 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_ROOT_PASSWORD" --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_ROOT_PASSWORD" --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
     if [ $? -ne 0 ];then
@@ -872,10 +881,10 @@ cs_install_mysql(){
 cs_install_rabbitmq(){
     echo_subtitle "Install Rabbitmq Server"
     dsa_key_file=$1/id_dsa
-    if [ -z $YUM_ONLINE_REPO ];then
+    if [ -z $ZSTACK_YUM_REPOS ];then
         zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum-online >>$ZSTACK_INSTALL_LOG 2>&1
+        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         cs_clean_ssh_tmp_key $1
@@ -1125,6 +1134,101 @@ sd_start_dashboard(){
     pass
 }
 
+#create zstack log yum repo
+create_yum_repo(){
+    cat > $zstack_local_repo_file <<EOF
+[zstack-local]
+name=${PRODUCT_NAME} Local Yum Repo
+baseurl=$yum_source
+enabled=0
+gpgcheck=0
+EOF
+
+    cat > $zstack_163_repo_file << EOF
+#163 base
+[163base]
+name=CentOS-\$releasever - Base - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/
+#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=os
+gpgcheck=0
+enabled=0
+gpgkey=http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-\$releasever
+ 
+#released updates 
+[163updates]
+name=CentOS-\$releasever - Updates - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/
+#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=updates
+enabled=0
+gpgcheck=0
+gpgkey=http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-\$releasever
+ 
+#additional packages that may be useful
+[163extras]
+name=CentOS-\$releasever - Extras - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/
+#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=extras
+enabled=0
+gpgcheck=0
+gpgkey=http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-\$releasever
+ 
+[ustcepel]
+name=Extra Packages for Enterprise Linux \$releasever - \$basearce - USTC EPEL
+baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/met163nk?repo=epel-7&arch=\$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-\$releasever
+EOF
+
+    cat > $zstack_ali_repo_file << EOF
+#aliyun base
+[alibase]
+name=CentOS-\$releasever - Base - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/
+#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=os
+gpgcheck=0
+enabled=0
+gpgkey=http://mirrors.aliyun.com/centos/RPM-GPG-KEY-CentOS-\$releasever
+ 
+#released updates 
+[aliupdates]
+name=CentOS-\$releasever - Updates - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/
+#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=updates
+enabled=0
+gpgcheck=0
+gpgkey=http://mirrors.aliyun.com/centos/RPM-GPG-KEY-CentOS-\$releasever
+ 
+#additional packages that may be useful
+[aliextras]
+name=CentOS-\$releasever - Extras - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/
+#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=extras
+enabled=0
+gpgcheck=0
+gpgkey=http://mirrors.aliyun.com/centos/RPM-GPG-KEY-CentOS-\$releasever
+ 
+[aliepel]
+name=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com
+baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-\$releasever
+EOF
+
+    chmod 644 $zstack_local_repo_file
+}
+
 
 help (){
     echo "
@@ -1196,6 +1300,9 @@ Options:
   -r ZSTACK_INSTALLATION_PATH
         the path where to install ${PRODUCT_NAME} management node.  The default path is $ZSTACK_INSTALL_ROOT
 
+  -R ZSTACK_YUM_MIRROR
+        which yum mirror user want to use to install ZStack required CentOS rpm packages. User can choose 163 or aliyun 
+
   -t ZSTACK_START_TIMEOUT
         The timeout for waiting ZStack start. The default value is $ZSTACK_START_TIMEOUT
 
@@ -1259,6 +1366,7 @@ do
         P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
+        R ) ZSTACK_YUM_MIRROR=$OPTARG && YUM_ONLINE_REPO='y';;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
@@ -1267,6 +1375,22 @@ do
     esac
 done
 OPTIND=1
+
+if [ ! -z $ZSTACK_YUM_MIRROR ]; then
+    if [ $ZSTACK_YUM_MIRROR != $YUM_MIRROR_163 -o $ZSTACK_YUM_MIRROR != $YUM_MIRROR_ALIYUN ]; then
+        echo -e "\n\tYou want the yum mirror from '$ZSTACK_YUM_MIRROR' . But we only support yum mirrors for '$YUM_MIRROR_163' or '$YUM_MIRROR_ALIYUN'. Please fix it and rerun the installation.\n\n"
+        exit 1
+    fi
+    if [ $ZSTACK_YUM_MIRROR = $YUM_MIRROR_163 ]; then
+        ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
+    else
+        ZSTACK_YUM_REPOS=$MIRROR_ALI_YUM_REPOS
+    fi
+else
+    if [ -z $YUM_ONLINE_REPO ]; then
+        ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
+    fi
+fi
 
 echo "${PRODUCT_NAME} installation root path: $ZSTACK_INSTALL_ROOT" >>$ZSTACK_INSTALL_LOG
 [ -z $NFS_FOLDER ] && NFS_FOLDER=$ZSTACK_INSTALL_ROOT/nfs_root
@@ -1337,6 +1461,8 @@ if [ ! -z $HTTP_PROXY ]; then
     export https_proxy=$HTTP_PROXY
 fi
 
+create_yum_repo
+
 if [ $UPGRADE = 'y' ]; then
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
@@ -1378,17 +1504,6 @@ fi
 
 #Install unzip and unpack zstack war into apache tomcat
 unpack_zstack_into_tomcat
-
-#create zstack log yum repo
-cat > $zstack_local_repo_file <<EOF
-[zstack-local]
-name=${PRODUCT_NAME} Local Yum Repo
-baseurl=$yum_source
-enabled=0
-gpgcheck=0
-EOF
-
-chmod 644 $zstack_local_repo_file
 
 #Install Ansible 
 install_ansible
