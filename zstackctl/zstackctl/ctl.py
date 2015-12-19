@@ -1169,12 +1169,12 @@ class InstallDbCmd(Command):
       register: install_result
 
     - name: install MySQL for RedHat 7 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y  mariadb mariadb-server && yum clean metadata
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server && yum clean metadata
       register: install_result
 
     - name: install MySQL for RedHat 7 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server
       register: install_result
 
