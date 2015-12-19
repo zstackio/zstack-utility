@@ -68,6 +68,12 @@ ZSTACK_LOCAL_YUM_REPOS='zstack-local'
 MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel'
 MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel'
 
+QUIET_INSTALLATION=''
+CHANGE_HOSTNAME=''
+CHANGE_HOSTS=''
+ZSTACK_MN_HOSTNAME='zstack-management-node'
+DELETE_PY_CRYPTO=''
+
 show_download()
 {
     $1 &
@@ -218,14 +224,31 @@ cs_check_hostname(){
     current_hostname=`hostname`
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
     [ $? -ne 0 ] && return 0
-    fail "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
+    if [ -z $QUIET_INSTALLATION ]; then
+        fail "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
 Please fix it by running following commands in CentOS7:
 
     hostnamectl set-hostname MY_REAL_HOSTNAME
     echo \"$current_hostname MY_REAL_HOSTNAME\" >>/etc/hosts
 
 Or use other hostname setting method in other system. 
-Then restart installation. "
+Then restart installation. 
+
+You can also add '-q' to installer, then Installer will help you to set one."
+    else
+        CHANGE_HOSTNAME=$ZSTACK_MN_HOSTNAME
+        CHANGE_HOSTS="$current_hostname $ZSTACK_MN_HOSTNAME"
+        if [ $OS = $CENTOS6 ]; then
+            hostname $ZSTACK_MN_HOSTNAME
+            echo "$current_hostname $ZSTACK_MN_HOSTNAME"  >>/etc/hosts
+        elif [ $OS = $CENTOS7 ]; then
+            hostnamectl set-hostname $ZSTACK_MN_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+            echo "$current_hostname $ZSTACK_MN_HOSTNAME"  >>/etc/hosts
+        else
+            hostnamectl set-hostname $ZSTACK_MN_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+            echo "$current_hostname $ZSTACK_MN_HOSTNAME"  >>/etc/hosts
+        fi
+    fi
 }
 
 #Do preinstallation checking for CentOS and Ubuntu
@@ -294,8 +317,15 @@ do_check_system(){
 
     rpm -qi python-crypto >/dev/null 2>&1
     if [ $? -eq 0 ]; then 
-        #fail "need to manually remove python-crypto by \n\n \`rpm -ev python-crypto\` \n\n; otherwise it will conflict with ansible's pycrypto." >>$ZSTACK_INSTALL_LOG
-        rpm -ev python-crypto --nodeps >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ -z $QUIET_INSTALLATION ]; then
+            fail "need to manually remove python-crypto by \n\n \`rpm -ev python-crypto\` \n\n; otherwise it will conflict with ansible's pycrypto.
+
+You can also add '-q' to installer, then Installer will help you to remove it.
+"
+        else
+            rpm -ev python-crypto --nodeps >>$ZSTACK_INSTALL_LOG 2>&1
+            DELETE_PY_CRYPTO='y'
+        fi
         [ $? -ne 0 ] && fail "Uninstall python-crypto fail"
     fi
 
@@ -328,8 +358,15 @@ ia_check_ip_hijack(){
     ip addr | grep $ip > /dev/null
     [ $? -eq 0 ] && return 0
     
-    fail "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
-    It's likely your DNS server has been hijacking, please try fixing it or add \"127.0.0.1 $HOSTNAME\" to /etc/hosts by \n\n \`echo \"127.0.0.1 $HOSTNAME\" >>/etc/hosts\`."
+    if [ -z $QUIET_INSTALLATION ]; then
+        fail "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
+        It's likely your DNS server has been hijacking, please try fixing it or add \"127.0.0.1 $HOSTNAME\" to /etc/hosts by \n\n \`echo \"127.0.0.1 $HOSTNAME\" >>/etc/hosts\`.
+
+You can also add '-q' to installer, then Installer will help you to resolve it."
+    else
+        echo "127.0.0.1 $HOSTNAME" >>/etc/hosts
+        CHANGE_HOSTS='127.0.0.1 $HOSTNAME'
+    fi
 }
 
 ia_install_python_gcc_rh(){
@@ -1297,11 +1334,13 @@ Options:
   -P MYSQL_PASSWORD
         password for MySQL root user. By default, an empty password is applied.
 
+  -q    quiet installation. Installation will try to fix the system configuration issue, rather than quit installation process.
+
   -r ZSTACK_INSTALLATION_PATH
         the path where to install ${PRODUCT_NAME} management node.  The default path is $ZSTACK_INSTALL_ROOT
 
   -R ZSTACK_YUM_MIRROR
-        which yum mirror user want to use to install ZStack required CentOS rpm packages. User can choose 163 or aliyun 
+        which yum mirror user want to use to install ZStack required CentOS rpm packages. User can choose 163 or aliyun, like -R aliyun, -R 163 
 
   -t ZSTACK_START_TIMEOUT
         The timeout for waiting ZStack start. The default value is $ZSTACK_START_TIMEOUT
@@ -1329,9 +1368,8 @@ And an empty password is set to the root user of MySQL.
 
 --
 
-In addition to all above results, below command sets the password of MySQL root user to DB_ROOT_PASSWORD
-and password of MySQL user 'zstack' to DB_ZSTACK_PASSWORD, and uses the IP of eth1 for
-deploying MySQL and RabbitMQ.
+In addition to all above results, below command sets MySQL user 'zstack' password to DB_ZSTACK_PASSWORD by using the MySQL 'root' user password DB_ROOT_PASSWORD
+, and uses the IP of eth1 for deploying MySQL and RabbitMQ.
 
 # $0 -r /home/zstack -a -P DB_ROOT_PASSWORD -p DB_ZSTACK_PASSWORD -I eth1
 
@@ -1341,13 +1379,31 @@ Following command only installs ${PRODUCT_NAME} management node and dependent so
 
 # $0 -i
 
+--
+
+Following command only installs ${PRODUCT_NAME} management node and monitor.
+
+# $0 -m
+
+--
+
+Following command installs ${PRODUCT_NAME} management node and monitor. It will use aliyun yum mirror source.
+
+# $0 -m -R aliyun
+
+--
+
+Following command installs ${PRODUCT_NAME} management node and monitor. It will use aliyun yum mirror source. It will also use quiet installation to try to fix system configuration issue. 
+
+# $0 -m -R aliyun -q
+
 ------------
 "
     exit 1
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmoNuz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmNoquz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
@@ -1365,6 +1421,7 @@ do
         o ) YUM_ONLINE_REPO='y';;
         P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
+        q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         R ) ZSTACK_YUM_MIRROR=$OPTARG && YUM_ONLINE_REPO='y';;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
@@ -1582,6 +1639,23 @@ echo "      Use $(tput setaf 3)zstack-ctl [stop_node|start_node]$(tput sgr0) to 
 echo ""
 echo " - ${PRODUCT_NAME} command line tool is installed: zstack-cli"
 echo " - ${PRODUCT_NAME} control tool is installed: zstack-ctl"
+if [ ! -z QUIET_INSTALLATION ]; then
+    if [ -z "$CHANGE_HOSTNAME" -a -z "$CHANGE_HOSTS" -a -z "$DELETE_PY_CRYPTO" ];then
+        exit 0
+    else
+        echo -e "\n$(tput setaf 6) User select QUIET installation. Installation does following changes for user:"
+        if [ ! -z "$CHANGE_HOSTNAME" ]; then
+            echo " - HOSTNAME is changed to '$CHANGE_HOSTNAME' to avoid of rabbitmq and mysql server installation failure."
+        fi
+        if [ ! -z "$CHANGE_HOSTS" ]; then
+            echo " - /etc/hosts is added a new line: '$CHANGE_HOSTNAME' to avoid of rabbitmq server installation failure."
+        fi
+        if [ ! -z "$DELETE_PY_CRYPTO" ]; then
+            echo " - 'python-crypto' rpm is removed to avoid of confliction with Ansible."
+        fi
+        echo -e "$(tput sgr0)\n"
+    fi
+fi
 [ ! -z $NEED_NFS ] && echo -e "$(tput setaf 7) - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE$(tput sgr0)"
 [ ! -z $NEED_HTTP ] && echo -e "$(tput setaf 7) - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your_image_name to the folder $HTTP_FOLDER, your image local url is http://$MANAGEMENT_IP/image/your_image_name$(tput sgr0)"
 echo -e "$(tput setaf 7) - You can use \`zstack-ctl install_management_node --host=remote_ip\` to install more management nodes$(tput sgr0)"
