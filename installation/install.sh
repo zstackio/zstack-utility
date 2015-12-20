@@ -510,7 +510,13 @@ install_ansible(){
 
 iz_install_unzip(){
     echo_subtitle "Install unzip"
-    rpm -ivh $unzip_rpm >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ -z $ZSTACK_YUM_REPOS ]; then
+        yum install -y unzip  >>$ZSTACK_INSTALL_LOG 2>&1
+    elif [ -z $YUM_ONLINE_REPO ]; then
+        rpm -ivh $unzip_rpm >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y unzip >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
     [ $? -ne 0 ] && fail "Install unzip fail."
     pass
 }
@@ -1423,7 +1429,7 @@ do
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
-        R ) ZSTACK_YUM_MIRROR=$OPTARG && YUM_ONLINE_REPO='y';;
+        R ) ZSTACK_YUM_MIRROR=$OPTARG ;;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
