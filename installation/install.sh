@@ -73,6 +73,7 @@ CHANGE_HOSTNAME=''
 CHANGE_HOSTS=''
 ZSTACK_MN_HOSTNAME='zstack-management-node'
 DELETE_PY_CRYPTO=''
+SETUP_EPEL=''
 
 show_download()
 {
@@ -289,6 +290,28 @@ check_system(){
     fi
     debug "Your system is: $OS"
     show_spinner do_check_system
+    show_spinner cs_check_epel
+}
+
+cs_check_epel(){
+    [ -z $YUM_ONLINE_REPO ] && return
+    if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
+        if [ ! -f /etc/yum.repos.d/epel.repo ]; then
+            if [ -z $QUIET_INSTALLATION ]; then
+                fail 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. Or you can choose to use -R 163 or -R aliyun to install.'
+            else
+                echo > /etc/yum.repos.d/epel.repo << EOF
+[epel]
+name=Extra Packages for Enterprise Linux \$releasever - \$basearch
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
+enabled=1
+gpgcheck=0
+EOF
+                SETUP_EPEL='y'
+            fi
+        fi
+    fi
+    pass
 }
 
 do_enable_sudo(){
@@ -1429,7 +1452,7 @@ do
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
-        R ) ZSTACK_YUM_MIRROR=$OPTARG ;;
+        R ) ZSTACK_YUM_MIRROR=$OPTARG && YUM_ONLINE_REPO='';;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
@@ -1646,8 +1669,8 @@ echo ""
 echo " - ${PRODUCT_NAME} command line tool is installed: zstack-cli"
 echo " - ${PRODUCT_NAME} control tool is installed: zstack-ctl"
 if [ ! -z QUIET_INSTALLATION ]; then
-    if [ -z "$CHANGE_HOSTNAME" -a -z "$CHANGE_HOSTS" -a -z "$DELETE_PY_CRYPTO" ];then
-        exit 0
+    if [ -z "$CHANGE_HOSTNAME" -a -z "$CHANGE_HOSTS" -a -z "$DELETE_PY_CRYPTO" i-a -z "$SETUP_EPEL" ];then
+        true
     else
         echo -e "\n$(tput setaf 6) User select QUIET installation. Installation does following changes for user:"
         if [ ! -z "$CHANGE_HOSTNAME" ]; then
@@ -1658,6 +1681,9 @@ if [ ! -z QUIET_INSTALLATION ]; then
         fi
         if [ ! -z "$DELETE_PY_CRYPTO" ]; then
             echo " - 'python-crypto' rpm is removed to avoid of confliction with Ansible."
+        fi
+        if [ ! -z "$SETUP_EPEL" ]; then
+            echo " - /etc/yum.repos.d/epel.repo is helped to setup to use standard mirror."
         fi
         echo -e "$(tput sgr0)\n"
     fi
