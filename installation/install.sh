@@ -298,7 +298,9 @@ cs_check_epel(){
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
             if [ -z $QUIET_INSTALLATION ]; then
-                fail 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. Or you can choose to use -R 163 or -R aliyun to install.'
+                fail 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
+Or you can choose to use -R 163 or -R aliyun to install.
+Or you can add -q to ask installer to help you.'
             else
                 echo > /etc/yum.repos.d/epel.repo << EOF
 [epel]
