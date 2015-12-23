@@ -1673,7 +1673,7 @@ class Vm(object):
         def make_vnc():
             devices = elements['devices']
             vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes'})
-            e(vnc, "listen", None, {'type':'address', 'address':'%s' % cmd.hostManagementIp})
+            e(vnc, "listen", None, {'type':'address', 'address':'0.0.0.0'})
 
         def make_addons():
             if not cmd.addons:
