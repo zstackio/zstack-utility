@@ -55,6 +55,7 @@ NOT_START_ZSTACK=''
 NEED_SET_MN_IP=''
 
 MYSQL_ROOT_PASSWORD=''
+MYSQL_NEW_ROOT_PASSWORD='zstack.mysql.password'
 MYSQL_USER_PASSWORD=''
 
 YUM_ONLINE_REPO=''
@@ -928,15 +929,15 @@ cs_install_mysql(){
     dsa_key_file=$1/id_dsa
     if [ -z $ZSTACK_YUM_REPOS ];then
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
-            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --root-password="$MYSQL_NEW_ROOT_PASSWORD" >>$ZSTACK_INSTALL_LOG 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_ROOT_PASSWORD" --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     else
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
-            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS --root-password="$MYSQL_NEW_ROOT_PASSWORD" >>$ZSTACK_INSTALL_LOG 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --root-password="$MYSQL_ROOT_PASSWORD" --login-password="$MYSQL_ROOT_PASSWORD" --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
     if [ $? -ne 0 ];then
@@ -1148,12 +1149,12 @@ cs_deploy_db(){
     echo_subtitle "Initialize Database"
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
-            zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACK_INSTALL_LOG 2>&1
         else
-            zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     else
-        zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACK_INSTALL_LOG 2>&1
+        zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         fail "failed to deploy ${PRODUCT_NAME} database. You might want to add -D to drop previous ${PRODUCT_NAME} database or -k to keep previous zstack database"
@@ -1450,7 +1451,7 @@ do
         m ) INSTALL_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
         o ) YUM_ONLINE_REPO='y';;
-        P ) MYSQL_ROOT_PASSWORD=$OPTARG;;
+        P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
@@ -1509,6 +1510,33 @@ else
 fi
 
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
+
+#If user didn't assign mysql root password, then check original zstack mysql password status
+if [ -z $MYSQL_ROOT_PASSWORD ]; then
+    which mysql >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        #check if mysql server is running
+        ps -aef|grep mysqld |grep -v grep >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            mysql -u root --password='' -e 'exit' >/dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
+                if [ $? -ne 0 ]; then
+                    if [ -z $QUIET_INSTALLATION ]; then
+                        echo ""
+                        echo "Cannot not login mysql!
+ If you have mysql root password, please add option '-R MYSQL_ROOT_PASSWORD'.
+ If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again."
+                        echo ""
+                        exit 1
+                    fi
+                else
+                    MYSQL_ROOT_PASSWORD=$MYSQL_NEW_ROOT_PASSWORD
+                fi
+            fi
+        fi
+    fi
+fi
 
 #Set ZSTACK_HOME for zstack-ctl.
 export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
@@ -1666,12 +1694,15 @@ echo -e " - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput
 echo "      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service"
 echo ""
 echo -e " - Management node is running"
-echo "      Use $(tput setaf 3)zstack-ctl [stop_node|start_node]$(tput sgr0) to stop/start it"
+echo -e "      Use $(tput setaf 3)zstack-ctl [stop_node|start_node]$(tput sgr0) to stop/start it"
 echo ""
 echo " - ${PRODUCT_NAME} command line tool is installed: zstack-cli"
 echo " - ${PRODUCT_NAME} control tool is installed: zstack-ctl"
+echo ""
+echo -e " - For system security, $(tput setaf 4) Mysql root password is set to: $MYSQL_NEW_ROOT_PASSWORD $(tput sgr0) . You can use \`mysqladmin -u root --password=$MYSQL_NEW_ROOT_PASSWORD password NEW_PASSWORD\` to change it."
+echo ""
 if [ ! -z QUIET_INSTALLATION ]; then
-    if [ -z "$CHANGE_HOSTNAME" -a -z "$CHANGE_HOSTS" -a -z "$DELETE_PY_CRYPTO" i-a -z "$SETUP_EPEL" ];then
+    if [ -z "$CHANGE_HOSTNAME" -a -z "$CHANGE_HOSTS" -a -z "$DELETE_PY_CRYPTO" -a -z "$SETUP_EPEL" ];then
         true
     else
         echo -e "\n$(tput setaf 6) User select QUIET installation. Installation does following changes for user:"
