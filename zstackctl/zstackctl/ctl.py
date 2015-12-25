@@ -1239,9 +1239,9 @@ class InstallDbCmd(Command):
 
         if not args.root_password:
             args.root_password = '''"''"'''
-            grant_access_cmd = '''/usr/bin/mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '' WITH GRANT OPTION; FLUSH PRIVILEGES;"'''
+            grant_access_cmd = '''/usr/bin/mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % args.host
         else:
-            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password)
+            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password)
 
         if args.login_password is not None:
             change_root_password_cmd = '/usr/bin/mysqladmin -u root -p{{login_password}} password {{root_password}}'
@@ -1285,14 +1285,28 @@ if [ -f /etc/mysql/my.cnf ]; then
     # Ubuntu
     sed -i 's/^bind-address/#bind-address/' /etc/mysql/my.cnf
     sed -i 's/^skip-networking/#skip-networking/' /etc/mysql/my.cnf
-    sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/mysql/my.cnf
+    grep '^character-set-server' /etc/mysql/my.cnf >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/mysql/my.cnf
+    fi
+    grep '^skip-name-resolve' /etc/mysql/my.cnf >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/mysql/my.cnf
+    fi
 fi
 
 if [ -f /etc/my.cnf ]; then
     # CentOS
     sed -i 's/^bind-address/#bind-address/' /etc/my.cnf
     sed -i 's/^skip-networking/#skip-networking/' /etc/my.cnf
-    sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/my.cnf
+    grep '^character-set-server' /etc/my.cnf >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/my.cnf
+    fi
+    grep '^skip-name-resolve' /etc/my.cnf >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/my.cnf
+    fi
 fi
 '''
         fd, post_install_script_path = tempfile.mkstemp()

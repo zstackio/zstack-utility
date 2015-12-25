@@ -57,7 +57,7 @@ MYSQL_ROOT_PASSWORD=''
 MYSQL_NEW_ROOT_PASSWORD='zstack.mysql.password'
 MYSQL_USER_PASSWORD=''
 
-YUM_ONLINE_REPO=''
+YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
 ZSTACK_START_TIMEOUT=120
 ZSTACK_YUM_MIRROR=''
@@ -284,8 +284,8 @@ check_system(){
     if [ $OS = $CENTOS6 ]; then
         yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos6_repo"
         #only support online installation for CentoS6.x
-        if [ -z $ZSTACK_YUM_REPOS ]; then
-            fail "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please use '-o' or '-R aliyun' or '-R 163' to do online installation."
+        if [ -z $YUM_ONLINE_REPO -a -z $ZSTACK_YUM_MIRROR ]; then
+            fail "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please do not use '-o' option to install. "
         fi
         yum_source="file://${yum_repo_folder}"
     elif [ $OS = $CENTOS7 ]; then
@@ -1369,7 +1369,7 @@ Options:
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
         to upgrade zstack or -l to install some system libs. 
 
-  -o    Use user defined yum repository. Default will use ZStack offline yum repository. If user system's libraries are newer than ZStack offline yum packages, user should set -Y to ask ZStack to use yum repo in /etc/yum.repo.d/* , instead of ZStack local repository.
+  -o    offline installation. ${PRODUCT_NAME} required system libs will installed from all in one local repository. Currently only CentOS 7.2 support offline installation.
 
   -p MYSQL_PASSWORD
         password for MySQL user 'zstack' that is the user ${PRODUCT_NAME} management nodes use to access database. By default, an empty password is applied.
@@ -1449,7 +1449,7 @@ OPTIND=1
 while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmNoquz" Option
 do
     case $Option in
-        a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y';;
+        a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y' && YUM_ONLINE_REPO='y';;
         d ) DEBUG='y';;
         D ) NEED_DROP_DB='y';;
         H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
@@ -1461,7 +1461,7 @@ do
         l ) ONLY_INSTALL_LIBS='y';;
         m ) INSTALL_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
-        o ) YUM_ONLINE_REPO='y';;
+        o ) YUM_ONLINE_REPO='';;
         P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
