@@ -28,9 +28,8 @@ STEP="1"
 
 zstack_tmp_file=`mktemp`
 ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.8/0.8.0/zstack-all-in-one-0.8.0.tgz"}
-#TODO: change to ZStack WEBSITE
-WEBSITE=${WEBSITE-'mirrors.aliyun.com'}
-[ -z $WEBSITE ] && WEBSITE='mirrors.aliyun.com'
+WEBSITE=${WEBSITE-'zstack.org'}
+[ -z $WEBSITE ] && WEBSITE='zstack.org'
 ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
 CATALINA_ZSTACK_PATH=apache-tomcat/webapps/zstack
 CATALINA_ZSTACK_CLASSES=$CATALINA_ZSTACK_PATH/WEB-INF/classes
@@ -284,6 +283,10 @@ check_system(){
     
     if [ $OS = $CENTOS6 ]; then
         yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos6_repo"
+        #only support online installation for CentoS6.x
+        if [ -z $ZSTACK_YUM_REPOS ]; then
+            fail "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please use '-o' or '-R aliyun' or '-R 163' to do online installation."
+        fi
         yum_source="file://${yum_repo_folder}"
     elif [ $OS = $CENTOS7 ]; then
         yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos7_repo"
@@ -336,10 +339,12 @@ do_check_system(){
         fail "User checking failure: ${PRODUCT_NAME} installation must be run with user: root . Current user is: `whoami`. Please append 'sudo'."
     fi
 
-    #ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
-    #if [ $? -ne 0 ]; then
-    #    fail "Network checking failure: can not reach $WEBSITE. Please make sure your DNS is configured correctly."
-    #fi
+    if [ ! -z $ZSTACK_YUM_REPOS ];then
+        ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -ne 0 ]; then
+            fail "Network checking failure: can not reach $WEBSITE. Please make sure your DNS (/etc/resolv.conf) is configured correctly. Or you can override WEBSITE by \`export WEBSITE=YOUR_INTERNAL_YUM_SERVER\` before doing installation. "
+        fi
+    fi
 
     rpm -qi python-crypto >/dev/null 2>&1
     if [ $? -eq 0 ]; then 
@@ -536,6 +541,12 @@ install_ansible(){
 
 iz_install_unzip(){
     echo_subtitle "Install unzip"
+    if [ $OS = $UBUNTU1404 ]; then
+        apt-get -y install unzip >>$ZSTACK_INSTALL_LOG 2>&1
+        [ $? -ne 0 ] && fail "Install unzip fail."
+        pass
+        return
+    fi
     if [ -z $ZSTACK_YUM_REPOS ]; then
         yum install -y unzip  >>$ZSTACK_INSTALL_LOG 2>&1
     elif [ -z $YUM_ONLINE_REPO ]; then
