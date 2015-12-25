@@ -83,6 +83,12 @@
       copy: src="{{file_root}}/iptables" dest=/etc/sysconfig/iptables
       when: ansible_os_family == "RedHat" and is_init == 'true'
 
+    - name: disable NetworkManager in RedHat
+      service: name=NetworkManager state=stopped enabled=no
+      when: ansible_os_family == 'RedHat'
+      register: rc
+      failed_when: "rc|failed and 'cannot find' not in rc.msg"
+
     - name: restart iptables
       service: name=iptables state=restarted enabled=yes
       when: chroot_env == 'false' and ansible_os_family == 'RedHat' and is_init == 'true'
