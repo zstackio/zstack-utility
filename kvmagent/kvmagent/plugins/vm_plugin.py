@@ -160,6 +160,37 @@ class ReconnectMeCmd(object):
         self.hostUuid = None
         self.reason = None
 
+class VncPortIptableRule(object):
+    def __init__(self):
+        self.host_ip = None
+        self.port = None
+        self.vm_internal_id = None
+
+    def _make_chain_name(self):
+        return "vm-%s-vnc" % self.vm_internal_id
+
+    @lock.file_lock('iptables')
+    def apply(self):
+        assert self.host_ip is not None
+        assert self.port is not None
+        assert self.vm_internal_id is not None
+
+        ipt = iptables.from_iptables_save()
+        chain_name = self._make_chain_name()
+        ipt.add_rule('-A INPUT -p tcp -m tcp --dport %s -j %s' % (self.port, chain_name))
+        ipt.add_rule('-A %s -d %s/32 -j ACCEPT' % (chain_name, self.host_ip))
+        ipt.add_rule('-A %s ! -d %s/32 -j REJECT --reject-with icmp-host-prohibited' % (chain_name, self.host_ip))
+        ipt.iptable_restore()
+
+    @lock.file_lock('iptables')
+    def delete(self):
+        assert self.vm_internal_id is not None
+
+        ipt = iptables.from_iptables_save()
+        chain_name = self._make_chain_name()
+        ipt.delete_chain(chain_name)
+        ipt.iptable_restore()
+
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
@@ -226,10 +257,42 @@ class LibvirtAutoReconnect(object):
         self.exception = None
 
     @staticmethod
+    def add_libvirt_callback(id, cb):
+        cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(id, None)
+        if cbs is None:
+            cbs = []
+            LibvirtAutoReconnect.libvirt_event_callbacks[id] = cbs
+        cbs.append(cb)
+
+    @staticmethod
     def register_libvirt_callbacks():
-        LibvirtAutoReconnect.callback_id = []
-        for id, cb in LibvirtAutoReconnect.libvirt_event_callbacks.items():
-            LibvirtAutoReconnect.conn.domainEventRegisterAny(None, id, cb, None)
+        def reboot_callback(conn, dom, opaque):
+            cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT)
+            if not cbs:
+                return
+
+            for cb in cbs:
+                try:
+                    cb(conn, dom, opaque)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, reboot_callback, None)
+
+        def lifecycle_callback(conn, dom, event, detail, opaque):
+            cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE)
+            if not cbs:
+                return
+
+            for cb in cbs:
+                try:
+                    cb(conn, dom, event, detail, opaque)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, lifecycle_callback, None)
 
         LibvirtAutoReconnect.conn.setKeepAlive(5, 3)
 
@@ -1669,6 +1732,7 @@ class Vm(object):
             meta = e(root, 'metadata')
             e(meta, 'zstack', 'True')
             e(meta, 'internalId', str(cmd.vmInternalId))
+            e(meta, 'hostManagementIp', str(cmd.hostManagementIp))
 
         def make_vnc():
             devices = elements['devices']
@@ -2261,9 +2325,42 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
+    def _set_vnc_port_iptable_rule(self, conn, dom, event, detail, opaque):
+        try:
+            event = LibvirtEventManager.event_to_string(event)
+            if event not in (LibvirtEventManager.EVENT_STARTED, LibvirtEventManager.EVENT_STOPPED):
+                return
+
+            domain_xml = dom.XMLDesc(0)
+            domain_xmlobject = xmlobject.loads(domain_xml)
+            vm_uuid = dom.name()
+            if not xmlobject.has_element(domain_xmlobject, 'metadata.internalId'):
+                logger.debug('vm[uuid:%s] is not managed by zstack,  do not configure the vnc iptables rules' % vm_uuid)
+                return
+
+            id = domain_xmlobject.metadata.internalId.text_
+            vir = VncPortIptableRule()
+            if LibvirtEventManager.EVENT_STARTED == event:
+                vir.host_ip = domain_xmlobject.metadata.hostManagementIp.text_
+                for g in domain_xmlobject.devices.get_child_node_as_list('graphics'):
+                    if g.type_ == 'vnc':
+                        vir.port = g.port_
+                        break
+
+                vir.vm_internal_id = id
+                vir.apply()
+            elif LibvirtEventManager.EVENT_STOPPED == event:
+                vir.vm_internal_id = id
+                vir.delete()
+
+        except:
+            content = traceback.format_exc()
+            logger.warn(content)
+
     def register_libvirt_event(self):
-        LibvirtAutoReconnect.libvirt_event_callbacks[libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE] = self._vm_lifecycle_event
-        LibvirtAutoReconnect.libvirt_event_callbacks[libvirt.VIR_DOMAIN_EVENT_ID_REBOOT] = self._vm_reboot_event
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._set_vnc_port_iptable_rule)
+        #LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
         LibvirtAutoReconnect.register_libvirt_callbacks()
 
     def stop(self):
