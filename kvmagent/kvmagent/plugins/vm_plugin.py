@@ -1660,7 +1660,12 @@ class Vm(object):
                 if qos.totalBandwidth:
                     e(iotune, 'total_bytes_sec', str(qos.totalBandwidth))
                 if qos.totalIops:
-                    e(iotune, 'total_iops_sec', str(qos.totalIops))
+                    #e(iotune, 'total_iops_sec', str(qos.totalIops))
+                    e(iotune, 'read_iops_sec', str(qos.totalIops))
+                    e(iotune, 'write_iops_sec', str(qos.totalIops))
+                    #e(iotune, 'read_iops_sec_max', str(qos.totalIops))
+                    #e(iotune, 'write_iops_sec_max', str(qos.totalIops))
+                    #e(iotune, 'total_iops_sec_max', str(qos.totalIops))
 
 
             for v in volumes:
