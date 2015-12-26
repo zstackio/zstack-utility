@@ -1012,7 +1012,7 @@ cs_flush_iptables(){
 cs_config_tomcat(){
     echo_subtitle "Configure Tomcat Java Option"
     cat >> $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/setenv.sh <<EOF
-export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true"
+export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true -Djava.security.egd=file:/dev/./urandom"
 EOF
     pass
 }
