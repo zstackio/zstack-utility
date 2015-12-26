@@ -59,7 +59,7 @@ MYSQL_USER_PASSWORD=''
 
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
-ZSTACK_START_TIMEOUT=120
+ZSTACK_START_TIMEOUT=300
 ZSTACK_YUM_MIRROR=''
 YUM_MIRROR_163='163'
 YUM_MIRROR_ALIYUN='aliyun'
@@ -1536,7 +1536,7 @@ if [ -z $MYSQL_ROOT_PASSWORD ]; then
                     if [ -z $QUIET_INSTALLATION ]; then
                         echo ""
                         echo "Cannot not login mysql!
- If you have mysql root password, please add option '-R MYSQL_ROOT_PASSWORD'.
+ If you have mysql root password, please add option '-P MYSQL_ROOT_PASSWORD'.
  If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again."
                         echo ""
                         exit 1
