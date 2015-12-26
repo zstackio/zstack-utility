@@ -37,6 +37,7 @@ class PingCommand(AgentCommand):
 class PingResponse(AgentResponse):
     def __init__(self):
         super(PingResponse, self).__init__()
+        self.uuid = None
     
 class ConnectCmd(AgentCommand):
     def __init__(self):
@@ -147,6 +148,7 @@ class SftpBackupStorageAgent(object):
     @replyerror
     def ping(self, req):
         rsp = PingResponse()
+        rsp.uuid = self.uuid
         return jsonobject.dumps(rsp)
     
     @replyerror
@@ -158,6 +160,7 @@ class SftpBackupStorageAgent(object):
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.storage_path = cmd.storagePath
+        self.uuid = cmd.uuid
         if os.path.isfile(self.storage_path):
             raise Exception('storage path: %s is a file' % self.storage_path)
         if not os.path.exists(self.storage_path):
@@ -285,6 +288,7 @@ class SftpBackupStorageAgent(object):
         self.http_server.register_async_uri(self.WRITE_IMAGE_METADATA, self.write_image_metadata)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.storage_path = None
+        self.uuid = None
 
 class SftpBackupStorageDaemon(daemon.Daemon):
     def __init__(self, pidfile):
