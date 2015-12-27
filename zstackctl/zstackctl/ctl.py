@@ -706,12 +706,18 @@ class ShowStatusCmd(Command):
         def show_version():
             db_hostname, db_port, db_user, db_password = ctl.get_database_portal()
             if db_password:
-                out = shell('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
+                cmd = ShellCmd('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_password, db_hostname, db_port))
             else:
-                out = shell('''mysql -u %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
+                cmd = ShellCmd('''mysql -u %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_hostname, db_port))
 
+            cmd(False)
+            if cmd.return_code != 0:
+                info_list.append('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                return
+
+            out = cmd.stdout
             if 'schema_version' not in out:
                 version = '0.6'
             else:
@@ -959,6 +965,10 @@ class StartCmd(Command):
             result = sock.connect_ex((host, int(port)))
             return result == 0
 
+        def check_8080():
+            if shell_return('netstat -nap | grep :8080 | grep LISTEN > /dev/null') == 0:
+                raise CtlError('8080 is occupied by some process. Please use netstat to find out and stop it')
+
         def check_msyql():
             db_hostname, db_port, db_user, db_password = ctl.get_database_portal()
 
@@ -1005,11 +1015,12 @@ class StartCmd(Command):
         if user != 'root':
             raise CtlError('please use sudo or root user')
 
+        check_8080()
         check_msyql()
         check_rabbitmq()
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quick
-        time.sleep(15)
+        time.sleep(5)
         wait_mgmt_node_start()
 
         info('successfully started management node')
