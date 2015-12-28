@@ -306,7 +306,7 @@ cs_check_epel(){
 Or you can choose to use -R 163 or -R aliyun to install.
 Or you can add -q to ask installer to help you.'
             else
-                echo > /etc/yum.repos.d/epel.repo << EOF
+                cat > /etc/yum.repos.d/epel.repo << EOF
 [epel]
 name=Extra Packages for Enterprise Linux \$releasever - \$basearch
 mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
