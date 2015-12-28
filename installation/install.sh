@@ -331,7 +331,9 @@ do_enable_sudo(){
 do_check_system(){
     if [ $UPGRADE = 'n' ]; then
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
-            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ${PRODUCT_NAME}\n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-dashboard stop"
+            echo "stop zstack all services" >>$ZSTACK_INSTALL_LOG
+            zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
+            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ${PRODUCT_NAME}\n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n "
         fi
     fi
 
@@ -567,6 +569,7 @@ is_install_general_libs(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
     yum clean metadata >/dev/null 2>&1
     if [ ! -z $ZSTACK_YUM_REPOS ]; then
+        echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
         yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y \
             libselinux-python \
             java-1.7.0-openjdk \
@@ -600,6 +603,7 @@ is_install_general_libs(){
             mysql \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
+        echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
         yum install -y \
             libselinux-python \
             java-1.7.0-openjdk \
@@ -969,8 +973,10 @@ cs_install_rabbitmq(){
     echo_subtitle "Install Rabbitmq Server"
     dsa_key_file=$1/id_dsa
     if [ -z $ZSTACK_YUM_REPOS ];then
+        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file" >>$ZSTACK_INSTALL_LOG
         zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1
     else
+        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
         zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
