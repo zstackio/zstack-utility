@@ -438,6 +438,7 @@ class Ctl(object):
                 node_ips = [n['hostname'] for n in nodes]
                 raise CtlError('there are some management nodes%s are still running. Please stop all of them before performing the database upgrade.'
                                'If you are sure they have stopped, use option --force and run this command again.\n'
+                               'If you are upgrade by all in on installer, use option -F and run all in one installer again.\n'
                                'WARNING: the database may crash if you run this command with --force but without stopping management nodes' % node_ips)
 
         def bypass_check():
