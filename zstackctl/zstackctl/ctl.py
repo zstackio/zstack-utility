@@ -928,6 +928,51 @@ def get_management_node_pid():
 
     return None
 
+class StopAllCmd(Command):
+    def __init__(self):
+        super(StopAllCmd, self).__init__()
+        self.name = 'stop'
+        self.description = 'stop all ZStack related services including cassandra, kairosdb, zstack management node, web UI' \
+                           ' if those services are installed'
+        ctl.register_command(self)
+
+    def run(self, args):
+        def stop_cassandra():
+            exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+            if not exe or not os.path.exists(exe):
+                info('skip stopping cassandra, it is not installed')
+                return
+
+            info(colored('Stopping cassandra, it may take a few minutes...', 'blue'))
+            ctl.internal_run('cassandra', '--stop')
+
+        def stop_kairosdb():
+            exe = ctl.get_env(InstallKairosdbCmd.KAIROSDB_EXEC)
+            if not exe or not os.path.exists(exe):
+                info('skip stopping kairosdb, it is not installed')
+                return
+
+            info(colored('Stopping kairosdb, it may take a few minutes...', 'blue'))
+            ctl.internal_run('kairosdb', '--stop')
+
+        def stop_mgmt_node():
+            info(colored('Stopping ZStack management node, it may take a few minutes...', 'blue'))
+            ctl.internal_run('stop_node')
+
+        def stop_ui():
+            virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
+            if not os.path.exists(virtualenv):
+                info('skip stopping web UI, it is not installed')
+                return
+
+            info(colored('Stopping ZStack web UI, it may take a few minutes...', 'blue'))
+            ctl.internal_run('stop_ui')
+
+        stop_ui()
+        stop_mgmt_node()
+        stop_kairosdb()
+        stop_cassandra()
+
 class StartAllCmd(Command):
 
     def __init__(self):
@@ -3361,6 +3406,7 @@ def main():
     CassandraCmd()
     KairosdbCmd()
     StartAllCmd()
+    StopAllCmd()
 
     try:
         ctl.run()
