@@ -364,7 +364,12 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     ia_check_ip_hijack
 
     #add user: zstack and add sudo permission for it.
-    id -u zstack >/dev/null 2>&1 || useradd -d $ZSTACK_INSTALL_ROOT zstack 
+    id -u zstack >/dev/null 2>&1 
+    if [ $? -eq 0 ]; then
+        usermod -d $ZSTACK_INSTALL_ROOT zstack
+    else
+        useradd -d $ZSTACK_INSTALL_ROOT zstack 
+    fi
     zstack_home=`eval echo ~zstack`
     if [ ! -d $zstack_home ];then
         mkdir -p $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
@@ -824,6 +829,7 @@ iz_install_zstackctl(){
 
 iz_install_cassandra(){
     echo_subtitle "Install Cassandra"
+    zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl install_cassandra "{\"rpc_address\":\"$MANAGEMENT_IP\", \"listen_address\":\"$MANAGEMENT_IP\"}" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to install Cassandra"
@@ -833,6 +839,7 @@ iz_install_cassandra(){
 
 iz_install_kairosdb(){
     echo_subtitle "Install Kairosdb"
+    zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl install_kairosdb --listen-address $MANAGEMENT_IP  >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to install Kairosdb"
