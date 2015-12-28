@@ -1022,6 +1022,7 @@ class StartAllCmd(Command):
 
 class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
+    SET_ENV_SCRIPT = '../../bin/setenv.sh'
 
     def __init__(self):
         super(StartCmd, self).__init__()
@@ -1082,6 +1083,11 @@ class StartCmd(Command):
                     if not check_ip_port(ip, RABBIT_PORT):
                         raise CtlError('cannot connect to RabbitMQ server[ip:%s, port:%s] defined by item[%s] in %s' % (ip, RABBIT_PORT, key, ctl.properties_file_path))
 
+        def prepare_setenv():
+            setenv_path = os.path.join(ctl.zstack_home, self.SET_ENV_SCRIPT)
+            with open(setenv_path, 'w') as fd:
+                fd.write('export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true -Djava.security.egd=file:/dev/./urandom"')
+
         def start_mgmt_node():
             shell('sudo -u zstack sh %s -DappName=zstack' % os.path.join(ctl.zstack_home, self.START_SCRIPT))
             info("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
@@ -1110,6 +1116,7 @@ class StartCmd(Command):
         check_8080()
         check_msyql()
         check_rabbitmq()
+        prepare_setenv()
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quick
         time.sleep(5)
