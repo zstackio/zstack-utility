@@ -928,6 +928,52 @@ def get_management_node_pid():
 
     return None
 
+class StartAllCmd(Command):
+
+    def __init__(self):
+        super(StartAllCmd, self).__init__()
+        self.name = 'start'
+        self.description = 'start all ZStack related services including cassandra, kairosdb, zstack management node, web UI' \
+                           ' if those services are installed'
+        ctl.register_command(self)
+
+    def run(self, args):
+        def start_cassandra():
+            exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+            if not exe or not os.path.exists(exe):
+                info('skip starting cassandra, it is not installed')
+                return
+
+            info(colored('Starting cassandra, it may take a few minutes...', 'blue'))
+            ctl.internal_run('cassandra', '--start --wait-timeout 120')
+
+        def start_kairosdb():
+            exe = ctl.get_env(InstallKairosdbCmd.KAIROSDB_EXEC)
+            if not exe or not os.path.exists(exe):
+                info('skip starting kairosdb, it is not installed')
+                return
+
+            info(colored('Starting kairosdb, it may take a few minutes...', 'blue'))
+            ctl.internal_run('kairosdb', '--start --wait-timeout 120')
+
+        def start_mgmt_node():
+            info(colored('Starting ZStack management node, it may take a few minutes...', 'blue'))
+            ctl.internal_run('start_node')
+
+        def start_ui():
+            virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
+            if not os.path.exists(virtualenv):
+                info('skip starting web UI, it is not installed')
+                return
+
+            info(colored('Starting ZStack web UI, it may take a few minutes...', 'blue'))
+            ctl.internal_run('start_ui')
+
+        start_cassandra()
+        start_kairosdb()
+        start_mgmt_node()
+        start_ui()
+
 class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
 
@@ -1675,6 +1721,9 @@ class InstallCassandraCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--file', help='path to the apache-cassandra-2.2.3-bin.tar.gz', required=False)
         parser.add_argument('--user-zstack', help='do all operations with user zstack', default=True, action='store_true', required=False)
+        parser.add_argument('--listen-address', help='the IP used for both rpc_address and listen_address.'
+                                                     'This option is overridden if rpc_address or listen_address'
+                                                     ' is specified in the JSON body', required=False)
 
     def run(self, args):
         if not args.file:
@@ -1699,6 +1748,12 @@ class InstallCassandraCmd(Command):
                 conf = simplejson.loads(extra)
         else:
             conf = {}
+
+        if args.listen_address:
+            if 'rpc_address' not in conf:
+                conf['rpc_address'] = args.listen_address
+            if 'listen_address' not in conf:
+                conf['listen_address'] = args.listen_address
 
         if 'commitlog_directory' not in conf:
             conf['commitlog_directory'] = ['/var/lib/cassandra/commitlog']
@@ -1916,7 +1971,7 @@ class CassandraCmd(Command):
                 args.wait_timeout -= 1
 
             raise CtlError("cassandra is not listening on RPC port[%s] after %s seconds, it may not successfully start,"
-                           "please check the log file in %s" % ctl.get_env(InstallCassandraCmd.CASSANDRA_LOG))
+                           "please check the log file in %s" % (port, args.wait_timeout, ctl.get_env(InstallCassandraCmd.CASSANDRA_LOG)))
 
     def stop(self, args):
         pid = self._status(args)
@@ -2888,7 +2943,8 @@ if [ $$? != 0 ]; then
 fi
 
 CTL_VIRENV_PATH=/var/lib/zstack/virtualenv/zstackctl
-[ ! -d $$CTL_VIRENV_PATH ] && virtualenv $$CTL_VIRENV_PATH
+rm -rf $$CTL_VIRENV_PATH
+virtualenv $$CTL_VIRENV_PATH
 . $$CTL_VIRENV_PATH/bin/activate
 
 pip install -i file://$pypi_path/simple --trusted-host --ignore-installed $package || exit 1
@@ -3304,6 +3360,7 @@ def main():
     InstallKairosdbCmd()
     CassandraCmd()
     KairosdbCmd()
+    StartAllCmd()
 
     try:
         ctl.run()
