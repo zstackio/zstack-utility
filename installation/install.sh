@@ -1625,12 +1625,8 @@ if [ $UPGRADE = 'y' ]; then
     #only upgrade zstack
     upgrade_zstack
     rm -rf $upgrade_zstack
-    if [ -f $ZSTACK_VERSION ]; then
-        VERSION=`cat $ZSTACK_VERSION`' '
-    else
-        VERSION=''
-    fi
 
+    VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
     echo ""
     echo_star_line
     echo "${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been upgraded to ${VERSION}"
@@ -1708,6 +1704,7 @@ fi
 start_dashboard
 
 #Print all installation message
+VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
 
 echo ""
 echo_star_line
