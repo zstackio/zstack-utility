@@ -3298,6 +3298,18 @@ class QueryVipAction(inventory.APIQueryVipMsg):
         self.out = reply.inventories
         return self.out
 
+class GetHostMonitoringDataAction(inventory.APIGetHostMonitoringDataMsg):
+    def __init__(self):
+        super(GetHostMonitoringDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetHostMonitoringDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class MonitoringPassThroughAction(inventory.APIMonitoringPassThroughMsg):
     def __init__(self):
         super(MonitoringPassThroughAction, self).__init__()
@@ -3322,14 +3334,14 @@ class GetVmMonitoringDataAction(inventory.APIGetVmMonitoringDataMsg):
         self.out = evt
         return self.out
 
-class GetHostMonitoringDataAction(inventory.APIGetHostMonitoringDataMsg):
+class GetLicenseInfoAction(inventory.APIGetLicenseInfoMsg):
     def __init__(self):
-        super(GetHostMonitoringDataAction, self).__init__()
+        super(GetLicenseInfoAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetHostMonitoringDataAction] cannot be None')
+            raise Exception('sessionUuid of action[GetLicenseInfoAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
