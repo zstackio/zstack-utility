@@ -50,7 +50,7 @@
 
 - name: install libselinux-python and other command system libs from system repos
   when: ansible_os_family == 'RedHat' and yum_repos == 'false'
-  shell: "yum clean metadata && yum --nogpgcheck install -y  libselinux-python python-devel python-setuptools python-pip gcc autoconf"
+  shell: "yum clean metadata && yum --nogpgcheck install -y  libselinux-python python-devel python-setuptools python-pip gcc autoconf ntp ntpdate"
 
 - name: install dependency packages for Debian based OS
   when: ansible_os_family == 'Debian'
@@ -61,6 +61,16 @@
     - python-pip
     - gcc
     - autoconf
+    - ntp
+    - ntpdate
+
+- name: enable ntp service for RedHat
+  when: ansible_os_family == 'RedHat'
+  shell: "chkconfig ntpd on; service ntpd restart"
+
+- name: enable ntp service for Debian
+  when: ansible_os_family == 'Debian'
+  shell: "update-rc.d ntpd defaults; service ntpd restart"
 
 - shell: pip --version | grep 7.0.3
   register: pip_ret
