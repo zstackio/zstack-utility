@@ -1514,7 +1514,7 @@ OPTIND=1
 while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmNoquz" Option
 do
     case $Option in
-        a ) NEED_NFS='y' && NEED_HTTP='y' && NEED_DROP_DB='y' && YUM_ONLINE_REPO='y';;
+        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
         d ) DEBUG='y';;
         D ) NEED_DROP_DB='y';;
         H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
