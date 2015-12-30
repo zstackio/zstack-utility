@@ -565,7 +565,7 @@ iz_install_unzip(){
     pass
 }
 
-is_install_general_libs(){
+is_install_general_libs_rh(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
     yum clean metadata >/dev/null 2>&1
     if [ ! -z $ZSTACK_YUM_REPOS ]; then
@@ -658,12 +658,64 @@ is_install_virtualenv(){
     pass
 }
 
+is_install_general_libs_deb(){
+    echo_subtitle "Install General Libraries (takes a couple of minutes)"
+    apt-get -y install \
+        openjdk-7-jdk \
+        qemu-kvm \
+        bridge-utils \
+        wget \
+        qemu-utils \
+        python-libvirt \
+        libvirt-bin \
+        vlan \
+        nfs-common \
+        nfs-kernel-server \
+        python-dev \
+        gcc \
+        autoconf \
+        iptables \
+        tar \
+        gzip \
+        unzip \
+        apache2 \
+        sshpass \
+        sudo \
+        ntp  \
+        ntpdate \
+        bzip2 \
+        mysql-client \
+        >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "install virtualenv failed"
+    pass
+}
+
 install_system_libs(){
     echo_title "Install System Libs"
     echo ""
-    show_spinner is_install_general_libs
+    if [ $OS != $UBUNTU1404 ]; then
+        show_spinner is_install_general_libs_rh
+    else
+        show_spinner is_install_general_libs_deb
+    fi
     #mysql and rabbitmq will be installed by zstack-ctl later
     show_spinner is_install_virtualenv
+    #enable ntpd
+    is_enable_ntpd
+}
+
+is_enable_ntpd(){
+    echo_subtitle "Enable NTP"
+    if [ $OS != $UBUNTU1404 ];then
+        chkconfig ntpd on >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        update-rc.d ntpd defaults >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    service ntpd restart >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        fail "failed to enable ntpd service."
+    fi
+    pass
 }
 
 iz_download_zstack(){
