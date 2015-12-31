@@ -3298,6 +3298,42 @@ class QueryVipAction(inventory.APIQueryVipMsg):
         self.out = reply.inventories
         return self.out
 
+class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
+    def __init__(self):
+        super(GetLicenseCapabilitiesAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetLicenseCapabilitiesAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GenerateNewLicenseRequestAction(inventory.APIGenerateNewLicenseRequestMsg):
+    def __init__(self):
+        super(GenerateNewLicenseRequestAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GenerateNewLicenseRequestAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetLicenseInfoAction(inventory.APIGetLicenseInfoMsg):
+    def __init__(self):
+        super(GetLicenseInfoAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetLicenseInfoAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetHostMonitoringDataAction(inventory.APIGetHostMonitoringDataMsg):
     def __init__(self):
         super(GetHostMonitoringDataAction, self).__init__()
@@ -3330,18 +3366,6 @@ class GetVmMonitoringDataAction(inventory.APIGetVmMonitoringDataMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVmMonitoringDataAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class GetLicenseInfoAction(inventory.APIGetLicenseInfoMsg):
-    def __init__(self):
-        super(GetLicenseInfoAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetLicenseInfoAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
