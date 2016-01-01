@@ -3294,6 +3294,38 @@ class UiStatusCmd(Command):
         else:
             info('%s: [PID: %s]' % (colored('Stopped', 'red'), pid))
 
+class InstallLicenseCmd(Command):
+    def __init__(self):
+        super(InstallLicenseCmd, self).__init__()
+        self.name = "install_license"
+        self.description = "install zstack license"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--license', help="path to the license file", required=True)
+        parser.add_argument('--prikey', help="[OPTIONAL] the path to the private key used to generate license request")
+
+    def run(self, args):
+        lpath = expand_path(args.license)
+        if not os.path.isfile(lpath):
+            raise CtlError('cannot find the license file at %s' % args.license)
+
+        ppath = None
+        if args.prikey:
+            ppath = expand_path(args.prikey)
+            if not os.path.isfile(ppath):
+                raise CtlError('cannot find the private key file at %s' % args.prikey)
+
+        license_folder = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'license')
+        shell('''su - zstack -c "mkdir -p %s"''' % license_folder)
+        shell('''yes | cp %s %s/license.txt''' % (lpath, license_folder))
+        shell('''chown zstack:zstack %s/license.txt''' % license_folder)
+        info("successfully installed the license file to %s/license.txt" % license_folder)
+        if ppath:
+            shell('''yes | cp %s %s/pri.key''' % (ppath, license_folder))
+            shell('''chown zstack:zstack %s/pri.key''' % license_folder)
+            info("successfully installed the private key file to %s/pri.key" % license_folder)
+
 
 class StartUiCmd(Command):
     PID_FILE = '/var/run/zstack/zstack-dashboard.pid'
@@ -3415,6 +3447,7 @@ def main():
     KairosdbCmd()
     StartAllCmd()
     StopAllCmd()
+    InstallLicenseCmd()
 
     try:
         ctl.run()
