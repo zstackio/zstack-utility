@@ -3298,6 +3298,18 @@ class QueryVipAction(inventory.APIQueryVipMsg):
         self.out = reply.inventories
         return self.out
 
+class ReloadLicenseAction(inventory.APIReloadLicenseMsg):
+    def __init__(self):
+        super(ReloadLicenseAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ReloadLicenseAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
     def __init__(self):
         super(GetLicenseCapabilitiesAction, self).__init__()
