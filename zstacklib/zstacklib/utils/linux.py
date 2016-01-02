@@ -453,6 +453,10 @@ def qcow2_create(dst, size):
     shell.ShellCmd('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))()
     shell.ShellCmd('chmod 666 %s' % dst)()
 
+def qcow2_create_with_backing_file(backing_file, dst):
+    shell.call('/usr/bin/qemu-img create -f qcow2 -b %s %s' % (backing_file, dst))
+    shell.call('chmod 666 %s' % dst)
+
 def raw_create(dst, size):
     shell.ShellCmd('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))()
     shell.ShellCmd('chmod 666 %s' % dst)()

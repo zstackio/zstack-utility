@@ -303,7 +303,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
 
-            linux.qcow2_create(cmd.installUrl, cmd.size)
+            if cmd.backingFile:
+                linux.qcow2_create_with_backing_file(cmd.backingFile, cmd.installUrl)
+            else:
+                linux.qcow2_create(cmd.installUrl, cmd.size)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.uuid, cmd.name, str(e))
