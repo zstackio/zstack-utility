@@ -1762,6 +1762,13 @@ class Vm(object):
             b = e(devices, 'memballoon', None, {'model':'virtio'})
             e(b, 'stats', None, {'period':'10'})
 
+        def make_console():
+            devices = elements['devices']
+            serial = e(devices, 'serial', None, {'type':'pty'})
+            e(serial, 'target', None, {'port':'0'})
+            console = e(devices, 'console', None, {'type':'pty'})
+            e(console, 'target', None, {'type':'serial', 'port':'0'})
+
 
         make_root()
         make_meta()
@@ -1776,6 +1783,7 @@ class Vm(object):
         make_vnc()
         make_addons()
         make_balloon_memory()
+        make_console()
 
         root = elements['root']
         xml = etree.tostring(root)
