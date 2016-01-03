@@ -164,7 +164,7 @@ class SftpBackupStorageAgent(object):
         if os.path.isfile(self.storage_path):
             raise Exception('storage path: %s is a file' % self.storage_path)
         if not os.path.exists(self.storage_path):
-            os.makedirs(self.storage_path)
+            os.makedirs(self.storage_path, 0755)
         (total, avail) = self.get_capacity()
         logger.debug(http.path_msg(self.CONNECT_PATH, 'connected, [storage path:%s, total capacity: %s bytes, available capacity: %s size]' % (self.storage_path, total, avail)))
         rsp = ConnectResponse()
