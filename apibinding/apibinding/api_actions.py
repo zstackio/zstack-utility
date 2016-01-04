@@ -1530,6 +1530,18 @@ class GetNetworkServiceTypesAction(inventory.APIGetNetworkServiceTypesMsg):
         self.out = evt
         return self.out
 
+class DetachNetworkServiceFromL3NetworkAction(inventory.APIDetachNetworkServiceFromL3NetworkMsg):
+    def __init__(self):
+        super(DetachNetworkServiceFromL3NetworkAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachNetworkServiceFromL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QueryNetworkServiceProviderAction(inventory.APIQueryNetworkServiceProviderMsg):
     def __init__(self):
         super(QueryNetworkServiceProviderAction, self).__init__()
