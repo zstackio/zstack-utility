@@ -701,7 +701,7 @@ install_system_libs(){
     #mysql and rabbitmq will be installed by zstack-ctl later
     show_spinner is_install_virtualenv
     #enable ntpd
-    is_enable_ntpd
+    show_spinner is_enable_ntpd
 }
 
 is_enable_ntpd(){
