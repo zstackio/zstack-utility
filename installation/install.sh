@@ -293,7 +293,7 @@ check_system(){
         yum_source="file://${yum_repo_folder}"
     fi
     debug "Your system is: $OS"
-    show_spinner do_check_system
+    do_check_system
     show_spinner cs_check_epel
 }
 
@@ -317,7 +317,6 @@ EOF
             fi
         fi
     fi
-    pass
 }
 
 do_enable_sudo(){
