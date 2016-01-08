@@ -284,7 +284,7 @@ check_system(){
     if [ $OS = $CENTOS6 ]; then
         yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos6_repo"
         #only support online installation for CentoS6.x
-        if [ -z $YUM_ONLINE_REPO -a -z $ZSTACK_YUM_MIRROR ]; then
+        if [ -z "$YUM_ONLINE_REPO" -a -z "$ZSTACK_YUM_MIRROR" ]; then
             fail "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please do not use '-o' option to install. "
         fi
         yum_source="file://${yum_repo_folder}"
@@ -368,9 +368,9 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     #add user: zstack and add sudo permission for it.
     id -u zstack >/dev/null 2>&1 
     if [ $? -eq 0 ]; then
-        usermod -d $ZSTACK_INSTALL_ROOT zstack
+        usermod -d $ZSTACK_INSTALL_ROOT zstack >/dev/null 2>&1
     else
-        useradd -d $ZSTACK_INSTALL_ROOT zstack 
+        useradd -d $ZSTACK_INSTALL_ROOT zstack >/dev/null 2>&1
     fi
     zstack_home=`eval echo ~zstack`
     if [ ! -d $zstack_home ];then
