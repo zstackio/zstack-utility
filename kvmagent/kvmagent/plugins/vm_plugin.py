@@ -1510,6 +1510,9 @@ class Vm(object):
             e(root, 'vcpu', str(cmd.cpuNum), {'placement':'static'})
             tune = e(root, 'cputune')
             e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
+            cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+            e(cpu, 'model', attrib={'fallback': 'allow'})
+
 
         def make_memory():
             root = elements['root']

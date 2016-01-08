@@ -128,7 +128,9 @@
 
     <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, assemble-agent-server, assemble-agent-collectd, copy-pypi-source" />
 
-    <target name="assemble" depends="pre-assemble, zip-war" />
+    <target name="assemble" depends="pre-assemble, zip-war" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-${product.version}.bin" />
+    </target>
 
     <target name="assemble-centos6-offline" depends="pre-assemble, copy-centos6-repo, zip-war" />
 
@@ -168,11 +170,11 @@
 
     <target name="all-in-one" depends="build-war, build-allinone"> 
         <echo message="--------------------------------------------------------------------" />
-        <echo message="successfully build zstack all in one package at ${allinone.file} " />
+        <echo message="successfully build ${product.bin.name} all in one package at ${allinone.bin.file} " />
         <echo message="--------------------------------------------------------------------" />
     </target>
 
-    <target name="build-allinone" depends="all-in-one-package">
+    <target name="build-allinone" depends="build-centos-offline">
     </target>
 
     <target name="offline-centos6" depends="build-war-centos6-offline, build-centos-offline">
