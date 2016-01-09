@@ -1359,6 +1359,10 @@ class InstallDbCmd(Command):
             change_root_password_cmd = '/usr/bin/mysqladmin -u root password {{root_password}}'
 
         pre_install_script = '''
+echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+
 ###################
 #Check DNS hijacking
 ###################
@@ -1516,67 +1520,11 @@ class InstallRabbitCmd(Command):
       script: $post_install_script
 '''
 
-        fd, epel6_repo = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write('''[epel]
-name=Extra Packages for Enterprise Linux 6 - $basearch
-baseurl=http://mirrors.aliyun.com/epel/6/$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
-failovermethod=priority
-enabled=1
-gpgcheck=0
-
-[epel-debuginfo]
-name=Extra Packages for Enterprise Linux 6 - $basearch - Debug
-#baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch/debug
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-6&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-
-[epel-source]
-name=Extra Packages for Enterprise Linux 6 - $basearch - Source
-#baseurl=http://download.fedoraproject.org/pub/epel/6/SRPMS
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-6&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-        ''')
-
-        fd, epel7_repo = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write('''[epel]
-name=Extra Packages for Enterprise Linux 7 - $basearch
-baseurl=http://mirrors.aliyun.com/epel/7/$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
-failovermethod=priority
-enabled=1
-gpgcheck=0
-
-[epel-debuginfo]
-name=Extra Packages for Enterprise Linux 7 - $basearch - Debug
-#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch/debug
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-7&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-
-[epel-source]
-name=Extra Packages for Enterprise Linux 7 - $basearch - Source
-#baseurl=http://download.fedoraproject.org/pub/epel/7/SRPMS
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-7&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-        ''')
-
-        def cleanup_temp_file():
-            os.remove(epel6_repo)
-            os.remove(epel7_repo)
-
-        self.install_cleanup_routine(cleanup_temp_file)
-
         pre_script = '''
+echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+
 ###################
 #Check DNS hijacking
 ###################
@@ -1637,8 +1585,6 @@ rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
             yum_repo = 'false'
         yaml = t.substitute({
             'host': args.host,
-            'epel6_repo': epel6_repo,
-            'epel7_repo': epel7_repo,
             'pre_install_script': pre_script_path,
             'yum_folder': ctl.zstack_home,
             'yum_repo': yum_repo,
@@ -2222,6 +2168,10 @@ class InstallManagementNodeCmd(Command):
 '''
 
         pre_script = '''
+echo -e "#aliyun base\n[alibase]\nname=CentOS-\$$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+echo -e "#163 base\n[163base]\nname=CentOS-\$$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+
 whereis zstack-ctl
 if [ $$? -eq 0 ]; then
    zstack-ctl stop_node
@@ -2235,8 +2185,6 @@ fi
 
 rm -rf $install_path
 mkdir -p $install_path
-
-
 '''
         t = string.Template(pre_script)
         pre_script = t.substitute({
@@ -2246,9 +2194,6 @@ mkdir -p $install_path
 
         fd, pre_script_path = tempfile.mkstemp(suffix='.sh')
         os.fdopen(fd, 'w').write(pre_script)
-
-        def cleanup_pre_script():
-            os.remove(pre_script_path)
 
         self.install_cleanup_routine(cleanup_pre_script)
 
@@ -2266,6 +2211,7 @@ fi
         os.fdopen(fd, 'w').write(pre_script_on_rh6)
 
         def cleanup_pre_script():
+            os.remove(pre_script_path)
             os.remove(pre_script_on_rh6_path)
 
         self.install_cleanup_routine(cleanup_pre_script)
@@ -2319,65 +2265,6 @@ fi
 
         self.install_cleanup_routine(cleanup_post_script)
 
-        fd, epel6_repo = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write('''[epel]
-name=Extra Packages for Enterprise Linux 6 - $basearch
-baseurl=http://mirrors.aliyun.com/epel/6/$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
-failovermethod=priority
-enabled=1
-gpgcheck=0
-
-[epel-debuginfo]
-name=Extra Packages for Enterprise Linux 6 - $basearch - Debug
-#baseurl=http://download.fedoraproject.org/pub/epel/6/$basearch/debug
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-6&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-
-[epel-source]
-name=Extra Packages for Enterprise Linux 6 - $basearch - Source
-#baseurl=http://download.fedoraproject.org/pub/epel/6/SRPMS
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-6&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-        ''')
-
-        fd, epel7_repo = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write('''[epel]
-name=Extra Packages for Enterprise Linux 7 - $basearch
-baseurl=http://mirrors.aliyun.com/epel/7/$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
-failovermethod=priority
-enabled=1
-gpgcheck=0
-
-[epel-debuginfo]
-name=Extra Packages for Enterprise Linux 7 - $basearch - Debug
-#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch/debug
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-7&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-
-[epel-source]
-name=Extra Packages for Enterprise Linux 7 - $basearch - Source
-#baseurl=http://download.fedoraproject.org/pub/epel/7/SRPMS
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-7&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-        ''')
-        def cleanup_temp_file():
-            os.remove(epel6_repo)
-            os.remove(epel7_repo)
-
-        self.install_cleanup_routine(cleanup_temp_file)
-
         setup_account = '''id -u zstack >/dev/null 2>&1 || (useradd -d $install_path zstack && mkdir -p $install_path && chown -R zstack.zstack $install_path)
 grep 'zstack' /etc/sudoers >/dev/null || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
 grep '^root' /etc/sudoers >/dev/null || echo 'root        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
@@ -2414,8 +2301,6 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'post_script': post_script_path,
             'properties_file': ctl.properties_file_path,
             'apache_tomcat_zip_name': apache_tomcat_zip_name,
-            'epel6_repo': epel6_repo,
-            'epel7_repo': epel7_repo,
             'pypi_tar_path': pypi_tar_path,
             'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
             'pypi_path': '/tmp/pypi/',
@@ -2549,65 +2434,6 @@ class InstallWebUiCmd(Command):
             static_path = os.path.join(ctl.zstack_home, "static")
             os.system('cd %s; tar jcf pypi.tar.bz pypi' % static_path)
 
-        fd, epel6_repo = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write('''[epel]
-name=Extra Packages for Enterprise Linux 6 - $basearch
-baseurl=http://mirrors.aliyun.com/epel/6/$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=$basearch
-failovermethod=priority
-enabled=1
-gpgcheck=0
-
-[epel-debuginfo]
-name=Extra Packages for Enterprise Linux 6 - $basearch - Debug
-baseurl=http://mirrors.aliyun.com/epel/6/$basearch/debug
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-6&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-
-[epel-source]
-name=Extra Packages for Enterprise Linux 6 - $basearch - Source
-baseurl=http://mirrors.aliyun.com/epel/6/SRPMS
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-6&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-        ''')
-
-        fd, epel7_repo = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write('''[epel]
-name=Extra Packages for Enterprise Linux 7 - $basearch
-baseurl=http://mirrors.aliyun.com/epel/7/$basearch
-#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
-failovermethod=priority
-enabled=1
-gpgcheck=0
-
-[epel-debuginfo]
-name=Extra Packages for Enterprise Linux 7 - $basearch - Debug
-#baseurl=http://download.fedoraproject.org/pub/epel/7/$basearch/debug
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-debug-7&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-
-[epel-source]
-name=Extra Packages for Enterprise Linux 7 - $basearch - Source
-#baseurl=http://download.fedoraproject.org/pub/epel/7/SRPMS
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-source-7&arch=$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-        ''')
-
-        def cleanup_temp_file():
-            os.remove(epel6_repo)
-            os.remove(epel7_repo)
-
-        self.install_cleanup_routine(cleanup_temp_file)
-
         yaml = '''---
 - hosts: $host
   remote_user: root
@@ -2617,6 +2443,9 @@ gpgcheck=0
       yum_repo: "$yum_repo"
 
   tasks:
+    - name: pre-install script
+      script: $pre_install_script
+
     - name: set RHEL7 yum repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
       shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
@@ -2665,6 +2494,18 @@ gpgcheck=0
 
 '''
 
+        pre_script = '''
+echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+'''
+        fd, pre_script_path = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write(pre_script)
+
+        def cleanup_prescript():
+            os.remove(pre_script_path)
+
+        self.install_cleanup_routine(cleanup_prescript)
         t = string.Template(yaml)
         if args.yum:
             yum_repo = args.yum
@@ -2674,13 +2515,12 @@ gpgcheck=0
             "src": ui_binary_path,
             "dest": os.path.join('/tmp', ui_binary),
             "host": args.host,
+            'pre_install_script': pre_script_path,
             'pypi_tar_path': pypi_tar_path,
             'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
             'pypi_path': '/tmp/pypi/',
-            "epel6_repo": epel6_repo ,
             'yum_folder': ctl.zstack_home,
-            'yum_repo': yum_repo,
-            "epel7_repo": epel7_repo
+            'yum_repo': yum_repo
         })
 
         ansible(yaml, args.host, ssh_key=args.ssh_key)

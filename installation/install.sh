@@ -38,8 +38,8 @@ ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
 ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 zstack_local_repo_file=/etc/yum.repos.d/zstack-local.repo
-zstack_163_repo_file=/etc/yum.repos.d/163-yum.repo
-zstack_ali_repo_file=/etc/yum.repos.d/aliyun-yum.repo
+zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
+zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
@@ -304,16 +304,16 @@ cs_check_epel(){
             if [ -z $QUIET_INSTALLATION ]; then
                 fail 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
 Or you can choose to use -R 163 or -R aliyun to install.
-Or you can add -q to ask installer to help you.'
-            else
-                cat > /etc/yum.repos.d/epel.repo << EOF
-[epel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearch
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
-enabled=1
-gpgcheck=0
-EOF
-                SETUP_EPEL='y'
+Or if you have set the epel in other file, rather than /etc/yum.repos.d/epel.repo, you can add -q to ask installer to ignore checking.'
+#            else
+#                cat > /etc/yum.repos.d/epel.repo << EOF
+#[epel]
+#name=Extra Packages for Enterprise Linux \$releasever - \$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
+#enabled=1
+#gpgcheck=0
+#EOF
+#                SETUP_EPEL='y'
             fi
         fi
     fi
