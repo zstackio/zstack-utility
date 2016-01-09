@@ -3,6 +3,7 @@
 # Usage: bash install.sh
 #DEBUG='y'
 PRODUCT_NAME=${PRODUCT_NAME:-"ZStack"}
+VERSION=${PRODUCT_VERSION:-""}
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 
 CENTOS6='CENTOS6'
@@ -202,6 +203,17 @@ fail(){
     exit 1
 }
 
+#not for spin task fail
+fail2(){
+    tput cub 6
+    echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    echo -e "$(tput setaf 1)  Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    echo "-------------"
+    echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
+    echo "-------------"
+    exit 1
+}
+
 pass(){
     #echo -e "$(tput setaf 2) PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     return
@@ -226,7 +238,7 @@ cs_check_hostname(){
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
     [ $? -ne 0 ] && return 0
     if [ -z $QUIET_INSTALLATION ]; then
-        fail "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
+        fail2 "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
 Please fix it by running following commands in CentOS7:
 
     hostnamectl set-hostname MY_REAL_HOSTNAME
@@ -266,10 +278,10 @@ check_system(){
                 OS=$CENTOS7
                 rpm -q libvirt |grep 1.1.1-29 >/dev/null 2>&1
                 if [ $? -eq 0 ]; then
-                    fail "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
+                    fail2 "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
                 fi
             else
-                fail "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
+                fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
             fi
         fi
     else
@@ -277,7 +289,7 @@ check_system(){
         if [ $? -eq 0 ]; then
             OS=$UBUNTU1404
         else
-            fail "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
+            fail2 "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
         fi
     fi
     
@@ -285,7 +297,7 @@ check_system(){
         yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos6_repo"
         #only support online installation for CentoS6.x
         if [ -z "$YUM_ONLINE_REPO" -a -z "$ZSTACK_YUM_MIRROR" ]; then
-            fail "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please do not use '-o' option to install. "
+            fail2 "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please do not use '-o' option to install. "
         fi
         yum_source="file://${yum_repo_folder}"
     elif [ $OS = $CENTOS7 ]; then
@@ -293,8 +305,8 @@ check_system(){
         yum_source="file://${yum_repo_folder}"
     fi
     debug "Your system is: $OS"
-    do_check_system
-    show_spinner cs_check_epel
+    cs_check_epel
+    show_spinner do_check_system
 }
 
 cs_check_epel(){
@@ -302,7 +314,7 @@ cs_check_epel(){
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
             if [ -z $QUIET_INSTALLATION ]; then
-                fail 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
+                fail2 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
 Or you can choose to use -R 163 or -R aliyun to install.
 Or if you have set the epel in other file, rather than /etc/yum.repos.d/epel.repo, you can add -q to ask installer to ignore checking.'
 #            else
@@ -992,7 +1004,7 @@ cs_gen_sshkey(){
         fi
     fi
     if [ -x /sbin/restorecon ]; then
-        /sbin/restorecon /root/.ssh /root/.ssh/authorized_keys
+        /sbin/restorecon /root/.ssh /root/.ssh/authorized_keys >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     pass
 }
@@ -1677,7 +1689,7 @@ if [ $UPGRADE = 'y' ]; then
     upgrade_zstack
     rm -rf $upgrade_zstack
 
-    VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
+    [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
     echo ""
     echo_star_line
     echo "${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been upgraded to ${VERSION}"
@@ -1714,7 +1726,7 @@ install_zstack
 #Post Configuration, including apache, zstack-server, NFS Server, HTTP Server
 config_system
 
-if [ -f $ZSTACK_VERSION ]; then
+if [ -f $ZSTACK_VERSION -a -z "$VERSION" ]; then
     VERSION=`cat $ZSTACK_VERSION`' '
 else
     VERSION=''
@@ -1755,7 +1767,7 @@ fi
 start_dashboard
 
 #Print all installation message
-VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
+[ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
 
 echo ""
 echo_star_line

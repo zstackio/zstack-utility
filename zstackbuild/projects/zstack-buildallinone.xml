@@ -26,11 +26,19 @@
         <move file="${allinone.file}" todir="${allinone.bin.dir}" />
         <copy file="${zstack.install}" todir="${allinone.bin.dir}" />
         <exec executable="bash" dir="${allinone.bin.dir}" failonerror="true">
+            <arg value="${offline.bin.gen.setup.script}" />
+            <arg value="${product.name}" />
+            <arg value="${product.version}" />
+            <arg value="${offline.bin.setup.script}" />
+        </exec>
+
+        <exec executable="bash" dir="${allinone.bin.dir}" failonerror="true">
             <arg value="${gen.product.title.script}" />
             <arg value="${product.name}" />
             <arg value="${product.version}" />
             <arg value="${allinone.bin.product.title}" />
         </exec>
+
         <tar destfile="${allinone.offline.file}" basedir="${allinone.bin.dir}" />
         <exec executable="bash" dir="${build.dir}" failonerror="true">
             <arg value="${build.installation.bin.script}" />
