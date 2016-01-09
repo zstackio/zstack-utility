@@ -34,13 +34,13 @@
         - wget
         - qemu-utils
 
-    - name: RHEL7 specific packages from local
+    - name: RHEL7 specific packages from user defined repos
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repos != 'false'
-      shell: "yum clean metadata && yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y iptables-services && yum clean metadata"
+      shell: "rpm -q iptables-services || (yum clean metadata && yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y iptables-services && yum clean metadata)"
 
     - name: RHEL7 specific packages from online
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repos == 'false'
-      shell: "yum clean metadata && yum --nogpgcheck install -y iptables-services"
+      shell: "rpm -q iptables-services || (yum clean metadata && yum --nogpgcheck install -y iptables-services) "
 
     - name: disable firewalld in RHEL7 and Centos7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
