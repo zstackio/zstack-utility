@@ -29,7 +29,7 @@
 
     - name: install appliance vm related packages on RedHat based OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repos != 'false'
-      shell: "yum clean metadata && yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y haproxy dnsmasq && yum clean metadata"
+      shell: "yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y haproxy dnsmasq"
 
     - name: install virtual router related packages for Debian
       apt: name=dnsmasq

@@ -24,7 +24,7 @@
 
     - name: install appliance vm related packages on RedHat based OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repos != 'false'
-      shell: "yum clean metadata && yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y iputils tcpdump ethtool && yum clean metadata"
+      shell: "yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y iputils tcpdump ethtool"
 
     - name: install appliance vm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
