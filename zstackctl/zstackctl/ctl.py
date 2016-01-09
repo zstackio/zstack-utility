@@ -1270,7 +1270,7 @@ class InstallDbCmd(Command):
 
     - name: install MySQL for RedHat 6 through user defined repos
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql mysql-server && yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql mysql-server 
       register: install_result
 
     - name: install MySQL for RedHat 6 through system defined repos
@@ -1280,7 +1280,7 @@ class InstallDbCmd(Command):
 
     - name: install MySQL for RedHat 7 from local
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server && yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server 
       register: install_result
 
     - name: install MySQL for RedHat 7 from local
@@ -1487,7 +1487,7 @@ class InstallRabbitCmd(Command):
 
     - name: install RabbitMQ on RedHat OS from user defined yum repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y rabbitmq-server libselinux-python && yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y rabbitmq-server libselinux-python 
 
     - name: install RabbitMQ on RedHat OS from online
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
@@ -2146,7 +2146,7 @@ class InstallManagementNodeCmd(Command):
 
     - name: install dependencies on RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python && yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python 
 
     - name: install dependencies on RedHat OS from system repos
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
@@ -2173,19 +2173,19 @@ class InstallManagementNodeCmd(Command):
 
     - name: install MySQL client for RedHat 6 from user defined repos
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql && yum clean metadata
+      shell: yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql
 
     - name: install MySQL client for RedHat 6 from system repo
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y mysql
+      shell: yum --nogpgcheck install -y mysql
 
     - name: install MySQL client for RedHat 7 from user defined repos
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mariadb && yum clean metadata
+      shell: yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mariadb 
 
     - name: install MySQL client for RedHat 7 from system repos
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y mariadb
+      shell: yum --nogpgcheck install -y mariadb
 
     - name: install MySQL client for Ubuntu
       when: ansible_os_family == 'Debian'
@@ -2627,7 +2627,7 @@ gpgcheck=0
 
     - name: install Python pip for RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf && yum clean metadata
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf
 
     - name: install Python pip for RedHat OS from system repo
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
