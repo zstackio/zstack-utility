@@ -1783,7 +1783,7 @@ echo ""
 echo " - ${PRODUCT_NAME} command line tool is installed: zstack-cli"
 echo " - ${PRODUCT_NAME} control tool is installed: zstack-ctl"
 echo ""
-echo -e " - For system security, $(tput setaf 4) Mysql root password is set to: $MYSQL_NEW_ROOT_PASSWORD $(tput sgr0) . You can use \`mysqladmin -u root --password=$MYSQL_NEW_ROOT_PASSWORD password NEW_PASSWORD\` to change it."
+echo -e " - For system security, $(tput setaf 4) database root password is set to: $MYSQL_NEW_ROOT_PASSWORD $(tput sgr0) . You can use \`mysqladmin -u root --password=$MYSQL_NEW_ROOT_PASSWORD password NEW_PASSWORD\` to change it. To be noticed: ${PRODUCT_NAME} will use 'zstack' user to access database. Change 'root' password won't impact 'zstack' access database."
 echo ""
 if [ ! -z QUIET_INSTALLATION ]; then
     if [ -z "$CHANGE_HOSTNAME" -a -z "$CHANGE_HOSTS" -a -z "$DELETE_PY_CRYPTO" -a -z "$SETUP_EPEL" ];then
