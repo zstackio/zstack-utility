@@ -1133,8 +1133,11 @@ class Vm(object):
             tune = e(root, 'cputune')
             e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
             #enable nested virtualization
-            if cmd.nestedVirtualization:
+            if cmd.nestedVirtualization == 'host-model':
                 cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                e(cpu, 'model', attrib={'fallback': 'allow'})
+            elif cmd.nestedVirtualization == 'host-passthrough':
+                cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                 e(cpu, 'model', attrib={'fallback': 'allow'})
         
         def make_memory():
