@@ -126,7 +126,19 @@
 
     <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb, build-cephp, build-zstack-agent" />
 
-    <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, assemble-agent-server, assemble-agent-collectd, copy-pypi-source" />
+    <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, assemble-agent-server, assemble-agent-collectd, copy-pypi-source" >
+        <makeDir dir="${libs.dir}" />
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos6.unzip.rpm}" />
+            <arg value="./" />
+        </exec>
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos7.unzip.rpm}" />
+            <arg value="./" />
+        </exec>
+    </target>
 
     <target name="assemble" depends="pre-assemble, zip-war" >
         <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-${product.version}.bin" />
