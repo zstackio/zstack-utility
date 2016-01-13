@@ -484,7 +484,12 @@ ia_update_apt(){
     dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
     apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "Update apt source fail."
+    if [ $? -ne 0 ]; then 
+        if [ -z $QUIET_INSTALLATION ]; then
+            fail "Update apt source fail. If you do not need apt-get update, please add option '-q' and restart the installation. "
+        fi
+        echo "Update apt source failed. But you choose to skip the failure. " >>$ZSTACK_INSTALL_LOG
+    fi
     pass
 }
 
