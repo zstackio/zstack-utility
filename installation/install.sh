@@ -565,12 +565,10 @@ iz_install_unzip(){
         pass
         return
     fi
-    if [ -z $ZSTACK_YUM_REPOS ]; then
-        yum install -y unzip  >>$ZSTACK_INSTALL_LOG 2>&1
-    elif [ -z $YUM_ONLINE_REPO ]; then
-        rpm -ivh $unzip_rpm >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $OS = $CENTOS6 ]; then
+        rpm -ivh $unzip_el6_rpm >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y unzip >>$ZSTACK_INSTALL_LOG 2>&1
+        rpm -ivh $unzip_el7_rpm >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "Install unzip fail."
     pass
@@ -1537,7 +1535,7 @@ do
         l ) ONLY_INSTALL_LIBS='y';;
         m ) INSTALL_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
-        o ) YUM_ONLINE_REPO='';;
+        o ) YUM_ONLINE_REPO='';; #offline
         P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
@@ -1575,7 +1573,8 @@ echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG
 echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 
 pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
-unzip_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*.rpm"
+unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*.rpm"
+unzip_el6_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el6*.rpm"
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
     echo "Cannot not identify default network interface. Please set management
