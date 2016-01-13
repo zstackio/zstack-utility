@@ -1678,7 +1678,9 @@ fi
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
 
-create_yum_repo
+if [ $OS != $UBUNTU1404 ]; then
+    create_yum_repo
+fi
 
 #Download ${PRODUCT_NAME} all in one package
 download_zstack
