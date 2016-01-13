@@ -717,10 +717,11 @@ is_enable_ntpd(){
     echo_subtitle "Enable NTP"
     if [ $OS != $UBUNTU1404 ];then
         chkconfig ntpd on >>$ZSTACK_INSTALL_LOG 2>&1
+        service ntpd restart >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        update-rc.d ntpd defaults >>$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d ntp defaults >>$ZSTACK_INSTALL_LOG 2>&1
+        service ntp restart >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-    service ntpd restart >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to enable ntpd service."
     fi
