@@ -3142,7 +3142,7 @@ class InstallLicenseCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--license', help="path to the license file", required=True)
+        parser.add_argument('--license', '-l', help="path to the license file", required=True)
         parser.add_argument('--prikey', help="[OPTIONAL] the path to the private key used to generate license request")
 
     def run(self, args):
