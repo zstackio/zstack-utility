@@ -311,6 +311,7 @@ check_system(){
 
 cs_check_epel(){
     [ -z $YUM_ONLINE_REPO ] && return
+    [ ! -z $ZSTACK_YUM_MIRROR ] && return
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
             if [ -z $QUIET_INSTALLATION ]; then
@@ -527,6 +528,7 @@ upgrade_zstack(){
                 show_spinner sz_start_cassandra
                 show_spinner sz_start_kairosdb
             fi
+            show_spinner cs_config_zstack_properties
             show_spinner sz_start_zstack
         fi
     fi
@@ -953,6 +955,7 @@ config_system(){
     echo ""
     #show_spinner cs_flush_iptables
     show_spinner cs_config_zstack_properties
+    show_spinner cs_config_generate_ssh_key
     show_spinner cs_config_tomcat
     show_spinner cs_install_zstack_service
     if [ ! -z $NEED_NFS ];then
@@ -970,12 +973,20 @@ cs_config_zstack_properties(){
         zstack-ctl configure Ansible.var.yum_repo=$ZSTACK_YUM_REPOS
     fi
     if [ $? -ne 0 ];then
-        fail "failed to add user pypi config to $ZSTACK_PROPERTIES"
+        fail "failed to add yum repo to $ZSTACK_PROPERTIES"
     fi
+    pass
+}
+
+cs_config_generate_ssh_key(){
+    echo_subtitle "Generate Local Ssh keys"
     #generate local ssh key
     rsa_key_folder=${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/rsaKeys
     /bin/rm -f ${rsa_key_folder}/*
-    ssh-keygen -f ${rsa_key_folder}/id_rsa -N '' -q
+    ssh-keygen -f ${rsa_key_folder}/id_rsa -N '' -q >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        fail "failed to generate local ssh keys in ${rsa_key_folder}"
+    fi
     chown -R zstack.zstack ${rsa_key_folder}
     pass
 }
