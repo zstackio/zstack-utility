@@ -925,8 +925,9 @@ Parse command parameters error:
         try:
             self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
         except:
-            print "Read history file: %s error, please manually delete it." % CLI_RESULT_HISTORY_KEY
-            return
+            os.system('rm -rf %s' % CLI_RESULT_HISTORY_KEY)
+            self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
+            print "\nRead history file: %s error. Has recreate it.\n" % CLI_RESULT_HISTORY_KEY
 
         self.start_key = 'start_key'
         self.last_key = 'last_key'
