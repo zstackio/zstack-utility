@@ -638,7 +638,7 @@ Parse command parameters error:
                 if not 'password=' in cmd2:
                     cmds2.append(cmd2)
                 else:
-                    cmds2.append(cmd2.split('=')[0] + '=')
+                    cmds2.append(cmd2.split('=')[0] + '=' + '******')
             cmd = ' '.join(cmds2)
 
         self.hd.set(str(start_value), [cmd, success])
