@@ -53,6 +53,23 @@ query_param_keys = \
         ['conditions', 'count', 'limit', 'start', 'timeout', \
         'replyWithCount', 'sortBy', 'sortDirection', 'fields']
 
+def clean_password_in_cli_history():
+    cmd_historys = open(CLI_HISTORY, 'r').readlines()
+    new_cmd_historys = []
+    for cmd in cmd_historys:
+        if 'password=' in cmd:
+            cmd_params = cmd.split()
+            cmd_list = []
+            for param in cmd_params:
+                if not 'password=' in param:
+                    cmd_list.append(param)
+                else:
+                    cmd_list.append(param.split('=')[0] + '=')
+            new_cmd_historys.append(' '.join(cmd_list))
+        else:
+            new_cmd_historys.append(cmd)
+    open(CLI_HISTORY, 'w').write('\n'.join(new_cmd_historys))
+
 class CliError(Exception):
     '''Cli Error'''
 
@@ -475,6 +492,7 @@ Parse command parameters error:
                 import atexit
                 if not os.path.exists(os.path.dirname(CLI_HISTORY)):
                     os.system('mkdir -p %s' % os.path.dirname(CLI_HISTORY))
+                atexit.register(clean_password_in_cli_history)
                 atexit.register(readline.write_history_file, CLI_HISTORY)
                 sys.exit(1)
             except (KeyboardInterrupt):
