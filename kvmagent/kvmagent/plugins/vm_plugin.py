@@ -294,7 +294,19 @@ class LibvirtAutoReconnect(object):
 
         LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, lifecycle_callback, None)
 
-        LibvirtAutoReconnect.conn.setKeepAlive(5, 3)
+        # NOTE: the keepalive doesn't work on some libvirtd even the versions are the same
+        # the error is like "the caller doesn't support keepalive protocol; perhaps it's missing event loop implementation"
+
+        # def start_keep_alive(_):
+        #     try:
+        #         LibvirtAutoReconnect.conn.setKeepAlive(5, 3)
+        #         return True
+        #     except Exception as e:
+        #         logger.warn('unable to start libvirt keep-alive, %s' % str(e))
+        #         return False
+        #
+        # if not linux.wait_callback_success(start_keep_alive, timeout=5, interval=0.5):
+        #     raise Exception('unable to start libvirt keep-alive after 5 seconds, see the log for detailed error')
 
     @lock.lock('libvirt-reconnect')
     def _reconnect(self):
