@@ -321,7 +321,16 @@ cs_check_epel(){
 
 Or you can choose to use -R 163 or -R aliyun to install.
 
-Or if you have set the epel in other file, rather than /etc/yum.repos.d/epel.repo, you can add -q to ask installer to ignore checking.'
+Or if you have set the epel in other file, rather than /etc/yum.repos.d/epel.repo, you can add -q to ask installer to ignore checking. The example for /etc/yum.repos.d/epel.repo is like:
+
+#cat /etc/yum.repos.d/epel.repo
+[epel]
+name=Extra Packages for Enterprise Linux \$releasever - \$basearch
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
+enabled=1
+gpgcheck=0
+
+'
 #            else
 #                cat > /etc/yum.repos.d/epel.repo << EOF
 #[epel]
