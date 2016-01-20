@@ -17,7 +17,7 @@
         </condition>
 
         <exec executable="bash" dir="${zstack.source}" failonerror="true">
-            <arg value="${war.zstack.script}" />
+            <arg value="${war.build.script}" />
             <arg value="${zstack.source}" />
         </exec>
 
