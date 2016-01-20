@@ -10,10 +10,15 @@
             <arg value="${zstack.build_version}" />
         </exec>
 
-        <exec executable="mvn" dir="${zstack.source}" failonerror="true">
-            <arg value="-DskipTests" />
-            <arg value="clean" />
-            <arg value="install" />
+        <condition property="war.build.script" value="${build.premium.war.script}" else="${build.zstack.war.script}">
+            <and>
+                <isset property="build_war_flag"/>
+            </and>
+        </condition>
+
+        <exec executable="bash" dir="${zstack.source}" failonerror="true">
+            <arg value="${war.zstack.script}" />
+            <arg value="${zstack.source}" />
         </exec>
 
         <copy file="${zstack.source}/build/target/zstack.war" todir="${build.dir}" overwrite="true" />
