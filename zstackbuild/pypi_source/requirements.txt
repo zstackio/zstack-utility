@@ -30,3 +30,5 @@ urllib3==1.10.4
 virtualenv==12.1.1
 websockify==0.6.1
 Werkzeug==0.10.4
+flask-socketio==0.6.0
+versiontools==1.7

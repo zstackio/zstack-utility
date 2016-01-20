@@ -11,6 +11,8 @@ except:
 
 import readline
 import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
 import shlex
 import hashlib
 import optparse
@@ -51,6 +53,23 @@ query_param_keys = \
         ['conditions', 'count', 'limit', 'start', 'timeout', \
         'replyWithCount', 'sortBy', 'sortDirection', 'fields']
 
+def clean_password_in_cli_history():
+    cmd_historys = open(CLI_HISTORY, 'r').readlines()
+    new_cmd_historys = []
+    for cmd in cmd_historys:
+        if 'password=' in cmd:
+            cmd_params = cmd.split()
+            cmd_list = []
+            for param in cmd_params:
+                if not 'password=' in param:
+                    cmd_list.append(param)
+                else:
+                    cmd_list.append(param.split('=')[0] + '=')
+            new_cmd_historys.append(' '.join(cmd_list))
+        else:
+            new_cmd_historys.append(cmd)
+    open(CLI_HISTORY, 'w').write('\n'.join(new_cmd_historys))
+
 class CliError(Exception):
     '''Cli Error'''
 
@@ -87,7 +106,7 @@ class Cli(object):
 
     def complete(self, pattern, index):
         '''
-        pattern is current input. index is current matched number of list. 
+        pattern is current input. index is current matched number of list.
         complete will be kept calling, until it return None.
         '''
         def prepare_primitive_fields_words(apiname, separator='=', prefix=''):
@@ -239,8 +258,8 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 except Exception as e:
                     err_msg = """
 Parse command parameters error:
-  eval '%s' error for: '%s' 
-  the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]" 
+  eval '%s' error for: '%s'
+  the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]"
                           """ % (value_string, key)
                     self.print_error(err_msg)
                     raise e
@@ -269,7 +288,11 @@ Parse command parameters error:
 
                 if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
                     all_params[params[0]] = eval(params[1])
+                elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg', 'APIMonitoringPassThroughMsg'] and params[0] == 'query':
+                    all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and params[0] == 'networkServices':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APIDetachNetworkServiceFromL3NetworkMsg' and params[0] == 'networkServices':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreatePolicyMsg' and params[0] == 'statements':
                     all_params[params[0]] = eval_string(params[0], params[1])
@@ -469,6 +492,7 @@ Parse command parameters error:
                 import atexit
                 if not os.path.exists(os.path.dirname(CLI_HISTORY)):
                     os.system('mkdir -p %s' % os.path.dirname(CLI_HISTORY))
+                atexit.register(clean_password_in_cli_history)
                 atexit.register(readline.write_history_file, CLI_HISTORY)
                 sys.exit(1)
             except (KeyboardInterrupt):
@@ -632,7 +656,7 @@ Parse command parameters error:
                 if not 'password=' in cmd2:
                     cmds2.append(cmd2)
                 else:
-                    cmds2.append(cmd2.split('=')[0] + '=')
+                    cmds2.append(cmd2.split('=')[0] + '=' + '******')
             cmd = ' '.join(cmds2)
 
         self.hd.set(str(start_value), [cmd, success])
@@ -919,8 +943,9 @@ Parse command parameters error:
         try:
             self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
         except:
-            print "Read history file: %s error, please manually delete it." % CLI_RESULT_HISTORY_KEY
-            return
+            os.system('rm -rf %s' % CLI_RESULT_HISTORY_KEY)
+            self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
+            print "\nRead history file: %s error. Has recreate it.\n" % CLI_RESULT_HISTORY_KEY
 
         self.start_key = 'start_key'
         self.last_key = 'last_key'

@@ -22,7 +22,7 @@ logger = log.get_logger(__name__)
 
 class LinuxError(Exception):
     ''' some utils failed '''
-    
+
 class InvalidNfsUrlError(Exception):
     '''The NFS url is invalid'''
     def __init__(self, url, msg):
@@ -170,7 +170,7 @@ def is_mounted(path=None, url=None):
         cmdstr = "mount | grep '%s'" % url
     else:
         raise Exception('path and url cannot both be None')
-        
+
     cmd = shell.ShellCmd(cmdstr)
     cmd(is_exception=False)
     return cmd.return_code == 0
@@ -179,10 +179,10 @@ def mount(url, path):
     cmd = shell.ShellCmd("mount | grep '%s'" % path)
     cmd(is_exception=False)
     if cmd.return_code == 0: raise MountError(url, '%s is occupied by another device. Details[%s]' % (path, cmd.stdout))
-    
+
     if not os.path.exists(path):
         os.makedirs(path, 0775)
-        
+
     shell.ShellCmd("mount %s %s" % (url, path))()
 
 def umount(path, is_exception=True):
@@ -199,7 +199,7 @@ def is_valid_nfs_url(url):
         socket.gethostbyname(host)
     except socket.gaierror:
         raise InvalidNfsUrlError(url, '%s cannont resolve to ip address' % host)
-    
+
     if not os.path.isabs(path): raise InvalidNfsUrlError(url, '%s is not an absolute path' % path)
     return True
 
@@ -230,7 +230,7 @@ def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callba
         except Exception as e:
             logger.debug('%s may have not been ready, %s' % (dst, str(e)))
             return None
-    
+
     def get_file_size(url):
         output = shell.ShellCmd('curl --head %s' % url)()
         for l in output.split('\n'):
@@ -244,7 +244,7 @@ def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callba
     src_file = os.path.join(workdir, os.path.basename(url))
     if os.path.exists(src_file):
         os.remove(src_file)
-        
+
     if not cert_check:
         cmdlst.append('--no-check-certificate')
     cmdlst.append(url)
@@ -252,9 +252,9 @@ def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callba
         cmdlst.append('-O %s' % rename)
         dst_file = os.path.join(workdir, rename)
     cmdlst.append('2>/dev/null')
-    
+
     cmd = ' '.join(cmdlst)
-    
+
     is_support_file_size, filesize = get_file_size(url)
     if is_support_file_size:
         process = subprocess.Popen(cmd, shell=True, executable='/bin/sh', cwd=workdir)
@@ -305,7 +305,7 @@ def mkdir(path, mode):
         return
     elif os.path.exists(path):
         raise LinuxError('%s exists but it is not a directory' % path)
-    
+
     os.makedirs(path, mode)
 
 def write_to_temp_file(content):
@@ -347,10 +347,10 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
 def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root'):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
-    
+
     if not os.path.exists(src_filepath):
         raise LinuxError('cannot find file[%s] to upload to %s@%s:%s' % (src_filepath, host_account, hostname, dst_filepath))
-    
+
     sshkey_file = create_ssh_key_file()
     shell.call('chmod 600 %s' % sshkey_file)
     try:
@@ -362,11 +362,11 @@ def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root'
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
-    
+
 def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, callback=None, callback_data=None):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
-    
+
     def get_file_size():
         try:
             keyfile_path = create_ssh_key_file()
@@ -383,7 +383,7 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
                 os.remove(keyfile_path)
             if batch_file_path:
                 os.remove(batch_file_path)
-    
+
     def caculate_percentage(total_size):
         if os.path.exists(download_to):
             curr_size = os.path.getsize(download_to)
@@ -391,8 +391,8 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
             return round(float(curr_size)/float(total_size) * 100, 2)
         else:
             return 0.0
-            
-    
+
+
     keyfile_path = None
     batch_file_path = None
     try:
@@ -410,30 +410,30 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
                 process.kill()
                 is_timeout = True
                 break
-            
+
             if callback:
                 percentage = caculate_percentage(file_size)
                 try:
                     callback(str(percentage), callback_data)
                 except Exception:
                     pass
-                
+
         src_file = '%s/%s' % (hostname, filename)
         if is_timeout: raise LinuxError('sftp get %s timeout after %s seconds' % (src_file, timeout))
         if process.returncode != 0 : raise LinuxError('sftp get %s failed, because %s' % (src_file, process.stderr))
         if callback:
             callback("100.0", callback_data)
-        
+
         return process.returncode
     except Exception as e:
         try:
             process.terminate()
         except:
             pass
-        
+
         if os.path.exists(download_to):
             os.remove(download_to)
-        
+
         raise e
     finally:
         if keyfile_path:
@@ -452,6 +452,10 @@ def raw_clone(src, dst):
 def qcow2_create(dst, size):
     shell.ShellCmd('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))()
     shell.ShellCmd('chmod 666 %s' % dst)()
+
+def qcow2_create_with_backing_file(backing_file, dst):
+    shell.call('/usr/bin/qemu-img create -f qcow2 -b %s %s' % (backing_file, dst))
+    shell.call('chmod 666 %s' % dst)
 
 def raw_create(dst, size):
     shell.ShellCmd('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))()
@@ -537,7 +541,7 @@ def delete_bridge(bridge_name):
     vifs = get_all_bridge_interface(bridge_name)
     for vif in vifs:
         shell.ShellCmd("brctl delif %s %s" % (bridge_name, vif))()
-    
+
     shell.ShellCmd("ip link set %s down" % bridge_name)()
     shell.ShellCmd("brctl delbr %s" % bridge_name)()
 
@@ -556,7 +560,7 @@ def find_bridge_having_physical_interface(ifname):
 
         if ifname == iface_name:
             return br_name
-    
+
     return None
 
 def find_route_interface_by_destination_ip(ip_addr):
@@ -595,7 +599,7 @@ def create_bridge(bridge_name, interface, move_route=True):
     br_name = find_bridge_having_physical_interface(interface)
     if br_name and br_name != bridge_name:
         raise Exception('failed to create bridge[{0}], physical interface[{1}] has been occupied by bridge[{2}]'.format(bridge_name, interface, br_name))
-    
+
     if br_name == bridge_name:
         return
 
@@ -609,10 +613,10 @@ def create_bridge(bridge_name, interface, move_route=True):
         raise LinuxError("network device[%s] is not existing" % interface)
 
     shell.call("brctl addif %s %s" % (bridge_name, interface))
-    
+
     if not move_route:
         return
-    
+
     out = shell.call('ip addr show dev %s | grep "inet "' % interface, exception=False)
     if not out:
     	logger.debug("Interface %s doesn't set ip address yet. No need to move route. " % interface)
@@ -652,7 +656,7 @@ def wait_callback_success(callback, callback_data=None, timeout=60,
     next calling. When callback result is not 'False', will directly return
     the result. When timeout, it will return False.
 
-    If callback meets exception, it will defaultly directly return False, 
+    If callback meets exception, it will defaultly directly return False,
     unless exception_result is set to True.
     '''
     count = time.time()
@@ -669,7 +673,7 @@ def wait_callback_success(callback, callback_data=None, timeout=60,
                 logger.debug('Meet exception when call %s through wait_callback_success: %s' % (callback.__name__, get_exception_stacktrace()))
                 raise e
             time.sleep(interval)
-    
+
     return False
 
 def get_process_up_time_in_second(pid):
@@ -703,11 +707,11 @@ def get_cpu_num():
     return int(out)
 
 def get_cpu_speed():
-    max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'    
+    max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'
     if os.path.exists(max_freq):
         out = shell.ShellCmd('cat %s' % max_freq)()
         return int(float(out) / 1000)
-    
+
     out = shell.ShellCmd("cat /proc/cpuinfo  | grep 'cpu MHz' | tail -n 1")()
     (name, speed) = out.split(':')
     speed = speed.strip()
@@ -719,6 +723,14 @@ def full_path(path):
         return os.path.expanduser(path)
     else:
         return os.path.abspath(path)
+
+def get_pid_by_process_param(param):
+    cmd = shell.ShellCmd('''set -o pipefail; ps -aux | grep "[%s]%s" | sed 's/\s\s*/ /g' | cut -f 2 -d " "''' % (param[0], param[1:]))
+    output = cmd(False)
+    if cmd.return_code != 0:
+        return None
+    output = output.strip(" \t\n\r")
+    return int(output)
 
 def get_pid_by_process_name(name):
     cmd = shell.ShellCmd('ps -ae | grep %s' % name)
@@ -778,7 +790,7 @@ def get_nic_name_from_alias(nicnames):
 #         if i == '':
 #             continue
 #         lines.append(i)
-#         
+#
 #     i = 0
 #     nic_names = []
 #     while(i < len(lines)):
@@ -803,7 +815,7 @@ def int_to_ip_string(ip):
             str((ip & 0x0000ff00) >> 8) + '.' +
             str((ip & 0x000000ff))
             )
-           
+
 def delete_vlan_eth(vlan_dev_name):
     if not is_network_device_existing(vlan_dev_name):
         return
@@ -814,7 +826,7 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
     if not is_network_device_existing(ethname):
         raise LinuxError('cannot find ethernet device %s' % ethname)
-    
+
     vlan_dev_name = '%s.%s' % (ethname, vlan)
     if not is_network_device_existing(vlan_dev_name):
         shell.call('vconfig add %s %s' % (ethname, vlan))
@@ -842,20 +854,20 @@ def find_process_by_cmdline(cmdlines):
         try:
             with open(os.path.join('/proc', pid, 'cmdline'), 'r') as fd:
                 cmdline = fd.read()
-            
+
             is_find = True
             for c in cmdlines:
                 if c not in cmdline:
                     is_find = False
                     break
-                
+
             if not is_find:
                 continue
-            
+
             return pid
         except IOError:
             continue
-        
+
     return None
 
 def error_if_path_missing(path):
@@ -866,14 +878,14 @@ def property_file_to_list(filepath):
     error_if_path_missing(filepath)
     with open(filepath, 'r') as fd:
         content = fd.read()
-    
+
     ps = []
     for p in content.split('\n'):
         p = p.strip()
         # skip comments
         if p == '' or p.startswith('#'):
             continue
-        
+
         kv = p.split('=', 1)
         if len(kv) != 2:
             err = '%s is not a valid property, property must be defined as "property_name=property_value"' % p
@@ -900,14 +912,14 @@ def arping(nic_name, ip):
 def create_vip_if_not_exists(nic_mac, ip, netmask):
     if get_nic_name_by_ip(ip):
         return
-    
+
     create_vip(nic_mac, ip, netmask)
 
 def create_vip(nic_mac, ip, netmask):
     nic_names = get_nic_names_by_mac(nic_mac)
     if not nic_names:
         raise LinuxError('cannot find any nic matching to mac[%s]' % nic_mac)
-    
+
     def find_next_device_id():
         base_name = None
         devids = []
@@ -918,19 +930,19 @@ def create_vip(nic_mac, ip, netmask):
                 base_name = name_pair[0]
                 continue
             devids.append(name_pair[1])
-        
+
         assert base_name
         if len(nic_names) == 1:
             return (base_name, 0)
 
         devids.sort()
-        
+
         length = len(devids)
         target_dev_id = None
         for did in devids:
             devid = int(did)
             index = devids.index(did)
-            
+
             if index == length-1:
                 # last item
                 target_dev_id = devid+1
@@ -942,7 +954,7 @@ def create_vip(nic_mac, ip, netmask):
                     target_dev_id = devid+1
                     break
         return (base_name, target_dev_id)
-    
+
     (base_name, dev_id) = find_next_device_id()
     dev_name =  '%s:%s' % (base_name, dev_id)
     shell.call('ifconfig %s %s netmask %s' % (dev_name, ip, netmask))
@@ -962,17 +974,17 @@ def delete_vip_by_ip(vip):
 
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
-        The default search parent path depth is 2. It means loader will only 
+        The default search parent path depth is 2. It means loader will only
         try to find the component in its parent folder and all sub folders in
         current path.
 
-        If parent path depth is -1, the parent path will be up to '/' root 
+        If parent path depth is -1, the parent path will be up to '/' root
         folder.
 
-        The default search sequence is current folder, +1 folder, +2 folder, 
+        The default search sequence is current folder, +1 folder, +2 folder,
         ... , '/' folder, all sub folders.
 
-        Set sub_folder_first=True to search sub folders earlier than parents 
+        Set sub_folder_first=True to search sub folders earlier than parents
         folders.
 
         The first matched file will be returned. '''
@@ -1002,19 +1014,19 @@ def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=Fal
     def __search_parents_folders():
         if parent_path_depth == 1:
             return None
-    
+
         dir_list = os.path.abspath(current_path).split('/')[:-1]
         for i in range(len(dir_list)):
             if parent_path_depth == i + 1:
                 return None
-    
+
             if i == 0:
                 path = '/'.join(dir_list)
             elif i == len(dir_list):
                 path = '/'
             else:
                 path = '/'.join(dir_list[:-i])
-    
+
             f = __compare_file_name(path)
             if f:
                 return f
@@ -1056,11 +1068,17 @@ class TimeoutObject(object):
         self.objects = {}
         self._start()
 
-    def put(self, name, timeout=30):
-        self.objects[name] = time.time() + timeout
+    def put(self, name, val=None, timeout=30):
+        self.objects[name] = (val, time.time() + timeout)
 
     def has(self, name):
         return name in self.objects.keys()
+
+    def get(self, name):
+        return self.objects.get(name)
+
+    def remove(self, name):
+        del self.objects[name]
 
     def wait_until_object_timeout(self, name, timeout=60):
         def wait(_):
@@ -1072,10 +1090,27 @@ class TimeoutObject(object):
     def _start(self):
         def clean_timeout_object():
             current_time = time.time()
-            for name, timeout in self.objects.items():
+            for name, obj in self.objects.items():
+                timeout = obj[1]
                 if current_time >= timeout:
                     del self.objects[name]
 
             threading.Timer(1, clean_timeout_object).start()
 
         clean_timeout_object()
+
+def kill_process(pid, timeout=5):
+    shell.call("kill %s" % pid)
+
+    def check(_):
+        cmd = shell.ShellCmd('ps %s > /dev/null' % pid)
+        cmd(False)
+        return cmd.return_code != 0
+
+    if wait_callback_success(check, None, timeout):
+        return
+
+    shell.call("kill -9 %s" % pid)
+    if not wait_callback_success(check, None, timeout):
+        raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
+

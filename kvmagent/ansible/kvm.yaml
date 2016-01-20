@@ -5,11 +5,16 @@
     - virtenv_path: "{{zstack_root}}/virtualenv/kvm/"
     - kvm_root: "{{zstack_root}}/kvm"
     - file_root: "files/kvm"
+    - iproute_pkg: "{{file_root}}/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm"
+    - iproute_local_pkg: "{{kvm_root}}/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm"
+    - dnsmasq_pkg: "{{file_root}}/dnsmasq-2.68-1.x86_64.rpm"
+    - dnsmasq_local_pkg: "{{kvm_root}}/dnsmasq-2.68-1.x86_64.rpm"
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
     - proxy: "{{http_proxy|default()}}"
     - sproxy: "{{https_proxy|default()}}"
     - chroot_env: "{{chroot|default('false')}}"
     - is_init: "{{init|default('false')}}"
+    - yum_repos: "{{yum_repo|default('false')}}"
 
   tasks:
     - include: zstacklib.yaml
@@ -20,21 +25,29 @@
         - "{{kvm_root}}"
         - "{{virtenv_path}}"
 
-    - name: install kvm related packages on RedHat based OS
-      when: ansible_os_family == 'RedHat'
-      yum: name="{{item}}"
-      with_items:
-        - qemu-kvm
-        - bridge-utils
-        - wget
-        - qemu-img
-        - libvirt-python
-        - libvirt
-        - nfs-utils
-        - vconfig
-        - libvirt-client
-        - net-tools
-        - iscsi-initiator-utils
+    - name: install kvm related packages on RedHat based OS from user defined repo
+      when: ansible_os_family == 'RedHat' and yum_repos != 'false'
+      shell: "yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass rsync"
+
+    - name: install kvm related packages on RedHat based OS from online
+      when: ansible_os_family == 'RedHat' and yum_repos == 'false'
+      shell: "yum --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass rsync "
+
+    - name: copy name space supported iproute for RHEL6
+      copy: src="{{iproute_pkg}}" dest={{iproute_local_pkg}}
+      when: ansible_os_family == "RedHat" and ansible_distribution_version < '7'
+
+    - name: Update iproute for RHEL6
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+      shell: "rpm -q iproute-2.6.32-130.el6ost.netns.2 || yum install -y {{iproute_local_pkg}}"
+
+    - name: copy updated dnsmasq for RHEL6
+      copy: src="{{dnsmasq_pkg}}" dest={{dnsmasq_local_pkg}}
+      when: ansible_os_family == "RedHat" and ansible_distribution_version < '7'
+
+    - name: Update dnsmasq for RHEL6
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+      shell: "rpm -q dnsmasq-2.68-1 || yum install -y {{dnsmasq_local_pkg}}"
 
     - name: install kvm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
@@ -49,20 +62,32 @@
         - vlan
         - nfs-common
         - open-iscsi
+        - lighttpd
+        - dnsmasq
+        - sshpass
+        - rsync
 
-    - name: RHEL7 specific packages
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      yum: name="{{item}}"
-      with_items:
-        - iptables-services
+    - name: RHEL7 specific packages from user defined repos
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repos != 'false'
+      shell: "rpm -q iptables-services || yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y iptables-services"
+
+    - name: RHEL7 specific packages from online
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repos == 'false'
+      shell: "rpm -q iptables-services || yum --nogpgcheck install -y iptables-services "
 
     - name: disable firewalld in RHEL7 and Centos7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      service: name=firewalld state=stopped enabled=no
+      shell: "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
 
     - name: copy iptables initial rules in RedHat
       copy: src="{{file_root}}/iptables" dest=/etc/sysconfig/iptables
       when: ansible_os_family == "RedHat" and is_init == 'true'
+
+    - name: disable NetworkManager in RedHat
+      service: name=NetworkManager state=stopped enabled=no
+      when: ansible_os_family == 'RedHat'
+      register: rc
+      failed_when: "rc|failed and 'cannot find' not in rc.msg"
 
     - name: restart iptables
       service: name=iptables state=restarted enabled=yes
@@ -98,6 +123,9 @@
       notify:
         - restart redhat libvirtd
         - restart debian libvirtd
+
+    - name: delete A2 qemu hook
+      shell: "rm -f /etc/libvirt/hooks/qemu"
 
     - name: enable libvirt daemon on RedHat based OS
       when: chroot_env == 'false' and ansible_os_family == 'RedHat'

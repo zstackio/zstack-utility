@@ -35,6 +35,22 @@ class RebaseAndMergeSnapshotsRsp(AgentResponse):
         super(RebaseAndMergeSnapshotsRsp, self).__init__()
         self.size = None
 
+class CheckBitsRsp(AgentResponse):
+    def __init__(self):
+        super(CheckBitsRsp, self).__init__()
+        self.existing = False
+
+class GetMd5Rsp(AgentResponse):
+    def __init__(self):
+        super(GetMd5Rsp, self).__init__()
+        self.md5s = None
+
+class GetBackingFileRsp(AgentResponse):
+    def __init__(self):
+        super(GetBackingFileRsp, self).__init__()
+        self.size = None
+        self.backingFilePath = None
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
 
     INIT_PATH = "/localstorage/init";
@@ -49,6 +65,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase";
     OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge";
     CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
+    CHECK_BITS_PATH = "/localstorage/checkbits"
+    REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH = "/localstorage/volume/rebaserootvolumetobackingfile"
+    VERIFY_SNAPSHOT_CHAIN_PATH = "/localstorage/snapshot/verifychain"
+    REBASE_SNAPSHOT_BACKING_FILES_PATH = "/localstorage/snapshot/rebasebackingfiles"
+    COPY_TO_REMOTE_BITS_PATH = "/localstorage/copytoremote"
+    GET_MD5_PATH = "/localstorage/getmd5"
+    CHECK_MD5_PATH = "/localstorage/checkmd5"
+    GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -64,14 +88,110 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_AND_REBASE_SNAPSHOT_PATH, self.merge_and_rebase_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_PATH, self.offline_merge_snapshot)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME, self.create_template_from_volume)
+        http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
+        http_server.register_async_uri(self.REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH, self.rebase_root_volume_to_backing_file)
+        http_server.register_async_uri(self.VERIFY_SNAPSHOT_CHAIN_PATH, self.verify_backing_file_chain)
+        http_server.register_async_uri(self.REBASE_SNAPSHOT_BACKING_FILES_PATH, self.rebase_backing_files)
+        http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote)
+        http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
+        http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
+        http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
 
         self.path = None
 
     def stop(self):
         pass
 
+    @kvmagent.replyerror
+    def get_backing_file_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        out = shell.call("qemu-img info %s | grep 'backing file' | cut -d ':' -f 2" % cmd.path)
+        out = out.strip(' \t\r\n')
+        rsp = GetBackingFileRsp()
+
+        if out:
+            rsp.backingFilePath = out
+            rsp.size = os.path.getsize(out)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_md5(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetMd5Rsp()
+        rsp.md5s = []
+        for to in cmd.md5s:
+            md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % to.path)
+            rsp.md5s.append({
+                'resourceUuid': to.resourceUuid,
+                'path': to.path,
+                'md5': md5
+            })
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_md5(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for to in cmd.md5s:
+            dst_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % to.path)
+            if dst_md5 != to.md5:
+                raise Exception("MD5 unmatch. The file[uuid:%s, path:%s]'s md5 (src host:%s, dst host:%s)" %
+                                (to.resourceUuid, to.path, to.md5, dst_md5))
+
+        rsp = AgentResponse()
+        return jsonobject.dumps(rsp)
+
+
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
+
+    @kvmagent.replyerror
+    def copy_bits_to_remote(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for path in cmd.paths:
+            shell.call('rsync -a --relative %s --rsh="/usr/bin/sshpass -p %s ssh -o StrictHostKeyChecking=no -l %s" %s:/' %
+                       (path, cmd.dstPassword, cmd.dstUsername, cmd.dstIp))
+
+        rsp = AgentResponse()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def verify_backing_file_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for sp in cmd.snapshots:
+            if not os.path.exists(sp.path):
+                raise Exception('cannot find the file[%s]' % sp.path)
+
+            if sp.parentPath and not os.path.exists(sp.parentPath):
+                raise Exception('cannot find the backing file[%s]' % sp.parentPath)
+
+            if sp.parentPath:
+                out = shell.call("qemu-img info %s | grep 'backing file' | cut -d ':' -f 2" % sp.path)
+                out = out.strip(' \t\r\n')
+
+                if sp.parentPath != out:
+                    raise Exception("resource[Snapshot or Volume, uuid:%s, path:%s]'s backing file[%s] is not equal to %s" %
+                                (sp.snapshotUuid, sp.path, out, sp.parentPath))
+
+        return jsonobject.dumps(AgentResponse())
+
+    @kvmagent.replyerror
+    def rebase_backing_files(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for sp in cmd.snapshots:
+            if sp.parentPath:
+                linux.qcow2_rebase_no_check(sp.parentPath, sp.path)
+
+        return jsonobject.dumps(AgentResponse())
+
+    @kvmagent.replyerror
+    def check_bits(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckBitsRsp()
+        rsp.existing = os.path.exists(cmd.path)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
@@ -84,6 +204,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.qcow2_create_template(cmd.volumePath, cmd.installPath)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -109,6 +230,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
         rsp.size = os.path.getsize(cmd.workspaceInstallPath)
 
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -131,6 +253,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.qcow2_create_template(latest, cmd.workspaceInstallPath)
         rsp.size = os.path.getsize(cmd.workspaceInstallPath)
 
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -144,6 +267,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -153,12 +277,18 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def rebase_root_volume_to_backing_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        linux.qcow2_rebase_no_check(cmd.backingFilePath, cmd.rootVolumePath)
+        return jsonobject.dumps(AgentResponse())
+
+    @kvmagent.replyerror
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.path = cmd.path
 
         if not os.path.exists(self.path):
-            shell.call('mkdir -p %s' % self.path)
+            os.makedirs(self.path, 0755)
 
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
@@ -173,7 +303,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
 
-            linux.qcow2_create(cmd.installUrl, cmd.size)
+            if cmd.backingFile:
+                linux.qcow2_create_with_backing_file(cmd.backingFile, cmd.installUrl)
+            else:
+                linux.qcow2_create(cmd.installUrl, cmd.size)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.uuid, cmd.name, str(e))
@@ -181,6 +314,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installUrl))
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -198,6 +332,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname, 0775)
 
         linux.qcow2_clone(cmd.templatePathInCache, cmd.installUrl)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -210,6 +345,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.rmdir_if_empty(pdir)
 
         logger.debug('successfully delete %s' % cmd.path)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -246,5 +382,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             rsp.error = err
             rsp.success = False
 
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 

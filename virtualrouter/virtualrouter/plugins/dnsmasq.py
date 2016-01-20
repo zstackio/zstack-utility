@@ -215,7 +215,7 @@ class Dnsmasq(virtualrouter.VRAgent):
             if not new:
                 return False
             
-            fd.write('\n'.join(new))
+            fd.write('\n%s'%('\n'.join(new)))
             return True
 
     def _do_dnsmasq_restart(self):

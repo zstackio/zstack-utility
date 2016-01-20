@@ -24,7 +24,6 @@ class SyncEipRsp(virtualrouter.AgentResponse):
         super(SyncEipRsp, self).__init__()
 
 class Eip(virtualrouter.VRAgent):
-
     VR_CREATE_EIP = "/createeip"
     VR_REMOVE_EIP = "/removeeip"
     VR_SYNC_EIP = "/synceip"

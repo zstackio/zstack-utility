@@ -2,7 +2,6 @@
 
 <project name="zstack-kvmagent builder" basedir="../">
     <property name="kvmagent.bdir" location="${build.dir}/kvmagent" />
-    <property name="kvmagent.salt.dir" location="${salt.dir}/kvm/" />
     <property name="kvmagent.ansible.dir" location="${ansible.dir}/kvm/" />
 
     <target name="build-kvmagent" >
@@ -32,27 +31,12 @@
             <fileset dir="${kvmagent.source}/">
                 <exclude name="**/*~" />
                 <include name="dist/*.tar.gz" />
-                <include name="salt/**/*" />
                 <include name="ansible/**/*" />
             </fileset>
         </copy>
     </target>
 
     <target name="assemble-kvmagent">
-        <makeDir dir="${kvmagent.salt.dir}" />
-
-        <copy todir="${kvmagent.salt.dir}">
-            <fileset dir="${kvmagent.bdir}/salt">
-                <include name="**/*" />
-            </fileset>
-            <fileset dir="${kvmagent.bdir}/dist">
-                <include name="**/*" />
-            </fileset>
-        </copy>
-
-
-        <copy file="${kvmagent.serviceFile}" todir="${kvmagent.salt.dir}" />
-
         <makeDir dir="${kvmagent.ansible.dir}" />
 
         <copy todir="${kvmagent.ansible.dir}">

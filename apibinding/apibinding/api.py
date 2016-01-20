@@ -91,6 +91,7 @@ class Api(object):
         jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon)
         rsp = jsonobject.loads(jstr)
         if rsp.state == 'Done':
+            logger.debug("async call[url: %s, response: %s]" % (self.api_url, rsp.result))
             reply = jsonobject.loads(rsp.result)
             (name, event) = (reply.__dict__.items()[0])
             if exception_on_error and not event.success:

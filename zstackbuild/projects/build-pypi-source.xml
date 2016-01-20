@@ -11,11 +11,6 @@
             <arg value="${pypi.build.dir}" />
             <arg value="${pip2pi.requirements.file}" />
         </exec>
-        <exec executable="tar" dir="${build.dir}" failonerror="true">
-            <arg value="jcf" />
-            <arg value="${pypi.new.source.file}" />
-            <arg value="pypi" />
-        </exec>
-        <echo message="successfully build pypi source tar ball at ${pypi.new.source.file} . You can manually check the libs in ${pypi.build.dir} . You might want to manually copy it and replace ${pypi.source.tar.file}" />
+        <echo message="successfully build pypi source tar ball at ${pypi.new.source.file} . You can manually check the libs in ${pypi.build.dir} . You might want to manually copy it and replace ${pypi.source.folder}" />
     </target>
 </project>

@@ -21,7 +21,8 @@ zstack management tool""",
           'argparse',
           'termcolor',
           'simplejson',
-          'configobj'
+          'configobj',
+          'pyyaml'
           # -*- Extra requirements: -*-
       ],
       entry_points="""

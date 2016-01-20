@@ -6,6 +6,7 @@ rm -rf build dist zstackctl.egg-info
 which virtualenv &>/dev/null
 [ $? -ne 0 ] && echo "Need to install virtualenv before install zstackctl." && exit 1
 VIRTUAL_ENV=/var/lib/zstack/virtualenv/zstackctl
+rm -rf $VIRTUAL_ENV
 [ ! -d $VIRTUAL_ENV ] && virtualenv $VIRTUAL_ENV
 source $VIRTUAL_ENV/bin/activate
 

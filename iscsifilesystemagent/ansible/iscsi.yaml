@@ -8,6 +8,7 @@
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
     - proxy: "{{http_proxy|default()}}"
     - sproxy: "{{https_proxy|default()}}"
+    - yum_repos: "{{yum_repo|default('false')}}"
 
   tasks:
     - include: zstacklib.yaml
@@ -18,13 +19,13 @@
         - "{{iscsi_root}}"
         - "{{virtenv_path}}"
 
-    - name: install isci related packages on RedHat based OS
-      when: ansible_os_family == 'RedHat'
-      yum: name="{{item}}"
-      with_items:
-        - scsi-target-utils
-        - wget
-        - qemu-img
+    - name: install isci related packages on RedHat based OS from user defined repos
+      when: ansible_os_family == 'RedHat' and yum_repos != 'false'
+      shell: "yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y wget qemu-img scsi-target-utils "
+
+    - name: install isci related packages on RedHat based OS from online
+      when: ansible_os_family == 'RedHat' and yum_repos == 'false'
+      shell: "yum --nogpgcheck install -y wget qemu-img scsi-target-utils"
 
     - name: install isci related packages on Debian based OS
       when: ansible_os_family == 'Debian'
@@ -36,15 +37,17 @@
         - wget
         - qemu-utils
 
-    - name: RHEL7 specific packages
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      yum: name="{{item}}"
-      with_items:
-        - iptables-services
+    - name: RHEL7 specific packages from user defined repos
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repos != 'false'
+      shell: "rpm -q iptables-services || yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y iptables-services "
+
+    - name: RHEL7 specific packages from online
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repos == 'false'
+      shell: "rpm -q iptables-services || yum --nogpgcheck install -y iptables-services"
 
     - name: disable firewalld in RHEL7 and Centos7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      service: name=firewalld state=stopped enabled=no
+      shell: "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
 
     - name: disable selinux on RedHat based OS
       when: ansible_os_family == 'RedHat'

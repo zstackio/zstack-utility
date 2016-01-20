@@ -35,7 +35,6 @@ class KvmAgent(plugin.Plugin):
         pass
 
 _rest_service = None
-_libvirt_conn = None
 _qemu_path = None
 
 def new_rest_service(config={}):
@@ -46,16 +45,6 @@ def new_rest_service(config={}):
 
 def get_http_server():
     return _rest_service.http_server
-
-def get_libvirt_connection():
-    global _libvirt_conn
-    if not _libvirt_conn:
-        _libvirt_conn = libvirt.open('qemu:///system')
-    
-    if not _libvirt_conn:
-        raise KvmError('unable to get libvirt connection')
-    
-    return _libvirt_conn
 
 def get_qemu_path():
     global _qemu_path
@@ -92,15 +81,8 @@ class KvmRESTService(object):
     def _get_config(self, name):
         return None if not self.config.has_key(name) else self.config[name]
     
-    def _get_worksapce(self):
-        workspace = self._get_config(self.WORKSPACE)
-        if not workspace:
-            workspace = 'zstack-kvm-agent'
-        return os.path.abspath(workspace)
-            
     def start(self, in_thread=True):
         config = {}
-        config[self.WORKSPACE] = self._get_worksapce()
         self.plugin_rgty.configure_plugins(config)
         self.plugin_rgty.start_plugins()
         if in_thread:
@@ -151,3 +133,5 @@ class KvmDaemon(daemon.Daemon):
         self.agent = new_rest_service()
         self.agent.start(in_thread=False)
 
+SEND_COMMAND_URL = 'SEND_COMMAND_URL'
+HOST_UUID = 'HOST_UUID'
