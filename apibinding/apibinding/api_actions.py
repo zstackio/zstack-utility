@@ -2640,6 +2640,18 @@ class AddNfsPrimaryStorageAction(inventory.APIAddNfsPrimaryStorageMsg):
         self.out = evt
         return self.out
 
+class UpdateSftpBackupStorageAction(inventory.APIUpdateSftpBackupStorageMsg):
+    def __init__(self):
+        super(UpdateSftpBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateSftpBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QuerySftpBackupStorageAction(inventory.APIQuerySftpBackupStorageMsg):
     def __init__(self):
         super(QuerySftpBackupStorageAction, self).__init__()
@@ -2662,18 +2674,6 @@ class AddSftpBackupStorageAction(inventory.APIAddSftpBackupStorageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AddSftpBackupStorageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UpdateSftpBackupStorageAction(inventory.APIUpdateSftpBackupStorageMsg):
-    def __init__(self):
-        super(UpdateSftpBackupStorageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateSftpBackupStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3330,18 +3330,6 @@ class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetLicenseCapabilitiesAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class GenerateNewLicenseRequestAction(inventory.APIGenerateNewLicenseRequestMsg):
-    def __init__(self):
-        super(GenerateNewLicenseRequestAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GenerateNewLicenseRequestAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
