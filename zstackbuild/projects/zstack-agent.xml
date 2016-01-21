@@ -29,7 +29,7 @@
         </copy>
     </target>
 
-    <target name="assemble-agent-server">
+    <target name="assemble-agent-server" if="build_war_flag">
         <makeDir dir="${agent.ansible.dir}/server" />
 
         <copy todir="${agent.ansible.dir}/server">
@@ -39,7 +39,7 @@
         </copy>
     </target>
 
-    <target name="assemble-agent-collectd">
+    <target name="assemble-agent-collectd" if="build_war_flag">
         <makeDir dir="${agent.plugin.ansible.dir}/collectd" />
 
         <copy todir="${agent.plugin.ansible.dir}/collectd">
