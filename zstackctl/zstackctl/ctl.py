@@ -1237,7 +1237,7 @@ class InstallDbCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='host IP, for example, 192.168.0.212, please specify the real IP rather than "localhost" or "127.0.0.1" when installing on local machine; otherwise management nodes on other machines cannot access the DB.', required=True)
-        parser.add_argument('--root-password', help="new password of MySQL root user; an empty password is used if this option is omitted")
+        parser.add_argument('--root-password', help="new password of MySQL root user; an empty password is used if both this option and --login-password option are omitted")
         parser.add_argument('--login-password', help="login password of MySQL root user; an empty password is used if this option is omitted."
                             "\n[NOTE] this option is needed only when the machine has MySQL previously installed and removed; the old MySQL root password will be left in the system,"
                             "you need to input it in order to reset root password for the new installed MySQL.", default=None)
@@ -1347,9 +1347,12 @@ class InstallDbCmd(Command):
       when: change_root_result.rc != 0 and install_result.changed == False
 '''
 
-        if not args.root_password:
+        if not args.root_password and not args.login_password:
             args.root_password = '''"''"'''
             grant_access_cmd = '''/usr/bin/mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % args.host
+        elif not args.root_password:
+            args.root_password = args.login_password
+            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password)
         else:
             grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password)
 
