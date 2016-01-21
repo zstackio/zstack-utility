@@ -11,14 +11,17 @@
         <echo message="successfully build zstack all in one package at ${allinone.file}" />
     </target>
 
-    <target name="build-centos-offline" >
-        <copy file="${war.file}" todir="${allinone.dir}" />
-        <echo message="copy apache-tomcat to ${allinone.file}" />
-        <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
+    <target name="copy-monitor-packages" if="build_war_flag">
         <echo message="copy apache-cassandra to ${allinone.file}" />
         <copy file="${cassandra.pkg}" todir="${allinone.dir}" />
         <echo message="copy kairosdb to ${allinone.file}" />
         <copy file="${kairosdb.pkg}" todir="${allinone.dir}" />
+    </target>
+
+    <target name="build-centos-offline" depends="copy-monitor-packages">
+        <copy file="${war.file}" todir="${allinone.dir}" />
+        <echo message="copy apache-tomcat to ${allinone.file}" />
+        <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
         <echo file="${allinone.versionfile}" append="true">${allinone.version}</echo>
         <tar destfile="${allinone.file}" basedir="${allinone.dir}" compression="gzip" />
 
