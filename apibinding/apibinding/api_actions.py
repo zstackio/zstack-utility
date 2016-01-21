@@ -1618,6 +1618,18 @@ class QueryIpRangeAction(inventory.APIQueryIpRangeMsg):
         self.out = reply.inventories
         return self.out
 
+class CheckIpAvailabilityAction(inventory.APICheckIpAvailabilityMsg):
+    def __init__(self):
+        super(CheckIpAvailabilityAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CheckIpAvailabilityAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateL3NetworkAction(inventory.APICreateL3NetworkMsg):
     def __init__(self):
         super(CreateL3NetworkAction, self).__init__()
