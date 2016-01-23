@@ -1301,8 +1301,7 @@ start_dashboard(){
 
 sd_install_dashboard(){
     echo_subtitle "Install ${PRODUCT_NAME} Web UI"
-    cd $ZSTACK_INSTALL_ROOT
-    bash $ZSTACK_TOOLS_INSTALLER zstack-dashboard >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl install_ui >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
         fail "failed to install zstack-dashboard in $ZSTACK_INSTALL_ROOT"
