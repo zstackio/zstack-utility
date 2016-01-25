@@ -727,7 +727,7 @@ class Vm(object):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
                                     'running after %s seconds' % (self.uuid, self.get_name(), timeout))
 
-        vnc_port = self.get_vnc_port()
+        vnc_port = self.get_console_port()
 
         def wait_vnc_port_open(_):
             cmd = shell.ShellCmd('netstat -na | grep ":%s" > /dev/null' % vnc_port)
@@ -830,9 +830,9 @@ class Vm(object):
     def destroy(self):
         self.stop(graceful=False)
 
-    def get_vnc_port(self):
+    def get_console_port(self):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
-            if g.type_ == 'vnc':
+            if g.type_ == 'vnc' or g.type_ == 'spice':
                 return g.port_
 
         raise kvmagent.KvmError['no vnc console defined for vm[uuid:%s]' % self.uuid]
@@ -1837,7 +1837,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_STOP_VM_PATH = "/vm/stop"
     KVM_REBOOT_VM_PATH = "/vm/reboot"
     KVM_DESTROY_VM_PATH = "/vm/destroy"
-    KVM_GET_VNC_PORT_PATH = "/vm/getvncport"
+    KVM_GET_CONSOLE_PORT_PATH = "/vm/getvncport"
     KVM_VM_SYNC_PATH = "/vm/vmsync"
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
@@ -1983,12 +1983,12 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def get_vnc_port(self, req):
+    def get_console_port(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVncPortResponse()
         try:
             vm = get_vm_by_uuid(cmd.vmUuid)
-            port = vm.get_vnc_port()
+            port = vm.get_console_port()
             rsp.port = port
             logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.uuid))
         except kvmagent.KvmError as e:
@@ -2242,7 +2242,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_STOP_VM_PATH, self.stop_vm)
         http_server.register_async_uri(self.KVM_REBOOT_VM_PATH, self.reboot_vm)
         http_server.register_async_uri(self.KVM_DESTROY_VM_PATH, self.destroy_vm)
-        http_server.register_async_uri(self.KVM_GET_VNC_PORT_PATH, self.get_vnc_port)
+        http_server.register_async_uri(self.KVM_GET_CONSOLE_PORT_PATH, self.get_console_port)
         http_server.register_async_uri(self.KVM_VM_SYNC_PATH, self.vm_sync)
         http_server.register_async_uri(self.KVM_ATTACH_VOLUME, self.attach_data_volume)
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)
