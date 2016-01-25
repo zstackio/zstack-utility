@@ -912,6 +912,18 @@ class DetachIsoFromVmInstanceAction(inventory.APIDetachIsoFromVmInstanceMsg):
         self.out = evt
         return self.out
 
+class GetVmConsoleAddressAction(inventory.APIGetVmConsoleAddressMsg):
+    def __init__(self):
+        super(GetVmConsoleAddressAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmConsoleAddressAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class MigrateVmAction(inventory.APIMigrateVmMsg):
     def __init__(self):
         super(MigrateVmAction, self).__init__()
