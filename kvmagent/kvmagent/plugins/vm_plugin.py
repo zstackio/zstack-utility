@@ -1521,8 +1521,13 @@ class Vm(object):
             e(root, 'vcpu', str(cmd.cpuNum), {'placement':'static'})
             tune = e(root, 'cputune')
             e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
-            cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-            e(cpu, 'model', attrib={'fallback': 'allow'})
+            #enable nested virtualization
+            if cmd.nestedVirtualization == 'host-model':
+                cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                e(cpu, 'model', attrib={'fallback': 'allow'})
+            elif cmd.nestedVirtualization == 'host-passthrough':
+                cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                e(cpu, 'model', attrib={'fallback': 'allow'})
 
 
         def make_memory():
@@ -1598,16 +1603,22 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
 
-            def filebased_volume(dev_letter):
-                disk = etree.Element('disk', {'type':'file', 'device':'disk', 'snapshot':'external'})
-                e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
+            def filebased_volume(dev_letter, volume):
+                disk = e(devices, 'disk', None, {'type':'file', 'device':'disk', 'snapshot':'external'})
+                if volume.cacheMode == 0:
+                    e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
+                elif volume.cacheMode == 1:
+                    e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'writethrough'})
+                elif volume.cacheMode == 2:
+                    e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'writeback'})
+                else:
+                    raise kvmagent.KvmError['dev_letter[%s] invalide cacheMode[%d]' % dev_letter, volume.cacheMode]
+
                 e(disk, 'source', None, {'file':v.installPath})
                 if use_virtio:
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
                 else:
                     e(disk, 'target', None, {'dev':'sd%s' % dev_letter, 'bus':'ide'})
-
-                return disk
 
             def iscsibased_volume(dev_letter, virtio):
                 def blk_iscsi():
@@ -1758,6 +1769,17 @@ class Vm(object):
             vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes'})
             e(vnc, "listen", None, {'type':'address', 'address':'0.0.0.0'})
 
+        def make_spice():
+            devices = elements['devices']
+            spice = e(devices, 'graphics', None, {'type':'spice', 'port':'5900', 'autoport':'yes'})
+            e(spice, "listen", None, {'type':'address', 'address':'0.0.0.0'})
+
+        def make_graphic_console():
+            if cmd.consoleMode == 'spice':
+                make_spice()
+            else:
+                make_vnc()
+
         def make_addons():
             if not cmd.addons:
                 return
@@ -1794,7 +1816,7 @@ class Vm(object):
         make_nics()
         make_volumes()
         make_cdrom()
-        make_vnc()
+        make_graphic_console()
         make_addons()
         make_balloon_memory()
         make_console()
