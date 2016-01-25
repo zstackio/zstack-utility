@@ -39,4 +39,5 @@ zstackbuild/centos7_repo.tgz
 zstackbuild/centos7_repo/
 centos6_repo
 centos7_repo
+zstackbuild/scripts/setup.sh
 *.orig
