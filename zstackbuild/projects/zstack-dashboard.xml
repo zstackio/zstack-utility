@@ -6,24 +6,30 @@
     <target name="build-dashboard" >
         <makeDir dir="${zstackdashboard.bdir}" />
 
-        <checkProperty property="zstackdashboard.source" />
-        <checkFile file="${zstackdashboard.source}" />
-        <checkFile file="${zstackdashboard.source}/setup.py" />
+        <condition property="zstackui.source" value="${zstackdashboard.source}" else="${mevocoui.source}">
+            <and>
+                <isset property="build_war_flag"/>
+            </and>
+        </condition>
 
-        <exec executable="git" dir="${zstackdashboard.source}" failonerror="true">
+        <checkProperty property="zstackui.source" />
+        <checkFile file="${zstackui.source}" />
+        <checkFile file="${zstackui.source}/setup.py" />
+
+        <exec executable="git" dir="${zstackui.source}" failonerror="true">
             <arg value="checkout" />
             <arg value="${zstackdashboard.build_version}" />
         </exec>
 
-        <delete dir="${zstackdashboard.source}/dist" />
+        <delete dir="${zstackui.source}/dist" />
 
-        <exec executable="python" dir="${zstackdashboard.source}" failonerror="true">
+        <exec executable="python" dir="${zstackui.source}" failonerror="true">
             <arg value="setup.py" />
             <arg value="sdist" />
         </exec>
 
         <copy todir="${zstackdashboard.bdir}/">
-            <fileset dir="${zstackdashboard.source}/">
+            <fileset dir="${zstackui.source}/">
                 <exclude name="**/*~" />
                 <include name="dist/*.tar.gz" />
             </fileset>
