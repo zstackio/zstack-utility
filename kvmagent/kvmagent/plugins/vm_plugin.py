@@ -1701,7 +1701,7 @@ class Vm(object):
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.deviceType == 'file':
-                    vol = filebased_volume(dev_letter)
+                    vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
                     vol = iscsibased_volume(dev_letter, v.useVirtio)
                 elif v.deviceType == 'ceph':
