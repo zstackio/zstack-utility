@@ -6,7 +6,7 @@
     <target name="build-dashboard" >
         <makeDir dir="${zstackdashboard.bdir}" />
 
-        <condition property="zstackui.source" value="${zstackdashboard.source}" else="${mevocoui.source}">
+        <condition property="zstackui.source" value="${mevocoui.source}" else="${zstackdashboard.source}">
             <and>
                 <isset property="build_war_flag"/>
             </and>
