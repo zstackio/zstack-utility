@@ -1794,14 +1794,18 @@ if [ ! -z $HTTP_PROXY ]; then
 fi
 
 #Start ${PRODUCT_NAME}-Dashboard
-start_dashboard
+if [ -z $NOT_START_ZSTACK ]; then
+    start_dashboard
+fi
 
 #Print all installation message
-[ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
+if [ -z $NOT_START_ZSTACK ]; then
+    [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
+fi
 
 echo ""
 echo_star_line
-echo "${PRODUCT_NAME} All In One ${VERSION}Installation Completed:"
+echo "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:"
 echo " - Installation path: $ZSTACK_INSTALL_ROOT"
 echo ""
 echo -e " - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome or Firefox"
