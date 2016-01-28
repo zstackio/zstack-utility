@@ -505,7 +505,7 @@ def remove_device_ip(dev):
         return cmd.return_code == 0
 
 def is_ip_existing(ip):
-    ip_str = ' %s/24' % ip
+    ip_str = ' %s/' % ip
     cmd = shell.ShellCmd('ip a|grep inet|grep "%s"' % ip_str)
     cmd(is_exception=False)
     return cmd.return_code == 0
