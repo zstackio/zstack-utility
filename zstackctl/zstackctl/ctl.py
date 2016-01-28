@@ -2198,8 +2198,6 @@ mkdir -p $install_path
         fd, pre_script_path = tempfile.mkstemp(suffix='.sh')
         os.fdopen(fd, 'w').write(pre_script)
 
-        self.install_cleanup_routine(cleanup_pre_script)
-
         pre_script_on_rh6 = '''
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 rpm -qi python-crypto >/dev/null 2>&1
