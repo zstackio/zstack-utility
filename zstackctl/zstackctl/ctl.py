@@ -244,6 +244,14 @@ class PropertyFile(object):
         with on_error("errors on reading %s" % self.path):
             return self.config.items()
 
+    def delete_properties(self, keys):
+        for k in keys:
+            if k in self.config:
+                del self.config[k]
+
+        with use_user_zstack():
+            self.config.write()
+
     def read_property(self, key):
         with on_error("errors on reading %s" % self.path):
             return self.config.get(key, None)
@@ -1085,8 +1093,19 @@ class StartCmd(Command):
 
         def prepare_setenv():
             setenv_path = os.path.join(ctl.zstack_home, self.SET_ENV_SCRIPT)
+            catalina_opts = [
+                '-Djava.net.preferIPv4Stack=true',
+                '-Dcom.sun.management.jmxremote=true',
+                '-Djava.security.egd=file:/dev/./urandom'
+            ]
+
+            co = ctl.get_env('CATALINA_OPTS')
+            if co:
+                info('use CATALINA_OPTS[%s] set in environment zstack environment variables; check out them by "zstack-ctl getenv"' % co)
+                catalina_opts.extend(co.split(' '))
+
             with open(setenv_path, 'w') as fd:
-                fd.write('export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true -Djava.security.egd=file:/dev/./urandom"')
+                fd.write('export CATALINA_OPTS=" %s"' % ' '.join(catalina_opts))
 
         def start_mgmt_node():
             shell('sudo -u zstack sh %s -DappName=zstack' % os.path.join(ctl.zstack_home, self.START_SCRIPT))
@@ -2352,8 +2371,31 @@ class SetEnvironmentVariableCmd(Command):
                 pass
 
         env = PropertyFile(self.PATH)
-        vars = [l.split('=', 1) for l in ctl.extra_arguments]
-        env.write_properties(vars)
+        arg_str = ' '.join(ctl.extra_arguments)
+        env.write_properties([arg_str.split('=', 1)])
+
+class UnsetEnvironmentVariableCmd(Command):
+    NAME = 'unsetenv'
+
+    def __init__(self):
+        super(UnsetEnvironmentVariableCmd, self).__init__()
+        self.name = self.NAME
+        self.description = (
+            'unset variables in %s' % SetEnvironmentVariableCmd.PATH
+        )
+        ctl.register_command(self)
+
+    def run(self, args):
+        if not os.path.exists(SetEnvironmentVariableCmd.PATH):
+            return
+
+        if not ctl.extra_arguments:
+            raise CtlError('please input a list of variable names you want to unset')
+
+        env = PropertyFile(SetEnvironmentVariableCmd.PATH)
+        env.delete_properties(ctl.extra_arguments)
+        info('unset zstack environment variables: %s' % ctl.extra_arguments)
+
 
 class GetEnvironmentVariableCmd(Command):
     NAME = 'getenv'
@@ -3289,6 +3331,7 @@ def main():
     StartAllCmd()
     StopAllCmd()
     InstallLicenseCmd()
+    UnsetEnvironmentVariableCmd()
 
     try:
         ctl.run()
