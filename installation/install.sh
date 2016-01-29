@@ -1612,7 +1612,7 @@ echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG
 [ -z $HTTP_FOLDER ] && HTTP_FOLDER=$ZSTACK_INSTALL_ROOT/http_root
 echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 
-pypi_source_easy_install="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi"
+pypi_source_easy_install="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
 pypi_source_pip="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
 unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*.rpm"
 unzip_el6_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el6*.rpm"
