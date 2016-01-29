@@ -808,6 +808,7 @@ uz_upgrade_zstack(){
         rm -rf $upgrade_folder
         fail "failed to unzip zstack.war to $upgrade_folder/zstack"
     fi
+
     if [ ! -z $DEBUG ]; then
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
     else
@@ -816,6 +817,16 @@ uz_upgrade_zstack(){
     if [ $? -ne 0 ];then
         rm -rf $upgrade_folder
         fail "failed to upgrade zstack-ctl"
+    fi
+
+    if [ ! -z $DEBUG ]; then
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-cli
+    else
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-cli >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        rm -rf $upgrade_folder
+        fail "failed to upgrade zstack-cli"
     fi
 
     if [ ! -z $DEBUG ]; then
