@@ -463,9 +463,9 @@ ia_install_python_gcc_rh(){
 ia_install_pip(){
     echo_subtitle "Install PIP"
     if [ ! -z $DEBUG ]; then
-        easy_install -i $pypi_source --upgrade pip
+        easy_install -i $pypi_source_easy_install --upgrade pip
     else
-        easy_install -i $pypi_source --upgrade pip >>$ZSTACK_INSTALL_LOG 2>&1
+        easy_install -i $pypi_source_easy_install --upgrade pip >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install PIP failed"
     pass
@@ -474,9 +474,9 @@ ia_install_pip(){
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
     if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible 
+        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
     else
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install Ansible failed"
     pass
@@ -679,9 +679,9 @@ is_install_general_libs_rh(){
 is_install_virtualenv(){
     echo_subtitle "Install Virtualenv"
     if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed virtualenv
+        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed virtualenv
     else
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed virtualenv >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed virtualenv >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install virtualenv failed"
     pass
@@ -1612,7 +1612,8 @@ echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG
 [ -z $HTTP_FOLDER ] && HTTP_FOLDER=$ZSTACK_INSTALL_ROOT/http_root
 echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 
-pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi"
+pypi_source_easy_install="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi"
+pypi_source_pip="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
 unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*.rpm"
 unzip_el6_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el6*.rpm"
 
