@@ -1744,9 +1744,11 @@ if [ $UPGRADE = 'y' ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
     echo ""
     echo_star_line
-    echo "${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been upgraded to ${VERSION}"
+    echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
     if [ $CURRENT_STATUS = 'y' ]; then
-        echo " Your management node has been started up again"
+        echo -e " $(tput setaf 2)Your management node has been started up again.$(tput sgr0) You can use \`zstack-ctl status\` to check its status."
+    else
+        echo -e " $(tput setaf 3)Your management node is not started. Please use \`zstack-ctl start\` to start it up.$(tput sgr0)"
     fi
     echo " Your old zstack was saved in /home/zstack/backup/"
     echo_star_line
