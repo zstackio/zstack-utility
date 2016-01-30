@@ -14,6 +14,7 @@ FORCE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
+ZSTACKCTL_INSTALL_LOG='/tmp/zstack_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
 INSTALLATION_FAILURE=/tmp/zstack_installation_failure_exit_code
 [ -f $INSTALLATION_FAILURE ] && /bin/rm -f $INSTALLATION_FAILURE
@@ -1275,16 +1276,25 @@ cs_deploy_db(){
     echo_subtitle "Initialize Database"
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
-            zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
         else
-            zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
         fi
     else
-        zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACK_INSTALL_LOG 2>&1
+        zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
-        fail "failed to deploy ${PRODUCT_NAME} database. You might want to add -D to drop previous ${PRODUCT_NAME} database or -k to keep previous zstack database"
+        grep 'detected existing zstack database' $ZSTACKCTL_INSTALL_LOG >& /dev/null
+        if [ $? -eq 0 ]; then
+            cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
+            fail "failed to deploy ${PRODUCT_NAME} database. You might want to add -D to drop previous ${PRODUCT_NAME} database or -k to keep previous zstack database"
+        else
+            cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
+            fail "failed to deploy ${PRODUCT_NAME} database. Please check mysql accessbility. If your mysql has set root password, please add parameter -PMYSQL_PASSWORD to rerun the installation."
+        fi
     fi
+
+    cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
     pass
 }
 
