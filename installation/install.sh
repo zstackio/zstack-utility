@@ -546,18 +546,15 @@ upgrade_zstack(){
             show_spinner sz_start_zstack
         fi
     fi
-    if [ -f /etc/init.d/zstack-dashboard ]; then
-        /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
-        if [ $? -eq 0 ]; then
-            echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-            /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
-            show_spinner sd_install_dashboard
-            echo "start dashboard" >>$ZSTACK_INSTALL_LOG
-            show_spinner sd_start_dashboard
-        else
-            echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-            show_spinner sd_install_dashboard
-        fi
+    if [ $UI_CURRENT_STATUS = 'y' ]; then
+        echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+        /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
+        show_spinner sd_install_dashboard
+        echo "start dashboard" >>$ZSTACK_INSTALL_LOG
+        show_spinner sd_start_dashboard
+    else
+        echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+        show_spinner sd_install_dashboard
     fi
 }
 
@@ -1724,6 +1721,13 @@ if [ $UPGRADE = 'y' ]; then
     else
         CURRENT_STATUS='n'
     fi
+    UI_CURRENT_STATUS='n'
+    if [ -f /etc/init.d/zstack-dashboard ]; then
+        /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            UI_CURRENT_STATUS='y'
+        fi
+    fi
 fi
 
 #Do preinstallation checking for CentOS and Ubuntu
@@ -1747,9 +1751,15 @@ if [ $UPGRADE = 'y' ]; then
     echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
     echo ""
     if [ $CURRENT_STATUS = 'y' ]; then
-        echo -e " $(tput setaf 2)Your management node has been started up again.$(tput sgr0) You can use \`zstack-ctl status\` to check its status."
+        echo -e " $(tput setaf 2)Management node has been started up again.$(tput sgr0) You can use \`zstack-ctl status\` to check its status."
     else
-        echo -e " $(tput setaf 3)Your management node is not started. Please use \`zstack-ctl start\` to start it up.$(tput sgr0)"
+        echo -e " $(tput setaf 3)Management node is not started. Please use \`zstack-ctl start\` to start it up.$(tput sgr0)"
+    fi
+    echo ""
+    if [ $UI_CURRENT_STATUS = 'y' ]; then
+        echo -e " $(tput setaf 2)UI daemon has been started up again.$(tput sgr0)"
+    else
+        echo -e " $(tput setaf 3)UI daemon is not started.$(tput sgr0)"
     fi
     echo ""
     zstack_home=`eval echo ~zstack`
