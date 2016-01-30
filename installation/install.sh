@@ -546,15 +546,17 @@ upgrade_zstack(){
             show_spinner sz_start_zstack
         fi
     fi
-    if [ $UI_CURRENT_STATUS = 'y' ]; then
-        echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-        /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
-        show_spinner sd_install_dashboard
-        echo "start dashboard" >>$ZSTACK_INSTALL_LOG
-        show_spinner sd_start_dashboard
-    else
-        echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-        show_spinner sd_install_dashboard
+    if [ $UI_INSTALLATION_STATUS = 'y' ]; then
+        if [ $UI_CURRENT_STATUS = 'y' ]; then
+            echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+            /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
+            show_spinner sd_install_dashboard
+            echo "start dashboard" >>$ZSTACK_INSTALL_LOG
+            show_spinner sd_start_dashboard
+        else
+            echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+            show_spinner sd_install_dashboard
+        fi
     fi
 }
 
@@ -1722,7 +1724,9 @@ if [ $UPGRADE = 'y' ]; then
         CURRENT_STATUS='n'
     fi
     UI_CURRENT_STATUS='n'
+    UI_INSTALLATION_STATUS='n'
     if [ -f /etc/init.d/zstack-dashboard ]; then
+        UI_INSTALLATION_STATUS='y'
         /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
         if [ $? -eq 0 ]; then
             UI_CURRENT_STATUS='y'
@@ -1756,10 +1760,16 @@ if [ $UPGRADE = 'y' ]; then
         echo -e " $(tput setaf 3)Management node is not started. Please use \`zstack-ctl start\` to start it up.$(tput sgr0)"
     fi
     echo ""
-    if [ $UI_CURRENT_STATUS = 'y' ]; then
-        echo -e " $(tput setaf 2)UI daemon has been started up again.$(tput sgr0)"
+    if [ $UI_INSTALLATION_STATUS = 'y' ]; then
+        echo -e " $(tput setaf 2)UI has been upgraded.$(tput sgr0)"
+        echo ""
+        if [ $UI_CURRENT_STATUS = 'y' ]; then
+            echo -e " $(tput setaf 2)UI daemon has been started up again.$(tput sgr0)"
+        else
+            echo -e " $(tput setaf 3)UI daemon is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
+        fi
     else
-        echo -e " $(tput setaf 3)UI daemon is not started.$(tput sgr0)"
+        echo " UI was not upgraded, since there wasn't UI installed before upgrading. You can manually install UI by \`zstack-ctl install_ui\`"
     fi
     echo ""
     zstack_home=`eval echo ~zstack`
