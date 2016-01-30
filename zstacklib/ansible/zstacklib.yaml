@@ -70,7 +70,7 @@
 
 - name: enable ntp service for Debian
   when: ansible_os_family == 'Debian'
-  shell: "update-rc.d ntpd defaults; service ntpd restart"
+  shell: "update-rc.d ntp defaults; service ntp restart"
 
 - shell: pip --version | grep 7.0.3
   register: pip_ret
