@@ -1539,7 +1539,7 @@ class Vm(object):
         def make_os():
             root = elements['root']
             os = e(root, 'os')
-            e(os, 'type', 'hvm')
+            e(os, 'type', 'hvm', attrib={'machine':'pc'})
             for boot_dev in cmd.bootDev:
                 e(os, 'boot', None, {'dev': boot_dev})
 
