@@ -1320,7 +1320,7 @@ start_dashboard(){
 }
 
 sd_install_dashboard(){
-    echo_subtitle "Install ${PRODUCT_NAME} Web UI"
+    echo_subtitle "Install ${PRODUCT_NAME} Web UI (takes a couple of minutes)"
     zstack-ctl install_ui >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
