@@ -66,11 +66,11 @@
 
 - name: enable ntp service for RedHat
   when: ansible_os_family == 'RedHat'
-  shell: "chkconfig ntpd on; service ntpd restart"
+  shell: grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1; if [ $? -ne 0 ]; then echo "server 0.centos.pool.ntp.org iburst" >> /etc/ntp.conf; echo "server 1.centos.pool.ntp.org iburst" >> /etc/ntp.conf; fi; chkconfig ntpd on; service ntpd restart
 
 - name: enable ntp service for Debian
   when: ansible_os_family == 'Debian'
-  shell: "update-rc.d ntp defaults; service ntp restart"
+  shell: grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1; if [ $? -ne 0 ]; then echo "server 0.ubuntu.pool.ntp.org iburst" >> /etc/ntp.conf; echo "server ntp.ubuntu.com" >> /etc/ntp.conf; fi; update-rc.d ntp defaults; service ntp restart
 
 - shell: pip --version | grep 7.0.3
   register: pip_ret

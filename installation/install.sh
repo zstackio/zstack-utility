@@ -736,9 +736,19 @@ install_system_libs(){
 is_enable_ntpd(){
     echo_subtitle "Enable NTP"
     if [ $OS != $UBUNTU1404 ];then
+        grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo "server 0.centos.pool.ntp.org iburst" >> /etc/ntp.conf
+            echo "server 1.centos.pool.ntp.org iburst" >> /etc/ntp.conf
+        fi
         chkconfig ntpd on >>$ZSTACK_INSTALL_LOG 2>&1
         service ntpd restart >>$ZSTACK_INSTALL_LOG 2>&1
     else
+        grep '^server 0.ubuntu.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo "server 0.ubuntu.pool.ntp.org" >> /etc/ntp.conf
+            echo "server ntp.ubuntu.com" >> /etc/ntp.conf
+        fi
         update-rc.d ntp defaults >>$ZSTACK_INSTALL_LOG 2>&1
         service ntp restart >>$ZSTACK_INSTALL_LOG 2>&1
     fi
