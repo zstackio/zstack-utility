@@ -286,7 +286,7 @@ check_system(){
             fi
         fi
     else
-        grep 'Ubuntu 14.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
+        grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
             OS=$UBUNTU1404
         else
@@ -306,6 +306,13 @@ check_system(){
         yum_source="file://${yum_repo_folder}"
     fi
     debug "Your system is: $OS"
+
+    if [ $UPGRADE = 'y' ]; then
+        which zstack-ctl >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            fail2 "Did not find zstack-ctl. Can not use option '-u' to upgrade $PRODUCT_NAME . Please remove '-u' and do fresh installation."
+        fi
+    fi
     cs_check_epel
     show_spinner do_check_system
 }
