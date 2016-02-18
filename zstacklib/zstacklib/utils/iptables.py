@@ -365,12 +365,23 @@ class IPTables(Node):
         return '\n'.join(lst)
     
     def _cleanup_empty_chain(self):
+        def _is_chain_not_targeted(chain,table):
+            need_deleted = True
+            for chain2 in table.children:
+                if chain2.children:
+                    for rule1 in chain2.children:
+                        if IPTables.is_target_in_rule(rule1,chain.name):
+                            need_deleted = False
+                            break
+            return need_deleted
+    
         def _clean_chain_having_no_rules():
             chains_to_delete = []
             for t in self.children:
                 for c in t.children:
                     if not c.children:
-                        chains_to_delete.append(c)
+                        if _is_chain_not_targeted(c,t): 
+                            chains_to_delete.append(c) 
 
             empty_chain_names = []
             for c in chains_to_delete:
