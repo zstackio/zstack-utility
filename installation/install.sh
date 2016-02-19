@@ -1632,6 +1632,8 @@ else
     fi
 fi
 
+README=$ZSTACK_INSTALL_ROOT/readme
+
 echo "${PRODUCT_NAME} installation root path: $ZSTACK_INSTALL_ROOT" >>$ZSTACK_INSTALL_LOG
 [ -z $NFS_FOLDER ] && NFS_FOLDER=$ZSTACK_INSTALL_ROOT/nfs_root
 echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG
@@ -1869,20 +1871,21 @@ fi
 
 echo ""
 echo_star_line
-echo "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:"
-echo " - Installation path: $ZSTACK_INSTALL_ROOT"
-echo ""
-echo -e " - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome or Firefox"
-echo "      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service"
-echo ""
-echo -e " - Management node is running"
-echo -e "      Use $(tput setaf 3)zstack-ctl [stop_node|start_node]$(tput sgr0) to stop/start it"
-echo ""
-echo " - ${PRODUCT_NAME} command line tool is installed: zstack-cli"
-echo " - ${PRODUCT_NAME} control tool is installed: zstack-ctl"
-echo ""
-echo -e " - For system security, $(tput setaf 4) database root password is set to: $MYSQL_NEW_ROOT_PASSWORD $(tput sgr0) . You can use \`mysqladmin -u root --password=$MYSQL_NEW_ROOT_PASSWORD password NEW_PASSWORD\` to change it. To be noticed: ${PRODUCT_NAME} will use 'zstack' user to access database. Change 'root' password won't impact 'zstack' access database."
-echo ""
+touch $README
+echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
+ - Installation path: $ZSTACK_INSTALL_ROOT
+
+ - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome or Firefox
+      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
+
+ - Management node is running
+      Use $(tput setaf 3)zstack-ctl [stop|start]$(tput sgr0) to stop/start it
+
+ - ${PRODUCT_NAME} command line tool is installed: zstack-cli
+ - ${PRODUCT_NAME} control tool is installed: zstack-ctl
+
+ - For system security, $(tput setaf 4) database root password is set to: $MYSQL_NEW_ROOT_PASSWORD $(tput sgr0) . You can use \`mysqladmin -u root --password=$MYSQL_NEW_ROOT_PASSWORD password NEW_PASSWORD\` to change it. To be noticed: ${PRODUCT_NAME} will use 'zstack' user to access database. Change 'root' password won't impact 'zstack' access database."|tee -a $README
+
 if [ ! -z QUIET_INSTALLATION ]; then
     if [ -z "$CHANGE_HOSTNAME" -a -z "$CHANGE_HOSTS" -a -z "$DELETE_PY_CRYPTO" -a -z "$SETUP_EPEL" ];then
         true
