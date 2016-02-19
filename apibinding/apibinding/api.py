@@ -32,7 +32,7 @@ class Api(object):
         Constructor
         '''
         if not host:
-            host = 'localhost'
+            host = '127.0.0.1'
 
         if not port:
             port = 8080
