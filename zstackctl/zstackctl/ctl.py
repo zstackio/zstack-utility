@@ -1139,7 +1139,17 @@ class StartCmd(Command):
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quick
         time.sleep(5)
-        wait_mgmt_node_start()
+
+        try:
+            wait_mgmt_node_start()
+        except CtlError as e:
+            try:
+                info("the management node failed to start, stop it now ...")
+                ctl.internal_run('stop_node')
+            except:
+                pass
+
+            raise e
 
         info('successfully started management node')
 
