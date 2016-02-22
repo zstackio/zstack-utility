@@ -1667,7 +1667,7 @@ fi
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
 #If user didn't assign mysql root password, then check original zstack mysql password status
-if [ -z $MYSQL_ROOT_PASSWORD ]; then
+if [ -z $MYSQL_ROOT_PASSWORD -a -z $ONLY_INSTALL_ZSTACK ]; then
     which mysql >/dev/null 2>&1
     if [ $? -eq 0 ]; then
         #check if mysql server is running
