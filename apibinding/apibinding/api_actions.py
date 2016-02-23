@@ -1140,6 +1140,20 @@ class AddUserToGroupAction(inventory.APIAddUserToGroupMsg):
         self.out = evt
         return self.out
 
+class QuerySharedResourceAction(inventory.APIQuerySharedResourceMsg):
+    def __init__(self):
+        super(QuerySharedResourceAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySharedResourceAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class UpdateQuotaAction(inventory.APIUpdateQuotaMsg):
     def __init__(self):
         super(UpdateQuotaAction, self).__init__()
@@ -3358,6 +3372,18 @@ class ReloadLicenseAction(inventory.APIReloadLicenseMsg):
         self.out = evt
         return self.out
 
+class GetLicenseInfoAction(inventory.APIGetLicenseInfoMsg):
+    def __init__(self):
+        super(GetLicenseInfoAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetLicenseInfoAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
     def __init__(self):
         super(GetLicenseCapabilitiesAction, self).__init__()
@@ -3370,14 +3396,14 @@ class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
         self.out = evt
         return self.out
 
-class GetLicenseInfoAction(inventory.APIGetLicenseInfoMsg):
+class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
     def __init__(self):
-        super(GetLicenseInfoAction, self).__init__()
+        super(CreateResourcePriceAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetLicenseInfoAction] cannot be None')
+            raise Exception('sessionUuid of action[CreateResourcePriceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
