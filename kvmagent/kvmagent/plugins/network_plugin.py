@@ -62,7 +62,21 @@ class NetworkPlugin(kvmagent.KvmAgent):
     '''
     classdocs
     '''
-    
+
+    def _ifup_device_if_down(self, device_name):
+        state_path = '/sys/class/net/%s/operstate' % device_name
+
+        if not os.path.exists(state_path):
+            raise Exception('cannot find %s' % state_path)
+
+        with open(state_path, 'r') as fd:
+            state = fd.read()
+
+        if 'up' == state:
+            return
+
+        shell.call('ip link set %s up' % device_name)
+
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -74,6 +88,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 rsp.failedInterfaceNames = [i]
                 rsp.success = False
                 return jsonobject.dumps(rsp)
+
+        for i in cmd.interfaceNames:
+            self._ifup_device_if_down(i)
 
         logger.debug(http.path_msg(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, 'checked physical interfaces: %s' % cmd.interfaceNames))
         return jsonobject.dumps(rsp)
@@ -88,6 +105,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
         
         try:
+            self._ifup_device_if_down(cmd.physicalInterfaceName)
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             logger.debug('successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
         except Exception as e:
@@ -107,6 +125,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
         
         try:
+            self._ifup_device_if_down(cmd.physicalInterfaceName)
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
@@ -124,6 +143,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if not linux.is_bridge(cmd.bridgeName):
             rsp.error = "can not find bridge[%s]" % cmd.bridgeName
             rsp.success = False
+        else:
+            self._ifup_device_if_down(cmd.physicalInterfaceName)
 
         return jsonobject.dumps(rsp)
 
@@ -135,6 +156,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if not linux.is_bridge(cmd.bridgeName):
             rsp.error = "can not find vlan bridge[%s]" % cmd.bridgeName
             rsp.success = False
+        else:
+            self._ifup_device_if_down(cmd.physicalInterfaceName)
 
         return jsonobject.dumps(rsp)
 

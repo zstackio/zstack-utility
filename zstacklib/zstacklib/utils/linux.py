@@ -619,7 +619,7 @@ def create_bridge(bridge_name, interface, move_route=True):
 
     out = shell.call('ip addr show dev %s | grep "inet "' % interface, exception=False)
     if not out:
-    	logger.debug("Interface %s doesn't set ip address yet. No need to move route. " % interface)
+        logger.debug("Interface %s doesn't set ip address yet. No need to move route. " % interface)
         return
 
     #record old routes
