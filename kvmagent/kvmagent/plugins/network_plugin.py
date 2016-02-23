@@ -100,12 +100,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def create_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateBridgeResponse()
+
+        self._ifup_device_if_down(cmd.physicalInterfaceName)
+
         if linux.is_vif_on_bridge(cmd.bridgeName, cmd.physicalInterfaceName):
-            logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.physicalInterfaceName, cmd.bridgeName))
+            logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.bridgeName, cmd.physicalInterfaceName))
             return jsonobject.dumps(rsp)
         
         try:
-            self._ifup_device_if_down(cmd.physicalInterfaceName)
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             logger.debug('successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
         except Exception as e:
@@ -120,12 +122,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def create_vlan_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVlanBridgeResponse()
+
+        self._ifup_device_if_down(cmd.physicalInterfaceName)
+
         if linux.is_bridge(cmd.bridgeName):
-            logger.debug('%s is a bridge device, no need to create bridge' % cmd.physicalInterfaceName)
+            logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
             return jsonobject.dumps(rsp)
         
         try:
-            self._ifup_device_if_down(cmd.physicalInterfaceName)
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
