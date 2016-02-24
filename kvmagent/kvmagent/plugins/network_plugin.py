@@ -123,10 +123,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVlanBridgeResponse()
 
-        self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
-
         if linux.is_bridge(cmd.bridgeName):
             logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
+            self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
             return jsonobject.dumps(rsp)
         
         try:
