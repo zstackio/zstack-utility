@@ -1528,7 +1528,10 @@ class Vm(object):
             elif cmd.nestedVirtualization == 'host-passthrough':
                 cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                 e(cpu, 'model', attrib={'fallback': 'allow'})
+            else:
+                cpu = e(root, 'cpu')
 
+            e(cpu, 'topology', attrib={'sockets': cmd.socketNum, 'cores': cmd.cpuOnSocket})
 
         def make_memory():
             root = elements['root']
