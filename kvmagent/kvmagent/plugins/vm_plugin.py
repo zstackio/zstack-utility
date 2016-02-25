@@ -1531,7 +1531,7 @@ class Vm(object):
             else:
                 cpu = e(root, 'cpu')
 
-            e(cpu, 'topology', attrib={'sockets': cmd.socketNum, 'cores': cmd.cpuOnSocket})
+            e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket)})
 
         def make_memory():
             root = elements['root']
