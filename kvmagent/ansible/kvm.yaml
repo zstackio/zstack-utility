@@ -41,12 +41,12 @@
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       shell: "rpm -q iproute-2.6.32-130.el6ost.netns.2 || yum install -y {{iproute_local_pkg}}"
 
-    - name: copy updated dnsmasq for RHEL6
+    - name: copy updated dnsmasq for RHEL6 and RHEL7
       copy: src="{{dnsmasq_pkg}}" dest={{dnsmasq_local_pkg}}
-      when: ansible_os_family == "RedHat" and ansible_distribution_version < '7'
+      when: ansible_os_family == "RedHat"
 
-    - name: Update dnsmasq for RHEL6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+    - name: Update dnsmasq for RHEL6 and RHEL7
+      when: ansible_os_family == 'RedHat'
       shell: "rpm -q dnsmasq-2.68-1 || yum install -y {{dnsmasq_local_pkg}}"
 
     - name: install kvm related packages on Debian based OS
