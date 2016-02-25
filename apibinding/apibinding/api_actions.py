@@ -1090,6 +1090,20 @@ class RevokeResourceSharingAction(inventory.APIRevokeResourceSharingMsg):
         self.out = evt
         return self.out
 
+class QueryAccountResourceRefAction(inventory.APIQueryAccountResourceRefMsg):
+    def __init__(self):
+        super(QueryAccountResourceRefAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAccountResourceRefAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class GetAccountQuotaUsageAction(inventory.APIGetAccountQuotaUsageMsg):
     def __init__(self):
         super(GetAccountQuotaUsageAction, self).__init__()
