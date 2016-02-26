@@ -209,9 +209,6 @@ class HostPlugin(kvmagent.KvmAgent):
         self.libvirt_version = self._get_libvirt_version()
         self.qemu_version = self._get_qemu_version()
 
-        shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
-        shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
-
     def stop(self):
         pass
 
