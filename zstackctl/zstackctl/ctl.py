@@ -1731,6 +1731,9 @@ class InstallKairosdbCmd(Command):
             (self.KAIROSDB_LOG, os.path.join(kairosdb_dir, 'log')),
         ])
 
+        log_conf = os.path.normpath('%s/conf/logging/logback.xml' % kairosdb_dir)
+        shell('''sed -i 's/<root level="DEBUG">/<root level="INFO">/g' %s''' % log_conf)
+
         info('successfully installed kairosdb, the config file is written to %s' % original_conf_path)
 
 class InstallCassandraCmd(Command):
