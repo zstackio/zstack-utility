@@ -1422,6 +1422,30 @@ class DestroyVmInstanceAction(inventory.APIDestroyVmInstanceMsg):
         self.out = evt
         return self.out
 
+class DeleteVmHostnameAction(inventory.APIDeleteVmHostnameMsg):
+    def __init__(self):
+        super(DeleteVmHostnameAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVmHostnameAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVmStaticIpAction(inventory.APISetVmStaticIpMsg):
+    def __init__(self):
+        super(SetVmStaticIpAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmStaticIpAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVmAttachableDataVolumeAction(inventory.APIGetVmAttachableDataVolumeMsg):
     def __init__(self):
         super(GetVmAttachableDataVolumeAction, self).__init__()
@@ -1540,6 +1564,30 @@ class CreateVmInstanceAction(inventory.APICreateVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVmStaticIpAction(inventory.APIDeleteVmStaticIpMsg):
+    def __init__(self):
+        super(DeleteVmStaticIpAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVmStaticIpAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVmHostnameAction(inventory.APISetVmHostnameMsg):
+    def __init__(self):
+        super(SetVmHostnameAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmHostnameAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
