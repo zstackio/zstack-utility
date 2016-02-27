@@ -967,7 +967,7 @@ install_zstack(){
     show_spinner iz_chown_install_root
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
-    [ ! -z $ONLY_INSTALL_ZSTACK ] && show_spinner sd_install_dashboard
+    [ -z $ONLY_INSTALL_ZSTACK ] && show_spinner sd_install_dashboard
     [ -z $INSTALL_MONITOR ] && return
     show_spinner iz_install_cassandra
     show_spinner iz_install_kairosdb
