@@ -2002,6 +2002,8 @@ class CassandraCmd(Command):
                 if ret == 0:
                     info('cassandra is listening on RPC port[%s] now' % port)
                     return
+
+                time.sleep(1)
                 args.wait_timeout -= 1
 
             raise CtlError("cassandra is not listening on RPC port[%s] after %s seconds, it may not successfully start,"
