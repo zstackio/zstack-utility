@@ -111,6 +111,41 @@
             <arg value="--name-status" />
             <arg value="HEAD^..HEAD" />
         </exec>
+
+        <exec executable="git" dir="${zstackutility.source}" failonerror="true" error="/dev/null" output="${war.dir}/zstackutility-git-commit">
+            <arg value="--git-dir=${zstackutility.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" dir="${agent.source}" failonerror="true" error="/dev/null" output="${war.dir}/agent-git-commit">
+            <arg value="--git-dir=${agent.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/premium-git-commit">
+            <arg value="--git-dir=${zstack.source}/premium/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/zstackdashboard-git-commit">
+            <arg value="--git-dir=${zstackdashboard.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/mevocoui-git-commit">
+            <arg value="--git-dir=${mevocoui.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
     </target>
 
     <target name="zip-war">
