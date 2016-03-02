@@ -76,6 +76,7 @@ CHANGE_HOSTS=''
 ZSTACK_MN_HOSTNAME='zstack-management-node'
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
+LICENSE_FILE='zstack-license'
 
 show_download()
 {
@@ -1317,6 +1318,11 @@ cs_deploy_db(){
 
 sz_start_zstack(){
     echo_subtitle "Start ${PRODUCT_NAME} management node (takes a couple of minutes)"
+    cd $ZSTACK_INSTALL_ROOT
+    if [ -f $LICENSE_FILE ]; then
+        zstack-ctl install_license --license $LICENSE_FILE
+    fi
+
     zstack-ctl stop_node -f >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl start_node --timeout=$ZSTACK_START_TIMEOUT >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to start zstack"

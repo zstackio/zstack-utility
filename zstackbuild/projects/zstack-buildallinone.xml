@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="zstack all in one package builder" basedir="../">
+    <property name="target.license.file" location="${allinone.dir}/zstack-license" />
     <target name="all-in-one-package" >
         <copy file="${zstack.install}" todir="${build.dir}" />
         <copy file="${war.file}" todir="${allinone.dir}" />
@@ -12,13 +13,18 @@
     </target>
 
     <target name="copy-monitor-packages" if="build_war_flag">
-        <echo message="copy apache-cassandra to ${allinone.file}" />
+        <echo message="copy apache-cassandra to ${allinone.dir}" />
         <copy file="${cassandra.pkg}" todir="${allinone.dir}" />
-        <echo message="copy kairosdb to ${allinone.file}" />
+        <echo message="copy kairosdb to ${allinone.dir}" />
         <copy file="${kairosdb.pkg}" todir="${allinone.dir}" />
     </target>
 
-    <target name="build-centos-offline" depends="copy-monitor-packages">
+    <target name="copy-license-file" if="license.file">
+        <echo message="copy license file to ${allinone.dir}" />
+        <copy file="${license.file}" tofile="${target.license.file}" />
+    </target>
+
+    <target name="build-centos-offline" depends="copy-monitor-packages, copy-license-file">
         <copy file="${war.file}" todir="${allinone.dir}" />
         <echo message="copy apache-tomcat to ${allinone.file}" />
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
