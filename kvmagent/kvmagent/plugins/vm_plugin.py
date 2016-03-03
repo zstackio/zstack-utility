@@ -1257,7 +1257,7 @@ class Vm(object):
         return etree.tostring(interface)
 
     def _wait_vm_run_until_seconds(self, sec):
-        vm_pid = linux.find_process_by_cmdline(['qemu-kvm', self.uuid])
+        vm_pid = linux.find_process_by_cmdline([kvmagent.get_qemu_path(), self.uuid])
         if not vm_pid:
             raise Exception('cannot find pid for vm[uuid:%s]' % self.uuid)
 
