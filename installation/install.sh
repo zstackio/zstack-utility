@@ -1320,7 +1320,7 @@ sz_start_zstack(){
     echo_subtitle "Start ${PRODUCT_NAME} management node (takes a couple of minutes)"
     cd $ZSTACK_INSTALL_ROOT
     if [ -f $LICENSE_FILE ]; then
-        zstack-ctl install_license --license $LICENSE_FILE
+        zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     zstack-ctl stop_node -f >>$ZSTACK_INSTALL_LOG 2>&1
