@@ -838,13 +838,21 @@ uz_upgrade_zstack(){
     fi
 
     if [ ! -z $DEBUG ]; then
-        zstack-ctl upgrade_db --dry-run
+        if [ $FORCE = 'n' ];then
+            zstack-ctl upgrade_db --dry-run
+        else
+            zstack-ctl upgrade_db --dry-run --force
+        fi
     else
-        zstack-ctl upgrade_db --dry-run >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $FORCE = 'n' ];then
+            zstack-ctl upgrade_db --dry-run >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            zstack-ctl upgrade_db --dry-run --force >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
     fi
     if [ $? -ne 0 ];then
         rm -rf $upgrade_folder
-        fail "Database upgrading dry-run failed."
+        fail "Database upgrading dry-run failed. You probably should use -F option to do force upgrading."
     fi
 
     if [ ! -z $DEBUG ]; then
