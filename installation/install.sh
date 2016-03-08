@@ -837,6 +837,8 @@ uz_upgrade_zstack(){
         fail "failed to upgrade zstack-ctl"
     fi
 
+    zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
+
     if [ ! -z $DEBUG ]; then
         if [ $FORCE = 'n' ];then
             zstack-ctl upgrade_db --dry-run
