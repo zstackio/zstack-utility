@@ -397,8 +397,6 @@ class Ctl(object):
 
     def write_property(self, key, value):
         prop = PropertyFile(self.properties_file_path)
-        prop.write_property(key, value)
-
     def get_db_url(self):
         db_url = self.read_property("DB.url")
         if not db_url:
@@ -2795,6 +2793,7 @@ class UpgradeDbCmd(Command):
         parser.add_argument('--force', help='bypass management nodes status check.'
                             '\nNOTE: only use it when you know exactly what it does', action='store_true', default=False)
         parser.add_argument('--no-backup', help='do NOT backup the database. If the database is very large and you have manually backup it, using this option will fast the upgrade process. [DEFAULT] false', default=False)
+        parser.add_argument('--dry-run', help='Check if db could be upgraded. [DEFAULT] not set', action='store_true', default=False)
 
     def run(self, args):
         error_if_tool_is_missing('mysqldump')
@@ -2815,6 +2814,10 @@ class UpgradeDbCmd(Command):
             raise CtlError('cannot find %s. Have you run upgrade_management_node?' % upgrading_schema_dir)
 
         ctl.check_if_management_node_has_stopped(args.force)
+
+        if args.dry_run:
+            info('Dry run finished. Database could be upgraded. ')
+            return True
 
         def backup_current_database():
             if args.no_backup:
