@@ -838,6 +838,16 @@ uz_upgrade_zstack(){
     fi
 
     if [ ! -z $DEBUG ]; then
+        zstack-ctl upgrade_db --dry-run
+    else
+        zstack-ctl upgrade_db --dry-run >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        rm -rf $upgrade_folder
+        fail "Database upgrading dry-run failed."
+    fi
+
+    if [ ! -z $DEBUG ]; then
         bash zstack/WEB-INF/classes/tools/install.sh zstack-cli
     else
         bash zstack/WEB-INF/classes/tools/install.sh zstack-cli >>$ZSTACK_INSTALL_LOG 2>&1
