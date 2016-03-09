@@ -539,14 +539,14 @@ upgrade_zstack(){
     echo ""
     show_spinner uz_upgrade_zstack
 
-    if [ ! -z $INSTALL_MONITOR -o $UPGRADE_MONITOR = 'y' ]; then
+    if [ ! -z $INSTALL_MONITOR ] || [ $UPGRADE_MONITOR = 'y' ]; then
         show_spinner iz_install_cassandra
         show_spinner iz_install_kairosdb
     fi
 
     if [ $CURRENT_STATUS = 'y' ]; then
         if [ -z $NOT_START_ZSTACK ]; then
-            if [ ! -z $INSTALL_MONITOR  -o $UPGRADE_MONITOR = 'y' ]; then
+            if [ ! -z $INSTALL_MONITOR ] || [ $UPGRADE_MONITOR = 'y' ]; then
                 show_spinner sz_start_cassandra
                 show_spinner sz_start_kairosdb
             fi
