@@ -78,6 +78,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.call('ip link set %s up' % device_name)
 
     def _configure_bridge(self):
+        shell.call('modprobe br_netfilter || true')
         shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
         shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
 
