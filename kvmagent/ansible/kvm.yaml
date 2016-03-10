@@ -130,8 +130,13 @@
       when: chroot_env == 'false' and ansible_os_family == 'RedHat'
       service: name=libvirtd state=started enabled=yes
 
-    - name: enable bridge forward
+    - name: enable bridge forward on RHEL
+      when: ansible_os_family == 'RedHat'
       shell: "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding" 
+
+    - name: enable bridge forward on UBUNTU
+      when: ansible_os_family == 'Debian'
+      shell: "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding" 
 
     - shell: virtualenv --version | grep "12.1.1"
       register: virtualenv_ret
