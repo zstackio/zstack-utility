@@ -1290,14 +1290,6 @@ class InstallDbCmd(Command):
     - name: pre-install script
       script: $pre_install_script
 
-    - name: set RHEL7 yum repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-
-    - name: set RHEL6 yum repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
-      shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-
     - name: install MySQL for RedHat 6 through user defined repos
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql mysql-server
@@ -1513,14 +1505,6 @@ class InstallRabbitCmd(Command):
   tasks:
     - name: pre-install script
       script: $pre_install_script
-
-    - name: set RHEL7 yum repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-
-    - name: set RHEL6 yum repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
-      shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
 
     - name: install RabbitMQ on RedHat OS from user defined yum repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
@@ -2120,14 +2104,6 @@ class InstallManagementNodeCmd(Command):
     - name: prepare remote environment
       script: $pre_script
 
-    - name: set RHEL7 yum repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-
-    - name: set RHEL6 yum repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
-      shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-
     - name: install dependencies on RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python
@@ -2507,14 +2483,6 @@ class InstallWebUiCmd(Command):
   tasks:
     - name: pre-install script
       script: $pre_install_script
-
-    - name: set RHEL7 yum repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
-      shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos7_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
-
-    - name: set RHEL6 yum repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '6' and ansible_distribution_version < '7'
-      shell: echo -e "[zstack-local]\\nname=ZStack Local Yum Repo\\nbaseurl=file://$yum_folder/static/centos6_repo\\nenabled=0\\ngpgcheck=0\\n" > /etc/yum.repos.d/zstack-local.repo
 
     - name: install Python pip for RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'

@@ -39,7 +39,6 @@ ZSTACK_PROPERTIES=$CATALINA_ZSTACK_CLASSES/zstack.properties
 ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
 ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
-zstack_local_repo_file=/etc/yum.repos.d/zstack-local.repo
 zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
@@ -1391,14 +1390,6 @@ sd_start_dashboard(){
 
 #create zstack log yum repo
 create_yum_repo(){
-    cat > $zstack_local_repo_file <<EOF
-[zstack-local]
-name=${PRODUCT_NAME} Local Yum Repo
-baseurl=$yum_source
-enabled=0
-gpgcheck=0
-EOF
-
     cat > $zstack_163_repo_file << EOF
 #163 base
 [163base]
@@ -1481,7 +1472,6 @@ gpgcheck=0
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-\$releasever
 EOF
 
-    chmod 644 $zstack_local_repo_file
 }
 
 
@@ -1544,7 +1534,7 @@ Options:
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
         to upgrade zstack or -l to install some system libs. 
 
-  -o    offline installation. ${PRODUCT_NAME} required system libs will installed from all in one local repository. Currently only CentOS 7.2 support offline installation.
+  -o    offline installation. ${PRODUCT_NAME} required system libs will installed from zstack local repository, which is installed from ZStack customed ISO. ZStack customed ISO could be got from ZStack community.
 
   -p MYSQL_PASSWORD
         password for MySQL user 'zstack' that is the user ${PRODUCT_NAME} management nodes use to access database. By default, an empty password is applied.
