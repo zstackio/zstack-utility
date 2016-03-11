@@ -886,19 +886,22 @@ uz_upgrade_zstack(){
     cd /
     rm -rf $upgrade_folder
 
-    if [ ! -z $DEBUG ]; then
-        if [ $FORCE = 'n' ];then
-            zstack-ctl upgrade_db
+    if [ -z $NEED_KEEP_DB ];then
+        if [ ! -z $DEBUG ]; then
+            if [ $FORCE = 'n' ];then
+                zstack-ctl upgrade_db
+            else
+                zstack-ctl upgrade_db --force
+            fi
         else
-            zstack-ctl upgrade_db --force
+            if [ $FORCE = 'n' ];then
+                zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
+            else
+                zstack-ctl upgrade_db --force >>$ZSTACK_INSTALL_LOG 2>&1
+            fi
         fi
-    else
-        if [ $FORCE = 'n' ];then
-            zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
-        else
-            zstack-ctl upgrade_db --force >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
-    fi
+    fi 
+
     if [ $? -ne 0 ];then
         fail "failed to upgrade database"
     fi
@@ -1525,7 +1528,7 @@ Options:
         If multiple IP addresses share same net device, e.g. em1, em1:1, em1:2.
         The network interface should be the exact name, like -I em1:1
 
-  -k    keep previous zstack DB if it exists.
+  -k    keep previous zstack DB if it exists. If using -k with -u, will not upgrade database. 
 
   -l    only just install ${PRODUCT_NAME} dependent libraries
 
