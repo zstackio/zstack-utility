@@ -2186,6 +2186,9 @@ class InstallManagementNodeCmd(Command):
     - name: install pip from local source
       shell: "cd $pypi_path; pip install --ignore-installed pip*.tar.gz"
 
+    - name: install ansible from local source
+      pip: name="ansible" extra_args="-i file://$pypi_path/simple --ignore-installed --trusted-host localhost"
+
     - name: install virtualenv
       pip: name="virtualenv" extra_args="-i file://$pypi_path/simple --ignore-installed --trusted-host localhost"
 
