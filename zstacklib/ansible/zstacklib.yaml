@@ -38,11 +38,11 @@
 
 - name: install libselinux-python and other command system libs from user defined repos
   when: ansible_os_family == 'RedHat' and yum_repos != 'false'
-  shell: "yum clean metadata && yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y  libselinux-python python-devel python-setuptools python-pip gcc autoconf ntp ntpdate"
+  shell: "yum --enablerepo=alibase clean metadata && yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y  libselinux-python python-devel python-setuptools python-pip gcc autoconf ntp ntpdate"
 
 - name: install libselinux-python and other command system libs from system repos
   when: ansible_os_family == 'RedHat' and yum_repos == 'false'
-  shell: "yum clean metadata && yum --nogpgcheck install -y libselinux-python python-devel python-setuptools python-pip gcc autoconf ntp ntpdate"
+  shell: "yum --enablerepo=alibase clean metadata && yum --nogpgcheck install -y libselinux-python python-devel python-setuptools python-pip gcc autoconf ntp ntpdate"
 
 - name: install dependency packages for Debian based OS
   when: ansible_os_family == 'Debian'
