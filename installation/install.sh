@@ -543,16 +543,19 @@ upgrade_zstack(){
         show_spinner iz_install_kairosdb
     fi
 
-    if [ $CURRENT_STATUS = 'y' ]; then
-        if [ -z $NOT_START_ZSTACK ]; then
-            if [ ! -z $INSTALL_MONITOR ] || [ $UPGRADE_MONITOR = 'y' ]; then
-                show_spinner sz_start_cassandra
-                show_spinner sz_start_kairosdb
+    if [ -z $NEED_KEEP_DB ];then
+        if [ $CURRENT_STATUS = 'y' ]; then
+            if [ -z $NOT_START_ZSTACK ]; then
+                if [ ! -z $INSTALL_MONITOR ] || [ $UPGRADE_MONITOR = 'y' ]; then
+                    show_spinner sz_start_cassandra
+                    show_spinner sz_start_kairosdb
+                fi
+                show_spinner cs_config_zstack_properties
+                show_spinner sz_start_zstack
             fi
-            show_spinner cs_config_zstack_properties
-            show_spinner sz_start_zstack
         fi
     fi
+
     if [ $UI_INSTALLATION_STATUS = 'y' ]; then
         if [ $UI_CURRENT_STATUS = 'y' ]; then
             echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
@@ -1518,7 +1521,7 @@ Options:
         If multiple IP addresses share same net device, e.g. em1, em1:1, em1:2.
         The network interface should be the exact name, like -I em1:1
 
-  -k    keep previous zstack DB if it exists. If using -k with -u, will not upgrade database. 
+  -k    keep previous zstack DB if it exists. If using -k with -u, will not upgrade database not start management node.
 
   -l    only just install ${PRODUCT_NAME} dependent libraries
 
@@ -1800,7 +1803,11 @@ if [ $UPGRADE = 'y' ]; then
     echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
     echo ""
     if [ $CURRENT_STATUS = 'y' ]; then
-        echo -e " $(tput setaf 2)Management node has been started up again.$(tput sgr0) You can use \`zstack-ctl status\` to check its status."
+        if [ -z $NEED_KEEP_DB ];then
+            echo -e " $(tput setaf 2)Management node has been started up again.$(tput sgr0) You can use \`zstack-ctl status\` to check its status."
+        else
+            echo -e " $(tput setaf 3)Management node is not started up, since using -k option to skip database upgrading.$(tput sgr0) You can use \`zstack-ctl start\` to start all services, after upgrading database manually."
+        fi
     else
         echo -e " $(tput setaf 3)Management node is not started. Please use \`zstack-ctl start\` to start it up.$(tput sgr0)"
     fi
