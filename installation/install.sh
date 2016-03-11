@@ -1365,6 +1365,8 @@ start_dashboard(){
     echo_title "Start ${PRODUCT_NAME} Web UI"
     echo ""
     #show_spinner sd_install_dashboard_libs
+    #make sure current folder is existed to avoid of possible dashboard start failure. 
+    cd /
     show_spinner sd_start_dashboard
 }
 
