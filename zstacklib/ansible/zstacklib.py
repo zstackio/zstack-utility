@@ -15,24 +15,8 @@ class ZstackLib(object):
         host_post_info = args.host_post_info
         epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
         if distro == "CentOS" or distro == "RedHat":
-            #yum_repo defined by user
-            if yum_repo == "false":
-                yum_install_package("libselinux-python", host_post_info)
-                if epel_repo_exist is False:
-                    copy_arg = CopyArg()
-                    copy_arg.src = "files/zstacklib/epel-release-source.repo"
-                    copy_arg.dest =  "/etc/yum.repos.d/"
-                    copy(copy_arg, host_post_info)
-                    #install epel-release
-                    yum_enable_repo("epel-release","epel-release-source", host_post_info)
-                    set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                command = 'yum clean --enablerepo=alibase metadata'
-                run_remote_command(command, host_post_info)
-                for pkg in ["htop", "python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
-                    yum_install_package(pkg, host_post_info)
-            else:
-                #set ALIYUN mirror yum repo
-                command = """
+                #set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
+            command = """
 echo -e "#aliyun base
 [alibase]
 name=CentOS-\$releasever - Base - mirrors.aliyun.com
@@ -60,7 +44,23 @@ failovermethod=priority
 enabled=0
 gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
         """
+            run_remote_command(command, host_post_info)
+            #yum_repo defined by user
+            if yum_repo == "false":
+                yum_install_package("libselinux-python", host_post_info)
+                if epel_repo_exist is False:
+                    copy_arg = CopyArg()
+                    copy_arg.src = "files/zstacklib/epel-release-source.repo"
+                    copy_arg.dest =  "/etc/yum.repos.d/"
+                    copy(copy_arg, host_post_info)
+                    #install epel-release
+                    yum_enable_repo("epel-release","epel-release-source", host_post_info)
+                    set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
+                command = 'yum clean --enablerepo=alibase metadata'
                 run_remote_command(command, host_post_info)
+                for pkg in ["htop", "python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                    yum_install_package(pkg, host_post_info)
+            else:
                 #set 163 mirror yum repo
                 command = """
 echo -e "#163 base
