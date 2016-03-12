@@ -12,13 +12,14 @@
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="pypi.parent.dir" location="${war.dir}/static/" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
-    <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}-${build_name}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
+    <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}-${build.num}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
         <and>
-            <isset property="build_name"/>
+            <isset property="build.num"/>
         </and>
     </condition>
 
     <property name="product.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" />
+    <property name="bin.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" />
     <property name="allinone.dir" location="${build.dir}/zstack-all-in-one" />
     <property name="allinone.versionfile" location="${allinone.dir}/VERSION" />
     <property name="allinone.bin.dir" location="${build.dir}/zstack" />
@@ -26,9 +27,9 @@
     <property name="allinone.bin.product.title" location="${allinone.bin.dir}/product_title_file" />
     <property name="libs.dir" location="${allinone.dir}/libs" />
 
-    <condition property="allinone.version" value="${MAJOR}.${MINOR}.${UPDATE}-${build_name}" else="${MAJOR}.${MINOR}.${UPDATE}">
+    <condition property="allinone.version" value="${MAJOR}.${MINOR}.${UPDATE}-${build.num}" else="${MAJOR}.${MINOR}.${UPDATE}">
         <and>
-            <isset property="build_name"/>
+            <isset property="build.num"/>
         </and>
     </condition>
 
@@ -177,7 +178,7 @@
     </target>
 
     <target name="assemble" depends="pre-assemble, zip-war" >
-        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-${product.version}.bin" />
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-${bin.version}.bin" />
     </target>
 
     <target name="assemble-centos6-offline" depends="pre-assemble, copy-centos6-repo, zip-war" />
@@ -189,15 +190,15 @@
     <target name="build-war" depends="do-build, assemble" />
 
     <target name="build-war-centos6-offline" depends="do-build, assemble-centos6-offline" >
-        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6-${product.version}.bin" />
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6-${bin.version}.bin" />
     </target>
 
     <target name="build-war-centos7-offline" depends="do-build, assemble-centos7-offline" >
-        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7-${product.version}.bin" />
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7-${bin.version}.bin" />
     </target>
 
     <target name="build-war-centos-offline" depends="do-build, assemble-centos-offline" >
-        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos-6-and-7-${product.version}.bin" />
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos-6-and-7-${bin.version}.bin" />
     </target>
 
     <target name="package" depends="build-war, build-setting, do-package" />
