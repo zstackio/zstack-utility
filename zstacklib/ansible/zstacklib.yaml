@@ -37,7 +37,7 @@
   shell: echo -e "[zstack-local]\nname=ZStack Local Yum Repo\nbaseurl=http://{{yum_server}}/zstack/static/centos6_repo\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-local.repo
 
 - name: set ALIYUN mirror yum repo
-  when: ansible_os_family == 'RedHat' and yum_repos != 'false'
+  when: ansible_os_family == 'RedHat'
   shell: echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
 
 - name: set 163 mirror yum repo
