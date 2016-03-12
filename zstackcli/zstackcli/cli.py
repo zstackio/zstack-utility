@@ -445,7 +445,7 @@ Parse command parameters error:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
 
-            if apiname == self.USER_RESET_PASSWORD_NAME:
+            if apiname in [self.USER_RESET_PASSWORD_NAME, self.ACCOUNT_RESET_PASSWORD_NAME]:
                 msg.password = hashlib.sha512(msg.password).hexdigest()
 
             if apiname == self.LOGOUT_MESSAGE_NAME:
