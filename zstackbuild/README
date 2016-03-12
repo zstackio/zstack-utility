@@ -16,7 +16,11 @@ Build all:
 
 Build all-in-one package with special build name, e.g. rc1 :
 -------------
-#ant -Dzstack_build_root=/root/zstackorg/ -Dbuild_name=rc1 all-in-one
+#ant -Dzstack_build_root=/root/zstackorg/ -Dbuild.num=rc1 all-in-one
+
+Build all-in-one package with special build name, e.g. rc1 :
+-------------
+#ant -Dzstack_build_root=/root/zstackorg/ -Dbuild.num=rc1 -Dbin.version=1.0.1-rc1 all-in-one
 
 Build all-in-one offline binary installer for CentOS6 (need to install figlet):
 -------------
