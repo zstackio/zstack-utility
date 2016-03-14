@@ -538,7 +538,7 @@ upgrade_zstack(){
     echo ""
     show_spinner uz_upgrade_zstack
 
-    [ -f $ZSTACK_INSTALL_ROOT/kairosdb* ] && INSTALL_MONITOR='y'
+    [ -f "$ZSTACK_INSTALL_ROOT/kairosdb*gz" ] && INSTALL_MONITOR='y'
 
     if [ ! -z $INSTALL_MONITOR ] ; then
         show_spinner iz_install_cassandra
@@ -1838,7 +1838,7 @@ fi
 unpack_zstack_into_tomcat
 
 #doesn't need use to send -m option to install monitor.
-[ -f $ZSTACK_INSTALL_ROOT/kairosdb* ] && INSTALL_MONITOR='y'
+[ -f "$ZSTACK_INSTALL_ROOT/kairosdb*gz" ] && INSTALL_MONITOR='y'
 
 #Install Ansible 
 install_ansible
