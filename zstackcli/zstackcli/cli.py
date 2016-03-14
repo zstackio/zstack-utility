@@ -446,7 +446,8 @@ Parse command parameters error:
                 msg.password = hashlib.sha512(msg.password).hexdigest()
 
             if apiname in [self.USER_RESET_PASSWORD_NAME, self.ACCOUNT_RESET_PASSWORD_NAME]:
-                msg.password = hashlib.sha512(msg.password).hexdigest()
+                if msg.password:
+                    msg.password = hashlib.sha512(msg.password).hexdigest()
 
             if apiname == self.LOGOUT_MESSAGE_NAME:
                 if not msg.sessionUuid:
