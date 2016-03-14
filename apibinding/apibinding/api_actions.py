@@ -1424,6 +1424,18 @@ class CreateAccountAction(inventory.APICreateAccountMsg):
         self.out = evt
         return self.out
 
+class DetachPolicesFromUserAction(inventory.APIDetachPolicesFromUserMsg):
+    def __init__(self):
+        super(DetachPolicesFromUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachPolicesFromUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateUserAction(inventory.APICreateUserMsg):
     def __init__(self):
         super(CreateUserAction, self).__init__()
@@ -1746,6 +1758,18 @@ class DeleteUserAction(inventory.APIDeleteUserMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AttachPoliciesToUserAction(inventory.APIAttachPoliciesToUserMsg):
+    def __init__(self):
+        super(AttachPoliciesToUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachPoliciesToUserAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
