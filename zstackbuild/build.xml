@@ -18,8 +18,18 @@
         </and>
     </condition>
 
-    <property name="product.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" />
-    <property name="bin.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" />
+    <condition property="product.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" else="${MAJOR}.${MINOR}.${UPDATE}">
+        <and>
+            <isset property="build.num"/>
+        </and>
+    </condition>
+
+    <condition property="bin.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" else="${MAJOR}.${MINOR}.${UPDATE}">
+        <and>
+            <isset property="build.num"/>
+        </and>
+    </condition>
+
     <property name="allinone.dir" location="${build.dir}/zstack-all-in-one" />
     <property name="allinone.versionfile" location="${allinone.dir}/VERSION" />
     <property name="allinone.bin.dir" location="${build.dir}/zstack" />
