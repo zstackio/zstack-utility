@@ -479,6 +479,12 @@ Parse command parameters error:
 
         exit_code = 0
 
+        import atexit
+        if not os.path.exists(os.path.dirname(CLI_HISTORY)):
+            os.system('mkdir -p %s' % os.path.dirname(CLI_HISTORY))
+        atexit.register(clean_password_in_cli_history)
+        atexit.register(readline.write_history_file, CLI_HISTORY)
+
         while True:
             try:
                 if cmd:
@@ -492,11 +498,6 @@ Parse command parameters error:
                 exit_code = 1
             except (EOFError):
                 print ''
-                import atexit
-                if not os.path.exists(os.path.dirname(CLI_HISTORY)):
-                    os.system('mkdir -p %s' % os.path.dirname(CLI_HISTORY))
-                atexit.register(clean_password_in_cli_history)
-                atexit.register(readline.write_history_file, CLI_HISTORY)
                 sys.exit(1)
             except (KeyboardInterrupt):
                 print ''
