@@ -743,7 +743,13 @@ class ShowStatusCmd(Command):
                 v = ret[0]
                 version = v['version']
 
-            info_list.append('version: %s' % version)
+            detailed_version_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "VERSION")
+            if os.path.exists(detailed_version_file):
+                with open(detailed_version_file, 'r') as fd:
+                    detailed_version = fd.read()
+                    info_list.append('version: %s (%s)' % (version, detailed_version))
+            else:
+                info_list.append('version: %s' % version)
 
         check_zstack_status()
         show_version()
