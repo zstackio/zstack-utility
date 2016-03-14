@@ -93,9 +93,10 @@ ip link | grep $OUTER_DEV > /dev/null
 if [ $? -ne 0 ]; then
     ip link add $OUTER_DEV type veth peer name $INNER_DEV
     exit_on_error
-    ip link set $OUTER_DEV up
-    exit_on_error
 fi
+
+ip link set $OUTER_DEV up
+exit_on_error
 
 brctl show $BR_NAME | grep $OUTER_DEV > /dev/null
 if [ $? -ne 0 ]; then
@@ -115,9 +116,10 @@ if [ $? -ne 0 ]; then
     exit_on_error
     ip netns exec $BR_NAME ip addr add $DHCP_IP/$DHCP_NETMASK dev $INNER_DEV
     exit_on_error
-    ip netns exec $BR_NAME ip link set $INNER_DEV up
-    exit_on_error
 fi
+
+ip netns exec $BR_NAME ip link set $INNER_DEV up
+exit_on_error
 
 BR_PHY_DEV=`brctl show $BR_NAME  | grep $BR_NAME | sed 's/\s\s*/ /g' | cut -d' ' -f4`
 if [ x$BR_PHY_DEV == "x" ]; then
