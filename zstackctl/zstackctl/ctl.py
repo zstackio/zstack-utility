@@ -1821,6 +1821,12 @@ class InstallCassandraCmd(Command):
         ])
         info('configs are written into %s' % yaml_conf)
 
+        ctl.write_properties([
+            ('Cassandra.contactPoints', rpc_address)
+        ])
+
+        info("set Cassandra.contactPoints = %s in zstack.properties" % rpc_address)
+
 class KairosdbCmd(Command):
     NAME = 'kairosdb'
 
