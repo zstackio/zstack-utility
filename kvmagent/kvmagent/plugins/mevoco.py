@@ -40,7 +40,29 @@ class DhcpEnv(object):
         self.dhcp_server_ip = None
         self.dhcp_netmask = None
 
+    def _cleanup_old_ebtable_rules(self):
+        out = shell.call('ebtables-save | grep ":ZSTACK*"')
+        old_chains = []
+        old_rules = []
+        for l in out.split('\n'):
+            if ":ZSTACK-" in l and self.dhcp_server_ip not in l:
+                chain_name = l.split()[0].lstrip(':')
+                old_chains.append(chain_name)
+
+            if "-j ZSTACK-" in l and self.dhcp_server_ip not in l:
+                old_rules.append(l)
+
+        for chain_name in old_chains:
+            shell.call('ebtables -X %s' % chain_name)
+            logger.debug('deleted a stale ebtable chain[%s]' % chain_name)
+
+        for rule in old_rules:
+            shell.call('ebtables %s' % rule.replace('-A', '-D'))
+            logger.debug('deleted a stable rule[%s]' % rule)
+
     def prepare(self):
+        self._cleanup_old_ebtable_rules()
+
         cmd = '''\
 BR_NAME="{{bridge_name}}"
 DHCP_IP="{{dhcp_server_ip}}"
@@ -103,21 +125,36 @@ if [ x$BR_PHY_DEV == "x" ]; then
    exit 1
 fi
 
-ebtables-save | grep "FORWARD -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
+CHAIN_NAME="ZSTACK-$DHCP_IP"
+
+ebtables-save | grep "$CHAIN_NAME" > /dev/null
+
 if [ $? -ne 0 ]; then
-    ebtables -I FORWARD -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
+    ebtables -N $CHAIN_NAME
+    ebtables -I FORWARD -j $CHAIN_NAME
+fi
+
+ebtables-save | grep "$CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
+if [ $? -ne 0 ]; then
+    ebtables -I $CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
     exit_on_error
 fi
 
-ebtables-save | grep "FORWARD -p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
+ebtables-save | grep "$CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
-    ebtables -I FORWARD -p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
+    ebtables -I $CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
     exit_on_error
 fi
 
-ebtables-save | grep "FORWARD -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
+ebtables-save | grep "$CHAIN_NAME -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
-    ebtables -I FORWARD -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP
+    ebtables -I $CHAIN_NAME -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP
+    exit_on_error
+fi
+
+ebtables-save | grep "$CHAIN_NAME -p IPv4 -i $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
+if [ $? -ne 0 ]; then
+    ebtables -I $CHAIN_NAME -p IPv4 -i $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP
     exit_on_error
 fi
 
