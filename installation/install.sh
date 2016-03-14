@@ -538,7 +538,9 @@ upgrade_zstack(){
     echo ""
     show_spinner uz_upgrade_zstack
 
-    if [ ! -z $INSTALL_MONITOR ] || [ $UPGRADE_MONITOR = 'y' ]; then
+    [ -f $ZSTACK_INSTALL_ROOT/kairosdb* ] && INSTALL_MONITOR='y'
+
+    if [ ! -z $INSTALL_MONITOR ] ; then
         show_spinner iz_install_cassandra
         show_spinner iz_install_kairosdb
     fi
@@ -546,7 +548,7 @@ upgrade_zstack(){
     if [ -z $NEED_KEEP_DB ];then
         if [ $CURRENT_STATUS = 'y' ]; then
             if [ -z $NOT_START_ZSTACK ]; then
-                if [ ! -z $INSTALL_MONITOR ] || [ $UPGRADE_MONITOR = 'y' ]; then
+                if [ ! -z $INSTALL_MONITOR ] ; then
                     show_spinner sz_start_cassandra
                     show_spinner sz_start_kairosdb
                 fi
@@ -880,9 +882,10 @@ uz_upgrade_zstack(){
     fi
     /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
 
-    if [ ! -z $INSTALL_MONITOR ]; then
+    if [ -f $upgrade_folder/apache-cassandra* ]; then
         /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
         /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+        INSTALL_MONITOR='y'
     fi
 
     cd /
@@ -1788,13 +1791,6 @@ fi
 download_zstack
 
 if [ $UPGRADE = 'y' ]; then
-    zstack-ctl getenv|grep KAIROSDB >/dev/null 2>&1
-    if [ $? -eq 0 ];then
-        UPGRADE_MONITOR='y'
-    else
-        UPGRADE_MONITOR='n'
-    fi
-
     #only upgrade zstack
     upgrade_zstack
     rm -rf $upgrade_zstack
@@ -1840,6 +1836,9 @@ fi
 
 #Install unzip and unpack zstack war into apache tomcat
 unpack_zstack_into_tomcat
+
+#doesn't need use to send -m option to install monitor.
+[ -f $ZSTACK_INSTALL_ROOT/kairosdb* ] && INSTALL_MONITOR='y'
 
 #Install Ansible 
 install_ansible
