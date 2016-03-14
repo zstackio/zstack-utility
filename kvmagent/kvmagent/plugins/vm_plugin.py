@@ -190,6 +190,29 @@ class VncPortIptableRule(object):
         ipt.delete_chain(chain_name)
         ipt.iptable_restore()
 
+    @lock.file_lock('iptables')
+    def delete_stale_chains(self):
+        vms = get_running_vms()
+        ipt = iptables.from_iptables_save()
+        tbl = ipt.get_table()
+
+        internal_ids = []
+        for vm in vms:
+            id = vm.domain_xmlobject.metadata.internalId.text_
+            if id:
+                internal_ids.append(id)
+
+        # delete all vnc chains
+        for chain in tbl.children:
+            if 'vm' in chain.name and 'vnc' in chain.name:
+                vm_internal_id = chain.name.split('-')[1]
+                if vm_internal_id not in internal_ids:
+                    chain.delete()
+                    logger.debug('deleted a stale VNC iptable chain[%s]' % chain.name)
+
+        ipt.iptable_restore()
+
+
 def e(parent, tag, value=None, attrib={}):
     el = etree.SubElement(parent, tag, attrib)
     if value:
@@ -602,6 +625,9 @@ def get_cpu_memory_used_by_running_vms():
         used_memory += vm.get_memory()
 
     return (used_cpu, used_memory)
+
+def cleanup_stale_vnc_iptable_chains():
+    VncPortIptableRule().delete_stale_chains()
 
 class VmOperationJudger(object):
     def __init__(self, op):

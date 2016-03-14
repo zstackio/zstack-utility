@@ -106,6 +106,9 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp = ConnectResponse()
         rsp.libvirtVersion = self.libvirt_version
         rsp.qemuVersion = self.qemu_version
+
+        vm_plugin.cleanup_stale_vnc_iptable_chains()
+
         return jsonobject.dumps(rsp)
     
     @kvmagent.replyerror
