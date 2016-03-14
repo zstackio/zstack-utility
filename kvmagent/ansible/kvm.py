@@ -3,7 +3,6 @@
 import os
 import sys
 import argparse
-import ast
 from deploylib import *
 from zstacklib import *
 
@@ -25,7 +24,7 @@ parser.add_argument('--private-key',type=str,help='use this file to authenticate
 parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
-argument_dict = ast.literal_eval(args.e)
+argument_dict = eval(args.e)
 
 # update the variable from shell arguments
 locals().update(argument_dict)
