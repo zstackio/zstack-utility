@@ -2,7 +2,6 @@
 # encoding: utf-8
 import os
 import sys
-from deploylib import *
 import ansible.runner
 import os
 import sys
