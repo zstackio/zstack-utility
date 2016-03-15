@@ -2452,6 +2452,44 @@ class ChangeZoneStateAction(inventory.APIChangeZoneStateMsg):
         self.out = evt
         return self.out
 
+class QueryConsoleProxyAgentAction(inventory.APIQueryConsoleProxyAgentMsg):
+    def __init__(self):
+        super(QueryConsoleProxyAgentAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryConsoleProxyAgentAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class RequestConsoleAccessAction(inventory.APIRequestConsoleAccessMsg):
+    def __init__(self):
+        super(RequestConsoleAccessAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RequestConsoleAccessAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ReconnectConsoleProxyAgentAction(inventory.APIReconnectConsoleProxyAgentMsg):
+    def __init__(self):
+        super(ReconnectConsoleProxyAgentAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ReconnectConsoleProxyAgentAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QueryManagementNodeAction(inventory.APIQueryManagementNodeMsg):
     def __init__(self):
         super(QueryManagementNodeAction, self).__init__()
@@ -2486,18 +2524,6 @@ class IsReadyToGoAction(inventory.APIIsReadyToGoMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[IsReadyToGoAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class RequestConsoleAccessAction(inventory.APIRequestConsoleAccessMsg):
-    def __init__(self):
-        super(RequestConsoleAccessAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[RequestConsoleAccessAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
