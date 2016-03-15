@@ -10,6 +10,7 @@ import urllib
 import urllib2
 from urllib2 import URLError
 import json
+from deploylib import *
 
 class ZstackLibArgs(object):
     def __init__(self):
