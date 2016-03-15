@@ -10,7 +10,6 @@ import urllib
 import urllib2
 from urllib2 import URLError
 import json
-from deploylib import *
 
 class ZstackLibArgs(object):
     def __init__(self):
@@ -429,13 +428,6 @@ def check_pip_version(version, host_post_info):
             handle_ansible_failed(description,result,host_post_info)
             return False
 
-def file_dir_exist(name, host_post_info):
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
-    host = host_post_info.host
-    post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting check file or dir exist %s ... " % name, post_url, "INFO")
-
 
 def file_dir_exist(name, host_post_info):
     private_key = host_post_info.private_key
@@ -658,6 +650,10 @@ def set_selinux(args, host_post_info):
             return True
 
 def authorized_key(user, key_path, host_post_info):
+    if not os.path.exists(key_path):
+        post_url = host_post_info.post_url
+        print "key_path %s is not exist!" % key_path
+        sys.exit(1)
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host

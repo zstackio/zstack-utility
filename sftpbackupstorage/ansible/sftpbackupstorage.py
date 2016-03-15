@@ -73,7 +73,7 @@ command = "rm -rf %s && rm -f %s/%s && rm -f %s/%s && virtualenv --system-site-p
           (virtenv_path, sftp_root, pkg_sftpbackupstorage, sftp_root, pkg_zstacklib, virtenv_path)
 run_remote_command(command, host_post_info)
 # name: add public key
-authorized_key("root", current_dir +  "files/sftpbackupstorage/id_rsa.sftp.pub", host_post_info)
+authorized_key("root", current_dir +  "/id_rsa.sftp.pub", host_post_info)
 
 # name: copy zstacklib
 copy_arg = CopyArg()
