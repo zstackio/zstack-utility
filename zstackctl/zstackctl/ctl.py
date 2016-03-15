@@ -2118,11 +2118,11 @@ class InstallManagementNodeCmd(Command):
 
     - name: install dependencies on RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
 
     - name: install dependencies on RedHat OS from system repos
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python
+      shell: yum clean metadata; yum --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
 
     - name: install dependencies Debian OS
       when: ansible_os_family == 'Debian'
@@ -2142,6 +2142,7 @@ class InstallManagementNodeCmd(Command):
         - ntp
         - ntpdate
         - sudo
+        - python-setuptools
 
     - name: install MySQL client for RedHat 6 from user defined repos
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
@@ -2197,6 +2198,8 @@ class InstallManagementNodeCmd(Command):
 '''
 
         pre_script = '''
+[ -f /etc/yum.repos.d/epel.repo ] || echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+
 echo -e "#aliyun base\n[alibase]\nname=CentOS-\$$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
 
 echo -e "#163 base\n[163base]\nname=CentOS-\$$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
