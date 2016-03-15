@@ -41,7 +41,12 @@ class DhcpEnv(object):
         self.dhcp_netmask = None
 
     def _cleanup_old_ebtable_rules(self):
-        out = shell.call('ebtables-save | grep ":ZSTACK*"')
+        scmd = shell.ShellCmd('ebtables-save | grep ":ZSTACK*"')
+        scmd(False)
+        if scmd.return_code != 0:
+            return
+
+        out = scmd.stdout
         old_chains = []
         old_rules = []
         for l in out.split('\n'):
