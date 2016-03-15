@@ -131,7 +131,7 @@
             <arg value="HEAD^..HEAD" />
         </exec>
 
-        <exec executable="git" dir="${agent.source}" failonerror="true" error="/dev/null" output="${war.dir}/agent-git-commit">
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/agent-git-commit">
             <arg value="--git-dir=${agent.source}/.git" />
             <arg value="log" />
             <arg value="--name-status" />
