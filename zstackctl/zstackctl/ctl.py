@@ -1207,6 +1207,18 @@ class StopCmd(Command):
             with on_error('unable to kill -9 %s' % pid):
                 shell('kill -9 %s' % pid)
 
+class RestartNodeCmd(Command):
+
+    def __init__(self):
+        super(RestartNodeCmd, self).__init__()
+        self.name = 'restart_node'
+        self.description = 'restart the management node'
+        ctl.register_command(self)
+
+    def run(self, args):
+        ctl.internal_run('stop_node')
+        ctl.internal_run('start_node')
+
 class SaveConfigCmd(Command):
     DEFAULT_PATH = '~/.zstack/'
 
@@ -3339,6 +3351,7 @@ def main():
     StopAllCmd()
     InstallLicenseCmd()
     UnsetEnvironmentVariableCmd()
+    RestartNodeCmd()
 
     try:
         ctl.run()
