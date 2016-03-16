@@ -34,40 +34,41 @@ class ApplyUserdataRsp(kvmagent.AgentResponse):
 class ReleaseUserdataRsp(kvmagent.AgentResponse):
     pass
 
+class ConnectRsp(kvmagent.AgentResponse):
+    pass
+
 class DhcpEnv(object):
     def __init__(self):
         self.bridge_name = None
         self.dhcp_server_ip = None
         self.dhcp_netmask = None
 
-    def _cleanup_old_ebtable_rules(self):
-        scmd = shell.ShellCmd('ebtables-save | grep ":ZSTACK*"')
-        scmd(False)
-        if scmd.return_code != 0:
-            return
-
-        out = scmd.stdout
-        old_chains = []
-        old_rules = []
-        for l in out.split('\n'):
-            if ":ZSTACK-" in l and self.dhcp_server_ip not in l:
-                chain_name = l.split()[0].lstrip(':')
-                old_chains.append(chain_name)
-
-            if "-j ZSTACK-" in l and self.dhcp_server_ip not in l:
-                old_rules.append(l)
-
-        for chain_name in old_chains:
-            shell.call('ebtables -X %s' % chain_name)
-            logger.debug('deleted a stale ebtable chain[%s]' % chain_name)
-
-        for rule in old_rules:
-            shell.call('ebtables %s' % rule.replace('-A', '-D'))
-            logger.debug('deleted a stable rule[%s]' % rule)
+    # def _cleanup_old_ebtable_rules(self):
+    #     scmd = shell.ShellCmd('ebtables-save | grep ":ZSTACK*"')
+    #     scmd(False)
+    #     if scmd.return_code != 0:
+    #         return
+    #
+    #     out = scmd.stdout
+    #     old_chains = []
+    #     old_rules = []
+    #     for l in out.split('\n'):
+    #         if ":ZSTACK-" in l and self.dhcp_server_ip not in l:
+    #             chain_name = l.split()[0].lstrip(':')
+    #             old_chains.append(chain_name)
+    #
+    #         if "-j ZSTACK-" in l and self.dhcp_server_ip not in l:
+    #             old_rules.append(l)
+    #
+    #     for chain_name in old_chains:
+    #         shell.call('ebtables -X %s' % chain_name)
+    #         logger.debug('deleted a stale ebtable chain[%s]' % chain_name)
+    #
+    #     for rule in old_rules:
+    #         shell.call('ebtables %s' % rule.replace('-A', '-D'))
+    #         logger.debug('deleted a stable rule[%s]' % rule)
 
     def prepare(self):
-        self._cleanup_old_ebtable_rules()
-
         cmd = '''\
 BR_NAME="{{bridge_name}}"
 DHCP_IP="{{dhcp_server_ip}}"
@@ -180,6 +181,7 @@ class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
     PREPARE_DHCP_PATH = "/flatnetworkprovider/dhcp/prepare"
     RELEASE_DHCP_PATH = "/flatnetworkprovider/dhcp/release"
+    DHCP_CONNECT_PATH = "/flatnetworkprovider/dhcp/connect"
 
     APPLY_USER_DATA = "/flatnetworkprovider/userdata/apply"
     RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
@@ -194,6 +196,7 @@ class Mevoco(kvmagent.KvmAgent):
     def start(self):
         http_server = kvmagent.get_http_server()
 
+        http_server.register_async_uri(self.DHCP_CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.APPLY_DHCP_PATH, self.apply_dhcp)
         http_server.register_async_uri(self.RELEASE_DHCP_PATH, self.release_dhcp)
         http_server.register_async_uri(self.PREPARE_DHCP_PATH, self.prepare_dhcp)
@@ -202,6 +205,11 @@ class Mevoco(kvmagent.KvmAgent):
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def connect(self):
+        shell.call('etables -F')
+        return jsonobject.dumps(ConnectRsp())
 
     @kvmagent.replyerror
     def apply_userdata(self, req):
