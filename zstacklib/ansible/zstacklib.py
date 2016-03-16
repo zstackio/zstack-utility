@@ -292,9 +292,12 @@ def pip_install_package(pip_install_arg,host_post_info):
     virtualenv_site_packages = pip_install_arg.virtualenv_site_packages
     handle_ansible_info("INFO: Pip installing module %s ..." % name,post_url,"INFO")
     option = 'name='+name
-    param_dict = dict(version=version,extra_args=extra_args,virtualenv=virtualenv,virtualenv_site_packages=virtualenv_site_packages)
-    param_dict  = {key: value for key, value in param_dict.items() if value is not None}
-    option = 'name='+name+' '+' '.join(['{}={}'.format(k,v) for k,v in param_dict.iteritems()])
+    param_dict = {}
+    param_dict_raw = dict(version=version,extra_args=extra_args,virtualenv=virtualenv,virtualenv_site_packages=virtualenv_site_packages)
+    for item in param_dict_raw:
+        if param_dict_raw[item] is not None:
+            param_dict[item] = param_dict_raw[item]
+    option = 'name='+name+' '+' '.join(['{0}={1}'.format(k,v) for k,v in param_dict.iteritems()])
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -752,7 +755,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 command = 'yum clean --enablerepo=alibase metadata'
                 run_remote_command(command, host_post_info)
-                for pkg in ["htop", "python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                     yum_install_package(pkg, host_post_info)
             else:
                 #set 163 mirror yum repo
