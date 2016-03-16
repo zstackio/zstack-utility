@@ -460,12 +460,12 @@ ip netns exec {{ns_name}} /sbin/dnsmasq --conf-file={{conf_file}} || ip netns ex
 
     def _erase_configurations(self, mac, ip, dhcp_path, dns_path, option_path):
         cmd = '''\
-sed -i '/{{mac}}/d' {{dhcp}};
-sed -i '/{{ip}}/d' {{dhcp}};
+sed -i '/{{mac}},/d' {{dhcp}};
+sed -i '/,{{ip}},/d' {{dhcp}};
 sed -i '/^$/d' {{dhcp}};
-sed -i '/{{tag}}/d' {{option}};
+sed -i '/{{tag}},/d' {{option}};
 sed -i '/^$/d' {{option}};
-sed -i '/{{ip}}/d' {{dns}};
+sed -i '/^{{ip}} /d' {{dns}};
 sed -i '/^$/d' {{dns}}
 '''
         tmpt = Template(cmd)
