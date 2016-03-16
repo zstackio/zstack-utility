@@ -83,7 +83,8 @@ if distro == "RedHat" or distro == "CentOS":
         copy_arg.dest = iproute_local_pkg
         copy(copy_arg, host_post_info)
         # name: Update iproute for RHEL6
-        yum_install_package("iproute-2.6.32-130.el6ost.netns.2", host_post_info)
+        command =  "rpm -q iproute-2.6.32-130.el6ost.netns.2.x86_64 || yum install -y %s" % iproute_local_pkg
+        run_remote_command(command, host_post_info)
         # name: disable NetworkManager in RHEL6 and Centos6
         network_manager_installed = yum_check_pacakge("NetworkManager", host_post_info)
         if network_manager_installed == True:
