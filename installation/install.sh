@@ -539,36 +539,47 @@ upgrade_zstack(){
     echo ""
     show_spinner uz_upgrade_zstack
 
-    [ -f "$ZSTACK_INSTALL_ROOT/kairosdb-1.1.1-1.tar.gz" ] && INSTALL_MONITOR='y'
-
-    if [ ! -z $INSTALL_MONITOR ] ; then
-        show_spinner iz_install_cassandra
-        show_spinner iz_install_kairosdb
-    fi
-
-    if [ -z $NEED_KEEP_DB ];then
-        if [ $CURRENT_STATUS = 'y' ]; then
-            if [ -z $NOT_START_ZSTACK ]; then
-                if [ ! -z $INSTALL_MONITOR ] ; then
-                    show_spinner sz_start_cassandra
-                    show_spinner sz_start_kairosdb
+    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        [ -f "$ZSTACK_INSTALL_ROOT/kairosdb-1.1.1-1.tar.gz" ] && INSTALL_MONITOR='y'
+    
+        if [ ! -z $INSTALL_MONITOR ] ; then
+            show_spinner iz_install_cassandra
+            show_spinner iz_install_kairosdb
+        fi
+    
+        if [ -z $NEED_KEEP_DB ];then
+            if [ $CURRENT_STATUS = 'y' ]; then
+                if [ -z $NOT_START_ZSTACK ]; then
+                    if [ ! -z $INSTALL_MONITOR ] ; then
+                        show_spinner sz_start_cassandra
+                        show_spinner sz_start_kairosdb
+                    fi
+                    show_spinner cs_config_zstack_properties
+                    show_spinner sz_start_zstack
                 fi
-                show_spinner cs_config_zstack_properties
-                show_spinner sz_start_zstack
             fi
         fi
-    fi
-
-    if [ $UI_INSTALLATION_STATUS = 'y' ]; then
-        if [ $UI_CURRENT_STATUS = 'y' ]; then
-            echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-            /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
-            show_spinner sd_install_dashboard
-            echo "start dashboard" >>$ZSTACK_INSTALL_LOG
-            show_spinner sd_start_dashboard
-        else
-            echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-            show_spinner sd_install_dashboard
+    
+        if [ $UI_INSTALLATION_STATUS = 'y' ]; then
+            if [ $UI_CURRENT_STATUS = 'y' ]; then
+                echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+                /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
+                show_spinner sd_install_dashboard
+                echo "start dashboard" >>$ZSTACK_INSTALL_LOG
+                show_spinner sd_start_dashboard
+            else
+                echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+                show_spinner sd_install_dashboard
+            fi
+        fi
+    else
+        if [ -z $NEED_KEEP_DB ];then
+            if [ $CURRENT_STATUS = 'y' ]; then
+                if [ -z $NOT_START_ZSTACK ]; then
+                    show_spinner cs_config_zstack_properties
+                    show_spinner sz_start_zstack
+                fi
+            fi
         fi
     fi
 }
@@ -842,6 +853,8 @@ uz_upgrade_zstack(){
         fail "failed to upgrade zstack-ctl"
     fi
 
+    zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
+
     if [ ! -z $DEBUG ]; then
         bash zstack/WEB-INF/classes/tools/install.sh zstack-cli
     else
@@ -863,33 +876,35 @@ uz_upgrade_zstack(){
     fi
     /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
 
-    if [ -f $upgrade_folder/apache-cassandra* ]; then
-        /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-        /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-        INSTALL_MONITOR='y'
-    fi
-
-    cd /
-    rm -rf $upgrade_folder
-
-    if [ -z $NEED_KEEP_DB ];then
-        if [ ! -z $DEBUG ]; then
-            if [ $FORCE = 'n' ];then
-                zstack-ctl upgrade_db
-            else
-                zstack-ctl upgrade_db --force
-            fi
-        else
-            if [ $FORCE = 'n' ];then
-                zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
-            else
-                zstack-ctl upgrade_db --force >>$ZSTACK_INSTALL_LOG 2>&1
-            fi
+    if [ -z $ONLY_INSTALL_ZSTACK ] ; then
+        if [ -f $upgrade_folder/apache-cassandra* ]; then
+            /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+            /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+            INSTALL_MONITOR='y'
         fi
-    fi 
-
-    if [ $? -ne 0 ];then
-        fail "failed to upgrade database"
+    
+        cd /
+        rm -rf $upgrade_folder
+    
+        if [ -z $NEED_KEEP_DB ];then
+            if [ ! -z $DEBUG ]; then
+                if [ $FORCE = 'n' ];then
+                    zstack-ctl upgrade_db
+                else
+                    zstack-ctl upgrade_db --force
+                fi
+            else
+                if [ $FORCE = 'n' ];then
+                    zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
+                else
+                    zstack-ctl upgrade_db --force >>$ZSTACK_INSTALL_LOG 2>&1
+                fi
+            fi
+        fi 
+    
+        if [ $? -ne 0 ];then
+            fail "failed to upgrade database"
+        fi
     fi
 
     pass
