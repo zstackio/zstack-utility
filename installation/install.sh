@@ -998,6 +998,13 @@ install_zstack(){
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
     [ -z $ONLY_INSTALL_ZSTACK ] && show_spinner sd_install_dashboard
+
+    #install license
+    cd $ZSTACK_INSTALL_ROOT
+    if [ -f $LICENSE_FILE ]; then
+        zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
     [ -z $INSTALL_MONITOR ] && return
     show_spinner iz_install_cassandra
     show_spinner iz_install_kairosdb
@@ -1347,11 +1354,6 @@ cs_deploy_db(){
 
 sz_start_zstack(){
     echo_subtitle "Start ${PRODUCT_NAME} management node (takes a couple of minutes)"
-    cd $ZSTACK_INSTALL_ROOT
-    if [ -f $LICENSE_FILE ]; then
-        zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-
     zstack-ctl stop_node -f >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl start_node --timeout=$ZSTACK_START_TIMEOUT >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to start zstack"
