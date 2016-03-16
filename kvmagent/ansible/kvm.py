@@ -84,10 +84,17 @@ if distro == "RedHat" or distro == "CentOS":
         copy(copy_arg, host_post_info)
         # name: Update iproute for RHEL6
         yum_install_package("iproute-2.6.32-130.el6ost.netns.2", host_post_info)
+        # name: disable NetworkManager in RHEL6 and Centos6
+        network_manager_installed = yum_check_pacakge("NetworkManager", host_post_info)
+        if network_manager_installed == True:
+            service_status("name=NetworkManager state=stopped enabled=no", host_post_info)
+
     else:
         # name: disable firewalld in RHEL7 and Centos7
         command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
         run_remote_command(command, host_post_info)
+        # name: disable NetworkManager in RHEL7 and Centos7
+        service_status("name=NetworkManager state=stopped enabled=no", host_post_info)
 
     if is_init == 'true':
         # name: copy iptables initial rules in RedHat
@@ -111,8 +118,6 @@ if distro == "RedHat" or distro == "CentOS":
     # name: Update dnsmasq for RHEL6 and RHEL7
     command =  "rpm -q dnsmasq-2.68-1 || yum install -y %s" % dnsmasq_local_pkg
     run_remote_command(command, host_post_info)
-    # name: disable NetworkManager in RedHat
-    service_status("name=NetworkManager state=stopped enabled=no", host_post_info)
     # name: disable selinux on RedHat based OS
     set_selinux("state=permissive policy=targeted", host_post_info)
     # name :copy sysconfig libvirtd conf in RedHat

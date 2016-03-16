@@ -152,6 +152,38 @@ def yum_enable_repo(name, enablerepo, host_post_info):
            handle_ansible_info(details,post_url,"INFO")
            return True
 
+def yum_check_pacakge(name, host_post_info):
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Searching yum package %s ... " % name, post_url, "INFO")
+    runner = ansible.runner.Runner(
+        host_list = host_inventory,
+        private_key_file = private_key,
+        module_name = 'shell',
+        module_args = 'rpm -q %s ' % name,
+        pattern = host
+    )
+    result = runner.run()
+    print result
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    status = result['contacted'][host]['rc']
+    if status == 0:
+        detials = "INFO: The package %s exist in system" % name
+        handle_ansible_info(detials,post_url,"INFO")
+        return True
+    else:
+        detials = "INFO: The package %s not exist in system" % name
+        handle_ansible_info(detials,post_url,"INFO")
+        return False
+
 def yum_install_package(name, host_post_info):
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
