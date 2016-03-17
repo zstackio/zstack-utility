@@ -280,6 +280,38 @@ def yum_remove_package(name, host_post_info):
         handle_ansible_info(details, post_url, "INFO")
         return True
 
+def apt_update_cache(cache_valid_time, host_post_info):
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting apt update cache " , post_url, "INFO")
+    runner = ansible.runner.Runner(
+        host_list = host_inventory,
+        private_key_file = private_key,
+        module_name = 'apt',
+        module_args = 'update_cache=yes cache_valid_time=%d' % cache_valid_time,
+        pattern = host
+    )
+    result = runner.run()
+    print result
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: Apt update cache failed!"
+            handle_ansible_failed(description,result,host_post_info)
+            sys.exit(1)
+        else:
+            details = "SUCC: apt update cache successful! "
+            handle_ansible_info(details,post_url,"INFO")
+            return True
+
 def apt_install_packages(name, host_post_info):
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
@@ -290,7 +322,7 @@ def apt_install_packages(name, host_post_info):
         host_list = host_inventory,
         private_key_file = private_key,
         module_name = 'apt',
-        module_args = 'name='+name+' state=present cache_valid_time=3600',
+        module_args = 'name='+name+' state=present',
         pattern = host
     )
     result = runner.run()
@@ -837,6 +869,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
 
         elif distro == "Debian" or distro == "Ubuntu":
             #install dependency packages for Debian based OS
+            apt_update_cache(86400, host_post_info)
             for pkg in ["python-dev","python-setuptools","python-pip","gcc","autoconf","ntp","ntpdate"]:
                 apt_install_packages(pkg, host_post_info)
 
