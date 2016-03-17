@@ -2327,7 +2327,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
 
         t = string.Template(yaml)
         if args.yum:
-            yum_repo = 'true'
+            yum_repo = args.yum
         else:
             yum_repo = 'false'
         yaml = t.substitute({
