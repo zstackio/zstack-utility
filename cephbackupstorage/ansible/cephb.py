@@ -3,7 +3,6 @@
 import os,sys
 import argparse
 import ast
-from deploylib import *
 from zstacklib import *
 
 # set default value

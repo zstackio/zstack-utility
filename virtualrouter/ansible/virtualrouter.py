@@ -3,7 +3,6 @@
 import os,sys
 import argparse
 import ast
-from deploylib import *
 from zstacklib import *
 
 # set default value
@@ -107,7 +106,7 @@ if chroot_env == 'false':
 # name: copy zstacklib
 copy_arg = CopyArg()
 copy_arg.src="files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest="%s/%s" % (vr_root,pkg_zstacklib),
+copy_arg.dest="%s/%s" % (vr_root,pkg_zstacklib)
 zstack_lib_copy = copy(copy_arg, host_post_info)
 #if zstack_lib_copy == "changed:true":
 pip_install_arg = PipInstallArg()
@@ -120,7 +119,7 @@ pip_install_package(pip_install_arg,host_post_info)
 # name: copy virtual router
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root,pkg_virtualrouter)
-copy_arg.dest = "%s/%s" % (vr_root,pkg_virtualrouter),
+copy_arg.dest = "%s/%s" % (vr_root,pkg_virtualrouter)
 vragent_copy = copy(copy_arg, host_post_info)
 pip_install_arg = PipInstallArg()
 pip_install_arg.name="%s/%s" % (vr_root,pkg_virtualrouter)
@@ -133,7 +132,7 @@ pip_install_package(pip_install_arg,host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = "%s/zstack-virtualrouter" % file_root
 copy_arg.dest ="/etc/init.d/"
-copy_arg.args = "mode=755",
+copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
 if chroot_env == 'false':
@@ -147,6 +146,5 @@ else:
     else:
         command = "sed -i '/zstack-virtualrouter start/d' /etc/rc.local"
         run_remote_command(command, host_post_info)
-        command = "sed -i 's/^exit 0/\/etc\/init.d\/zstack-virtualrouter start\nexit 0/' /etc/rc.local"
-        run_remote_command(command, host_post_info)
+        update_file("/etc/rc.local", regexp="exit 0", insertbefore="exit 0", line="/etc/init.d/zstack-virtualrouter start\n")
 sys.exit(0)

@@ -121,11 +121,14 @@ if distro == "RedHat" or distro == "CentOS":
     run_remote_command(command, host_post_info)
     # name: disable selinux on RedHat based OS
     set_selinux("state=permissive policy=targeted", host_post_info)
-    # name :copy sysconfig libvirtd conf in RedHat
+    # name: copy sysconfig libvirtd conf in RedHat
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirtd" % file_root
     copy_arg.dest = "/etc/sysconfig/libvirtd"
     libvirtd_status= copy(copy_arg, host_post_info)
+    # name: flush forwarding chain avoid block VR packet
+    command = "iptables -F FORWARD"
+    run_remote_command(command, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install kvm related packages on Debian based OS

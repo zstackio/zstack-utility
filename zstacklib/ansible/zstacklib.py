@@ -218,7 +218,7 @@ def yum_install_package(name, host_post_info):
             host_list = host_inventory,
             private_key_file = private_key,
             module_name = 'yum',
-            module_args = 'name='+name+' disable_gpg_check=no  state=present',
+            module_args = 'name='+name+' disable_gpg_check=no  state=latest',
             pattern = host
         )
         result = runner.run()
