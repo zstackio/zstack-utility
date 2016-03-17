@@ -1952,6 +1952,51 @@ class KairosdbCmd(Command):
         else:
             self.status(args)
 
+class DeployCassandraDbCmd(Command):
+
+    def __init__(self):
+        super(DeployCassandraDbCmd, self).__init__()
+        self.name = "deploy_cassandra_db"
+        self.description = "deploy or upgrade Cassandra database"
+        ctl.register_command(self)
+
+    def run(self, args):
+        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+        if not exe:
+            raise CtlError('cannot find the variable[%s] in %s. Have you installed cassandra?' %
+                           (InstallCassandraCmd.CASSANDRA_EXEC, SetEnvironmentVariableCmd.PATH))
+
+        cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
+        if not os.path.isfile(cqlsh):
+            raise CtlError('cannot find the cqlsh at %s, cassandra corrupted!???')
+
+        cips = ctl.read_property('Cassandra.contactPoints')
+        if not cips:
+            raise CtlError('cannot find Cassandra IP address in zstack.properties, have you installed Cassandra?'
+                           'If you have installed Cassandra, please configure Cassandra.contactPoints in the zstack.properties')
+
+        cip = cips.split(',')[0]
+        cport = ctl.read_property('Cassandra.port')
+        if not cport:
+            cport = 9042
+        else:
+            cport = int(cport)
+
+        ret = shell_return('%s %s %s -e "DESC KEYSPACES"' % (cqlsh, cip, cport))
+        if ret != 0:
+            raise CtlError('Cassandra seems not running, please start it using "zstack-ctl cassandra --start"')
+
+        deployer_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/deploy_cassandra_db.py')
+        if not os.path.isfile(deployer_path):
+            raise CtlError('cannot find %s, your ZStack setup seems corrupted' % deployer_path)
+
+        schema_folder = os.path.join(ctl.zstack_home, 'WEB-INF/classes/mevoco/cassandra/db/')
+        if not os.path.isdir(schema_folder):
+            raise CtlError('cannot find %s, you do not have any Cassandra database to deploy' % schema_folder)
+
+        shell_no_pipe('python %s --schema-folder %s --cqlsh %s --ip %s --port %s' % (deployer_path, schema_folder,
+                                                                                     cqlsh, cip, cport))
+
 class CassandraCmd(Command):
     def __init__(self):
         super(CassandraCmd, self).__init__()
@@ -3352,6 +3397,7 @@ def main():
     InstallLicenseCmd()
     UnsetEnvironmentVariableCmd()
     RestartNodeCmd()
+    DeployCassandraDbCmd()
 
     try:
         ctl.run()
