@@ -1031,6 +1031,7 @@ config_system(){
     show_spinner cs_config_generate_ssh_key
     show_spinner cs_config_tomcat
     show_spinner cs_install_zstack_service
+    show_spinner cs_add_cronjob
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
     fi
@@ -1038,6 +1039,22 @@ config_system(){
         show_spinner cs_setup_http
     fi
     do_enable_sudo
+}
+
+cs_add_cronjob(){
+    echo_subtitle "Add cronjob to clean logs"
+    cat >/etc/cron.daily/zstack_archive_logs.sh <<EOF
+#!/bin/bash
+zstack_home=`zstack-ctl status|grep ZSTACK_HOME|awk '{print $2}'`
+mn_log_folder=\$zstack_home/../../logs/
+
+target_file="localhost_access_log*.txt management-server*.log catalina*.log localhost*.log"
+for file in \$target_file; do
+    cd \$mn_log_folder
+    find \$file -mtime +1 -exec gzip {} \;
+done
+EOF
+    pass
 }
 
 cs_config_zstack_properties(){
