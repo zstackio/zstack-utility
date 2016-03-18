@@ -1900,6 +1900,7 @@ class KairosdbCmd(Command):
         if not port:
             raise CtlError('kairosdb.jetty.port is not set in %s' % InstallKairosdbCmd.KAIROSDB_CONF)
 
+        timeout = args.wait_timeout
         while args.wait_timeout > 0:
             ret = shell_return('netstat -nap | grep %s > /dev/null' % port)
             if ret == 0:
@@ -1909,7 +1910,7 @@ class KairosdbCmd(Command):
             args.wait_timeout -= 1
 
         raise CtlError("kairosdb is not listening on the web port[%s] after %s seconds, it may not successfully start,"
-                        "please check the log file in %s" % (port, args.wait_timeout, ctl.get_env(InstallKairosdbCmd.KAIROSDB_CONF)))
+                        "please check the log file in %s" % (port, timeout, ctl.get_env(InstallKairosdbCmd.KAIROSDB_LOG)))
 
     def stop(self, args):
         pid = self._status(args)
@@ -2045,6 +2046,7 @@ class CassandraCmd(Command):
             warn('cannot find cassandra conf at %s, ignore --wait-timeout' % conf)
             return
 
+        timeout = args.wait_timeout
         with open(conf, 'r') as fd:
             m = yaml.load(fd.read())
             port = m['rpc_port']
@@ -2061,7 +2063,7 @@ class CassandraCmd(Command):
                 args.wait_timeout -= 1
 
             raise CtlError("cassandra is not listening on RPC port[%s] after %s seconds, it may not successfully start,"
-                           "please check the log file in %s" % (port, args.wait_timeout, ctl.get_env(InstallCassandraCmd.CASSANDRA_LOG)))
+                           "please check the log file in %s" % (port, timeout, ctl.get_env(InstallCassandraCmd.CASSANDRA_LOG)))
 
     def stop(self, args):
         pid = self._status(args)
