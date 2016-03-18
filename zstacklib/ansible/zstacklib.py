@@ -351,7 +351,7 @@ def pip_install_package(pip_install_arg,host_post_info):
     host = host_post_info.host
     post_url = host_post_info.post_url
     version = pip_install_arg.version
-    extra_args = pip_install_arg.extra_args
+    extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] +  '\"'
     virtualenv = pip_install_arg.virtualenv
     virtualenv_site_packages = pip_install_arg.virtualenv_site_packages
     handle_ansible_info("INFO: Pip installing module %s ..." % name,post_url,"INFO")
