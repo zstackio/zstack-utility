@@ -1310,9 +1310,13 @@ check_zstack_server(){
 sz_start_cassandra(){
     echo_subtitle "Start Cassandra"
     zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl cassandra --start --wait-timeout=80 >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl cassandra --start --wait-timeout=180 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Cassandra"
+    fi
+    zstack-ctl deploy_cassandra_db  >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to deploy Cassandra db"
     fi
     pass
 }
