@@ -1717,8 +1717,7 @@ class InstallKairosdbCmd(Command):
         ])
 
         log_conf = os.path.normpath('%s/conf/logging/logback.xml' % kairosdb_dir)
-        shell('''sed -i 's/<root level="DEBUG">/<root level="WARN">/g' %s''' % log_conf)
-        shell('''sed -i 's/<root level="INFO">/<root level="WARN">/g' %s''' % log_conf)
+        shell('''sed -i 's/<root level="DEBUG">/<root level="INFO">/g' %s''' % log_conf)
 
         info('successfully installed kairosdb, the config file is written to %s' % original_conf_path)
 
