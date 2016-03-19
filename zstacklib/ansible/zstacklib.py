@@ -351,7 +351,8 @@ def pip_install_package(pip_install_arg,host_post_info):
     host = host_post_info.host
     post_url = host_post_info.post_url
     version = pip_install_arg.version
-    extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] +  '\"'
+    if pip_install_arg.extra_args is not None:
+       extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] +  '\"'
     virtualenv = pip_install_arg.virtualenv
     virtualenv_site_packages = pip_install_arg.virtualenv_site_packages
     handle_ansible_info("INFO: Pip installing module %s ..." % name,post_url,"INFO")
@@ -494,7 +495,6 @@ def check_pip_version(version, host_post_info):
             description = "ERROR: pip-%s is not exist!" % version
             handle_ansible_failed(description,result,host_post_info)
             return False
-
 
 def file_dir_exist(name, host_post_info):
     private_key = host_post_info.private_key
@@ -892,7 +892,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
             copy(copy_arg, host_post_info)
             #install pip 7.0.3
             pip_install_arg = PipInstallArg()
-            pip_install_arg.extra_args = "--ignore-installed"
+            pip_install_arg.extra_args = "\"--ignore-installed\""
             pip_install_arg.name = "%s/pip-7.0.3.tar.gz" % zstack_root
             pip_install_package(pip_install_arg,host_post_info)
 
