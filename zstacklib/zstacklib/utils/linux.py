@@ -183,7 +183,7 @@ def mount(url, path):
     if not os.path.exists(path):
         os.makedirs(path, 0775)
 
-    shell.ShellCmd("mount %s %s" % (url, path))()
+    shell.ShellCmd("mount -o nfsvers=3,sec=sys,tcp,intr,timeo=5 %s %s" % (url, path))()
 
 def umount(path, is_exception=True):
     cmd = shell.ShellCmd('umount -f -l %s' % path)
