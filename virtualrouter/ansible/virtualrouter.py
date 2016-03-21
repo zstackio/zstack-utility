@@ -5,6 +5,7 @@ import argparse
 import ast
 from zstacklib import *
 
+start_time = datetime.now()
 # set default value
 file_root = "files/virtualrouter"
 pip_url = "https=//pypi.python.org/simple/"
@@ -147,4 +148,8 @@ else:
         command = "sed -i '/zstack-virtualrouter start/d' /etc/rc.local"
         run_remote_command(command, host_post_info)
         update_file("/etc/rc.local", regexp="exit 0", insertbefore="exit 0", line="/etc/init.d/zstack-virtualrouter start\n")
+
+host_post_info.start_time = start_time
+handle_ansible_info("SUCC: Deploy virtualrouter successful", host_post_info, "INFO")
+
 sys.exit(0)

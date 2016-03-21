@@ -10,6 +10,7 @@ import urllib
 import urllib2
 from urllib2 import URLError
 import json
+from datetime import datetime
 
 class ZstackLibArgs(object):
     def __init__(self):
@@ -48,6 +49,7 @@ class HostPostInfo(object):
         self.post_url = None
         self.private_key = None
         self.host_inventory = None
+        self.start_time = None
 
 class PipInstallArg(object):
     def __init__(self):
@@ -100,8 +102,11 @@ def handle_ansible_failed(description, result, host_post_info):
     error = Error()
     host = host_post_info.host
     post_url = host_post_info.post_url
+    start_time = host_post_info.start_time
+    end_time = datetime.now()
+    cost_time = (end_time - start_time).total_seconds()*1000
     error.code = "ansible.1001"
-    error.description = description
+    error.description = description + " [cost %sms to finish]" % int(cost_time)
     if 'stderr' in  result['contacted'][host]:
         error.details = "ERROR: \n" + result['contacted'][host]['stderr']
     elif 'msg' in result['contacted'][host]:
@@ -110,21 +115,29 @@ def handle_ansible_failed(description, result, host_post_info):
     msg.data = error
     post_msg(msg, post_url)
 
-def handle_ansible_info(details, post_url, level):
+def handle_ansible_info(details, host_post_info, level):
     msg = Msg()
     log = Log()
+    post_url = host_post_info.post_url
+    start_time = host_post_info.start_time
+    end_time = datetime.now()
+    cost_time = (end_time - start_time).total_seconds()*1000
     log.level = level
-    log.details = details
+    if "SUCC" in details:
+        log.details = details + " [cost %sms to finish]" % int(cost_time)
+    else:
+        log.details = details
     msg.type = "log"
     msg.data = log
     post_msg(msg, post_url)
 
 def yum_enable_repo(name, enablerepo, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
-    post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting enable yum repo %s ... " % name, post_url, "INFO")
+    handle_ansible_info("INFO: Starting enable yum repo %s ... " % name, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -149,15 +162,17 @@ def yum_enable_repo(name, enablerepo, host_post_info):
            sys.exit(1)
        else:
            details = "SUCC: yum enable repo %s " % enablerepo
-           handle_ansible_info(details,post_url,"INFO")
+           handle_ansible_info(details,host_post_info,"INFO")
            return True
 
 def yum_check_pacakge(name, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Searching yum package %s ... " % name, post_url, "INFO")
+    handle_ansible_info("INFO: Searching yum package %s ... " % name, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -176,20 +191,22 @@ def yum_check_pacakge(name, host_post_info):
         sys.exit(1)
     status = result['contacted'][host]['rc']
     if status == 0:
-        detials = "INFO: The package %s exist in system" % name
-        handle_ansible_info(detials,post_url,"INFO")
+        details = "SUCC: The package %s exist in system" % name
+        handle_ansible_info(details,host_post_info,"INFO")
         return True
     else:
-        detials = "INFO: The package %s not exist in system" % name
-        handle_ansible_info(detials,post_url,"INFO")
+        details = "SUCC: The package %s not exist in system" % name
+        handle_ansible_info(details,host_post_info,"INFO")
         return False
 
 def yum_install_package(name, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting yum install package %s ... " % name, post_url, "INFO")
+    handle_ansible_info("INFO: Starting yum install package %s ... " % name, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -208,12 +225,12 @@ def yum_install_package(name, host_post_info):
         sys.exit(1)
     status = result['contacted'][host]['rc']
     if status == 0:
-        detials = "SKIP: The package %s exist in system" % name
-        handle_ansible_info(detials,post_url,"INFO")
+        details = "SKIP: The package %s exist in system" % name
+        handle_ansible_info(details,host_post_info,"INFO")
         return True
     else:
         details = "Installing package %s ..." % name
-        handle_ansible_info(details,post_url,"INFO")
+        handle_ansible_info(details,host_post_info,"INFO")
         runner = ansible.runner.Runner(
             host_list = host_inventory,
             private_key_file = private_key,
@@ -224,20 +241,22 @@ def yum_install_package(name, host_post_info):
         result = runner.run()
         print result
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: \n" + result['contacted'][host]['msg']
+            description = "ERROR: YUM install package %s failed" % name
             handle_ansible_failed(description,result,host_post_info)
             sys.exit(1)
         else:
-            details = "SUCC: yum install package %s !" % name
-            handle_ansible_info(details,post_url,"INFO")
+            details = "SUCC: yum install package %s successful!" % name
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
 
 def yum_remove_package(name, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting yum remove package %s ... " % name, post_url, "INFO")
+    handle_ansible_info("INFO: Starting yum remove package %s ... " % name, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -257,7 +276,7 @@ def yum_remove_package(name, host_post_info):
     status = result['contacted'][host]['rc']
     if status == 0:
         details = "Removing %s ... " % name
-        handle_ansible_info(details,post_url,"INFO")
+        handle_ansible_info(details,host_post_info,"INFO")
         runner = ansible.runner.Runner(
             host_list = host_inventory,
             private_key_file = private_key,
@@ -273,19 +292,21 @@ def yum_remove_package(name, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: Remove package %s " % name
-            handle_ansible_info(details, post_url, "INFO")
+            handle_ansible_info(details, host_post_info, "INFO")
             return True
     else:
         details = "SKIP: The package %s is not exist in system" % name
-        handle_ansible_info(details, post_url, "INFO")
+        handle_ansible_info(details, host_post_info, "INFO")
         return True
 
 def apt_update_cache(cache_valid_time, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting apt update cache " , post_url, "INFO")
+    handle_ansible_info("INFO: Starting apt update cache " , host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -309,15 +330,17 @@ def apt_update_cache(cache_valid_time, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: apt update cache successful! "
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
 
 def apt_install_packages(name, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting apt install package %s ... " % name, post_url, "INFO")
+    handle_ansible_info("INFO: Starting apt install package %s ... " % name, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -341,10 +364,12 @@ def apt_install_packages(name, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: apt install package %s " % name
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
 
 def pip_install_package(pip_install_arg,host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     name = pip_install_arg.name
@@ -352,10 +377,12 @@ def pip_install_package(pip_install_arg,host_post_info):
     post_url = host_post_info.post_url
     version = pip_install_arg.version
     if pip_install_arg.extra_args is not None:
-       extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] +  '\"'
+        extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] +  '\"'
+    else:
+        extra_args = None
     virtualenv = pip_install_arg.virtualenv
     virtualenv_site_packages = pip_install_arg.virtualenv_site_packages
-    handle_ansible_info("INFO: Pip installing module %s ..." % name,post_url,"INFO")
+    handle_ansible_info("INFO: Pip installing module %s ..." % name,host_post_info,"INFO")
     option = 'name='+name
     param_dict = {}
     param_dict_raw = dict(version=version,extra_args=extra_args,virtualenv=virtualenv,virtualenv_site_packages=virtualenv_site_packages)
@@ -386,10 +413,12 @@ def pip_install_package(pip_install_arg,host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: Install python module %s " % name
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
 
 def copy(copy_arg, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     src = copy_arg.src
@@ -397,7 +426,7 @@ def copy(copy_arg, host_post_info):
     args = copy_arg.args
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting copy %s to %s ... " % (src,dest), post_url, "INFO")
+    handle_ansible_info("INFO: Starting copy %s to %s ... " % (src,dest), host_post_info, "INFO")
     if args != None:
         copy_args = 'src='+src+' dest='+dest+' '+args
     else:
@@ -426,16 +455,18 @@ def copy(copy_arg, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: copy %s to %s" % (src,dest)
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             #pass the copy result to outside
             return "changed:" + str(result['contacted'][host]['changed'])
 
 def run_remote_command(command, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, post_url, "INFO")
+    handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -456,7 +487,7 @@ def run_remote_command(command, host_post_info):
         status = result['contacted'][host]['rc']
         if status == 0:
             details = "SUCC: shell command: '%s' " % command
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
         else:
             description = "ERROR: command %s failed!" % command
@@ -464,11 +495,13 @@ def run_remote_command(command, host_post_info):
             sys.exit(1)
 
 def check_pip_version(version, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Check pip version %s exist ..." % version, post_url, "INFO")
+    handle_ansible_info("INFO: Check pip version %s exist ..." % version, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -488,20 +521,22 @@ def check_pip_version(version, host_post_info):
     else:
         status = result['contacted'][host]['rc']
         if status == 0:
-            details = "SUCC: pip-%s exist " % version
-            handle_ansible_info(details,post_url,"INFO")
+            details = "SUCC: Check pip-%s exist in system " % version
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
         else:
-            description = "ERROR: pip-%s is not exist!" % version
+            description = "ERROR: Check pip-%s is not exist in system" % version
             handle_ansible_failed(description,result,host_post_info)
             return False
 
 def file_dir_exist(name, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting check file or dir exist %s ... " % name, post_url, "INFO")
+    handle_ansible_info("INFO: Starting check file or dir exist %s ... " % name, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -522,19 +557,21 @@ def file_dir_exist(name, host_post_info):
         status = result['contacted'][host]['stat']['exists']
         if status == True:
             details = "INFO: %s exist" % name
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
         else:
             details = "INFO: %s not exist" % name
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return False
 
 def get_remote_host_info(host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting get remote host %s info ... " % host, post_url, "INFO")
+    handle_ansible_info("INFO: Starting get remote host %s info ... " % host, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -554,14 +591,17 @@ def get_remote_host_info(host_post_info):
     else:
         (distro,version) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
                             int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version'])]
+        handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
         return (distro,version)
 
 def set_ini_file(file, section, option, value, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting update flie %s section %s ... " % (file,section), post_url, "INFO")
+    handle_ansible_info("INFO: Starting update flie %s section %s ... " % (file,section), host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -580,15 +620,17 @@ def set_ini_file(file, section, option, value, host_post_info):
         sys.exit(1)
     else:
         details = "SUCC: Update file: %s option: %s value %s" % (file,option,value)
-        handle_ansible_info(details,post_url,"INFO")
+        handle_ansible_info(details,host_post_info,"INFO")
     return True
 
 def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting install virtualenv-%s ... " % version, post_url, "INFO")
+    handle_ansible_info("INFO: Starting install virtualenv-%s ... " % version, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -609,7 +651,7 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
         status = result['contacted'][host]['rc']
         if status == 0:
             details = "SUCC: The virtualenv-%s exist in system" % version
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
         else:
             extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host,pip_url)
@@ -620,11 +662,13 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
             return pip_install_package(pip_install_arg, host_post_info)
 
 def service_status(args, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Changing service status",post_url,"INFO")
+    handle_ansible_info("INFO: Changing service status",host_post_info,"INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -648,15 +692,17 @@ def service_status(args, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: Service status changed"
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
 
 def update_file(dest, args, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Updating file %s" % dest,post_url,"INFO")
+    handle_ansible_info("INFO: Updating file %s" % dest,host_post_info,"INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -680,16 +726,18 @@ def update_file(dest, args, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: Update file %s" % dest
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
 
 
 def set_selinux(args, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Changing service status",post_url,"INFO")
+    handle_ansible_info("INFO: Changing service status",host_post_info,"INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -713,19 +761,20 @@ def set_selinux(args, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: Reset selinux to %s" % args
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
 
 def authorized_key(user, key_path, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
     if not os.path.exists(key_path):
-        post_url = host_post_info.post_url
         print "key_path %s is not exist!" % key_path
         sys.exit(1)
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Updating key %s to host %s" % (key_path,host),post_url,"INFO")
+    handle_ansible_info("INFO: Updating key %s to host %s" % (key_path,host),host_post_info,"INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
@@ -761,7 +810,7 @@ def authorized_key(user, key_path, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: update public key to host %s" % host
-            handle_ansible_info(details,post_url,"INFO")
+            handle_ansible_info(details,host_post_info,"INFO")
             return True
 
 

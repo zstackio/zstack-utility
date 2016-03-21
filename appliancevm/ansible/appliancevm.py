@@ -34,6 +34,7 @@ host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
 host_post_info.private_key = args.private_key
+host_post_info.start_time = start_time
 
 # include zstacklib.py
 (distro, distro_version) = get_remote_host_info(host_post_info)
@@ -161,4 +162,8 @@ else:
     if distro == "RedHat" or distro == "CentOS":
         # name: restart iptables
         service_status("name=iptables state=restarted enabled=yes", host_post_info)
+
+start_time = datetime.now()
+handle_ansible_info("SUCC: Deploy appliancevm successful", host_post_info, "INFO")
+
 sys.exit(0)

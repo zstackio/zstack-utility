@@ -5,6 +5,7 @@ import sys
 import argparse
 from zstacklib import *
 
+start_time = datetime.now()
 # set default value
 file_root = "files/cephp"
 pip_url = "https=//pypi.python.org/simple/"
@@ -110,4 +111,8 @@ copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart cephpagent
 service_status("name=zstack-ceph-primarystorage state=restarted enabled=yes", host_post_info)
+
+host_post_info.start_time = start_time
+handle_ansible_info("SUCC: Deploy ceph primary agent successful", host_post_info, "INFO")
+
 sys.exit(0)

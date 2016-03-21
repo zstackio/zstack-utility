@@ -5,6 +5,7 @@ import sys
 import argparse
 from zstacklib import *
 
+start_time = datetime.now()
 # set default value
 file_root = "files/consoleproxy"
 pypi_url = 'https://pypi.python.org/simple/'
@@ -95,4 +96,8 @@ pip_install_package(pip_install_arg, host_post_info)
 # name: restart consoleproxy
 if chroot_env == 'false':
     service_status("name=zstack-consoleproxy state=restarted enabled=yes", host_post_info)
+
+host_post_info.start_time = start_time
+handle_ansible_info("SUCC: Deploy consoleproxy agent successful", host_post_info, "INFO")
+
 sys.exit(0)

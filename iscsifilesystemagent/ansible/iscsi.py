@@ -6,6 +6,7 @@ import argparse
 import ast
 from zstacklib import *
 
+start_time = datetime.now()
 # set default value
 file_root = "files/iscsi"
 pip_url = "https=//pypi.python.org/simple/"
@@ -122,4 +123,8 @@ pip_install_arg.virtualenv_site_packages="yes"
 pip_install_package(pip_install_arg,host_post_info)
 # name: restart iscsiagent
 service_status("name=zstack-iscsi state=restarted enabled=yes", host_post_info)
+
+host_post_info.start_time = start_time
+handle_ansible_info("SUCC: Deploy isci agent successful", host_post_info, "INFO")
+
 sys.exit(0)
