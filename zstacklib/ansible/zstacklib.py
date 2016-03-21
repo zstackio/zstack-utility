@@ -11,6 +11,7 @@ import urllib2
 from urllib2 import URLError
 import json
 from datetime import datetime
+import logging
 
 class ZstackLibArgs(object):
     def __init__(self):
@@ -65,17 +66,26 @@ class CopyArg(object):
         self.dest = None
         self.args = None
 
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+handle = logging.StreamHandler(sys.stdout)
+handle.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+handle.setFormatter(formatter)
+logger.addHandler(handle)
+
 def post_msg(msg, post_url):
-    print  msg.data.details
+    logger.info( msg.data.details)
     if post_url == "":
-        print "Warning: no post_url defined by user"
+        logger.info("Warning: no post_url defined by user")
         return 0
     if msg.type == "log":
         data = json.dumps({"level" : msg.data.level, "details" : msg.data.details})
     elif msg.type == "error":
         data = json.dumps({"code" : msg.data.code, "description" : msg.data.description,"details" : msg.data.details})
     else:
-        print "ERROR: undefined message type: %s" % msg.type
+        logger.info("ERROR: undefined message type: %s" % msg.type)
         sys.exit(1)
     try:
         headers = {"content-type": "application/json"}
@@ -83,7 +93,8 @@ def post_msg(msg, post_url):
         response = urllib2.urlopen(req)
         response.close()
     except URLError, e:
-            print e.reason
+            logger.debug(e.reason)
+            logger.info("Please check the post_url: %s and check the server status" % post_url)
             sys.exit(1)
 
 def handle_ansible_start(ansible_start):
@@ -146,7 +157,7 @@ def yum_enable_repo(name, enablerepo, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -181,7 +192,7 @@ def yum_check_pacakge(name, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -215,7 +226,7 @@ def yum_install_package(name, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -239,7 +250,7 @@ def yum_install_package(name, host_post_info):
             pattern = host
         )
         result = runner.run()
-        print result
+        logger.debug(result)
         if 'failed' in result['contacted'][host]:
             description = "ERROR: YUM install package %s failed" % name
             handle_ansible_failed(description,result,host_post_info)
@@ -265,7 +276,7 @@ def yum_remove_package(name, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -285,7 +296,7 @@ def yum_remove_package(name, host_post_info):
             pattern = host
         )
         result = runner.run()
-        print result
+        logger.debug(result)
         if 'failed' in result['contacted'][host]:
             description =  "ERROR: Yum remove package %s failed!" % name
             handle_ansible_failed(description,result,host_post_info)
@@ -315,7 +326,7 @@ def apt_update_cache(cache_valid_time, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -349,7 +360,7 @@ def apt_install_packages(name, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -398,7 +409,7 @@ def pip_install_package(pip_install_arg,host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -440,7 +451,7 @@ def copy(copy_arg, host_post_info):
         pattern = host
    )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -475,7 +486,7 @@ def run_remote_command(command, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -510,7 +521,7 @@ def check_pip_version(version, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -545,7 +556,7 @@ def file_dir_exist(name, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -580,7 +591,7 @@ def get_remote_host_info(host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -610,7 +621,7 @@ def set_ini_file(file, section, option, value, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -639,7 +650,7 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -677,7 +688,7 @@ def service_status(args, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -711,7 +722,7 @@ def update_file(dest, args, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -746,7 +757,7 @@ def set_selinux(args, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -768,7 +779,7 @@ def authorized_key(user, key_path, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     if not os.path.exists(key_path):
-        print "key_path %s is not exist!" % key_path
+        logger.info("key_path %s is not exist!" % key_path)
         sys.exit(1)
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
@@ -783,7 +794,7 @@ def authorized_key(user, key_path, host_post_info):
         pattern = host
     )
     result = runner.run()
-    print result
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
@@ -803,7 +814,7 @@ def authorized_key(user, key_path, host_post_info):
             pattern = host
         )
         result = runner.run()
-        print result
+        logger.debug(result)
         if 'failed' in result['contacted'][host]:
             description = "ERROR: Authorized on remote host %s failed!" % host
             handle_ansible_failed(description,result,host_post_info)
@@ -926,7 +937,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
             run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
 
         else:
-            print "ERROR: Unsupported distribution"
+            logger.info("ERROR: Unsupported distribution")
             sys.exit(1)
 
         #check the pip 7.0.3 exist in system
