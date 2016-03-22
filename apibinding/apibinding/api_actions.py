@@ -852,6 +852,454 @@ class QueryTagAction(inventory.APIQueryTagMsg):
         self.out = reply.inventories
         return self.out
 
+class DeletePolicyAction(inventory.APIDeletePolicyMsg):
+    def __init__(self):
+        super(DeletePolicyAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeletePolicyAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DetachPolicyFromUserAction(inventory.APIDetachPolicyFromUserMsg):
+    def __init__(self):
+        super(DetachPolicyFromUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachPolicyFromUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DetachPolicyFromUserGroupAction(inventory.APIDetachPolicyFromUserGroupMsg):
+    def __init__(self):
+        super(DetachPolicyFromUserGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachPolicyFromUserGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteUserGroupAction(inventory.APIDeleteUserGroupMsg):
+    def __init__(self):
+        super(DeleteUserGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteUserGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class QueryQuotaAction(inventory.APIQueryQuotaMsg):
+    def __init__(self):
+        super(QueryQuotaAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryQuotaAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class CreateAccountAction(inventory.APICreateAccountMsg):
+    def __init__(self):
+        super(CreateAccountAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateUserAction(inventory.APICreateUserMsg):
+    def __init__(self):
+        super(CreateUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class QueryAccountResourceRefAction(inventory.APIQueryAccountResourceRefMsg):
+    def __init__(self):
+        super(QueryAccountResourceRefAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAccountResourceRefAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySharedResourceAction(inventory.APIQuerySharedResourceMsg):
+    def __init__(self):
+        super(QuerySharedResourceAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySharedResourceAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class ShareResourceAction(inventory.APIShareResourceMsg):
+    def __init__(self):
+        super(ShareResourceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ShareResourceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveUserFromGroupAction(inventory.APIRemoveUserFromGroupMsg):
+    def __init__(self):
+        super(RemoveUserFromGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveUserFromGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateAccountAction(inventory.APIUpdateAccountMsg):
+    def __init__(self):
+        super(UpdateAccountAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ValidateSessionAction(inventory.APIValidateSessionMsg):
+    def __init__(self):
+        super(ValidateSessionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SessionMessageAction(inventory.APISessionMessage):
+    def __init__(self):
+        super(SessionMessageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetAccountQuotaUsageAction(inventory.APIGetAccountQuotaUsageMsg):
+    def __init__(self):
+        super(GetAccountQuotaUsageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAccountQuotaUsageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DetachPoliciesFromUserAction(inventory.APIDetachPoliciesFromUserMsg):
+    def __init__(self):
+        super(DetachPoliciesFromUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachPoliciesFromUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateUserGroupAction(inventory.APICreateUserGroupMsg):
+    def __init__(self):
+        super(CreateUserGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateUserGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateUserAction(inventory.APIUpdateUserMsg):
+    def __init__(self):
+        super(UpdateUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RevokeResourceSharingAction(inventory.APIRevokeResourceSharingMsg):
+    def __init__(self):
+        super(RevokeResourceSharingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RevokeResourceSharingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class QueryUserAction(inventory.APIQueryUserMsg):
+    def __init__(self):
+        super(QueryUserAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryUserAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class LogOutAction(inventory.APILogOutMsg):
+    def __init__(self):
+        super(LogOutAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class QueryAccountAction(inventory.APIQueryAccountMsg):
+    def __init__(self):
+        super(QueryAccountAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAccountAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryPolicyAction(inventory.APIQueryPolicyMsg):
+    def __init__(self):
+        super(QueryPolicyAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryPolicyAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class AddUserToGroupAction(inventory.APIAddUserToGroupMsg):
+    def __init__(self):
+        super(AddUserToGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddUserToGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAccountAction(inventory.APIDeleteAccountMsg):
+    def __init__(self):
+        super(DeleteAccountAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreatePolicyAction(inventory.APICreatePolicyMsg):
+    def __init__(self):
+        super(CreatePolicyAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreatePolicyAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CheckApiPermissionAction(inventory.APICheckApiPermissionMsg):
+    def __init__(self):
+        super(CheckApiPermissionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CheckApiPermissionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class LogInByUserAction(inventory.APILogInByUserMsg):
+    def __init__(self):
+        super(LogInByUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class LogInByAccountAction(inventory.APILogInByAccountMsg):
+    def __init__(self):
+        super(LogInByAccountAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class QueryUserGroupAction(inventory.APIQueryUserGroupMsg):
+    def __init__(self):
+        super(QueryUserGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryUserGroupAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class UpdateQuotaAction(inventory.APIUpdateQuotaMsg):
+    def __init__(self):
+        super(UpdateQuotaAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateQuotaAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AttachPolicyToUserAction(inventory.APIAttachPolicyToUserMsg):
+    def __init__(self):
+        super(AttachPolicyToUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachPolicyToUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AttachPolicyToUserGroupAction(inventory.APIAttachPolicyToUserGroupMsg):
+    def __init__(self):
+        super(AttachPolicyToUserGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachPolicyToUserGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteUserAction(inventory.APIDeleteUserMsg):
+    def __init__(self):
+        super(DeleteUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AttachPoliciesToUserAction(inventory.APIAttachPoliciesToUserMsg):
+    def __init__(self):
+        super(AttachPoliciesToUserAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachPoliciesToUserAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetCpuMemoryCapacityAction(inventory.APIGetCpuMemoryCapacityMsg):
+    def __init__(self):
+        super(GetCpuMemoryCapacityAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetCpuMemoryCapacityAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetHostAllocatorStrategiesAction(inventory.APIGetHostAllocatorStrategiesMsg):
+    def __init__(self):
+        super(GetHostAllocatorStrategiesAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetHostAllocatorStrategiesAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVmAttachableDataVolumeAction(inventory.APIGetVmAttachableDataVolumeMsg):
     def __init__(self):
         super(GetVmAttachableDataVolumeAction, self).__init__()
@@ -1350,430 +1798,6 @@ class ChangeVolumeStateAction(inventory.APIChangeVolumeStateMsg):
         self.out = evt
         return self.out
 
-class DeletePolicyAction(inventory.APIDeletePolicyMsg):
-    def __init__(self):
-        super(DeletePolicyAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeletePolicyAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DetachPolicyFromUserAction(inventory.APIDetachPolicyFromUserMsg):
-    def __init__(self):
-        super(DetachPolicyFromUserAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DetachPolicyFromUserAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DetachPolicyFromUserGroupAction(inventory.APIDetachPolicyFromUserGroupMsg):
-    def __init__(self):
-        super(DetachPolicyFromUserGroupAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DetachPolicyFromUserGroupAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DeleteUserGroupAction(inventory.APIDeleteUserGroupMsg):
-    def __init__(self):
-        super(DeleteUserGroupAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteUserGroupAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class QueryQuotaAction(inventory.APIQueryQuotaMsg):
-    def __init__(self):
-        super(QueryQuotaAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryQuotaAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class CreateAccountAction(inventory.APICreateAccountMsg):
-    def __init__(self):
-        super(CreateAccountAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateAccountAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DetachPolicesFromUserAction(inventory.APIDetachPolicesFromUserMsg):
-    def __init__(self):
-        super(DetachPolicesFromUserAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DetachPolicesFromUserAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class CreateUserAction(inventory.APICreateUserMsg):
-    def __init__(self):
-        super(CreateUserAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateUserAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class QueryAccountResourceRefAction(inventory.APIQueryAccountResourceRefMsg):
-    def __init__(self):
-        super(QueryAccountResourceRefAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryAccountResourceRefAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class QuerySharedResourceAction(inventory.APIQuerySharedResourceMsg):
-    def __init__(self):
-        super(QuerySharedResourceAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QuerySharedResourceAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class ShareResourceAction(inventory.APIShareResourceMsg):
-    def __init__(self):
-        super(ShareResourceAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ShareResourceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class RemoveUserFromGroupAction(inventory.APIRemoveUserFromGroupMsg):
-    def __init__(self):
-        super(RemoveUserFromGroupAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[RemoveUserFromGroupAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UpdateAccountAction(inventory.APIUpdateAccountMsg):
-    def __init__(self):
-        super(UpdateAccountAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateAccountAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class ValidateSessionAction(inventory.APIValidateSessionMsg):
-    def __init__(self):
-        super(ValidateSessionAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class SessionMessageAction(inventory.APISessionMessage):
-    def __init__(self):
-        super(SessionMessageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class GetAccountQuotaUsageAction(inventory.APIGetAccountQuotaUsageMsg):
-    def __init__(self):
-        super(GetAccountQuotaUsageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetAccountQuotaUsageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class CreateUserGroupAction(inventory.APICreateUserGroupMsg):
-    def __init__(self):
-        super(CreateUserGroupAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateUserGroupAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UpdateUserAction(inventory.APIUpdateUserMsg):
-    def __init__(self):
-        super(UpdateUserAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateUserAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class RevokeResourceSharingAction(inventory.APIRevokeResourceSharingMsg):
-    def __init__(self):
-        super(RevokeResourceSharingAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[RevokeResourceSharingAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class QueryUserAction(inventory.APIQueryUserMsg):
-    def __init__(self):
-        super(QueryUserAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryUserAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class LogOutAction(inventory.APILogOutMsg):
-    def __init__(self):
-        super(LogOutAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class QueryAccountAction(inventory.APIQueryAccountMsg):
-    def __init__(self):
-        super(QueryAccountAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryAccountAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class QueryPolicyAction(inventory.APIQueryPolicyMsg):
-    def __init__(self):
-        super(QueryPolicyAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryPolicyAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class AddUserToGroupAction(inventory.APIAddUserToGroupMsg):
-    def __init__(self):
-        super(AddUserToGroupAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AddUserToGroupAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DeleteAccountAction(inventory.APIDeleteAccountMsg):
-    def __init__(self):
-        super(DeleteAccountAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteAccountAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class CreatePolicyAction(inventory.APICreatePolicyMsg):
-    def __init__(self):
-        super(CreatePolicyAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreatePolicyAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class CheckApiPermissionAction(inventory.APICheckApiPermissionMsg):
-    def __init__(self):
-        super(CheckApiPermissionAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CheckApiPermissionAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class LogInByUserAction(inventory.APILogInByUserMsg):
-    def __init__(self):
-        super(LogInByUserAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class LogInByAccountAction(inventory.APILogInByAccountMsg):
-    def __init__(self):
-        super(LogInByAccountAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class QueryUserGroupAction(inventory.APIQueryUserGroupMsg):
-    def __init__(self):
-        super(QueryUserGroupAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryUserGroupAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class UpdateQuotaAction(inventory.APIUpdateQuotaMsg):
-    def __init__(self):
-        super(UpdateQuotaAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateQuotaAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class AttachPolicyToUserAction(inventory.APIAttachPolicyToUserMsg):
-    def __init__(self):
-        super(AttachPolicyToUserAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AttachPolicyToUserAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class AttachPolicyToUserGroupAction(inventory.APIAttachPolicyToUserGroupMsg):
-    def __init__(self):
-        super(AttachPolicyToUserGroupAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AttachPolicyToUserGroupAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DeleteUserAction(inventory.APIDeleteUserMsg):
-    def __init__(self):
-        super(DeleteUserAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteUserAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class AttachPoliciesToUserAction(inventory.APIAttachPoliciesToUserMsg):
-    def __init__(self):
-        super(AttachPoliciesToUserAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AttachPoliciesToUserAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class AddNetworkServiceProviderAction(inventory.APIAddNetworkServiceProviderMsg):
     def __init__(self):
         super(AddNetworkServiceProviderAction, self).__init__()
@@ -2178,30 +2202,6 @@ class CreateL2VlanNetworkAction(inventory.APICreateL2VlanNetworkMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateL2VlanNetworkAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class GetCpuMemoryCapacityAction(inventory.APIGetCpuMemoryCapacityMsg):
-    def __init__(self):
-        super(GetCpuMemoryCapacityAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetCpuMemoryCapacityAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class GetHostAllocatorStrategiesAction(inventory.APIGetHostAllocatorStrategiesMsg):
-    def __init__(self):
-        super(GetHostAllocatorStrategiesAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetHostAllocatorStrategiesAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
