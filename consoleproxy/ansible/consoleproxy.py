@@ -27,8 +27,8 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 
 #update the variable from shell arguments
-virtenv_path = "%svirtualenv/consoleproxy/" % zstack_root
-consoleproxy_root = "%sconsole" % zstack_root
+virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
+consoleproxy_root = "%s/console" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host

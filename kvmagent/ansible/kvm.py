@@ -59,9 +59,10 @@ run_remote_command(command, host_post_info)
 if distro == "RedHat" or distro == "CentOS":
     if yum_repo != 'false':
         # name: install kvm related packages on RedHat based OS from user defined repo
-        command = ('yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y qemu-kvm '
-                   'bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client'
-                   'net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass rsync') % yum_repo
+        command = ("pkg_list=`rpm -q qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils "
+                   "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass "
+                   "rsync | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                   "install -y $pkg; done;")
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos

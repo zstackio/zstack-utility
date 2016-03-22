@@ -881,8 +881,6 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     #install epel-release
                     yum_enable_repo("epel-release","epel-release-source", host_post_info)
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                command = 'yum clean --enablerepo=alibase metadata'
-                run_remote_command(command, host_post_info)
                 for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                     yum_install_package(pkg, host_post_info)
             else:
@@ -919,13 +917,10 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
                 run_remote_command(command, host_post_info)
                 #install libselinux-python and other command system libs from user defined repos
                 #enable alibase repo for yum clean avoid no repo to be clean
-                command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y libselinux-python"
-                           " python-devel python-setuptools python-pip gcc autoconf ntp ntpdate") % yum_repo
+                command = ("yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q htop libselinux-python python-devel "
+                            "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk '{ print $2 }'` && "
+                            "for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % yum_repo
                 run_remote_command(command, host_post_info)
-                #command = ('yum clean --enablerepo=alibase metadata')
-                #run_remote_command(command, host_post_info)
-                #for pkg in ['libselinux-python','python-devel',' python-setuptools','python-pip','gcc','autoconf','ntp','ntpdate']:
-                #    yum_install_package_via_repos(pkg,yum_repo, host_post_info)
 
             #enable ntp service for RedHat
             command = ('chkconfig ntpd on; service ntpd restart')
