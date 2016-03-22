@@ -115,7 +115,9 @@ def handle_ansible_failed(description, result, host_post_info):
     post_url = host_post_info.post_url
     start_time = host_post_info.start_time
     end_time = datetime.now()
-    cost_time = (end_time - start_time).total_seconds()*1000
+    #Fix python2.6 compatible issue: no total_seconds() attibute for timedelta
+    td = end_time -start_time
+    cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6.0 * 1000
     error.code = "ansible.1001"
     error.description = description + " [cost %sms to finish]" % int(cost_time)
     if 'stderr' in  result['contacted'][host]:
@@ -132,7 +134,9 @@ def handle_ansible_info(details, host_post_info, level):
     post_url = host_post_info.post_url
     start_time = host_post_info.start_time
     end_time = datetime.now()
-    cost_time = (end_time - start_time).total_seconds()*1000
+    #Fix python2.6 compatible issue: no total_seconds() attibute for timedelta
+    td = end_time -start_time
+    cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6.0 * 1000
     log.level = level
     if "SUCC" in details:
         log.details = details + " [cost %sms to finish]" % int(cost_time)
