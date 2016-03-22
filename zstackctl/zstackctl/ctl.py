@@ -1964,6 +1964,8 @@ class KairosdbCmd(Command):
         return find_process_by_cmdline('org.kairosdb.core.Main')
 
     def start(self, args):
+        shell("iptables-save | grep -- '-A INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT' > /dev/null || iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT")
+
         pid = self._status(args)
         if pid:
             info('kairosdb[PID:%s] is already running' % pid)
@@ -2112,6 +2114,8 @@ class CassandraCmd(Command):
                             default=-1, required=False)
 
     def start(self, args):
+        shell("iptables-save | grep -- '-A INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT' > /dev/null || iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT")
+
         pid = self._status(args)
         if pid:
             info('cassandra[PID:%s] is already running' % pid)
