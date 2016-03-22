@@ -6,6 +6,7 @@ import argparse
 import ast
 from zstacklib import *
 
+start_time = datetime.now()
 # set default value
 file_root = "files/appliancevm"
 pip_url = "https=//pypi.python.org/simple/"
@@ -110,8 +111,6 @@ elif distro == "Debian" or distro == "Ubuntu":
     command = "sed -i '/zstack-appliancevm start/d' /etc/rc.local"
     run_remote_command(command, host_post_info)
     # name: enable appliancevm service for Debian -2
-   # command = "sed -i 's/^exit 0/\\\/etc\\\/init.d\\\/zstack-appliancevm start\nexit 0/' /etc/rc.local"
-   # run_remote_command(command, host_post_info)
     update_arg = "insertbefore='^exit 0' line='/etc/init.d/zstack-appliancevm start\n'"
     update_file("/etc/rc.local",update_arg,host_post_info)
     # name: restore iptables
