@@ -3463,6 +3463,9 @@ class StartUiCmd(Command):
 
         write_pid()
         pid = find_process_by_cmdline('zstack_dashboard')
+        if not pid:
+            info('fail to start UI server on the local host. Use zstack-ctl start_ui to restart it. zstack UI log could be found in /var/log/zstack/zstack-dashboard.log')
+            return False
         info('successfully started UI server on the local host, PID[%s]' % pid)
 
 def main():
