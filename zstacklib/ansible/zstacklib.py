@@ -917,7 +917,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
                 run_remote_command(command, host_post_info)
                 #install libselinux-python and other command system libs from user defined repos
                 #enable alibase repo for yum clean avoid no repo to be clean
-                command = ("yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q htop libselinux-python python-devel "
+                command = ("yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                             "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk '{ print $2 }'` && "
                             "for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % yum_repo
                 run_remote_command(command, host_post_info)
