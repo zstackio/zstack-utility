@@ -57,16 +57,18 @@ command = 'mkdir -p %s %s' % (kvm_root, virtenv_path)
 run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
+    #handle yum_repo
     if yum_repo != 'false':
         # name: install kvm related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils "
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass "
                    "rsync | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                   "install -y $pkg; done;")
+                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % yum_repo
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
-            command = 'rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y iptables-services' % yum_repo
+            command = ("pkg_list=`rpm -q iptables-services | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
+                       "in $pkg_list; do yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y $pkg; done;") % yum_repo
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
@@ -78,6 +80,7 @@ if distro == "RedHat" or distro == "CentOS":
             # name: RHEL7 specific packages from online
             yum_install_package("iptables-services", host_post_info)
 
+    #handle distro version specific task
     if distro_version < 7:
         # name: copy name space supported iproute for RHEL6
         copy_arg = CopyArg()
