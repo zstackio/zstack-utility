@@ -540,8 +540,8 @@ def check_pip_version(version, host_post_info):
             handle_ansible_info(details,host_post_info,"INFO")
             return True
         else:
-            description = "ERROR: Check pip-%s is not exist in system" % version
-            handle_ansible_failed(description,result,host_post_info)
+            details = "INFO: Check pip-%s is not exist in system" % version
+            handle_ansible_info(details,host_post_info,"INFO")
             return False
 
 def file_dir_exist(name, host_post_info):
