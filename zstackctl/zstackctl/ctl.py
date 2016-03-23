@@ -1745,19 +1745,19 @@ class ChangeIpCmd(Command):
         super(ChangeIpCmd, self).__init__()
         self.name = "change_ip"
         self.description = (
-            "update new ip address to zstack property file, kairosdb and cassandra config file"
+            "update new management ip address to zstack property file, kairosdb and cassandra config file"
         )
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--ip', help='The new IP address of management node.'
-                                         'This operation will update the new ip address to'
+                                         'This operation will update the new ip address to '
                                          'zstack, kaiorsdb and cassandra config file' , required=True)
-        parser.add_argument('--kairosdb_ip', help='The new IP address of kairosdb', required=False)
-        parser.add_argument('--cassandra_rpc_address', help='The new IP address of cassandra_rpc_address', required=False)
-        parser.add_argument('--cassandra_listen_address', help='The new IP address of cassandra_listen_address', required=False)
-        parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0', required=False)
-        parser.add_argument('--mysql_ip', help='The new IP address of DB.url', required=False)
+        parser.add_argument('--kairosdb_ip', help='The new IP address of kairosdb, default will use value from --ip', required=False)
+        parser.add_argument('--cassandra_rpc_address', help='The new IP address of cassandra_rpc_address, default will use value from --ip', required=False)
+        parser.add_argument('--cassandra_listen_address', help='The new IP address of cassandra_listen_address, default will use value from --ip', required=False)
+        parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
+        parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
 
     def run(self, args):
         if args.ip == '0.0.0.0':
@@ -1786,23 +1786,23 @@ class ChangeIpCmd(Command):
         zstack_conf_file = ctl.properties_file_path
 
         # Update zstack config file
-        shell("yes | cp %s %s.bak" % (zstack_conf_file, zstack_conf_file))
-        ctl.write_properties([
-          ('CloudBus.serverIp.0', cloudbus_server_ip),
-        ])
-        info("Update cloudbus server ip %s in %s " % (cloudbus_server_ip, zstack_conf_file))
-        db_url = ctl.read_property('DB.url')
-        db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
-        db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
-        ctl.write_properties([
-          ('DB.url', db_new_url),
-        ])
-        info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
+        if os.path.isfile(zstack_conf_file):
+            shell("yes | cp %s %s.bak" % (zstack_conf_file, zstack_conf_file))
+            ctl.write_properties([
+              ('CloudBus.serverIp.0', cloudbus_server_ip),
+            ])
+            info("Update cloudbus server ip %s in %s " % (cloudbus_server_ip, zstack_conf_file))
+            db_url = ctl.read_property('DB.url')
+            db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
+            db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
+            ctl.write_properties([
+              ('DB.url', db_new_url),
+            ])
+            info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
 
         # Update kairosdb config file
-        kairosdb_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "kairosdb")
-        if os.path.exists(kairosdb_dir):
-            kairosdb_conf_file = os.path.join(kairosdb_dir, "conf/kairosdb.properties")
+        kairosdb_conf_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "kairosdb/conf/kairosdb.properties")
+        if os.path.isfile(kairosdb_conf_file):
             shell("yes | cp %s %s.bak" % (kairosdb_conf_file, kairosdb_conf_file))
             new_kairosdb_config = []
             new_kairosdb_config.extend([
@@ -1818,22 +1818,21 @@ class ChangeIpCmd(Command):
             info("Update kairosdb ip %s in %s " % (kairosdb_ip, zstack_conf_file))
 
         # Update cassandra config file
-        cassandra_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3")
-        if os.path.exists(cassandra_dir):
-            cassandra_conf_file = os.path.join(cassandra_dir, "conf/cassandra.yaml")
+        cassandra_conf_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3/conf/cassandra.yaml")
+        if os.path.isfile(cassandra_conf_file):
             shell('yes | cp %s %s.bak' % (cassandra_conf_file, cassandra_conf_file))
-        with open(cassandra_conf_file, 'r') as fd:
-            c_conf = yaml.load(fd.read())
-            c_conf['listen_address'] = cassandra_listen_address
-            c_conf['rpc_address'] = cassandra_rpc_address
-            with open(cassandra_conf_file, 'w') as fd:
-                fd.write(yaml.dump(c_conf, default_flow_style=False))
-                info('Update cassandra listen address: %s rpc_address: %s in %s' \
-                     % (cassandra_listen_address, cassandra_rpc_address, cassandra_conf_file))
-                ctl.write_properties([
-                    ('Cassandra.contactPoints', cassandra_rpc_address)
-                ])
-                info("Update cassandra rpc address: %s in %s" % (cassandra_rpc_address, zstack_conf_file))
+            with open(cassandra_conf_file, 'r') as fd:
+                c_conf = yaml.load(fd.read())
+                c_conf['listen_address'] = cassandra_listen_address
+                c_conf['rpc_address'] = cassandra_rpc_address
+                with open(cassandra_conf_file, 'w') as fd:
+                    fd.write(yaml.dump(c_conf, default_flow_style=False))
+                    info('Update cassandra listen address: %s rpc_address: %s in %s' \
+                         % (cassandra_listen_address, cassandra_rpc_address, cassandra_conf_file))
+                    ctl.write_properties([
+                        ('Cassandra.contactPoints', cassandra_rpc_address)
+                    ])
+                    info("Update cassandra rpc address: %s in %s" % (cassandra_rpc_address, zstack_conf_file))
 
 class InstallCassandraCmd(Command):
     CASSANDRA_EXEC = 'CASSANDRA_EXEC'
