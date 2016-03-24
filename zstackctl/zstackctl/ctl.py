@@ -1763,7 +1763,7 @@ class ChangeIpCmd(Command):
         if args.ip == '0.0.0.0':
             raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
         if args.kairosdb_ip is not None:
-            kairosdb_ip = args.kairosdb-ip
+            kairosdb_ip = args.kairosdb_ip
         else:
             kairosdb_ip = args.ip
         if args.cassandra_rpc_address is not None:
@@ -1784,6 +1784,11 @@ class ChangeIpCmd(Command):
             mysql_ip = args.ip
 
         zstack_conf_file = ctl.properties_file_path
+        ip_check = re.compile('^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+        for input_ip in [kairosdb_ip, cassandra_rpc_address, cassandra_listen_address, cloudbus_server_ip, mysql_ip]:
+            if not ip_check.match(input_ip):
+                info("The ip address you input: %s seems not a valid ip" % input_ip)
+                return 1
 
         # Update zstack config file
         if os.path.isfile(zstack_conf_file):
@@ -1799,6 +1804,9 @@ class ChangeIpCmd(Command):
               ('DB.url', db_new_url),
             ])
             info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
+        else:
+            info("Didn't find %s, skip update all ip" % zstack_conf_file  )
+            return 1
 
         # Update kairosdb config file
         kairosdb_conf_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "kairosdb/conf/kairosdb.properties")
@@ -1816,6 +1824,9 @@ class ChangeIpCmd(Command):
               ('Kairosdb.ip', kairosdb_ip),
             ])
             info("Update kairosdb ip %s in %s " % (kairosdb_ip, zstack_conf_file))
+        else:
+            info("Didn't find %s, skip update kairosdb ip" % kairosdb_conf_file)
+
 
         # Update cassandra config file
         cassandra_conf_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3/conf/cassandra.yaml")
@@ -1833,6 +1844,9 @@ class ChangeIpCmd(Command):
                         ('Cassandra.contactPoints', cassandra_rpc_address)
                     ])
                     info("Update cassandra rpc address: %s in %s" % (cassandra_rpc_address, zstack_conf_file))
+        else:
+            info("Didn't find %s, skip update cassandra ip" % cassandra_conf_file)
+
 
 class InstallCassandraCmd(Command):
     CASSANDRA_EXEC = 'CASSANDRA_EXEC'
