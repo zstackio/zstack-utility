@@ -1237,13 +1237,17 @@ class Vm(object):
             return take_delta_snapshot()
 
     def migrate(self, cmd):
+        current_hostname = shell.call('hostname')
+        if current_hostname == 'localhost.localdomain' or current_hostname == 'localhost':
+            # set the hostname, otherwise the migration will fail
+            shell.call('hostname %s.zstack.org' % cmd.srcHostIp.replace('.', '-'))
+
         destHostIp = cmd.destHostIp
         destUrl = "qemu+tcp://{0}/system".format(destHostIp)
         tcpUri = "tcp://{0}".format(destHostIp)
         flag = (libvirt.VIR_MIGRATE_LIVE|
                 libvirt.VIR_MIGRATE_PEER2PEER|
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE|
-                libvirt.VIR_MIGRATE_PERSIST_DEST |
                 libvirt.VIR_MIGRATE_TUNNELLED)
 
         if cmd.withStorage == 'FullCopy':
@@ -1252,7 +1256,7 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_INC
 
         try:
-            self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)
+            self.domain.migrateToURI(destUrl, flag)
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
             raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
