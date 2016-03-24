@@ -1752,7 +1752,7 @@ class ChangeIpCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--ip', help='The new IP address of management node.'
                                          'This operation will update the new ip address to '
-                                         'zstack, kaiorsdb and cassandra config file' , required=True)
+                                         'zstack, kairosdb and cassandra config file' , required=True)
         parser.add_argument('--kairosdb_ip', help='The new IP address of kairosdb, default will use value from --ip', required=False)
         parser.add_argument('--cassandra_rpc_address', help='The new IP address of cassandra_rpc_address, default will use value from --ip', required=False)
         parser.add_argument('--cassandra_listen_address', help='The new IP address of cassandra_listen_address, default will use value from --ip', required=False)
@@ -1763,7 +1763,7 @@ class ChangeIpCmd(Command):
         if args.ip == '0.0.0.0':
             raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
         if args.kairosdb_ip is not None:
-            kairosdb_ip = args.kaiorsdb-ip
+            kairosdb_ip = args.kairosdb-ip
         else:
             kairosdb_ip = args.ip
         if args.cassandra_rpc_address is not None:
