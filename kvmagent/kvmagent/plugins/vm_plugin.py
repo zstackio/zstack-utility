@@ -836,7 +836,7 @@ class Vm(object):
                 #domain has been destroyed
                 pass
 
-            return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
+            return self.wait_for_state_change(None)
 
         do_destroy = True
         if graceful:
