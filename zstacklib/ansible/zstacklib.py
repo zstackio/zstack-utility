@@ -12,6 +12,18 @@ from urllib2 import URLError
 import json
 from datetime import datetime
 import logging
+from logging.handlers import TimedRotatingFileHandler
+
+class AgentInstallArg(object):
+    def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
+        self.trusted_host = trusted_host
+        self.pip_url = pip_url
+        self.virtenv_path = virtenv_path
+        self.init_install = init_install
+        self.agent_name = None
+        self.agent_root = None
+        self.pkg_name = None
+        self.virtualenv_site_packages = None
 
 class ZstackLibArgs(object):
     def __init__(self):
@@ -66,14 +78,20 @@ class CopyArg(object):
         self.dest = None
         self.args = None
 
+class UnarchiveArg(object):
+    def __init__(self):
+        self.src = None
+        self.dest = None
+        self.args = None
 
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
 handle = logging.StreamHandler(sys.stdout)
+logger.setLevel(logging.DEBUG)
 handle.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 handle.setFormatter(formatter)
-logger.addHandler(handle)
+if not logger.handle:
+    logger.addHandler(handle)
 
 def post_msg(msg, post_url):
     logger.info( msg.data.details)
@@ -82,8 +100,12 @@ def post_msg(msg, post_url):
         return 0
     if msg.type == "log":
         data = json.dumps({"level" : msg.data.level, "details" : msg.data.details})
+        # This output will capture by management log
+        print msg.data.details
     elif msg.type == "error":
         data = json.dumps({"code" : msg.data.code, "description" : msg.data.description,"details" : msg.data.details})
+        # This output will capture by management log
+        print msg.data.description
     else:
         logger.info("ERROR: undefined message type: %s" % msg.type)
         sys.exit(1)
@@ -145,6 +167,22 @@ def handle_ansible_info(details, host_post_info, level):
     msg.type = "log"
     msg.data = log
     post_msg(msg, post_url)
+
+def agent_install(install_arg, host_post_info):
+    handle_ansible_info("INFO: Start to install %s .................." % install_arg.agent_name, host_post_info, "INFO")
+    pip_install_arg = PipInstallArg()
+    pip_install_arg.extra_args = "\"--trusted-host %s -i %s\"" % (install_arg.trusted_host,install_arg.pip_url)
+    # upgrade only
+    if install_arg.init_install == False:
+        handle_ansible_info("INFO: Only need to upgrade %s .................." % install_arg.agent_name, host_post_info, "INFO")
+        pip_install_arg.extra_args = "\"--trusted-host %s -i %s -U \"" % (install_arg.trusted_host, install_arg.pip_url)
+    pip_install_arg.name = "%s/%s" % (install_arg.agent_root, install_arg.pkg_name)
+    pip_install_arg.virtualenv = install_arg.virtenv_path
+    pip_install_arg.virtualenv_site_packages = install_arg.virtualenv_site_packages
+    if pip_install_package(pip_install_arg, host_post_info) == False:
+        command = "rm -rf %s && rm -rf %s" % (install_arg.virtenv_path, install_arg.agent_root)
+        run_remote_command(command, host_post_info)
+        sys.exit(1)
 
 def yum_enable_repo(name, enablerepo, host_post_info):
     start_time = datetime.now()
@@ -425,7 +463,7 @@ def pip_install_package(pip_install_arg,host_post_info):
         if 'failed' in result['contacted'][host]:
             description = "ERROR: pip install package %s failed!" % name
             handle_ansible_failed(description,result,host_post_info)
-            sys.exit(1)
+            return False
         else:
             details = "SUCC: Install python module %s " % name
             handle_ansible_info(details,host_post_info,"INFO")
@@ -469,10 +507,11 @@ def copy(copy_arg, host_post_info):
             handle_ansible_failed(description,result,host_post_info)
             sys.exit(1)
         else:
-            details = "SUCC: copy %s to %s" % (src,dest)
+            change_status = "changed:" + str(result['contacted'][host]['changed'])
+            details = "SUCC: copy %s to %s, the change status is %s" % (src,dest,change_status)
             handle_ansible_info(details,host_post_info,"INFO")
             #pass the copy result to outside
-            return "changed:" + str(result['contacted'][host]['changed'])
+            return change_status
 
 def run_remote_command(command, host_post_info):
     start_time = datetime.now()
@@ -828,7 +867,47 @@ def authorized_key(user, key_path, host_post_info):
             handle_ansible_info(details,host_post_info,"INFO")
             return True
 
+def unarchive(unarchive_arg, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    src = unarchive_arg.src
+    dest = unarchive_arg.dest
+    args = unarchive_arg.args
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting unarchive %s to %s ... " % (src,dest), host_post_info, "INFO")
+    if args != None:
+        unarchive_args = 'src='+src+' dest='+dest+' '+args
+    else:
+        unarchive_args = 'src='+src+' dest='+dest
 
+    runner = ansible.runner.Runner(
+        host_list = host_inventory,
+        private_key_file = private_key,
+        module_name = 'unarchive',
+        module_args = unarchive_args,
+        pattern = host
+   )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: unarchive %s to %s failed!" % (src,dest)
+            handle_ansible_failed(description,result,host_post_info)
+            sys.exit(1)
+        else:
+            details = "SUCC: unarchive %s to %s" % (src,dest)
+            handle_ansible_info(details,host_post_info,"INFO")
+            return True
 
 class ZstackLib(object):
     def __init__(self,args):
@@ -838,6 +917,7 @@ class ZstackLib(object):
         yum_server = args.yum_server
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
+        pip_version = "7.0.3"
         epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
         if distro == "CentOS" or distro == "RedHat":
                 #set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
@@ -940,7 +1020,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
             sys.exit(1)
 
         #check the pip 7.0.3 exist in system
-        pip_match = check_pip_version("7.0.3", host_post_info)
+        pip_match = check_pip_version(pip_version, host_post_info)
         if pip_match is False:
             #make dir for copy pip
             run_remote_command("mkdir -p %s" % zstack_root, host_post_info)

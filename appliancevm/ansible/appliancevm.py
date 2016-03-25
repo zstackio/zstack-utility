@@ -3,7 +3,6 @@
 import os
 import sys
 import argparse
-import ast
 from zstacklib import *
 
 start_time = datetime.now()
@@ -15,16 +14,17 @@ sproxy = ""
 chroot_env = 'false'
 yum_repo = 'false'
 post_url = ""
+virtualenv_version = "12.1.1"
 
 # get paramter from shell
-parser = argparse.ArgumentParser(description='Deploy consoleproxy to management node')
+parser = argparse.ArgumentParser(description='Deploy appliancevm to management node')
 parser.add_argument('-i',type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
 parser.add_argument('--private-key',type=str,help='use this file to authenticate the connection')
 parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
-argument_dict = ast.literal_eval(args.e)
+argument_dict = eval(args.e)
 locals().update(argument_dict)
 
 # update the variable from shell arguments
@@ -47,15 +47,33 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib = ZstackLib(zstacklib_args)
 
-# name: create root directories
-command = 'mkdir -p %s %s' % (appliancevm_root, virtenv_path)
-run_remote_command(command, host_post_info)
-check_and_install_virtual_env("12.1.1", trusted_host, pip_url, host_post_info)
+# name: judge this process is init install or upgrade
+if file_dir_exist("path=" + appliancevm_root, host_post_info):
+    init_install = False
+else:
+    init_install = True
+    # name: create root directories
+    command = 'mkdir -p %s %s' % (appliancevm_root, virtenv_path)
+    run_remote_command(command, host_post_info)
 
-# name: create virtualenv
-command = "rm -rf %s && rm -f %s/%s && rm -f %s/%s && virtualenv --system-site-packages %s" % \
-          (virtenv_path, appliancevm_root, pkg_zstacklib, appliancevm_root, pkg_appliancevm, virtenv_path)
-run_remote_command(command, host_post_info)
+# name: copy zstacklib and install
+copy_arg = CopyArg()
+copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
+copy_arg.dest ="%s/%s" % (appliancevm_root, pkg_zstacklib)
+copy_zstacklib = copy(copy_arg, host_post_info)
+
+# name: copy appliancevm and install
+copy_arg = CopyArg()
+copy_arg.src = "%s/%s" % (file_root,pkg_appliancevm)
+copy_arg.dest = "%s/%s" % (appliancevm_root,pkg_appliancevm)
+copy_appliancevm = copy(copy_arg, host_post_info)
+
+# name: copy bootstrap script
+copy_arg = CopyArg()
+copy_arg.src = "%s/zstack-appliancevm-bootstrap.py" % file_root
+copy_arg.dest = '/sbin/zstack-appliancevm-bootstrap.py'
+copy_arg.args = "mode=0777"
+copy(copy_arg, host_post_info)
 
 # name: copy appliancevm service file
 copy_arg = CopyArg()
@@ -63,6 +81,19 @@ copy_arg.src = "%s/zstack-appliancevm" % file_root
 copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
+
+# name: install virtualenv
+virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
+if virtual_env_status == False:
+    command = "rm -rf %s && rm -rf %s" % (virtenv_path, appliancevm_root)
+    run_remote_command(command, host_post_info)
+    sys.exit(1)
+
+# name: make sure virtualenv has been setup
+command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
+run_remote_command(command, host_post_info)
+
+
 if distro == "RedHat" or distro == "CentOS":
     if yum_repo != 'false':
         # name: install appliance vm related packages on RedHat based OS from user defined repo
@@ -84,7 +115,7 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg.dest="/etc/sysconfig/iptables"
     iptables_copy_result = copy(copy_arg, host_post_info)
     if chroot_env == 'false':
-        if iptables_copy_result == "changed:true":
+        if iptables_copy_result != "changed:False":
             service_status("name=iptables state=restarted enabled=yes", host_post_info)
     else:
         # name: enable appliancevm service for RedHat on chroot
@@ -121,37 +152,31 @@ else:
     print "unsupported OS!"
     sys.exit(1)
 
-# name: copy bootstrap script
-copy_arg = CopyArg()
-copy_arg.src = "%s/zstack-appliancevm-bootstrap.py" % file_root
-copy_arg.dest = '/sbin/zstack-appliancevm-bootstrap.py'
-copy_arg.args = "mode=0777"
-copy(copy_arg, host_post_info)
 
-# name: copy zstacklib and install
-copy_arg = CopyArg()
-copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest ="%s/%s" % (appliancevm_root, pkg_zstacklib)
-zstack_lib_copy = copy(copy_arg, host_post_info)
+# name: install zstacklib
+if copy_zstacklib != "changed:False":
+    agent_install_arg = AgentInstallArg()
+    agent_install_arg.agent_name = "zstacklib"
+    agent_install_arg.trusted_host = trusted_host
+    agent_install_arg.pip_url = pip_url
+    agent_install_arg.agent_root = appliancevm_root
+    agent_install_arg.pkg_name = pkg_zstacklib
+    agent_install_arg.virtenv_path = virtenv_path
+    agent_install_arg.virtualenv_site_packages = "yes"
+    agent_install_arg.init_install = init_install
+    agent_install(agent_install_arg, host_post_info)
 
-#if zstack_lib_copy == "changed:true":
-pip_install_arg = PipInstallArg()
-pip_install_arg.name="%s/%s" % (appliancevm_root,pkg_zstacklib)
-pip_install_arg.extra_args="\"--trusted-host  %s -i %s\"" % (trusted_host,pip_url)
-pip_install_arg.virtualenv="%s" % virtenv_path
-pip_install_arg.virtualenv_site_packages="yes"
-pip_install_package(pip_install_arg,host_post_info)
-
-# name: copy appliancevm and install
-copy_arg = CopyArg()
-copy_arg.src = "%s/%s" % (file_root,pkg_appliancevm)
-copy_arg.dest = "%s/%s" % (appliancevm_root,pkg_appliancevm)
-appliancevm_copy_result = copy(copy_arg, host_post_info)
-pip_install_arg = PipInstallArg()
-pip_install_arg.name="%s/%s" % (appliancevm_root,pkg_appliancevm)
-pip_install_arg.extra_args="\"--trusted-host %s -i %s\"" % (trusted_host,pip_url)
-pip_install_arg.virtualenv="%s" % virtenv_path
-pip_install_package(pip_install_arg,host_post_info)
+# name: install appliancevm
+if copy_appliancevm != "changed:False":
+    agent_install_arg = AgentInstallArg()
+    agent_install_arg.agent_name = "appliancevm"
+    agent_install_arg.trusted_host = trusted_host
+    agent_install_arg.pip_url = pip_url
+    agent_install_arg.agent_root = appliancevm_root
+    agent_install_arg.pkg_name = pkg_appliancevm
+    agent_install_arg.virtenv_path = virtenv_path
+    agent_install_arg.init_install = init_install
+    agent_install(agent_install_arg, host_post_info)
 
 if chroot_env == 'false':
     # name: restart appliancevm

@@ -13,6 +13,7 @@ proxy = ""
 sproxy = ""
 yum_repo = 'false'
 post_url = ""
+virtualenv_version = "12.1.1"
 
 # get paramter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph backup strorage to host')
@@ -46,9 +47,15 @@ zstacklib_args.host_post_info = host_post_info
 zstacklib = ZstackLib(zstacklib_args)
 
 
-# name: create root directories
-command = 'mkdir -p %s %s' % (cephp_root,virtenv_path)
-run_remote_command(command, host_post_info)
+# name: judge this process is init install or upgrade
+if file_dir_exist("path=" + cephp_root, host_post_info):
+    init_install = False
+else:
+    init_install = True
+    # name: create root directories
+    command = 'mkdir -p %s %s' % (cephp_root, virtenv_path)
+    run_remote_command(command, host_post_info)
+
 if distro == "RedHat" or distro == "CentOS":
     if yum_repo != 'false':
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img" % yum_repo
@@ -75,33 +82,41 @@ else:
     print "unsupported OS!"
     sys.exit(1)
 
-check_and_install_virtual_env("12.1.1", trusted_host, pip_url, host_post_info)
-# name: create virtualenv
-command = "rm -rf %s && rm -f %s/%s && rm -f %s/%s && virtualenv --system-site-packages %s" % \
-          (virtenv_path, cephp_root, pkg_zstacklib, cephp_root, pkg_cephpagent, virtenv_path)
+# name: install virtualenv
+virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
+if virtual_env_status == False:
+    command = "rm -rf %s && rm -rf %s" % (virtenv_path, cephp_root)
+    run_remote_command(command, host_post_info)
+    sys.exit(1)
+
+# name: make sure virtualenv has been setup
+command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
-# name: copy zstacklib
+
+# name: copy zstacklib and install
 copy_arg = CopyArg()
 copy_arg.src="files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest="%s/%s" % (cephp_root,pkg_zstacklib)
 zstack_lib_copy = copy(copy_arg, host_post_info)
-#if zstack_lib_copy == "changed:true":
-pip_install_arg = PipInstallArg()
-pip_install_arg.name="%s/%s" % (cephp_root,pkg_zstacklib)
-pip_install_arg.extra_args="\"--ignore-installed --trusted-host %s -i %s \"" % (trusted_host,pip_url)
-pip_install_arg.virtualenv="%s" % virtenv_path
-pip_install_package(pip_install_arg,host_post_info)
+if zstack_lib_copy != "changed:False":
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "zstacklib"
+    agent_install_arg.agent_root = cephp_root
+    agent_install_arg.pkg_name = pkg_zstacklib
+    agent_install(agent_install_arg, host_post_info)
+
 # name: copy ceph primarystorage agent
 copy_arg = CopyArg()
 copy_arg.src="%s/%s" % (file_root,pkg_cephpagent)
 copy_arg.dest="%s/%s" % (cephp_root,pkg_cephpagent)
 cephpagent_copy = copy(copy_arg, host_post_info)
-#if cephpagent_copy  == "changed:true":
-pip_install_arg = PipInstallArg()
-pip_install_arg.name="%s/%s" % (cephp_root,pkg_cephpagent)
-pip_install_arg.extra_args="\"--ignore-installed --trusted-host %s -i %s\"" % (trusted_host,pip_url)
-pip_install_arg.virtualenv="%s" % virtenv_path
-pip_install_package(pip_install_arg,host_post_info)
+if cephpagent_copy  != "changed:False":
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "ceph_primarystorage"
+    agent_install_arg.agent_root = cephp_root
+    agent_install_arg.pkg_name = pkg_cephpagent
+    agent_install(agent_install_arg, host_post_info)
+
 # name: copy service file
 # only support centos redhat debian and ubuntu
 copy_arg = CopyArg()
