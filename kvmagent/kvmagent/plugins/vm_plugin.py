@@ -836,7 +836,14 @@ class Vm(object):
                 #domain has been destroyed
                 pass
 
-            return self.wait_for_state_change(None)
+            try:
+                return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
+            except libvirt.libvirtError as ex:
+                error_code = ex.get_error_code()
+                if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                    return True
+                else:
+                    raise
 
         do_destroy = True
         if graceful:
