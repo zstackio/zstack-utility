@@ -1847,6 +1847,10 @@ class Vm(object):
             console = e(devices, 'console', None, {'type':'pty'})
             e(console, 'target', None, {'type':'serial', 'port':'0'})
 
+        def make_sec_label():
+            root = elements['root']
+            e(root, 'seclabel', None, {'type':'none'})
+
 
         make_root()
         make_meta()
@@ -1862,6 +1866,7 @@ class Vm(object):
         make_addons()
         make_balloon_memory()
         make_console()
+        make_sec_label()
 
         root = elements['root']
         xml = etree.tostring(root)
