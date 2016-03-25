@@ -1095,9 +1095,16 @@ class StartCmd(Command):
                 if not ips:
                     raise CtlError('no RabbitMQ IPs defined in %s, please specify it use CloudBus.serverIp.0=the_ip' % ctl.properties_file_path)
 
+                success = False
                 for key, ip in ips:
-                    if not check_ip_port(ip, RABBIT_PORT):
-                        raise CtlError('cannot connect to RabbitMQ server[ip:%s, port:%s] defined by item[%s] in %s' % (ip, RABBIT_PORT, key, ctl.properties_file_path))
+                    if check_ip_port(ip, RABBIT_PORT):
+                        success = True
+                    else:
+                        warn('cannot connect to the RabbitMQ server[ip:%s, port:%s]' % (ip, RABBIT_PORT))
+
+                if not success:
+                    raise CtlError('cannot connect to all RabbitMQ servers[ip:%s, port:%s] defined in %s' %
+                                    (ips, RABBIT_PORT, ctl.properties_file_path))
 
         def prepare_setenv():
             setenv_path = os.path.join(ctl.zstack_home, self.SET_ENV_SCRIPT)
