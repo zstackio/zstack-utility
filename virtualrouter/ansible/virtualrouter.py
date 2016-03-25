@@ -2,7 +2,6 @@
 # encoding =  utf-8
 import os,sys
 import argparse
-import ast
 from zstacklib import *
 
 start_time = datetime.now()
@@ -14,6 +13,7 @@ sproxy = ""
 chroot_env = 'false'
 yum_repo = 'false'
 post_url = ""
+virtualenv_version = "12.1.1"
 
 # get paramter from shell
 parser = argparse.ArgumentParser(description='Deploy virtual Router to host')
@@ -23,7 +23,7 @@ parser.add_argument('--private-key',type=str,help='use this file to authenticate
 parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
-argument_dict = ast.literal_eval(args.e)
+argument_dict = eval(args.e)
 
 # update the variable from shell arguments
 locals().update(argument_dict)
@@ -34,10 +34,6 @@ host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
 host_post_info.private_key = args.private_key
-
-# tmp inject operation
-command = "echo 'nameserver 114.114.114.114' > /etc/resolv.conf"
-run_remote_command(command, host_post_info)
 
 # include zstacklib.py
 (distro, distro_version) = get_remote_host_info(host_post_info)
@@ -50,9 +46,14 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib = ZstackLib(zstacklib_args)
 
-# name: create root directories
-command = 'mkdir -p %s %s' % (vr_root,virtenv_path)
-run_remote_command(command, host_post_info)
+# name: judge this process is init install or upgrade
+if file_dir_exist("path=" + vr_root, host_post_info):
+    init_install = False
+else:
+    init_install = True
+    # name: create root directories
+    command = 'mkdir -p %s %s' % (vr_root, virtenv_path)
+    run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
     if yum_repo != 'false':
@@ -69,11 +70,15 @@ else:
     print "unsupported OS!"
     sys.exit(1)
 
-check_and_install_virtual_env("12.1.1", trusted_host, pip_url, host_post_info)
+# name: install virtualenv
+virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
+if virtual_env_status == False:
+    command = "rm -rf %s && rm -rf %s" % (virtenv_path, vr_root)
+    run_remote_command(command, host_post_info)
+    sys.exit(1)
 
-# name: create virtualenv
-command = "rm -rf %s && rm -f %s/%s && rm -f %s/%s && virtualenv %s" % \
-          (virtenv_path, vr_root, pkg_zstacklib, vr_root, pkg_virtualrouter, virtenv_path)
+# name: make sure virtualenv has been setup
+command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
 # name: create dnsmasq host dhcp file
@@ -109,25 +114,27 @@ copy_arg = CopyArg()
 copy_arg.src="files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest="%s/%s" % (vr_root,pkg_zstacklib)
 zstack_lib_copy = copy(copy_arg, host_post_info)
-#if zstack_lib_copy == "changed:true":
-pip_install_arg = PipInstallArg()
-pip_install_arg.name = "%s/%s" % (vr_root,pkg_zstacklib)
-pip_install_arg.extra_args =  "\"--ignore-installed --trusted-host %s -i %s\"" % (trusted_host,pip_url)
-pip_install_arg.virtualenv = virtenv_path
-pip_install_arg.virtualenv_site_packages = "yes"
-pip_install_package(pip_install_arg,host_post_info)
+if zstack_lib_copy != "changed:False":
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "zstacklib"
+    agent_install_arg.agent_root = vr_root
+    agent_install_arg.pkg_name = pkg_zstacklib
+    agent_install_arg.virtualenv_site_packages = "yes"
+    agent_install(agent_install_arg, host_post_info)
 
 # name: copy virtual router
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root,pkg_virtualrouter)
 copy_arg.dest = "%s/%s" % (vr_root,pkg_virtualrouter)
 vragent_copy = copy(copy_arg, host_post_info)
-pip_install_arg = PipInstallArg()
-pip_install_arg.name="%s/%s" % (vr_root,pkg_virtualrouter)
-pip_install_arg.extra_args="\"--ignore-installed --trusted-host %s -i %s\"" % (trusted_host,pip_url)
-pip_install_arg.virtualenv="%s" % virtenv_path
-pip_install_arg.virtualenv_site_packages="yes"
-pip_install_package(pip_install_arg,host_post_info)
+
+if vragent_copy != "changed:False":
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "virtualrouter"
+    agent_install_arg.agent_root = sftp_root
+    agent_install_arg.pkg_name = pkg_virtualrouter
+    agent_install_arg.virtualenv_site_packages = "yes"
+    agent_install(agent_install_arg, host_post_info)
 
 # name: copy virtual rourte service file
 copy_arg = CopyArg()

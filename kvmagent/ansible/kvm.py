@@ -15,6 +15,7 @@ chroot_env = 'false'
 is_init = 'false'
 yum_repo = 'false'
 post_url = ""
+virtualenv_version = "12.1.1"
 
 # get paramter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
@@ -52,9 +53,14 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib = ZstackLib(zstacklib_args)
 
-# name: create root directories
-command = 'mkdir -p %s %s' % (kvm_root, virtenv_path)
-run_remote_command(command, host_post_info)
+# name: judge this process is init install or upgrade
+if file_dir_exist("path=" + kvm_root, host_post_info):
+    init_install = False
+else:
+    init_install = True
+    # name: create root directories
+    command = 'mkdir -p %s %s' % (kvm_root, virtenv_path)
+    run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
     #handle yum_repo
@@ -149,7 +155,7 @@ elif distro == "Debian" or distro == "Ubuntu":
     command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
     run_remote_command(command, host_post_info)
 
-    if libvirt_bin_status == "changed:true":
+    if libvirt_bin_status != "changed:False":
         # name: restart debian libvirtd
         service_status("name=libvirt-bin state=restarted enabled=yes", host_post_info)
 
@@ -182,29 +188,19 @@ run_remote_command(command, host_post_info)
 command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
 run_remote_command(command, host_post_info)
 
-# name: install virtualenv version 12.1.1
-check_and_install_virtual_env("12.1.1", trusted_host, pip_url, host_post_info)
-# name: create virtualenv
-command = "rm -rf %s && rm -f %s/%s && rm -f %s/%s && virtualenv --system-site-packages %s" % \
-          (virtenv_path, kvm_root, pkg_zstacklib, kvm_root, pkg_kvmagent, virtenv_path)
-run_remote_command(command, host_post_info)
+
 # name: copy zstacklib
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest = "%s/%s" % (kvm_root,pkg_zstacklib)
-zstack_lib_copy = copy(copy_arg, host_post_info)
-#if zstack_lib_copy == "changed:true":
-pip_install_arg = PipInstallArg()
-pip_install_arg.name = "%s/%s" % (kvm_root,pkg_zstacklib)
-pip_install_arg.extra_args =  "\"--ignore-installed --trusted-host %s -i %s\"" % (trusted_host,pip_url)
-pip_install_arg.virtualenv = virtenv_path
-pip_install_arg.virtualenv_site_packages = "yes"
-pip_install_package(pip_install_arg,host_post_info)
+copy_zstacklib = copy(copy_arg, host_post_info)
+
 # name: copy kvmagent
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root,pkg_kvmagent)
 copy_arg.dest = "%s/%s" % (kvm_root,pkg_kvmagent)
-kvmagent_copy = copy(copy_arg, host_post_info)
+copy_kvmagent = copy(copy_arg, host_post_info)
+
 # only for os using init.d not systemd
 # name: copy kvm service file
 copy_arg = CopyArg()
@@ -213,25 +209,45 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
+# name: install virtualenv
+virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
+if virtual_env_status == False:
+    command = "rm -rf %s && rm -rf %s" % (virtenv_path, kvm_root)
+    run_remote_command(command, host_post_info)
+    sys.exit(1)
+# name: make sure virtualenv has been setup
+command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
+run_remote_command(command, host_post_info)
+
+# name: install zstacklib
+if copy_zstacklib != "changed:False":
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "zstacklib"
+    agent_install_arg.agent_root = kvm_root
+    agent_install_arg.pkg_name = pkg_zstacklib
+    agent_install_arg.virtualenv_site_packages = "yes"
+    agent_install(agent_install_arg, host_post_info)
+
 # name: install kvm agent
-pip_install_arg = PipInstallArg()
-pip_install_arg.name = "%s/%s" % (kvm_root,pkg_kvmagent)
-pip_install_arg.extra_args =  "\"--ignore-installed --trusted-host %s -i %s\"" % (trusted_host,pip_url)
-pip_install_arg.virtualenv = virtenv_path
-pip_install_arg.virtualenv_site_packages = "yes"
-pip_install_package(pip_install_arg,host_post_info)
+if copy_kvmagent != "changed:False":
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "kvm agent"
+    agent_install_arg.agent_root = kvm_root
+    agent_install_arg.pkg_name = pkg_kvmagent
+    agent_install_arg.virtualenv_site_packages = "yes"
+    agent_install(agent_install_arg, host_post_info)
 
 # handlers
 if chroot_env == 'false':
     if distro == "RedHat" or distro == "CentOS":
-        if libvirtd_status == "changed:true" or libvirtd_conf_status == "changed:true" \
-                or qemu_conf_status == "changed:true":
+        if libvirtd_status != "changed:False" or libvirtd_conf_status != "changed:False" \
+                or qemu_conf_status != "changed:False":
             # name: restart redhat libvirtd
             service_status("name=libvirtd state=restarted enabled=yes", host_post_info)
         #name: restart kvmagent
         service_status("name=zstack-kvmagent state=restarted enabled=yes",host_post_info)
     elif distro == "Debian" or distro == "Ubuntu":
-        if libvirtd_conf_status == "changed:true" or qemu_conf_status == "changed:true":
+        if libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
             # name: restart debian libvirtd
             service_status("name=libvirt-bin state=restarted enabled=yes", host_post_info)
         # name: restart kvmagent

@@ -14,6 +14,7 @@ sproxy = ""
 chroot_env = 'false'
 yum_repo = 'false'
 post_url = ""
+virtualenv_version = "12.1.1"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy consoleproxy to management node')
@@ -46,34 +47,25 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib = ZstackLib(zstacklib_args)
 
-# name: create root directories
-command = 'mkdir -p %s %s' % (consoleproxy_root, virtenv_path)
-run_remote_command(command, host_post_info)
-
-# name: install virtualenv
-check_and_install_virtual_env("12.1.1", trusted_host, pip_url, host_post_info)
-
-# name: create virtualenv
-command = "rm -rf %s && rm -f %s/%s && rm -f %s/%s && virtualenv %s" % (virtenv_path, consoleproxy_root,
-                                                                        pkg_zstacklib, consoleproxy_root,
-                                                                        pkg_consoleproxy, virtenv_path)
-run_remote_command(command, host_post_info)
+# name: judge this process is init install or upgrade
+if file_dir_exist("path=" + consoleproxy_root, host_post_info):
+    init_install = False
+else:
+    init_install = True
+    # name: create root directories
+    command = 'mkdir -p %s %s' % (consoleproxy_root, virtenv_path)
+    run_remote_command(command, host_post_info)
 
 # name: copy zstacklib
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest = "%s/%s" % (consoleproxy_root, pkg_zstacklib)
-result = copy(copy_arg, host_post_info)
-
-# name: install zstacklib
-#if result == "changed:true":
-pip_install_arg = PipInstallArg()
-pip_install_arg.extra_args = "\"--trusted-host %s -i %s\"" % (trusted_host, pip_url)
-pip_install_arg.name = "%s/%s" % (consoleproxy_root, pkg_zstacklib)
-pip_install_arg.virtualenv = virtenv_path
-pip_install_arg.virtualenv_site_packages = "yes"
-pip_install_package(pip_install_arg, host_post_info)
-
+copy_zstacklib = copy(copy_arg, host_post_info)
+# name: copy consoleproxy
+copy_arg = CopyArg()
+copy_arg.src = "%s/%s" % (file_root, pkg_consoleproxy)
+copy_arg.dest = "%s/%s" % (consoleproxy_root, pkg_consoleproxy)
+copy_consoleproxy = copy(copy_arg, host_post_info)
 # only for os using init.d not systemd
 copy_arg = CopyArg()
 copy_arg.src = "%s/zstack-consoleproxy" % file_root
@@ -81,17 +73,33 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
-# name: copy consoleproxy
-copy_arg = CopyArg()
-copy_arg.src = "%s/%s" % (file_root, pkg_consoleproxy)
-copy_arg.dest = "%s/%s" % (consoleproxy_root, pkg_consoleproxy)
-result = copy(copy_arg, host_post_info)
+# name: install virtualenv
+virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
+if virtual_env_status == False:
+    command = "rm -rf %s && rm -rf %s" % (virtenv_path, consoleproxy_root)
+    run_remote_command(command, host_post_info)
+    sys.exit(1)
+
+# name: make sure virtualenv has been setup
+command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path)
+run_remote_command(command, host_post_info)
+
+# name: install zstacklib
+if copy_zstacklib != "changed:False":
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "zstacklib"
+    agent_install_arg.agent_root = consoleproxy_root
+    agent_install_arg.pkg_name = pkg_zstacklib
+    agent_install_arg.virtualenv_site_packages = "yes"
+    agent_install(agent_install_arg, host_post_info)
+
 # name: install consoleproxy
-pip_install_arg = PipInstallArg()
-pip_install_arg.extra_args = "\"--trusted-host %s -i %s\"" % (trusted_host, pip_url)
-pip_install_arg.name = "%s/%s" % (consoleproxy_root, pkg_consoleproxy)
-pip_install_arg.virtualenv = virtenv_path
-pip_install_package(pip_install_arg, host_post_info)
+if copy_consoleproxy != "changed:False":
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "consoleproxy"
+    agent_install_arg.agent_root = consoleproxy_root
+    agent_install_arg.pkg_name = pkg_consoleproxy
+    agent_install(agent_install_arg, host_post_info)
 
 # name: restart consoleproxy
 if chroot_env == 'false':
