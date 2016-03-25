@@ -32,6 +32,7 @@ def main():
         iptc.add_rule('-A INPUT -p tcp -m tcp --dport 7070 -j ACCEPT')
         # open vnc ports
         iptc.add_rule('-A INPUT -p tcp -m tcp --dport 5900:6200 -j ACCEPT')
+        iptc.add_rule('-A INPUT -p tcp -m tcp --dport 16509 -j ACCEPT')
         iptc.iptable_restore()
 
         cmd = sys.argv[1]
