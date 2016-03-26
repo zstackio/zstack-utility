@@ -323,6 +323,8 @@ class Ctl(object):
 
         os.environ['ZSTACK_HOME'] = self.zstack_home
         self.properties_file_path = os.path.join(self.zstack_home, 'WEB-INF/classes/zstack.properties')
+        self.ssh_private_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa')
+        self.ssh_public_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa.pub')
         if not os.path.isfile(self.properties_file_path):
             warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
 
@@ -1250,6 +1252,11 @@ class SaveConfigCmd(Command):
 
         properties_file_path = os.path.join(path, 'zstack.properties')
         shell('yes | cp %s %s' % (ctl.properties_file_path, properties_file_path))
+        ssh_private_key_path = os.path.join(path, 'id_rsa')
+        ssh_public_key_path = os.path.join(path, 'id_rsa.pub')
+        shell('yes | cp %s %s' % (ctl.ssh_private_key, ssh_private_key_path))
+        shell('yes | cp %s %s' % (ctl.ssh_public_key, ssh_public_key_path))
+
         info('successfully saved %s to %s' % (ctl.properties_file_path, properties_file_path))
 
 class RestoreConfigCmd(Command):
@@ -1278,7 +1285,12 @@ class RestoreConfigCmd(Command):
             raise CtlError('cannot find zstack.properties at %s' % path)
 
         shell('yes | cp %s %s' % (properties_file_path, ctl.properties_file_path))
-        info('successfully restored zstack.properties from %s to %s' % (properties_file_path, ctl.properties_file_path))
+        ssh_private_key_path = os.path.join(path, 'id_rsa')
+        ssh_public_key_path = os.path.join(path, 'id_rsa.pub')
+        shell('yes | cp %s %s' % (ssh_private_key_path, ctl.ssh_private_key))
+        shell('yes | cp %s %s' % (ssh_public_key_path, ctl.ssh_public_key))
+
+        info('successfully restored zstack.properties and ssh identity keys from %s to %s' % (properties_file_path, ctl.properties_file_path))
 
 class InstallDbCmd(Command):
     def __init__(self):
