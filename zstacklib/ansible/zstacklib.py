@@ -136,7 +136,7 @@ def handle_ansible_failed(description, result, host_post_info):
     post_url = host_post_info.post_url
     start_time = host_post_info.start_time
     end_time = datetime.now()
-    #Fix python2.6 compatible issue: no total_seconds() attibute for timedelta
+    #Fix python2.6 compatible issue: no total_seconds() attribute for timedelta
     td = end_time -start_time
     cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6.0 * 1000
     error.code = "ansible.1001"
@@ -175,6 +175,7 @@ def agent_install(install_arg, host_post_info):
     if install_arg.init_install == False:
         handle_ansible_info("INFO: Only need to upgrade %s .................." % install_arg.agent_name, host_post_info, "INFO")
         pip_install_arg.extra_args = "\"--trusted-host %s -i %s -U \"" % (install_arg.trusted_host, install_arg.pip_url)
+
     pip_install_arg.name = "%s/%s" % (install_arg.agent_root, install_arg.pkg_name)
     pip_install_arg.virtualenv = install_arg.virtenv_path
     pip_install_arg.virtualenv_site_packages = install_arg.virtualenv_site_packages
@@ -189,6 +190,7 @@ def yum_enable_repo(name, enablerepo, host_post_info):
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
+    post_url = host_post_info.post_url
 
     handle_ansible_info("INFO: Starting enable yum repo %s ... " % name, host_post_info, "INFO")
     runner = ansible.runner.Runner(
@@ -218,7 +220,8 @@ def yum_enable_repo(name, enablerepo, host_post_info):
            handle_ansible_info(details,host_post_info,"INFO")
            return True
 
-def yum_check_pacakge(name, host_post_info):
+
+def yum_check_package(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key

@@ -17,7 +17,7 @@ yum_repo = 'false'
 post_url = ""
 virtualenv_version = "12.1.1"
 
-# get paramter from shell
+# get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
 parser.add_argument('-i',type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
@@ -97,7 +97,7 @@ if distro == "RedHat" or distro == "CentOS":
         command =  "rpm -q iproute-2.6.32-130.el6ost.netns.2.x86_64 || yum install -y %s" % iproute_local_pkg
         run_remote_command(command, host_post_info)
         # name: disable NetworkManager in RHEL6 and Centos6
-        network_manager_installed = yum_check_pacakge("NetworkManager", host_post_info)
+        network_manager_installed = yum_check_package("NetworkManager", host_post_info)
         if network_manager_installed == True:
             service_status("name=NetworkManager state=stopped enabled=no", host_post_info)
 

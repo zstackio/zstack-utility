@@ -15,7 +15,7 @@ yum_repo = 'false'
 post_url = ""
 virtualenv_version = "12.1.1"
 
-# get paramter from shell
+# get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy virtual Router to host')
 parser.add_argument('-i',type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
@@ -131,12 +131,12 @@ vragent_copy = copy(copy_arg, host_post_info)
 if vragent_copy != "changed:False":
     agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
     agent_install_arg.agent_name = "virtualrouter"
-    agent_install_arg.agent_root = sftp_root
+    agent_install_arg.agent_root = vr_root
     agent_install_arg.pkg_name = pkg_virtualrouter
     agent_install_arg.virtualenv_site_packages = "yes"
     agent_install(agent_install_arg, host_post_info)
 
-# name: copy virtual rourte service file
+# name: copy virtual router service file
 copy_arg = CopyArg()
 copy_arg.src = "%s/zstack-virtualrouter" % file_root
 copy_arg.dest ="/etc/init.d/"

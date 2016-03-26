@@ -16,7 +16,7 @@ yum_repo = 'false'
 post_url = ""
 virtualenv_version = "12.1.1"
 
-# get paramter from shell
+# get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy appliancevm to management node')
 parser.add_argument('-i',type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")

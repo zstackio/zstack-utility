@@ -18,7 +18,7 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 virtualenv_version = "12.1.1"
 
-# get paramter from shell
+# get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
 parser.add_argument('-i',type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
