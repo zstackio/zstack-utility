@@ -448,15 +448,12 @@ ia_check_ip_hijack(){
     ip addr | grep $ip > /dev/null
     [ $? -eq 0 ] && return 0
     
-    if [ -z $QUIET_INSTALLATION ]; then
-        fail "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
-        It's likely your DNS server has been hijacking, please try fixing it or add \"127.0.0.1 $HOSTNAME\" to /etc/hosts by \n\n \`echo \"127.0.0.1 $HOSTNAME\" >>/etc/hosts\`.
-
-You can also add '-q' to installer, then Installer will help you to resolve it."
-    else
-        echo "127.0.0.1 $HOSTNAME" >>/etc/hosts
-        CHANGE_HOSTS='127.0.0.1 $HOSTNAME'
-    fi
+    echo "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
+    It's likely your DNS server has been hijacking, please try fixing it or add \"127.0.0.1 $HOSTNAME\" to /etc/hosts by \n\n \`echo \"127.0.0.1 $HOSTNAME\" >>/etc/hosts\`.
+" >> $ZSTACK_INSTALL_LOG
+    
+    echo "127.0.0.1 $HOSTNAME" >>/etc/hosts
+    CHANGE_HOSTS='127.0.0.1 $HOSTNAME'
 }
 
 ia_install_python_gcc_rh(){
