@@ -90,8 +90,7 @@ logger.setLevel(logging.DEBUG)
 handle.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 handle.setFormatter(formatter)
-if not logger.handle:
-    logger.addHandler(handle)
+logger.addHandler(handle)
 
 def post_msg(msg, post_url):
     logger.info( msg.data.details)
@@ -156,7 +155,7 @@ def handle_ansible_info(details, host_post_info, level):
     post_url = host_post_info.post_url
     start_time = host_post_info.start_time
     end_time = datetime.now()
-    #Fix python2.6 compatible issue: no total_seconds() attibute for timedelta
+    #Fix python2.6 compatible issue: no total_seconds() attribute for timedelta
     td = end_time -start_time
     cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6.0 * 1000
     log.level = level
@@ -190,6 +189,7 @@ def yum_enable_repo(name, enablerepo, host_post_info):
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
+
     handle_ansible_info("INFO: Starting enable yum repo %s ... " % name, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
