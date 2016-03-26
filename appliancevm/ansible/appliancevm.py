@@ -155,27 +155,19 @@ else:
 
 # name: install zstacklib
 if copy_zstacklib != "changed:False":
-    agent_install_arg = AgentInstallArg()
-    agent_install_arg.agent_name = "zstacklib"
-    agent_install_arg.trusted_host = trusted_host
-    agent_install_arg.pip_url = pip_url
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+    agent_install_arg.agent_name = "appliancevm"
     agent_install_arg.agent_root = appliancevm_root
     agent_install_arg.pkg_name = pkg_zstacklib
-    agent_install_arg.virtenv_path = virtenv_path
     agent_install_arg.virtualenv_site_packages = "yes"
-    agent_install_arg.init_install = init_install
     agent_install(agent_install_arg, host_post_info)
 
 # name: install appliancevm
 if copy_appliancevm != "changed:False":
-    agent_install_arg = AgentInstallArg()
+    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
     agent_install_arg.agent_name = "appliancevm"
-    agent_install_arg.trusted_host = trusted_host
-    agent_install_arg.pip_url = pip_url
     agent_install_arg.agent_root = appliancevm_root
     agent_install_arg.pkg_name = pkg_appliancevm
-    agent_install_arg.virtenv_path = virtenv_path
-    agent_install_arg.init_install = init_install
     agent_install(agent_install_arg, host_post_info)
 
 if chroot_env == 'false':
