@@ -1263,7 +1263,7 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_INC
 
         try:
-            self.domain.migrateToURI(destUrl, flag)
+            self.domain.migrateToURI(destUrl, flag, None, 0)
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
             raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
