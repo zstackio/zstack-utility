@@ -2845,7 +2845,7 @@ class UpgradeManagementNodeCmd(Command):
 
             def restore_config():
                 info('restoring the zstack.properties ...')
-                ctl.internal_run('restore_config', '--restore-from %s' % property_file_backup_path)
+                ctl.internal_run('restore_config', '--restore-from %s' % os.path.dirname(property_file_backup_path))
 
             def install_tools():
                 info('upgrading zstack-cli, zstack-ctl; this may cost several minutes ...')
