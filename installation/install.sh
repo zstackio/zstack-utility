@@ -72,7 +72,6 @@ MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel'
 QUIET_INSTALLATION=''
 CHANGE_HOSTNAME=''
 CHANGE_HOSTS=''
-ZSTACK_MN_HOSTNAME='zstack-management-node'
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 LICENSE_FILE='zstack-license'
@@ -236,10 +235,33 @@ cs_check_hostname(){
     which hostname &>/dev/null
     [ $? -ne 0 ] && return 
     current_hostname=`hostname`
+    if [ "localhost" = $current_hostname ] || [ "localhost.localdomain" = $current_hostname ] ; then
+        CHANGE_HOSTNAME=`echo $MANAGEMENT_IP|sed 's/\./-/g'`
+        CHANGE_HOSTS="127.0.0.1 $CHANGE_HOSTNAME"
+        which hostnamectl >>/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            hostname $new_hostname
+            echo "127.0.0.1 $CHANGE_HOSTNAME"  >>/etc/hosts
+        else
+            hostnamectl set-hostname $new_hostname >>$ZSTACK_INSTALL_LOG 2>&1
+            echo "127.0.0.1 $CHANGE_HOSTNAME"  >>/etc/hosts
+        fi
+        echo "Your OS hostname is set as $current_hostname, which will block vm live migration. You can set a special hostname, or directly use $new_hostname by running following commands in CentOS6:
+
+        hostname $new_hostname
+        echo 127.0.0.1 $new_hostname >> /etc/hosts
+
+or following commands in CentOS7:
+        hostnamectl set-hostname $new_hostname
+        echo 127.0.0.1 $new_hostname >> /etc/hosts
+
+" >> $ZSTACK_INSTALL_LOG
+        return 0
+    fi
+
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
     [ $? -ne 0 ] && return 0
-    if [ -z $QUIET_INSTALLATION ]; then
-        fail2 "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
+    echo "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
 Please fix it by running following commands in CentOS7:
 
     hostnamectl set-hostname MY_REAL_HOSTNAME
@@ -248,20 +270,17 @@ Please fix it by running following commands in CentOS7:
 Or use other hostname setting method in other system. 
 Then restart installation. 
 
-You can also add '-q' to installer, then Installer will help you to set one."
+You can also add '-q' to installer, then Installer will help you to set one.
+" >> $ZSTACK_INSTALL_LOG
+    CHANGE_HOSTNAME=`echo $MANAGEMENT_IP|sed 's/\./-/g'`
+    CHANGE_HOSTS="$current_hostname $CHANGE_HOSTNAME"
+    which hostnamectl >>/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        hostname $CHANGE_HOSTNAME
+        echo "$current_hostname $CHANGE_HOSTNAME" >>/etc/hosts
     else
-        CHANGE_HOSTNAME=$ZSTACK_MN_HOSTNAME
-        CHANGE_HOSTS="$current_hostname $ZSTACK_MN_HOSTNAME"
-        if [ $OS = $CENTOS6 ]; then
-            hostname $ZSTACK_MN_HOSTNAME
-            echo "$current_hostname $ZSTACK_MN_HOSTNAME"  >>/etc/hosts
-        elif [ $OS = $CENTOS7 ]; then
-            hostnamectl set-hostname $ZSTACK_MN_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
-            echo "$current_hostname $ZSTACK_MN_HOSTNAME"  >>/etc/hosts
-        else
-            hostnamectl set-hostname $ZSTACK_MN_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
-            echo "$current_hostname $ZSTACK_MN_HOSTNAME"  >>/etc/hosts
-        fi
+        hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+        echo "$current_hostname $CHANGE_HOSTNAME" >>/etc/hosts
     fi
 }
 
