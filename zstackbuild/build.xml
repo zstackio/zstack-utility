@@ -12,7 +12,7 @@
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="pypi.parent.dir" location="${war.dir}/static/" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
-    <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}-${build.num}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
+    <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.${build.num}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
         <and>
             <isset property="build.num"/>
         </and>
@@ -37,7 +37,7 @@
     <property name="allinone.bin.product.title" location="${allinone.bin.dir}/product_title_file" />
     <property name="libs.dir" location="${allinone.dir}/libs" />
 
-    <condition property="allinone.version" value="${MAJOR}.${MINOR}.${UPDATE}-${build.num}" else="${MAJOR}.${MINOR}.${UPDATE}">
+    <condition property="allinone.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" else="${MAJOR}.${MINOR}.${UPDATE}">
         <and>
             <isset property="build.num"/>
         </and>
