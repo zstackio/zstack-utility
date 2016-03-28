@@ -2099,7 +2099,7 @@ class DeployCassandraDbCmd(Command):
 
         cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
         if not os.path.isfile(cqlsh):
-            raise CtlError('cannot find the cqlsh at %s, cassandra corrupted!???')
+            raise CtlError('cannot find the cqlsh at %s, cassandra corrupted!???' % cqlsh)
 
         cips = ctl.read_property('Cassandra.contactPoints')
         if not cips:
@@ -2125,7 +2125,7 @@ class DeployCassandraDbCmd(Command):
         if not os.path.isdir(schema_folder):
             raise CtlError('cannot find %s, you do not have any Cassandra database to deploy' % schema_folder)
 
-        shell_no_pipe('python %s --schema-folder %s --cqlsh %s --ip %s --port %s' % (deployer_path, schema_folder,
+        shell_no_pipe('python %s -v --schema-folder %s --cqlsh %s --ip %s --port %s' % (deployer_path, schema_folder,
                                                                                      cqlsh, cip, cport))
 
 class CassandraCmd(Command):
