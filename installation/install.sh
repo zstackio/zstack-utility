@@ -559,6 +559,7 @@ upgrade_zstack(){
     
         if [ ! -z $INSTALL_MONITOR ] ; then
             show_spinner iz_install_cassandra
+            show_spinner sz_start_cassandra
             show_spinner iz_install_kairosdb
         fi
     
@@ -566,7 +567,6 @@ upgrade_zstack(){
             if [ $CURRENT_STATUS = 'y' ]; then
                 if [ -z $NOT_START_ZSTACK ]; then
                     if [ ! -z $INSTALL_MONITOR ] ; then
-                        show_spinner sz_start_cassandra
                         show_spinner sz_start_kairosdb
                     fi
                     show_spinner cs_config_zstack_properties
@@ -1037,6 +1037,7 @@ install_zstack(){
 
     [ -z $INSTALL_MONITOR ] && return
     show_spinner iz_install_cassandra
+    show_spinner sz_start_cassandra
     show_spinner iz_install_kairosdb
 }
 
@@ -1368,7 +1369,6 @@ sz_start_kairosdb(){
 start_monitor(){
     echo_title "Start Monitor"
     echo ""
-    show_spinner sz_start_cassandra
     show_spinner sz_start_kairosdb
 }
 
