@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 # encoding=utf-8
-import os
-import sys
 import argparse
 from zstacklib import *
 
@@ -23,7 +21,6 @@ parser.add_argument('-i',type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
 parser.add_argument('--private-key',type=str,help='use this file to authenticate the connection')
 parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
-
 args = parser.parse_args()
 argument_dict = eval(args.e)
 
@@ -35,6 +32,10 @@ iproute_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % file_root
 iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
 dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
 dnsmasq_local_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % kvm_root
+
+# create log
+logger_dir = zstack_root + "/deploy-log/"
+create_log(logger_dir)
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -99,14 +100,14 @@ if distro == "RedHat" or distro == "CentOS":
         # name: disable NetworkManager in RHEL6 and Centos6
         network_manager_installed = yum_check_package("NetworkManager", host_post_info)
         if network_manager_installed == True:
-            service_status("name=NetworkManager state=stopped enabled=no", host_post_info)
+            service_status("NetworkManager", "state=stopped enabled=no", host_post_info)
 
     else:
         # name: disable firewalld in RHEL7 and Centos7
         command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
         run_remote_command(command, host_post_info)
         # name: disable NetworkManager in RHEL7 and Centos7
-        service_status("name=NetworkManager state=stopped enabled=no", host_post_info)
+        service_status("NetworkManager", "state=stopped enabled=no", host_post_info)
 
     if is_init == 'true':
         # name: copy iptables initial rules in RedHat
@@ -116,11 +117,11 @@ if distro == "RedHat" or distro == "CentOS":
         copy(copy_arg, host_post_info)
         if chroot_env == 'false':
             # name: restart iptables
-            service_status("name=iptables state=restarted enabled=yes", host_post_info)
+            service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
     if chroot_env == 'false':
         # name: enable libvirt daemon on RedHat based OS
-        service_status("name=libvirtd state=started enabled=yes", host_post_info)
+        service_status("libvirtd", "state=started enabled=yes", host_post_info)
 
     # name: copy updated dnsmasq for RHEL6 and RHEL7
     copy_arg = CopyArg()
@@ -157,7 +158,7 @@ elif distro == "Debian" or distro == "Ubuntu":
 
     if libvirt_bin_status != "changed:False":
         # name: restart debian libvirtd
-        service_status("name=libvirt-bin state=restarted enabled=yes", host_post_info)
+        service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
 
 else:
     print "unsupported OS!"
@@ -243,15 +244,15 @@ if chroot_env == 'false':
         if libvirtd_status != "changed:False" or libvirtd_conf_status != "changed:False" \
                 or qemu_conf_status != "changed:False":
             # name: restart redhat libvirtd
-            service_status("name=libvirtd state=restarted enabled=yes", host_post_info)
+            service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
         #name: restart kvmagent
-        service_status("name=zstack-kvmagent state=restarted enabled=yes",host_post_info)
+        service_status("zstack-kvmagent", "state=restarted enabled=yes",host_post_info)
     elif distro == "Debian" or distro == "Ubuntu":
         if libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
             # name: restart debian libvirtd
-            service_status("name=libvirt-bin state=restarted enabled=yes", host_post_info)
+            service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
         # name: restart kvmagent
-        service_status("name=zstack-kvmagent state=restarted enabled=yes",host_post_info)
+        service_status("zstack-kvmagent", "state=restarted enabled=yes",host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy kvm agent successful", host_post_info, "INFO")

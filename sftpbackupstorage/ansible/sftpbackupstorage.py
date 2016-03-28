@@ -6,6 +6,7 @@ import argparse
 from zstacklib import *
 from datetime import datetime
 
+
 start_time = datetime.now()
 # set default value
 file_root = "files/sftpbackupstorage"
@@ -32,6 +33,9 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/sftpbackupstorage/" % zstack_root
 sftp_root = "%s/sftpbackupstorage" % zstack_root
+# create log
+logger_dir = zstack_root + "/deploy-log/"
+create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -125,9 +129,8 @@ if sftp_copy_result != "changed:False":
 
 # name: restart sftp
 if chroot_env == 'false':
-    service_status("name=zstack-sftpbackupstorage state=restarted enabled=yes", host_post_info)
+    service_status("zstack-sftpbackupstorage", "state=restarted enabled=yes", host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploysftpbackupstorage agent successful", host_post_info, "INFO")
-
 sys.exit(0)

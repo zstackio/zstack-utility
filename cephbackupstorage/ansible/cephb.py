@@ -29,6 +29,9 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/cephb/" % zstack_root
 cephb_root = "%s/cephb" % zstack_root
+# create log
+logger_dir = zstack_root + "/deploy-log/"
+create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -125,7 +128,7 @@ copy_arg.dest="/etc/init.d/"
 copy_arg.args="mode=755"
 copy(copy_arg, host_post_info)
 # name: restart cephbagent
-service_status("name=zstack-ceph-backupstorage state=restarted enabled=yes", host_post_info)
+service_status("zstack-ceph-backupstorage", "state=restarted enabled=yes", host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy cephbackup agent successful", host_post_info, "INFO")

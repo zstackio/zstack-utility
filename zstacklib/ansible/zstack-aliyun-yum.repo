@@ -1,0 +1,26 @@
+#aliyun base
+[alibase]
+name=CentOS-$releasever - Base - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/$releasever/os/$basearch/
+gpgcheck=0
+enabled=0
+#released updates
+[aliupdates]
+name=CentOS-$releasever - Updates -mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/$releasever/updates/$basearch/
+enabled=0
+gpgcheck=0
+[aliextras]
+name=CentOS-$releasever - Extras - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/$releasever/extras/$basearch/
+enabled=0
+gpgcheck=0
+[aliepel]
+name=Extra Packages for Enterprise Linux $releasever - $basearce - mirrors.aliyun.com
+baseurl=http://mirrors.aliyun.com/epel/$releasever/$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0

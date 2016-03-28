@@ -31,6 +31,9 @@ locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
 consoleproxy_root = "%s/console" % zstack_root
 host_post_info = HostPostInfo()
+# create log
+logger_dir = zstack_root + "/deploy-log/"
+create_log(logger_dir)
 host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
@@ -103,7 +106,7 @@ if copy_consoleproxy != "changed:False":
 
 # name: restart consoleproxy
 if chroot_env == 'false':
-    service_status("name=zstack-consoleproxy state=restarted enabled=yes", host_post_info)
+    service_status("zstack-consoleproxy", "state=restarted enabled=yes", host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy consoleproxy agent successful", host_post_info, "INFO")
