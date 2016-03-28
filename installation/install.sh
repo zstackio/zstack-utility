@@ -553,6 +553,7 @@ upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
     show_spinner uz_upgrade_zstack
+    show_spinner cs_add_cronjob
 
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         [ -f "$ZSTACK_INSTALL_ROOT/kairosdb-1.1.1-1.tar.gz" ] && INSTALL_MONITOR='y'
@@ -1091,6 +1092,7 @@ for file in \$target_file; do
     find \$file -mtime +1 -exec gzip {} \;
 done
 EOF
+    chmod a+x /etc/cron.daily/zstack_archive_logs.sh
     pass
 }
 
