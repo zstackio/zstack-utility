@@ -29,6 +29,9 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/cephp/" % zstack_root
 cephp_root = "%s/cephp" % zstack_root
+# create log
+logger_dir = zstack_root + "/deploy-log/"
+create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -125,7 +128,7 @@ copy_arg.dest="/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart cephpagent
-service_status("name=zstack-ceph-primarystorage state=restarted enabled=yes", host_post_info)
+service_status("zstack-ceph-primarystorage", "state=restarted enabled=yes", host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy ceph primary agent successful", host_post_info, "INFO")

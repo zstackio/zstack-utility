@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import os
-import sys
 import ansible.runner
 import os
 import sys
-from ansible import errors
-import urllib
 import urllib2
 from urllib2 import URLError
 import json
 from datetime import datetime
 import logging
 from logging.handlers import TimedRotatingFileHandler
+
+start_time = datetime.now()
+
+logger = logging.getLogger("deploy-agent-Log")
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -84,13 +84,15 @@ class UnarchiveArg(object):
         self.dest = None
         self.args = None
 
-logger = logging.getLogger()
-handle = logging.StreamHandler(sys.stdout)
-logger.setLevel(logging.DEBUG)
-handle.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-handle.setFormatter(formatter)
-logger.addHandler(handle)
+def create_log(logger_dir):
+    if not os.path.exists(logger_dir):
+        os.makedirs(logger_dir)
+    logger = logging.getLogger("deploy-agent-Log")
+    logger.setLevel(logging.DEBUG)
+    fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler = logging.handlers.RotatingFileHandler(logger_dir + "deploy.log", maxBytes = 100*1024*1024, backupCount = 30)
+    handler.setFormatter(fmt)
+    logger.addHandler(handler)
 
 def post_msg(msg, post_url):
     logger.info( msg.data.details)
@@ -99,12 +101,10 @@ def post_msg(msg, post_url):
         return 0
     if msg.type == "log":
         data = json.dumps({"level" : msg.data.level, "details" : msg.data.details})
-        # This output will capture by management log
-        print msg.data.details
     elif msg.type == "error":
         data = json.dumps({"code" : msg.data.code, "description" : msg.data.description,"details" : msg.data.details})
         # This output will capture by management log
-        print msg.data.description
+        print msg.data.description + "\nReason: " + msg.data.details 
     else:
         logger.info("ERROR: undefined message type: %s" % msg.type)
         sys.exit(1)
@@ -130,7 +130,6 @@ def handle_ansible_start(ansible_start):
 
 def handle_ansible_failed(description, result, host_post_info):
     msg = Msg()
-    log = Log()
     error = Error()
     host = host_post_info.host
     post_url = host_post_info.post_url
@@ -718,19 +717,19 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
             pip_install_arg.name = "virtualenv"
             return pip_install_package(pip_install_arg, host_post_info)
 
-def service_status(args, host_post_info):
+def service_status(name, args, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Changing service status",host_post_info,"INFO")
+    handle_ansible_info("INFO: Changing service status %s" % name,host_post_info,"INFO")
     runner = ansible.runner.Runner(
         host_list = host_inventory,
         private_key_file = private_key,
         module_name = 'service',
-        module_args = args,
+        module_args = "name=%s " % name + args,
         pattern = host
     )
     result = runner.run()
@@ -923,38 +922,14 @@ class ZstackLib(object):
         pip_version = "7.0.3"
         epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
         if distro == "CentOS" or distro == "RedHat":
-                #set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
-            command = """
-echo -e "#aliyun base
-[alibase]
-name=CentOS-\$releasever - Base - mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/
-gpgcheck=0
-enabled=0
-#released updates
-[aliupdates]
-name=CentOS-\$releasever - Updates -mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/
-enabled=0
-gpgcheck=0
-[aliextras]
-name=CentOS-\$releasever - Extras - mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/
-enabled=0
-gpgcheck=0
-[aliepel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com
-baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-        """
-            run_remote_command(command, host_post_info)
-            #yum_repo defined by user
+            #set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
+            repo_aliyun_repo = CopyArg()
+            repo_aliyun_repo.src = "files/zstacklib/zstack-aliyun-yum.repo"
+            repo_aliyun_repo.dest = "/etc/yum.repos.d/zstack-aliyun-yum.repo"
+            copy(repo_aliyun_repo, host_post_info)
+
             if yum_repo == "false":
+                # yum_repo defined by user
                 yum_install_package("libselinux-python", host_post_info)
                 if epel_repo_exist is False:
                     copy_arg = CopyArg()
@@ -968,36 +943,10 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     yum_install_package(pkg, host_post_info)
             else:
                 #set 163 mirror yum repo
-                command = """
-echo -e "#163 base
-[163base]
-name=CentOS-\$releasever - Base - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/
-gpgcheck=0
-enabled=0
-#released updates
-[163updates]
-name=CentOS-\$releasever - Updates - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/
-enabled=0
-gpgcheck=0
-#additional packages that may be useful
-[163extras]
-name=CentOS-\$releasever - Extras - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/
-enabled=0
-gpgcheck=0
-[ustcepel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc
-baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
-        """
-                run_remote_command(command, host_post_info)
+                repo_163_copy = CopyArg()
+                repo_163_copy.src = "files/zstacklib/zstack-163-yum.repo"
+                repo_163_copy.dest = "/etc/yum.repos.d/zstack-163-yum.repo"
+                copy(repo_163_copy, host_post_info)
                 #install libselinux-python and other command system libs from user defined repos
                 #enable alibase repo for yum clean avoid no repo to be clean
                 command = ("yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "

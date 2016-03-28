@@ -30,6 +30,9 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/iscsi/" % zstack_root
 iscsi_root = "%s/iscsi" % zstack_root
+# create log
+logger_dir = zstack_root + "/deploy-log/"
+create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -79,14 +82,14 @@ if distro == "RedHat" or distro == "CentOS":
     # name: disable selinux on RedHat based OS
     set_selinux("state=permissive policy=targeted", host_post_info)
     # name: enable tgtd daemon on RedHat
-    service_status("name=tgtd state=started enabled=yes", host_post_info)
+    service_status("tgtd", "state=started enabled=yes", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install isci related packages on Debian based OS
     for pkg in ['iscsitarget','iscsitarget-dkms','tgt','wget','qemu-utils']:
        apt_install_packages(pkg, host_post_info)
     # name: enable tgtd daemon on Debian
-    service_status("name=iscsitarget state=started enabled=yes", host_post_info)
+    service_status("iscsitarget", "state=started enabled=yes", host_post_info)
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
@@ -134,7 +137,7 @@ if iscsiagent_copy != "changed:False":
 
 
 # name: restart iscsiagent
-service_status("name=zstack-iscsi state=restarted enabled=yes", host_post_info)
+service_status("zstack-iscsi", "state=restarted enabled=yes", host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy isci agent successful", host_post_info, "INFO")

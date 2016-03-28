@@ -29,6 +29,9 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/virtualrouter/" % zstack_root
 vr_root = "%s/virtualrouter" % zstack_root
+# create log
+logger_dir = zstack_root + "/deploy-log/"
+create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -107,7 +110,7 @@ copy(copy_arg, host_post_info)
 
 if chroot_env == 'false':
     # name: enable dnsmasq service
-    service_status("name=dnsmasq enabled=yes state=started", host_post_info)
+    service_status("dnsmasq", "enabled=yes state=started", host_post_info)
 
 # name: copy zstacklib
 copy_arg = CopyArg()
@@ -145,12 +148,12 @@ copy(copy_arg, host_post_info)
 
 if chroot_env == 'false':
     # name: restart vr
-    service_status("name=zstack-virtualrouter enabled=yes state=restarted", host_post_info)
+    service_status("zstack-virtualrouter", "enabled=yes state=restarted", host_post_info)
     # name: restart dnsmasq
-    service_status("name=dnsmasq state=restarted enabled=yes", host_post_info)
+    service_status("dnsmasq", "state=restarted enabled=yes", host_post_info)
 else:
     if distro == "RedHat" or distro == "CentOS":
-        service_status("name=zstack-virtualrouter enabled=yes state=stopped", host_post_info)
+        service_status("zstack-virtualrouter", "enabled=yes state=stopped", host_post_info)
     else:
         command = "sed -i '/zstack-virtualrouter start/d' /etc/rc.local"
         run_remote_command(command, host_post_info)

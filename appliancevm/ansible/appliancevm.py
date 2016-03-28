@@ -116,10 +116,10 @@ if distro == "RedHat" or distro == "CentOS":
     iptables_copy_result = copy(copy_arg, host_post_info)
     if chroot_env == 'false':
         if iptables_copy_result != "changed:False":
-            service_status("name=iptables state=restarted enabled=yes", host_post_info)
+            service_status("iptables", "state=restarted enabled=yes", host_post_info)
     else:
         # name: enable appliancevm service for RedHat on chroot
-        service_status("name=zstack-appliancevm enabled=yes state=stopped", host_post_info)
+        service_status("zstack-appliancevm", "enabled=yes state=stopped", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
     for pkg in ['iputils-arping','tcpdump','ethtool']:
@@ -172,11 +172,11 @@ if copy_appliancevm != "changed:False":
 
 if chroot_env == 'false':
     # name: restart appliancevm
-    service_status("name=zstack-appliancevm enabled=yes state=restarted", host_post_info)
+    service_status("zstack-appliancevm", "enabled=yes state=restarted", host_post_info)
 else:
     if distro == "RedHat" or distro == "CentOS":
         # name: restart iptables
-        service_status("name=iptables state=restarted enabled=yes", host_post_info)
+        service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy appliancevm successful", host_post_info, "INFO")
