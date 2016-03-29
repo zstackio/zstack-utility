@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import os
-import sys
 import argparse
 from zstacklib import *
 
@@ -14,20 +12,21 @@ sproxy = ""
 chroot_env = 'false'
 yum_repo = 'false'
 post_url = ""
+pkg_consoleproxy = ""
 virtualenv_version = "12.1.1"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy consoleproxy to management node')
-parser.add_argument('-i',type=str, help="""specify inventory host file
+parser.add_argument('-i', type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
-parser.add_argument('--private-key',type=str,help='use this file to authenticate the connection')
-parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
 argument_dict = eval(args.e)
 locals().update(argument_dict)
 
-#update the variable from shell arguments
+# update the variable from shell arguments
 virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
 consoleproxy_root = "%s/console" % zstack_root
 host_post_info = HostPostInfo()
@@ -78,7 +77,7 @@ copy(copy_arg, host_post_info)
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status == False:
+if virtual_env_status is False:
     command = "rm -rf %s && rm -rf %s" % (virtenv_path, consoleproxy_root)
     run_remote_command(command, host_post_info)
     sys.exit(1)

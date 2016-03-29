@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # encoding =  utf-8
-import os,sys
 import argparse
 from zstacklib import *
 
@@ -13,14 +12,15 @@ sproxy = ""
 chroot_env = 'false'
 yum_repo = 'false'
 post_url = ""
+pkg_virtualrouter = ""
 virtualenv_version = "12.1.1"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy virtual Router to host')
-parser.add_argument('-i',type=str, help="""specify inventory host file
+parser.add_argument('-i', type=str,  help="""specify inventory host file
                         default=/etc/ansible/hosts""")
-parser.add_argument('--private-key',type=str,help='use this file to authenticate the connection')
-parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
 argument_dict = eval(args.e)
@@ -64,7 +64,7 @@ if distro == "RedHat" or distro == "CentOS":
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y haproxy dnsmasq" % yum_repo
     else:
         # name: install virtual router related packages for RedHat
-        for pkg in ["haproxy","dnsmasq"]:
+        for pkg in ["haproxy", "dnsmasq"]:
             yum_install_package(pkg, host_post_info)
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install virtual router related packages for Debian
@@ -75,7 +75,7 @@ else:
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status == False:
+if virtual_env_status is False:
     command = "rm -rf %s && rm -rf %s" % (virtenv_path, vr_root)
     run_remote_command(command, host_post_info)
     sys.exit(1)
@@ -98,14 +98,14 @@ run_remote_command(command, host_post_info)
 
 # name: copy sysctl.conf
 copy_arg = CopyArg()
-copy_arg.src="%s/sysctl.conf" % file_root
-copy_arg.dest="/etc/sysctl.conf"
+copy_arg.src = "%s/sysctl.conf" % file_root
+copy_arg.dest = "/etc/sysctl.conf"
 copy(copy_arg, host_post_info)
 
 # name: copy dnsmasq conf file
 copy_arg = CopyArg()
-copy_arg.src="%s/dnsmasq.conf" % file_root
-copy_arg.dest="/etc/dnsmasq.conf"
+copy_arg.src = "%s/dnsmasq.conf" % file_root
+copy_arg.dest = "/etc/dnsmasq.conf"
 copy(copy_arg, host_post_info)
 
 if chroot_env == 'false':
@@ -114,8 +114,8 @@ if chroot_env == 'false':
 
 # name: copy zstacklib
 copy_arg = CopyArg()
-copy_arg.src="files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest="%s/%s" % (vr_root,pkg_zstacklib)
+copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
+copy_arg.dest = "%s/%s" % (vr_root, pkg_zstacklib)
 zstack_lib_copy = copy(copy_arg, host_post_info)
 if zstack_lib_copy != "changed:False":
     agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
@@ -127,8 +127,8 @@ if zstack_lib_copy != "changed:False":
 
 # name: copy virtual router
 copy_arg = CopyArg()
-copy_arg.src = "%s/%s" % (file_root,pkg_virtualrouter)
-copy_arg.dest = "%s/%s" % (vr_root,pkg_virtualrouter)
+copy_arg.src = "%s/%s" % (file_root, pkg_virtualrouter)
+copy_arg.dest = "%s/%s" % (vr_root, pkg_virtualrouter)
 vragent_copy = copy(copy_arg, host_post_info)
 
 if vragent_copy != "changed:False":
@@ -142,7 +142,7 @@ if vragent_copy != "changed:False":
 # name: copy virtual router service file
 copy_arg = CopyArg()
 copy_arg.src = "%s/zstack-virtualrouter" % file_root
-copy_arg.dest ="/etc/init.d/"
+copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
