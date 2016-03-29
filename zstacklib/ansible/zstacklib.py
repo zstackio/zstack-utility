@@ -8,6 +8,7 @@ from urllib2 import URLError
 import json
 from datetime import datetime
 import logging
+import json
 from logging.handlers import TimedRotatingFileHandler
 
 # set global default value
@@ -564,7 +565,7 @@ def run_remote_command(command, host_post_info):
         pattern=host
     )
     result = runner.run()
-    logger.debug(result)
+    logger.debug(json.dumps(result))
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
