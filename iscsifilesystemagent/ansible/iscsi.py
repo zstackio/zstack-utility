@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import os
-import sys
+
 import argparse
 from zstacklib import *
 
@@ -14,14 +13,15 @@ sproxy = ""
 chroot_env = 'false'
 yum_repo = 'false'
 post_url = ""
+pkg_iscsiagent = ""
 virtualenv_version = "12.1.1"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy iscsi to host')
-parser.add_argument('-i',type=str, help="""specify inventory host file
+parser.add_argument('-i', type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
-parser.add_argument('--private-key',type=str,help='use this file to authenticate the connection')
-parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
 argument_dict = eval(args.e)
@@ -62,16 +62,18 @@ else:
 if distro == "RedHat" or distro == "CentOS":
     if yum_repo != 'false':
         # name: install iscsi related packages on RedHat based OS from user defined repo
-        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img scsi-target-utils"  % yum_repo
+        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget " \
+                  "qemu-img scsi-target-utils"  % yum_repo
         run_remote_command(command, host_post_info)
         # name: RHEL7 specific packages from user defined repos
         if distro_version >= 7:
-            command = "rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y iptables-services " % yum_repo
+            command = "rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s " \
+                      "--nogpgcheck install -y iptables-services " % yum_repo
             run_remote_command(command, host_post_info)
 
     else:
         # name: install isci related packages on RedHat based OS from online
-        for pkg in ['wget','qemu-img','scsi-target-utils']:
+        for pkg in ['wget', 'qemu-img', 'scsi-target-utils']:
             yum_install_package(pkg, host_post_info)
             # name: RHEL7 specific packages from online
             yum_install_package("iptables-services", host_post_info)
@@ -86,14 +88,14 @@ if distro == "RedHat" or distro == "CentOS":
 
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install isci related packages on Debian based OS
-    for pkg in ['iscsitarget','iscsitarget-dkms','tgt','wget','qemu-utils']:
-       apt_install_packages(pkg, host_post_info)
+    for pkg in ['iscsitarget', 'iscsitarget-dkms', 'tgt', 'wget', 'qemu-utils']:
+        apt_install_packages(pkg, host_post_info)
     # name: enable tgtd daemon on Debian
     service_status("iscsitarget", "state=started enabled=yes", host_post_info)
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status == False:
+if virtual_env_status is False:
     command = "rm -rf %s && rm -rf %s" % (virtenv_path, iscsi_root)
     run_remote_command(command, host_post_info)
     sys.exit(1)
@@ -104,8 +106,8 @@ run_remote_command(command, host_post_info)
 
 # name: copy zstacklib and install zstacklib
 copy_arg = CopyArg()
-copy_arg.src="files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest="%s/%s" % (iscsi_root,pkg_zstacklib)
+copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
+copy_arg.dest = "%s/%s" % (iscsi_root, pkg_zstacklib)
 zstack_lib_copy = copy(copy_arg, host_post_info)
 if zstack_lib_copy != "changed:False":
     agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
@@ -117,15 +119,15 @@ if zstack_lib_copy != "changed:False":
 
 # name: copy iscsi filesystem agent
 copy_arg = CopyArg()
-copy_arg.src="%s/%s" % (file_root,pkg_iscsiagent)
-copy_arg.dest="%s/%s" % (iscsi_root,pkg_iscsiagent)
+copy_arg.src = "%s/%s" % (file_root, pkg_iscsiagent)
+copy_arg.dest = "%s/%s" % (iscsi_root, pkg_iscsiagent)
 iscsiagent_copy = copy(copy_arg, host_post_info)
 
 # name: copy iscsi service file
 copy_arg = CopyArg()
-copy_arg.src="files/iscsi/zstack-iscsi"
-copy_arg.dest="/etc/init.d/"
-copy_arg.args="mode=755"
+copy_arg.src = "files/iscsi/zstack-iscsi"
+copy_arg.dest = "/etc/init.d/"
+copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
 if iscsiagent_copy != "changed:False":

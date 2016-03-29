@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import os
-import sys
 import argparse
 from zstacklib import *
 from datetime import datetime
@@ -17,14 +15,15 @@ chroot_env = 'false'
 yum_repo = 'false'
 current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
+pkg_sftpbackupstorage = ""
 virtualenv_version = "12.1.1"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
-parser.add_argument('-i',type=str, help="""specify inventory host file
+parser.add_argument('-i', type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
-parser.add_argument('--private-key',type=str,help='use this file to authenticate the connection')
-parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
 argument_dict = eval(args.e)
@@ -80,7 +79,7 @@ else:
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status == False:
+if virtual_env_status is False:
     command = "rm -rf %s && rm -rf %s" % (virtenv_path, sftp_root)
     run_remote_command(command, host_post_info)
     sys.exit(1)
@@ -90,12 +89,12 @@ command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path
 run_remote_command(command, host_post_info)
 
 # name: add public key
-authorized_key("root", current_dir +  "/id_rsa.sftp.pub", host_post_info)
+authorized_key("root", current_dir + "/id_rsa.sftp.pub", host_post_info)
 
 # name: copy zstacklib
 copy_arg = CopyArg()
-copy_arg.src="files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest="%s/%s" % (sftp_root, pkg_zstacklib)
+copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
+copy_arg.dest = "%s/%s" % (sftp_root, pkg_zstacklib)
 zstacklib_copy_result = copy(copy_arg, host_post_info)
 
 # name: install zstacklib
@@ -108,8 +107,8 @@ if zstacklib_copy_result != "changed:False":
 
 # name: copy sftp
 copy_arg = CopyArg()
-copy_arg.src="%s/%s" % (file_root, pkg_sftpbackupstorage)
-copy_arg.dest="%s/%s" % (sftp_root, pkg_sftpbackupstorage)
+copy_arg.src = "%s/%s" % (file_root, pkg_sftpbackupstorage)
+copy_arg.dest = "%s/%s" % (sftp_root, pkg_sftpbackupstorage)
 sftp_copy_result = copy(copy_arg, host_post_info)
 
 # name: copy sftp backup storage service file

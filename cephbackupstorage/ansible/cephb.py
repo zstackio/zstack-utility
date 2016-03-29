@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import os
-import sys
 import argparse
 from zstacklib import *
 
@@ -13,14 +11,15 @@ proxy = ""
 sproxy = ""
 yum_repo = 'false'
 post_url = ""
+pkg_cephbagent = ""
 virtualenv_version = "12.1.1"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph backup strorage to host')
-parser.add_argument('-i',type=str, help="""specify inventory host file
+parser.add_argument('-i', type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
-parser.add_argument('--private-key',type=str,help='use this file to authenticate the connection')
-parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
 argument_dict = eval(args.e)
@@ -60,7 +59,7 @@ else:
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status == False:
+if virtual_env_status is False:
     command = "rm -rf %s && rm -rf %s" % (virtenv_path, cephb_root)
     run_remote_command(command, host_post_info)
     sys.exit(1)
@@ -72,22 +71,23 @@ if distro == "RedHat" or distro == "CentOS":
     if yum_repo != 'false':
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img" % yum_repo
         run_remote_command(command, host_post_info)
-        if distro_version >= 7 :
-            command = "rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y iptables-services " % yum_repo
+        if distro_version >= 7:
+            command = "rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s " \
+                      "--nogpgcheck install -y iptables-services " % yum_repo
             run_remote_command(command, host_post_info)
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
-        for pkg in ["wget","qemu-img"]:
+        for pkg in ["wget", "qemu-img"]:
             yum_install_package(pkg, host_post_info)
-        if distro_version >= 7 :
+        if distro_version >= 7:
             yum_install_package("iptables-services", host_post_info)
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     set_selinux("state=permissive policy=targeted", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    for pkg in ["wget","qemu-utils"]:
+    for pkg in ["wget", "qemu-utils"]:
         apt_install_packages(pkg, host_post_info)
 else:
     print "unsupported OS!"
@@ -95,8 +95,8 @@ else:
 
 # name: copy zstacklib
 copy_arg = CopyArg()
-copy_arg.src="files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest="%s/%s" % (cephb_root,pkg_zstacklib)
+copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
+copy_arg.dest = "%s/%s" % (cephb_root, pkg_zstacklib)
 copy_zstacklib = copy(copy_arg, host_post_info)
 
 if copy_zstacklib != "changed:False":
@@ -109,8 +109,8 @@ if copy_zstacklib != "changed:False":
 
 # name: copy ceph backupstorage agent
 copy_arg = CopyArg()
-copy_arg.src="%s/%s" % (file_root,pkg_cephbagent)
-copy_arg.dest="%s/%s" % (cephb_root,pkg_cephbagent)
+copy_arg.src = "%s/%s" % (file_root, pkg_cephbagent)
+copy_arg.dest = "%s/%s" % (cephb_root, pkg_cephbagent)
 copy_cephb = copy(copy_arg, host_post_info)
 
 if copy_cephb != "changed:False":
@@ -123,9 +123,9 @@ if copy_cephb != "changed:False":
 # name: copy service file
 # only support centos redhat debian and ubuntu
 copy_arg = CopyArg()
-copy_arg.src="%s/zstack-ceph-backupstorage" % file_root
-copy_arg.dest="/etc/init.d/"
-copy_arg.args="mode=755"
+copy_arg.src = "%s/zstack-ceph-backupstorage" % file_root
+copy_arg.dest = "/etc/init.d/"
+copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart cephbagent
 service_status("zstack-ceph-backupstorage", "state=restarted enabled=yes", host_post_info)
