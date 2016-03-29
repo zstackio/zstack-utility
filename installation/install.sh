@@ -552,13 +552,6 @@ unpack_zstack_into_tomcat(){
 upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
-    cd $upgrade_folder
-    unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-        cd /; rm -rf $upgrade_folder
-        fail "failed to unzip zstack.war to $upgrade_folder/zstack"
-    fi
-
     if [ -f $upgrade_folder/apache-cassandra* ]; then
         INSTALL_MONITOR='y'
     fi
@@ -568,8 +561,6 @@ upgrade_zstack(){
     show_spinner cs_add_cronjob
 
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
-        [ -f "$ZSTACK_INSTALL_ROOT/kairosdb-1.1.1-1.tar.gz" ] && INSTALL_MONITOR='y'
-    
         if [ ! -z $INSTALL_MONITOR ] ; then
             show_spinner iz_install_cassandra
             show_spinner sz_start_cassandra
@@ -864,6 +855,13 @@ iz_unpack_zstack(){
 
 uz_upgrade_zstack(){
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
+    cd $upgrade_folder
+    unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        cd /; rm -rf $upgrade_folder
+        fail "failed to unzip zstack.war to $upgrade_folder/zstack"
+    fi
+
     if [ ! -z $DEBUG ]; then
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
     else
