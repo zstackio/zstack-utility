@@ -552,6 +552,17 @@ unpack_zstack_into_tomcat(){
 upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
+    cd $upgrade_folder
+    unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        cd /; rm -rf $upgrade_folder
+        fail "failed to unzip zstack.war to $upgrade_folder/zstack"
+    fi
+
+    if [ -f $upgrade_folder/apache-cassandra* ]; then
+        INSTALL_MONITOR='y'
+    fi
+
     show_spinner uz_upgrade_zstack
     show_spinner cs_add_cronjob
 
@@ -843,7 +854,7 @@ iz_unpack_zstack(){
         cd $upgrade_folder
         tar -zxf $all_in_one >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
-            rm -rf $upgrade_folder 
+            cd /; rm -rf $upgrade_folder 
             fail "failed to unpack ${PRODUCT_NAME} package: $all_in_one."
         fi
     fi
@@ -852,20 +863,13 @@ iz_unpack_zstack(){
 
 uz_upgrade_zstack(){
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
-    cd $upgrade_folder
-    unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-        rm -rf $upgrade_folder
-        fail "failed to unzip zstack.war to $upgrade_folder/zstack"
-    fi
-
     if [ ! -z $DEBUG ]; then
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
     else
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
-        rm -rf $upgrade_folder
+        cd /; rm -rf $upgrade_folder
         fail "failed to upgrade zstack-ctl"
     fi
 
@@ -886,7 +890,7 @@ uz_upgrade_zstack(){
             fi
         fi
         if [ $? -ne 0 ];then
-            rm -rf $upgrade_folder
+            cd /; rm -rf $upgrade_folder
             fail "Database upgrading dry-run failed. You probably should use -F option to do force upgrading."
         fi
     fi
@@ -897,7 +901,7 @@ uz_upgrade_zstack(){
         bash zstack/WEB-INF/classes/tools/install.sh zstack-cli >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
-        rm -rf $upgrade_folder
+        cd /; rm -rf $upgrade_folder
         fail "failed to upgrade zstack-cli"
     fi
 
@@ -907,7 +911,7 @@ uz_upgrade_zstack(){
         zstack-ctl upgrade_management_node --war-file $upgrade_folder/zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
-        rm -rf $upgrade_folder
+        cd /; rm -rf $upgrade_folder
         fail "failed to upgrade local management node"
     fi
     /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
@@ -916,11 +920,9 @@ uz_upgrade_zstack(){
         if [ -f $upgrade_folder/apache-cassandra* ]; then
             /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
             /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-            INSTALL_MONITOR='y'
         fi
     
-        cd /
-        rm -rf $upgrade_folder
+        cd /; rm -rf $upgrade_folder
     
         if [ -z $NEED_KEEP_DB ];then
             if [ ! -z $DEBUG ]; then
@@ -1851,7 +1853,7 @@ download_zstack
 if [ $UPGRADE = 'y' ]; then
     #only upgrade zstack
     upgrade_zstack
-    rm -rf $upgrade_zstack
+    cd /; rm -rf $upgrade_zstack
 
     [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
     echo ""
