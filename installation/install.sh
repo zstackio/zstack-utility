@@ -564,6 +564,7 @@ upgrade_zstack(){
     fi
 
     show_spinner uz_upgrade_zstack
+    cd /
     show_spinner cs_add_cronjob
 
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -1085,7 +1086,7 @@ cs_add_cronjob(){
     echo_subtitle "Add cronjob to clean logs"
     cat >/etc/cron.daily/zstack_archive_logs.sh <<EOF
 #!/bin/bash
-zstack_home=`zstack-ctl status|grep ZSTACK_HOME|awk '{print $2}'`
+zstack_home=\`zstack-ctl status|grep ZSTACK_HOME|awk '{print \$2}'\`
 mn_log_folder=\$zstack_home/../../logs/
 
 target_file="localhost_access_log*.txt management-server*.log catalina*.log localhost*.log"
