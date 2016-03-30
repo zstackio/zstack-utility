@@ -2652,18 +2652,6 @@ class LocalStorageMigrateVolumeAction(inventory.APILocalStorageMigrateVolumeMsg)
         self.out = evt
         return self.out
 
-class AddLocalPrimaryStorageAction(inventory.APIAddLocalPrimaryStorageMsg):
-    def __init__(self):
-        super(AddLocalPrimaryStorageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AddLocalPrimaryStorageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class GetLocalStorageHostDiskCapacityAction(inventory.APIGetLocalStorageHostDiskCapacityMsg):
     def __init__(self):
         super(GetLocalStorageHostDiskCapacityAction, self).__init__()
@@ -2672,6 +2660,18 @@ class GetLocalStorageHostDiskCapacityAction(inventory.APIGetLocalStorageHostDisk
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetLocalStorageHostDiskCapacityAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddLocalPrimaryStorageAction(inventory.APIAddLocalPrimaryStorageMsg):
+    def __init__(self):
+        super(AddLocalPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddLocalPrimaryStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2802,18 +2802,6 @@ class AddSharedMountPointPrimaryStorageAction(inventory.APIAddSharedMountPointPr
         self.out = evt
         return self.out
 
-class UpdateKVMHostAction(inventory.APIUpdateKVMHostMsg):
-    def __init__(self):
-        super(UpdateKVMHostAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateKVMHostAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class AddKVMHostAction(inventory.APIAddKVMHostMsg):
     def __init__(self):
         super(AddKVMHostAction, self).__init__()
@@ -2822,6 +2810,18 @@ class AddKVMHostAction(inventory.APIAddKVMHostMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AddKVMHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateKVMHostAction(inventory.APIUpdateKVMHostMsg):
+    def __init__(self):
+        super(UpdateKVMHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateKVMHostAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3520,62 +3520,38 @@ class QueryVipAction(inventory.APIQueryVipMsg):
         self.out = reply.inventories
         return self.out
 
-class ReloadLicenseAction(inventory.APIReloadLicenseMsg):
+class GetVmInstanceHaLevelAction(inventory.APIGetVmInstanceHaLevelMsg):
     def __init__(self):
-        super(ReloadLicenseAction, self).__init__()
+        super(GetVmInstanceHaLevelAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ReloadLicenseAction] cannot be None')
+            raise Exception('sessionUuid of action[GetVmInstanceHaLevelAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
 
-class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
+class SetVmInstanceHaLevelAction(inventory.APISetVmInstanceHaLevelMsg):
     def __init__(self):
-        super(GetLicenseCapabilitiesAction, self).__init__()
+        super(SetVmInstanceHaLevelAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetLicenseCapabilitiesAction] cannot be None')
+            raise Exception('sessionUuid of action[SetVmInstanceHaLevelAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
 
-class GetLicenseInfoAction(inventory.APIGetLicenseInfoMsg):
+class DeleteVmInstanceHaLevelAction(inventory.APIDeleteVmInstanceHaLevelMsg):
     def __init__(self):
-        super(GetLicenseInfoAction, self).__init__()
+        super(DeleteVmInstanceHaLevelAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetLicenseInfoAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
-    def __init__(self):
-        super(CreateResourcePriceAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateResourcePriceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
-    def __init__(self):
-        super(CalculateAccountSpendingAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CalculateAccountSpendingAction] cannot be None')
+            raise Exception('sessionUuid of action[DeleteVmInstanceHaLevelAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3612,6 +3588,66 @@ class GetVmMonitoringDataAction(inventory.APIGetVmMonitoringDataMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVmMonitoringDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
+    def __init__(self):
+        super(CalculateAccountSpendingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CalculateAccountSpendingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
+    def __init__(self):
+        super(CreateResourcePriceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateResourcePriceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetLicenseInfoAction(inventory.APIGetLicenseInfoMsg):
+    def __init__(self):
+        super(GetLicenseInfoAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetLicenseInfoAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ReloadLicenseAction(inventory.APIReloadLicenseMsg):
+    def __init__(self):
+        super(ReloadLicenseAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ReloadLicenseAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
+    def __init__(self):
+        super(GetLicenseCapabilitiesAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetLicenseCapabilitiesAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
