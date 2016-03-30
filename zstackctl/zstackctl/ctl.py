@@ -3459,7 +3459,10 @@ class StartUiCmd(Command):
         return True
 
     def run(self, args):
-        ips = ctl.read_property_list("CloudBus.serverIp.")
+        ips = ctl.read_property_list("UI.vip.")
+
+        if not ips:
+            ips = ctl.read_property_list("CloudBus.serverIp.")
         if not ips:
             raise CtlError('no RabbitMQ IPs found in %s. The IPs should be configured as CloudBus.serverIp.0, CloudBus.serverIp.1 ... CloudBus.serverIp.N' % ctl.properties_file_path)
 
