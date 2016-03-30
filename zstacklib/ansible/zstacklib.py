@@ -550,6 +550,7 @@ def copy(copy_arg, host_post_info):
 
 
 def run_remote_command(command, host_post_info):
+    counter = 0
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
@@ -557,32 +558,43 @@ def run_remote_command(command, host_post_info):
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args=command,
-        pattern=host
-    )
-    result = runner.run()
-    logger.debug(json.dumps(result))
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-        sys.exit(1)
-    else:
-        status = result['contacted'][host]['rc']
-        if status == 0:
-            details = "SUCC: shell command: '%s' " % command
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
-        else:
-            description = "ERROR: command %s failed!" % command
-            handle_ansible_failed(description, result, host_post_info)
+    def _run_remote_command(counter):
+        runner = ansible.runner.Runner(
+            host_list=host_inventory,
+            private_key_file=private_key,
+            module_name='shell',
+            module_args=command,
+            pattern=host
+        )
+        result = runner.run()
+        logger.debug(result)
+        if result['contacted'] == {}:
+            ansible_start = AnsibleStartResult()
+            ansible_start.host = host
+            ansible_start.post_url = post_url
+            ansible_start.result = result
+            handle_ansible_start(ansible_start)
             sys.exit(1)
+        else:
+            if 'rc' not in result['contacted'][host]:
+                if counter < 3:
+                    counter = counter + 1
+                    _run_remote_command(counter)
+                else:
+                    description = "ERROR: command %s failed! Please make sure network is stable!" % command
+                    handle_ansible_failed(description, result, host_post_info)
+                    sys.exit(1)
+            else:
+                status = result['contacted'][host]['rc']
+                if status == 0:
+                    details = "SUCC: shell command: '%s' " % command
+                    handle_ansible_info(details, host_post_info, "INFO")
+                    return True
+                else:
+                    description = "ERROR: command %s failed!" % command
+                    handle_ansible_failed(description, result, host_post_info)
+                    sys.exit(1)
+    _run_remote_command(counter)
 
 
 def check_pip_version(version, host_post_info):
