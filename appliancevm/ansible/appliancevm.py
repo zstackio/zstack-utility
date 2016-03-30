@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import os
-import sys
+
 import argparse
 from zstacklib import *
 
@@ -14,14 +13,15 @@ sproxy = ""
 chroot_env = 'false'
 yum_repo = 'false'
 post_url = ""
+pkg_appliancevm = ""
 virtualenv_version = "12.1.1"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy appliancevm to management node')
-parser.add_argument('-i',type=str, help="""specify inventory host file
+parser.add_argument('-i', type=str, help="""specify inventory host file
                         default=/etc/ansible/hosts""")
-parser.add_argument('--private-key',type=str,help='use this file to authenticate the connection')
-parser.add_argument('-e',type=str, help='set additional variables as key=value or YAML/JSON')
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
 argument_dict = eval(args.e)
@@ -29,7 +29,7 @@ locals().update(argument_dict)
 
 # update the variable from shell arguments
 virtenv_path = "%s/virtualenv/appliancevm/" % zstack_root
-appliancevm_root  = "%s/appliancevm" % zstack_root
+appliancevm_root = "%s/appliancevm" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -59,13 +59,13 @@ else:
 # name: copy zstacklib and install
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest ="%s/%s" % (appliancevm_root, pkg_zstacklib)
+copy_arg.dest = "%s/%s" % (appliancevm_root, pkg_zstacklib)
 copy_zstacklib = copy(copy_arg, host_post_info)
 
 # name: copy appliancevm and install
 copy_arg = CopyArg()
-copy_arg.src = "%s/%s" % (file_root,pkg_appliancevm)
-copy_arg.dest = "%s/%s" % (appliancevm_root,pkg_appliancevm)
+copy_arg.src = "%s/%s" % (file_root, pkg_appliancevm)
+copy_arg.dest = "%s/%s" % (appliancevm_root, pkg_appliancevm)
 copy_appliancevm = copy(copy_arg, host_post_info)
 
 # name: copy bootstrap script
@@ -84,7 +84,7 @@ copy(copy_arg, host_post_info)
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status == False:
+if virtual_env_status is False:
     command = "rm -rf %s && rm -rf %s" % (virtenv_path, appliancevm_root)
     run_remote_command(command, host_post_info)
     sys.exit(1)
@@ -101,7 +101,7 @@ if distro == "RedHat" or distro == "CentOS":
         run_remote_command(command, host_post_info)
     else:
         # name: install appliance vm related packages on RedHat based OS
-        for pkg in ['iputils','tcpdump','ethtool']:
+        for pkg in ['iputils', 'tcpdump', 'ethtool']:
             yum_install_package("openssh-clients", host_post_info)
     if distro_version >= 7:
         # name: workaround RHEL7 iptables service issue
@@ -111,8 +111,8 @@ if distro == "RedHat" or distro == "CentOS":
         yum_remove_package("firewalld", host_post_info)
     # name: copy iptables initial rules in RedHat
     copy_arg = CopyArg()
-    copy_arg.src="%s/iptables" % file_root
-    copy_arg.dest="/etc/sysconfig/iptables"
+    copy_arg.src = "%s/iptables" % file_root
+    copy_arg.dest = "/etc/sysconfig/iptables"
     iptables_copy_result = copy(copy_arg, host_post_info)
     if chroot_env == 'false':
         if iptables_copy_result != "changed:False":
@@ -122,17 +122,17 @@ if distro == "RedHat" or distro == "CentOS":
         service_status("zstack-appliancevm", "enabled=yes state=stopped", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    for pkg in ['iputils-arping','tcpdump','ethtool']:
+    for pkg in ['iputils-arping', 'tcpdump', 'ethtool']:
         apt_install_packages("openssh-client", host_post_info)
     # name: copy iptables initial rules in Debian
     copy_arg = CopyArg()
-    copy_arg.src="%s/iptables" % file_root
-    copy_arg.dest="/etc/iptables"
+    copy_arg.src = "%s/iptables" % file_root
+    copy_arg.dest = "/etc/iptables"
     copy(copy_arg, host_post_info)
     # name: copy iptables initial start script in Debian
     copy_arg = CopyArg()
-    copy_arg.src="%s/iptables.up" % file_root
-    copy_arg.dest="/etc/network/if-pre-up.d/iptables.up"
+    copy_arg.src = "%s/iptables.up" % file_root
+    copy_arg.dest = "/etc/network/if-pre-up.d/iptables.up"
     copy_arg.args = "mode=0777"
     iptables_script_result = copy(copy_arg, host_post_info)
     if iptables_script_result == "status:changed":
@@ -143,7 +143,7 @@ elif distro == "Debian" or distro == "Ubuntu":
     run_remote_command(command, host_post_info)
     # name: enable appliancevm service for Debian -2
     update_arg = "insertbefore='^exit 0' line='/etc/init.d/zstack-appliancevm start\n'"
-    update_file("/etc/rc.local",update_arg,host_post_info)
+    update_file("/etc/rc.local", update_arg, host_post_info)
     # name: restore iptables
     command = '/etc/network/if-pre-up.d/iptables.up'
     run_remote_command(command, host_post_info)
