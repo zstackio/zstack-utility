@@ -2117,6 +2117,18 @@ class DeployCassandraDbCmd(Command):
         if ret != 0:
             raise CtlError('Cassandra seems not running, please start it using "zstack-ctl cassandra --start"')
 
+        root_home = os.path.expanduser('~root')
+        cassandra_setting_folder = os.path.join(root_home, '.cassandra')
+        if not os.path.exists(cassandra_setting_folder):
+            shell('mkdir -p %s' % cassandra_setting_folder)
+
+        cqlrc = os.path.join(cassandra_setting_folder, 'cqlshrc')
+        if not os.path.exists(cqlrc):
+            with open(cqlrc, 'w') as fd:
+                fd.write('''[connection]
+client_timeout = 1800
+''')
+
         deployer_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/deploy_cassandra_db.py')
         if not os.path.isfile(deployer_path):
             raise CtlError('cannot find %s, your ZStack setup seems corrupted' % deployer_path)
