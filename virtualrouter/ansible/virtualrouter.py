@@ -136,7 +136,6 @@ if vragent_copy != "changed:False":
     agent_install_arg.agent_name = "virtualrouter"
     agent_install_arg.agent_root = vr_root
     agent_install_arg.pkg_name = pkg_virtualrouter
-    agent_install_arg.virtualenv_site_packages = "yes"
     agent_install(agent_install_arg, host_post_info)
 
 # name: copy virtual router service file
