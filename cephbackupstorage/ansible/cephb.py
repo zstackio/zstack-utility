@@ -64,7 +64,7 @@ if virtual_env_status is False:
     run_remote_command(command, host_post_info)
     sys.exit(1)
 # name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
+command = "rm -rf %s && virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
