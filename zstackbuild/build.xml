@@ -118,6 +118,9 @@
         <makeDir dir="${componentsHome.dir}" />
         <makeDir dir="${commonModules.dir}" />
 
+        <property name="allinone.versionfile.in.war" location="${war.dir}/VERSION" />
+        <echo file="${allinone.versionfile.in.war}" append="true">${product.name} ${allinone.version}</echo>
+
         <exec executable="git" dir="${zstack.source}" failonerror="true" output="${war.dir}/git-commit">
             <arg value="log" />
             <arg value="--name-status" />

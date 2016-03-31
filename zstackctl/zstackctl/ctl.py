@@ -746,7 +746,7 @@ class ShowStatusCmd(Command):
                 v = ret[0]
                 version = v['version']
 
-            detailed_version_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "VERSION")
+            detailed_version_file = os.path.join(ctl.DEFAULT_ZSTACK_HOME, "VERSION")
             if os.path.exists(detailed_version_file):
                 with open(detailed_version_file, 'r') as fd:
                     detailed_version = fd.read()

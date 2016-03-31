@@ -7,7 +7,6 @@
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
         <copy file="${cassandra.pkg}" todir="${allinone.dir}" />
         <copy file="${kairosdb.pkg}" todir="${allinone.dir}" />
-        <echo file="${allinone.versionfile}" append="true">${product.name} ${allinone.version}</echo>
         <tar destfile="${allinone.file}" basedir="${allinone.dir}" compression="gzip" />
         <echo message="successfully build zstack all in one package at ${allinone.file}" />
     </target>
@@ -28,7 +27,6 @@
         <copy file="${war.file}" todir="${allinone.dir}" />
         <echo message="copy apache-tomcat to ${allinone.file}" />
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
-        <echo file="${allinone.versionfile}" append="true">${product.name} ${allinone.version}</echo>
         <tar destfile="${allinone.file}" basedir="${allinone.dir}" compression="gzip" />
 
         <makeDir dir="${allinone.bin.dir}" />

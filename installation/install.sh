@@ -913,7 +913,6 @@ uz_upgrade_zstack(){
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade local management node"
     fi
-    /bin/cp -f $upgrade_folder/VERSION $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ -z $ONLY_INSTALL_ZSTACK ] ; then
         if [ -f $upgrade_folder/apache-cassandra* ]; then
@@ -978,6 +977,7 @@ iz_install_zstack(){
     if [ $? -ne 0 ];then
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
+    ln -s $CATALINA_ZSTACK_PATH/VERSION $ZSTACK_INSTALL_ROOT/VERSION  
     pass
 }
 
