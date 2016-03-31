@@ -64,7 +64,7 @@ if virtual_env_status is False:
     run_remote_command(command, host_post_info)
     sys.exit(1)
 # name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path)
+command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
@@ -104,7 +104,6 @@ if copy_zstacklib != "changed:False":
     agent_install_arg.agent_name = "zstacklib"
     agent_install_arg.agent_root = cephb_root
     agent_install_arg.pkg_name = pkg_zstacklib
-    agent_install_arg.virtualenv_site_packages = "yes"
     agent_install(agent_install_arg, host_post_info)
 
 # name: copy ceph backupstorage agent
