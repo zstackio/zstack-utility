@@ -2683,6 +2683,9 @@ class InstallWebUiCmd(Command):
             self._install_to_local()
             return
 
+        if not args.yum:
+            args.yum = ctl.read_property('Ansible.var.yum_repo')
+
         tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
         if not os.path.isdir(tools_path):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % tools_path)
