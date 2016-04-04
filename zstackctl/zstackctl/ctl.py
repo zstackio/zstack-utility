@@ -1315,6 +1315,9 @@ class InstallDbCmd(Command):
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def run(self, args):
+        if not args.yum:
+            args.yum = ctl.read_property('Ansible.var.yum_repo')
+
         yaml = '''---
 - hosts: $host
   remote_user: root
@@ -1532,6 +1535,9 @@ class InstallRabbitCmd(Command):
     def run(self, args):
         if (args.rabbit_password is None and args.rabbit_username) or (args.rabbit_username and args.rabbit_password is None):
             raise CtlError('--rabbit-username and --rabbit-password must be both set or not set')
+
+        if not args.yum:
+            args.yum = ctl.read_property('Ansible.var.yum_repo')
 
         yaml = '''---
 - hosts: $host
@@ -2283,6 +2289,9 @@ class InstallManagementNodeCmd(Command):
         if not os.path.isdir(args.source_dir):
             raise CtlError('%s is not an directory' % args.source_dir)
 
+        if not args.yum:
+            args.yum = ctl.read_property('Ansible.var.yum_repo')
+
         apache_tomcat = None
         zstack = None
         apache_tomcat_zip_name = None
@@ -2352,24 +2361,27 @@ class InstallManagementNodeCmd(Command):
         - sudo
         - python-setuptools
 
+    - stat: path=/usr/bin/mysql
+      register: mysql_path
+
     - name: install MySQL client for RedHat 6 from user defined repos
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false' and (mysql_path.stat.exists == False)
       shell: yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql
 
     - name: install MySQL client for RedHat 6 from system repo
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo == 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo == 'false' and (mysql_path.stat.exists == False)
       shell: yum --nogpgcheck install -y mysql
 
     - name: install MySQL client for RedHat 7 from user defined repos
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false' and (mysql_path.stat.exists == False)
       shell: yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mariadb
 
     - name: install MySQL client for RedHat 7 from system repos
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false' and (mysql_path.stat.exists == False)
       shell: yum --nogpgcheck install -y mariadb
 
     - name: install MySQL client for Ubuntu
-      when: ansible_os_family == 'Debian'
+      when: ansible_os_family == 'Debian' and (mysql_path.stat.exists == False)
       apt: pkg={{item}}
       with_items:
         - mysql-client
