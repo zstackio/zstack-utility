@@ -640,6 +640,12 @@ iz_install_unzip(){
 is_install_general_libs_rh(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
     yum clean metadata >/dev/null 2>&1
+    which mysql >/dev/null 2>&1
+    if [ $? -eq 0 ];then
+        mysql_pkg=''
+    else
+        mysql_pkg='mysql'
+    fi
     if [ ! -z $ZSTACK_YUM_REPOS ]; then
         echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
         yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y \
@@ -672,7 +678,7 @@ is_install_general_libs_rh(){
             ntpdate \
             bzip2 \
             net-tools \
-            mysql \
+            $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
         echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
@@ -706,7 +712,7 @@ is_install_general_libs_rh(){
             ntpdate \
             bzip2 \
             net-tools \
-            mysql \
+            $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
@@ -732,6 +738,12 @@ is_install_virtualenv(){
 
 is_install_general_libs_deb(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
+    which mysql >/dev/null 2>&1
+    if [ $? -eq 0 ];then
+        mysql_pkg=''
+    else
+        mysql_pkg='mysql-client'
+    fi
     apt-get -y install \
         openjdk-7-jdk \
         qemu-kvm \
@@ -756,7 +768,7 @@ is_install_general_libs_deb(){
         ntp  \
         ntpdate \
         bzip2 \
-        mysql-client \
+        $mysql_pkg \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install virtualenv failed"
     pass
