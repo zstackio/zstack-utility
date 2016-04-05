@@ -71,13 +71,14 @@ PUB_ODEV={{pub_odev}}
 PUB_IDEV={{pub_idev}}
 PRI_ODEV={{pri_odev}}
 PRI_IDEV={{pri_idev}}
-PRI_BR="{{vmBridgeName}}"
-VIP="{{vip}}"
-VIP_NETMASK="{{vipNetmask}}"
-VIP_GW="{{vipGateway}}"
-NIC_NAME="{{nicName}}"
-NIC_GATEWAY="{{nicGateway}}"
-NIC_NETMASK="{{nicNetmask}}"
+PRI_BR={{vmBridgeName}}
+VIP={{vip}}
+VIP_NETMASK={{vipNetmask}}
+VIP_GW={{vipGateway}}
+NIC_NAME={{nicName}}
+NIC_GATEWAY={{nicGateway}}
+NIC_NETMASK={{nicNetmask}}
+NIC_IP={{nicIp}}
 NS_NAME="$PRI_BR"_"$PUB_BR"
 EBTABLE_CHAIN_NAME={{ebtable_chain_name}}
 
@@ -118,8 +119,8 @@ exit 0
             ctx = {
                 "pub_odev": "%s_o" % eip.vip.replace(".", ""),
                 "pub_idev": "%s_i" % eip.vip.replace(".", ""),
-                "pri_odev": "$s_o" % eip.nicGateway.replace(".", ""),
-                "pri_idev": "$s_i" % eip.nicGateway.replace(".", ""),
+                "pri_odev": "%s_o" % eip.nicGateway.replace(".", ""),
+                "pri_idev": "%s_i" % eip.nicGateway.replace(".", ""),
                 "ebtable_chain_name": eip.nicGateway,
             }
             ctx.update(eip.__dict__)
@@ -142,8 +143,12 @@ VIP_GW="{{vipGateway}}"
 NIC_NAME="{{nicName}}"
 NIC_GATEWAY="{{nicGateway}}"
 NIC_NETMASK="{{nicNetmask}}"
+NIC_IP={{nicIp}}
+NIC_CIDR={{nic_cidr}}
 NS_NAME="$PRI_BR"_"$PUB_BR"
 EBTABLE_CHAIN_NAME={{ebtable_chain_name}}
+PRI_BR_PHY_DEV={{pri_br_dev}}
+VIP_CIDR={{vip_cidr}}
 
 NS="ip netns exec $NS_NAME"
 
@@ -155,7 +160,7 @@ exit_on_error() {
 # deleting the orphan link and recreate it
 delete_orphan_outer_dev() {
     ip netns exec $1 ip link | grep $2 > /dev/null
-    if [ $? -ne 0 ]; then
+    if [ $? -eq 0 ]; then
         ip link del $3 &> /dev/null
         exit_on_error
     fi
@@ -201,8 +206,8 @@ set_ip_to_idev_if_needed() {
     exit_on_error
 }
 
-block_arp_for_nic_gw() {
-    local BR_PHY_DEV=`brctl show $PRI_BR | grep $PRI_BR | sed 's/\s\s*/ /g' | cut -d' ' -f4`
+block_arp_for_NIC_GATEWAY() {
+    local BR_PHY_DEV=$PRI_BR_PHY_DEV
     if [ x$BR_PHY_DEV == "x" ]; then
        echo "cannot find the physical interface of the bridge $PRI_BR"
        exit 1
@@ -214,21 +219,21 @@ block_arp_for_nic_gw() {
         ebtables -I FORWARD -j $EBTABLE_CHAIN_NAME
     fi
 
-    ebtables-save | grep "$EBTABLE_CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $NIC_GW -j DROP" > /dev/null
+    ebtables-save | grep "$EBTABLE_CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $NIC_GATEWAY -j DROP" > /dev/null
     if [ $? -ne 0 ]; then
-        ebtables -I $EBTABLE_CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $NIC_GW -j DROP
+        ebtables -I $EBTABLE_CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $NIC_GATEWAY -j DROP
         exit_on_error
     fi
 
-    ebtables-save | grep "$EBTABLE_CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $NIC_GW -j DROP" > /dev/null
+    ebtables-save | grep "$EBTABLE_CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $NIC_GATEWAY -j DROP" > /dev/null
     if [ $? -ne 0 ]; then
-        ebtables -I $EBTABLE_CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $NIC_GW -j DROP
+        ebtables -I $EBTABLE_CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $NIC_GATEWAY -j DROP
         exit_on_error
     fi
 }
 
 create_ip_table_rule_if_needed() {
-   eval $NS iptables-save | grep "$1" > /dev/null
+   eval $NS iptables-save | grep -- "$2" > /dev/null
    if [ $? -ne 0 ]; then
        eval $NS iptables $1 $2
        exit_on_error
@@ -236,17 +241,17 @@ create_ip_table_rule_if_needed() {
 }
 
 set_eip_rules() {
-    DNAT_NAME=":DNAT-$VIP"
-    eval $NS iptables-save | grep "$DNAT_NAME" > /dev/null
+    DNAT_NAME="DNAT-$VIP"
+    eval $NS iptables-save | grep ":$DNAT_NAME" > /dev/null
     if [ $? -ne 0 ]; then
-        eval $NS iptables -N $DNAT_NAME
+        eval $NS iptables -t nat -N $DNAT_NAME
     fi
 
-    create_ip_table_rule_if_needed "-t nat" "-A PREROUTING -d $VIP -j $DNAT_NAME"
-    create_ip_table_rule_if_needed "-t nat" "-A $DNAT_NAME -j --to-destination $NIC_GW"
+    create_ip_table_rule_if_needed "-t nat" "-A PREROUTING -d $VIP/$VIP_CIDR -j $DNAT_NAME"
+    create_ip_table_rule_if_needed "-t nat" "-A $DNAT_NAME -j DNAT --to-destination $NIC_IP"
 
-    FWD_NAME=":FWD-$VIP"
-    eval $NS iptables-save | grep "$FWD_NAME" > /dev/null
+    FWD_NAME="FWD-$VIP"
+    eval $NS iptables-save | grep ":$FWD_NAME" > /dev/null
     if [ $? -ne 0 ]; then
         eval $NS iptables -N $FWD_NAME
     fi
@@ -255,11 +260,13 @@ set_eip_rules() {
     create_ip_table_rule_if_needed "-t filter" "-A FORWARD -i $PUB_IDEV -o $PRI_IDEV -j $FWD_NAME"
     create_ip_table_rule_if_needed "-t filter" "-A $FWD_NAME -j ACCEPT"
 
-    SNAT_NAME=":SNAT-$VIP"
+    SNAT_NAME="SNAT-$VIP"
+    eval $NS iptables-save | grep ":$SNAT_NAME" > /dev/null
     if [ $? -ne 0 ]; then
-        eval $NS iptables -N $SNAT_NAME
+        eval $NS iptables -t nat -N $SNAT_NAME
     fi
 
+    create_ip_table_rule_if_needed "-t nat" "-A POSTROUTING -s $NIC_IP/$NIC_CIDR -j $SNAT_NAME"
     create_ip_table_rule_if_needed "-t nat" "-A $SNAT_NAME -j SNAT --to-source $VIP"
 }
 
@@ -287,7 +294,7 @@ set_ip_to_idev_if_needed $PRI_IDEV $NIC_GATEWAY $NIC_NETMASK
 # ping VIP gateway
 eval $NS arping -q -U -c 1 -I $PUB_IDEV $VIP_GW > /dev/null
 
-block_arp_for_nic_gw
+block_arp_for_NIC_GATEWAY
 set_eip_rules
 
 exit 0
@@ -297,9 +304,12 @@ exit 0
             ctx = {
                 "pub_odev": "%s_o" % eip.vip.replace(".", ""),
                 "pub_idev": "%s_i" % eip.vip.replace(".", ""),
-                "pri_odev": "$s_o" % eip.nicGateway.replace(".", ""),
-                "pri_idev": "$s_i" % eip.nicGateway.replace(".", ""),
+                "pri_odev": "%s_o" % eip.nicGateway.replace(".", ""),
+                "pri_idev": "%s_i" % eip.nicGateway.replace(".", ""),
+                "pri_br_dev": eip.vmBridgeName.lstrip('br_'),
                 "ebtable_chain_name": eip.nicGateway,
+                "vip_cidr": linux.netmask_to_cidr(eip.vipNetmask),
+                "nic_cidr": linux.netmask_to_cidr(eip.nicNetmask),
             }
             ctx.update(eip.__dict__)
             tmpt = Template(create_eip_cmd)
