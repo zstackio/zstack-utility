@@ -65,6 +65,9 @@ def cidr_to_netmask(cidr):
     cidr = int(cidr)
     return socket.inet_ntoa(struct.pack(">I", (0xffffffff << (32 - cidr)) & 0xffffffff))
 
+def netmask_to_cidr(netmask):
+    return sum([bin(int(x)).count('1') for x in netmask.split('.')])
+
 def get_ethernet_info():
     link_info = shell.call('ip -o link show')
     inet_info = shell.call('ip -o -f inet addr show')
@@ -535,7 +538,7 @@ def get_all_bridge_interface(bridge_name):
     cmd = shell.ShellCmd("brctl show %s|sed -n '2,$p'|cut -f 6-10" % bridge_name)
     cmd(is_exception=False)
     vifs = cmd.stdout.split('\n')
-    return vifs
+    return [v.strip(" \t\r\n") for v in vifs]
 
 def delete_bridge(bridge_name):
     vifs = get_all_bridge_interface(bridge_name)
