@@ -22,8 +22,7 @@ type App struct {
 
 func createDriverInstance() driver.StorageDriver {
 	// TODO: sth. like factory.Create(...)
-	s := driver.StorageDriver{}
-	return s
+	return nil
 }
 
 func buildRouter() *mux.Router {

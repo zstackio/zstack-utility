@@ -1,3 +1,3 @@
 package driver
 
-type StorageDriver struct{}
+type StorageDriver interface{}
