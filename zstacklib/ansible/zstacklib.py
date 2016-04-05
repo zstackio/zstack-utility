@@ -115,9 +115,6 @@ def create_log(logger_dir):
 
 def post_msg(msg, post_url):
     logger.info(msg.data.details)
-    if post_url == "":
-        logger.info("Warning: no post_url defined by user")
-        return 0
     if msg.type == "log":
         data = json.dumps({"level": msg.data.level, "details": msg.data.details})
     elif msg.type == "error":
@@ -127,6 +124,9 @@ def post_msg(msg, post_url):
     else:
         logger.info("ERROR: undefined message type: %s" % msg.type)
         sys.exit(1)
+    if post_url == "":
+        logger.info("Warning: no post_url defined by user")
+        return 0
     try:
         headers = {"content-type": "application/json"}
         req = urllib2.Request(post_url, data, headers)
