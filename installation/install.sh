@@ -1693,7 +1693,7 @@ do
         H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
         f ) ZSTACK_ALL_IN_ONE=$OPTARG;;
         F ) FORCE='y';;
-        i ) ONLY_INSTALL_ZSTACK='y';;
+        i ) ONLY_INSTALL_ZSTACK='y' && NEED_NFS='' && NEED_HTTP='' ;;
         I ) MANAGEMENT_INTERFACE=$OPTARG && NEED_SET_MN_IP='y';;
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
