@@ -71,7 +71,7 @@ if distro == "RedHat" or distro == "CentOS":
         # name: install kvm related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q openssh-clients qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils "
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass "
-                   "rsync | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                   "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                    "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % yum_repo
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
@@ -84,7 +84,7 @@ if distro == "RedHat" or distro == "CentOS":
         # name: install kvm related packages on RedHat based OS from online
         for pkg in ['openssh-clients', 'qemu-kvm', 'bridge-utils', 'wget', 'qemu-img', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'dnsmasq', 'iproute', 'sshpass',
-                    'rsync']:
+                    'rsync', 'nmap']:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from online
@@ -125,6 +125,8 @@ if distro == "RedHat" or distro == "CentOS":
     if chroot_env == 'false':
         # name: enable libvirt daemon on RedHat based OS
         service_status("libvirtd", "state=started enabled=yes", host_post_info)
+        # name: enable virtlockd daemon on RedHat based OS
+        service_status("virtlockd state=started enabled=yes", host_post_info)
 
     # name: copy updated dnsmasq for RHEL6 and RHEL7
     copy_arg = CopyArg()
