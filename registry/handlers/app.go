@@ -3,26 +3,23 @@ package handlers
 import (
 	"crypto/tls"
 	"github.com/docker/libtrust"
+	//"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"net"
 	"net/http"
 
+	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	"image-store/config"
 	"image-store/registry/api/v1"
-	"image-store/registry/storage/driver"
+	"image-store/registry/storage/driver/factory"
 	"image-store/utils"
 )
 
 type App struct {
-	Config *config.Configuration
+	config *config.Configuration
 
 	router *mux.Router
-	driver driver.StorageDriver
-}
-
-func createDriverInstance() driver.StorageDriver {
-	// TODO: sth. like factory.Create(...)
-	return nil
+	driver storagedriver.StorageDriver
 }
 
 func buildRouter() *mux.Router {
@@ -38,19 +35,32 @@ func buildRouter() *mux.Router {
 	return r
 }
 
-func NewApp(config *config.Configuration) *App {
+func NewApp(config *config.Configuration) (*App, error) {
 	app := &App{
-		Config: config,
+		config: config,
 		router: buildRouter(),
-		driver: createDriverInstance(),
 	}
 
-	return app
+	// Get storage parameters.
+	storageParams, err := config.Storage.Parameters()
+	if err != nil {
+		return nil, err
+	}
+
+	typ, _ := config.Storage.Type()
+	app.driver, err = factory.Create(typ, storageParams)
+	if err != nil {
+		return nil, err
+	}
+
+	return app, nil
 }
 
-func (this *App) Run(privKeyFile string, trustedClientsFile string) error {
+func (this *App) Run() error {
+	tlscfg := this.config.TLS
+
 	// load the server private key
-	serverKey, err := libtrust.LoadKeyFile(privKeyFile)
+	serverKey, err := libtrust.LoadKeyFile(tlscfg.PrivateKey)
 	if err != nil {
 		return err
 	}
@@ -68,7 +78,7 @@ func (this *App) Run(privKeyFile string, trustedClientsFile string) error {
 	}
 
 	// load trusted clients
-	trustedClients, err := libtrust.LoadKeySetFile(trustedClientsFile)
+	trustedClients, err := libtrust.LoadKeySetFile(tlscfg.TrustedClient)
 	if err != nil {
 		return err
 	}
@@ -94,7 +104,7 @@ func (this *App) Run(privKeyFile string, trustedClientsFile string) error {
 
 	// create the HTTP server
 	server := &http.Server{
-		Addr:    ":8000",
+		Addr:    this.config.HTTP.Addr,
 		Handler: this.router,
 	}
 
@@ -106,6 +116,6 @@ func (this *App) Run(privKeyFile string, trustedClientsFile string) error {
 
 	tlsListener := tls.NewListener(listener, tlsConfig)
 	server.Serve(tlsListener)
-	//http.ListenAndServe(":8000", this.router)
+
 	return nil
 }

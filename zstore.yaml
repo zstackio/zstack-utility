@@ -1,0 +1,11 @@
+version: 0.1
+storage:
+    cache:
+        layerinfo: inmemory
+    filesystem:
+        rootdirectory: /tmp/storage
+http:
+    addr: :8000
+tls:
+    key: server_data/private_key.pem
+    trusted: server_data/trusted_clients.pem
