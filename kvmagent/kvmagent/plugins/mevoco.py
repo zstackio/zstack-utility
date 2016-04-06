@@ -73,6 +73,7 @@ class DhcpEnv(object):
 BR_NAME="{{bridge_name}}"
 DHCP_IP="{{dhcp_server_ip}}"
 DHCP_NETMASK="{{dhcp_netmask}}"
+BR_PHY_DEV="{{br_dev}}"
 
 BR_NUM=`ip link show $BR_NAME | grep $BR_NAME | cut -d":" -f1`
 OUTER_DEV="outer$BR_NUM"
@@ -127,12 +128,6 @@ fi
 ip netns exec $BR_NAME ip link set $INNER_DEV up
 exit_on_error
 
-BR_PHY_DEV=`brctl show $BR_NAME  | grep $BR_NAME | sed 's/\s\s*/ /g' | cut -d' ' -f4`
-if [ x$BR_PHY_DEV == "x" ]; then
-   echo "cannot find the physical interface of the bridge $BR_NAME"
-   exit 1
-fi
-
 CHAIN_NAME="ZSTACK-$DHCP_IP"
 
 ebtables-save | grep "$CHAIN_NAME" > /dev/null
@@ -172,7 +167,8 @@ exit 0
         cmd = tmpt.render({
             'bridge_name': self.bridge_name,
             'dhcp_server_ip': self.dhcp_server_ip,
-            'dhcp_netmask': self.dhcp_netmask
+            'dhcp_netmask': self.dhcp_netmask,
+            'br_dev': self.bridge_name.lstrip('br_')
         })
 
         shell.call(cmd)
