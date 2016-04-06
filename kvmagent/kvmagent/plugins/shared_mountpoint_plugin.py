@@ -137,12 +137,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
             linux.scp_upload(cmd.hostname, cmd.sshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath)
 
-        try:
-            upload()
-        except kvmagent.KvmError as e:
-            logger.warn(linux.get_exception_stacktrace())
-            rsp.error = str(e)
-            rsp.success = False
+        upload()
 
         return jsonobject.dumps(rsp)
 
@@ -150,17 +145,11 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def download_from_sftp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        try:
-            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
-            logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
-        except Exception as e:
-            content = traceback.format_exc()
-            logger.warn(content)
-            err = "unable to download %s/%s, because %s" % (cmd.hostname, cmd.backupStorageInstallPath, str(e))
-            rsp.error = err
-            rsp.success = False
 
+        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
