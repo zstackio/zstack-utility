@@ -2117,7 +2117,11 @@ class DeployCassandraDbCmd(Command):
             raise CtlError('cannot find Cassandra IP address in zstack.properties, have you installed Cassandra?'
                            'If you have installed Cassandra, please configure Cassandra.contactPoints in the zstack.properties')
 
-        cip = cips.split(',')[0]
+        if isinstance(cips, list):
+            cip = cips[0]
+        else:
+            cip = cips
+
         cport = ctl.read_property('Cassandra.port')
         if not cport:
             cport = 9042
