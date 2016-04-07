@@ -1051,7 +1051,9 @@ install_zstack(){
 
     [ -z $INSTALL_MONITOR ] && return
     show_spinner iz_install_cassandra
-    show_spinner sz_start_cassandra
+    #Do not deploy cassandra when only install zstack by option -i.
+    # This is for HA deployment. 
+    [ -z $ONLY_INSTALL_ZSTACK ] && show_spinner sz_start_cassandra
     show_spinner iz_install_kairosdb
 }
 
