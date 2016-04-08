@@ -27,3 +27,10 @@ handshake.
 The certificate manager will first generate the private and public key
 for the server.  Then, for each client, generate its private and
 public key, and add its public key to trusted clients.
+
+## Test with cURL
+
+~~~
+$ go run gencert.go
+$ curl -i -k --cert cert.pem --key key.pem https://localhost:8000/v1/; echo
+~~~

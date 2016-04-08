@@ -31,7 +31,7 @@ func NewApp(config *config.Configuration) (*App, error) {
 	}
 
 	// Build the handlers
-	app.register(v1.RouteNameV1, HandleVersion)
+	app.register(v1.RouteNameV1, EnforceJSON(HandleVersion)).Methods("GET")
 	app.register(v1.RouteNameList, HandleList)
 	app.register(v1.RouteNameManifest, HandleManifest)
 	app.register(v1.RouteNameBlob, HandleBlob)
@@ -117,8 +117,9 @@ func (app *App) Run() error {
 	return nil
 }
 
-func (app *App) register(routeName string, f ContextHandlerFunc) {
+func (app *App) register(routeName string, f ContextHandlerFunc) *mux.Route {
 	c := context.WithValue(app.rctx, ContextKeyAppDriver, app.driver)
 	h := ContextAdapter{ctx: c, handler: f}
-	app.router.Handle(routeName, h)
+
+	return app.router.Handle(routeName, h)
 }

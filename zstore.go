@@ -40,7 +40,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	app.Run()
+	err = app.Run()
 	if err != nil {
 		log.Fatal(err)
 	}
