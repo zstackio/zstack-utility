@@ -51,7 +51,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
-                        shell.call('halt')
+                        shell.call('init 0')
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
@@ -78,7 +78,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
                                     'shutdown ourselves' % (gw, cmd.maxAttempts))
-                        shell.call('halt')
+                        shell.call('init 0')
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
