@@ -84,9 +84,10 @@ class ConsoleProxyAgent(object):
     http_server = http.HttpServer(PORT)
     http_server.logfile_path = log.get_logfile_path()
     
-    CHECK_AVAILABILITY_PATH = "/check"
-    ESTABLISH_PROXY_PATH = "/establish"
-    DELETE_PROXY_PATH = "/delete"
+    CHECK_AVAILABILITY_PATH = "/console/check"
+    ESTABLISH_PROXY_PATH = "/console/establish"
+    DELETE_PROXY_PATH = "/console/delete"
+    PING_PATH = "/console/ping"
 
     TOKEN_FILE_DIR = "/var/lib/zstack/consoleProxy/"
     PROXY_LOG_DIR = "/var/log/zstack/consoleProxy/"
@@ -97,6 +98,7 @@ class ConsoleProxyAgent(object):
         self.http_server.register_async_uri(self.CHECK_AVAILABILITY_PATH, self.check_proxy_availability)
         self.http_server.register_async_uri(self.ESTABLISH_PROXY_PATH, self.establish_new_proxy)
         self.http_server.register_async_uri(self.DELETE_PROXY_PATH, self.delete)
+        self.http_server.register_sync_uri(self.PING_PATH, self.ping)
 
         if not os.path.exists(self.PROXY_LOG_DIR):
             os.makedirs(self.PROXY_LOG_DIR, 0755)
@@ -165,6 +167,10 @@ class ConsoleProxyAgent(object):
             return False
         
         return True
+
+    @replyerror
+    def ping(self, req):
+        return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def check_proxy_availability(self, req):
