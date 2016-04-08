@@ -2,11 +2,12 @@ package handlers
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	"net/http"
 )
 
 // POST /v1/{name}/blobs/uploads/
-func HandleBlobUpload(w http.ResponseWriter, r *http.Request) {
+func HandleBlobUpload(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "handle upload")
 	return
 }
@@ -15,7 +16,7 @@ func HandleBlobUpload(w http.ResponseWriter, r *http.Request) {
 // PATCH  /v1/{name}/blobs/uploads/{uuid}
 // PUT    /v1/{name}/blobs/uploads/{uuid}
 // DELETE /v1/{name}/blobs/uploads/{uuid}
-func HandleUploadEntity(w http.ResponseWriter, r *http.Request) {
+func HandleUploadEntity(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "handle upload entity")
 	return
 }

@@ -3,12 +3,12 @@ package handlers
 import (
 	"crypto/tls"
 	"github.com/docker/libtrust"
-	//"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"net"
 	"net/http"
 
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
+	"golang.org/x/net/context"
 	"image-store/config"
 	"image-store/registry/api/v1"
 	"image-store/registry/storage/driver/factory"
@@ -16,30 +16,27 @@ import (
 )
 
 type App struct {
-	config *config.Configuration
+	rctx   context.Context // the root context
+	Config *config.Configuration
 
 	router *mux.Router
 	driver storagedriver.StorageDriver
 }
 
-func buildRouter() *mux.Router {
-	r := v1.NewRouter()
-
-	r.HandleFunc(v1.RouteNameV1, HandleVersion).Methods("GET")
-	r.HandleFunc(v1.RouteNameList, HandleList).Methods("GET")
-	r.HandleFunc(v1.RouteNameManifest, HandleManifest)
-	r.HandleFunc(v1.RouteNameBlob, HandleBlob)
-	r.HandleFunc(v1.RouteNameUpload, HandleBlobUpload).Methods("POST")
-	r.HandleFunc(v1.RouteNameUploadChunk, HandleUploadEntity)
-
-	return r
-}
-
 func NewApp(config *config.Configuration) (*App, error) {
 	app := &App{
-		config: config,
-		router: buildRouter(),
+		rctx:   context.Background(),
+		Config: config,
+		router: v1.NewRouter(),
 	}
+
+	// Build the handlers
+	app.register(v1.RouteNameV1, HandleVersion)
+	app.register(v1.RouteNameList, HandleList)
+	app.register(v1.RouteNameManifest, HandleManifest)
+	app.register(v1.RouteNameBlob, HandleBlob)
+	app.register(v1.RouteNameUpload, HandleBlobUpload)
+	app.register(v1.RouteNameUploadChunk, HandleUploadEntity)
 
 	// Get storage parameters.
 	storageParams, err := config.Storage.Parameters()
@@ -56,8 +53,8 @@ func NewApp(config *config.Configuration) (*App, error) {
 	return app, nil
 }
 
-func (this *App) Run() error {
-	tlscfg := this.config.TLS
+func (app *App) Run() error {
+	tlscfg := app.Config.TLS
 
 	// load the server private key
 	serverKey, err := libtrust.LoadKeyFile(tlscfg.PrivateKey)
@@ -104,8 +101,8 @@ func (this *App) Run() error {
 
 	// create the HTTP server
 	server := &http.Server{
-		Addr:    this.config.HTTP.Addr,
-		Handler: this.router,
+		Addr:    app.Config.HTTP.Addr,
+		Handler: app.router,
 	}
 
 	// Listen and server HTTPS using the libtrust TLS config.
@@ -118,4 +115,10 @@ func (this *App) Run() error {
 	server.Serve(tlsListener)
 
 	return nil
+}
+
+func (app *App) register(routeName string, f ContextHandlerFunc) {
+	c := context.WithValue(app.rctx, ContextKeyAppDriver, app.driver)
+	h := ContextAdapter{ctx: c, handler: f}
+	app.router.Handle(routeName, h)
 }
