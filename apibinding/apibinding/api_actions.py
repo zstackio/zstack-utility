@@ -384,6 +384,18 @@ class GetBackupStorageCapacityAction(inventory.APIGetBackupStorageCapacityMsg):
         self.out = evt
         return self.out
 
+class ReconnectBackupStorageAction(inventory.APIReconnectBackupStorageMsg):
+    def __init__(self):
+        super(ReconnectBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ReconnectBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateBackupStorageAction(inventory.APIUpdateBackupStorageMsg):
     def __init__(self):
         super(UpdateBackupStorageAction, self).__init__()
