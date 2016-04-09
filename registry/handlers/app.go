@@ -3,7 +3,6 @@ package handlers
 import (
 	"crypto/tls"
 	"github.com/docker/libtrust"
-	"github.com/gorilla/mux"
 	"net"
 	"net/http"
 
@@ -12,6 +11,7 @@ import (
 	"image-store/config"
 	"image-store/registry/api/v1"
 	"image-store/registry/storage/driver/factory"
+	"image-store/router"
 	"image-store/utils"
 )
 
@@ -19,7 +19,7 @@ type App struct {
 	rctx   context.Context // the root context
 	Config *config.Configuration
 
-	router *mux.Router
+	router *router.Router
 	driver storagedriver.StorageDriver
 }
 
@@ -27,16 +27,8 @@ func NewApp(config *config.Configuration) (*App, error) {
 	app := &App{
 		rctx:   context.Background(),
 		Config: config,
-		router: v1.NewRouter(),
+		router: router.NewRouter(),
 	}
-
-	// Build the handlers
-	app.register(v1.RouteNameV1, EnforceJSON(HandleVersion)).Methods("GET")
-	app.register(v1.RouteNameList, HandleList)
-	app.register(v1.RouteNameManifest, HandleManifest)
-	app.register(v1.RouteNameBlob, HandleBlob)
-	app.register(v1.RouteNameUpload, HandleBlobUpload)
-	app.register(v1.RouteNameUploadChunk, HandleUploadEntity)
 
 	// Get storage parameters.
 	storageParams, err := config.Storage.Parameters()
@@ -49,6 +41,14 @@ func NewApp(config *config.Configuration) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Build the handlers
+	app.register(v1.RouteNameV1, EnforceJSON(HandleVersion)).Methods("GET")
+	app.register(v1.RouteNameList, EnforceJSON(HandleList)).Methods("GET")
+	app.register(v1.RouteNameManifest, HandleManifest)
+	app.register(v1.RouteNameBlob, HandleBlob)
+	app.register(v1.RouteNameUpload, HandleBlobUpload)
+	app.register(v1.RouteNameUploadChunk, HandleUploadEntity)
 
 	return app, nil
 }
@@ -117,8 +117,8 @@ func (app *App) Run() error {
 	return nil
 }
 
-func (app *App) register(routeName string, f ContextHandlerFunc) *mux.Route {
-	c := context.WithValue(app.rctx, ContextKeyAppDriver, app.driver)
+func (app *App) register(routeName string, f ContextHandlerFunc) *router.Route {
+	c := WithStorageDriver(app.rctx, app.driver)
 	h := ContextAdapter{ctx: c, handler: f}
 
 	return app.router.Handle(routeName, h)

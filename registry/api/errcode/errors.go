@@ -1,7 +1,7 @@
 package errcode
 
 import (
-	"fmt"
+	"encoding/json"
 )
 
 type ErrorCode int
@@ -15,7 +15,8 @@ type Error struct {
 
 // Error returns a human readable representation of the error.
 func (e Error) Error() string {
-	return fmt.Sprintf("%d: %s", e.Code, e.Message)
+	buf, _ := json.Marshal(e)
+	return string(buf)
 }
 
 // Errors provides the envelope for multiple errors and a few sugar methods

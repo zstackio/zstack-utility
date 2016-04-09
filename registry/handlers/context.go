@@ -5,8 +5,6 @@ import (
 	"net/http"
 )
 
-const ContextKeyAppDriver = "app.driver"
-
 // Here we defines the ContextHandler, so that we can passing around
 // net.Context with http.Handler
 //
