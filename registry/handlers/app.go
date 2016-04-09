@@ -7,8 +7,8 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/docker/distribution/context"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
-	"golang.org/x/net/context"
 	"image-store/config"
 	"image-store/registry/api/v1"
 	"image-store/registry/storage/driver/factory"

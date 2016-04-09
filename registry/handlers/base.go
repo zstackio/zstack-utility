@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"fmt"
-	"golang.org/x/net/context"
+	"github.com/docker/distribution/context"
 	"net/http"
 )
 
