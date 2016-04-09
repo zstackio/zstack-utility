@@ -131,6 +131,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     REBASE_MERGE_SNAPSHOT_PATH = "/nfsprimarystorage/rebaseandmergesnapshot"
     MOVE_BITS_PATH = "/nfsprimarystorage/movebits"
     OFFLINE_SNAPSHOT_MERGE = "/nfsprimarystorage/offlinesnapshotmerge"
+    REMOUNT_PATH = "/nfsprimarystorage/remount"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
     
@@ -151,6 +152,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.REBASE_MERGE_SNAPSHOT_PATH, self.rebase_and_merge_snapshot)
         http_server.register_async_uri(self.MOVE_BITS_PATH, self.move_bits)
         http_server.register_async_uri(self.OFFLINE_SNAPSHOT_MERGE, self.merge_snapshot_to_volume)
+        http_server.register_async_uri(self.REMOUNT_PATH, self.remount)
         self.mount_path = {}
         self.image_cache = None
 
@@ -303,7 +305,20 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         logger.debug('successfully delete %s' % cmd.installPath)
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
-    
+
+    @kvmagent.replyerror
+    def remount(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = MountResponse()
+        linux.is_valid_nfs_url(cmd.url)
+
+        if not linux.is_mounted(cmd.mountPath, cmd.url):
+            linux.mount(cmd.url, cmd.mountPath)
+
+        shell.call('mount -o remount %s' % cmd.mountPath)
+        self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     def mount(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
