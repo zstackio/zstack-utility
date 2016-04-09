@@ -42,10 +42,13 @@ class HaPlugin(kvmagent.KvmAgent):
                 while True:
                     time.sleep(cmd.interval)
 
-                    if shell.run('timeout 15 touch %s; exit $?' % heartbeat_file_path) == 0:
+                    touch = shell.ShellCmd('timeout %s touch %s; exit $?' % (cmd.storageCheckerTimeout, heartbeat_file_path))
+                    touch(False)
+                    if touch.return_code == 0:
                         failure = 0
                         continue
 
+                    logger.warn('unable to touch %s, %s %s' % (heartbeat_file_path, touch.stderr, touch.stdout))
                     failure += 1
 
                     if failure == cmd.maxAttempts:
@@ -69,10 +72,13 @@ class HaPlugin(kvmagent.KvmAgent):
                 while True:
                     time.sleep(cmd.interval)
 
-                    if shell.run("nmap -sP -PI %s | grep 'Host is up'" % gw) == 0:
+                    ping = shell.ShellCmd("nmap -sP -PI %s | grep 'Host is up'" % gw)
+                    ping(False)
+                    if ping.return_code == 0:
                         failure = 0
                         continue
 
+                    logger.warn('unable to ping the storage gateway[%s], %s %s' % (gw, ping.stderr, ping.stdout))
                     failure += 1
 
                     if failure == cmd.maxAttempts:
