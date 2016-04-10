@@ -313,7 +313,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         linux.is_valid_nfs_url(cmd.url)
 
         if not linux.is_mounted(cmd.mountPath, cmd.url):
-            linux.mount(cmd.url, cmd.mountPath)
+            linux.mount(cmd.url, cmd.mountPath, cmd.options)
 
         shell.call('mount -o remount %s' % cmd.mountPath)
         self._set_capacity_to_response(cmd.uuid, rsp)
@@ -326,7 +326,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         linux.is_valid_nfs_url(cmd.url)
         
         if not linux.is_mounted(cmd.mountPath, cmd.url):
-            linux.mount(cmd.url, cmd.mountPath)
+            linux.mount(cmd.url, cmd.mountPath, cmd.options)
         
         self.mount_path[cmd.uuid] = cmd.mountPath
         logger.debug(http.path_msg(self.MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))

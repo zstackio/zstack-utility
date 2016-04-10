@@ -178,7 +178,7 @@ def is_mounted(path=None, url=None):
     cmd(is_exception=False)
     return cmd.return_code == 0
 
-def mount(url, path):
+def mount(url, path, options=None):
     cmd = shell.ShellCmd("mount | grep '%s'" % path)
     cmd(is_exception=False)
     if cmd.return_code == 0: raise MountError(url, '%s is occupied by another device. Details[%s]' % (path, cmd.stdout))
@@ -186,7 +186,10 @@ def mount(url, path):
     if not os.path.exists(path):
         os.makedirs(path, 0775)
 
-    shell.ShellCmd("mount %s %s" % (url, path))()
+    if options:
+        shell.call('mount -o %s %s %s' % (options, url, path))
+    else:
+        shell.call("mount %s %s" % (url, path))
 
 def umount(path, is_exception=True):
     cmd = shell.ShellCmd('umount -f -l %s' % path)
