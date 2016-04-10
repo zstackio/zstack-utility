@@ -316,6 +316,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.mount(cmd.url, cmd.mountPath, cmd.options)
 
         shell.call('mount -o remount %s' % cmd.mountPath)
+        self.mount_path[cmd.uuid] = cmd.mountPath
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
