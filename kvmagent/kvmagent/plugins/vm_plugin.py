@@ -905,7 +905,7 @@ class Vm(object):
 
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type':'file', 'device':'disk'})
-            e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':'none'})
+            e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':volume.cacheMode})
             e(disk, 'source', None, {'file':volume.installPath})
 
             if volume.useVirtio:
@@ -1645,16 +1645,7 @@ class Vm(object):
 
             def filebased_volume(dev_letter):
                 disk = etree.Element('disk', {'type':'file', 'device':'disk', 'snapshot':'external'})
-                if v.cacheMode == 0:
-                    cache_mode = 'none'
-                elif v.cacheMode == 1:
-                    cache_mode = 'writethrough'
-                elif v.cacheMode == 2:
-                    cache_mode = 'writeback'
-                else:
-                    raise kvmagent.KvmError('dev_letter[%s], invalid cacheMode[%d]' % (dev_letter, v.cacheMode))
-
-                e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':cache_mode})
+                e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':v.cacheMode})
                 e(disk, 'source', None, {'file':v.installPath})
                 if use_virtio:
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
