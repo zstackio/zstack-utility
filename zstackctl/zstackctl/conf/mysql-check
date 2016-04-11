@@ -1,0 +1,11 @@
+service mysqlcheck
+{
+        disable         = no
+        flags           = REUSE
+        socket_type     = stream
+        port            = 6033
+        wait            = no
+        user            = root
+        server          = /usr/local/bin/mysqlchk_status.sh
+        log_on_failure  += USERID
+}

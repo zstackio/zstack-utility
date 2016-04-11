@@ -32,3 +32,4 @@ websockify==0.6.1
 Werkzeug==0.10.4
 flask-socketio==0.6.0
 versiontools==1.7
+ansible==1.8.2

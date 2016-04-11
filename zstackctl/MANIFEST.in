@@ -1,1 +1,2 @@
 include zstack-ctl
+recursive-include zstackctl/conf *

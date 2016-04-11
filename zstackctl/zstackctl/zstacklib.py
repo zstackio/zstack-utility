@@ -5,7 +5,6 @@ import os
 import sys
 import urllib2
 from urllib2 import URLError
-import json
 from datetime import datetime
 import logging
 import json
@@ -13,7 +12,7 @@ from logging.handlers import TimedRotatingFileHandler
 
 # set global default value
 start_time = datetime.now()
-logger = logging.getLogger("deploy-agent-Log")
+logger = logging.getLogger("deploy-ha-Log")
 pip_url = ""
 zstack_root = ""
 host = ""
@@ -73,10 +72,14 @@ class AnsibleStartResult(object):
 class HostPostInfo(object):
     def __init__(self):
         self.host = None
+        self.vip= None
         self.post_url = None
         self.private_key = None
         self.host_inventory = None
         self.start_time = None
+        self.rabbit_password = None
+        self.mysql_password = None
+        self.mysql_userpassword = None
 
 
 class PipInstallArg(object):
@@ -95,6 +98,13 @@ class CopyArg(object):
         self.args = None
 
 
+class FetchArg(object):
+    def __init__(self):
+        self.src = None
+        self.dest = None
+        self.args = None
+
+
 class UnarchiveArg(object):
     def __init__(self):
         self.src = None
@@ -107,7 +117,7 @@ def create_log(logger_dir):
         os.makedirs(logger_dir)
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler = logging.handlers.RotatingFileHandler(logger_dir + "deploy.log", maxBytes=100 * 1024 * 1024,
+    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=100 * 1024 * 1024,
                                                    backupCount=30)
     handler.setFormatter(fmt)
     logger.addHandler(handler)
@@ -504,6 +514,42 @@ def pip_install_package(pip_install_arg, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
+def cron(name, arg, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting set cron task %s ... " % arg, host_post_info, "INFO")
+    args = 'name=%s %s' % (name,arg)
+
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='cron',
+        module_args=args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: set cron task %s failed!" % arg
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
+        else:
+            details = "SUCC: set cron task %s " % arg
+            handle_ansible_info(details, host_post_info, "INFO")
+            # pass the copy result to outside
+            return True
 
 def copy(copy_arg, host_post_info):
     start_time = datetime.now()
@@ -549,6 +595,49 @@ def copy(copy_arg, host_post_info):
             # pass the copy result to outside
             return change_status
 
+def fetch(fetch_arg, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    src = fetch_arg.src
+    dest = fetch_arg.dest
+    args = fetch_arg.args
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting fetch %s to %s ... " % (src, dest), host_post_info, "INFO")
+    if args is not None:
+        fetch_args = 'src=' + src + ' dest=' + dest + ' ' + args
+    else:
+        fetch_args = 'src=' + src + ' dest=' + dest
+
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='fetch',
+        module_args=fetch_args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: fetch file from %s to %s failed!" % (src, dest)
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
+        else:
+            change_status = "changed:" + str(result['contacted'][host]['changed'])
+            details = "SUCC: fetch %s to %s, the change status is %s" % (src, dest, change_status)
+            handle_ansible_info(details, host_post_info, "INFO")
+            # pass the fetch result to outside
+            return change_status
 
 def run_remote_command(command, host_post_info):
     counter = 0
@@ -568,7 +657,6 @@ def run_remote_command(command, host_post_info):
             pattern=host
         )
         result = runner.run()
-        print result
         logger.debug(result)
         if result['contacted'] == {}:
             ansible_start = AnsibleStartResult()
@@ -598,6 +686,42 @@ def run_remote_command(command, host_post_info):
                     sys.exit(1)
     _run_remote_command(counter)
     return True
+
+
+def check_command_status(command, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='shell',
+        module_args=command,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        status = result['contacted'][host]['rc']
+        if status == 0:
+            details = "SUCC shell command: '%s' return 0 " % command
+            handle_ansible_info(details, host_post_info, "INFO")
+            return True
+        else:
+            details = "INFO: shell command %s failed " % command
+            handle_ansible_info(details, host_post_info, "WARNING")
+            return False
 
 
 def check_pip_version(version, host_post_info):
@@ -670,6 +794,43 @@ def file_dir_exist(name, host_post_info):
             details = "INFO: %s not exist" % name
             handle_ansible_info(details, host_post_info, "INFO")
             return False
+
+
+def file_operation(file, args, host_post_info):
+    ''''This function will change file attribute'''
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting change file %s ... " % file, host_post_info, "INFO")
+    args = "path=%s " % file + args
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='file',
+        module_args=args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            details = "INFO: %s not be changed" % file
+            handle_ansible_info(details, host_post_info, "INFO")
+            return False
+        else:
+            details = "INFO: %s changed successfully" % file
+            handle_ansible_info(details, host_post_info, "INFO")
+            return True
 
 
 def get_remote_host_info(host_post_info):
@@ -808,6 +969,7 @@ def service_status(name, args, host_post_info):
 
 
 def update_file(dest, args, host_post_info):
+    '''Use this function to change the file content'''
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
@@ -838,6 +1000,41 @@ def update_file(dest, args, host_post_info):
             sys.exit(1)
         else:
             details = "SUCC: Update file %s" % dest
+            handle_ansible_info(details, host_post_info, "INFO")
+            return True
+
+
+def change_iptables(args, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Changing iptables", host_post_info, "INFO")
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='iptables',
+        module_args=args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: change iptables: %s failed" % args
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
+        else:
+            details = "SUCC: change iptables with %s" % args
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -1049,19 +1246,6 @@ class ZstackLib(object):
 
 def main():
     # Reserve for test api
-    host_post_info = HostPostInfo()
-    host_post_info.host_inventory = "/etc/ansible/hosts"
-    host_post_info.host = "172.20.12.64"
-    host_post_info.post_url = "http://172.20.12.64:1234"
-    host_post_info.private_key = "/usr/local/zstack/apache-tomcat-7.0.35/webapps/zstack/WEB-INF/classes/ansible/rsaKeys/id_rsa"
-    #command = "mysql -uroot -psdfsdfs  -e 'exit' >/dev/null 2>&1"
-    #command = '''
-    #mysql -uroot -pzstack.mysql.password -Bse "show databases;show databases;"
-    #'''
-#    if check_remote(command, host_post_info) is True:
-#        print "succ"
-#    else:
-#        print "faild"
-#
+    pass
 if __name__ == "__main__":
     main()
