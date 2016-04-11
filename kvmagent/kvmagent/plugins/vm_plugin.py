@@ -999,7 +999,7 @@ class Vm(object):
                     return False
 
                 try:
-                    self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                    self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
 
                     if not linux.wait_callback_success(wait_for_attach, None, 5, 1):
                         raise Exception("cannot attach a volume[uuid: %s] to the vm[uuid: %s];"
@@ -1084,7 +1084,7 @@ class Vm(object):
                     return True
 
                 try:
-                    self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                    self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
 
                     if not linux.wait_callback_success(wait_for_detach, None, 5, 1):
                         raise Exception("unable to detach the volume[uuid:%s] from the vm[uuid:%s];"
@@ -1344,7 +1344,7 @@ class Vm(object):
 
         logger.debug('attaching ISO to the vm[uuid:%s]:\n%s' % (self.uuid, xml))
 
-        self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
         def check(_):
             me = get_vm_by_uuid(self.uuid)
             for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -1376,7 +1376,7 @@ class Vm(object):
         logger.debug('detaching ISO from the vm[uuid:%s]:\n%s' % (self.uuid, xml))
 
         try:
-            self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG | libvirt.VIR_DOMAIN_DEVICE_MODIFY_FORCE)
+            self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_DEVICE_MODIFY_FORCE)
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to detach the iso from the VM[uuid:%s], %s' % (self.uuid, err))
@@ -1414,7 +1414,7 @@ class Vm(object):
             xml = self._interface_cmd_to_xml(cmd)
             logger.debug('attaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
-                self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
                 self.domain.attachDevice(xml)
 
@@ -1462,7 +1462,7 @@ class Vm(object):
             xml = self._interface_cmd_to_xml(cmd)
             logger.debug('detaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
-                self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
                 self.domain.detachDevice(xml)
 
