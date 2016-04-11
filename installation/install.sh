@@ -1913,6 +1913,9 @@ unpack_zstack_into_tomcat
 #doesn't need use to send -m option to install monitor.
 [ -f "$ZSTACK_INSTALL_ROOT/kairosdb-1.1.1-1.tar.gz" ] && INSTALL_MONITOR='y'
 
+#Do not config NFS or HTTP when installing ZStack product
+[ ! -z $INSTALL_MONITOR ] && NEED_NFS='' && NEED_HTTP=''
+
 #Install Ansible 
 install_ansible
 
