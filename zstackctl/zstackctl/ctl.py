@@ -1551,18 +1551,37 @@ class InstallHACmd(Command):
         self.formatted_netmask = sum([bin(int(x)).count('1') for x in self.netmask.split('.')])
         return self.formatted_netmask
 
+    def check_host_info_format(self, host_info):
+        if '@' not in host_info:
+            print "Host connect information should follow format: 'root:password@host_ip:ssh_port', please check your input!"
+            sys.exit(1)
+        else:
+            # get user and password
+            if ':' not in host_info.split('@')[0]:
+                print "Host connect information should follow format: 'root:password@host_ip:ssh_port', please check your input!"
+                sys.exit(1)
+            else:
+                self.user = host_info.split('@')[0].split(':')[0]
+                self.password = host_info.split('@')[0].split(':')[1]
+                if self.user != "" and self.user != "root":
+                   print "Only root user can be supported, please change user to root"
+                if self.user == "":
+                    self.user = "root"
+            # get ip and port
+            if ':' not in host_info.split('@')[1]:
+                self.ip = host_info.split('@')[1]
+                self.port = '22'
+            else:
+                self.ip = host_info.split('@')[1].split(':')[0]
+                self.port = host_info.split('@')[1].split(':')[1]
+            return (self.user, self.password, self.ip, self.port)
+
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host1',
-                            help="The first IP address for HA setup",
+        parser.add_argument('--host1-info',
+                            help="The first host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host1-password',
-                            help="The first host root password ",
-                            required=True)
-        parser.add_argument('--host2',
-                            help="The second IP address for HA setup",
-                            required=True)
-        parser.add_argument('--host2-password',
-                            help="The second host root password ",
+        parser.add_argument('--host2-info',
+                            help="The second host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
         parser.add_argument('--vip',
                             help="The virtual IP address for HA setup",
@@ -1593,6 +1612,15 @@ class InstallHACmd(Command):
         if self.status != 0:
             print "The gateway %s unreachable!" % args.gateway
             sys.exit(1)
+        # check input host info
+        self.host1_info = args.host1_info
+        self.host1_connect_info_list = self.check_host_info_format(self.host1_info)
+        args.host1 = self.host1_connect_info_list[2]
+        args.host1_password = self.host1_connect_info_list[1]
+        self.host2_info = args.host2_info
+        self.host2_connect_info_list = self.check_host_info_format(self.host2_info)
+        args.host2 = self.host2_connect_info_list[2]
+        args.host2_password = self.host2_connect_info_list[1]
 
         # check root password is available
         self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
@@ -1620,6 +1648,7 @@ class InstallHACmd(Command):
         if 'br_eth0' not in self.interface_list:
             print "Make sure you have already run the 'network-setting' script under /root/scripts/"
             sys.exit(1)
+
 
         #init variables
         self.yum_repo = ctl.read_property('Ansible.var.yum_repo')
@@ -1725,7 +1754,7 @@ class InstallHACmd(Command):
         print "Starting to deploy Rabbitmq HA......"
         RabbitmqHA()()
         # setup haproxy and keepalived
-        print "Starting to deploy Haproxy and Keepalived, please ignore below haproxy warning message......"
+        print "Starting to deploy Haproxy and Keepalived......"
         HaproxyKeepalived()()
 
         #install database on local management node
@@ -2067,7 +2096,7 @@ vrrp_instance VI_1 {
         service_status("keepalived", "state=restarted enabled=yes", self.host2_post_info)
         service_status("haproxy", "state=restarted enabled=yes", self.host1_post_info)
         service_status("haproxy", "state=restarted enabled=yes", self.host2_post_info)
-        # todo check the output of "systemctl status keepalived -l" and "ip addr show eth0"
+        print "Haproxy and Keepalived HA deploy successful!"
 
 
 class MysqlHA(InstallHACmd):
