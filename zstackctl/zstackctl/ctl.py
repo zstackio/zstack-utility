@@ -1805,7 +1805,7 @@ class InstallHACmd(Command):
         #run_remote_command(self.command, self.host2_post_info)
 
         # change Cassadra duplication number
-         self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
+        self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
         #self.update_cassadra = "ALTER KEYSPACE zstack_billing WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };" \
         #                       "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
         self.command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
