@@ -1823,9 +1823,11 @@ class InstallHACmd(Command):
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
             print "Something error on host: %s\n %s" % (args.host1, self.output)
+            sys.exit(1)
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
         if self.status != 0:
             print "Something error on host: %s\n %s" % (args.host2, self.output)
+            sys.exit(1)
         #run_remote_command_no_bash(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
         #self.command = "zstack-ctl deploy_cassandra_db"
@@ -1835,9 +1837,11 @@ class InstallHACmd(Command):
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
             print "Something error on host: %s\n %s" % (args.host1, self.output)
+            sys.exit(1)
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
         if self.status != 0:
             print "Something error on host: %s\n %s" % (args.host2, self.output)
+            sys.exit(1)
         #run_remote_command(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
 
@@ -1855,14 +1859,24 @@ class InstallHACmd(Command):
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
         self.command = "zstack-ctl start"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        #run_remote_command(self.command, self.host1_post_info)
+        #run_remote_command(self.command, self.host2_post_info)
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+        if self.status != 0:
+            print "Something error on host: %s\n %s" % (args.host1, self.output)
+            sys.exit(1)
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+        if self.status != 0:
+            print "Something error on host: %s\n %s" % (args.host2, self.output)
+            sys.exit(1)
+
         print '''HA deploy finished!
 Mysql user 'root' password: %s
 Mysql user 'zstack' password: %s
 Rabbitmq user 'zstack' password: %s
+The Mevoco portal http://%s:8888  default user/password is admin/password
 You can check the cluster status at http://%s:9132/zstack with user/passwd zstack/zstack123
-        ''' % (args.mysql_root_password, args.mysql_user_password, args.rabbit_password, args.host1)
+        ''' % (args.mysql_root_password, args.mysql_user_password, args.rabbit_password, args.vip, args.host1)
 
 class HaproxyKeepalived(InstallHACmd):
     def __init__(self):
