@@ -1592,21 +1592,23 @@ class InstallHACmd(Command):
 
         # check root password is available
         self.command ='sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-                      'StrictHostKeyChecking=no  root@%s echo 0;exit 0;' % (args.host1_password, args.host1)
+                      'StrictHostKeyChecking=no  root@%s echo "";exit 0;' % (args.host1_password, args.host1)
         self.rc = os.system(self.command)
         if self.rc != 0:
             print "The host: %s password %s  incorrect! please check it!" % (args.host1, args.host1_password)
             sys.exit(1)
         self.command ='sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-                      'StrictHostKeyChecking=no  root@%s echo 0;exit 0;' % (args.host2_password, args.host2)
+                      'StrictHostKeyChecking=no  root@%s echo "";exit 0;' % (args.host2_password, args.host2)
         self.rc = os.system(self.command)
         if self.rc != 0:
             print "The host: %s password %s  incorrect! please check it!" % (args.host2, args.host2_password)
             sys.exit(1)
 
-        self.mevoco_image = os.path.isfile("/etc/yum.repos.d/zstack-local.repo")
-        if self.mevoco_image is False:
-            print "This command only support ZStack community Centos7 image"
+        # check image type
+        self.zstack_local_repo = os.path.isfile("/etc/yum.repos.d/zstack-local.repo")
+        self.galera_repo = os.path.isfile("/etc/yum.repos.d/galera.repo")
+        if self.zstack_local_repo is False or self.galera_repo is False:
+            print "This feature only support ZStack community Centos7 image"
             sys.exit(1)
 
         #init variables
@@ -1769,16 +1771,20 @@ class InstallHACmd(Command):
 
         # start Cassadra and KairosDB
         self.command = "zstack-ctl cassandra --start --wait-timeout 120"
-        os.system("ssh -i %s root@%s 'zstack-ctl cassandra --start'" % (self.private_key_name, args.host1))
-        os.system("ssh -i %s root@%s 'zstack-ctl cassandra --start'" % (self.private_key_name, args.host2))
+        os.system("ssh -i %s root@%s 'zstack-ctl cassandra --start --wait-timeout 120'" % (self.private_key_name, args.host1))
+        os.system("ssh -i %s root@%s 'zstack-ctl cassandra --start --wait-timeout 120'" % (self.private_key_name, args.host2))
         #run_remote_command_no_bash(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
         self.command = "zstack-ctl deploy_cassandra_db"
         run_remote_command(self.command, self.host1_post_info)
         print "Starting to deploy Kairosdb HA......"
         self.command = "zstack-ctl kairosdb --start --wait-timeout 120"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        ret = os.system("ssh -i %s root@%s 'zstack-ctl kairosdb --start --wait-timeout 120'" % (self.private_key_name, args.host1))
+        print ret + " on host %s" % arg.host1
+        ret = os.system("ssh -i %s root@%s 'zstack-ctl kairosdb --start --wait-timeout 120'" % (self.private_key_name, args.host2))
+        print ret + " on host %s" % arg.host2
+        #run_remote_command(self.command, self.host1_post_info)
+        #run_remote_command(self.command, self.host2_post_info)
 
         # change Cassadra duplication number
         self.update_cassadra = "ALTER KEYSPACE zstack_billing WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };" \
