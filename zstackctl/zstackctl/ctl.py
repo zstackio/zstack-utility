@@ -1597,6 +1597,8 @@ class InstallHACmd(Command):
                             help="RabbitMQ password; if set, the password will be created on RabbitMQ for username "
                                  "specified by --rabbit-username. [DEFAULT] rabbitmq default password",
                             default="zstack123")
+        parser.add_argument('--drop', action='store_true', default=False,
+                            help="Force delete mysql data for re-deploy HA")
 
     def run(self, args):
         # check gw ip is available
@@ -1608,9 +1610,9 @@ class InstallHACmd(Command):
                 self.gateway_ip = self.get_default_gateway()
         else:
             self.gateway_ip = args.gateway
-        (self.status, self.output) = commands.getstatusoutput('ping -c 1 %s' % args.gateway)
+        (self.status, self.output) = commands.getstatusoutput('ping -c 1 %s' % self.gateway_ip)
         if self.status != 0:
-            print "The gateway %s unreachable!" % args.gateway
+            print "The gateway %s unreachable!" % self.gateway_ip
             sys.exit(1)
         # check input host info
         self.host1_info = args.host1_info
@@ -1761,10 +1763,16 @@ class InstallHACmd(Command):
         self.command = "zstack-ctl stop"
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
-        self.command = "zstack-ctl deploydb --drop --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
-                       % (args.host1, args.mysql_user_password, args.mysql_root_password)
+        if args.drop is True:
+            self.command = "zstack-ctl deploydb --drop --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
+                           % (args.host1, args.mysql_user_password, args.mysql_root_password)
+            run_remote_command(self.command, self.host1_post_info)
+        else:
+            self.command = "zstack-ctl deploydb --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
+                           % (args.host1, args.mysql_user_password, args.mysql_root_password)
+            run_remote_command(self.command, self.host1_post_info)
+
         #os.system(self.command)
-        run_remote_command(self.command, self.host1_post_info)
         self.command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306" % args.vip
         run_remote_command(self.command, self.host1_post_info)
         self.command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
@@ -1850,11 +1858,12 @@ class InstallHACmd(Command):
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
         print '''HA deploy finished!
-        Mysql user 'root' password is '%s'
-        Mysql user 'zstack' password is '%s'
-        Rabbitmq user 'zstack' password is '%s'
-        You can check the cluster status at http://%s:9132/zstack with user/passwd zstack/zstack123" % args.host1
-        '''
+Mysql user 'root' password: %s
+Mysql user 'zstack' password: %s
+Rabbitmq user 'zstack' password: %s
+You can check the cluster status at http://%s:9132/zstack with user/passwd zstack/zstack123
+        ''' % (args.mysql_root_password, args.mysql_user_password, args.rabbit_password, args.host1)
+
 class HaproxyKeepalived(InstallHACmd):
     def __init__(self):
         super(HaproxyKeepalived, self).__init__()
@@ -2353,6 +2362,7 @@ echo $TIMEST >> /var/log/check-network.log
         service_status("xinetd","state=restarted enabled=yes",self.host1_post_info)
         service_status("xinetd","state=restarted enabled=yes",self.host2_post_info)
         print "Mysql HA deploy successful!"
+
 
 class RabbitmqHA(InstallHACmd):
     def __init__(self):
