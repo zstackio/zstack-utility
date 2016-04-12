@@ -1773,8 +1773,8 @@ class InstallHACmd(Command):
         os.system("ssh -i %s root@%s 'zstack-ctl cassandra --start'" % (self.private_key_name, args.host2))
         #run_remote_command_no_bash(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
-        #self.command = "zstack-ctl deploy_cassandra_db"
-        #run_remote_command(self.command, self.host1_post_info)
+        self.command = "zstack-ctl deploy_cassandra_db"
+        run_remote_command(self.command, self.host1_post_info)
         print "Starting to deploy Kairosdb HA......"
         self.command = "zstack-ctl kairosdb --start --wait-timeout 120"
         run_remote_command(self.command, self.host1_post_info)
