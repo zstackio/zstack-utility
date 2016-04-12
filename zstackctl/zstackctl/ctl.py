@@ -26,7 +26,7 @@ import jinja2
 import socket
 import struct
 import fcntl
-from Crypto.PublicKey import RSA
+import commands
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -1589,26 +1589,36 @@ class InstallHACmd(Command):
                 self.gateway_ip = self.get_default_gateway()
         else:
             self.gateway_ip = args.gateway
+        (self.status, self.output) = commands.getstatusoutput('ping -c 1 %s' % args.gateway)
+        if self.status != 0:
+            print "The gateway %s unreachable!" % args.gateway
+            sys.exit(1)
 
         # check root password is available
-        self.command ='sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-                      'StrictHostKeyChecking=no  root@%s echo "";exit 0;' % (args.host1_password, args.host1)
-        self.rc = os.system(self.command)
-        if self.rc != 0:
-            print "The host: %s password %s  incorrect! please check it!" % (args.host1, args.host1_password)
+        self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+                      'StrictHostKeyChecking=no  root@%s echo ""' % (args.host1_password, args.host1)
+        (self.status, self.output) = commands.getstatusoutput(self.command)
+        if self.status != 0:
+            print "The host: '%s' password '%s' incorrect! please check it!" % (args.host1, args.host1_password)
             sys.exit(1)
-        self.command ='sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-                      'StrictHostKeyChecking=no  root@%s echo "";exit 0;' % (args.host2_password, args.host2)
-        self.rc = os.system(self.command)
-        if self.rc != 0:
-            print "The host: %s password %s  incorrect! please check it!" % (args.host2, args.host2_password)
+        self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+                      'StrictHostKeyChecking=no  root@%s echo ""' % (args.host2_password, args.host2)
+        (self.status, self.output) = commands.getstatusoutput(self.command)
+        if self.status != 0:
+            print "The host: '%s' password '%s' incorrect! please check it!" % (args.host2, args.host2_password)
             sys.exit(1)
 
         # check image type
         self.zstack_local_repo = os.path.isfile("/etc/yum.repos.d/zstack-local.repo")
         self.galera_repo = os.path.isfile("/etc/yum.repos.d/galera.repo")
         if self.zstack_local_repo is False or self.galera_repo is False:
-            print "This feature only support ZStack community Centos7 image"
+            print "This feature only support ZStack community CentOS 7 image"
+            sys.exit(1)
+
+        # check network configuration
+        self.interface_list = os.listdir('/sys/class/net/')
+        if 'br_eth0' not in self.interface_list:
+            print "Make sure you have already run the 'network-setting' script under /root/scripts/"
             sys.exit(1)
 
         #init variables
@@ -1687,11 +1697,13 @@ class InstallHACmd(Command):
         self.command = "hostnamectl set-hostname zstack-2"
         run_remote_command(self.command, self.host2_post_info)
 
+        # remove old zstack-1 and zstack-2 in hosts file
+        update_file("/etc/hosts", "regexp='\.*zstack\.*' state=absent" , self.host1_post_info)
+        update_file("/etc/hosts", "regexp='\.*zstack\.*' state=absent" , self.host2_post_info)
         update_file("/etc/hosts", "line='%s zstack-1'" % args.host1, self.host1_post_info)
         update_file("/etc/hosts", "line='%s zstack-2'" % args.host2, self.host1_post_info)
         update_file("/etc/hosts", "line='%s zstack-1'" % args.host1, self.host2_post_info)
         update_file("/etc/hosts", "line='%s zstack-2'" % args.host2, self.host2_post_info)
-        # todo add iptables only onece
         self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT ; iptables-save" \
                        " > /dev/null 2>&1" % (self.host2_post_info.host, self.host2_post_info.host)
         run_remote_command(self.command, self.host1_post_info)
@@ -1770,19 +1782,25 @@ class InstallHACmd(Command):
                     "regexp='management\.server\.ip' line='management.server.ip = %s'" % args.host2, self.host2_post_info)
 
         # start Cassadra and KairosDB
-        self.command = "zstack-ctl cassandra --start --wait-timeout 120"
-        os.system("ssh -i %s root@%s 'zstack-ctl cassandra --start --wait-timeout 120'" % (self.private_key_name, args.host1))
-        os.system("ssh -i %s root@%s 'zstack-ctl cassandra --start --wait-timeout 120'" % (self.private_key_name, args.host2))
+        self.command = 'zstack-ctl cassandra --start --wait-timeout 120'
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+        if self.status != 0:
+            print "Something error on host: %s\n %s" % (args.host1, self.output)
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+        if self.status != 0:
+            print "Something error on host: %s\n %s" % (args.host2, self.output)
         #run_remote_command_no_bash(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
         self.command = "zstack-ctl deploy_cassandra_db"
         run_remote_command(self.command, self.host1_post_info)
         print "Starting to deploy Kairosdb HA......"
-        self.command = "zstack-ctl kairosdb --start --wait-timeout 120"
-        ret = os.system("ssh -i %s root@%s 'zstack-ctl kairosdb --start --wait-timeout 120'" % (self.private_key_name, args.host1))
-        print ret + " on host %s" % arg.host1
-        ret = os.system("ssh -i %s root@%s 'zstack-ctl kairosdb --start --wait-timeout 120'" % (self.private_key_name, args.host2))
-        print ret + " on host %s" % arg.host2
+        self.command = 'zstack-ctl kairosdb --start --wait-timeout 120'
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+        if self.status != 0:
+            print "Something error on host: %s\n %s" % (args.host1, self.output)
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+        if self.status != 0:
+            print "Something error on host: %s\n %s" % (args.host2, self.output)
         #run_remote_command(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
 
@@ -1801,8 +1819,12 @@ class InstallHACmd(Command):
         self.command = "zstack-ctl start"
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
-        print "HA deploy finished, you can check the cluster status at http://%s:9132/zstack with user/passwd zstack/zstack123" % args.host1
-
+        print '''HA deploy finished!
+        Mysql user 'root' password is '%s'
+        Mysql user 'zstack' password is '%s'
+        Rabbitmq user 'zstack' password is '%s'
+        You can check the cluster status at http://%s:9132/zstack with user/passwd zstack/zstack123" % args.host1
+        '''
 class HaproxyKeepalived(InstallHACmd):
     def __init__(self):
         super(HaproxyKeepalived, self).__init__()
@@ -1840,7 +1862,7 @@ class HaproxyKeepalived(InstallHACmd):
         haproxy_raw_conf = '''
 global
 
-    log         127.0.0.1 local2
+    log         127.0.0.1 local2 emerg alert crit err warning notice info debug
 
     chroot      /var/lib/haproxy
     pidfile     /var/run/haproxy.pid
@@ -2136,9 +2158,8 @@ wsrep_sst_method=rsync
 
         self.init_install = check_command_status("mysql -u root --password='' -e 'exit' ", self.host1_post_info)
         if self.init_install is True:
-            self.command = "mysql -u root --password='' -Bse \"show status like 'wsrep_%%';\""
-            galera_status = run_remote_command(self.command, self.host2_post_info)
-            # todo check galera_status
+            #self.command = "mysql -u root --password='' -Bse \"show status like 'wsrep_%%';\""
+            #galera_status = run_remote_command(self.command, self.host2_post_info)
             #create zstack user
             self.command =" mysql -u root --password='' -Bse 'grant ALL PRIVILEGES on *.* to zstack@\"localhost\" Identified by \"%s\"; " \
                           "grant ALL PRIVILEGES on *.* to zstack@\"zstack-1\" Identified by \"%s\"; " \
