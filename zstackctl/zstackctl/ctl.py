@@ -1791,8 +1791,8 @@ class InstallHACmd(Command):
             print "Something error on host: %s\n %s" % (args.host2, self.output)
         #run_remote_command_no_bash(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
-        self.command = "zstack-ctl deploy_cassandra_db"
-        run_remote_command(self.command, self.host1_post_info)
+        #self.command = "zstack-ctl deploy_cassandra_db"
+        #run_remote_command(self.command, self.host1_post_info)
         print "Starting to deploy Kairosdb HA......"
         self.command = 'zstack-ctl kairosdb --start --wait-timeout 120'
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
@@ -1805,8 +1805,9 @@ class InstallHACmd(Command):
         #run_remote_command(self.command, self.host2_post_info)
 
         # change Cassadra duplication number
-        self.update_cassadra = "ALTER KEYSPACE zstack_billing WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };" \
-                               "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
+         self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
+        #self.update_cassadra = "ALTER KEYSPACE zstack_billing WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };" \
+        #                       "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
         self.command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
         run_remote_command(self.command, self.host1_post_info)
         print "Cassandra and Kairosdb HA deploy successful!"
