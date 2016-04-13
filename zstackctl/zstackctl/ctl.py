@@ -1657,7 +1657,7 @@ class InstallHACmd(Command):
             os.system("touch /etc/ansible/ansible.cfg")
         with open('/etc/ansible/ansible.cfg') as self.ansible_cfg:
             self.ansible_cfg_content = self.ansible_cfg.readlines()
-            if '[defaults]\n' not in self.ansible_cfg_content:
+            if '[defaults]\n' not in self.ansible_cfg_content and '[defaults]' not in self.ansible_cfg_content:
                 with open('/etc/ansible/ansible.cfg','a') as self.ansible_cfg_head:
                     self.ansible_cfg_head.write("[defaults]\n")
             if 'host_key_checking=False\n' not in self.ansible_cfg_content and "host_key_checking=False" not in self.ansible_cfg_content:
@@ -1823,6 +1823,9 @@ class InstallHACmd(Command):
                     "regexp='^Kairosdb.ip' line='Kairosdb.ip=%s'" % args.vip, self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^Kairosdb.port' line='Kairosdb.port=58080'", self.host1_post_info)
+        update_file("%s" % ctl.properties_file_path,
+                    "regexp='management\.server\.ip' line='management.server.ip = %s'" % args.host1, self.host1_post_info)
+
         self.copy_arg = CopyArg()
         self.copy_arg.src = ctl.properties_file_path
         self.copy_arg.dest = ctl.properties_file_path
@@ -1834,11 +1837,11 @@ class InstallHACmd(Command):
         self.command = 'zstack-ctl cassandra --start --wait-timeout 120'
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
-            print "Something error on host: %s\n %s" % (args.host1, self.output)
+            print "Something wrong on host: %s\n %s" % (args.host1, self.output)
             sys.exit(1)
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
         if self.status != 0:
-            print "Something error on host: %s\n %s" % (args.host2, self.output)
+            print "Something wrong on host: %s\n %s" % (args.host2, self.output)
             sys.exit(1)
         #run_remote_command_no_bash(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
@@ -1848,11 +1851,11 @@ class InstallHACmd(Command):
         self.command = 'zstack-ctl kairosdb --start --wait-timeout 120'
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
-            print "Something error on host: %s\n %s" % (args.host1, self.output)
+            print "Something wrong on host: %s\n %s" % (args.host1, self.output)
             sys.exit(1)
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
         if self.status != 0:
-            print "Something error on host: %s\n %s" % (args.host2, self.output)
+            print "Something wrong on host: %s\n %s" % (args.host2, self.output)
             sys.exit(1)
         #run_remote_command(self.command, self.host1_post_info)
         #run_remote_command(self.command, self.host2_post_info)
@@ -1875,11 +1878,11 @@ class InstallHACmd(Command):
         #run_remote_command(self.command, self.host2_post_info)
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
-            print "Something error on host: %s\n %s" % (args.host1, self.output)
+            print "Something wrong on host: %s\n %s" % (args.host1, self.output)
             sys.exit(1)
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
         if self.status != 0:
-            print "Something error on host: %s\n %s" % (args.host2, self.output)
+            print "Something wrong on host: %s\n %s" % (args.host2, self.output)
             sys.exit(1)
 
         print '''HA deploy finished!
@@ -2026,7 +2029,7 @@ listen  proxy-kairosdb 0.0.0.0:58080
         copy(self.copy_arg,self.host2_post_info)
 
         #config haproxy firewall
-        self.command = "! iptables -I INPUT -p tcp -m tcp --dport 53306 -j ACCEPT > /dev/null 2>&1 && iptables -I INPUT -p tcp -m tcp --dport 53306 -j ACCEPT; " \
+        self.command = "! iptables -C INPUT -p tcp -m tcp --dport 53306 -j ACCEPT > /dev/null 2>&1 && iptables -I INPUT -p tcp -m tcp --dport 53306 -j ACCEPT; " \
                        "! iptables -C INPUT -p tcp -m tcp --dport 55672 -j ACCEPT > /dev/null 2>&1  &&  iptables -I INPUT -p tcp -m tcp --dport 55672 -j ACCEPT ; " \
                        "! iptables -C INPUT -p tcp -m tcp --dport 80 -j ACCEPT > /dev/null 2>&1  && iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT ; " \
                        "! iptables -C INPUT -p tcp -m tcp --dport 9132 -j ACCEPT > /dev/null 2>&1 &&  iptables -I INPUT -p tcp -m tcp --dport 9132 -j ACCEPT ; " \
@@ -2211,6 +2214,48 @@ wsrep_sst_method=rsync
         self.copy_arg.src = self.galera_config_host2_file
         self.copy_arg.dest = "/etc/my.cnf.d/galera.cnf"
         copy(self.copy_arg, self.host2_post_info)
+
+        # Config utf-8 for mysql
+        self.post_install_script = '''#!/bin/bash
+if [ -f /etc/mysql/my.cnf ]; then
+   # Ubuntu
+   sed -i 's/^bind-address/#bind-address/' /etc/mysql/my.cnf
+   sed -i 's/^skip-networking/#skip-networking/' /etc/mysql/my.cnf
+   grep '^character-set-server' /etc/mysql/my.cnf >/dev/null 2>&1
+   if [ $? -ne 0 ]; then
+       sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/mysql/my.cnf
+   fi
+   grep '^skip-name-resolve' /etc/mysql/my.cnf >/dev/null 2>&1
+   if [ $? -ne 0 ]; then
+       sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/mysql/my.cnf
+   fi
+fi
+
+if [ -f /etc/my.cnf ]; then
+   # CentOS
+   sed -i 's/^bind-address/#bind-address/' /etc/my.cnf
+   sed -i 's/^skip-networking/#skip-networking/' /etc/my.cnf
+   grep '^character-set-server' /etc/my.cnf >/dev/null 2>&1
+   if [ $? -ne 0 ]; then
+       sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/my.cnf
+   fi
+   grep '^skip-name-resolve' /etc/my.cnf >/dev/null 2>&1
+   if [ $? -ne 0 ]; then
+       sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/my.cnf
+   fi
+fi
+        '''
+        self.post_script_fd, self.post_install_script_path= tempfile.mkstemp()
+        self.fd = os.fdopen(self.post_script_fd, 'w')
+        self.fd.write(self.post_install_script)
+        script(self.post_install_script_path, self.host1_post_info)
+        script(self.post_install_script_path, self.host2_post_info)
+        self.fd.close()
+
+        def cleanup_post_install_config_file():
+            os.remove(self.post_install_script_path)
+        self.install_cleanup_routine(cleanup_post_install_config_file)
+
         # restart mysql service to enable galera config
         self.command = "service mysql stop || echo True"
         run_remote_command(self.command, self.host1_post_info)

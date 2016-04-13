@@ -291,6 +291,44 @@ def yum_check_package(name, host_post_info):
         handle_ansible_info(details, host_post_info, "INFO")
         return False
 
+def script(file, host_post_info, script_arg=None):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Running script %s on host %s ... " % (file,host), host_post_info, "INFO")
+    if script_arg is not None:
+        args = file + " " + script_arg
+    else:
+        args = file
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='script',
+        module_args=args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        status = result['contacted'][host]['rc']
+        if status == 0:
+            details = "SUCC: The script %s on host %s finish " % (file, host)
+            handle_ansible_info(details, host_post_info, "INFO")
+            return True
+        else:
+            description = "ERROR: The script %s failed on host %s" % (file, host)
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
 
 def yum_install_package(name, host_post_info):
     start_time = datetime.now()
