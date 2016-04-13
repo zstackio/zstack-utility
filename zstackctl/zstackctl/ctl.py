@@ -1532,6 +1532,32 @@ class InstallHACmd(Command):
         self.description =  "install high availability environment for Mevoco."
         ctl.register_command(self)
 
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host1-info',
+                            help="The first host connect info follow below format: 'root:password@ip_address' ",
+                            required=True)
+        parser.add_argument('--host2-info',
+                            help="The second host connect info follow below format: 'root:password@ip_address' ",
+                            required=True)
+        parser.add_argument('--vip',
+                            help="The virtual IP address for HA setup",
+                            required=True)
+        parser.add_argument('--gateway',
+                            help="The gateway IP address for HA setup",
+                            default=None)
+        parser.add_argument('--mysql-root-password',
+                            help="Password of MySQL root user", default="zstack123")
+        parser.add_argument('--mysql-user-password',
+                            help="Password of MySQL user zstack", default="zstack123")
+        parser.add_argument('--rabbit-password',
+                            help="RabbitMQ password; if set, the password will be created on RabbitMQ for username "
+                                 "specified by --rabbit-username. [DEFAULT] rabbitmq default password",
+                            default="zstack123")
+        parser.add_argument('--drop', action='store_true', default=False,
+                            help="Force delete mysql data for re-deploy HA")
+        parser.add_argument('--recovery-from-this-host', action='store_true', default=False,
+                            help="This argument for admin to recovery mysql from the last shutdown mysql server")
+
     def get_default_gateway(self):
         '''This function will return default route gateway ip address'''
         with open("/proc/net/route") as gateway:
@@ -1550,6 +1576,14 @@ class InstallHACmd(Command):
                                                     35099, struct.pack('256s', device_name))[20:24])
         self.formatted_netmask = sum([bin(int(x)).count('1') for x in self.netmask.split('.')])
         return self.formatted_netmask
+
+    def get_ip_by_interface(self, device_name):
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            return socket.inet_ntoa(fcntl.ioctl(
+                s.fileno(),
+                0x8915,
+                struct.pack('256s', device_name[:15])
+            )[20:24])
 
     def check_host_info_format(self, host_info):
         if '@' not in host_info:
@@ -1576,35 +1610,11 @@ class InstallHACmd(Command):
                 self.port = host_info.split('@')[1].split(':')[1]
             return (self.user, self.password, self.ip, self.port)
 
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--host1-info',
-                            help="The first host connect info follow below format: 'root:password@ip_address' ",
-                            required=True)
-        parser.add_argument('--host2-info',
-                            help="The second host connect info follow below format: 'root:password@ip_address' ",
-                            required=True)
-        parser.add_argument('--vip',
-                            help="The virtual IP address for HA setup",
-                            required=True)
-        parser.add_argument('--gateway',
-                            help="The gateway IP address for HA setup",
-                            default=None)
-        parser.add_argument('--mysql-root-password',
-                            help="Password of MySQL root user", default="zstack123")
-        parser.add_argument('--mysql-user-password',
-                            help="Password of MySQL user zstack", default="zstack123")
-        parser.add_argument('--rabbit-password',
-                            help="RabbitMQ password; if set, the password will be created on RabbitMQ for username "
-                                 "specified by --rabbit-username. [DEFAULT] rabbitmq default password",
-                            default="zstack123")
-        parser.add_argument('--drop', action='store_true', default=False,
-                            help="Force delete mysql data for re-deploy HA")
-
     def run(self, args):
         # check gw ip is available
         if args.gateway is None:
             if self.get_default_gateway() is None:
-                print "Can't get the gateway IP address from system, you should pass it through \"--gateway\" argument"
+                print "Can't get the gateway IP address from system, please check your route table or pass specific gateway through \"--gateway\" argument"
                 sys.exit(1)
             else:
                 self.gateway_ip = self.get_default_gateway()
@@ -1625,6 +1635,9 @@ class InstallHACmd(Command):
         args.host2_password = self.host2_connect_info_list[1]
 
         # check root password is available
+        if args.host1_password != args.host2_password:
+            print "Host1 password and Host2 password must be the same! Please change one of them!"
+            sys.exit(1)
         self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
                       'StrictHostKeyChecking=no  root@%s echo ""' % (args.host1_password, args.host1)
         (self.status, self.output) = commands.getstatusoutput(self.command)
@@ -1653,14 +1666,15 @@ class InstallHACmd(Command):
 
         # Add ansible.cfg for offline image
         if os.path.isfile("/etc/ansible/ansible.cfg") is not True:
-            os.mkdir("/etc/ansible/")
+            if os.path.exists("/etc/ansible/") is False:
+                os.mkdir("/etc/ansible/")
             os.system("touch /etc/ansible/ansible.cfg")
         with open('/etc/ansible/ansible.cfg') as self.ansible_cfg:
             self.ansible_cfg_content = self.ansible_cfg.readlines()
             if '[defaults]\n' not in self.ansible_cfg_content and '[defaults]' not in self.ansible_cfg_content:
                 with open('/etc/ansible/ansible.cfg','a') as self.ansible_cfg_head:
                     self.ansible_cfg_head.write("[defaults]\n")
-            if 'host_key_checking=False\n' not in self.ansible_cfg_content and "host_key_checking=False" not in self.ansible_cfg_content:
+            if 'host_key_checking = False\n' not in self.ansible_cfg_content and "host_key_checking = False" not in self.ansible_cfg_content:
                 with open('/etc/ansible/ansible.cfg','a') as self.ansible_cfg_key:
                     self.ansible_cfg_key.write("host_key_checking = False\n")
 
@@ -1730,6 +1744,38 @@ class InstallHACmd(Command):
                                   (args.host2_password, args.host2, self.add_public_key_command)
         os.system(self.ssh_add_public_key_command)
 
+        # check whether to recovery the HA cluster
+        if args.recovery_from_this_host is True:
+            self.command = "service mysql bootstrap"
+            self.local_ip = self.get_ip_by_interface("br_eth0")
+            (status, output) = commands.getstatusoutput(self.command)
+            if status != 0:
+                print output
+                sys.exit(1)
+            else:
+                self.command = "service mysql start"
+                if self.local_ip == self.host1_post_info.host:
+                    run_remote_command(self.command, self.host2_post_info)
+                    self.command = "service mysql restart"
+                    run_remote_command(self.command, self.host1_post_info)
+                else:
+                    run_remote_command(self.command, self.host1_post_info)
+                    self.command = "service mysql restart"
+                    run_remote_command(self.command, self.host2_post_info)
+                self.command = "zstack-ctl start"
+                (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+                if self.status != 0:
+                    print "Something wrong on host: %s\n %s" % (args.host1, self.output)
+                    sys.exit(1)
+                (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+                if self.status != 0:
+                    print "Something wrong on host: %s\n %s" % (args.host2, self.output)
+                    sys.exit(1)
+            sys.exit(0)
+
+        # get iptables from system config
+        service_status("iptables","state=restarted",self.host1_post_info)
+        service_status("iptables","state=restarted",self.host2_post_info)
         # remove mariadb for avoiding conflict with mevoco install process
         self.command = "rpm -q mariadb | grep 'not installed' || yum remove -y mariadb"
         run_remote_command(self.command, self.host1_post_info)
@@ -1884,6 +1930,16 @@ class InstallHACmd(Command):
         if self.status != 0:
             print "Something wrong on host: %s\n %s" % (args.host2, self.output)
             sys.exit(1)
+
+        # Add zstack-ctl start to rc.local for auto recovery when system reboot
+        self.command = "service iptables save"
+        run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(self.command, self.host2_post_info)
+        file_operation("/etc/rc.d/rc.local","mode=0755", self.host1_post_info)
+        file_operation("/etc/rc.d/rc.local","mode=0755", self.host2_post_info)
+        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start > /tmp/zstack-boot.log 2>&1'", self.host1_post_info)
+        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start > /tmp/zstack-boot.log 2>&1'", self.host2_post_info)
+
 
         print '''HA deploy finished!
 Mysql user 'root' password: %s
@@ -2155,6 +2211,7 @@ class MysqlHA(InstallHACmd):
         # Generate galera config file and copy to host1 host2
         self.galera_raw_config= '''[mysqld]
 skip-name-resolve=1
+character-set-server=utf8
 binlog_format=ROW
 default-storage-engine=innodb
 innodb_autoinc_lock_mode=2
@@ -2215,56 +2272,13 @@ wsrep_sst_method=rsync
         self.copy_arg.dest = "/etc/my.cnf.d/galera.cnf"
         copy(self.copy_arg, self.host2_post_info)
 
-        # Config utf-8 for mysql
-        self.post_install_script = '''#!/bin/bash
-if [ -f /etc/mysql/my.cnf ]; then
-   # Ubuntu
-   sed -i 's/^bind-address/#bind-address/' /etc/mysql/my.cnf
-   sed -i 's/^skip-networking/#skip-networking/' /etc/mysql/my.cnf
-   grep '^character-set-server' /etc/mysql/my.cnf >/dev/null 2>&1
-   if [ $? -ne 0 ]; then
-       sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/mysql/my.cnf
-   fi
-   grep '^skip-name-resolve' /etc/mysql/my.cnf >/dev/null 2>&1
-   if [ $? -ne 0 ]; then
-       sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/mysql/my.cnf
-   fi
-fi
-
-if [ -f /etc/my.cnf ]; then
-   # CentOS
-   sed -i 's/^bind-address/#bind-address/' /etc/my.cnf
-   sed -i 's/^skip-networking/#skip-networking/' /etc/my.cnf
-   grep '^character-set-server' /etc/my.cnf >/dev/null 2>&1
-   if [ $? -ne 0 ]; then
-       sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/my.cnf
-   fi
-   grep '^skip-name-resolve' /etc/my.cnf >/dev/null 2>&1
-   if [ $? -ne 0 ]; then
-       sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/my.cnf
-   fi
-fi
-        '''
-        self.post_script_fd, self.post_install_script_path= tempfile.mkstemp()
-        self.fd = os.fdopen(self.post_script_fd, 'w')
-        self.fd.write(self.post_install_script)
-        script(self.post_install_script_path, self.host1_post_info)
-        script(self.post_install_script_path, self.host2_post_info)
-        self.fd.close()
-
-        def cleanup_post_install_config_file():
-            os.remove(self.post_install_script_path)
-        self.install_cleanup_routine(cleanup_post_install_config_file)
-
         # restart mysql service to enable galera config
         self.command = "service mysql stop || echo True"
         run_remote_command(self.command, self.host1_post_info)
         self.command = "service mysql bootstrap"
         run_remote_command(self.command, self.host1_post_info)
-        self.command = "service mysql start"
-        run_remote_command(self.command, self.host2_post_info)
-        self.command = "service mysql restart"
-        run_remote_command(self.command, self.host1_post_info)
+        service_status("mysql","state=started enabled=yes", self.host2_post_info)
+        service_status("mysql","state=restarted enabled=yes", self.host1_post_info)
 
         self.init_install = check_command_status("mysql -u root --password='' -e 'exit' ", self.host1_post_info)
         if self.init_install is True:
@@ -2457,7 +2471,7 @@ class RabbitmqHA(InstallHACmd):
         run_remote_command(self.command, self.host2_post_info)
 
         # to start rabbitmq-server firstly for generate cookie file
-        service_status("rabbitmq-server","state=started", self.host1_post_info)
+        service_status("rabbitmq-server","state=started enabled=yes", self.host1_post_info)
         service_status("rabbitmq-server","state=stopped", self.host1_post_info)
         # we need to fetch cookie from host1 then copy to host2
         self.fetch_arg=FetchArg()
@@ -2472,7 +2486,7 @@ class RabbitmqHA(InstallHACmd):
         copy(self.copy_arg, self.host2_post_info)
 
         service_status("rabbitmq-server", "state=started", self.host1_post_info)
-        service_status("rabbitmq-server", "state=started", self.host2_post_info)
+        service_status("rabbitmq-server", "state=started  enabled=yes", self.host2_post_info)
         #todo : check the cluster status
         # add zstack2 to cluster
         self.command = "rabbitmqctl stop_app"
