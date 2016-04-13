@@ -1634,7 +1634,6 @@ class InstallHACmd(Command):
         args.host2 = self.host2_connect_info_list[2]
         args.host2_password = self.host2_connect_info_list[1]
 
-
         # check root password is available
         if args.host1_password != args.host2_password:
             print "Host1 password and Host2 password must be the same! Please change one of them!"
@@ -1669,6 +1668,11 @@ class InstallHACmd(Command):
         self.local_ip = self.get_ip_by_interface("br_eth0")
         if args.host1 != self.local_ip:
             print "Please run this command at host1 %s" % args.host1
+            sys.exit(1)
+
+        # check user input wrong host2 ip
+        if args.host2 == args.host1:
+            print "The host1 and host2 should not be the same ip address!"
             sys.exit(1)
 
         # Add ansible.cfg for offline image
@@ -1896,10 +1900,7 @@ class InstallHACmd(Command):
         if self.status != 0:
             print "Something wrong on host: %s\n %s" % (args.host2, self.output)
             sys.exit(1)
-        #run_remote_command_no_bash(self.command, self.host1_post_info)
-        #run_remote_command(self.command, self.host2_post_info)
-        #self.command = "zstack-ctl deploy_cassandra_db"
-        #run_remote_command(self.command, self.host1_post_info)
+
         print "Starting to deploy Kairosdb HA......"
         self.command = 'zstack-ctl kairosdb --start --wait-timeout 120'
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
@@ -1910,13 +1911,9 @@ class InstallHACmd(Command):
         if self.status != 0:
             print "Something wrong on host: %s\n %s" % (args.host2, self.output)
             sys.exit(1)
-        #run_remote_command(self.command, self.host1_post_info)
-        #run_remote_command(self.command, self.host2_post_info)
 
         # change Cassadra duplication number
         self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
-        #self.update_cassadra = "ALTER KEYSPACE zstack_billing WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };" \
-        #                       "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
         self.command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
         run_remote_command(self.command, self.host1_post_info)
         print "Cassandra and Kairosdb HA deploy successful!"
@@ -1927,8 +1924,6 @@ class InstallHACmd(Command):
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
         self.command = "zstack-ctl start"
-        #run_remote_command(self.command, self.host1_post_info)
-        #run_remote_command(self.command, self.host2_post_info)
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
             print "Something wrong on host: %s\n %s" % (args.host1, self.output)
@@ -2186,13 +2181,6 @@ vrrp_instance VI_1 {
         copy(self.copy_arg, self.host2_post_info)
 
         # restart haproxy and keepalived
-        # need to change httpd default 80 port to 88
-#        update_file("/etc/httpd/conf/httpd.conf","state=absent regexp='Listen 80'", self.host1_post_info)
-#        update_file("/etc/httpd/conf/httpd.conf","state=absent regexp='Listen 80'", self.host2_post_info)
-#        update_file("/etc/httpd/conf/httpd.conf","regexp='^Listen' insertafter='#Listen' line='Listen 8123'", self.host1_post_info)
-#        update_file("/etc/httpd/conf/httpd.conf","regexp='^Listen' insertafter='#Listen' line='Listen 8123'", self.host2_post_info)
-#        service_status("httpd", "state=restarted enabled=yes", self.host1_post_info)
-#        service_status("httpd", "state=restarted enabled=yes", self.host2_post_info)
         service_status("keepalived", "state=restarted enabled=yes", self.host1_post_info)
         service_status("keepalived", "state=restarted enabled=yes", self.host2_post_info)
         service_status("haproxy", "state=restarted enabled=yes", self.host1_post_info)
@@ -2453,6 +2441,13 @@ echo $TIMEST >> /var/log/check-network.log
         run_remote_command(self.command,self.host2_post_info)
         service_status("xinetd","state=restarted enabled=yes",self.host1_post_info)
         service_status("xinetd","state=restarted enabled=yes",self.host2_post_info)
+
+        # add crontab for backup mysql
+        cron("backup_zstack_db","hour='1,13' job='/usr/bin/zstack-ctl dump_mysql --mysql-password %s > /dev/null 2>&1'"
+             % self.host1_post_info.mysql_password, self.host1_post_info)
+        cron("backup_zstack_db","hour='7,19' job='/usr/bin/zstack-ctl dump_mysql --mysql-password %s > /dev/null 2>&1'"
+             % self.host1_post_info.mysql_password, self.host2_post_info)
+
         print "Mysql HA deploy successful!"
 
 
@@ -2766,6 +2761,58 @@ class InstallKairosdbCmd(Command):
         shell('''sed -i 's/<root level="DEBUG">/<root level="INFO">/g' %s''' % log_conf)
 
         info('successfully installed kairosdb, the config file is written to %s' % original_conf_path)
+
+
+class DumpMysqlCmd(Command):
+    def __init__(self):
+        super(DumpMysqlCmd, self).__init__()
+        self.name = "dump_mysql"
+        self.description = (
+            "Dump mysql database for backup"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--mysql-password', help='The mysql root password for dump database', required=True)
+        parser.add_argument('--host',
+                            help="Mysql host, default is localhost", default="localhost")
+        parser.add_argument('--file-name',
+                            help="The filename you want to save the database, default is 'zstack-backup-db'",
+                            default="zstack-backup-db")
+        #parser.add_argument('--keep-count',
+        #                    help="The number of backup files you want to keep, older backup files will be deleted, default number is 60",
+        #                    default=60)
+
+    def run(self, args):
+        self.password = args.mysql_password
+        self.host = args.host
+        self.file_name = args.file_name
+        self.backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.db_backup_dir = ctl.zstack_home + "/../../../mysql-backup/"
+        if os.path.exists(self.db_backup_dir) is False:
+            os.mkdir(self.db_backup_dir)
+        self.db_backup_name = self.db_backup_dir + self.file_name + "-" + self.backup_timestamp
+        if self.host == "localhost":
+            (status, output) = commands.getstatusoutput("mysqldump --add-drop-database  --databases -u root -p%s zstack"
+                                                        " zstack_rest > %s " % (self.password, self.db_backup_name))
+            if status != 0:
+                print output
+                sys.exit(1)
+        else:
+            (status, output) = commands.getstatusoutput("mysqldump --add-drop-database --databases -u root -p%s --host "
+                                                        "%s zstack zstack_rest > %s " % (self.password, self.host, self.db_backup_name))
+            if status != 0:
+                print output
+                sys.exit(1)
+        print "Backup mysql successful! You can check the file at %s" % self.db_backup_name
+        # remove old file
+        if len(os.listdir(self.db_backup_dir)) > 60:
+            self.backup_files_list = [s for s in os.listdir(self.db_backup_dir) if os.path.isfile(os.path.join(self.db_backup_dir, s))]
+            self.backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(self.db_backup_dir, s)))
+            for self.expired_file in self.backup_files_list[-60:]:
+                os.remove(self.db_backup_dir + self.expired_file)
+
+
 
 class ChangeIpCmd(Command):
     def __init__(self):
@@ -4578,6 +4625,7 @@ def main():
     DeployCassandraDbCmd()
     ChangeIpCmd()
     InstallHACmd()
+    DumpMysqlCmd()
 
     try:
         ctl.run()
