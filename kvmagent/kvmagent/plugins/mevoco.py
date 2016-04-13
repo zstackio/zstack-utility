@@ -270,9 +270,10 @@ mimetype.assign = (
         with open(instance_id_file_path, 'w') as fd:
             fd.write(cmd.metadata.vmUuid)
 
-        userdata_file_path = os.path.join(root, 'user-data')
-        with open(userdata_file_path, 'w') as fd:
-            fd.write(cmd.userdata)
+        if cmd.userdata:
+            userdata_file_path = os.path.join(root, 'user-data')
+            with open(userdata_file_path, 'w') as fd:
+                fd.write(cmd.userdata)
 
         pid = linux.find_process_by_cmdline([conf_path])
         if not pid:
