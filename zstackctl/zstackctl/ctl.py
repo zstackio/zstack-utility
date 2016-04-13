@@ -1634,6 +1634,7 @@ class InstallHACmd(Command):
         args.host2 = self.host2_connect_info_list[2]
         args.host2_password = self.host2_connect_info_list[1]
 
+
         # check root password is available
         if args.host1_password != args.host2_password:
             print "Host1 password and Host2 password must be the same! Please change one of them!"
@@ -1662,6 +1663,12 @@ class InstallHACmd(Command):
         self.interface_list = os.listdir('/sys/class/net/')
         if 'br_eth0' not in self.interface_list:
             print "Make sure you have already run the 'network-setting' script under /root/scripts/"
+            sys.exit(1)
+
+        # check user start this command on host1
+        self.local_ip = self.get_ip_by_interface("br_eth0")
+        if args.host1 != self.local_ip:
+            print "Please run this command at host1 %s" % args.host1
             sys.exit(1)
 
         # Add ansible.cfg for offline image
