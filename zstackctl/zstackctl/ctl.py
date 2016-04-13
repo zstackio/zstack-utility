@@ -2390,7 +2390,7 @@ echo $TIMEST >> /var/log/check-network.log
 
         self.host2_config, self.galera_check_network_host2_file = tempfile.mkstemp()
         self.f2 = os.fdopen(self.host2_config, 'w')
-        self.f2.write(self.galera_check_network_host1)
+        self.f2.write(self.galera_check_network_host2)
         self.f2.close()
 
         def cleanup_gelerachk_script():
