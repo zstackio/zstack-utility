@@ -1876,6 +1876,8 @@ class InstallHACmd(Command):
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^CloudBus\.rabbitmqPassword' line='CloudBus.rabbitmqPassword=%s'" % args.rabbit_password, self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
+                    "regexp='^CloudBus\.rabbitmqHeartbeatTimeout' line='CloudBus.rabbitmqHeartbeatTimeout=10'", self.host1_post_info)
+        update_file("%s" % ctl.properties_file_path,
                     "regexp='^Cassandra\.contactPoints' line='Cassandra.contactPoints=%s,%s'" % (args.host1,args.host2), self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^Kairosdb.ip' line='Kairosdb.ip=%s'" % args.vip, self.host1_post_info)
