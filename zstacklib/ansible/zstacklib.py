@@ -20,7 +20,7 @@ host = ""
 pkg_zstacklib = ""
 yum_server = ""
 trusted_host = ""
-
+ansible.constants.HOST_KEY_CHECKING = False
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
