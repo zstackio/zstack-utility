@@ -294,6 +294,8 @@ class CtlParser(argparse.ArgumentParser):
 class Ctl(object):
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
     USER_ZSTACK_HOME_DIR = os.path.expanduser('~zstack')
+    LAST_ALIVE_MYSQL_IP = "MYSQL_LATEST_IP"
+    LAST_ALIVE_MYSQL_PORT = "MYSQL_LATEST_PORT"
 
     def __init__(self):
         self.commands = {}
@@ -424,6 +426,18 @@ class Ctl(object):
 
     def get_live_mysql_portal(self):
         hostname_ports, user, password = self.get_database_portal()
+
+        last_ip = ctl.get_env(self.LAST_ALIVE_MYSQL_IP)
+        last_port = ctl.get_env(self.LAST_ALIVE_MYSQL_PORT)
+        if last_ip and last_port and (last_ip, last_port) in hostname_ports:
+            first = (last_ip, last_port)
+            lst = [first]
+            for it in hostname_ports:
+                if it != first:
+                    lst.append(it)
+
+            hostname_ports = lst
+
         errors = []
         for hostname, port in hostname_ports:
             if password:
@@ -434,6 +448,11 @@ class Ctl(object):
             cmd = ShellCmd(sql)
             cmd(False)
             if cmd.return_code == 0:
+                # record the IP and port, so next time we will try them first
+                ctl.put_envs([
+                    (self.LAST_ALIVE_MYSQL_IP, hostname),
+                    (self.LAST_ALIVE_MYSQL_PORT, port)
+                ])
                 return hostname, port, user, password
 
             errors.append('failed to connect to the mysql server[hostname:%s, port:%s, user:%s, password:%s]: %s %s' % (
