@@ -1117,7 +1117,7 @@ done
 EOF
     chmod a+x /etc/cron.daily/zstack_archive_logs.sh
 
-    crontab -l |grep 'zstack-ctl dump_mysql' >dev/null 2>&1
+    crontab -l 2>/dev/null |grep 'zstack-ctl dump_mysql' >/dev/null
     if [ $? -ne 0 ]; then
         crontab <<EOF
 30 0,12 * * * zstack-ctl dump_mysql --keep-amount 14
