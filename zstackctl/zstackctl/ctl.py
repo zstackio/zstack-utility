@@ -1526,6 +1526,7 @@ class InstallHACmd(Command):
     '''This feature only support zstack offline image currently'''
     host_post_info_list = []
     current_dir = ""
+    logger_dir = ""
     def __init__(self):
         super(InstallHACmd, self).__init__()
         self.name = "install_ha"
@@ -1587,12 +1588,12 @@ class InstallHACmd(Command):
 
     def check_host_info_format(self, host_info):
         if '@' not in host_info:
-            print "Host connect information should follow format: 'root:password@host_ip:ssh_port', please check your input!"
+            print "Host connect information should follow format: 'root:password@host_ip', please check your input!"
             sys.exit(1)
         else:
             # get user and password
             if ':' not in host_info.split('@')[0]:
-                print "Host connect information should follow format: 'root:password@host_ip:ssh_port', please check your input!"
+                print "Host connect information should follow format: 'root:password@host_ip', please check your input!"
                 sys.exit(1)
             else:
                 self.user = host_info.split('@')[0].split(':')[0]
@@ -1692,8 +1693,8 @@ class InstallHACmd(Command):
         #init variables
         self.yum_repo = ctl.read_property('Ansible.var.yum_repo')
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
-        self.private_key_name = self.current_dir + "/conf/ha_key"
-        self.public_key_name = self.current_dir + "/conf/ha_key.pub"
+        self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
+        self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
         if os.path.isfile(self.public_key_name) is not True:
             rc = os.system("echo -e  'y\n'|ssh-keygen -q -t rsa -N \"\" -f %s" % self.private_key_name)
             if rc != 0:
@@ -1702,13 +1703,13 @@ class InstallHACmd(Command):
         with open(self.public_key_name) as self.public_key_file:
             self.public_key = self.public_key_file.read()
         # create log
-        self.logger_dir = os.path.join(ctl.zstack_home, "../../logs/")
-        create_log(self.logger_dir)
+        InstallHACmd.logger_dir = os.path.join(ctl.zstack_home, "../../logs/")
+        create_log(InstallHACmd.logger_dir)
         # create inventory file
-        with  open('%s/conf/host' % self.current_dir ,'w') as f:
+        with  open('%s/conf/host' % InstallHACmd.current_dir ,'w') as f:
             f.writelines([args.host1+'\n', args.host2+'\n'])
         #self.host_inventory = '%s,%s' % (args.host1, args.host2)
-        self.host_inventory = self.current_dir + '/conf/host'
+        self.host_inventory = InstallHACmd.current_dir + '/conf/host'
 
         # init host1 parameter
         self.host1_post_info = HostPostInfo()
@@ -1939,8 +1940,8 @@ class InstallHACmd(Command):
         run_remote_command(self.command, self.host2_post_info)
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host1_post_info)
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host2_post_info)
-        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start > /tmp/zstack-boot.log 2>&1'", self.host1_post_info)
-        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start > /tmp/zstack-boot.log 2>&1'", self.host2_post_info)
+        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start >> %s 2>&1'" % InstallHACmd.logger_dir + '/ha.log', self.host1_post_info)
+        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start >> %s 2>&1'" % InstallHACmd.logger_dir + '/ha.log', self.host2_post_info)
 
 
         print '''HA deploy finished!
@@ -2417,7 +2418,7 @@ echo $TIMEST >> /var/log/check-network.log
         cron("check_node_2_status2","job=\"sleep 30;/usr/local/zstack/check-network.sh %s %s\"" % (self.host2_post_info.host,
                                                                                          self.host2_post_info.gateway_ip),
                                                                                          self.host1_post_info)
-        cron("check_node_1_status2","job=\"/usr/local/zstack/check-network.sh %s %s\"" % (self.host1_post_info.host,
+        cron("check_node_1_status1","job=\"/usr/local/zstack/check-network.sh %s %s\"" % (self.host1_post_info.host,
                                                                                          self.host1_post_info.gateway_ip),
                                                                                          self.host2_post_info)
         cron("check_node_1_status2","job=\"sleep 30;/usr/local/zstack/check-network.sh %s %s\"" % (self.host1_post_info.host,
@@ -2443,10 +2444,12 @@ echo $TIMEST >> /var/log/check-network.log
         service_status("xinetd","state=restarted enabled=yes",self.host2_post_info)
 
         # add crontab for backup mysql
-        cron("backup_zstack_db","hour='1,13' job='/usr/bin/zstack-ctl dump_mysql --mysql-password %s > /dev/null 2>&1'"
-             % self.host1_post_info.mysql_password, self.host1_post_info)
-        cron("backup_zstack_db","hour='7,19' job='/usr/bin/zstack-ctl dump_mysql --mysql-password %s > /dev/null 2>&1'"
-             % self.host1_post_info.mysql_password, self.host2_post_info)
+        cron("backup_zstack_db","minute='0' hour='1,13' job='/usr/bin/zstack-ctl dump_mysql --mysql-password %s >> %s 2>&1'"
+             % (self.host1_post_info.mysql_password, InstallHACmd.logger_dir + '/ha.log'), self.host1_post_info)
+        cron("backup_zstack_db","minute='0' hour='7,19' job='/usr/bin/zstack-ctl dump_mysql --mysql-password %s >> %s 2>&1'"
+             % (self.host1_post_info.mysql_password, InstallHACmd.logger_dir +'/ha.log') , self.host2_post_info)
+        service_status("crond","state=started enabled=yes",self.host1_post_info)
+        service_status("crond","state=started enabled=yes",self.host2_post_info)
 
         print "Mysql HA deploy successful!"
 
