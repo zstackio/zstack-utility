@@ -397,7 +397,12 @@ class Ctl(object):
 
     def read_property(self, key):
         prop = PropertyFile(self.properties_file_path)
-        return prop.read_property(key)
+        val = prop.read_property(key)
+        # our code assume all values are strings
+        if isinstance(val, list):
+            return ','.join(val)
+        else:
+            return val
 
     def write_properties(self, properties):
         prop = PropertyFile(self.properties_file_path)
