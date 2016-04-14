@@ -1749,7 +1749,7 @@ class InstallHACmd(Command):
         self.host1_post_info.host_inventory = self.host_inventory
         self.host1_post_info.private_key = self.private_key_name
         self.host1_post_info.yum_repo = self.yum_repo
-        self.host1_post_info.vip= args.vip
+        self.host1_post_info.vip = args.vip
         self.host1_post_info.gateway_ip = self.gateway_ip
         self.host1_post_info.rabbit_password = args.rabbit_password
         self.host1_post_info.mysql_password = args.mysql_root_password
@@ -2478,10 +2478,10 @@ echo $TIMEST >> /var/log/check-network.log
         service_status("xinetd","state=restarted enabled=yes",self.host2_post_info)
 
         # add crontab for backup mysql
-        cron("backup_zstack_db","minute='0' hour='1,13' job='/usr/bin/zstack-ctl dump_mysql --mysql-password %s >> %s 2>&1'"
-             % (self.host1_post_info.mysql_password, InstallHACmd.logger_dir + '/ha.log'), self.host1_post_info)
-        cron("backup_zstack_db","minute='0' hour='7,19' job='/usr/bin/zstack-ctl dump_mysql --mysql-password %s >> %s 2>&1'"
-             % (self.host1_post_info.mysql_password, InstallHACmd.logger_dir +'/ha.log') , self.host2_post_info)
+        cron("backup_zstack_db","minute='0' hour='1,13' job='/usr/bin/zstack-ctl dump_mysql >> %s 2>&1'"
+             % InstallHACmd.logger_dir + '/ha.log', self.host1_post_info)
+        cron("backup_zstack_db","minute='0' hour='7,19' job='/usr/bin/zstack-ctl dump_mysql >> %s 2>&1'"
+             % InstallHACmd.logger_dir +'/ha.log', self.host2_post_info)
         service_status("crond","state=started enabled=yes",self.host1_post_info)
         service_status("crond","state=started enabled=yes",self.host2_post_info)
 
@@ -2810,44 +2810,43 @@ class DumpMysqlCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--mysql-password', help='The mysql root password for dump database', required=True)
-        parser.add_argument('--host',
-                            help="Mysql host, default is localhost", default="localhost")
         parser.add_argument('--file-name',
                             help="The filename you want to save the database, default is 'zstack-backup-db'",
                             default="zstack-backup-db")
-        #parser.add_argument('--keep-count',
-        #                    help="The number of backup files you want to keep, older backup files will be deleted, default number is 60",
-        #                    default=60)
+        parser.add_argument('--keep-amount',type=int,
+                            help="The amount of backup files you want to keep, older backup files will be deleted, default number is 60",
+                            default=60)
 
     def run(self, args):
-        self.password = args.mysql_password
-        self.host = args.host
+        (self.db_hostname, self.db_port, self.db_user, self.db_password) = ctl.get_database_portal()
         self.file_name = args.file_name
+        self.keep_amount = args.keep_amount
         self.backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.db_backup_dir = ctl.zstack_home + "/../../../mysql-backup/"
         if os.path.exists(self.db_backup_dir) is False:
             os.mkdir(self.db_backup_dir)
         self.db_backup_name = self.db_backup_dir + self.file_name + "-" + self.backup_timestamp
-        if self.host == "localhost":
-            (status, output) = commands.getstatusoutput("mysqldump --add-drop-database  --databases -u root -p%s zstack"
-                                                        " zstack_rest > %s " % (self.password, self.db_backup_name))
+        if self.db_hostname == "localhost":
+            (status, output) = commands.getstatusoutput("mysqldump --add-drop-database  --databases -u %s -p%s -P %s zstack"
+                                                        " zstack_rest > %s " % (self.db_user, self.db_password, self.db_port, self.db_backup_name))
             if status != 0:
                 print output
                 sys.exit(1)
         else:
-            (status, output) = commands.getstatusoutput("mysqldump --add-drop-database --databases -u root -p%s --host "
-                                                        "%s zstack zstack_rest > %s " % (self.password, self.host, self.db_backup_name))
+            (status, output) = commands.getstatusoutput("mysqldump --add-drop-database --databases -u %s -p%s --host "
+                                                        "%s -P %s zstack zstack_rest > %s " % (self.db_user, self.db_password,
+                                                                                               self.db_hostname, self.db_port, self.db_backup_name))
             if status != 0:
                 print output
                 sys.exit(1)
         print "Backup mysql successful! You can check the file at %s" % self.db_backup_name
         # remove old file
-        if len(os.listdir(self.db_backup_dir)) > 60:
+        if len(os.listdir(self.db_backup_dir)) > self.keep_amount:
             self.backup_files_list = [s for s in os.listdir(self.db_backup_dir) if os.path.isfile(os.path.join(self.db_backup_dir, s))]
             self.backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(self.db_backup_dir, s)))
-            for self.expired_file in self.backup_files_list[-60:]:
-                os.remove(self.db_backup_dir + self.expired_file)
+            for self.expired_file in self.backup_files_list:
+                if self.expired_file not in self.backup_files_list[-self.keep_amount:]:
+                    os.remove(self.db_backup_dir + self.expired_file)
 
 
 
