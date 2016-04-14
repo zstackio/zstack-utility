@@ -1116,6 +1116,14 @@ for file in \$target_file; do
 done
 EOF
     chmod a+x /etc/cron.daily/zstack_archive_logs.sh
+
+    crontab -l |grep 'zstack-ctl dump_mysql' >dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        crontab <<EOF
+30 0,12 * * * zstack-ctl dump_mysql --keep-amount 14
+EOF
+    fi
+
     pass
 }
 
