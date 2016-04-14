@@ -957,7 +957,7 @@ uz_upgrade_zstack(){
         echo "reset rabbitmq" >>$ZSTACK_INSTALL_LOG 2>&1
         rabbitmqctl stop_app  >>$ZSTACK_INSTALL_LOG 2>&1
         rabbitmqctl reset  >>$ZSTACK_INSTALL_LOG 2>&1
-        rabbitmqlctl start_app  >>$ZSTACK_INSTALL_LOG 2>&1
+        rabbitmqctl start_app  >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
             fail "failed to reset rabbitmq and start rabbitmq"
         fi
