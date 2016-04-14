@@ -19,6 +19,7 @@ host = ""
 pkg_zstacklib = ""
 yum_server = ""
 trusted_host = ""
+ansible.constants.HOST_KEY_CHECKING = False
 
 
 class AgentInstallArg(object):

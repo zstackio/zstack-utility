@@ -1713,20 +1713,6 @@ class InstallHACmd(Command):
             print "The host1 and host2 should not be the same ip address!"
             sys.exit(1)
 
-        # Add ansible.cfg for offline image
-        if os.path.isfile("/etc/ansible/ansible.cfg") is not True:
-            if os.path.exists("/etc/ansible/") is False:
-                os.mkdir("/etc/ansible/")
-            os.system("touch /etc/ansible/ansible.cfg")
-        with open('/etc/ansible/ansible.cfg') as self.ansible_cfg:
-            self.ansible_cfg_content = self.ansible_cfg.readlines()
-            if '[defaults]\n' not in self.ansible_cfg_content and '[defaults]' not in self.ansible_cfg_content:
-                with open('/etc/ansible/ansible.cfg','a') as self.ansible_cfg_head:
-                    self.ansible_cfg_head.write("[defaults]\n")
-            if 'host_key_checking = False\n' not in self.ansible_cfg_content and "host_key_checking = False" not in self.ansible_cfg_content:
-                with open('/etc/ansible/ansible.cfg','a') as self.ansible_cfg_key:
-                    self.ansible_cfg_key.write("host_key_checking = False\n")
-
         #init variables
         self.yum_repo = ctl.read_property('Ansible.var.yum_repo')
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
