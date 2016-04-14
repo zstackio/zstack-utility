@@ -417,6 +417,26 @@ class Ctl(object):
             raise CtlError("cannot find DB url in %s. please set DB.url" % self.properties_file_path)
         return db_url
 
+    def get_live_mysql_portal(self):
+        hostname_ports, user, password = self.get_database_portal()
+        errors = []
+        for hostname, port in hostname_ports:
+            if password:
+                sql = 'mysql --host=%s --port=%s --user=%s --password=%s -e "select 1"' % (hostname, port, user, password)
+            else:
+                sql = 'mysql --host=%s --port=%s --user=%s -e "select 1"' % (hostname, port, user)
+
+            cmd = ShellCmd(sql)
+            cmd(False)
+            if cmd.return_code == 0:
+                return hostname, port, user, password
+
+            errors.append('failed to connect to the mysql server[hostname:%s, port:%s, user:%s, password:%s]: %s %s' % (
+                hostname, port, user, password, cmd.stderr, cmd.stdout
+            ))
+
+        raise CtlError('\n'.join(errors))
+
     def get_database_portal(self):
         db_user = self.read_property("DB.user")
         if not db_user:
@@ -432,12 +452,24 @@ class Ctl(object):
             raise CtlError("cannot find DB password in %s. please set DB.password" % self.properties_file_path)
 
         db_url = self.get_db_url()
-        db_hostname, db_port = db_url.lstrip('jdbc:mysql:').lstrip('/').split('/')[0].split(':')
+        host_name_ports = []
+        if 'jdbc:mysql:loadbalance' not in db_url:
+            db_hostname, db_port = db_url.lstrip('jdbc:mysql:').lstrip('/').split('/')[0].split(':')
+            host_name_ports.append((db_hostname, db_port))
+        else:
+            ips = db_url.lstrip('jdbc:mysql:loadbalance').lstrip('/').split('/')[0]
+            ips = ips.split(',')
+            for ip in ips:
+                if ":" in ip:
+                    hostname, port = ip.split(':')
+                    host_name_ports.append((hostname, port))
+                else:
+                    host_name_ports.append((ip, '3306'))
 
-        return db_hostname, db_port, db_user, db_password
+        return host_name_ports, db_user, db_password
 
     def check_if_management_node_has_stopped(self, force=False):
-        db_hostname, db_port, db_user, db_password = self.get_database_portal()
+        db_hostname, db_port, db_user, db_password = self.get_live_mysql_portal()
 
         def get_nodes():
             query = MySqlCommandLineQuery()
@@ -723,7 +755,7 @@ class ShowStatusCmd(Command):
                 write_status('Unknown')
 
         def show_version():
-            db_hostname, db_port, db_user, db_password = ctl.get_database_portal()
+            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
             if db_password:
                 cmd = ShellCmd('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_password, db_hostname, db_port))
@@ -1087,7 +1119,7 @@ class StartCmd(Command):
                 raise CtlError('8080 is occupied by some process. Please use netstat to find out and stop it')
 
         def check_msyql():
-            db_hostname, db_port, db_user, db_password = ctl.get_database_portal()
+            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
 
             if not check_ip_port(db_hostname, db_port):
                 raise CtlError('unable to connect to %s:%s, please check if the MySQL is running and the firewall rules' % (db_hostname, db_port))
@@ -4073,7 +4105,7 @@ class UpgradeDbCmd(Command):
         if 'zstack' not in db_url:
             db_url = '%s/zstack' % db_url.rstrip('/')
 
-        db_hostname, db_port, db_user, db_password = ctl.get_database_portal()
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
 
         flyway_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/tools/flyway-3.2.1/flyway')
         if not os.path.exists(flyway_path):
@@ -4371,7 +4403,7 @@ class RollbackDatabaseCmd(Command):
         if not os.path.exists(args.db_dump):
             raise CtlError('%s not found' % args.db_dump)
 
-        host, port, _, _ = ctl.get_database_portal()
+        host, port, _, _ = ctl.get_live_mysql_portal()
 
         if args.root_password:
             cmd = ShellCmd('mysql -u root -p%s --host %s --port %s -e "select 1"' % (args.root_password, host, port))
