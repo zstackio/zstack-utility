@@ -874,7 +874,7 @@ class DeployDBCmd(Command):
             if args.keep_db:
                 info('detected existing zstack database and keep it; if you want to drop it, please append parameter --drop, instead of --keep-db\n')
             else:
-                raise CtlError('detected existing zstack database; if you are sure to drop it, please append parameter --drop')
+                raise CtlError('detected existing zstack database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database')
         else:
             cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, args.host, args.port, args.zstack_password))
             cmd(False)
@@ -1612,6 +1612,8 @@ class InstallHACmd(Command):
                             default="zstack123")
         parser.add_argument('--drop', action='store_true', default=False,
                             help="Force delete mysql data for re-deploy HA")
+        parser.add_argument('--keep-db', action='store_true', default=False,
+                            help='keep existing zstack database and not raise error.')
         parser.add_argument('--recovery-from-this-host', action='store_true', default=False,
                             help="This argument for admin to recovery mysql from the last shutdown mysql server")
 
@@ -1875,7 +1877,11 @@ class InstallHACmd(Command):
         self.command = "zstack-ctl stop"
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
-        if args.drop is True:
+        if args.keep_db is True:
+            self.command = "zstack-ctl deploydb --keep-db --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
+                           % (args.host1, args.mysql_user_password, args.mysql_root_password)
+            run_remote_command(self.command, self.host1_post_info)
+        elif args.drop is True:
             self.command = "zstack-ctl deploydb --drop --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
                            % (args.host1, args.mysql_user_password, args.mysql_root_password)
             run_remote_command(self.command, self.host1_post_info)
@@ -2838,20 +2844,27 @@ class DumpMysqlCmd(Command):
         if os.path.exists(self.db_backup_dir) is False:
             os.mkdir(self.db_backup_dir)
         self.db_backup_name = self.db_backup_dir + self.file_name + "-" + self.backup_timestamp
-        if self.db_hostname == "localhost":
-            (status, output) = commands.getstatusoutput("mysqldump --add-drop-database  --databases -u %s -p%s -P %s zstack"
-                                                        " zstack_rest | gzip > %s " % (self.db_user, self.db_password,
-                                                                                       self.db_port, self.db_backup_name + ".gz"))
-            if status != 0:
-                print output
+        if self.db_hostname == "localhost" or self.db_hostname == "127.0.0.1":
+            if self.db_password is None or self.db_password == "":
+                self.db_connect_password = ""
+            else:
+                self.db_connect_password = "-p" + self.db_password
+            self.command = "mysqldump --add-drop-database  --databases -u %s %s -P %s zstack zstack_rest | gzip > %s "\
+                           % (self.db_user, self.db_connect_password, self.db_port, self.db_backup_name + ".gz")
+            (self.status, self.output) = commands.getstatusoutput(self.command)
+            if self.status != 0:
+                print self.output
                 sys.exit(1)
         else:
-            (status, output) = commands.getstatusoutput("mysqldump --add-drop-database --databases -u %s -p%s --host "
-                                                        "%s -P %s zstack zstack_rest | gzip > %s " % (self.db_user, self.db_password,
-                                                                                               self.db_hostname, self.db_port,
-                                                                                               self.db_backup_name + ".gz"))
-            if status != 0:
-                print output
+            if self.db_password is None or self.db_password == "":
+                self.db_connect_password = ""
+            else:
+                self.db_connect_password = "-p" + self.db_password
+            self.command = "mysqldump --add-drop-database  --databases -u %s %s --host %s -P %s zstack zstack_rest | gzip > %s " \
+                           % (self.db_user, self.db_connect_password, self.db_hostname, self.db_port, self.db_backup_name + ".gz")
+            (self.status, self.output) = commands.getstatusoutput(self.command)
+            if self.status != 0:
+                print self.output
                 sys.exit(1)
         print "Backup mysql successful! You can check the file at %s.gz" % self.db_backup_name
         # remove old file
