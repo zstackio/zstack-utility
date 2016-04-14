@@ -2821,18 +2821,20 @@ class DumpMysqlCmd(Command):
         self.db_backup_name = self.db_backup_dir + self.file_name + "-" + self.backup_timestamp
         if self.db_hostname == "localhost":
             (status, output) = commands.getstatusoutput("mysqldump --add-drop-database  --databases -u %s -p%s -P %s zstack"
-                                                        " zstack_rest > %s " % (self.db_user, self.db_password, self.db_port, self.db_backup_name))
+                                                        " zstack_rest | gzip > %s " % (self.db_user, self.db_password,
+                                                                                       self.db_port, self.db_backup_name + ".gz"))
             if status != 0:
                 print output
                 sys.exit(1)
         else:
             (status, output) = commands.getstatusoutput("mysqldump --add-drop-database --databases -u %s -p%s --host "
-                                                        "%s -P %s zstack zstack_rest > %s " % (self.db_user, self.db_password,
-                                                                                               self.db_hostname, self.db_port, self.db_backup_name))
+                                                        "%s -P %s zstack zstack_rest | gzip > %s " % (self.db_user, self.db_password,
+                                                                                               self.db_hostname, self.db_port,
+                                                                                               self.db_backup_name + ".gz"))
             if status != 0:
                 print output
                 sys.exit(1)
-        print "Backup mysql successful! You can check the file at %s" % self.db_backup_name
+        print "Backup mysql successful! You can check the file at %s.gz" % self.db_backup_name
         # remove old file
         if len(os.listdir(self.db_backup_dir)) > self.keep_amount:
             self.backup_files_list = [s for s in os.listdir(self.db_backup_dir) if os.path.isfile(os.path.join(self.db_backup_dir, s))]
