@@ -1973,9 +1973,11 @@ class InstallHACmd(Command):
 Mysql user 'root' password: %s
 Mysql user 'zstack' password: %s
 Rabbitmq user 'zstack' password: %s
-The Mevoco portal http://%s:8888  default user/password is admin/password
-You can check the cluster status at http://%s:9132/zstack with user/passwd zstack/zstack123
-        ''' % (args.mysql_root_password, args.mysql_user_password, args.rabbit_password, args.vip, args.host1)
+Mevoco is running, visit %s in Chrome or Firefox with default user/password : %s
+You can check the cluster status at %s with user/passwd : %s
+       ''' % (args.mysql_root_password, args.mysql_user_password, args.rabbit_password,
+              colored('http://%s:8888' % args.vip, 'blue'), colored('admin/password', 'yellow'),
+              colored('http://%s:9132/zstack' % args.host1, 'blue'), colored('zstack/zstack123', 'yellow'))
 
 class HaproxyKeepalived(InstallHACmd):
     def __init__(self):
@@ -2809,7 +2811,7 @@ class DumpMysqlCmd(Command):
                             default=60)
 
     def run(self, args):
-        (self.db_hostname, self.db_port, self.db_user, self.db_password) = ctl.get_database_portal()
+        (self.db_hostname, self.db_port, self.db_user, self.db_password) = ctl.get_live_mysql_portal()
         self.file_name = args.file_name
         self.keep_amount = args.keep_amount
         self.backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
