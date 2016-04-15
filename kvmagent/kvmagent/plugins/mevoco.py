@@ -9,6 +9,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+from zstacklib.utils import iptables
 from zstacklib.utils import lock
 import os.path
 import re
@@ -130,7 +131,7 @@ exit_on_error
 
 CHAIN_NAME="ZSTACK-$DHCP_IP"
 
-ebtables-save | grep "$CHAIN_NAME" > /dev/null
+ebtables-save | grep ":$CHAIN_NAME" > /dev/null
 
 if [ $? -ne 0 ]; then
     ebtables -N $CHAIN_NAME
@@ -208,8 +209,129 @@ class Mevoco(kvmagent.KvmAgent):
         return jsonobject.dumps(ConnectRsp())
 
     @kvmagent.replyerror
+    @lock.lock('iptables')
     def apply_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        set_vip_cmd = '''
+NS_NAME={{ns_name}}
+DHCP_IP={{dhcp_ip}}
+
+NS="ip netns exec $NS_NAME"
+
+exit_on_error() {
+    if [ $? -ne 0 ]; then
+        echo "error on line $1"
+        exit 1
+    fi
+}
+
+eval $NS ip addr | grep 169.254.169.254 > /dev/null
+if [ $? -eq 0 ]; then
+    exit 0
+fi
+
+eth=`eval $NS ip addr | grep $DHCP_IP | awk '{print $NF}'`
+exit_on_error $LINENO
+if [ x$eth == "x" ]; then
+    echo "cannot find device for the DHCP IP $DHCP_IP"
+    exit 1
+fi
+
+eval $NS ip addr add 169.254.169.254 dev $eth
+exit_on_error $LINENO
+
+exit 0
+'''
+        tmpt = Template(set_vip_cmd)
+        set_vip_cmd = tmpt.render({
+            'ns_name': cmd.bridgeName,
+            'dhcp_ip': cmd.dhcpServerIp,
+        })
+        shell.call(set_vip_cmd)
+
+        set_ebtables = '''
+BR_NAME={{br_name}}
+NS_NAME={{ns_name}}
+
+NS="ip netns exec $NS_NAME"
+
+exit_on_error() {
+    if [ $? -ne 0 ]; then
+        echo "error on line $1"
+        exit 1
+    fi
+}
+
+eth=`eval $NS ip addr | grep 169.254.169.254 | awk '{print $NF}'`
+mac=`eval $NS ip link show $eth | grep ether | awk '{print $2}'`
+exit_on_error $LINENO
+
+CHAIN_NAME="USERDATA-$BR_NAME"
+
+ebtables-save | grep ":$CHAIN_NAME" > /dev/null
+if [ $? -ne 0 ]; then
+    ebtables -t nat -N $CHAIN_NAME
+    exit_on_error $LINENO
+    ebtables -t nat -I PREROUTING --logical-in $BR_NAME -j $CHAIN_NAME
+    exit_on_error $LINENO
+fi
+
+rule="$CHAIN_NAME -p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst $mac --dnat-target ACCEPT"
+ebtables-save | grep -- "$rule" > /dev/null
+if [ $? -ne 0 ]; then
+    ebtables -t nat -I $rule
+    exit_on_error $LINENO
+fi
+
+exit 0
+'''
+        tmpt = Template(set_ebtables)
+        set_ebtables = tmpt.render({
+            'br_name': cmd.bridgeName,
+            'ns_name': cmd.bridgeName,
+        })
+        shell.call(set_ebtables)
+
+        dnat_port_cmd = '''
+PORT={{port}}
+CHAIN_NAME="UD-PORT-$PORT"
+
+exit_on_error() {
+    if [ $? -ne 0 ]; then
+        echo "error on line $1"
+        exit 1
+    fi
+}
+
+# delete old chains not matching our port
+old_chain=`iptables-save | awk '/^:UD-PORT-/{print substr($1,2)}'`
+if [ x"$old_chain" != "x" -a $CHAIN_NAME != $old_chain ]; then
+    iptables -t nat -F $old_chain
+    exit_on_error $LINENO
+    iptables -t nat -X $old_chain
+    exit_on_error $LINENO
+fi
+
+iptables-save | grep ":$CHAIN_NAME" > /dev/null
+if [ $? -ne 0 ]; then
+   iptables -t nat -N $CHAIN_NAME
+   exit_on_error $LINENO
+   iptables -t nat -I PREROUTING -j $CHAIN_NAME
+   exit_on_error $LINENO
+fi
+
+iptables-save -t nat | grep -- "$CHAIN_NAME -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :$PORT" > /dev/null || iptables -t nat -A $CHAIN_NAME -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :$PORT
+exit_on_error $LINENO
+
+exit 0
+'''
+
+        tmpt = Template(dnat_port_cmd)
+        dnat_port_cmd = tmpt.render({
+            'port': cmd.port
+        })
+        shell.call(dnat_port_cmd)
 
         conf_folder = os.path.join(self.USERDATA_ROOT, cmd.bridgeName)
         if not os.path.exists(conf_folder):
@@ -222,8 +344,8 @@ class Mevoco(kvmagent.KvmAgent):
             conf = '''\
 server.document-root = "{{http_root}}"
 
-server.port = 80
-server.bind = "{{dhcp_server_ip}}"
+server.port = {{port}}
+server.bind = "169.254.169.254"
 dir-listing.activate = "enable"
 index-file.names = ( "index.html" )
 
@@ -248,7 +370,8 @@ mimetype.assign = (
             tmpt = Template(conf)
             conf = tmpt.render({
                 'http_root': http_root,
-                'dhcp_server_ip': cmd.dhcpServerIp
+                'dhcp_server_ip': cmd.dhcpServerIp,
+                'port': cmd.port
             })
 
             with open(conf_path, 'w') as fd:
