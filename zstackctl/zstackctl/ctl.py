@@ -27,6 +27,8 @@ import socket
 import struct
 import fcntl
 import commands
+import threading
+import itertools
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -147,6 +149,31 @@ def expand_path(path):
         return os.path.expanduser(path)
     else:
         return os.path.abspath(path)
+
+class SpinnerInfo(object):
+    def __init__(self):
+        self.output = ""
+        self.name = ""
+
+class ZstackSpinner(object):
+
+    def __init__(self, spinner_info):
+        self.output = spinner_info.output
+        self.name = spinner_info.name
+        self.spinner = itertools.cycle("|/~\\")
+
+        self.thread = threading.Thread(target=self.run, args=())
+        self.thread.daemon = True
+        self.thread.start()
+
+    def run(self):
+        time.sleep(.2)
+        while InstallHACmd.spinner_status[self.name]:
+                sys.stdout.write("\r %s: ... %s " % (self.output, next(self.spinner)))
+                sys.stdout.flush()
+                time.sleep(.1)
+        print "\r %s: ... %s" % (self.output, colored("PASS","green"))
+
 
 class Ansible(object):
     def __init__(self, yaml, host='localhost', debug=False, ssh_key='none'):
@@ -1586,6 +1613,8 @@ class InstallHACmd(Command):
     host_post_info_list = []
     current_dir = ""
     logger_dir = ""
+    spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
+                      'Kairosdb':False, 'Mevoco':False, 'check_init':False}
     def __init__(self):
         super(InstallHACmd, self).__init__()
         self.name = "install_ha"
@@ -1649,13 +1678,11 @@ class InstallHACmd(Command):
 
     def check_host_info_format(self, host_info):
         if '@' not in host_info:
-            print "Host connect information should follow format: 'root:password@host_ip', please check your input!"
-            sys.exit(1)
+            error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
         else:
             # get user and password
             if ':' not in host_info.split('@')[0]:
-                print "Host connect information should follow format: 'root:password@host_ip', please check your input!"
-                sys.exit(1)
+                error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
             else:
                 self.user = host_info.split('@')[0].split(':')[0]
                 self.password = host_info.split('@')[0].split(':')[1]
@@ -1673,20 +1700,23 @@ class InstallHACmd(Command):
             return (self.user, self.password, self.ip, self.port)
 
     def run(self, args):
+        self.spinner_info = SpinnerInfo()
+        self.spinner_info.output = "Checking system and init environment"
+        self.spinner_info.name = 'check_init'
+        InstallHACmd.spinner_status['check_init'] = True
+        ZstackSpinner(self.spinner_info)
         # check gw ip is available
         if args.gateway is None:
             if self.get_default_gateway() is None:
-                print "Can't get the gateway IP address from system, please check your route table or pass specific " \
-                      "gateway through \"--gateway\" argument"
-                sys.exit(1)
+                error("Can't get the gateway IP address from system, please check your route table or pass specific " \
+                      "gateway through \"--gateway\" argument")
             else:
                 self.gateway_ip = self.get_default_gateway()
         else:
             self.gateway_ip = args.gateway
         (self.status, self.output) = commands.getstatusoutput('ping -c 1 %s' % self.gateway_ip)
         if self.status != 0:
-            print "The gateway %s unreachable!" % self.gateway_ip
-            sys.exit(1)
+            error("The gateway %s unreachable!" % self.gateway_ip)
         # check input host info
         self.host1_info = args.host1_info
         self.host1_connect_info_list = self.check_host_info_format(self.host1_info)
@@ -1699,44 +1729,37 @@ class InstallHACmd(Command):
 
         # check root password is available
         if args.host1_password != args.host2_password:
-            print "Host1 password and Host2 password must be the same! Please change one of them!"
-            sys.exit(1)
+            error("Host1 password and Host2 password must be the same! Please change one of them!")
         self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
                       'StrictHostKeyChecking=no  root@%s echo ""' % (args.host1_password, args.host1)
         (self.status, self.output) = commands.getstatusoutput(self.command)
         if self.status != 0:
-            print "The host: '%s' password '%s' incorrect! please check it!" % (args.host1, args.host1_password)
-            sys.exit(1)
+            error("The host: '%s' password '%s' incorrect! please check it!" % (args.host1, args.host1_password))
         self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
                       'StrictHostKeyChecking=no  root@%s echo ""' % (args.host2_password, args.host2)
         (self.status, self.output) = commands.getstatusoutput(self.command)
         if self.status != 0:
-            print "The host: '%s' password '%s' incorrect! please check it!" % (args.host2, args.host2_password)
-            sys.exit(1)
+            error("The host: '%s' password '%s' incorrect! please check it!" % (args.host2, args.host2_password))
 
         # check image type
         self.zstack_local_repo = os.path.isfile("/etc/yum.repos.d/zstack-local.repo")
         self.galera_repo = os.path.isfile("/etc/yum.repos.d/galera.repo")
         if self.zstack_local_repo is False or self.galera_repo is False:
-            print "This feature only support ZStack community CentOS 7 image"
-            sys.exit(1)
+            error("This feature only support ZStack community CentOS 7 image")
 
         # check network configuration
         self.interface_list = os.listdir('/sys/class/net/')
         if 'br_eth0' not in self.interface_list:
-            print "Make sure you have already run the 'network-setting' script under /root/scripts/"
-            sys.exit(1)
+            error("Make sure you have already run the 'network-setting' script under /root/scripts/")
 
         # check user start this command on host1
         self.local_ip = self.get_ip_by_interface("br_eth0")
         if args.host1 != self.local_ip:
-            print "Please run this command at host1 %s" % args.host1
-            sys.exit(1)
+            error("Please run this command at host1 %s" % args.host1)
 
         # check user input wrong host2 ip
         if args.host2 == args.host1:
-            print "The host1 and host2 should not be the same ip address!"
-            sys.exit(1)
+            error("The host1 and host2 should not be the same ip address!")
 
         #init variables
         self.yum_repo = ctl.read_property('Ansible.var.yum_repo')
@@ -1746,8 +1769,7 @@ class InstallHACmd(Command):
         if os.path.isfile(self.public_key_name) is not True:
             rc = os.system("echo -e  'y\n'|ssh-keygen -q -t rsa -N \"\" -f %s" % self.private_key_name)
             if rc != 0:
-                print "Generate private key %s failed! Generate manually or rerun the process!" % self.private_key_name
-                sys.exit(1)
+                error("Generate private key %s failed! Generate manually or rerun the process!" % self.private_key_name)
         with open(self.public_key_name) as self.public_key_file:
             self.public_key = self.public_key_file.read()
         # create log
@@ -1809,8 +1831,7 @@ class InstallHACmd(Command):
             self.local_ip = self.get_ip_by_interface("br_eth0")
             (status, output) = commands.getstatusoutput(self.command)
             if status != 0:
-                print output
-                sys.exit(1)
+                error(output)
             else:
                 self.command = "service mysql start"
                 if self.local_ip == self.host1_post_info.host:
@@ -1825,13 +1846,11 @@ class InstallHACmd(Command):
                 (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s"
                                                                      % (self.private_key_name, args.host1, self.command))
                 if self.status != 0:
-                    print "Something wrong on host: %s\n %s" % (args.host1, self.output)
-                    sys.exit(1)
+                    error("Something wrong on host: %s\n %s" % (args.host1, self.output))
                 (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s"
                                                                      % (self.private_key_name, args.host2, self.command))
                 if self.status != 0:
-                    print "Something wrong on host: %s\n %s" % (args.host2, self.output)
-                    sys.exit(1)
+                    error("Something wrong on host: %s\n %s" % (args.host2, self.output))
             sys.exit(0)
 
         # get iptables from system config
@@ -1868,14 +1887,33 @@ class InstallHACmd(Command):
 
         #pass all the variables to other HA deploy process
         InstallHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info]
+        InstallHACmd.spinner_status['check_init'] = False
+
         # setup mysql ha
-        print "Starting to deploy Mysql HA......"
+        self.spinner_info = SpinnerInfo()
+        self.spinner_info.output = "Starting to deploy Mysql HA"
+        self.spinner_info.name = 'mysql'
+        InstallHACmd.spinner_status['mysql'] = True
+        ZstackSpinner(self.spinner_info)
         MysqlHA()()
+        # setup finish flag
+        InstallHACmd.spinner_status['mysql'] = False
+
         # setup rabbitmq ha
-        print "Starting to deploy Rabbitmq HA......"
+        self.spinner_info = SpinnerInfo()
+        self.spinner_info.output ="Starting to deploy Rabbitmq HA"
+        self.spinner_info.name = 'rabbitmq'
+        InstallHACmd.spinner_status['rabbitmq'] = True
+        ZstackSpinner(self.spinner_info)
         RabbitmqHA()()
+        InstallHACmd.spinner_status['rabbitmq'] = False
+
         # setup haproxy and keepalived
-        print "Starting to deploy Haproxy and Keepalived......"
+        self.spinner_info = SpinnerInfo()
+        self.spinner_info.output = "Starting to deploy Haproxy and Keepalived"
+        self.spinner_info.name = 'haproxy_keepalived'
+        InstallHACmd.spinner_status['haproxy_keepalived'] = True
+        ZstackSpinner(self.spinner_info)
         HaproxyKeepalived()()
 
         #install database on local management node
@@ -1900,8 +1938,14 @@ class InstallHACmd(Command):
         self.command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
         run_remote_command(self.command, self.host1_post_info)
 
+        InstallHACmd.spinner_status['haproxy_keepalived'] = False
+
         # cassandra HA only need to change the config file, so unnecessary to wrap the process in a class
-        print "Starting to deploy Cassandra HA......"
+        self.spinner_info = SpinnerInfo()
+        self.spinner_info.output = "Starting to deploy Cassandra HA"
+        self.spinner_info.name = "Cassandra"
+        InstallHACmd.spinner_status['Cassandra'] = True
+        ZstackSpinner(self.spinner_info)
         update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
                     "regexp='seeds:' line='  - seeds: \"%s,%s\"'" % (args.host1, args.host2), self.host1_post_info)
         update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
@@ -1938,7 +1982,6 @@ class InstallHACmd(Command):
                     "regexp='^Kairosdb.port' line='Kairosdb.port=58080'", self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='management\.server\.ip' line='management.server.ip = %s'" % args.host1, self.host1_post_info)
-
         self.copy_arg = CopyArg()
         self.copy_arg.src = ctl.properties_file_path
         self.copy_arg.dest = ctl.properties_file_path
@@ -1954,44 +1997,48 @@ class InstallHACmd(Command):
         self.command = 'zstack-ctl cassandra --start --wait-timeout 120'
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
-            print "Something wrong on host: %s\n %s" % (args.host1, self.output)
-            sys.exit(1)
+            error("Something wrong on host: %s\n %s" % (args.host1, self.output))
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
         if self.status != 0:
-            print "Something wrong on host: %s\n %s" % (args.host2, self.output)
-            sys.exit(1)
+            error("Something wrong on host: %s\n %s" % (args.host2, self.output))
 
-        print "Starting to deploy Kairosdb HA......"
+        InstallHACmd.spinner_status['Cassandra'] = False
+
+        self.spinner_info = SpinnerInfo()
+        self.spinner_info.output = "Starting to deploy Kairosdb HA"
+        self.spinner_info.name = "Kairosdb"
+        InstallHACmd.spinner_status['Kairosdb'] = True
+        ZstackSpinner(self.spinner_info)
         self.command = 'zstack-ctl kairosdb --start --wait-timeout 120'
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
-            print "Something wrong on host: %s\n %s" % (args.host1, self.output)
-            sys.exit(1)
+            error("Something wrong on host: %s\n %s" % (args.host1, self.output))
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
         if self.status != 0:
-            print "Something wrong on host: %s\n %s" % (args.host2, self.output)
-            sys.exit(1)
+            error("Something wrong on host: %s\n %s" % (args.host2, self.output))
 
         # change Cassadra duplication number
         self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
         self.command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
         run_remote_command(self.command, self.host1_post_info)
-        print "Cassandra and Kairosdb HA deploy successful!"
+        InstallHACmd.spinner_status['Kairosdb'] = False
 
         #finally, start zstack-1 and zstack-2
-        print "Staring Mevoco..."
+        self.spinner_info = SpinnerInfo()
+        self.spinner_info.output = "Starting Mevoco"
+        self.spinner_info.name = "mevoco"
+        InstallHACmd.spinner_status['mevoco'] = True
+        ZstackSpinner(self.spinner_info)
         self.command = "zstack-ctl install_ui"
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
         self.command = "zstack-ctl start"
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
-            print "Something wrong on host: %s\n %s" % (args.host1, self.output)
-            sys.exit(1)
+            error("Something wrong on host: %s\n %s" % (args.host1, self.output))
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
         if self.status != 0:
-            print "Something wrong on host: %s\n %s" % (args.host2, self.output)
-            sys.exit(1)
+            error("Something wrong on host: %s\n %s" % (args.host2, self.output))
 
         # Add zstack-ctl start to rc.local for auto recovery when system reboot
         self.command = "service iptables save"
@@ -1999,8 +2046,10 @@ class InstallHACmd(Command):
         run_remote_command(self.command, self.host2_post_info)
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host1_post_info)
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host2_post_info)
-        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start >> %s 2>&1'" % InstallHACmd.logger_dir + '/ha.log', self.host1_post_info)
-        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start >> %s 2>&1'" % InstallHACmd.logger_dir + '/ha.log', self.host2_post_info)
+        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
+        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start >> %s 2>&1'", self.host2_post_info)
+        InstallHACmd.spinner_status['mevoco'] = False
+        time.sleep(0.2)
 
 
         print '''HA deploy finished!
@@ -2247,7 +2296,6 @@ vrrp_instance VI_1 {
         service_status("keepalived", "state=restarted enabled=yes", self.host2_post_info)
         service_status("haproxy", "state=restarted enabled=yes", self.host1_post_info)
         service_status("haproxy", "state=restarted enabled=yes", self.host2_post_info)
-        print "Haproxy and Keepalived HA deploy successful!"
 
 
 class MysqlHA(InstallHACmd):
@@ -2512,7 +2560,6 @@ echo $TIMEST >> /var/log/check-network.log
         service_status("crond","state=started enabled=yes",self.host1_post_info)
         service_status("crond","state=started enabled=yes",self.host2_post_info)
 
-        print "Mysql HA deploy successful!"
 
 
 class RabbitmqHA(InstallHACmd):
@@ -2574,7 +2621,6 @@ class RabbitmqHA(InstallHACmd):
         run_remote_command(self.command, self.host1_post_info)
         self.command = 'rabbitmqctl set_permissions -p \/ zstack ".*" ".*" ".*"'
         run_remote_command(self.command, self.host1_post_info)
-        print "Rabbitmq HA deploy successful!"
 
 
 class InstallRabbitCmd(Command):
@@ -2862,8 +2908,7 @@ class DumpMysqlCmd(Command):
                            % (self.db_user, self.db_connect_password, self.db_port, self.db_backup_name + ".gz")
             (self.status, self.output) = commands.getstatusoutput(self.command)
             if self.status != 0:
-                print self.output
-                sys.exit(1)
+                error(self.output)
         else:
             if self.db_password is None or self.db_password == "":
                 self.db_connect_password = ""
@@ -2873,8 +2918,7 @@ class DumpMysqlCmd(Command):
                            % (self.db_user, self.db_connect_password, self.db_hostname, self.db_port, self.db_backup_name + ".gz")
             (self.status, self.output) = commands.getstatusoutput(self.command)
             if self.status != 0:
-                print self.output
-                sys.exit(1)
+                error(self.output)
         print "Backup mysql successful! You can check the file at %s.gz" % self.db_backup_name
         # remove old file
         if len(os.listdir(self.db_backup_dir)) > self.keep_amount:
