@@ -1614,7 +1614,7 @@ class InstallHACmd(Command):
     current_dir = ""
     logger_dir = ""
     spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
-                      'Kairosdb':False, 'Mevoco':False, 'check_init':False}
+                      'Kairosdb':False, 'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
     def __init__(self):
         super(InstallHACmd, self).__init__()
         self.name = "install_ha"
@@ -1648,6 +1648,10 @@ class InstallHACmd(Command):
                             help='keep existing zstack database and not raise error.')
         parser.add_argument('--recovery-from-this-host', action='store_true', default=False,
                             help="This argument for admin to recovery mysql from the last shutdown mysql server")
+
+    def reset_dict_value(self, dict_name, value):
+        return dict.fromkeys(dict_name, value)
+
 
     def get_default_gateway(self):
         '''This function will return default route gateway ip address'''
@@ -1753,9 +1757,10 @@ class InstallHACmd(Command):
             error("Make sure you have already run the 'network-setting' script under /root/scripts/")
 
         # check user start this command on host1
-        self.local_ip = self.get_ip_by_interface("br_eth0")
-        if args.host1 != self.local_ip:
-            error("Please run this command at host1 %s" % args.host1)
+        if args.recovery_from_this_host is False:
+            self.local_ip = self.get_ip_by_interface("br_eth0")
+            if args.host1 != self.local_ip:
+                error("Please run this command at host1 %s, or change your host1 ip to local host ip" % args.host1)
 
         # check user input wrong host2 ip
         if args.host2 == args.host1:
@@ -1827,8 +1832,14 @@ class InstallHACmd(Command):
 
         # check whether to recovery the HA cluster
         if args.recovery_from_this_host is True:
-            self.command = "service mysql bootstrap"
             self.local_ip = self.get_ip_by_interface("br_eth0")
+            self.spinner_info = SpinnerInfo()
+            self.spinner_info.output = "Starting to recovery mysql from this host"
+            self.spinner_info.name = "recovery_cluster"
+            InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
+            InstallHACmd.spinner_status['recovery_cluster'] = True
+            ZstackSpinner(self.spinner_info)
+            self.command = "service mysql bootstrap"
             (status, output) = commands.getstatusoutput(self.command)
             if status != 0:
                 error(output)
@@ -1842,6 +1853,12 @@ class InstallHACmd(Command):
                     run_remote_command(self.command, self.host1_post_info)
                     self.command = "service mysql restart"
                     run_remote_command(self.command, self.host2_post_info)
+                # start mevoco
+                self.spinner_info.output = "Starting Mevoco"
+                self.spinner_info.name = "mevoco"
+                InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
+                InstallHACmd.spinner_status['mevoco'] = True
+                ZstackSpinner(self.spinner_info)
                 self.command = "zstack-ctl start"
                 (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s"
                                                                      % (self.private_key_name, args.host1, self.command))
@@ -1851,6 +1868,9 @@ class InstallHACmd(Command):
                                                                      % (self.private_key_name, args.host2, self.command))
                 if self.status != 0:
                     error("Something wrong on host: %s\n %s" % (args.host2, self.output))
+                InstallHACmd.spinner_status['mevoco'] = False
+                time.sleep(.2)
+            info("The cluster has been recovery!")
             sys.exit(0)
 
         # get iptables from system config
@@ -1887,31 +1907,29 @@ class InstallHACmd(Command):
 
         #pass all the variables to other HA deploy process
         InstallHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info]
-        InstallHACmd.spinner_status['check_init'] = False
-
         # setup mysql ha
         self.spinner_info = SpinnerInfo()
         self.spinner_info.output = "Starting to deploy Mysql HA"
         self.spinner_info.name = 'mysql'
+        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['mysql'] = True
         ZstackSpinner(self.spinner_info)
         MysqlHA()()
-        # setup finish flag
-        InstallHACmd.spinner_status['mysql'] = False
 
         # setup rabbitmq ha
         self.spinner_info = SpinnerInfo()
         self.spinner_info.output ="Starting to deploy Rabbitmq HA"
         self.spinner_info.name = 'rabbitmq'
+        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['rabbitmq'] = True
         ZstackSpinner(self.spinner_info)
         RabbitmqHA()()
-        InstallHACmd.spinner_status['rabbitmq'] = False
 
         # setup haproxy and keepalived
         self.spinner_info = SpinnerInfo()
         self.spinner_info.output = "Starting to deploy Haproxy and Keepalived"
         self.spinner_info.name = 'haproxy_keepalived'
+        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['haproxy_keepalived'] = True
         ZstackSpinner(self.spinner_info)
         HaproxyKeepalived()()
@@ -1938,12 +1956,11 @@ class InstallHACmd(Command):
         self.command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
         run_remote_command(self.command, self.host1_post_info)
 
-        InstallHACmd.spinner_status['haproxy_keepalived'] = False
-
         # cassandra HA only need to change the config file, so unnecessary to wrap the process in a class
         self.spinner_info = SpinnerInfo()
         self.spinner_info.output = "Starting to deploy Cassandra HA"
         self.spinner_info.name = "Cassandra"
+        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['Cassandra'] = True
         ZstackSpinner(self.spinner_info)
         update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
@@ -2002,11 +2019,10 @@ class InstallHACmd(Command):
         if self.status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, self.output))
 
-        InstallHACmd.spinner_status['Cassandra'] = False
-
         self.spinner_info = SpinnerInfo()
         self.spinner_info.output = "Starting to deploy Kairosdb HA"
         self.spinner_info.name = "Kairosdb"
+        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['Kairosdb'] = True
         ZstackSpinner(self.spinner_info)
         self.command = 'zstack-ctl kairosdb --start --wait-timeout 120'
@@ -2021,12 +2037,12 @@ class InstallHACmd(Command):
         self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
         self.command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
         run_remote_command(self.command, self.host1_post_info)
-        InstallHACmd.spinner_status['Kairosdb'] = False
 
         #finally, start zstack-1 and zstack-2
         self.spinner_info = SpinnerInfo()
         self.spinner_info.output = "Starting Mevoco"
         self.spinner_info.name = "mevoco"
+        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['mevoco'] = True
         ZstackSpinner(self.spinner_info)
         self.command = "zstack-ctl install_ui"
