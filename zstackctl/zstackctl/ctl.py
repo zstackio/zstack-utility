@@ -477,11 +477,9 @@ class Ctl(object):
 
         db_url = self.get_db_url()
         host_name_ports = []
-        if 'jdbc:mysql:loadbalance' not in db_url:
-            db_hostname, db_port = db_url.lstrip('jdbc:mysql:').lstrip('/').split('/')[0].split(':')
-            host_name_ports.append((db_hostname, db_port))
-        else:
-            ips = db_url.lstrip('jdbc:mysql:loadbalance').lstrip('/').split('/')[0]
+
+        def parse_hostname_ports(prefix):
+            ips = db_url.lstrip(prefix).lstrip('/').split('/')[0]
             ips = ips.split(',')
             for ip in ips:
                 if ":" in ip:
@@ -489,6 +487,11 @@ class Ctl(object):
                     host_name_ports.append((hostname, port))
                 else:
                     host_name_ports.append((ip, '3306'))
+
+        if db_url.startswith('jdbc:mysql:loadbalance:'):
+            parse_hostname_ports('jdbc:mysql:loadbalance:')
+        elif db_url.startswith('jdbc:mysql:'):
+            parse_hostname_ports('jdbc:mysql:')
 
         return host_name_ports, db_user, db_password
 
