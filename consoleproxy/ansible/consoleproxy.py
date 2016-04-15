@@ -31,7 +31,7 @@ virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
 consoleproxy_root = "%s/console" % zstack_root
 host_post_info = HostPostInfo()
 # create log
-logger_dir = zstack_root + "/deploy-log/"
+logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 host_post_info.host_inventory = args.i
 host_post_info.host = host

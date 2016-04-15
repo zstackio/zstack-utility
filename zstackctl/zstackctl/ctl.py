@@ -1676,7 +1676,8 @@ class InstallHACmd(Command):
         # check gw ip is available
         if args.gateway is None:
             if self.get_default_gateway() is None:
-                print "Can't get the gateway IP address from system, please check your route table or pass specific gateway through \"--gateway\" argument"
+                print "Can't get the gateway IP address from system, please check your route table or pass specific " \
+                      "gateway through \"--gateway\" argument"
                 sys.exit(1)
             else:
                 self.gateway_ip = self.get_default_gateway()
@@ -1750,7 +1751,7 @@ class InstallHACmd(Command):
         with open(self.public_key_name) as self.public_key_file:
             self.public_key = self.public_key_file.read()
         # create log
-        InstallHACmd.logger_dir = os.path.join(ctl.zstack_home, "../../logs/")
+        InstallHACmd.logger_dir = "/var/log/zstack/"
         create_log(InstallHACmd.logger_dir)
         # create inventory file
         with  open('%s/conf/host' % InstallHACmd.current_dir ,'w') as f:
@@ -1787,9 +1788,8 @@ class InstallHACmd(Command):
         self.add_public_key_command = ' if [ ! -d ~/.ssh ]; then mkdir -p ~/.ssh; chmod 700 ~/.ssh; fi && if [ ! -f ~/.ssh/authorized_keys ]; ' \
                                       'then touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; fi && pub_key="%s";grep ' \
                                       '"%s" ~/.ssh/authorized_keys > /dev/null; if [ $? -eq 1 ]; ' \
-                                      'then echo "%s" >> ~/.ssh/authorized_keys; fi  && exit 0;' % (self.public_key.strip('\n'),
-                                                                                                    self.public_key.strip('\n'),
-                                                                                                    self.public_key.strip('\n'))
+                                      'then echo "%s" >> ~/.ssh/authorized_keys; fi  && exit 0;'\
+                                      % (self.public_key.strip('\n'), self.public_key.strip('\n'), self.public_key.strip('\n'))
 
         # add public key to host1
         self.ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
@@ -1822,11 +1822,13 @@ class InstallHACmd(Command):
                     self.command = "service mysql restart"
                     run_remote_command(self.command, self.host2_post_info)
                 self.command = "zstack-ctl start"
-                (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+                (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s"
+                                                                     % (self.private_key_name, args.host1, self.command))
                 if self.status != 0:
                     print "Something wrong on host: %s\n %s" % (args.host1, self.output)
                     sys.exit(1)
-                (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+                (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s"
+                                                                     % (self.private_key_name, args.host2, self.command))
                 if self.status != 0:
                     print "Something wrong on host: %s\n %s" % (args.host2, self.output)
                     sys.exit(1)
@@ -1846,17 +1848,17 @@ class InstallHACmd(Command):
         run_remote_command(self.command, self.host2_post_info)
 
         # remove old zstack-1 and zstack-2 in hosts file
-        update_file("/etc/hosts", "regexp='\.*zstack\.*' state=absent" , self.host1_post_info)
-        update_file("/etc/hosts", "regexp='\.*zstack\.*' state=absent" , self.host2_post_info)
+        update_file("/etc/hosts", "regexp='\.*zstack\.*' state=absent", self.host1_post_info)
+        update_file("/etc/hosts", "regexp='\.*zstack\.*' state=absent", self.host2_post_info)
         update_file("/etc/hosts", "line='%s zstack-1'" % args.host1, self.host1_post_info)
         update_file("/etc/hosts", "line='%s zstack-2'" % args.host2, self.host1_post_info)
         update_file("/etc/hosts", "line='%s zstack-1'" % args.host1, self.host2_post_info)
         update_file("/etc/hosts", "line='%s zstack-2'" % args.host2, self.host2_post_info)
-        self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT ; iptables-save" \
-                       " > /dev/null 2>&1" % (self.host2_post_info.host, self.host2_post_info.host)
+        self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
+                       " ; iptables-save > /dev/null 2>&1" % (self.host2_post_info.host, self.host2_post_info.host)
         run_remote_command(self.command, self.host1_post_info)
-        self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT ; iptables-save " \
-                       "> /dev/null 2>&1" % (self.host1_post_info.host, self.host1_post_info.host)
+        self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
+                       " ; iptables-save > /dev/null 2>&1" % (self.host1_post_info.host, self.host1_post_info.host)
         run_remote_command(self.command, self.host2_post_info)
 
         # stop haproxy and keepalived service for avoiding terminal status  disturb
@@ -1893,7 +1895,6 @@ class InstallHACmd(Command):
                            % (args.host1, args.mysql_user_password, args.mysql_root_password)
             run_remote_command(self.command, self.host1_post_info)
 
-        #os.system(self.command)
         self.command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306" % args.vip
         run_remote_command(self.command, self.host1_post_info)
         self.command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
@@ -1906,7 +1907,8 @@ class InstallHACmd(Command):
         update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
                     "regexp='seeds:' line='  - seeds: \"%s,%s\"'" % (args.host1, args.host2), self.host2_post_info)
         update_file("%s//WEB-INF/classes/mevoco/cassandra/db/zstack_billing/V1.1__schema.cql" % os.environ['ZSTACK_HOME'],
-                    "regexp='^CREATE KEYSPACE' line='CREATE KEYSPACE zstack_billing WITH replication = {\'class\':\'SimpleStrategy\', \'replication_factor\':3};'", self.host1_post_info)
+                    "regexp='^CREATE KEYSPACE' line='CREATE KEYSPACE zstack_billing WITH replication = "
+                    "{\'class\':\'SimpleStrategy\', \'replication_factor\':3};'", self.host1_post_info)
 
         # kaiosdb HA only need to change the config file, so unnecessary to wrap the process in a class
         update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,

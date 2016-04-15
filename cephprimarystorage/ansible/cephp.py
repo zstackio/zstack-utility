@@ -29,7 +29,7 @@ locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/cephp/" % zstack_root
 cephp_root = "%s/cephp" % zstack_root
 # create log
-logger_dir = zstack_root + "/deploy-log/"
+logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i

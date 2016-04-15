@@ -36,7 +36,7 @@ dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
 dnsmasq_local_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % kvm_root
 
 # create log
-logger_dir = zstack_root + "/deploy-log/"
+logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 
 host_post_info = HostPostInfo()
