@@ -1942,6 +1942,10 @@ class InstallHACmd(Command):
                     "regexp='management\.server\.ip' line='management.server.ip = %s'" % args.host2, self.host2_post_info)
 
         # start Cassadra and KairosDB
+        # backup old cassandra dir avoid changing keyspace error
+        self.command = "[ -d /var/lib/cassandra/ ] && mv /var/lib/cassandra/ /var/lib/cassandra-%s/ || echo '' " \
+                       % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        run_remote_command(self.command, self.host1_post_info)
         self.command = 'zstack-ctl cassandra --start --wait-timeout 120'
         (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
         if self.status != 0:
