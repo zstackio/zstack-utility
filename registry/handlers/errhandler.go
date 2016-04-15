@@ -1,12 +1,45 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"image-store/registry/api/errcode"
 	"net/http"
 )
 
-func WriteHttpError(w http.ResponseWriter, e *errcode.Error) {
-	w.WriteHeader(int(e.Code))
-	fmt.Fprintf(w, e.Error())
+type HttpResult struct {
+	res interface{}
+	err error
+}
+
+func NewHttpResult(r interface{}, e error) *HttpResult {
+	return &HttpResult{res: r, err: e}
+}
+
+func (r *HttpResult) WriteResponse(w http.ResponseWriter) {
+	if r.err != nil {
+		WriteHttpError(w, r.err, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	if err := json.NewEncoder(w).Encode(r.res); err != nil {
+		panic(err)
+	}
+}
+
+func WriteHttpError(w http.ResponseWriter, e error, status int) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.WriteHeader(status)
+	if _, ok := e.(*errcode.Error); ok {
+		fmt.Fprintf(w, e.Error())
+	} else {
+		e2 := errcode.BuildBadRequest("request failed", e)
+		fmt.Fprintf(w, e2.Error())
+	}
+}
+
+func DecodeRequest(r *http.Request, req interface{}) error {
+	decoder := json.NewDecoder(r.Body)
+	return decoder.Decode(req)
 }

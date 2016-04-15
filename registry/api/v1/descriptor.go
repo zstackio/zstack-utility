@@ -15,13 +15,14 @@ const (
 	// GET - list images by name.
 	RouteNameList = "/v1/{name}"
 
+	// GET - list tags by name.
+	RouteNameTagList = "/v1/{name}/tags"
+
 	// GET - pull manifest.
 	// PUT - push manifest.
-	// HEAD - check for existence.
 	RouteNameManifest = "/v1/{name}/manifests/{reference}"
 
 	// GET - download image blob.
-	// HEAD - check for existence.
 	RouteNameBlob = "/v1/{name}/blobs/{digest}"
 
 	// POST - to get an upload ID (uuid).

@@ -43,9 +43,13 @@ func NewApp(config *config.Configuration) (*App, error) {
 	}
 
 	// Build the handlers
-	app.register(v1.RouteNameV1, EnforceJSON(HandleVersion)).Methods("GET")
-	app.register(v1.RouteNameList, EnforceJSON(HandleList)).Methods("GET")
-	app.register(v1.RouteNameManifest, HandleManifest)
+	app.register(v1.RouteNameV1, HandleVersion).Methods("GET")
+	app.register(v1.RouteNameList, HandleNameList).Methods("GET")
+	app.register(v1.RouteNameTagList, HandleTagList).Methods("GET")
+
+	app.register(v1.RouteNameManifest, GetManifest).Methods("GET")
+	app.register(v1.RouteNameManifest, EnforceJSON(PutManifest)).Methods("PUT")
+
 	app.register(v1.RouteNameBlob, HandleBlob)
 	app.register(v1.RouteNameUpload, HandleBlobUpload)
 	app.register(v1.RouteNameUploadChunk, HandleUploadEntity)
