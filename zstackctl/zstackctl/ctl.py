@@ -2063,9 +2063,9 @@ class InstallHACmd(Command):
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host1_post_info)
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host2_post_info)
         update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host1_post_info)
-        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='/usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
+        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
         update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host2_post_info)
-        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='/usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host2_post_info)
+        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host2_post_info)
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
 
@@ -2627,9 +2627,9 @@ class RabbitmqHA(InstallHACmd):
         self.command = "rabbitmqctl start_app"
         run_remote_command(self.command, self.host2_post_info)
         #todo : check the cluster status
-        # set policy let all nodes duplicate content
-        self.command = "rabbitmqctl set_policy ha-all '^(?!amq\.).*' '{\"ha-mode\": \"all\"}'"
-        run_remote_command(self.command, self.host1_post_info)
+        # set policy let all nodes duplicate content (remove due to rabbitmq will hung when reboot system)
+        # self.command = "rabbitmqctl set_policy ha-all '^(?!amq\.).*' '{\"ha-mode\": \"all\"}'"
+        # run_remote_command(self.command, self.host1_post_info)
         # add zstack user in this cluster
         self.command = "rabbitmqctl add_user zstack %s" %  self.rabbit_password
         run_remote_command(self.command, self.host1_post_info)
