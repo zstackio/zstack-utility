@@ -1120,6 +1120,18 @@ class QueryUserAction(inventory.APIQueryUserMsg):
         self.out = reply.inventories
         return self.out
 
+class ChangeResourceOwnerAction(inventory.APIChangeResourceOwnerMsg):
+    def __init__(self):
+        super(ChangeResourceOwnerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeResourceOwnerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class LogOutAction(inventory.APILogOutMsg):
     def __init__(self):
         super(LogOutAction, self).__init__()
