@@ -2062,8 +2062,10 @@ class InstallHACmd(Command):
         run_remote_command(self.command, self.host2_post_info)
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host1_post_info)
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host2_post_info)
-        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
-        update_file("/etc/rc.d/rc.local", "line='/usr/bin/zstack-ctl start >> %s 2>&1'", self.host2_post_info)
+        update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host1_post_info)
+        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='/usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
+        update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host2_post_info)
+        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='/usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host2_post_info)
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
 
@@ -2569,10 +2571,10 @@ echo $TIMEST >> /var/log/check-network.log
         service_status("xinetd","state=restarted enabled=yes",self.host2_post_info)
 
         # add crontab for backup mysql
-        cron("backup_zstack_db","minute='0' hour='1,13' job='/usr/bin/zstack-ctl dump_mysql >> %s 2>&1'"
-             % InstallHACmd.logger_dir + '/ha.log', self.host1_post_info)
-        cron("backup_zstack_db","minute='0' hour='7,19' job='/usr/bin/zstack-ctl dump_mysql >> %s 2>&1'"
-             % InstallHACmd.logger_dir +'/ha.log', self.host2_post_info)
+        cron("backup_zstack_db","minute='0' hour='1,13' job='/usr/bin/zstack-ctl dump_mysql >>"
+                                " /var/log/zstack/ha.log 2>&1' ", self.host1_post_info)
+        cron("backup_zstack_db","minute='0' hour='7,19' job='/usr/bin/zstack-ctl dump_mysql >>"
+                                " /var/log/zstack/ha.log 2>&1' ", self.host2_post_info)
         service_status("crond","state=started enabled=yes",self.host1_post_info)
         service_status("crond","state=started enabled=yes",self.host2_post_info)
 
