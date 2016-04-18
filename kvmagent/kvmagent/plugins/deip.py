@@ -135,7 +135,6 @@ delete_orphan_outer_dev() {
     ip netns exec $1 ip link | grep $2 > /dev/null
     if [ $? -ne 0 ]; then
         ip link del $3 &> /dev/null
-        exit_on_error $LINENO
     fi
 }
 
