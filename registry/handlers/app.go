@@ -48,10 +48,10 @@ func NewApp(config *config.Configuration) (*App, error) {
 	app.register(v1.RouteNameTagList, HandleTagList).Methods("GET")
 
 	app.register(v1.RouteNameManifest, GetManifest).Methods("GET")
-	app.register(v1.RouteNameManifest, EnforceJSON(PutManifest)).Methods("PUT")
+	app.register(v1.RouteNameManifest, EnforceContentLength(PutManifest)).Methods("PUT")
 
-	app.register(v1.RouteNameBlob, HandleBlob)
-	app.register(v1.RouteNameUpload, HandleBlobUpload)
+	app.register(v1.RouteNameBlob, GetBlob).Methods("GET")
+	app.register(v1.RouteNameUpload, EnforceContentLength(PrepareBlobUpload)).Methods("POST")
 	app.register(v1.RouteNameUploadChunk, HandleUploadEntity)
 
 	return app, nil
@@ -122,8 +122,9 @@ func (app *App) Run() error {
 }
 
 func (app *App) register(routeName string, f ContextHandlerFunc) *router.Route {
-	c := WithStorageDriver(app.rctx, app.driver)
-	h := ContextAdapter{ctx: c, handler: f}
+	c1 := WithStorageDriver(app.rctx, app.driver)
+	c2 := WithGlobalConfig(c1, app.Config)
+	h := ContextAdapter{ctx: c2, handler: f}
 
 	return app.router.Handle(routeName, h)
 }

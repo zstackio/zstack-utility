@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-// GET  /v2/<name>/manifests/{reference}
+// GET  /v1/<name>/manifests/{reference}
 func GetManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	name, ref, s := GetManifestArgAndSearcher(ctx, w, r)
 	if s == nil {
@@ -18,7 +18,9 @@ func GetManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	NewHttpResult(res, err).WriteResponse(w)
 }
 
-// PUT  /v2/<name>/manifests/{refrence}
+// PUT  /v1/<name>/manifests/{refrence}
+// body:
+// Image Manifest in JSON
 func PutManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	name, ref, s := GetManifestArgAndSearcher(ctx, w, r)
 	if s == nil {

@@ -49,6 +49,10 @@ type pathSpec interface {
 	pathSpec() string
 }
 
+type urlSpec interface {
+	urlSpec() string
+}
+
 // The pathSpec for blob digest
 type blobDigestPathSpec struct {
 	digest string
@@ -58,6 +62,7 @@ func (ps blobDigestPathSpec) pathSpec() string {
 	return path.Join(rootPrefix, "blobs", ps.digest[:2], ps.digest[2:])
 }
 
+// TODO get the "user" value from somewhere
 // The pathSpec for image manifests
 type manifestsPathSpec struct {
 	user string // the user (can be empty)
@@ -70,81 +75,110 @@ func (ps manifestsPathSpec) pathSpec() string {
 
 // The pathSpec for the tags directory
 type tagsPathSpec struct {
-	manifestsPathSpec
+	user string
+	name string
 }
 
 func (ps tagsPathSpec) pathSpec() string {
-	return path.Join(ps.manifestsPathSpec.pathSpec(), "tags")
+	mps := manifestsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(mps, "tags")
 }
 
 // The pathSpec for the revisions directory
 type revsPathSpec struct {
-	manifestsPathSpec
+	user string
+	name string
 }
 
 func (ps revsPathSpec) pathSpec() string {
-	return path.Join(ps.manifestsPathSpec.pathSpec(), "revisions")
+	mps := manifestsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(mps, "revisions")
 }
 
 // The image JSON  pathSpec
 type imageJsonPathSpec struct {
-	manifestsPathSpec
-	id string // image id
+	user string
+	name string
+	id   string // image id
 }
 
 func (ps imageJsonPathSpec) pathSpec() string {
-	t := ps.manifestsPathSpec.pathSpec()
-	return path.Join(t, "revisions", ps.id, "json")
+	mps := manifestsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(mps, "revisions", ps.id, "json")
 }
 
 // the tag pathSpec
 type tagPathSpec struct {
-	manifestsPathSpec
-	tag string // tag name
+	user string
+	name string
+	tag  string // tag name
 }
 
 func (ps tagPathSpec) pathSpec() string {
-	t := ps.manifestsPathSpec.pathSpec()
-	return path.Join(t, "tags", ps.tag)
+	mps := manifestsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(mps, "tags", ps.tag)
 }
 
 // the uploads pathSpec
 type uploadsPathSpec struct {
-	manifestsPathSpec
+	user string
+	name string
 }
 
 func (ps uploadsPathSpec) pathSpec() string {
-	t := ps.manifestsPathSpec.pathSpec()
-	return path.Join(t, "uploads")
+	mps := manifestsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(mps, "uploads")
+}
+
+// the upload data pathSpec
+type uploadUuidPathSpec struct {
+	user string
+	name string
+	id   string // uuid
+}
+
+func (ps uploadUuidPathSpec) pathSpec() string {
+	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(ups, ps.id)
+}
+
+func (ps uploadUuidPathSpec) urlSpec() string {
+	u := path.Join("/", storagePathVersion, ps.name, "blobs", "uploads", ps.id)
+	return u
 }
 
 // the upload data pathSpec
 type uploadDataPathSpec struct {
-	uploadsPathSpec
-	id string // uuid
+	user string
+	name string
+	id   string // uuid
 }
 
 func (ps uploadDataPathSpec) pathSpec() string {
-	t := ps.uploadsPathSpec.pathSpec()
-	return path.Join(t, ps.id, "data")
+	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(ups, ps.id, "data")
 }
 
 // the upload check sum pathSpec
 type uploadCheckSumPathSpec struct {
-	uploadDataPathSpec
+	user string
+	name string
+	id   string // uuid
 }
 
 func (ps uploadCheckSumPathSpec) pathSpec() string {
-	t := ps.uploadsPathSpec.pathSpec()
-	return path.Join(t, ps.id, "checksum")
+	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(ups, ps.id, "checksum")
 }
 
 // the upload start time pathSpec
 type uploadStartTimePathSpec struct {
-	uploadDataPathSpec
+	user string
+	name string
+	id   string // uuid
 }
 
 func (ps uploadStartTimePathSpec) pathSpec() string {
-	t := ps.uploadsPathSpec.pathSpec()
-	return path.Join(t, ps.id, "started-time")
+	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
+	return path.Join(ups, ps.id, "started-time")
 }

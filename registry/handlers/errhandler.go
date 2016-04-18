@@ -34,7 +34,11 @@ func WriteHttpError(w http.ResponseWriter, e error, status int) {
 	if _, ok := e.(*errcode.Error); ok {
 		fmt.Fprintf(w, e.Error())
 	} else {
-		e2 := errcode.BuildBadRequest("request failed", e)
+		e2 := errcode.Error{
+			Code:    errcode.ErrorCode(status),
+			Message: "request error",
+			Details: e.Error(),
+		}
 		fmt.Fprintf(w, e2.Error())
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/docker/distribution/context"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
+	"image-store/registry/api/errcode"
 	"image-store/utils"
 	"strings"
 )
@@ -45,6 +46,11 @@ func (imf *ImageManifest) Ok() bool {
 	return utils.IsDigest(imf.Blobsum)
 }
 
+// The information needed to prepare uploading image blob.
+type UploadInfo struct {
+	Digest string `json:"digest"`
+}
+
 // TODO add caching layer
 // Names and tags etc. will be converted to lowercase
 type Searcher interface {
@@ -59,6 +65,12 @@ type Searcher interface {
 
 	// List tags under a name
 	ListTags(ctx context.Context, name string) ([]string, error)
+
+	// Get the blob reader
+	GetBlobPathSpec(name string, digest string) (string, error)
+
+	// Prepare blob upload
+	PrepareBlobUpload(ctx context.Context, name string, info *UploadInfo) (string, error)
 }
 
 type ImageSearcher struct {
@@ -100,7 +112,7 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, name string, ref strin
 	mps := manifestsPathSpec{name: strings.ToLower(name)}
 
 	if utils.IsDigest(refstr) {
-		ps := imageJsonPathSpec{manifestsPathSpec: mps, id: refstr}.pathSpec()
+		ps := imageJsonPathSpec{user: mps.user, name: mps.name, id: refstr}.pathSpec()
 		res, err := ims.driver.List(ctx, ps)
 		if err != nil {
 			if _, ok := err.(storagedriver.PathNotFoundError); ok {
@@ -120,7 +132,7 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, name string, ref strin
 	}
 
 	// ok - it is a tag
-	tps := tagPathSpec{manifestsPathSpec: mps, tag: refstr}.pathSpec()
+	tps := tagPathSpec{user: mps.user, name: mps.name, tag: refstr}.pathSpec()
 	buf, err := ims.driver.GetContent(ctx, tps)
 	if err != nil {
 		return nil, err
@@ -131,7 +143,7 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, name string, ref strin
 		return nil, fmt.Errorf("unexpected digest '%s' for tag '%s'", idstr, refstr)
 	}
 
-	ips := imageJsonPathSpec{manifestsPathSpec: mps, id: idstr}.pathSpec()
+	ips := imageJsonPathSpec{user: mps.user, name: mps.name, id: idstr}.pathSpec()
 	return getImageJson(ctx, ims.driver, ips)
 }
 
@@ -155,14 +167,14 @@ func (ims ImageSearcher) PutManifest(ctx context.Context, name string, ref strin
 
 	// TODO check manifest content and existence
 	mps := manifestsPathSpec{name: idstr}
-	ps := imageJsonPathSpec{manifestsPathSpec: mps, id: idstr}.pathSpec()
+	ps := imageJsonPathSpec{user: mps.user, name: mps.name, id: idstr}.pathSpec()
 
 	if err := ims.driver.PutContent(ctx, ps, []byte(imf.String())); err != nil {
 		return errors.New("failed to update manifest")
 	}
 
 	if !isdigest {
-		tps := tagPathSpec{manifestsPathSpec: mps, tag: refstr}.pathSpec()
+		tps := tagPathSpec{user: mps.user, name: mps.name, tag: refstr}.pathSpec()
 		if err := ims.driver.PutContent(ctx, tps, []byte(idstr)); err != nil {
 			return fmt.Errorf("failed to update tag '%s' with digest '%s'", refstr, idstr)
 		}
@@ -172,8 +184,7 @@ func (ims ImageSearcher) PutManifest(ctx context.Context, name string, ref strin
 }
 
 func (ims ImageSearcher) ListTags(ctx context.Context, name string) ([]string, error) {
-	mps := manifestsPathSpec{name: name}
-	ps := tagsPathSpec{manifestsPathSpec: mps}.pathSpec()
+	ps := tagsPathSpec{name: name}.pathSpec()
 
 	xs, err := ims.driver.List(ctx, ps)
 	if err != nil {
@@ -188,4 +199,34 @@ func (ims ImageSearcher) ListTags(ctx context.Context, name string) ([]string, e
 	}
 
 	return res, nil
+}
+
+func (ims ImageSearcher) GetBlobPathSpec(name string, digest string) (string, error) {
+	ps := blobDigestPathSpec{digest: digest}
+	if utils.IsBlobDigest(digest) {
+		return ps.pathSpec(), nil
+	}
+
+	return "", fmt.Errorf("invalid image digest: %s", digest)
+}
+
+// Prepare blob upload involves the following steps:
+//  1. generate a UUID to identify the upload session
+//  2. save the target digest value
+//  3. return the target location
+func (ims ImageSearcher) PrepareBlobUpload(ctx context.Context, name string, info *UploadInfo) (string, error) {
+	digest := strings.TrimSpace(info.Digest)
+	bps := blobDigestPathSpec{digest: digest}.pathSpec()
+	if _, err := ims.driver.Stat(ctx, bps); err == nil {
+		return "", errcode.ConflictError{Resource: digest}
+	}
+
+	uu := utils.NewUUID()
+	ucps := uploadCheckSumPathSpec{name: name, id: uu}.pathSpec()
+	if err := ims.driver.PutContent(ctx, ucps, []byte(digest)); err != nil {
+		return "", err
+	}
+
+	urlps := uploadUuidPathSpec{name: name, id: uu}.urlSpec()
+	return urlps, nil
 }

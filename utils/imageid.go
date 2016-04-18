@@ -14,7 +14,7 @@ type ImageId struct {
 // Create a new Image Id
 func NewImageId() *ImageId {
 	hasher := sha1.New()
-	r := bytes.NewReader([]byte(uuid.New()))
+	r := bytes.NewReader([]byte(NewUUID()))
 	s, _ := Hashing(r, hasher)
 	return &ImageId{v: s}
 }
@@ -35,4 +35,14 @@ func ParseImageId(s string) *ImageId {
 	}
 
 	return &ImageId{v: s}
+}
+
+// Generate a new UUID string
+func NewUUID() string {
+	return uuid.New()
+}
+
+// Check whether a string is a valid UUID
+func IsUUID(uu string) bool {
+	return uuid.Parse(uu) != nil
 }
