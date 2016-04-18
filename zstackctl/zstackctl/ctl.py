@@ -1951,7 +1951,7 @@ class InstallHACmd(Command):
                            % (args.host1, args.mysql_user_password, args.mysql_root_password)
             run_remote_command(self.command, self.host1_post_info)
 
-        self.command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306" % args.vip
+        self.command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306/{database}?connectTimeout=2000\&socketTimeout=2000" % args.vip
         run_remote_command(self.command, self.host1_post_info)
         self.command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
         run_remote_command(self.command, self.host1_post_info)
@@ -2045,17 +2045,6 @@ class InstallHACmd(Command):
         InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['mevoco'] = True
         ZstackSpinner(self.spinner_info)
-        self.command = "zstack-ctl install_ui"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
-        self.command = "zstack-ctl start"
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
-        if self.status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host1, self.output))
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
-        if self.status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host2, self.output))
-
         # Add zstack-ctl start to rc.local for auto recovery when system reboot
         self.command = "service iptables save"
         run_remote_command(self.command, self.host1_post_info)
@@ -2066,6 +2055,16 @@ class InstallHACmd(Command):
         update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
         update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host2_post_info)
         update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host2_post_info)
+        self.command = "zstack-ctl install_ui"
+        run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(self.command, self.host2_post_info)
+        self.command = "zstack-ctl start"
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+        if self.status != 0:
+            error("Something wrong on host: %s\n %s" % (args.host1, self.output))
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+        if self.status != 0:
+            error("Something wrong on host: %s\n %s" % (args.host2, self.output))
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
 
