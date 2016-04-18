@@ -133,7 +133,7 @@ exit_on_error() {
 # deleting the orphan link and recreate it
 delete_orphan_outer_dev() {
     ip netns exec $1 ip link | grep $2 > /dev/null
-    if [ $? -eq 0 ]; then
+    if [ $? -ne 0 ]; then
         ip link del $3 &> /dev/null
         exit_on_error $LINENO
     fi
