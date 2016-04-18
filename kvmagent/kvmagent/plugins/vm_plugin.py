@@ -806,7 +806,14 @@ class Vm(object):
                 #domain has been shut down
                 pass
 
-            return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
+            try:
+                return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
+            except libvirt.libvirtError as ex:
+                error_code = ex.get_error_code()
+                if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                    return True
+                else:
+                    raise
 
         def iscsi_cleanup():
             disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
