@@ -4199,6 +4199,7 @@ class UpgradeDbCmd(Command):
         error_if_tool_is_missing('mysql')
 
         db_url = ctl.get_db_url()
+        db_url = db_url.replace('{database}', 'zstack')
         if 'zstack' not in db_url:
             db_url = '%s/zstack' % db_url.rstrip('/')
 
@@ -4255,6 +4256,7 @@ class UpgradeDbCmd(Command):
 
         def migrate():
             schema_path = 'filesystem:%s' % upgrading_schema_dir
+
             if db_password:
                 shell_no_pipe('bash %s migrate -user=%s -password=%s -url=%s -locations=%s' % (flyway_path, db_user, db_password, db_url, schema_path))
             else:
