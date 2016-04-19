@@ -18,7 +18,7 @@ func HandleVersion(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	return
 }
 
-// FIXME
+// TODO implement image search
 func getNameTag(key string) (name string, tag string, err *errcode.Error) {
 	ary := strings.Split(key, ":")
 

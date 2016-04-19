@@ -9,7 +9,6 @@ import (
 	"image-store/registry/api/v1"
 	"image-store/registry/storage"
 	"image-store/router"
-	"image-store/utils"
 	"net/http"
 )
 
@@ -80,7 +79,7 @@ func GetUploadInfoAndSearcher(ctx context.Context, w http.ResponseWriter, r *htt
 		return
 	}
 
-	if !utils.IsBlobDigest(ui.Digest) {
+	if !ui.Ok() {
 		return
 	}
 
@@ -98,4 +97,11 @@ func GetBlobPathSpec(ctx context.Context, w http.ResponseWriter, r *http.Request
 	}
 
 	return s.GetBlobPathSpec(n, d)
+}
+
+func GetUploadQueryArgAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, uu string, s *storage.ImageSearcher) {
+	n = router.GetRequestVar(r, v1.PvnName)
+	uu = router.GetRequestVar(r, v1.PvnUuid)
+	s = getImageSearcher(ctx, w)
+	return
 }

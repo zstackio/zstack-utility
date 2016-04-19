@@ -8,10 +8,10 @@ import (
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	"image-store/registry/api/errcode"
 	"image-store/utils"
+	"io"
 	"strings"
+	"time"
 )
-
-var NotImplemented = errors.New("not implemented")
 
 // The image manifest
 type ImageManifest struct {
@@ -25,6 +25,8 @@ type ImageManifest struct {
 	Size    int64    `json:"size"`
 	Name    string   `json:"name"`
 }
+
+var NotImplemented = errors.New("not implemented")
 
 // Encode the image manifest to JSON string
 func (imf *ImageManifest) String() string {
@@ -51,6 +53,15 @@ type UploadInfo struct {
 	Digest string `json:"digest"`
 }
 
+// Check whether an upload information is acceptable
+func (ui *UploadInfo) Ok() bool {
+	if !utils.IsBlobDigest(ui.Digest) {
+		return false
+	}
+
+	return true
+}
+
 // TODO add caching layer
 // Names and tags etc. will be converted to lowercase
 type Searcher interface {
@@ -71,6 +82,18 @@ type Searcher interface {
 
 	// Prepare blob upload
 	PrepareBlobUpload(ctx context.Context, name string, info *UploadInfo) (string, error)
+
+	// Get uploaded chunk size
+	GetUploadedSize(ctx context.Context, name string, uu string) (int64, error)
+
+	// Cancel the upload
+	CancelUpload(ctx context.Context, name string, uu string) error
+
+	// Complete the upload
+	CompleteUpload(ctx context.Context, name string, uu string) error
+
+	// Get a writer closer instance
+	GetChunkWriter(ctx context.Context, name string, uu string) (io.WriteCloser, error)
 }
 
 type ImageSearcher struct {
@@ -103,16 +126,16 @@ func getImageJson(ctx context.Context, d storagedriver.StorageDriver, ps string)
 	return nil, fmt.Errorf("invalid image manifest for %s", ps)
 }
 
-func (ims ImageSearcher) GetManifest(ctx context.Context, name string, ref string) (*ImageManifest, error) {
+func (ims ImageSearcher) GetManifest(ctx context.Context, nam string, ref string) (*ImageManifest, error) {
 	// If the reference is a tag -
 	//  1. get the digest via tag
 	//  2. get the manifest via digest
 	// Digest can be only first few digests - as long as there is no ambiguity.
 	refstr := strings.ToLower(ref)
-	mps := manifestsPathSpec{name: strings.ToLower(name)}
+	name := strings.ToLower(nam)
 
 	if utils.IsDigest(refstr) {
-		ps := imageJsonPathSpec{user: mps.user, name: mps.name, id: refstr}.pathSpec()
+		ps := imageJsonPathSpec{name: name, id: refstr}.pathSpec()
 		res, err := ims.driver.List(ctx, ps)
 		if err != nil {
 			if _, ok := err.(storagedriver.PathNotFoundError); ok {
@@ -132,7 +155,7 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, name string, ref strin
 	}
 
 	// ok - it is a tag
-	tps := tagPathSpec{user: mps.user, name: mps.name, tag: refstr}.pathSpec()
+	tps := tagPathSpec{name: name, tag: refstr}.pathSpec()
 	buf, err := ims.driver.GetContent(ctx, tps)
 	if err != nil {
 		return nil, err
@@ -143,11 +166,11 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, name string, ref strin
 		return nil, fmt.Errorf("unexpected digest '%s' for tag '%s'", idstr, refstr)
 	}
 
-	ips := imageJsonPathSpec{user: mps.user, name: mps.name, id: idstr}.pathSpec()
+	ips := imageJsonPathSpec{name: name, id: idstr}.pathSpec()
 	return getImageJson(ctx, ims.driver, ips)
 }
 
-func (ims ImageSearcher) PutManifest(ctx context.Context, name string, ref string, imf *ImageManifest) error {
+func (ims ImageSearcher) PutManifest(ctx context.Context, nam string, ref string, imf *ImageManifest) error {
 	// If the reference is a tag -
 	//  1. put the manifest
 	//  2. update the tag
@@ -157,6 +180,7 @@ func (ims ImageSearcher) PutManifest(ctx context.Context, name string, ref strin
 	//  2. put the manifest
 	refstr := strings.ToLower(ref)
 	idstr := strings.ToLower(imf.Id)
+	name := strings.ToLower(nam)
 	isdigest := utils.ParseImageId(refstr) != nil
 
 	if isdigest {
@@ -165,16 +189,31 @@ func (ims ImageSearcher) PutManifest(ctx context.Context, name string, ref strin
 		}
 	}
 
-	// TODO check manifest content and existence
-	mps := manifestsPathSpec{name: idstr}
-	ps := imageJsonPathSpec{user: mps.user, name: mps.name, id: idstr}.pathSpec()
+	if !imf.Ok() {
+		return errors.New("unexpected image manifest format")
+	}
 
+	// Check whether its parents exists
+	for _, pid := range imf.Parents {
+		ps := imageJsonPathSpec{name: name, id: pid}.pathSpec()
+		if _, err := ims.driver.Stat(ctx, ps); err != nil {
+			return err
+		}
+	}
+
+	// Check whether the image blob has been uploaded
+	bps := blobDigestPathSpec{digest: imf.Blobsum}.pathSpec()
+	if _, err := ims.driver.Stat(ctx, bps); err != nil {
+		return fmt.Errorf("image blob missing: %s", imf.Blobsum)
+	}
+
+	ps := imageJsonPathSpec{name: name, id: idstr}.pathSpec()
 	if err := ims.driver.PutContent(ctx, ps, []byte(imf.String())); err != nil {
 		return errors.New("failed to update manifest")
 	}
 
 	if !isdigest {
-		tps := tagPathSpec{user: mps.user, name: mps.name, tag: refstr}.pathSpec()
+		tps := tagPathSpec{name: name, tag: refstr}.pathSpec()
 		if err := ims.driver.PutContent(ctx, tps, []byte(idstr)); err != nil {
 			return fmt.Errorf("failed to update tag '%s' with digest '%s'", refstr, idstr)
 		}
@@ -229,4 +268,65 @@ func (ims ImageSearcher) PrepareBlobUpload(ctx context.Context, name string, inf
 
 	urlps := uploadUuidPathSpec{name: name, id: uu}.urlSpec()
 	return urlps, nil
+}
+
+func (ims ImageSearcher) GetUploadedSize(ctx context.Context, name string, uu string) (int64, error) {
+	dps := uploadDataPathSpec{name: name, id: uu}.pathSpec()
+
+	info, err := ims.driver.Stat(ctx, dps)
+	if err != nil {
+		return 0, err
+	}
+
+	return info.Size(), nil
+}
+
+func (ims ImageSearcher) CancelUpload(ctx context.Context, name string, uu string) error {
+	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
+
+	_, err := ims.driver.Stat(ctx, uups)
+	if err != nil {
+		return err
+	}
+
+	go ims.driver.Delete(ctx, uups)
+	return nil
+}
+
+func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu string) error {
+	csps := uploadCheckSumPathSpec{name: name, id: uu}.pathSpec()
+	buf, err := ims.driver.GetContent(ctx, csps)
+	if err != nil {
+		return err
+	}
+
+	// TODO: verify digest
+	bdps := blobDigestPathSpec{digest: string(buf)}.pathSpec()
+	dps := uploadDataPathSpec{name: name, id: uu}.pathSpec()
+	if err = ims.driver.Move(ctx, dps, bdps); err != nil {
+		return err
+	}
+
+	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
+	ims.driver.Delete(ctx, uups)
+
+	return nil
+}
+
+func (ims ImageSearcher) GetChunkWriter(ctx context.Context, name string, uu string) (io.WriteCloser, error) {
+	// Check whether the upload UUID exists
+	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
+
+	_, err := ims.driver.Stat(ctx, uups)
+	if err != nil {
+		return nil, err
+	}
+
+	// Write the record of started time
+	stps := uploadStartTimePathSpec{name: name, id: uu}.pathSpec()
+	ts := time.Now().Format(time.RFC3339)
+	ims.driver.PutContent(ctx, stps, []byte(ts))
+
+	dps := uploadDataPathSpec{name: name, id: uu}.pathSpec()
+	return ims.driver.Writer(ctx, dps, true)
 }

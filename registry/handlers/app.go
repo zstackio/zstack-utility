@@ -52,7 +52,11 @@ func NewApp(config *config.Configuration) (*App, error) {
 
 	app.register(v1.RouteNameBlob, GetBlob).Methods("GET")
 	app.register(v1.RouteNameUpload, EnforceContentLength(PrepareBlobUpload)).Methods("POST")
-	app.register(v1.RouteNameUploadChunk, HandleUploadEntity)
+
+	app.register(v1.RouteNameUploadChunk, GetUploadProgress).Methods("GET")
+	app.register(v1.RouteNameUploadChunk, UploadBlobChunk).Methods("PATCH")
+	app.register(v1.RouteNameUploadChunk, CompleteUpload).Methods("PUT")
+	app.register(v1.RouteNameUploadChunk, CancelUpload).Methods("DELETE")
 
 	return app, nil
 }
