@@ -1993,9 +1993,7 @@ class InstallHACmd(Command):
         #copy zstack-1 property to zstack-2 and update the management.server.ip
         #update zstack-1 firstly
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='^CloudBus\.serverIp\.0' line='CloudBus.serverIp.0=%s'" % args.host1, self.host1_post_info)
-        update_file("%s" % ctl.properties_file_path,
-                    "regexp='^CloudBus\.serverIp\.1' line='CloudBus.serverIp.1=%s'" % args.host2, self.host1_post_info)
+                    "regexp='^CloudBus\.serverIp\.0' line='CloudBus.serverIp.0=%s'" % args.vip, self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^CloudBus\.rabbitmqUsername' line='CloudBus.rabbitmqUsername=zstack'", self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
@@ -2611,44 +2609,22 @@ class RabbitmqHA(InstallHACmd):
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
 
-        # to start rabbitmq-server firstly for generate cookie file
+        # to start rabbitmq-server
         service_status("rabbitmq-server","state=started enabled=yes", self.host1_post_info)
-        service_status("rabbitmq-server","state=stopped", self.host1_post_info)
-        # we need to fetch cookie from host1 then copy to host2
-        self.fetch_arg=FetchArg()
-        self.fetch_arg.src = "/var/lib/rabbitmq/.erlang.cookie"
-        self.fetch_arg.dest = "/tmp/erlang.cookie"
-        self.fetch_arg.args = "fail_on_missing=yes flat=yes"
-        fetch(self.fetch_arg, self.host1_post_info)
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = "/tmp/erlang.cookie"
-        self.copy_arg.dest = "/var/lib/rabbitmq/.erlang.cookie"
-        self.copy_arg.args = "owner=rabbitmq group=rabbitmq mode=400"
-        copy(self.copy_arg, self.host2_post_info)
-
-        service_status("rabbitmq-server", "state=started", self.host1_post_info)
-        service_status("rabbitmq-server", "state=started  enabled=yes", self.host2_post_info)
-        #todo : check the cluster status
-        # add zstack2 to cluster
-        self.command = "rabbitmqctl stop_app"
-        run_remote_command(self.command, self.host2_post_info)
-        self.command = "rabbitmqctl join_cluster rabbit@zstack-1"
-        run_remote_command(self.command, self.host2_post_info)
-        self.command = "rabbitmqctl start_app"
-        run_remote_command(self.command, self.host2_post_info)
-        #todo : check the cluster status
-        # set policy let all nodes duplicate content (remove due to rabbitmq will hung when reboot system)
-        # self.command = "rabbitmqctl set_policy ha-all '^(?!amq\.).*' '{\"ha-mode\": \"all\"}'"
-        # run_remote_command(self.command, self.host1_post_info)
+        service_status("rabbitmq-server", "state=started enabled=yes", self.host2_post_info)
         # add zstack user in this cluster
         self.command = "rabbitmqctl add_user zstack %s" %  self.rabbit_password
         run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(self.command, self.host2_post_info)
         self.command = "rabbitmqctl set_user_tags zstack administrator"
         run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(self.command, self.host2_post_info)
         self.command = "rabbitmqctl change_password zstack %s" % self.rabbit_password
         run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(self.command, self.host2_post_info)
         self.command = 'rabbitmqctl set_permissions -p \/ zstack ".*" ".*" ".*"'
         run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(self.command, self.host2_post_info)
 
 
 class InstallRabbitCmd(Command):
