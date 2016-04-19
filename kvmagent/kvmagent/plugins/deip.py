@@ -229,7 +229,7 @@ set_gateway_arp_if_needed() {
     exit_on_error $LINENO
 
     gateway=`eval $NS ip link | grep -w $PRI_IDEV -A 1 | awk '/link\/ether/{print $2}'`
-    rule="$CHAIN_NAME -p ARP --arp-op Request -j arpreply --arpreply-mac $gateway"
+    rule="$CHAIN_NAME -p ARP --arp-op Request --arp-ip-dst $NIC_GATEWAY -j arpreply --arpreply-mac $gateway"
     ebtables-save | grep -- "$rule" > /dev/null || ebtables -t nat -A $rule
     exit_on_error $LINENO
 }
