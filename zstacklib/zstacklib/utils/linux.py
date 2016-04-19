@@ -1133,3 +1133,13 @@ def get_gateway_by_default_route():
 
     return out
 
+def delete_lines_from_file(filename, is_line_to_delete):
+    lines = []
+    with open(filename, 'r') as fd:
+        for l in fd.readlines():
+            if not is_line_to_delete(l):
+                lines.append(l)
+
+    with open(filename, 'w') as fd:
+        fd.write('\n'.join(lines))
+
