@@ -76,13 +76,13 @@ exit_on_error() {
     fi
 }
 
-ip netns | grep $NS_NAME > /dev/null
+ip netns | grep -w $NS_NAME > /dev/null
 if [ $? -eq 0 ]; then
    ip netns delete $NS_NAME
    exit_on_error $LINENO
 fi
 
-ip link | grep $PUB_ODEV > /dev/null
+ip link | grep -w $PUB_ODEV > /dev/null
 if [ $? -eq 0 ]; then
     ip link del $PUB_ODEV
     exit_on_error $LINENO
@@ -132,14 +132,14 @@ exit_on_error() {
 # in case the namespace deleted and the orphan outer link leaves in the system,
 # deleting the orphan link and recreate it
 delete_orphan_outer_dev() {
-    ip netns exec $1 ip link | grep $2 > /dev/null
+    ip netns exec $1 ip link | grep -w $2 > /dev/null
     if [ $? -ne 0 ]; then
         ip link del $3 &> /dev/null
     fi
 }
 
 create_dev_if_needed() {
-    ip link | grep $1 > /dev/null
+    ip link | grep -w $1 > /dev/null
     if [ $? -ne 0 ]; then
         ip link add $1 type veth peer name $2
         exit_on_error $LINENO
@@ -150,7 +150,7 @@ create_dev_if_needed() {
 }
 
 add_dev_to_br_if_needed() {
-    brctl show $1 | grep $2 > /dev/null
+    brctl show $1 | grep -w $2 > /dev/null
     if [ $? -ne 0 ]; then
         brctl addif $1 $2
         exit_on_error $LINENO
@@ -158,7 +158,7 @@ add_dev_to_br_if_needed() {
 }
 
 add_dev_to_namespace_if_needed() {
-    eval $NS ip link | grep $1 > /dev/null
+    eval $NS ip link | grep -w $1 > /dev/null
     if [ $? -ne 0 ]; then
         ip link set $1 netns $2
         exit_on_error $LINENO
@@ -166,7 +166,7 @@ add_dev_to_namespace_if_needed() {
 }
 
 set_ip_to_idev_if_needed() {
-    eval $NS ip addr show $1 | grep $2 > /dev/null
+    eval $NS ip addr show $1 | grep -w $2 > /dev/null
     if [ $? -ne 0 ]; then
         eval $NS ip addr flush dev $1
         exit_on_error $LINENO
@@ -185,7 +185,7 @@ block_arp_for_NIC_GATEWAY() {
        exit 1
     fi
 
-    ebtables-save | grep ":$EBTABLE_CHAIN_NAME" > /dev/null
+    ebtables-save | grep -w ":$EBTABLE_CHAIN_NAME" > /dev/null
     if [ $? -ne 0 ]; then
         ebtables -N $EBTABLE_CHAIN_NAME
         ebtables -I FORWARD -j $EBTABLE_CHAIN_NAME
@@ -214,7 +214,7 @@ create_ip_table_rule_if_needed() {
 
 set_eip_rules() {
     DNAT_NAME="DNAT-$VIP"
-    eval $NS iptables-save | grep ":$DNAT_NAME" > /dev/null
+    eval $NS iptables-save | grep -w ":$DNAT_NAME" > /dev/null
     if [ $? -ne 0 ]; then
         eval $NS iptables -t nat -N $DNAT_NAME
         exit_on_error $LINENO
@@ -224,7 +224,7 @@ set_eip_rules() {
     create_ip_table_rule_if_needed "-t nat" "-A $DNAT_NAME -j DNAT --to-destination $NIC_IP"
 
     FWD_NAME="FWD-$VIP"
-    eval $NS iptables-save | grep ":$FWD_NAME" > /dev/null
+    eval $NS iptables-save | grep -w ":$FWD_NAME" > /dev/null
     if [ $? -ne 0 ]; then
         eval $NS iptables -N $FWD_NAME
         exit_on_error $LINENO
@@ -235,7 +235,7 @@ set_eip_rules() {
     create_ip_table_rule_if_needed "-t filter" "-A $FWD_NAME -j ACCEPT"
 
     SNAT_NAME="SNAT-$VIP"
-    eval $NS iptables-save | grep ":$SNAT_NAME" > /dev/null
+    eval $NS iptables-save | grep -w ":$SNAT_NAME" > /dev/null
     if [ $? -ne 0 ]; then
         eval $NS iptables -t nat -N $SNAT_NAME
         exit_on_error $LINENO
@@ -246,7 +246,7 @@ set_eip_rules() {
 }
 
 set_default_route_if_needed() {
-    eval $NS ip route | grep default > /dev/null
+    eval $NS ip route | grep -w default > /dev/null
     if [ $? -ne 0 ]; then
         eval $NS ip route add default via $VIP_GW
         exit_on_error $LINENO
