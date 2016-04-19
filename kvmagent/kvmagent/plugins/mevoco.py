@@ -38,6 +38,9 @@ class ReleaseUserdataRsp(kvmagent.AgentResponse):
 class ConnectRsp(kvmagent.AgentResponse):
     pass
 
+class ResetGatewayRsp(kvmagent.AgentResponse):
+    pass
+
 class DhcpEnv(object):
     def __init__(self):
         self.bridge_name = None
@@ -179,7 +182,7 @@ class Mevoco(kvmagent.KvmAgent):
     PREPARE_DHCP_PATH = "/flatnetworkprovider/dhcp/prepare"
     RELEASE_DHCP_PATH = "/flatnetworkprovider/dhcp/release"
     DHCP_CONNECT_PATH = "/flatnetworkprovider/dhcp/connect"
-
+    RESET_DEFAULT_GATEWAY_PATH = "/flatnetworkprovider/dhcp/resetDefaultGateway"
     APPLY_USER_DATA = "/flatnetworkprovider/userdata/apply"
     RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
 
@@ -199,6 +202,7 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.PREPARE_DHCP_PATH, self.prepare_dhcp)
         http_server.register_async_uri(self.APPLY_USER_DATA, self.apply_userdata)
         http_server.register_async_uri(self.RELEASE_USER_DATA, self.release_userdata)
+        http_server.register_async_uri(self.RESET_DEFAULT_GATEWAY_PATH, self.reset_default_gateway)
 
     def stop(self):
         pass
@@ -455,6 +459,29 @@ mimetype.assign = (
         p.prepare()
 
         return jsonobject.dumps(PrepareDhcpRsp())
+
+    @lock.lock('dnsmasq')
+    @kvmagent.replyerror
+    def reset_default_gateway(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        conf_file_path, _, _, option_path, _ = self._make_conf_path(cmd.bridgeNameOfGatewayToRemove)
+        mac_to_remove = cmd.mac.replace(':', '')
+
+        def is_line_to_delete(line):
+            return cmd.gatewayToRemove in line and mac_to_remove in line and 'router' in line
+
+        linux.delete_lines_from_file(option_path, is_line_to_delete)
+        self._refresh_dnsmasq(cmd.bridgeNameOfGatewayToRemove, conf_file_path)
+
+        conf_file_path, _, _, option_path, _ = self._make_conf_path(cmd.bridgeNameOfGatewayToAdd)
+        option = 'tag:%s,option:router,%s\n' % (cmd.macOfGatewayToAdd.replace(':', ''), cmd.gatewayToAdd)
+        with open(option_path, 'a+') as fd:
+            fd.write(option)
+
+        self._refresh_dnsmasq(cmd.bridgeNameOfGatewayToAdd, conf_file_path)
+
+        return jsonobject.dumps(ResetGatewayRsp())
 
     @lock.lock('dnsmasq')
     @kvmagent.replyerror
