@@ -95,12 +95,12 @@ fi
 
 # in case the namespace deleted and the orphan outer link leaves in the system,
 # deleting the orphan link and recreate it
-ip netns exec $BR_NAME ip link | grep $INNER_DEV > /dev/null
+ip netns exec $BR_NAME ip link | grep -w $INNER_DEV > /dev/null
 if [ $? -ne 0 ]; then
    ip link del $OUTER_DEV &> /dev/null
 fi
 
-ip link | grep $OUTER_DEV > /dev/null
+ip link | grep -w $OUTER_DEV > /dev/null
 if [ $? -ne 0 ]; then
     ip link add $OUTER_DEV type veth peer name $INNER_DEV
     exit_on_error
@@ -109,19 +109,19 @@ fi
 ip link set $OUTER_DEV up
 exit_on_error
 
-brctl show $BR_NAME | grep $OUTER_DEV > /dev/null
+brctl show $BR_NAME | grep -w $OUTER_DEV > /dev/null
 if [ $? -ne 0 ]; then
     brctl addif $BR_NAME $OUTER_DEV
     exit_on_error
 fi
 
-ip netns exec $BR_NAME ip link | grep $INNER_DEV > /dev/null
+ip netns exec $BR_NAME ip link | grep -w $INNER_DEV > /dev/null
 if [ $? -ne 0 ]; then
     ip link set $INNER_DEV netns $BR_NAME
     exit_on_error
 fi
 
-ip netns exec $BR_NAME ip addr show $INNER_DEV | grep $DHCP_IP > /dev/null
+ip netns exec $BR_NAME ip addr show $INNER_DEV | grep -w $DHCP_IP > /dev/null
 if [ $? -ne 0 ]; then
     ip netns exec $BR_NAME ip addr flush dev $INNER_DEV
     exit_on_error
@@ -134,7 +134,7 @@ exit_on_error
 
 CHAIN_NAME="ZSTACK-$DHCP_IP"
 
-ebtables-save | grep ":$CHAIN_NAME" > /dev/null
+ebtables-save | grep -w ":$CHAIN_NAME" > /dev/null
 
 if [ $? -ne 0 ]; then
     ebtables -N $CHAIN_NAME
@@ -235,7 +235,7 @@ if [ $? -eq 0 ]; then
     exit 0
 fi
 
-eth=`eval $NS ip addr | grep $DHCP_IP | awk '{print $NF}'`
+eth=`eval $NS ip addr | grep -w $DHCP_IP | awk '{print $NF}'`
 exit_on_error $LINENO
 if [ x$eth == "x" ]; then
     echo "cannot find device for the DHCP IP $DHCP_IP"
@@ -268,12 +268,12 @@ exit_on_error() {
 }
 
 eth=`eval $NS ip addr | grep 169.254.169.254 | awk '{print $NF}'`
-mac=`eval $NS ip link show $eth | grep ether | awk '{print $2}'`
+mac=`eval $NS ip link show $eth | grep -w ether | awk '{print $2}'`
 exit_on_error $LINENO
 
 CHAIN_NAME="USERDATA-$BR_NAME"
 
-ebtables-save | grep ":$CHAIN_NAME" > /dev/null
+ebtables-save | grep -w ":$CHAIN_NAME" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -t nat -N $CHAIN_NAME
     exit_on_error $LINENO
@@ -317,7 +317,7 @@ if [ x"$old_chain" != "x" -a $CHAIN_NAME != $old_chain ]; then
     exit_on_error $LINENO
 fi
 
-iptables-save | grep ":$CHAIN_NAME" > /dev/null
+iptables-save | grep -w ":$CHAIN_NAME" > /dev/null
 if [ $? -ne 0 ]; then
    iptables -t nat -N $CHAIN_NAME
    exit_on_error $LINENO
@@ -520,7 +520,7 @@ dhcp-range={{g}},static
 {% endfor -%}
 '''
 
-            br_num = shell.call('ip link show %s | grep %s | cut -d":" -f1' % (bridge_name, bridge_name))
+            br_num = shell.call('ip link show %s | grep -w %s | cut -d":" -f1' % (bridge_name, bridge_name))
             br_num = br_num.strip('\t\n\r ')
             tmpt = Template(conf_file)
             conf_file = tmpt.render({
