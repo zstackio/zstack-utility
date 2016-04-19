@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/tls"
 	"github.com/docker/libtrust"
+	"log"
 	"net"
 	"net/http"
 
@@ -61,7 +62,7 @@ func NewApp(config *config.Configuration) (*App, error) {
 	return app, nil
 }
 
-func (app *App) Run() error {
+func (app *App) Run(logger *log.Logger) error {
 	tlscfg := app.Config.TLS
 
 	// load the server private key
@@ -109,8 +110,9 @@ func (app *App) Run() error {
 
 	// create the HTTP server
 	server := &http.Server{
-		Addr:    app.Config.HTTP.Addr,
-		Handler: app.router,
+		Addr:     app.Config.HTTP.Addr,
+		Handler:  app.router,
+		ErrorLog: logger,
 	}
 
 	// Listen and server HTTPS using the libtrust TLS config.
