@@ -466,7 +466,7 @@ mimetype.assign = (
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         conf_file_path, _, _, option_path, _ = self._make_conf_path(cmd.bridgeNameOfGatewayToRemove)
-        mac_to_remove = cmd.mac.replace(':', '')
+        mac_to_remove = cmd.macOfGatewayToRemove.replace(':', '')
 
         def is_line_to_delete(line):
             return cmd.gatewayToRemove in line and mac_to_remove in line and 'router' in line
