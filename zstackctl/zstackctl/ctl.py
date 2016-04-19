@@ -1995,6 +1995,8 @@ class InstallHACmd(Command):
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^CloudBus\.serverIp\.0' line='CloudBus.serverIp.0=%s'" % args.vip, self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
+                    "regexp='^CloudBus\.serverIp\.1' state=absent" , self.host1_post_info)
+        update_file("%s" % ctl.properties_file_path,
                     "regexp='^CloudBus\.rabbitmqUsername' line='CloudBus.rabbitmqUsername=zstack'", self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^CloudBus\.rabbitmqPassword' line='CloudBus.rabbitmqPassword=%s'" % args.rabbit_password, self.host1_post_info)
