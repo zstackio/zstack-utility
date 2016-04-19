@@ -68,6 +68,7 @@ class DEip(kvmagent.KvmAgent):
         delete_eip_cmd = '''
 PUB_ODEV={{pub_odev}}
 NS_NAME="{{ns_name}}"
+NIC_NAME="{{nicName}}"
 
 exit_on_error() {
     if [ $? -ne 0 ]; then
@@ -76,17 +77,34 @@ exit_on_error() {
     fi
 }
 
-ip netns | grep -w $NS_NAME > /dev/null
-if [ $? -eq 0 ]; then
-   ip netns delete $NS_NAME
-   exit_on_error $LINENO
-fi
-
-ip link | grep -w $PUB_ODEV > /dev/null
-if [ $? -eq 0 ]; then
-    ip link del $PUB_ODEV
+delete_namespace() {
+    ip netns | grep -w $NS_NAME > /dev/null && ip netns delete $NS_NAME
     exit_on_error $LINENO
-fi
+}
+
+delete_outer_dev() {
+    ip link | grep -w $PUB_ODEV > /dev/null && ip link del $PUB_ODEV
+    exit_on_error $LINENO
+}
+
+delete_arp_rule() {
+    CHAIN_NAME=$NIC_NAME-gw
+    ebtables-save | grep -w ":$CHAIN_NAME" > /dev/null
+    if [ $? -eq 0 ]; then
+        rule="PREROUTING -i $NIC_NAME -j $CHAIN_NAME"
+        ebtables-save | grep -- "-A $rule" > /dev/null && ebtables -t nat -D $rule
+        exit_on_error $LINENO
+
+        ebtables -t nat -F $CHAIN_NAME
+        exit_on_error $LINENO
+        ebtables -t nat -X $CHAIN_NAME
+        exit_on_error $LINENO
+    fi
+}
+
+delete_namespace
+delete_outer_dev
+delete_arp_rule
 
 exit 0
 '''
@@ -132,37 +150,25 @@ exit_on_error() {
 # in case the namespace deleted and the orphan outer link leaves in the system,
 # deleting the orphan link and recreate it
 delete_orphan_outer_dev() {
-    ip netns exec $1 ip link | grep -w $2 > /dev/null
-    if [ $? -ne 0 ]; then
-        ip link del $3 &> /dev/null
-    fi
+    ip netns exec $1 ip link | grep -w $2 > /dev/null || ip link del $3 &> /dev/null
 }
 
 create_dev_if_needed() {
-    ip link | grep -w $1 > /dev/null
-    if [ $? -ne 0 ]; then
-        ip link add $1 type veth peer name $2
-        exit_on_error $LINENO
-    fi
+    ip link | grep -w $1 > /dev/null || ip link add $1 type veth peer name $2
+    exit_on_error $LINENO
 
     ip link set $1 up
     exit_on_error $LINENO
 }
 
 add_dev_to_br_if_needed() {
-    brctl show $1 | grep -w $2 > /dev/null
-    if [ $? -ne 0 ]; then
-        brctl addif $1 $2
-        exit_on_error $LINENO
-    fi
+    brctl show $1 | grep -w $2 > /dev/null || brctl addif $1 $2
+    exit_on_error $LINENO
 }
 
 add_dev_to_namespace_if_needed() {
-    eval $NS ip link | grep -w $1 > /dev/null
-    if [ $? -ne 0 ]; then
-        ip link set $1 netns $2
-        exit_on_error $LINENO
-    fi
+    eval $NS ip link | grep -w $1 > /dev/null || ip link set $1 netns $2
+    exit_on_error $LINENO
 }
 
 set_ip_to_idev_if_needed() {
@@ -178,86 +184,58 @@ set_ip_to_idev_if_needed() {
     exit_on_error $LINENO
 }
 
-block_arp_for_NIC_GATEWAY() {
-    local BR_PHY_DEV=$PRI_BR_PHY_DEV
-    if [ x$BR_PHY_DEV == "x" ]; then
-       echo "cannot find the physical interface of the bridge $PRI_BR"
-       exit 1
-    fi
-
-    ebtables-save | grep -w ":$EBTABLE_CHAIN_NAME" > /dev/null
-    if [ $? -ne 0 ]; then
-        ebtables -N $EBTABLE_CHAIN_NAME
-        ebtables -I FORWARD -j $EBTABLE_CHAIN_NAME
-    fi
-
-    ebtables-save | grep "$EBTABLE_CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $NIC_GATEWAY -j DROP" > /dev/null
-    if [ $? -ne 0 ]; then
-        ebtables -I $EBTABLE_CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $NIC_GATEWAY -j DROP
-        exit_on_error $LINENO
-    fi
-
-    ebtables-save | grep "$EBTABLE_CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $NIC_GATEWAY -j DROP" > /dev/null
-    if [ $? -ne 0 ]; then
-        ebtables -I $EBTABLE_CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $NIC_GATEWAY -j DROP
-        exit_on_error $LINENO
-    fi
-}
-
 create_ip_table_rule_if_needed() {
-   eval $NS iptables-save | grep -- "$2" > /dev/null
-   if [ $? -ne 0 ]; then
-       eval $NS iptables $1 $2
-       exit_on_error $LINENO
-   fi
+   eval $NS iptables-save | grep -- "$2" > /dev/null || eval $NS iptables $1 $2
+   exit_on_error $LINENO
 }
 
 set_eip_rules() {
     DNAT_NAME="DNAT-$VIP"
-    eval $NS iptables-save | grep -w ":$DNAT_NAME" > /dev/null
-    if [ $? -ne 0 ]; then
-        eval $NS iptables -t nat -N $DNAT_NAME
-        exit_on_error $LINENO
-    fi
+    eval $NS iptables-save | grep -w ":$DNAT_NAME" > /dev/null || eval $NS iptables -t nat -N $DNAT_NAME
+    exit_on_error $LINENO
 
     create_ip_table_rule_if_needed "-t nat" "-A PREROUTING -d $VIP/32 -j $DNAT_NAME"
     create_ip_table_rule_if_needed "-t nat" "-A $DNAT_NAME -j DNAT --to-destination $NIC_IP"
 
     FWD_NAME="FWD-$VIP"
-    eval $NS iptables-save | grep -w ":$FWD_NAME" > /dev/null
-    if [ $? -ne 0 ]; then
-        eval $NS iptables -N $FWD_NAME
-        exit_on_error $LINENO
-    fi
+    eval $NS iptables-save | grep -w ":$FWD_NAME" > /dev/null || eval $NS iptables -N $FWD_NAME
+    exit_on_error $LINENO
 
     create_ip_table_rule_if_needed "-t filter" "-A FORWARD -i $PRI_IDEV -o $PUB_IDEV -j $FWD_NAME"
     create_ip_table_rule_if_needed "-t filter" "-A FORWARD -i $PUB_IDEV -o $PRI_IDEV -j $FWD_NAME"
     create_ip_table_rule_if_needed "-t filter" "-A $FWD_NAME -j ACCEPT"
 
     SNAT_NAME="SNAT-$VIP"
-    eval $NS iptables-save | grep -w ":$SNAT_NAME" > /dev/null
-    if [ $? -ne 0 ]; then
-        eval $NS iptables -t nat -N $SNAT_NAME
-        exit_on_error $LINENO
-    fi
+    eval $NS iptables-save | grep -w ":$SNAT_NAME" > /dev/null || eval $NS iptables -t nat -N $SNAT_NAME
+    exit_on_error $LINENO
 
     create_ip_table_rule_if_needed "-t nat" "-A POSTROUTING -s $NIC_IP/32 -j $SNAT_NAME"
     create_ip_table_rule_if_needed "-t nat" "-A $SNAT_NAME -j SNAT --to-source $VIP"
 }
 
 set_default_route_if_needed() {
-    eval $NS ip route | grep -w default > /dev/null
-    if [ $? -ne 0 ]; then
-        eval $NS ip route add default via $VIP_GW
-        exit_on_error $LINENO
-    fi
+    eval $NS ip route | grep -w default > /dev/null || eval $NS ip route add default via $VIP_GW
+    exit_on_error $LINENO
 }
 
-eval $NS ip link show
-if [ $? -ne 0 ]; then
-    ip netns add $NS_NAME
+set_gateway_arp_if_needed() {
+    CHAIN_NAME=$NIC_NAME-gw
+
+    ebtables-save | grep -w ":$CHAIN_NAME" > /dev/null || ebtables -t nat -N $CHAIN_NAME
     exit_on_error $LINENO
-fi
+
+    rule="PREROUTING -i $NIC_NAME -j $CHAIN_NAME"
+    ebtables-save | grep -- "$rule" > /dev/null || ebtables -t nat -I $rule
+    exit_on_error $LINENO
+
+    gateway=`eval $NS ip link | grep -w $PRI_IDEV -A 1 | awk '/link\/ether/{print $2}'`
+    rule="$CHAIN_NAME -p ARP --arp-op Request -j arpreply --arpreply-mac $gateway"
+    ebtables-save | grep -- "$rule" > /dev/null || ebtables -t nat -A $rule
+    exit_on_error $LINENO
+}
+
+eval $NS ip link show > /dev/null || ip netns add $NS_NAME
+exit_on_error $LINENO
 
 delete_orphan_outer_dev $NS_NAME $PUB_IDEV $PUB_ODEV
 delete_orphan_outer_dev $NS_NAME $PRI_IDEV $PRI_ODEV
@@ -277,7 +255,7 @@ set_ip_to_idev_if_needed $PRI_IDEV $NIC_GATEWAY $NIC_NETMASK
 # ping VIP gateway
 eval $NS arping -q -U -c 1 -I $PUB_IDEV $VIP_GW > /dev/null
 
-block_arp_for_NIC_GATEWAY
+set_gateway_arp_if_needed
 set_eip_rules
 set_default_route_if_needed
 
