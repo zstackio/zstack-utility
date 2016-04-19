@@ -1772,8 +1772,9 @@ class InstallHACmd(Command):
         self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
         if os.path.isfile(self.public_key_name) is not True:
-            rc = os.system("echo -e  'y\n'|ssh-keygen -q -t rsa -N \"\" -f %s" % self.private_key_name)
-            if rc != 0:
+            self.command = "echo -e  'y\n'|ssh-keygen -q -t rsa -N \"\" -f %s" % self.private_key_name
+            (self.status, self.output) = commands.getstatusoutput(self.command)
+            if self.status != 0:
                 error("Generate private key %s failed! Generate manually or rerun the process!" % self.private_key_name)
         with open(self.public_key_name) as self.public_key_file:
             self.public_key = self.public_key_file.read()
@@ -1818,17 +1819,27 @@ class InstallHACmd(Command):
                                       'then echo "%s" >> ~/.ssh/authorized_keys; fi  && exit 0;'\
                                       % (self.public_key.strip('\n'), self.public_key.strip('\n'), self.public_key.strip('\n'))
 
-        # add public key to host1
+        # add ha public key to host1
         self.ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s'" % \
                                   (args.host1_password, args.host1, self.add_public_key_command)
-        os.system(self.ssh_add_public_key_command)
+        (status, output) = commands.getstatusoutput(self.ssh_add_public_key_command)
+        if status != 0:
+            error(output)
 
-        # add public key to host2
+        # add ha public key to host2
         self.ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
                                   (args.host2_password, args.host2, self.add_public_key_command)
-        os.system(self.ssh_add_public_key_command)
+        (status, output) = commands.getstatusoutput(self.ssh_add_public_key_command)
+        if status != 0:
+            error(output)
+
+        # sync ansible key in two host
+        self.copy_arg = CopyArg()
+        self.copy_arg.src = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
+        self.copy_arg.dest = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
+        copy(self.copy_arg,self.host2_post_info)
 
         # check whether to recovery the HA cluster
         if args.recovery_from_this_host is True:
