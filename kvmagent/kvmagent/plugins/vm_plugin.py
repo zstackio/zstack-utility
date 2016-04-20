@@ -871,6 +871,16 @@ class Vm(object):
     def destroy(self):
         self.stop(graceful=False)
 
+    def harden_console(self):
+        id = self.domain_xmlobject.metadata.internalId.text_
+        vir = VncPortIptableRule()
+        vir.vm_internal_id = id
+        vir.delete()
+
+        vir.host_ip = self.domain_xmlobject.metadata.hostManagementIp.text_
+        vir.port = self.get_console_port()
+        vir.apply()
+
     def get_console_port(self):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
             if g.type_ == 'vnc' or g.type_ == 'spice':
@@ -1903,6 +1913,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
+    KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -2019,6 +2030,16 @@ class VmPlugin(kvmagent.KvmAgent):
             if not s:
                 s = Vm.VM_STATE_SHUTDOWN
             rsp.states[uuid] = s
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def harden_console(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm.harden_console()
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2309,6 +2330,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
+        http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
 
         self.register_libvirt_event()
 
@@ -2446,7 +2468,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if LibvirtEventManager.EVENT_STARTED == event:
                 vir.host_ip = domain_xmlobject.metadata.hostManagementIp.text_
                 for g in domain_xmlobject.devices.get_child_node_as_list('graphics'):
-                    if g.type_ == 'vnc':
+                    if g.type_ == 'vnc' or g.type_ == 'spice':
                         vir.port = g.port_
                         break
 
