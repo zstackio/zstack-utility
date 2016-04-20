@@ -108,7 +108,7 @@ func New(privateKeyFile string, trustedHostsFile string, serverAddr string) (*ZI
 	}, nil
 }
 
-func (cln *ZImageClient) HttpGet(route string) (resp *http.Response, err error) {
+func (cln *ZImageClient) getFullUrl(route string) string {
 	var url string
 
 	if strings.HasPrefix(route, "/") {
@@ -117,5 +117,19 @@ func (cln *ZImageClient) HttpGet(route string) (resp *http.Response, err error) 
 		url = cln.server + "/" + route
 	}
 
-	return cln.c.Get(url)
+	return url
+}
+
+func (cln *ZImageClient) Get(route string) (resp *http.Response, err error) {
+	return cln.c.Get(cln.getFullUrl(route))
+}
+
+func (cln *ZImageClient) RangeGet(route string, startOffset int64) (resp *http.Response, err error) {
+	req, err := http.NewRequest("GET", cln.getFullUrl(route), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Range:", fmt.Sprintf("bytes=%d-", startOffset))
+	return cln.c.Do(req)
 }

@@ -42,8 +42,3 @@ func WriteHttpError(w http.ResponseWriter, e error, status int) {
 		fmt.Fprintf(w, e2.Error())
 	}
 }
-
-func DecodeRequest(r *http.Request, req interface{}) error {
-	decoder := json.NewDecoder(r.Body)
-	return decoder.Decode(req)
-}

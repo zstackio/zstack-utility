@@ -1,6 +1,8 @@
 package utils
 
-import "net"
+import (
+	"net"
+)
 
 func ListIPs() (ips []net.IP, err error) {
 	addrs, err := net.InterfaceAddrs()

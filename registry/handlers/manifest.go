@@ -3,7 +3,8 @@ package handlers
 import (
 	"github.com/docker/distribution/context"
 	"image-store/registry/api/errcode"
-	"image-store/registry/storage"
+	"image-store/registry/api/v1"
+	"image-store/utils"
 	"net/http"
 )
 
@@ -27,9 +28,9 @@ func PutManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var imf storage.ImageManifest
+	var imf v1.ImageManifest
 
-	if err := DecodeRequest(r, &imf); err != nil {
+	if err := utils.JsonDecode(r.Body, &imf); err != nil {
 		e2 := errcode.BuildBadRequest("unexpected body format", err)
 		WriteHttpError(w, e2, http.StatusBadRequest)
 		return

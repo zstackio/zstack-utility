@@ -1,5 +1,9 @@
 package v1
 
+import (
+	"path"
+)
+
 const (
 	// Path variable names
 	PvnName      = "name"
@@ -33,3 +37,23 @@ const (
 	// DELETE - cancel upload.
 	RouteNameUploadChunk = "/v1/{name}/blobs/uploads/{uuid}"
 )
+
+func GetManifestRoute(name string, reference string) string {
+	return path.Join(RouteNameV1, name, "manifests", reference)
+}
+
+func GetTagListRoute(name string) string {
+	return path.Join(RouteNameV1, name, "tags")
+}
+
+func GetImageBlobRoute(name string, digest string) string {
+	return path.Join(RouteNameV1, name, "blobs", digest)
+}
+
+func GetUploadRoute(name string) string {
+	return path.Join(RouteNameV1, name, "blob-upload")
+}
+
+func GetUploadIdRoute(name string, id string) string {
+	return path.Join(RouteNameV1, name, "blobs", "uploads", id)
+}

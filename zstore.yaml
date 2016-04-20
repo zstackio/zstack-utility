@@ -3,7 +3,7 @@ storage:
     cache:
         layerinfo: inmemory
     filesystem:
-        rootdirectory: /tmp/storage
+        rootdirectory: /tmp/zstore
 http:
     addr: :8000
 tls:

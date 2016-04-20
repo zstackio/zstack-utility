@@ -40,7 +40,7 @@ func main() {
 	}
 
 	var makeRequest = func(url string) {
-		resp, err := cln.HttpGet(url)
+		resp, err := cln.Get(url)
 		if err != nil {
 			log.Fatal(err)
 		}

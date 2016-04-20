@@ -9,6 +9,7 @@ import (
 	"image-store/registry/api/v1"
 	"image-store/registry/storage"
 	"image-store/router"
+	"image-store/utils"
 	"net/http"
 )
 
@@ -70,11 +71,11 @@ func GetManifestArgAndSearcher(ctx context.Context, w http.ResponseWriter, r *ht
 }
 
 // Get upload information and the name
-func GetUploadInfoAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, info *storage.UploadInfo, s *storage.ImageSearcher) {
+func GetUploadInfoAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, info *v1.UploadInfo, s *storage.ImageSearcher) {
 	n = router.GetRequestVar(r, v1.PvnName)
 
-	var ui storage.UploadInfo
-	if err := DecodeRequest(r, &ui); err != nil {
+	var ui v1.UploadInfo
+	if err := utils.JsonDecode(r.Body, &ui); err != nil {
 		fmt.Println(err)
 		return
 	}
