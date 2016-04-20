@@ -1990,8 +1990,8 @@ class InstallHACmd(Command):
                     "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
                     "%s:9160,%s:9160'" % (args.host1, args.host2), self.host2_post_info)
 
-        #copy zstack-1 property to zstack-2 and update the management.server.ip
-        #update zstack-1 firstly
+        # copy zstack-1 property to zstack-2 and update the management.server.ip
+        # update zstack-1 firstly
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^CloudBus\.serverIp\.0' line='CloudBus.serverIp.0=%s'" % args.vip, self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
@@ -2901,7 +2901,7 @@ class DumpMysqlCmd(Command):
         self.file_name = args.file_name
         self.keep_amount = args.keep_amount
         self.backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.db_backup_dir = ctl.zstack_home + "/../../../mysql-backup/"
+        self.db_backup_dir = "/var/lib/zstack/mysql-backup/"
         if os.path.exists(self.db_backup_dir) is False:
             os.mkdir(self.db_backup_dir)
         self.db_backup_name = self.db_backup_dir + self.file_name + "-" + self.backup_timestamp
