@@ -1092,6 +1092,7 @@ config_system(){
     show_spinner cs_config_generate_ssh_key
     show_spinner cs_config_tomcat
     show_spinner cs_install_zstack_service
+    show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
@@ -1279,6 +1280,31 @@ cs_install_zstack_service(){
     [ $? -ne 0 ] && fail "failed to install ${PRODUCT_NAME} management node."
     zstack-ctl setenv ZSTACK_HOME=$ZSTACK_HOME >> $ZSTACK_INSTALL_LOG 2>&1 
     [ $? -ne 0 ] && fail "failed to set ZSTACK_HOME path by zstack-ctl"
+    pass
+}
+
+cs_enable_zstack_service(){
+    echo_subtitle "Enable ${PRODUCT_NAME} bootstrap service"
+    if [ -f /bin/systemctl ]; then
+        cat > /etc/systemd/system/zstack.service <<EOF
+[Unit]
+Description=zstack Service
+After=syslog.target network.target
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/zstack-ctl start
+ExecStop=/usr/bin/zstack-ctl stop
+Restart=on-abort
+RemainAfterExit=Yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl enable zstack.service  >> $ZSTACK_INSTALL_LOG 2>&1
+    fi
     pass
 }
 
