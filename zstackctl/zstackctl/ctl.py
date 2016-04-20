@@ -2083,14 +2083,6 @@ class InstallHACmd(Command):
         self.command = "service iptables save"
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
-        file_operation("/etc/rc.d/rc.local","mode=0755", self.host1_post_info)
-        file_operation("/etc/rc.d/rc.local","mode=0755", self.host2_post_info)
-        update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host1_post_info)
-        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl"
-                                          " start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
-        update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host2_post_info)
-        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl"
-                                          " start >> /var/log/zstack/ha.log 2>&1'", self.host2_post_info)
         self.command = "zstack-ctl install_ui"
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
