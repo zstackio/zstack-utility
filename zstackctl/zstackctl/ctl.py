@@ -1648,10 +1648,11 @@ class InstallHACmd(Command):
                             help='keep existing zstack database and not raise error.')
         parser.add_argument('--recovery-from-this-host', action='store_true', default=False,
                             help="This argument for admin to recovery mysql from the last shutdown mysql server")
+        parser.add_argument('--perfect-mode', action='store_true', default=False,
+                            help="This mode will re-connect mysql faster")
 
     def reset_dict_value(self, dict_name, value):
         return dict.fromkeys(dict_name, value)
-
 
     def get_default_gateway(self):
         '''This function will return default route gateway ip address'''
@@ -1813,6 +1814,15 @@ class InstallHACmd(Command):
         self.host2_post_info.mysql_userpassword = args.mysql_user_password
         self.host2_post_info.post_url = ""
 
+        # init all variables in map
+        self.local_map = {
+            "mysql_connect_timeout" : 60000,
+            "mysql_socket_timeout" : 60000
+        }
+        if args.perfect_mode is True:
+            self.local_map['mysql_connect_timeout'] = 2000
+            self.local_map['mysql_socket_timeout'] = 2000
+
         self.add_public_key_command = ' if [ ! -d ~/.ssh ]; then mkdir -p ~/.ssh; chmod 700 ~/.ssh; fi && if [ ! -f ~/.ssh/authorized_keys ]; ' \
                                       'then touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; fi && pub_key="%s";grep ' \
                                       '"%s" ~/.ssh/authorized_keys > /dev/null; if [ $? -eq 1 ]; ' \
@@ -1962,7 +1972,8 @@ class InstallHACmd(Command):
                            % (args.host1, args.mysql_user_password, args.mysql_root_password)
             run_remote_command(self.command, self.host1_post_info)
 
-        self.command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306/{database}?connectTimeout=2000\&socketTimeout=2000" % args.vip
+        self.command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306/{database}?connectTimeout=%d\&socketTimeout=%d"\
+                       % (args.vip, self.local_map['mysql_connect_timeout'], self.local_map['mysql_socket_timeout'])
         run_remote_command(self.command, self.host1_post_info)
         self.command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
         run_remote_command(self.command, self.host1_post_info)
@@ -1997,25 +2008,31 @@ class InstallHACmd(Command):
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^CloudBus\.serverIp\.1' state=absent" , self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='^CloudBus\.rabbitmqUsername' line='CloudBus.rabbitmqUsername=zstack'", self.host1_post_info)
+                    "regexp='^CloudBus\.rabbitmqUsername' line='CloudBus.rabbitmqUsername=zstack'",
+                    self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='^CloudBus\.rabbitmqPassword' line='CloudBus.rabbitmqPassword=%s'" % args.rabbit_password, self.host1_post_info)
+                    "regexp='^CloudBus\.rabbitmqPassword' line='CloudBus.rabbitmqPassword=%s'"
+                    % args.rabbit_password, self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='^CloudBus\.rabbitmqHeartbeatTimeout' line='CloudBus.rabbitmqHeartbeatTimeout=10'", self.host1_post_info)
+                    "regexp='^CloudBus\.rabbitmqHeartbeatTimeout' line='CloudBus.rabbitmqHeartbeatTimeout=10'",
+                    self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='^Cassandra\.contactPoints' line='Cassandra.contactPoints=%s,%s'" % (args.host1,args.host2), self.host1_post_info)
+                    "regexp='^Cassandra\.contactPoints' line='Cassandra.contactPoints=%s,%s'"
+                    % (args.host1,args.host2), self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^Kairosdb.ip' line='Kairosdb.ip=%s'" % args.vip, self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^Kairosdb.port' line='Kairosdb.port=58080'", self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='management\.server\.ip' line='management.server.ip = %s'" % args.host1, self.host1_post_info)
+                    "regexp='management\.server\.ip' line='management.server.ip = %s'" %
+                    args.host1, self.host1_post_info)
         self.copy_arg = CopyArg()
         self.copy_arg.src = ctl.properties_file_path
         self.copy_arg.dest = ctl.properties_file_path
         copy(self.copy_arg,self.host2_post_info)
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='management\.server\.ip' line='management.server.ip = %s'" % args.host2, self.host2_post_info)
+                    "regexp='management\.server\.ip' line='management.server.ip = %s'"
+                    % args.host2, self.host2_post_info)
 
         # start Cassadra and KairosDB
         # backup old cassandra dir avoid changing keyspace error
@@ -2023,10 +2040,12 @@ class InstallHACmd(Command):
                        % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         run_remote_command(self.command, self.host1_post_info)
         self.command = 'zstack-ctl cassandra --start --wait-timeout 120'
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (self.private_key_name, args.host1, self.command))
         if self.status != 0:
             error("Something wrong on host: %s\n %s" % (args.host1, self.output))
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (self.private_key_name, args.host2, self.command))
         if self.status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, self.output))
 
@@ -2037,16 +2056,20 @@ class InstallHACmd(Command):
         InstallHACmd.spinner_status['Kairosdb'] = True
         ZstackSpinner(self.spinner_info)
         self.command = 'zstack-ctl kairosdb --start --wait-timeout 120'
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (self.private_key_name, args.host1, self.command))
         if self.status != 0:
             error("Something wrong on host: %s\n %s" % (args.host1, self.output))
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (self.private_key_name, args.host2, self.command))
         if self.status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, self.output))
 
         # change Cassadra duplication number
-        self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : 'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
-        self.command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
+        self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : " \
+                               "'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
+        self.command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % \
+                       (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
         run_remote_command(self.command, self.host1_post_info)
 
         #finally, start zstack-1 and zstack-2
@@ -2063,17 +2086,21 @@ class InstallHACmd(Command):
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host1_post_info)
         file_operation("/etc/rc.d/rc.local","mode=0755", self.host2_post_info)
         update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host1_post_info)
-        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
+        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl"
+                                          " start >> /var/log/zstack/ha.log 2>&1'", self.host1_post_info)
         update_file("/etc/rc.d/rc.local", "regexp='\.*logs\.*' state=absent", self.host2_post_info)
-        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl start >> /var/log/zstack/ha.log 2>&1'", self.host2_post_info)
+        update_file("/etc/rc.d/rc.local", "regexp='^/usr/bin/zstack-ctl' line='export HOME=~root; /usr/bin/zstack-ctl"
+                                          " start >> /var/log/zstack/ha.log 2>&1'", self.host2_post_info)
         self.command = "zstack-ctl install_ui"
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
         self.command = "zstack-ctl start"
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host1, self.command))
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (self.private_key_name, args.host1, self.command))
         if self.status != 0:
             error("Something wrong on host: %s\n %s" % (args.host1, self.output))
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" % (self.private_key_name, args.host2, self.command))
+        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (self.private_key_name, args.host2, self.command))
         if self.status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, self.output))
         InstallHACmd.spinner_status['mevoco'] = False
