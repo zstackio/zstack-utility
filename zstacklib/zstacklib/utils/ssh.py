@@ -104,7 +104,7 @@ def execute(command, hostname, username, password, exception_if_error=True, \
         output = stdout.read()
         erroutput = stderr.read()
         if retcode != 0 and exception_if_error:
-            err = 'command[%s] failed on host:[%s], port:[%s], stdout: %s, stderr: %s, return code: %s' % (command, hostname, output, erroutput, retcode)
+            err = 'command[%s] failed on host:[%s], port:[%s], stdout: %s, stderr: %s, return code: %s' % (command, hostname, port, output, erroutput, retcode)
             raise SshError(err)
         return (retcode, output, erroutput)
     finally:
