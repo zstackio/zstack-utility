@@ -1775,12 +1775,14 @@ class Vm(object):
                 if not qos:
                     return
 
-                if not qos.outboundBandwidth:
+                if not qos.outboundBandwidth and not qos.inboundBandwidth:
                     return
 
                 bandwidth = e(nic_xml_object, 'bandwidth')
                 if qos.outboundBandwidth:
                     e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth)})
+                if qos.inboundBandwidth:
+                    e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth)})
 
             devices = elements['devices']
             for nic in cmd.nics:
