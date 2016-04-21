@@ -979,7 +979,7 @@ def service_status(name, args, host_post_info):
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Changing service status %s" % name, host_post_info, "INFO")
+    handle_ansible_info("INFO: Changing %s service status to %s " % (name, args), host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list=host_inventory,
         private_key_file=private_key,
