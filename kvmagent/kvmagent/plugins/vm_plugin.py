@@ -1914,6 +1914,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
+    KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -2279,6 +2280,15 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(LoginIscsiTargetRsp())
 
     @kvmagent.replyerror
+    def delete_console_firewall_rule(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vir = VncPortIptableRule()
+        vir.vm_internal_id = cmd.vmInternalId
+        vir.delete()
+
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    @kvmagent.replyerror
     def create_ceph_secret_key(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         sh_cmd = shell.ShellCmd('virsh secret-list | grep %s > /dev/null' % cmd.uuid)
@@ -2331,6 +2341,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
+        http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
 
         self.register_libvirt_event()
 
