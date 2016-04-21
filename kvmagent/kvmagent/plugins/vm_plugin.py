@@ -1262,6 +1262,7 @@ class Vm(object):
 
     def migrate(self, cmd):
         current_hostname = shell.call('hostname')
+        current_hostname = current_hostname.strip(' \t\n\r')
         if current_hostname == 'localhost.localdomain' or current_hostname == 'localhost':
             # set the hostname, otherwise the migration will fail
             shell.call('hostname %s.zstack.org' % cmd.srcHostIp.replace('.', '-'))
