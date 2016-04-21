@@ -870,13 +870,13 @@ class Vm(object):
     def destroy(self):
         self.stop(graceful=False)
 
-    def harden_console(self):
+    def harden_console(self, mgmt_ip):
         id = self.domain_xmlobject.metadata.internalId.text_
         vir = VncPortIptableRule()
         vir.vm_internal_id = id
         vir.delete()
 
-        vir.host_ip = self.domain_xmlobject.metadata.hostManagementIp.text_
+        vir.host_ip = mgmt_ip
         vir.port = self.get_console_port()
         vir.apply()
 
@@ -2033,7 +2033,7 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
 
         vm = get_vm_by_uuid(cmd.vmUuid)
-        vm.harden_console()
+        vm.harden_console(cmd.hostManagementIp)
 
         return jsonobject.dumps(rsp)
 
@@ -2277,6 +2277,7 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         vir = VncPortIptableRule()
         vir.vm_internal_id = cmd.vmInternalId
+        vir.host_ip = cmd.hostManagementIp
         vir.delete()
 
         return jsonobject.dumps(kvmagent.AgentResponse())
@@ -2471,6 +2472,12 @@ class VmPlugin(kvmagent.KvmAgent):
             vir = VncPortIptableRule()
             if LibvirtEventManager.EVENT_STARTED == event:
                 vir.host_ip = domain_xmlobject.metadata.hostManagementIp.text_
+
+                if shell.run('ip addr | grep -w %s > /dev/null' % vir.host_ip) != 0:
+                    logger.debug('the vm is migrated from another host, we do not need to set the console firewall, as '
+                                 'the management node will take care')
+                    return
+
                 for g in domain_xmlobject.devices.get_child_node_as_list('graphics'):
                     if g.type_ == 'vnc' or g.type_ == 'spice':
                         vir.port = g.port_
