@@ -30,6 +30,14 @@ class ShellCmd(object):
         self.stdout = None
         self.stderr = None
         self.return_code = None
+
+    def raise_error(self):
+        err = []
+        err.append('failed to execute shell command: %s' % self.cmd)
+        err.append('return code: %s' % self.process.returncode)
+        err.append('stdout: %s' % self.stdout)
+        err.append('stderr: %s' % self.stderr)
+        raise ShellError('\n'.join(err))
         
     def __call__(self, is_exception=True):
         if logcmd:
@@ -37,13 +45,8 @@ class ShellCmd(object):
             
         (self.stdout, self.stderr) = self.process.communicate()
         if is_exception and self.process.returncode != 0:
-            err = []
-            err.append('failed to execute shell command: %s' % self.cmd)
-            err.append('return code: %s' % self.process.returncode)
-            err.append('stdout: %s' % self.stdout)
-            err.append('stderr: %s' % self.stderr)
-            raise ShellError('\n'.join(err))
-            
+            self.raise_error()
+
         self.return_code = self.process.returncode
         return self.stdout
 

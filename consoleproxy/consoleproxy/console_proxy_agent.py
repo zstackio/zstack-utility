@@ -226,7 +226,6 @@ class ConsoleProxyAgent(object):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
-        proxyPort = linux.get_free_port()
         token_file = os.path.join(self.TOKEN_FILE_DIR, self._make_token_file_name(cmd))
         with open(token_file, 'w') as fd:
             fd.write('%s: %s:%s' % (cmd.token, cmd.targetHostname, cmd.targetPort))
@@ -236,15 +235,36 @@ class ConsoleProxyAgent(object):
             timeout = 600
 
         log_file = os.path.join(self.PROXY_LOG_DIR, self._make_proxy_log_file_name(cmd))
-        proxy_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('%s'); websockify.websocketproxy.websockify_init()" %s:%s -D --target-config=%s --idle-timeout=%s''' % (log_file, cmd.proxyHostname, proxyPort, token_file, timeout)
-        logger.debug(proxy_cmd)
-        shell.call(proxy_cmd)
-        shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (proxyPort, proxyPort))
-        
-        info =  {
+
+        def start_proxy():
+            proxyPort = linux.get_free_port()
+            proxy_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('%s'); websockify.websocketproxy.websockify_init()" %s:%s -D --target-config=%s --idle-timeout=%s''' % (log_file, cmd.proxyHostname, proxyPort, token_file, timeout)
+            logger.debug(proxy_cmd)
+            proxy_cmd = shell.ShellCmd(proxy_cmd)
+            proxy_cmd(False)
+            if proxy_cmd.return_code != 0 and "Cannot assign requested address" not in proxy_cmd.stderr:
+                proxy_cmd.raise_error()
+            elif proxy_cmd.return_code != 0 and "Cannot assign requested address" in proxy_cmd.stderr:
+                return None
+            else:
+                shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (proxyPort, proxyPort))
+                return proxyPort
+
+        proxy_port = None
+        for i in range(0, 3):
+            proxy_port = start_proxy()
+            if proxy_port:
+                break
+
+            time.sleep(3)
+
+        if not proxy_port:
+            raise Exception('cannot start console proxy process, not available free ports found')
+
+        info = {
                  'proxyHostname': cmd.proxyHostname,
-                 'proxyPort' : cmd.proxyPort,
-                 'targetHostname' : cmd.targetHostname,
+                 'proxyPort': cmd.proxyPort,
+                 'targetHostname': cmd.targetHostname,
                  'targetPort': cmd.targetPort,
                  'token': cmd.token,
                  'logFile': log_file,
@@ -253,7 +273,7 @@ class ConsoleProxyAgent(object):
         info_str = jsonobject.dumps(info)
         self.db.set(cmd.token, info_str)
         
-        rsp.proxyPort = proxyPort
+        rsp.proxyPort = proxy_port
         
         logger.debug('successfully establish new proxy%s' % info_str)
 
