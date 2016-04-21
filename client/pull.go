@@ -7,6 +7,7 @@ import (
 	"image-store/utils"
 	"io"
 	"os"
+	"path"
 )
 
 // Pull a disk image
@@ -54,6 +55,7 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 		return fmt.Errorf("download image blob failed: %s", err.Error())
 	}
 
+	os.MkdirAll(path.Dir(blobpath), 0775)
 	wr, err := os.OpenFile(blobpath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err

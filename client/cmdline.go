@@ -1,62 +1,30 @@
 package client
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path"
 	"strings"
 )
 
-// Global options
+// Global command line options
 type GlobalOpt struct {
-	serverAddr string
-}
-
-// Pull a remote image to local
-type CmdPullOpt struct {
-	name      string
-	reference string
-}
-
-// Push local image to remote
-type CmdPushOpt struct {
-	imgid string
-	tag   string
-}
-
-// Search remote images by name
-type CmdSearchOpt struct {
-	name string
-}
-
-// List local images
-type CmdImagesOpt struct{}
-
-// Dump help message
-type CmdHelpOpt struct{}
-
-// Actions upon each subcommands
-type CmdRunner interface {
-	OnPull(*GlobalOpt, *CmdPullOpt) error
-	OnPush(*GlobalOpt, *CmdPushOpt) error
-	OnSearch(*GlobalOpt, *CmdSearchOpt) error
-	OnImages(*GlobalOpt, *CmdImagesOpt) error
-}
-
-// Command line options
-type CmdLineOpt struct {
-	g   *GlobalOpt  // global options
-	opt interface{} // sub-commands
+	serverAddr  string
+	privateKey  string
+	trustedFile string
 }
 
 // Display usage message and quit.
 func UsageExit(status int) {
 	msg := `usage:
-  %s [ options ] command
+  %s [ global options ] command [ command options ]
 
 Options:
- -url=host:port  The server address
- -h,-help        Display this message
+ -url=host:port     The server address (default: "%s")
+ -key=privkey.pem   'libtrust' private key file (default: "%s")
+ -trusted=host.pem  'libtrust' trusted hosts file (default: "%s")
+ -h,-help           Display this message
 
 Command:
  pull   name[:reference]
@@ -66,168 +34,144 @@ Command:
 
 'reference' can be a tag or a digest.
 `
-	fmt.Printf(msg, path.Base(os.Args[0]))
+	fmt.Printf(msg, path.Base(os.Args[0]), defaultServer, privateKeyFilename, trustedHostsFilename)
 	os.Exit(status)
 }
 
-// Parse global options
-func parseGlobalOpt(args []string, g *GlobalOpt) (skipNext bool, err error) {
+// Setup command line option for those subcommands
+func EvalCommand() {
+	// global options
+	privkey := flag.String("key", privateKeyFilename, "'libtrust' private key file")
+	trusted := flag.String("trusted", trustedHostsFilename, "'libtrust' trusted hosts")
+	server := flag.String("url", defaultServer, "the server address")
+
+	flag.Usage = func() { UsageExit(0) }
+	flag.Parse()
+
+	subCommandArgs := flag.Args()
+	if len(subCommandArgs) == 0 {
+		fmt.Fprintln(os.Stderr, "missing subcommand")
+		os.Exit(1)
+	}
+
+	gopt := GlobalOpt{
+		serverAddr:  *server,
+		privateKey:  *privkey,
+		trustedFile: *trusted,
+	}
+
+	f, ok := cmdTable[subCommandArgs[0]]
+	if !ok {
+		fmt.Fprintf(os.Stderr, "'%s' is not a valid subcommand.\n", subCommandArgs[0])
+		os.Exit(1)
+	}
+
+	f(&gopt, subCommandArgs[1:])
+}
+
+var cmdTable = map[string]func(*GlobalOpt, []string){
+	"pull":   doPull,
+	"push":   doPush,
+	"search": doSearch,
+	"images": doImages,
+}
+
+func doPull(gopt *GlobalOpt, args []string) {
+	pullCommand := flag.NewFlagSet("pull", flag.ExitOnError)
+	pullCommand.Parse(args)
+
+	n, restargs := pullCommand.NArg(), pullCommand.Args()
 	switch {
-	case args[0] == "-url":
-		if len(args) < 2 {
-			err = fmt.Errorf("missing argument for '%s'", "-url")
-			return
-		}
-		g.serverAddr, skipNext = args[1], true
-	case strings.HasPrefix(args[0], "-url="):
-		url := args[0][5:]
-		if url == "" {
-			err = fmt.Errorf("missing argument for '%s'", "-url=")
-			return
-		}
-		g.serverAddr = url
+	case n == 0:
+		fmt.Fprintln(os.Stderr, "missing args for 'pull'")
+		os.Exit(1)
+	case n > 1:
+		fmt.Fprintf(os.Stderr, "unexpected args for 'pull': %q\n", restargs)
+		os.Exit(1)
 	}
 
-	err = fmt.Errorf("unexpected option: '%s'", args[0])
-	return
+	xs := strings.Split(restargs[0], ":")
+	switch len(xs) {
+	case 1:
+		withClient(gopt, func(cln *ZImageClient) error { return cln.Pull(xs[0], "latest") })
+	case 2:
+		withClient(gopt, func(cln *ZImageClient) error { return cln.Pull(xs[0], xs[1]) })
+	default:
+		fmt.Fprintf(os.Stderr, "invalid reference value: '%s'\n", restargs[0])
+	}
 }
 
-// Parse sub-command
-func parseSubCommand(arglist []string) (interface{}, error) {
-	cmd, args := arglist[0], arglist[1:]
+func doPush(gopt *GlobalOpt, args []string) {
+	pushCommand := flag.NewFlagSet("push", flag.ExitOnError)
+	pushCommand.Parse(args)
 
-	switch cmd {
-	case "pull":
-		if len(args) != 1 {
-			return nil, fmt.Errorf("unexpected argument number for 'search'")
-		}
-
-		xs := strings.Split(args[0], ":")
-		switch len(xs) {
-		case 1:
-			return &CmdPullOpt{name: xs[0], reference: "latest"}, nil
-		case 2:
-			return &CmdPullOpt{name: xs[0], reference: xs[1]}, nil
-		default:
-			return nil, fmt.Errorf("invalid reference value: '%s'", args[0])
-		}
-
-	case "push":
-		if len(args) != 1 {
-			return nil, fmt.Errorf("unexpected argument number for 'search'")
-		}
-
-		xs := strings.Split(args[0], ":")
-		switch len(xs) {
-		case 1:
-			return &CmdPushOpt{imgid: xs[0], tag: "latest"}, nil
-		case 2:
-			return &CmdPushOpt{imgid: xs[0], tag: xs[1]}, nil
-		default:
-			return nil, fmt.Errorf("invalid tag value: '%s'", args[0])
-		}
-
-	case "search":
-		if len(args) != 1 {
-			return nil, fmt.Errorf("unexpected argument number for 'search'")
-		}
-
-		return &CmdSearchOpt{name: args[0]}, nil
-
-	case "images":
-		if len(args) > 0 {
-			return nil, fmt.Errorf("unexpected args: '%s'", strings.Join(args, ","))
-		}
-
-		return &CmdImagesOpt{}, nil
+	n, restargs := pushCommand.NArg(), pushCommand.Args()
+	switch {
+	case n == 0:
+		fmt.Fprintln(os.Stderr, "missing args for 'push'")
+		os.Exit(1)
+	case n > 1:
+		fmt.Fprintf(os.Stderr, "unexpected args for 'push': %q\n", restargs)
+		os.Exit(1)
 	}
 
-	return nil, fmt.Errorf("unexpected command: '%s'", cmd)
+	xs := strings.Split(restargs[0], ":")
+	switch len(xs) {
+	case 1:
+		withClient(gopt, func(cln *ZImageClient) error { return cln.Push(xs[0], "latest") })
+	case 2:
+		withClient(gopt, func(cln *ZImageClient) error { return cln.Push(xs[0], xs[1]) })
+	default:
+		fmt.Fprintf(os.Stderr, "invalid tag value: '%s'\n", restargs[0])
+	}
 }
 
-// Parse command line options or return error
-func ParseCmdLine() (*CmdLineOpt, error) {
-	args := os.Args[1:]
-	if len(args) == 0 {
-		return nil, fmt.Errorf("%s: a command argument is required.", path.Base(os.Args[0]))
+func doSearch(gopt *GlobalOpt, args []string) {
+	searchCommand := flag.NewFlagSet("search", flag.ExitOnError)
+	searchCommand.Parse(args)
+
+	n, restargs := searchCommand.NArg(), searchCommand.Args()
+	switch {
+	case n == 0:
+		fmt.Fprintln(os.Stderr, "missing args for 'search'")
+		os.Exit(1)
+	case n > 1:
+		fmt.Fprintf(os.Stderr, "unexpected args for 'search': %q\n", restargs)
+		os.Exit(1)
 	}
 
-	// default global config
-	g := GlobalOpt{serverAddr: defaultServer}
-	var opt interface{}
-
-	for idx := 0; idx < len(args); idx++ {
-		arg := args[idx]
-
-		if strings.HasPrefix(arg, "-") {
-			switch arg {
-			case "-h", "-help":
-				return &CmdLineOpt{g: &g, opt: &CmdHelpOpt{}}, nil
-			default:
-				if skipNext, err := parseGlobalOpt(args[idx:], &g); err != nil {
-					return nil, err
-				} else {
-					if skipNext {
-						idx += 1
-					}
-				}
-			}
-		} else {
-			var err error
-			opt, err = parseSubCommand(args[idx:])
-			if err != nil {
-				return nil, err
-			}
-
-			break
+	withClient(gopt, func(cln *ZImageClient) error {
+		xms, err := cln.Search(restargs[0])
+		if err != nil {
+			return err
 		}
+
+		dumpManifests(xms)
+		return nil
+	})
+}
+
+func doImages(gopt *GlobalOpt, args []string) {
+	imagesCommand := flag.NewFlagSet("images", flag.ExitOnError)
+	imagesCommand.Parse(args)
+
+	if imagesCommand.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "unexpected args for 'images': %q", imagesCommand.Args())
+		os.Exit(1)
 	}
 
-	return &CmdLineOpt{g: &g, opt: opt}, nil
-}
-
-// Run command via the command runner
-func (c *CmdLineOpt) RunCmd(r CmdRunner) error {
-	switch c.opt.(type) {
-	case *CmdPushOpt:
-		opt, _ := c.opt.(*CmdPushOpt)
-		return r.OnPush(c.g, opt)
-	case *CmdPullOpt:
-		opt, _ := c.opt.(*CmdPullOpt)
-		return r.OnPull(c.g, opt)
-	case *CmdImagesOpt:
-		opt, _ := c.opt.(*CmdImagesOpt)
-		return r.OnImages(c.g, opt)
-	case *CmdSearchOpt:
-		opt, _ := c.opt.(*CmdSearchOpt)
-		return r.OnSearch(c.g, opt)
-	case *CmdHelpOpt:
-		UsageExit(0)
-	}
-
-	return fmt.Errorf("unexpected cmd: %v", c.opt)
-}
-
-type defaultRunner struct{}
-
-func (r defaultRunner) OnPull(g *GlobalOpt, opt *CmdPullOpt) error {
-	fmt.Println("pulling")
-	return nil
-}
-
-func (r defaultRunner) OnPush(g *GlobalOpt, opt *CmdPushOpt) error {
-	fmt.Println("pushing")
-	return nil
-}
-
-func (r defaultRunner) OnSearch(g *GlobalOpt, opt *CmdSearchOpt) error {
-	fmt.Println("searching")
-	return nil
-}
-
-func (r defaultRunner) OnImages(g *GlobalOpt, opt *CmdImagesOpt) error {
 	fmt.Println("list local images")
-	return nil
 }
 
-var DefaultRunner = defaultRunner{}
+func withClient(gopt *GlobalOpt, f func(*ZImageClient) error) {
+	cln, err := New(gopt.privateKey, gopt.trustedFile, gopt.serverAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "server connection failed: %s\n", err.Error())
+		return
+	}
+
+	err = f(cln)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+	}
+}
