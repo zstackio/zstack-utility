@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image-store/utils"
 )
 
@@ -43,7 +44,7 @@ func (imf *ImageManifest) Ok() bool {
 func ParseImageManifest(buf []byte) (*ImageManifest, error) {
 	var imf ImageManifest
 	if err := json.Unmarshal(buf, &imf); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed in parsing image manifest: %s", err.Error())
 	}
 
 	if imf.Ok() {

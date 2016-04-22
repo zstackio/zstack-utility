@@ -81,7 +81,7 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, nam string, ref string
 		res, err := ims.driver.List(ctx, ps)
 		if err != nil {
 			if _, ok := err.(storagedriver.PathNotFoundError); ok {
-				return nil, errors.New("Not found")
+				return nil, fmt.Errorf("digest not found: %s", ref)
 			}
 			return nil, err
 		}

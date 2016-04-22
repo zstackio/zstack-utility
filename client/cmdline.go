@@ -50,7 +50,7 @@ func EvalCommand() {
 
 	subCommandArgs := flag.Args()
 	if len(subCommandArgs) == 0 {
-		fmt.Fprintln(os.Stderr, "missing subcommand")
+		fmt.Fprintf(os.Stderr, "missing subcommand - run '%s -h' for help\n", path.Base(os.Args[0]))
 		os.Exit(1)
 	}
 

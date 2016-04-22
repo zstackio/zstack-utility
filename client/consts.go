@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	rootDir              = "/tmp/zstore/registry/v1"
+	rootDir              = "/tmp/zstore-local/registry/v1"
 	defaultServer        = "localhost:8000"
 	privateKeyFilename   = "client_data/private_key.pem"
 	trustedHostsFilename = "client_data/trusted_hosts.pem"
