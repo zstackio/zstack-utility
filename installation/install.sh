@@ -559,6 +559,7 @@ upgrade_zstack(){
     show_spinner uz_upgrade_zstack
     cd /
     show_spinner cs_add_cronjob
+    show_spinner cs_enable_zstack_service
 
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         if [ ! -z $INSTALL_MONITOR ] ; then
