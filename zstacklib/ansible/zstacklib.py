@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import ansible.runner
+import ansible.constants
 import os
 import sys
 import urllib2
 from urllib2 import URLError
-import json
 from datetime import datetime
 import logging
 import json
 from logging.handlers import TimedRotatingFileHandler
+import time
+import functools
 
 # set global default value
 start_time = datetime.now()
@@ -21,6 +23,7 @@ pkg_zstacklib = ""
 yum_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
+
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -73,10 +76,14 @@ class AnsibleStartResult(object):
 class HostPostInfo(object):
     def __init__(self):
         self.host = None
+        self.vip= None
         self.post_url = None
         self.private_key = None
         self.host_inventory = None
         self.start_time = None
+        self.rabbit_password = None
+        self.mysql_password = None
+        self.mysql_userpassword = None
 
 
 class PipInstallArg(object):
@@ -95,11 +102,32 @@ class CopyArg(object):
         self.args = None
 
 
+class FetchArg(object):
+    def __init__(self):
+        self.src = None
+        self.dest = None
+        self.args = None
+
+
 class UnarchiveArg(object):
     def __init__(self):
         self.src = None
         self.dest = None
         self.args = None
+
+def retry(times=3, sleep_time=3):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            for i in range(0, times):
+                try:
+                    return f(*args, **kwargs)
+                except Exception as e:
+                    time.sleep(sleep_time)
+            print "Network unstable, please try again later"
+            sys.exit(1)
+        return inner
+    return wrap
 
 
 def create_log(logger_dir):
@@ -107,7 +135,7 @@ def create_log(logger_dir):
         os.makedirs(logger_dir)
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler = logging.handlers.RotatingFileHandler(logger_dir + "deploy.log", maxBytes=10 * 1024 * 1024,
+    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=100 * 1024 * 1024,
                                                    backupCount=10)
     handler.setFormatter(fmt)
     logger.addHandler(handler)
@@ -247,6 +275,7 @@ def yum_enable_repo(name, enablerepo, host_post_info):
             return True
 
 
+@retry(times=3, sleep_time=3)
 def yum_check_package(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -271,17 +300,66 @@ def yum_check_package(name, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
         sys.exit(1)
-    status = result['contacted'][host]['rc']
-    if status == 0:
-        details = "SUCC: The package %s exist in system" % name
-        handle_ansible_info(details, host_post_info, "INFO")
-        return True
     else:
-        details = "SUCC: The package %s not exist in system" % name
-        handle_ansible_info(details, host_post_info, "INFO")
-        return False
+        if 'rc' not in result['contacted'][host]:
+            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            raise Exception(result)
+        else:
+            status = result['contacted'][host]['rc']
+            if status == 0:
+                details = "SUCC: The package %s exist in system" % name
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+            else:
+                details = "SUCC: The package %s not exist in system" % name
+                handle_ansible_info(details, host_post_info, "INFO")
+                return False
 
+@retry(times=3, sleep_time=3)
+def script(file, host_post_info, script_arg=None):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Running script %s on host %s ... " % (file,host), host_post_info, "INFO")
+    if script_arg is not None:
+        args = file + " " + script_arg
+    else:
+        args = file
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='script',
+        module_args=args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'rc' not in result['contacted'][host]:
+            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            raise Exception(result)
+        else:
+            status = result['contacted'][host]['rc']
+            if status == 0:
+                details = "SUCC: The script %s on host %s finish " % (file, host)
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+            else:
+                description = "ERROR: The script %s failed on host %s" % (file, host)
+                handle_ansible_failed(description, result, host_post_info)
+                sys.exit(1)
 
+@retry(times=3, sleep_time=3)
 def yum_install_package(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -306,33 +384,39 @@ def yum_install_package(name, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
         sys.exit(1)
-    status = result['contacted'][host]['rc']
-    if status == 0:
-        details = "SKIP: The package %s exist in system" % name
-        handle_ansible_info(details, host_post_info, "INFO")
-        return True
     else:
-        details = "Installing package %s ..." % name
-        handle_ansible_info(details, host_post_info, "INFO")
-        runner = ansible.runner.Runner(
-            host_list=host_inventory,
-            private_key_file=private_key,
-            module_name='yum',
-            module_args='name=' + name + ' disable_gpg_check=no  state=latest',
-            pattern=host
-        )
-        result = runner.run()
-        logger.debug(result)
-        if 'failed' in result['contacted'][host]:
-            description = "ERROR: YUM install package %s failed" % name
-            handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
+        if 'rc' not in result['contacted'][host]:
+            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            raise Exception(result)
         else:
-            details = "SUCC: yum install package %s successful!" % name
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
+            status = result['contacted'][host]['rc']
+            if status == 0:
+                details = "SKIP: The package %s exist in system" % name
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+            else:
+                details = "Installing package %s ..." % name
+                handle_ansible_info(details, host_post_info, "INFO")
+                runner = ansible.runner.Runner(
+                    host_list=host_inventory,
+                    private_key_file=private_key,
+                    module_name='yum',
+                    module_args='name=' + name + ' disable_gpg_check=no  state=latest',
+                    pattern=host
+                )
+                result = runner.run()
+                logger.debug(result)
+                if 'failed' in result['contacted'][host]:
+                    description = "ERROR: YUM install package %s failed" % name
+                    handle_ansible_failed(description, result, host_post_info)
+                    sys.exit(1)
+                else:
+                    details = "SUCC: yum install package %s successful!" % name
+                    handle_ansible_info(details, host_post_info, "INFO")
+                    return True
 
 
+@retry(times=3, sleep_time=3)
 def yum_remove_package(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -357,31 +441,35 @@ def yum_remove_package(name, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
         sys.exit(1)
-    status = result['contacted'][host]['rc']
-    if status == 0:
-        details = "Removing %s ... " % name
-        handle_ansible_info(details, host_post_info, "INFO")
-        runner = ansible.runner.Runner(
-            host_list=host_inventory,
-            private_key_file=private_key,
-            module_name='yum',
-            module_args='name=' + name + ' state=absent',
-            pattern=host
-        )
-        result = runner.run()
-        logger.debug(result)
-        if 'failed' in result['contacted'][host]:
-            description = "ERROR: Yum remove package %s failed!" % name
-            handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
+    if 'rc' not in result['contacted'][host]:
+        logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+        raise Exception(result)
+    else:
+        status = result['contacted'][host]['rc']
+        if status == 0:
+            details = "Removing %s ... " % name
+            handle_ansible_info(details, host_post_info, "INFO")
+            runner = ansible.runner.Runner(
+                host_list=host_inventory,
+                private_key_file=private_key,
+                module_name='yum',
+                module_args='name=' + name + ' state=absent',
+                pattern=host
+            )
+            result = runner.run()
+            logger.debug(result)
+            if 'failed' in result['contacted'][host]:
+                description = "ERROR: Yum remove package %s failed!" % name
+                handle_ansible_failed(description, result, host_post_info)
+                sys.exit(1)
+            else:
+                details = "SUCC: Remove package %s " % name
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
         else:
-            details = "SUCC: Remove package %s " % name
+            details = "SKIP: The package %s is not exist in system" % name
             handle_ansible_info(details, host_post_info, "INFO")
             return True
-    else:
-        details = "SKIP: The package %s is not exist in system" % name
-        handle_ansible_info(details, host_post_info, "INFO")
-        return True
 
 
 def apt_update_cache(cache_valid_time, host_post_info):
@@ -504,6 +592,42 @@ def pip_install_package(pip_install_arg, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
+def cron(name, arg, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting set cron task %s ... " % arg, host_post_info, "INFO")
+    args = 'name=%s %s' % (name,arg)
+
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='cron',
+        module_args=args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: set cron task %s failed!" % arg
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
+        else:
+            details = "SUCC: set cron task %s " % arg
+            handle_ansible_info(details, host_post_info, "INFO")
+            # pass the copy result to outside
+            return True
 
 def copy(copy_arg, host_post_info):
     start_time = datetime.now()
@@ -549,9 +673,53 @@ def copy(copy_arg, host_post_info):
             # pass the copy result to outside
             return change_status
 
+def fetch(fetch_arg, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    src = fetch_arg.src
+    dest = fetch_arg.dest
+    args = fetch_arg.args
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting fetch %s to %s ... " % (src, dest), host_post_info, "INFO")
+    if args is not None:
+        fetch_args = 'src=' + src + ' dest=' + dest + ' ' + args
+    else:
+        fetch_args = 'src=' + src + ' dest=' + dest
 
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='fetch',
+        module_args=fetch_args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: fetch file from %s to %s failed!" % (src, dest)
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
+        else:
+            change_status = "changed:" + str(result['contacted'][host]['changed'])
+            details = "SUCC: fetch %s to %s, the change status is %s" % (src, dest, change_status)
+            handle_ansible_info(details, host_post_info, "INFO")
+            # pass the fetch result to outside
+            return change_status
+
+
+@retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info):
-    counter = 0
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
@@ -559,47 +727,80 @@ def run_remote_command(command, host_post_info):
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
-    def _run_remote_command(counter):
-        runner = ansible.runner.Runner(
-            host_list=host_inventory,
-            private_key_file=private_key,
-            module_name='shell',
-            module_args=command,
-            pattern=host
-        )
-        result = runner.run()
-        print result
-        logger.debug(result)
-        if result['contacted'] == {}:
-            ansible_start = AnsibleStartResult()
-            ansible_start.host = host
-            ansible_start.post_url = post_url
-            ansible_start.result = result
-            handle_ansible_start(ansible_start)
-            sys.exit(1)
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='shell',
+        module_args=command,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'rc' not in result['contacted'][host]:
+            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            raise Exception(result)
         else:
-            if 'rc' not in result['contacted'][host]:
-                if counter < 3:
-                    counter = counter + 1
-                    _run_remote_command(counter)
-                else:
-                    description = "ERROR: command %s failed! Please make sure network is stable!" % command
-                    handle_ansible_failed(description, result, host_post_info)
-                    sys.exit(1)
+            status = result['contacted'][host]['rc']
+            if status == 0:
+                details = "SUCC: shell command: '%s' " % command
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
             else:
-                status = result['contacted'][host]['rc']
-                if status == 0:
-                    details = "SUCC: shell command: '%s' " % command
-                    handle_ansible_info(details, host_post_info, "INFO")
-                    return True
-                else:
-                    description = "ERROR: command %s failed!" % command
-                    handle_ansible_failed(description, result, host_post_info)
-                    sys.exit(1)
-    _run_remote_command(counter)
-    return True
+                description = "ERROR: command %s failed!" % command
+                handle_ansible_failed(description, result, host_post_info)
+                sys.exit(1)
 
 
+@retry(times=3, sleep_time=3)
+def check_command_status(command, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='shell',
+        module_args=command,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'rc' not in result['contacted'][host]:
+            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            raise Exception(result)
+        else:
+            status = result['contacted'][host]['rc']
+            if status == 0:
+                details = "SUCC shell command: '%s' return 0 " % command
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+            else:
+                details = "INFO: shell command %s failed " % command
+                handle_ansible_info(details, host_post_info, "WARNING")
+                return False
+
+
+@retry(times=3, sleep_time=3)
 def check_pip_version(version, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -625,17 +826,22 @@ def check_pip_version(version, host_post_info):
         handle_ansible_start(ansible_start)
         sys.exit(1)
     else:
-        status = result['contacted'][host]['rc']
-        if status == 0:
-            details = "SUCC: Check pip-%s exist in system " % version
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
+        if 'rc' not in result['contacted'][host]:
+            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            raise Exception(result)
         else:
-            details = "INFO: Check pip-%s is not exist in system" % version
-            handle_ansible_info(details, host_post_info, "INFO")
-            return False
+            status = result['contacted'][host]['rc']
+            if status == 0:
+                details = "SUCC: Check pip-%s exist in system " % version
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+            else:
+                details = "INFO: Check pip-%s is not exist in system" % version
+                handle_ansible_info(details, host_post_info, "INFO")
+                return False
 
 
+@retry(times=3, sleep_time=3)
 def file_dir_exist(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -661,15 +867,56 @@ def file_dir_exist(name, host_post_info):
         handle_ansible_start(ansible_start)
         sys.exit(1)
     else:
-        status = result['contacted'][host]['stat']['exists']
-        if status is True:
-            details = "INFO: %s exist" % name
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
+        if 'stat' not in result['contacted'][host]:
+            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            raise Exception(result)
         else:
-            details = "INFO: %s not exist" % name
+            status = result['contacted'][host]['stat']['exists']
+            if status is True:
+                details = "INFO: %s exist" % name
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+            else:
+                details = "INFO: %s not exist" % name
+                handle_ansible_info(details, host_post_info, "INFO")
+                return False
+
+
+def file_operation(file, args, host_post_info):
+    ''''This function will change file attribute'''
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting change file %s ... " % file, host_post_info, "INFO")
+    args = "path=%s " % file + args
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='file',
+        module_args=args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            details = "INFO: %s not be changed" % file
             handle_ansible_info(details, host_post_info, "INFO")
             return False
+        else:
+            details = "INFO: %s changed successfully" % file
+            handle_ansible_info(details, host_post_info, "INFO")
+            return True
 
 
 def get_remote_host_info(host_post_info):
@@ -733,6 +980,7 @@ def set_ini_file(file, section, option, value, host_post_info):
     return True
 
 
+@retry(times=3, sleep_time=3)
 def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -758,18 +1006,22 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
         handle_ansible_start(ansible_start)
         sys.exit(1)
     else:
-        status = result['contacted'][host]['rc']
-        if status == 0:
-            details = "SUCC: The virtualenv-%s exist in system" % version
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
+        if 'rc' not in result['contacted'][host]:
+            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            raise Exception(result)
         else:
-            extra_args = "\"--upgrade --trusted-host %s -i %s \"" % (trusted_host, pip_url)
-            pip_install_arg = PipInstallArg()
-            pip_install_arg.extra_args = extra_args
-            pip_install_arg.version = version
-            pip_install_arg.name = "virtualenv"
-            return pip_install_package(pip_install_arg, host_post_info)
+            status = result['contacted'][host]['rc']
+            if status == 0:
+                details = "SUCC: The virtualenv-%s exist in system" % version
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+            else:
+                extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
+                pip_install_arg = PipInstallArg()
+                pip_install_arg.extra_args = extra_args
+                pip_install_arg.version = version
+                pip_install_arg.name = "virtualenv"
+                return pip_install_package(pip_install_arg, host_post_info)
 
 
 def service_status(name, args, host_post_info):
@@ -808,6 +1060,7 @@ def service_status(name, args, host_post_info):
 
 
 def update_file(dest, args, host_post_info):
+    '''Use this function to change the file content'''
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
@@ -842,6 +1095,41 @@ def update_file(dest, args, host_post_info):
             return True
 
 
+def change_iptables(args, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Changing iptables", host_post_info, "INFO")
+    runner = ansible.runner.Runner(
+        host_list=host_inventory,
+        private_key_file=private_key,
+        module_name='iptables',
+        module_args=args,
+        pattern=host
+    )
+    result = runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+        sys.exit(1)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: change iptables: %s failed" % args
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
+        else:
+            details = "SUCC: change iptables with %s" % args
+            handle_ansible_info(details, host_post_info, "INFO")
+            return True
+
+
 def set_selinux(args, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -849,7 +1137,7 @@ def set_selinux(args, host_post_info):
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Changing service status", host_post_info, "INFO")
+    handle_ansible_info("INFO: Set selinux status to %s" % args, host_post_info, "INFO")
     runner = ansible.runner.Runner(
         host_list=host_inventory,
         private_key_file=private_key,
@@ -912,7 +1200,7 @@ def authorized_key(user, key_path, host_post_info):
             host_list=host_inventory,
             private_key_file=private_key,
             module_name='authorized_key',
-            module_args="user=%s key=%s" % (user, key),
+            module_args= args,
             pattern=host
         )
         result = runner.run()
@@ -1049,19 +1337,6 @@ class ZstackLib(object):
 
 def main():
     # Reserve for test api
-    host_post_info = HostPostInfo()
-    host_post_info.host_inventory = "/etc/ansible/hosts"
-    host_post_info.host = "172.20.12.64"
-    host_post_info.post_url = "http://172.20.12.64:1234"
-    host_post_info.private_key = "/usr/local/zstack/apache-tomcat-7.0.35/webapps/zstack/WEB-INF/classes/ansible/rsaKeys/id_rsa"
-    #command = "mysql -uroot -psdfsdfs  -e 'exit' >/dev/null 2>&1"
-    #command = '''
-    #mysql -uroot -pzstack.mysql.password -Bse "show databases;show databases;"
-    #'''
-#    if check_remote(command, host_post_info) is True:
-#        print "succ"
-#    else:
-#        print "faild"
-#
+    pass
 if __name__ == "__main__":
     main()
