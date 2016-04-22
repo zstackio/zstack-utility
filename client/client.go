@@ -125,6 +125,20 @@ func (cln *ZImageClient) Get(route string) (resp *http.Response, err error) {
 	return cln.c.Get(cln.getFullUrl(route))
 }
 
+func (cln *ZImageClient) Del(route string) (statusCode int, err error) {
+	req, err := http.NewRequest("DELETE", cln.getFullUrl(route), nil)
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := cln.c.Do(req)
+	if err != nil {
+		return 0, err
+	}
+
+	return resp.StatusCode, nil
+}
+
 func (cln *ZImageClient) RangeGet(route string, startOffset int64) (resp *http.Response, err error) {
 	req, err := http.NewRequest("GET", cln.getFullUrl(route), nil)
 	if err != nil {

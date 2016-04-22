@@ -51,7 +51,7 @@ func GetImageBlobRoute(name string, digest string) string {
 }
 
 func GetUploadRoute(name string) string {
-	return path.Join(RouteNameV1, name, "blob-upload")
+	return path.Join(RouteNameV1, name, "blob-upload") + "/"
 }
 
 func GetUploadIdRoute(name string, id string) string {
