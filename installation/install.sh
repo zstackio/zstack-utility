@@ -1294,7 +1294,7 @@ After=syslog.target network.target
 Before=shutdown.target reboot.target halt.target
 
 [Service]
-Type=notify
+Type=forking
 User=root
 ExecStart=/usr/bin/zstack-ctl start
 ExecStop=/usr/bin/zstack-ctl stop
