@@ -6,6 +6,7 @@ import (
 	"image-store/registry/api/v1"
 	"image-store/utils"
 	"io"
+	"io/ioutil"
 	"os"
 	"path"
 )
@@ -51,18 +52,48 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 		resp, err = cln.Get(blobroute)
 	}
 
-	if err != nil {
+	if err = writeLocalImageBlob(blobpath, resp.Body); err != nil {
 		return fmt.Errorf("download image blob failed: %s", err.Error())
 	}
 
-	os.MkdirAll(path.Dir(blobpath), 0775)
-	wr, err := os.OpenFile(blobpath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// TODO verify the blobsum
+
+	// write image manifest
+	if err = writeLocalManifest(name, &imf); err != nil {
+		return fmt.Errorf("failed to update manifest file: %s", err.Error())
+	}
+
+	if err = os.Link(blobpath, GetImageFilePath(name, imf.Id)); err != nil {
+		return fmt.Errorf("create link failed: %s", err.Error())
+	}
+
+	return nil
+}
+
+func writeLocalManifest(name string, imf *v1.ImageManifest) error {
+	fname := GetImageManifestPath(name, imf.Id)
+	if err := os.MkdirAll(path.Dir(fname), 0775); err != nil {
+		return fmt.Errorf("failed to create directory: %s", err.Error())
+	}
+
+	return ioutil.WriteFile(fname, []byte(imf.String()), 0644)
+}
+
+func writeLocalImageBlob(blobpath string, r io.Reader) error {
+	if err := os.MkdirAll(path.Dir(blobpath), 0775); err != nil {
+		return fmt.Errorf("failed to create directory: %s", err.Error())
+	}
+
+	w, err := os.OpenFile(blobpath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 
-	defer wr.Close()
+	defer w.Close()
 
-	_, err = io.Copy(wr, resp.Body)
-	return err
+	if _, err = io.Copy(w, r); err != nil {
+		return err
+	}
+
+	return nil
 }
