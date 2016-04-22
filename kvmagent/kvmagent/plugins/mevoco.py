@@ -185,6 +185,7 @@ class Mevoco(kvmagent.KvmAgent):
     RESET_DEFAULT_GATEWAY_PATH = "/flatnetworkprovider/dhcp/resetDefaultGateway"
     APPLY_USER_DATA = "/flatnetworkprovider/userdata/apply"
     RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
+    BATCH_APPLY_USER_DATA = "/flatnetworkprovider/userdata/batchapply"
 
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
 
@@ -198,6 +199,7 @@ class Mevoco(kvmagent.KvmAgent):
 
         http_server.register_async_uri(self.DHCP_CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.APPLY_DHCP_PATH, self.apply_dhcp)
+        http_server.register_async_uri(self.BATCH_APPLY_USER_DATA, self.batch_apply_userdata)
         http_server.register_async_uri(self.RELEASE_DHCP_PATH, self.release_dhcp)
         http_server.register_async_uri(self.PREPARE_DHCP_PATH, self.prepare_dhcp)
         http_server.register_async_uri(self.APPLY_USER_DATA, self.apply_userdata)
@@ -212,11 +214,20 @@ class Mevoco(kvmagent.KvmAgent):
         shell.call('etables -F')
         return jsonobject.dumps(ConnectRsp())
 
-    @kvmagent.replyerror
-    @lock.lock('iptables')
+    def batch_apply_userdata(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        for u in cmd.userdata:
+            self._apply_userdata(u)
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
     def apply_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._apply_userdata(cmd.userdata)
+        return jsonobject.dumps(ApplyUserdataRsp())
 
+    @kvmagent.replyerror
+    @lock.lock('iptables')
+    def _apply_userdata(self, to):
         set_vip_cmd = '''
 NS_NAME={{ns_name}}
 DHCP_IP={{dhcp_ip}}
@@ -249,8 +260,8 @@ exit 0
 '''
         tmpt = Template(set_vip_cmd)
         set_vip_cmd = tmpt.render({
-            'ns_name': cmd.bridgeName,
-            'dhcp_ip': cmd.dhcpServerIp,
+            'ns_name': to.bridgeName,
+            'dhcp_ip': to.dhcpServerIp,
         })
         shell.call(set_vip_cmd)
 
@@ -292,8 +303,8 @@ exit 0
 '''
         tmpt = Template(set_ebtables)
         set_ebtables = tmpt.render({
-            'br_name': cmd.bridgeName,
-            'ns_name': cmd.bridgeName,
+            'br_name': to.bridgeName,
+            'ns_name': to.bridgeName,
         })
         shell.call(set_ebtables)
 
@@ -333,19 +344,18 @@ exit 0
 
         tmpt = Template(dnat_port_cmd)
         dnat_port_cmd = tmpt.render({
-            'port': cmd.port
+            'port': to.port
         })
         shell.call(dnat_port_cmd)
 
-        conf_folder = os.path.join(self.USERDATA_ROOT, cmd.bridgeName)
+        conf_folder = os.path.join(self.USERDATA_ROOT, to.bridgeName)
         if not os.path.exists(conf_folder):
             shell.call('mkdir -p %s' % conf_folder)
 
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         http_root = os.path.join(conf_folder, 'html')
 
-        def write_conf():
-            conf = '''\
+        conf = '''\
 server.document-root = "{{http_root}}"
 
 server.port = {{port}}
@@ -371,20 +381,25 @@ mimetype.assign = (
   ".png" => "image/png"
 )'''
 
-            tmpt = Template(conf)
-            conf = tmpt.render({
-                'http_root': http_root,
-                'dhcp_server_ip': cmd.dhcpServerIp,
-                'port': cmd.port
-            })
-
-            with open(conf_path, 'w') as fd:
-                fd.write(conf)
+        tmpt = Template(conf)
+        conf = tmpt.render({
+            'http_root': http_root,
+            'dhcp_server_ip': to.dhcpServerIp,
+            'port': to.port
+        })
 
         if not os.path.exists(conf_path):
-            write_conf()
+            with open(conf_path, 'w') as fd:
+                fd.write(conf)
+        else:
+            with open(conf_path, 'r') as fd:
+                current_conf = fd.read()
 
-        root = os.path.join(http_root, cmd.vmIp)
+            if current_conf != conf:
+                with open(conf_path, 'w') as fd:
+                    fd.write(conf)
+
+        root = os.path.join(http_root, to.vmIp)
         meta_root = os.path.join(root, 'meta-data')
         if not os.path.exists(meta_root):
             shell.call('mkdir -p %s' % meta_root)
@@ -395,16 +410,16 @@ mimetype.assign = (
 
         instance_id_file_path = os.path.join(meta_root, 'instance-id')
         with open(instance_id_file_path, 'w') as fd:
-            fd.write(cmd.metadata.vmUuid)
+            fd.write(to.metadata.vmUuid)
 
-        if cmd.userdata:
+        if to.userdata:
             userdata_file_path = os.path.join(root, 'user-data')
             with open(userdata_file_path, 'w') as fd:
-                fd.write(cmd.userdata)
+                fd.write(to.userdata)
 
         pid = linux.find_process_by_cmdline([conf_path])
         if not pid:
-            shell.call('ip netns exec %s lighttpd -f %s' % (cmd.bridgeName, conf_path))
+            shell.call('ip netns exec %s lighttpd -f %s' % (to.bridgeName, conf_path))
 
             def check(_):
                 pid = linux.find_process_by_cmdline([conf_path])
@@ -412,8 +427,6 @@ mimetype.assign = (
 
             if not linux.wait_callback_success(check, None, 5):
                 raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
-
-        return jsonobject.dumps(ApplyUserdataRsp())
 
     @kvmagent.replyerror
     def release_userdata(self, req):
