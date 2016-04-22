@@ -1940,6 +1940,7 @@ class InstallHACmd(Command):
                     #run_remote_command(self.command, self.host2_post_info)
                     service_status("mysql","state=restarted", self.host2_post_info)
                 else:
+                    # localhost must be host3
                     #run_remote_command(self.command, self.host1_post_info)
                     service_status("mysql","state=started", self.host1_post_info)
                     service_status("mysql","state=started", self.host2_post_info)
@@ -2794,7 +2795,8 @@ wsrep_sst_method=rsync
         #service_status("mysql", "state=stopped", self.host1_post_info)
         run_remote_command(self.command, self.host1_post_info)
         run_remote_command(self.command, self.host2_post_info)
-        run_remote_command(self.command, self.host3_post_info)
+        if len(self.host_post_info_list) == 3:
+            run_remote_command(self.command, self.host3_post_info)
         self.command = "service mysql bootstrap"
         run_remote_command(self.command, self.host1_post_info)
         service_status("mysql","state=started enabled=yes", self.host2_post_info)
