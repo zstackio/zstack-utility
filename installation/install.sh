@@ -1293,7 +1293,7 @@ After=syslog.target network.target
 Before=shutdown.target reboot.target halt.target
 
 [Service]
-Type=simple
+Type=notify
 User=root
 ExecStart=/usr/bin/zstack-ctl start
 ExecStop=/usr/bin/zstack-ctl stop
