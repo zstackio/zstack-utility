@@ -1,16 +1,31 @@
 #!/bin/bash
 #
-# usage: build-test-repo.sh [ topdir ]
+# usage: build-test-repo.sh [ -r|--refresh ] [ topdir ]
 
 set -e
 
 PATH=/bin:/usr/bin
 
+opt_refresh=0
+opt_topdir=
+
+# Process command line arguments
+while true; do
+    case "$1" in
+        -r|--refresh) opt_refresh=1; shift;;
+        *) opt_topdir="$1"; break;;
+    esac
+done
+
 # The default top directory is the same as in zstore.yaml
-topdir=${1:-/tmp/zstore}
+topdir=${opt_topdir:-/tmp/zstore}
 
 # The top directory for the v1 registry
 v1regdir="$topdir"/registry/v1
+
+if test $opt_refresh -ne 0; then
+    rm -fr "$topdir"
+fi
 
 # This script will generate a fake image store with the layout like below:
 #
@@ -108,6 +123,17 @@ add-child-image () {
     move-image-to-store "$child"
 }
 
+# get-image-size (digest) => image-size
+get-image-size () {
+    if test $# -ne 1; then
+        echo "get-image-size: missing image digest"
+        exit 1
+    fi
+
+    file=$(get-image-blobname "$1")
+    ls -l "$file" | awk '{print $5}'
+}
+
 # build-image-json (digest) => image-id
 build-image-json () {
     if test $# -ne 1; then
@@ -117,6 +143,7 @@ build-image-json () {
 
     local imgid=$(echo -n $name $1 | sha1sum | awk '{print $1}')
     local jsdir="$mnftdir/revisions/$imgid"
+    local fsize=$(get-image-size $1)
 
     mkdir -p "$jsdir"
     cat > "$jsdir/json" <<EOF
@@ -126,7 +153,7 @@ build-image-json () {
   "created": "2016-03-28T21:19:18.674353812Z",
   "author": "Alyssa P. Hacker",
   "architecture": "amd64",
-  "size": 271828,
+  "size": $fsize,
   "name": "$name",
   "desc": "An $name image"
 }
@@ -143,6 +170,7 @@ build-image-json-with-parent () {
 
     local imgid=$(echo -n $name $1 | sha1sum | awk '{print $1}')
     local jsdir="$mnftdir/revisions/$imgid"
+    local fsize=$(get-image-size $1)
 
     mkdir -p "$jsdir"
     cat > "$jsdir/json" <<EOF
@@ -153,7 +181,7 @@ build-image-json-with-parent () {
   "created": "2016-03-28T21:19:18.674353812Z",
   "author": "Alyssa P. Hacker",
   "architecture": "amd64",
-  "size": 171828,
+  "size": $fsize,
   "name": "$name",
   "desc": "A derived $name image"
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/docker/libtrust"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -130,6 +131,17 @@ func (cln *ZImageClient) RangeGet(route string, startOffset int64) (resp *http.R
 		return nil, err
 	}
 
-	req.Header.Add("Range:", fmt.Sprintf("bytes=%d-", startOffset))
-	return cln.c.Do(req)
+	req.Header.Add("Range", fmt.Sprintf("bytes=%d-", startOffset))
+	resp, err = cln.c.Do(req)
+	if err != nil {
+		return
+	}
+
+	if resp.StatusCode != 200 {
+		contents, _ := ioutil.ReadAll(resp.Body)
+		err = fmt.Errorf("range get error: %s", strings.TrimSpace(string(contents)))
+		return
+	}
+
+	return
 }

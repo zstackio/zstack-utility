@@ -7,15 +7,39 @@ import (
 	"image-store/utils"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
 )
 
 // Pull a disk image
 func (cln *ZImageClient) Pull(name string, reference string) error {
+	imf, err := cln.getImageManifest(name, reference)
+	if err != nil {
+		return err
+	}
+
+	blobpath := GetImageBlobPath(name, imf.Blobsum)
+	blobroute := v1.GetImageBlobRoute(name, imf.Blobsum)
+
+	err = cln.pullImageBlob(blobpath, blobroute, imf)
+	if err != nil {
+		return err
+	}
+
+	// write image manifest
+	if err = writeLocalManifest(name, imf); err != nil {
+		return fmt.Errorf("failed to update manifest file: %s", err.Error())
+	}
+
+	os.Link(blobpath, GetImageFilePath(name, imf.Id))
+	return nil
+}
+
+func (cln *ZImageClient) getImageManifest(name, reference string) (*v1.ImageManifest, error) {
 	resp, err := cln.Get(v1.GetManifestRoute(name, reference))
 	if err != nil {
-		return fmt.Errorf("failed in getting image manifest: %s", err.Error())
+		return nil, fmt.Errorf("failed in getting image manifest: %s", err.Error())
 	}
 
 	defer resp.Body.Close()
@@ -23,22 +47,28 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 	if resp.StatusCode != 200 {
 		var e errcode.Error
 		if err = utils.JsonDecode(resp.Body, &e); err != nil {
-			return err
+			return nil, err
 		}
-		return e
+		return nil, e
 	}
 
 	var imf v1.ImageManifest
 	if err = utils.JsonDecode(resp.Body, &imf); err != nil {
-		return err
+		return nil, err
 	}
 
 	if !imf.Ok() {
-		return fmt.Errorf("invalid image manifest for %s:%s", name, reference)
+		return nil, fmt.Errorf("invalid image manifest for %s:%s", name, reference)
 	}
 
-	blobpath := GetImageBlobPath(name, imf.Blobsum)
-	blobroute := v1.GetImageBlobRoute(name, imf.Blobsum)
+	return &imf, nil
+}
+
+func (cln *ZImageClient) pullImageBlob(blobpath string, blobroute string, imf *v1.ImageManifest) error {
+
+	var resp *http.Response
+	var err error
+
 	if info, err := os.Stat(blobpath); err == nil {
 		if info.Size() != imf.Size {
 			// continue from last
@@ -48,23 +78,22 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 			return nil
 		}
 	} else {
-		// download the blob and write manifest.
 		resp, err = cln.Get(blobroute)
 	}
+
+	if err != nil {
+		return nil
+	}
+
+	defer resp.Body.Close()
 
 	if err = writeLocalImageBlob(blobpath, resp.Body); err != nil {
 		return fmt.Errorf("download image blob failed: %s", err.Error())
 	}
 
-	// TODO verify the blobsum
-
-	// write image manifest
-	if err = writeLocalManifest(name, &imf); err != nil {
-		return fmt.Errorf("failed to update manifest file: %s", err.Error())
-	}
-
-	if err = os.Link(blobpath, GetImageFilePath(name, imf.Id)); err != nil {
-		return fmt.Errorf("create link failed: %s", err.Error())
+	// verify the blobsum
+	if err = checkBlobDigest(blobpath, imf.Blobsum); err != nil {
+		return err
 	}
 
 	return nil
@@ -93,6 +122,26 @@ func writeLocalImageBlob(blobpath string, r io.Reader) error {
 
 	if _, err = io.Copy(w, r); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func checkBlobDigest(blobpath string, digest string) error {
+	fd, err := os.Open(blobpath)
+	if err != nil {
+		return err
+	}
+
+	defer fd.Close()
+
+	d, err := utils.GetImageDigest(fd)
+	if err != nil {
+		return err
+	}
+
+	if d != digest {
+		return fmt.Errorf("image digest mismatch")
 	}
 
 	return nil
