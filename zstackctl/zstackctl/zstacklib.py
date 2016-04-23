@@ -46,6 +46,8 @@ class ZstackLibArgs(object):
         self.distro_version = None
         self.zstack_root = None
         self.host_post_info = None
+        self.pip_url = None
+        self.trusted_host = None
 
 
 class Log(object):
@@ -1265,12 +1267,14 @@ class ZstackLib(object):
         yum_repo = args.yum_repo
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
+        trusted_host = args.trusted_host
+        pip_url = args.pip_url
         pip_version = "7.0.3"
         epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
         current_dir =  os.path.dirname(os.path.realpath(__file__))
         if distro == "CentOS" or distro == "RedHat":
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
-            run_remote_command("rm -f /run/systemd/system/*.scope",host_post_info)
+            run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
             # set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
             repo_aliyun_repo = CopyArg()
             repo_aliyun_repo.src = "files/zstacklib/zstack-aliyun-yum.repo"
@@ -1310,8 +1314,8 @@ class ZstackLib(object):
             # check ansible 1.8 exist in local system
             (status, output) = commands.getstatusoutput(" ansible --version | grep 1.8.2")
             if status != 0:
-                (status, output) = commands.getstatusoutput("yum remove -y ansible && pip install -I"
-                                                            " %s/../ansible-1.8.2.tar.gz" % current_dir)
+                (status, output) = commands.getstatusoutput("yum remove -y ansible && pip install -I "
+                            "%s/../ansible-1.8.2.tar.gz --trusted-host %s -i %s" % (current_dir, trusted_host, pip_url))
                 if status != 0:
                     logger.error("ERROR: Install ansible 1.8.2 failed: %s " % output)
                     sys.exit(1)
@@ -1328,7 +1332,7 @@ class ZstackLib(object):
             (status, output) = commands.getstatusoutput(" ansible --version | grep 1.8.2")
             if status != 0:
                 (status, output) = commands.getstatusoutput("apt --force-yes remove ansible && pip install -I"
-                                                            " %s/../ansible-1.8.2.tar.gz" % current_dir)
+                            "%s/../ansible-1.8.2.tar.gz --trusted-host %s -i %s" % (current_dir, trusted_host, pip_url))
                 if status != 0:
                     logger.error("ERROR: Install ansible 1.8.2 failed: %s " % output)
                     sys.exit(1)
