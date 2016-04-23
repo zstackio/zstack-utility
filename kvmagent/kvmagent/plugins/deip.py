@@ -109,8 +109,11 @@ delete_arp_rule
 exit 0
 '''
         for eip in eips:
+            dev_base_name = eip.nicName.lstrip('vnic')
+            dev_base_name = dev_base_name.replace(".", "_")
+
             ctx = {
-                "pub_odev": "%s_o" % eip.vip.replace(".", ""),
+                "pub_odev": "%s_eo" % dev_base_name,
                 "ns_name": "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
             }
             ctx.update(eip.__dict__)
@@ -263,11 +266,14 @@ exit 0
 '''
 
         for eip in eips:
+            dev_base_name = eip.nicName.lstrip('vnic')
+            dev_base_name = dev_base_name.replace(".", "_")
+
             ctx = {
-                "pub_odev": "%s_o" % eip.vip.replace(".", ""),
-                "pub_idev": "%s_i" % eip.vip.replace(".", ""),
-                "pri_odev": "%s_o" % eip.nicIp.replace(".", ""),
-                "pri_idev": "%s_i" % eip.nicIp.replace(".", ""),
+                "pub_odev": "%s_eo" % dev_base_name,
+                "pub_idev": "%s_ei" % dev_base_name,
+                "pri_odev": "%s_o" % dev_base_name,
+                "pri_idev": "%s_i" % dev_base_name,
                 "pri_br_dev": eip.vmBridgeName.lstrip('br_'),
                 "ebtable_chain_name": eip.vmBridgeName,
                 "ns_name": "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
