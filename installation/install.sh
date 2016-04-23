@@ -333,6 +333,7 @@ check_system(){
         fi
     fi
     cs_check_epel
+    cs_check_hostname
     show_spinner do_check_system
 }
 
@@ -414,7 +415,6 @@ You can also add '-q' to installer, then Installer will help you to remove it.
         [ $? -ne 0 ] && fail "Uninstall python-crypto fail"
     fi
 
-    cs_check_hostname
     ia_check_ip_hijack
 
     #add user: zstack and add sudo permission for it.
@@ -1079,7 +1079,6 @@ install_db_msgbus(){
     #deploy initial database
     show_spinner cs_deploy_db
     #install rabbitmq server
-    cs_check_hostname
     show_spinner cs_install_rabbitmq $ssh_tmp_dir
     cs_clean_ssh_tmp_key $ssh_tmp_dir
     #show_spinner cs_start_rabbitmq
