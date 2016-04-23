@@ -3631,6 +3631,7 @@ class InstallCassandraCmd(Command):
             with open(yaml_conf, 'w') as fd:
                 fd.write(yaml.dump(c_conf, default_flow_style=False))
 
+
         ctl.put_envs([
           (self.CASSANDRA_EXEC, os.path.join(cassandra_dir, 'bin/cassandra')),
           (self.CASSANDRA_CONF, yaml_conf),
@@ -3641,6 +3642,13 @@ class InstallCassandraCmd(Command):
         ctl.write_properties([
             ('Cassandra.contactPoints', rpc_address)
         ])
+
+        # fix cassandra a bug of judging Java version
+        cassandra_service_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'conf/cassandra-env.sh')
+        if not os.path.exists(cassandra_service_file):
+            raise Exception('cannot find %s' % cassandra_service_file)
+
+        shell('yes | cp %s %s' % (cassandra_service_file, os.path.join(cassandra_dir, 'conf/cassandra-env.sh')))
 
         info("set Cassandra.contactPoints = %s in zstack.properties" % rpc_address)
 
