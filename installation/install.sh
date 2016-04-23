@@ -240,20 +240,20 @@ cs_check_hostname(){
         CHANGE_HOSTS="127.0.0.1 $CHANGE_HOSTNAME"
         which hostnamectl >>/dev/null 2>&1
         if [ $? -ne 0 ]; then
-            hostname $new_hostname
+            hostname $CHANGE_HOSTNAME
             echo "127.0.0.1 $CHANGE_HOSTNAME"  >>/etc/hosts
         else
-            hostnamectl set-hostname $new_hostname >>$ZSTACK_INSTALL_LOG 2>&1
+            hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
             echo "127.0.0.1 $CHANGE_HOSTNAME"  >>/etc/hosts
         fi
-        echo "Your OS hostname is set as $current_hostname, which will block vm live migration. You can set a special hostname, or directly use $new_hostname by running following commands in CentOS6:
+        echo "Your OS hostname is set as $current_hostname, which will block vm live migration. You can set a special hostname, or directly use $CHANGE_HOSTNAME by running following commands in CentOS6:
 
-        hostname $new_hostname
-        echo 127.0.0.1 $new_hostname >> /etc/hosts
+        hostname $CHANGE_HOSTNAME
+        echo 127.0.0.1 $CHANGE_HOSTNAME >> /etc/hosts
 
 or following commands in CentOS7:
-        hostnamectl set-hostname $new_hostname
-        echo 127.0.0.1 $new_hostname >> /etc/hosts
+        hostnamectl set-hostname $CHANGE_HOSTNAME
+        echo 127.0.0.1 $CHANGE_HOSTNAME >> /etc/hosts
 
 " >> $ZSTACK_INSTALL_LOG
         return 0
