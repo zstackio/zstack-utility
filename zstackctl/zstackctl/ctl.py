@@ -1787,7 +1787,7 @@ class InstallHACmd(Command):
         # check network configuration
         self.interface_list = os.listdir('/sys/class/net/')
         if 'br_eth0' not in self.interface_list:
-            error("Make sure you have already run the 'network-setting' script under /root/scripts/")
+            error("Make sure you have already run the 'zs-network-setting' to setup the network environment")
 
         # check user start this command on host1
         if args.recovery_from_this_host is False:
