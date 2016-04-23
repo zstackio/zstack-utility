@@ -199,6 +199,9 @@ class VncPortIptableRule(object):
 
         internal_ids = []
         for vm in vms:
+            if not vm.domain_xmlobject.has_element('metadata.internalId'):
+                continue
+
             id = vm.domain_xmlobject.metadata.internalId.text_
             if id:
                 internal_ids.append(id)
