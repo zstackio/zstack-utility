@@ -12,6 +12,7 @@ import json
 from logging.handlers import TimedRotatingFileHandler
 import time
 import functools
+import commands
 
 # set global default value
 start_time = datetime.now()
@@ -1266,6 +1267,7 @@ class ZstackLib(object):
         host_post_info = args.host_post_info
         pip_version = "7.0.3"
         epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
+        current_dir =  os.path.dirname(os.path.realpath(__file__))
         if distro == "CentOS" or distro == "RedHat":
             # set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
             repo_aliyun_repo = CopyArg()
@@ -1304,6 +1306,14 @@ class ZstackLib(object):
             # enable ntp service for RedHat
             command = 'chkconfig ntpd on; service ntpd restart'
             run_remote_command(command, host_post_info)
+            # check ansible 1.8 exist in local system
+            (status, output) = commands.getstatusoutput(" ansible --version | grep 1.8.2")
+            if status != 0:
+                (status, output) = commands.getstatusoutput("yum remove -y ansible && pip install -I"
+                                                            " %s/../ansible-1.8.2.tar.gz" % current_dir)
+                if status != 0:
+                    logger.error("ERROR: Install ansible 1.8.2 failed: %s " % output)
+                    sys.exit(1)
 
         elif distro == "Debian" or distro == "Ubuntu":
             # install dependency packages for Debian based OS
@@ -1313,12 +1323,20 @@ class ZstackLib(object):
 
             # name: enable ntp service for Debian
             run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
+            # check ansible 1.8 exist in local system
+            (status, output) = commands.getstatusoutput(" ansible --version | grep 1.8.2")
+            if status != 0:
+                (status, output) = commands.getstatusoutput("apt --force-yes remove ansible && pip install -I"
+                                                            " %s/../ansible-1.8.2.tar.gz" % current_dir)
+                if status != 0:
+                    logger.error("ERROR: Install ansible 1.8.2 failed: %s " % output)
+                    sys.exit(1)
 
         else:
             logger.info("ERROR: Unsupported distribution")
             sys.exit(1)
 
-        # check the pip 7.0.3 exist in system
+        # check the pip 7.0.3 exist in system to avoid site-packages enable potential issue
         pip_match = check_pip_version(pip_version, host_post_info)
         if pip_match is False:
             # make dir for copy pip
