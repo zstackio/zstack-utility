@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/docker/distribution/context"
+	"hash"
 	"image-store/registry/api/errcode"
 	"image-store/registry/api/v1"
 	"io"
@@ -70,6 +72,24 @@ func GetUploadProgress(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	return
 }
 
+// This function consumes reader 'r' and duplicates its content to
+// another reader only if its hash value matches 'hashval'.
+func readWithHasher(r io.Reader, hasher hash.Hash, hashval string) (io.Reader, error) {
+	var chunk bytes.Buffer
+
+	_, err := io.Copy(&chunk, io.TeeReader(r, hasher))
+	if err != nil {
+		return nil, err
+	}
+
+	str := hex.EncodeToString(hasher.Sum(nil))
+	if !strings.EqualFold(str, hashval) {
+		return nil, errors.New("hash value mismatch")
+	}
+
+	return bytes.NewReader(chunk.Bytes()), nil
+}
+
 func writeChunk(dest io.Writer, r *http.Request) error {
 	length := r.ContentLength
 	if length < 0 || length > MaxChunkSize {
@@ -78,14 +98,15 @@ func writeChunk(dest io.Writer, r *http.Request) error {
 
 	hashsum := strings.TrimSpace(r.Header.Get(v1.HnChunkHash))
 	if hashsum == "" {
-		return errors.New("missing chunk hash from header")
+		return errors.New("missing hash value from header")
 	}
 
-	hasher := sha1.New()
-	bodyReader := io.TeeReader(io.LimitReader(r.Body, length), hasher)
+	content, err := readWithHasher(io.LimitReader(r.Body, length), sha1.New(), hashsum)
+	if err != nil {
+		return err
+	}
 
-	// TODO validate hash before copy to destination
-	sz, err := io.Copy(dest, bodyReader)
+	sz, err := io.Copy(dest, content)
 	if err != nil {
 		return err
 	}
@@ -95,11 +116,7 @@ func writeChunk(dest io.Writer, r *http.Request) error {
 		return ErrorUploadIncomplete
 	}
 
-	if strings.EqualFold(hex.EncodeToString(hasher.Sum(nil)), hashsum) {
-		return nil
-	}
-
-	return errors.New("chunk corrupted - hash mismatch")
+	return nil
 }
 
 // PATCH /v1/{name}/blobs/uploads/{uuid}
