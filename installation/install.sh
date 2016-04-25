@@ -500,7 +500,7 @@ ia_install_ansible(){
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
         yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        apt --force-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
+        apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     if [ ! -z $DEBUG ]; then
