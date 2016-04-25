@@ -497,6 +497,12 @@ ia_install_pip(){
 
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
+        yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        apt --force-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
     if [ ! -z $DEBUG ]; then
         pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
     else
