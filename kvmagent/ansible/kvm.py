@@ -10,7 +10,7 @@ pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
 sproxy = ""
 chroot_env = 'false'
-is_init = 'false'
+init = 'false'
 yum_repo = 'false'
 post_url = ""
 pkg_kvmagent = ""
@@ -114,7 +114,7 @@ if distro == "RedHat" or distro == "CentOS":
         # name: disable NetworkManager in RHEL7 and Centos7
         service_status("NetworkManager", "state=stopped enabled=no", host_post_info)
 
-    if is_init == 'true':
+    if init == 'true':
         # name: copy iptables initial rules in RedHat
         copy_arg = CopyArg()
         copy_arg.src = "%s/iptables" % file_root
