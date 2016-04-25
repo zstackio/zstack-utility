@@ -97,22 +97,39 @@ func (cln *ZImageClient) putImageManifest(name string, refernce string, imf *v1.
 	return nil
 }
 
-func (cln *ZImageClient) uploadImageBlob(name string, id string, startOffset int64, data []byte) error {
+func doBlobUpload(cln *ZImageClient, method string, name string, id string, startOffset int64, data []byte) (*http.Response, error) {
 	chunksha1, err := utils.Sha1Sum(bytes.NewReader(data))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	route := v1.GetUploadIdRoute(name, id)
-	req, err := http.NewRequest("PATCH", cln.GetFullUrl(route), bytes.NewReader(data))
+	req, err := http.NewRequest(method, cln.GetFullUrl(route), bytes.NewReader(data))
 	if err != nil {
-		return fmt.Errorf("upload request failed: '%s'", err.Error())
+		return nil, fmt.Errorf("upload request failed: '%s'", err.Error())
 	}
 
 	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", startOffset, startOffset+int64(len(data)-1)))
 	req.Header.Add(v1.HnChunkHash, chunksha1)
 
-	resp, err := cln.Do(req)
+	return cln.Do(req)
+}
+
+func (cln *ZImageClient) uploadBlobChunk(name string, id string, startOffset int64, data []byte) error {
+	resp, err := doBlobUpload(cln, "PATCH", name, id, startOffset, data)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (cln *ZImageClient) completeBlobUpload(name string, id string, startOffset int64, data []byte) error {
+	resp, err := doBlobUpload(cln, "POST", name, id, startOffset, data)
 	if err != nil {
 		return err
 	}
