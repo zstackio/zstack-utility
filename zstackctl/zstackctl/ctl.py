@@ -3876,12 +3876,19 @@ class CassandraCmd(Command):
         timeout = args.wait_timeout
         with open(conf, 'r') as fd:
             m = yaml.load(fd.read())
-            port = m['rpc_port']
-            if not port:
-                warn('cannot find parameter[rpc_port] in %s, ignore --wait-timeout' % conf)
+            ip = m['listen_address']
+            port = m['native_transport_port']
+            if not ip:
+                warn('cannot find parameter[listen_address] in %s, ignore --wait-timeout' % conf)
+                return
 
+            if not port:
+                warn('cannot find parameter[native_transport_port] in %s, ignore --wait-timeout' % conf)
+                return
+
+            cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
             while args.wait_timeout > 0:
-                ret = shell_return('netstat -nap | grep %s > /dev/null' % port)
+                ret = shell_return('%s %s %s -e "describe keyspaces" > /dev/null' % (cqlsh, ip, port))
                 if ret == 0:
                     info('cassandra is listening on RPC port[%s] now' % port)
                     return
@@ -3889,8 +3896,8 @@ class CassandraCmd(Command):
                 time.sleep(1)
                 args.wait_timeout -= 1
 
-            raise CtlError("cassandra is not listening on RPC port[%s] after %s seconds, it may not successfully start,"
-                           "please check the log file in %s" % (port, timeout, ctl.get_env(InstallCassandraCmd.CASSANDRA_LOG)))
+            raise CtlError("cannot execute cassandra shell[%s] after %s seconds, it may not successfully start,"
+                           "please check the log file in %s" % (cqlsh, timeout, ctl.get_env(InstallCassandraCmd.CASSANDRA_LOG)))
 
     def stop(self, args):
         pid = self._status(args)
