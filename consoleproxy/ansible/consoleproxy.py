@@ -6,7 +6,7 @@ from zstacklib import *
 start_time = datetime.now()
 # set default value
 file_root = "files/consoleproxy"
-pypi_url = 'https://pypi.python.org/simple/'
+pip_url = 'https://pypi.python.org/simple/'
 proxy = ""
 sproxy = ""
 chroot_env = 'false'
