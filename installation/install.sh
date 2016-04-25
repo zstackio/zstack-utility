@@ -2029,6 +2029,10 @@ if [ -z $NOT_START_ZSTACK ]; then
     start_dashboard
 fi
 
+if [ -f /bin/systemctl ]; then
+    systemctl start zstack.service >/dev/null 2>&1
+fi
+
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
