@@ -1328,14 +1328,6 @@ class ZstackLib(object):
 
             # name: enable ntp service for Debian
             run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
-            # check ansible 1.8 exist in local system
-            (status, output) = commands.getstatusoutput(" ansible --version | grep 1.8.2")
-            if status != 0:
-                (status, output) = commands.getstatusoutput("apt --force-yes remove ansible && pip install -I"
-                            "%s/../ansible-1.8.2.tar.gz --trusted-host %s -i %s" % (current_dir, trusted_host, pip_url))
-                if status != 0:
-                    logger.error("ERROR: Install ansible 1.8.2 failed: %s " % output)
-                    sys.exit(1)
 
         else:
             logger.info("ERROR: Unsupported distribution")
