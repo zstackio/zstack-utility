@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/docker/libtrust"
-	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -120,48 +119,6 @@ func (cln *ZImageClient) GetFullUrl(route string) string {
 	}
 
 	return url
-}
-
-func (cln *ZImageClient) Del(route string) (statusCode int, err error) {
-	req, err := http.NewRequest("DELETE", cln.GetFullUrl(route), nil)
-	if err != nil {
-		return 0, err
-	}
-
-	resp, err := cln.Do(req)
-	if err != nil {
-		return 0, err
-	}
-
-	return resp.StatusCode, nil
-}
-
-func (cln *ZImageClient) Put(route string, body io.Reader) (statusCode int, err error) {
-	req, err := http.NewRequest("PUT", cln.GetFullUrl(route), body)
-	if err != nil {
-		return 0, err
-	}
-
-	resp, err := cln.Do(req)
-	if err != nil {
-		return 0, err
-	}
-
-	return resp.StatusCode, nil
-}
-
-func (cln *ZImageClient) Patch(route string, body io.Reader) (statusCode int, err error) {
-	req, err := http.NewRequest("PATCH", cln.GetFullUrl(route), body)
-	if err != nil {
-		return 0, err
-	}
-
-	resp, err := cln.Do(req)
-	if err != nil {
-		return 0, err
-	}
-
-	return resp.StatusCode, nil
 }
 
 func (cln *ZImageClient) RangeGet(route string, startOffset int64) (resp *http.Response, err error) {

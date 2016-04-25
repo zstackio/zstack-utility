@@ -32,13 +32,19 @@ func (cln *ZImageClient) PrepareUpload(name string) (loc string, err error) {
 }
 
 func (cln *ZImageClient) CancelUpload(name string, id string) error {
-	code, err := cln.Del(v1.GetUploadIdRoute(name, id))
+	route := v1.GetUploadIdRoute(name, id)
+	req, err := http.NewRequest("DELETE", cln.GetFullUrl(route), nil)
 	if err != nil {
 		return err
 	}
 
-	if code != http.StatusAccepted {
-		return fmt.Errorf("unexpected http status code: %d", code)
+	resp, err := cln.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
 	}
 
 	return nil
@@ -74,14 +80,18 @@ func (cln *ZImageClient) GetProgress(name string, id string) (int64, error) {
 
 func (cln *ZImageClient) putImageManifest(name string, refernce string, imf *v1.ImageManifest) error {
 	route, reader := v1.GetManifestRoute(name, refernce), strings.NewReader(imf.String())
-
-	status, err := cln.Put(route, reader)
+	req, err := http.NewRequest("PUT", cln.GetFullUrl(route), reader)
 	if err != nil {
 		return err
 	}
 
-	if status != http.StatusAccepted {
-		return fmt.Errorf("unexpected http status code: %d", status)
+	resp, err := cln.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
 	}
 
 	return nil
