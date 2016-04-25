@@ -13,9 +13,8 @@ type ImageId struct {
 
 // Create a new Image Id
 func NewImageId() *ImageId {
-	hasher := sha1.New()
 	r := bytes.NewReader([]byte(NewUUID()))
-	s, _ := Hashing(r, hasher)
+	s, _ := Sha1Sum(r)
 	return &ImageId{v: s}
 }
 

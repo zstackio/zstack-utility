@@ -10,6 +10,9 @@ const (
 	PvnReference = "reference"
 	PvnDigest    = "digest"
 	PvnUuid      = "uuid"
+
+	// HTTP Header Name
+	HnChunkHash = "X-Chunk-Hash"
 )
 
 const (

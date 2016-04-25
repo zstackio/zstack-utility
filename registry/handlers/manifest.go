@@ -20,8 +20,7 @@ func GetManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 }
 
 // PUT  /v1/<name>/manifests/{refrence}
-// body:
-// Image Manifest in JSON
+// body: Image Manifest in JSON
 func PutManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	name, ref, s := GetManifestArgAndSearcher(ctx, w, r)
 	if s == nil {

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"hash"
@@ -19,6 +20,11 @@ func Hashing(r io.Reader, hasher hash.Hash) (string, error) {
 // Get the SHA256 check sum
 func Sha256Sum(r io.Reader) (string, error) {
 	return Hashing(r, sha256.New())
+}
+
+// Get the SHA1 check sum
+func Sha1Sum(r io.Reader) (string, error) {
+	return Hashing(r, sha1.New())
 }
 
 // An image digest is a SHA-256 check sum.

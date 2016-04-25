@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/docker/distribution/context"
 	"image-store/registry/api/errcode"
+	"image-store/registry/api/v1"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // The maximum chunk size is 8 MiB
@@ -66,13 +70,22 @@ func GetUploadProgress(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	return
 }
 
-func writeChunk(dest io.WriteCloser, r *http.Request) error {
+func writeChunk(dest io.Writer, r *http.Request) error {
 	length := r.ContentLength
 	if length < 0 || length > MaxChunkSize {
 		return ErrorInvalidChunkSize
 	}
 
-	sz, err := io.Copy(dest, io.LimitReader(r.Body, length))
+	hashsum := strings.TrimSpace(r.Header.Get(v1.HnChunkHash))
+	if hashsum == "" {
+		return errors.New("missing chunk hash from header")
+	}
+
+	hasher := sha1.New()
+	bodyReader := io.TeeReader(io.LimitReader(r.Body, length), hasher)
+
+	// TODO validate hash before copy to destination
+	sz, err := io.Copy(dest, bodyReader)
 	if err != nil {
 		return err
 	}
@@ -82,7 +95,11 @@ func writeChunk(dest io.WriteCloser, r *http.Request) error {
 		return ErrorUploadIncomplete
 	}
 
-	return nil
+	if strings.EqualFold(hex.EncodeToString(hasher.Sum(nil)), hashsum) {
+		return nil
+	}
+
+	return errors.New("chunk corrupted - hash mismatch")
 }
 
 // PATCH /v1/{name}/blobs/uploads/{uuid}

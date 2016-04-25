@@ -1,10 +1,13 @@
 package client
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"image-store/registry/api/v1"
+	"image-store/utils"
 	"net/http"
+	"strings"
 )
 
 func (cln *ZImageClient) Push(imgid string, tag string) error {
@@ -67,4 +70,46 @@ func (cln *ZImageClient) GetProgress(name string, id string) (int64, error) {
 
 	hdr := resp.Header.Get("Content-Range")
 	return parseRangeHeader(hdr)
+}
+
+func (cln *ZImageClient) putImageManifest(name string, refernce string, imf *v1.ImageManifest) error {
+	route, reader := v1.GetManifestRoute(name, refernce), strings.NewReader(imf.String())
+
+	status, err := cln.Put(route, reader)
+	if err != nil {
+		return err
+	}
+
+	if status != http.StatusAccepted {
+		return fmt.Errorf("unexpected http status code: %d", status)
+	}
+
+	return nil
+}
+
+func (cln *ZImageClient) uploadImageBlob(name string, id string, startOffset int64, data []byte) error {
+	chunksha1, err := utils.Sha1Sum(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+
+	route := v1.GetUploadIdRoute(name, id)
+	req, err := http.NewRequest("PATCH", cln.GetFullUrl(route), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("upload request failed: '%s'", err.Error())
+	}
+
+	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", startOffset, startOffset+int64(len(data)-1)))
+	req.Header.Add(v1.HnChunkHash, chunksha1)
+
+	resp, err := cln.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected http status code: %d", resp.StatusCode)
+	}
+
+	return nil
 }

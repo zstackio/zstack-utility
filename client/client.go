@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/docker/libtrust"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 
 // The Zstack image store client
 type ZImageClient struct {
-	c      *http.Client
+	*http.Client
 	server string
 }
 
@@ -104,12 +105,12 @@ func New(privateKeyFile string, trustedHostsFile string, serverAddr string) (*ZI
 	}
 
 	return &ZImageClient{
-		c:      client,
+		Client: client,
 		server: fmt.Sprintf("https://%s:%s", host, port),
 	}, nil
 }
 
-func (cln *ZImageClient) getFullUrl(route string) string {
+func (cln *ZImageClient) GetFullUrl(route string) string {
 	var url string
 
 	if strings.HasPrefix(route, "/") {
@@ -121,17 +122,41 @@ func (cln *ZImageClient) getFullUrl(route string) string {
 	return url
 }
 
-func (cln *ZImageClient) Get(route string) (resp *http.Response, err error) {
-	return cln.c.Get(cln.getFullUrl(route))
-}
-
 func (cln *ZImageClient) Del(route string) (statusCode int, err error) {
-	req, err := http.NewRequest("DELETE", cln.getFullUrl(route), nil)
+	req, err := http.NewRequest("DELETE", cln.GetFullUrl(route), nil)
 	if err != nil {
 		return 0, err
 	}
 
-	resp, err := cln.c.Do(req)
+	resp, err := cln.Do(req)
+	if err != nil {
+		return 0, err
+	}
+
+	return resp.StatusCode, nil
+}
+
+func (cln *ZImageClient) Put(route string, body io.Reader) (statusCode int, err error) {
+	req, err := http.NewRequest("PUT", cln.GetFullUrl(route), body)
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := cln.Do(req)
+	if err != nil {
+		return 0, err
+	}
+
+	return resp.StatusCode, nil
+}
+
+func (cln *ZImageClient) Patch(route string, body io.Reader) (statusCode int, err error) {
+	req, err := http.NewRequest("PATCH", cln.GetFullUrl(route), body)
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := cln.Do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -140,13 +165,13 @@ func (cln *ZImageClient) Del(route string) (statusCode int, err error) {
 }
 
 func (cln *ZImageClient) RangeGet(route string, startOffset int64) (resp *http.Response, err error) {
-	req, err := http.NewRequest("GET", cln.getFullUrl(route), nil)
+	req, err := http.NewRequest("GET", cln.GetFullUrl(route), nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Add("Range", fmt.Sprintf("bytes=%d-", startOffset))
-	resp, err = cln.c.Do(req)
+	resp, err = cln.Do(req)
 	if err != nil {
 		return
 	}
