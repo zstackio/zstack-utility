@@ -10,6 +10,7 @@ import (
 	"image-store/registry/storage"
 	"image-store/router"
 	"image-store/utils"
+	"io"
 	"net/http"
 )
 
@@ -89,7 +90,7 @@ func GetUploadInfoAndSearcher(ctx context.Context, w http.ResponseWriter, r *htt
 	return
 }
 
-func GetBlobPathSpec(ctx context.Context, w http.ResponseWriter, r *http.Request) (string, error) {
+func GetBlobJsonSpec(ctx context.Context, w http.ResponseWriter, r *http.Request) (string, error) {
 	n := router.GetRequestVar(r, v1.PvnName)
 	d := router.GetRequestVar(r, v1.PvnDigest)
 	s := getImageSearcher(ctx, w)
@@ -97,7 +98,21 @@ func GetBlobPathSpec(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return "", fmt.Errorf("failed to build image searcher for blob digest: %s", d)
 	}
 
-	return s.GetBlobPathSpec(n, d)
+	return s.GetBlobJsonSpec(n, d)
+}
+
+func GetBlobChunkReader(ctx context.Context, w http.ResponseWriter, r *http.Request) (io.ReadCloser, error) {
+	n := router.GetRequestVar(r, v1.PvnName)
+	d := router.GetRequestVar(r, v1.PvnDigest)
+	h := router.GetRequestVar(r, v1.PvnHash)
+	s := getImageSearcher(ctx, w)
+	if s == nil {
+		return nil, fmt.Errorf("failed to build image searcher for blob digest: %s", d)
+	}
+
+	// TODO get it from HTTP header
+	offset := int64(0)
+	return s.GetBlobChunkReader(ctx, n, d, h, offset)
 }
 
 func GetUploadQueryArgAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, uu string, s *storage.ImageSearcher) {

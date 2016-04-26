@@ -1,16 +1,16 @@
 package handlers
 
 import (
-	"errors"
+	"fmt"
 	"github.com/docker/distribution/context"
 	"image-store/registry/api/errcode"
+	"io"
 	"net/http"
-	"path"
 )
 
 // GET  /v1/{name}/blobs/{digest}
-func GetBlob(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	ps, err := GetBlobPathSpec(ctx, w, r)
+func GetBlobJson(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	ps, err := GetBlobJsonSpec(ctx, w, r)
 	if err != nil {
 		WriteHttpError(w, err, http.StatusBadRequest)
 		return
@@ -22,22 +22,26 @@ func GetBlob(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if d.Name() != "filesystem" {
-		WriteHttpError(w, errcode.NotSupportedError{Op: "getblob"}, http.StatusInternalServerError)
+	content, err := d.GetContent(ctx, ps)
+	if err != nil {
+		WriteHttpError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	cfg := GetGlobalConfig(ctx)
-	if cfg == nil {
-		WriteHttpError(w, errors.New("missing configuration"), http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	fmt.Fprint(w, string(content))
+}
+
+// GET /v1/{name}/blobs/{digest}/chunks/{hash}
+func GetBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	reader, err := GetBlobChunkReader(ctx, w, r)
+	if err != nil {
+		WriteHttpError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	v := cfg.Storage["filesystem"]["rootdirectory"]
-	if rootdir, ok := v.(string); ok {
-		http.ServeFile(w, r, path.Join(rootdir, ps))
-		return
-	}
+	defer reader.Close()
 
-	WriteHttpError(w, errors.New("invalid configuration"), http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	io.Copy(w, reader)
 }

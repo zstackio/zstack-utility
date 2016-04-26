@@ -1,16 +1,15 @@
 package storage
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/docker/distribution/context"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
-	"image-store/registry/api/errcode"
 	"image-store/registry/api/v1"
 	"image-store/utils"
 	"io"
 	"strings"
-	"time"
 )
 
 // TODO add caching layer
@@ -28,8 +27,11 @@ type Searcher interface {
 	// List tags under a name
 	ListTags(ctx context.Context, name string) ([]string, error)
 
-	// Get the blob reader
-	GetBlobPathSpec(name string, digest string) (string, error)
+	// Get the blob json
+	GetBlobJsonSpec(name string, digest string) (string, error)
+
+	// Get a read-closer instance
+	GetBlobChunkReader(ctx context.Context, name string, tophash string, subhash string, offset int64) (io.ReadCloser, error)
 
 	// Prepare blob upload
 	PrepareBlobUpload(ctx context.Context, name string, info *v1.UploadInfo) (string, error)
@@ -43,7 +45,7 @@ type Searcher interface {
 	// Complete the upload
 	CompleteUpload(ctx context.Context, name string, uu string) error
 
-	// Get a writer closer instance
+	// Get a write-closer instance
 	GetChunkWriter(ctx context.Context, name string, uu string) (io.WriteCloser, error)
 }
 
@@ -182,7 +184,7 @@ func (ims ImageSearcher) ListTags(ctx context.Context, name string) ([]string, e
 	return res, nil
 }
 
-func (ims ImageSearcher) GetBlobPathSpec(name string, digest string) (string, error) {
+func (ims ImageSearcher) GetBlobJsonSpec(name string, digest string) (string, error) {
 	ps := blobDigestPathSpec{digest: digest}
 	if utils.IsBlobDigest(digest) {
 		return ps.pathSpec(), nil
@@ -196,15 +198,9 @@ func (ims ImageSearcher) GetBlobPathSpec(name string, digest string) (string, er
 //  2. save the target digest value
 //  3. return the target location
 func (ims ImageSearcher) PrepareBlobUpload(ctx context.Context, name string, info *v1.UploadInfo) (string, error) {
-	digest := strings.TrimSpace(info.Digest)
-	bps := blobDigestPathSpec{digest: digest}.pathSpec()
-	if _, err := ims.driver.Stat(ctx, bps); err == nil {
-		return "", errcode.ConflictError{Resource: digest}
-	}
-
 	uu := utils.NewUUID()
-	ucps := uploadCheckSumPathSpec{name: name, id: uu}.pathSpec()
-	if err := ims.driver.PutContent(ctx, ucps, []byte(digest)); err != nil {
+	uips := uploadInfoPathSpec{name: name, id: uu}.pathSpec()
+	if err := ims.driver.PutContent(ctx, uips, []byte(info.String())); err != nil {
 		return "", err
 	}
 
@@ -213,14 +209,27 @@ func (ims ImageSearcher) PrepareBlobUpload(ctx context.Context, name string, inf
 }
 
 func (ims ImageSearcher) GetUploadedSize(ctx context.Context, name string, uu string) (int64, error) {
-	dps := uploadDataPathSpec{name: name, id: uu}.pathSpec()
+	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 
-	info, err := ims.driver.Stat(ctx, dps)
+	// List all chunks and check its size
+	ls, err := ims.driver.List(ctx, uups)
 	if err != nil {
 		return 0, err
 	}
 
-	return info.Size(), nil
+	var size int64
+	for _, fname := range ls {
+		if strings.HasPrefix(fname, chunkNamePrefix) {
+			info, err := ims.driver.Stat(ctx, fname)
+			if err != nil {
+				return 0, err
+			}
+
+			size += info.Size()
+		}
+	}
+
+	return size, nil
 }
 
 func (ims ImageSearcher) CancelUpload(ctx context.Context, name string, uu string) error {
@@ -236,18 +245,27 @@ func (ims ImageSearcher) CancelUpload(ctx context.Context, name string, uu strin
 }
 
 func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu string) error {
-	csps := uploadCheckSumPathSpec{name: name, id: uu}.pathSpec()
-	buf, err := ims.driver.GetContent(ctx, csps)
+	uips := uploadInfoPathSpec{name: name, id: uu}.pathSpec()
+	content, err := ims.driver.GetContent(ctx, uips)
 	if err != nil {
 		return err
 	}
 
-	// TODO: verify digest
-	bdps := blobDigestPathSpec{digest: string(buf)}.pathSpec()
-	dps := uploadDataPathSpec{name: name, id: uu}.pathSpec()
-	if err = ims.driver.Move(ctx, dps, bdps); err != nil {
+	var uploadinfo v1.UploadInfo
+	if err = utils.JsonDecode(bytes.NewReader(content), &uploadinfo); err != nil {
 		return err
 	}
+
+	size, err := ims.GetUploadedSize(ctx, name, uu)
+	if err != nil {
+		return err
+	}
+
+	if size != uploadinfo.Size {
+		return fmt.Errorf("blob size (%d) mismatch, expecting %d", size, uploadinfo.Size)
+	}
+
+	// TODO move chunks to blobs store and generate  blob json
 
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 	ims.driver.Delete(ctx, uups)
@@ -255,7 +273,7 @@ func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu str
 	return nil
 }
 
-func (ims ImageSearcher) GetChunkWriter(ctx context.Context, name string, uu string) (io.WriteCloser, error) {
+func (ims ImageSearcher) GetChunkWriter(ctx context.Context, name string, uu string, index int) (io.WriteCloser, error) {
 	// Check whether the upload UUID exists
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 
@@ -265,10 +283,12 @@ func (ims ImageSearcher) GetChunkWriter(ctx context.Context, name string, uu str
 	}
 
 	// Write the record of started time
-	stps := uploadStartTimePathSpec{name: name, id: uu}.pathSpec()
-	ts := time.Now().Format(time.RFC3339)
-	ims.driver.PutContent(ctx, stps, []byte(ts))
+	ucps := uploadChunkPathSpec{name: name, id: uu, index: index}.pathSpec()
+	return ims.driver.Writer(ctx, ucps, true)
+}
 
-	dps := uploadDataPathSpec{name: name, id: uu}.pathSpec()
-	return ims.driver.Writer(ctx, dps, true)
+func (ims ImageSearcher) GetBlobChunkReader(ctx context.Context, name string, tophash string, subhash string, offset int64) (io.ReadCloser, error) {
+	bcps := blobChunkPathSpec{digest: tophash, subhash: subhash}.pathSpec()
+
+	return ims.driver.Reader(ctx, bcps, offset)
 }

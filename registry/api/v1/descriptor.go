@@ -10,6 +10,7 @@ const (
 	PvnReference = "reference"
 	PvnDigest    = "digest"
 	PvnUuid      = "uuid"
+	PvnHash      = "hash"
 
 	// HTTP Header Name
 	HnChunkHash = "X-Chunk-Hash"
@@ -29,8 +30,11 @@ const (
 	// PUT - push manifest.
 	RouteNameManifest = "/v1/{name}/manifests/{reference}"
 
-	// GET - download image blob.
-	RouteNameBlob = "/v1/{name}/blobs/{digest}"
+	// GET - get image blob json.
+	RouteNameBlobJson = "/v1/{name}/blobs/{digest}"
+
+	// GET - download a chunk of an image blob
+	RouteNameBlobChunk = "/v1/{name}/blobs/{digest}/chunks/{hash}"
 
 	// POST - to get an upload ID (uuid).
 	RouteNameUpload = "/v1/{name}/blob-upload/"

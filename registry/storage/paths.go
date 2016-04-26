@@ -1,12 +1,14 @@
 package storage
 
 import (
+	"fmt"
 	"path"
 )
 
 const (
 	storagePathRoot    = "/registry"
 	storagePathVersion = "v1"
+	chunkNamePrefix    = "chunk-"
 )
 
 var rootPrefix = path.Join(storagePathRoot, storagePathVersion)
@@ -14,9 +16,16 @@ var rootPrefix = path.Join(storagePathRoot, storagePathVersion)
 // The path layout in the storage backend is roughly as the following:
 //
 // registry/v1/
+//  ├── blob-manifests/
+//  │   ├── 63
+//  │   │   └── 579fa6c44e (blob json)
+//  │   │
+//  │   └── b0
+//  │       └── 4a8ddf3219
+//  │
 //  ├── blobs/
 //  │   ├── 5f
-//  │   │   └── 3b8cd435fa (qcow2 image file)
+//  │   │   └── 3b8cd435fa (chunk of qcow2 image file)
 //  │   │
 //  │   └── a8
 //  │       └── 7dea4c293b
@@ -59,7 +68,17 @@ type blobDigestPathSpec struct {
 }
 
 func (ps blobDigestPathSpec) pathSpec() string {
-	return path.Join(rootPrefix, "blobs", ps.digest[:2], ps.digest[2:])
+	return path.Join(rootPrefix, "blobs", ps.digest[:2], ps.digest[2:], "json")
+}
+
+// The pathSpec for blob chunks
+type blobChunkPathSpec struct {
+	digest  string
+	subhash string
+}
+
+func (ps blobChunkPathSpec) pathSpec() string {
+	return path.Join(rootPrefix, "blobs", ps.digest[:2], ps.digest[2:], ps.subhash)
 }
 
 // TODO get the "user" value from somewhere
@@ -130,7 +149,7 @@ func (ps uploadsPathSpec) pathSpec() string {
 	return path.Join(mps, "uploads")
 }
 
-// the upload data pathSpec
+// the upload uuid pathSpec
 type uploadUuidPathSpec struct {
 	user string
 	name string
@@ -147,38 +166,27 @@ func (ps uploadUuidPathSpec) urlSpec() string {
 	return u
 }
 
-// the upload data pathSpec
-type uploadDataPathSpec struct {
+// the upload info pathSpec
+type uploadInfoPathSpec struct {
 	user string
 	name string
 	id   string // uuid
 }
 
-func (ps uploadDataPathSpec) pathSpec() string {
+func (ps uploadInfoPathSpec) pathSpec() string {
 	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
-	return path.Join(ups, ps.id, "data")
+	return path.Join(ups, ps.id, "upload-info")
 }
 
 // the upload check sum pathSpec
-type uploadCheckSumPathSpec struct {
-	user string
-	name string
-	id   string // uuid
+type uploadChunkPathSpec struct {
+	user  string
+	name  string
+	id    string // uuid
+	index int
 }
 
-func (ps uploadCheckSumPathSpec) pathSpec() string {
+func (ps uploadChunkPathSpec) pathSpec() string {
 	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
-	return path.Join(ups, ps.id, "checksum")
-}
-
-// the upload start time pathSpec
-type uploadStartTimePathSpec struct {
-	user string
-	name string
-	id   string // uuid
-}
-
-func (ps uploadStartTimePathSpec) pathSpec() string {
-	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
-	return path.Join(ups, ps.id, "started-time")
+	return path.Join(ups, ps.id, fmt.Sprintf("%s%d", chunkNamePrefix, ps.index))
 }

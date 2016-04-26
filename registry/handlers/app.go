@@ -51,7 +51,8 @@ func NewApp(config *config.Configuration) (*App, error) {
 	app.register(v1.RouteNameManifest, GetManifest).Methods("GET")
 	app.register(v1.RouteNameManifest, EnforceContentLength(PutManifest)).Methods("PUT")
 
-	app.register(v1.RouteNameBlob, GetBlob).Methods("GET")
+	app.register(v1.RouteNameBlobJson, GetBlobJson).Methods("GET")
+	app.register(v1.RouteNameBlobChunk, GetBlobChunk).Methods("GET")
 	app.register(v1.RouteNameUpload, EnforceContentLength(PrepareBlobUpload)).Methods("POST")
 
 	app.register(v1.RouteNameUploadChunk, GetUploadProgress).Methods("GET")
