@@ -381,7 +381,7 @@ Parse command parameters error:
                                         'op':'is null', 'value': ''})
 
                     elif key == 'conditions':
-                        conditions.extend(value)
+                        conditions.extend(eval(value))
 
                     elif key == 'fields':
                         #remove the last ','
