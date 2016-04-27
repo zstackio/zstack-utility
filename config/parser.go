@@ -12,5 +12,14 @@ func Parse(in []byte) (*Configuration, error) {
 		return nil, err
 	}
 
+	if err = c.ok(); err != nil {
+		return nil, err
+	}
+
 	return &c, nil
+}
+
+// Check whether configuration is valid
+func (c *Configuration) ok() error {
+	return nil
 }

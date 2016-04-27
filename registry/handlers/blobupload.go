@@ -26,7 +26,6 @@ var ErrorInvalidChunkSize = errors.New("invalid chunk size")
 // POST /v1/{name}/blob-upload/
 // {
 //   "size": 8829,
-//   "cnum: 2
 // }
 //
 // Returns HTTP Accepted, with a Location header to be PATCH with.
@@ -93,15 +92,10 @@ func readWithHasher(r io.Reader, hasher hash.Hash, hashval string) (io.Reader, e
 	return bytes.NewReader(chunk.Bytes()), nil
 }
 
-func writeChunk(dest io.Writer, r *http.Request) error {
+func writeChunk(dest io.Writer, r *http.Request, hashsum string) error {
 	length := r.ContentLength
 	if length < 0 || length > BlobChunkSize {
 		return ErrorInvalidChunkSize
-	}
-
-	hashsum := strings.TrimSpace(r.Header.Get(v1.HnChunkHash))
-	if hashsum == "" {
-		return errors.New("missing hash value from header")
 	}
 
 	content, err := readWithHasher(io.LimitReader(r.Body, length), sha1.New(), hashsum)
@@ -122,6 +116,15 @@ func writeChunk(dest io.Writer, r *http.Request) error {
 	return nil
 }
 
+func getChunkHash(r *http.Request) (string, error) {
+	hashsum := strings.TrimSpace(r.Header.Get(v1.HnChunkHash))
+	if hashsum == "" {
+		return "", errors.New("missing hash value from header")
+	}
+
+	return hashsum, nil
+}
+
 func getChunkIndex(r *http.Request) (int, error) {
 	s := strings.TrimSpace(r.Header.Get(v1.HnChunkIndex))
 	idx, err := strconv.Atoi(s)
@@ -129,7 +132,7 @@ func getChunkIndex(r *http.Request) (int, error) {
 		return idx, err
 	}
 
-	if idx <= 0 {
+	if idx < v1.ChunkStartIndex {
 		return idx, fmt.Errorf("invalid chunk index: %d", idx)
 	}
 
@@ -140,8 +143,9 @@ func getChunkIndex(r *http.Request) (int, error) {
 // Content-Length: <size of chunk>
 // Range: <start of range>-<end of range>
 func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	n, uu, s := GetUploadQueryArgAndSearcher(ctx, w, r)
-	if s == nil {
+	hashsum, err := getChunkHash(r)
+	if err != nil {
+		WriteHttpError(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -151,7 +155,12 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	wr, err := s.GetChunkWriter(ctx, n, uu, index)
+	n, uu, s := GetUploadQueryArgAndSearcher(ctx, w, r)
+	if s == nil {
+		return
+	}
+
+	wr, err := s.GetChunkWriter(ctx, n, uu, index, hashsum)
 	if err != nil {
 		WriteHttpError(w, err, http.StatusBadRequest)
 		return
@@ -159,7 +168,7 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 
 	defer wr.Close()
 
-	if err = writeChunk(wr, r); err != nil {
+	if err = writeChunk(wr, r, hashsum); err != nil {
 		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
 		return
 	}
@@ -172,8 +181,9 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 // Range: <start of range>-<end of range>
 // PUT the last chunk
 func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	n, uu, s := GetUploadQueryArgAndSearcher(ctx, w, r)
-	if s == nil {
+	hashsum, err := getChunkHash(r)
+	if err != nil {
+		WriteHttpError(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -183,7 +193,12 @@ func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	wr, err := s.GetChunkWriter(ctx, n, uu, index)
+	n, uu, s := GetUploadQueryArgAndSearcher(ctx, w, r)
+	if s == nil {
+		return
+	}
+
+	wr, err := s.GetChunkWriter(ctx, n, uu, index, hashsum)
 	if err != nil {
 		WriteHttpError(w, err, http.StatusBadRequest)
 		return
@@ -191,7 +206,7 @@ func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request)
 
 	defer wr.Close()
 
-	if err = writeChunk(wr, r); err != nil {
+	if err = writeChunk(wr, r, hashsum); err != nil {
 		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
 		return
 	}

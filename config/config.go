@@ -9,6 +9,9 @@ type Configuration struct {
 	// the version string
 	Version string `yaml:"version"`
 
+	// Maximum size of image blob file
+	MaxSize string `yaml:"maxsize"`
+
 	// storage driver configuration
 	Storage Storage `yaml:"storage"`
 

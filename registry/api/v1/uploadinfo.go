@@ -14,13 +14,12 @@ import "encoding/json"
 // The top hash is used to identify the whole image blob.
 type UploadInfo struct {
 	Size int64 `json:"size"` // total size
-	CNum int   `json:"cnum"` // number of chunks
 }
 
 // Check whether an upload information is acceptable
 func (ui *UploadInfo) Ok() bool {
 	// TODO set a limit for the maximum size and number
-	return ui.Size > 0 && ui.CNum > 0
+	return ui.Size > 0
 }
 
 // Marshal the upload info into a string

@@ -15,6 +15,8 @@ const (
 	// HTTP Header Name
 	HnChunkHash  = "X-Chunk-Hash"  // sha256(chunk)
 	HnChunkIndex = "X-Chunk-Index" // start from 1
+
+	ChunkStartIndex = 1
 )
 
 const (

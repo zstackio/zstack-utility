@@ -6,4 +6,4 @@ all:
 	$(GO) build zstcli.go
 
 clean:
-	$(RM) zstore zstcli *~ *.bak
+	$(RM) zstore zstcli error.log *~ *.bak

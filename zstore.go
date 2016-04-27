@@ -28,30 +28,34 @@ func main() {
 
 	f, err := os.OpenFile(*flogf, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, "failed to open log file:", err)
 		return
 	}
 
 	defer f.Close()
-	logger := log.New(f, "", log.LstdFlags|log.Lmicroseconds)
 
 	dat, err := ioutil.ReadFile(*fconf)
 	if err != nil {
-		logger.Fatal(err)
+		fmt.Fprintln(os.Stderr, "failed to open configure file:", err)
+		return
 	}
 
 	cfg, err := config.Parse(dat)
 	if err != nil {
-		logger.Fatal(err)
+		fmt.Fprintln(os.Stderr, "failed to parse configure file:", err)
+		return
 	}
 
 	app, err := handlers.NewApp(cfg)
 	if err != nil {
-		logger.Fatal(err)
+		fmt.Fprintln(os.Stderr, "failed to create server instance:", err)
+		return
 	}
 
+	logger := log.New(f, "", log.LstdFlags|log.Lmicroseconds)
 	err = app.Run(logger)
 	if err != nil {
-		logger.Fatal(err)
+		fmt.Fprintln(os.Stderr, "server aborted:", err)
+		return
 	}
 }

@@ -8,7 +8,7 @@ import (
 const (
 	storagePathRoot    = "/registry"
 	storagePathVersion = "v1"
-	chunkNamePrefix    = "chunk-"
+	chunkNamePrefix    = "chunk"
 )
 
 var rootPrefix = path.Join(storagePathRoot, storagePathVersion)
@@ -46,9 +46,9 @@ var rootPrefix = path.Join(storagePathRoot, storagePathVersion)
 //      │       └── uploads
 //      │           └─ <uuid>
 //      │              ├─ upload-info
-//      │              ├─ chunk-1
+//      │              ├─ chunk-1-<digest>
 //      │              ├─ ...
-//      │              └─ chunk-n
+//      │              └─ chunk-n-<digest>
 //      ├── fedora
 //      │   └── ...
 //      │
@@ -181,13 +181,26 @@ func (ps uploadInfoPathSpec) pathSpec() string {
 
 // the upload check sum pathSpec
 type uploadChunkPathSpec struct {
-	user  string
-	name  string
-	id    string // uuid
-	index int
+	user    string
+	name    string
+	id      string // uuid
+	index   int
+	subhash string
 }
 
 func (ps uploadChunkPathSpec) pathSpec() string {
 	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
-	return path.Join(ups, ps.id, fmt.Sprintf("%s%d", chunkNamePrefix, ps.index))
+	return path.Join(ups, ps.id, fmt.Sprintf("%s-%d-%s", chunkNamePrefix, ps.index, ps.subhash))
+}
+
+func getIndexAndHash(chunkps string) (int, string, error) {
+	var index int
+	var subhash string
+	name := path.Base(chunkps)
+	n, err := fmt.Sscanf(name, chunkNamePrefix+"-%d-%s", &index, &subhash)
+	if err != nil || n != 2 {
+		return 0, "", fmt.Errorf("unexpected chunk name: '%s'", name)
+	}
+
+	return index, subhash, nil
 }

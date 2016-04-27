@@ -208,30 +208,6 @@ func (ims ImageSearcher) PrepareBlobUpload(ctx context.Context, name string, inf
 	return urlps, nil
 }
 
-func (ims ImageSearcher) GetUploadedSize(ctx context.Context, name string, uu string) (int64, error) {
-	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
-
-	// List all chunks and check its size
-	ls, err := ims.driver.List(ctx, uups)
-	if err != nil {
-		return 0, err
-	}
-
-	var size int64
-	for _, fname := range ls {
-		if strings.HasPrefix(fname, chunkNamePrefix) {
-			info, err := ims.driver.Stat(ctx, fname)
-			if err != nil {
-				return 0, err
-			}
-
-			size += info.Size()
-		}
-	}
-
-	return size, nil
-}
-
 func (ims ImageSearcher) CancelUpload(ctx context.Context, name string, uu string) error {
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 
@@ -242,6 +218,111 @@ func (ims ImageSearcher) CancelUpload(ctx context.Context, name string, uu strin
 
 	go ims.driver.Delete(ctx, uups)
 	return nil
+}
+
+func (ims ImageSearcher) GetUploadedSize(ctx context.Context, name string, uu string) (int64, error) {
+	chunks, err := ims.getBlobChunks(ctx, name, uu)
+	if err != nil {
+		return 0, err
+	}
+
+	var size int64
+	for _, info := range chunks {
+		size += info.Size()
+	}
+
+	return size, nil
+}
+
+func (ims ImageSearcher) getBlobChunks(ctx context.Context, name string, uu string) ([]storagedriver.FileInfo, error) {
+	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
+
+	// List all chunks and check its size
+	ls, err := ims.driver.List(ctx, uups)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]storagedriver.FileInfo, 0)
+	for _, fname := range ls {
+		if strings.HasPrefix(fname, chunkNamePrefix) {
+			info, err := ims.driver.Stat(ctx, fname)
+			if err != nil {
+				return nil, err
+			}
+
+			if info.IsDir() {
+				return nil, fmt.Errorf("unexpected file: '%s'", fname)
+			}
+
+			result = append(result, info)
+		}
+	}
+
+	return result, nil
+}
+
+// generate the blob manifest
+func getBlobManifest(size int64, indexMap map[int]string) (*v1.BlobManifest, error) {
+	var chunks []string
+
+	for i := v1.ChunkStartIndex; i <= len(indexMap); i++ {
+		subhash, ok := indexMap[i]
+		if !ok {
+			return nil, fmt.Errorf("missing digest for chunk #%d", i)
+		}
+
+		chunks = append(chunks, subhash)
+	}
+
+	return &v1.BlobManifest{
+		Size:   size,
+		Chunks: chunks,
+	}, nil
+}
+
+// the top hash is computed by hashing the ordered sub-hashes.
+func getTopHash(indexMap map[int]string) (string, error) {
+	var buffer bytes.Buffer
+
+	for i := v1.ChunkStartIndex; i <= len(indexMap); i++ {
+		subhash, ok := indexMap[i]
+		if !ok {
+			return "", fmt.Errorf("missing digest for chunk #%d", i)
+		}
+
+		buffer.WriteString(subhash)
+	}
+
+	return utils.Sha256Sum(bytes.NewReader(buffer.Bytes()))
+}
+
+func buildMaps(chunks []storagedriver.FileInfo, totalSize int64) (map[string]string, map[int]string, error) {
+	// A map of chunk filepath to digest
+	chunkMap := make(map[string]string)
+
+	// A map of existing indexes
+	indexMap := make(map[int]string)
+
+	var size int64
+	for _, info := range chunks {
+		size += info.Size()
+
+		idx, h, err := getIndexAndHash(info.Path())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		chunkMap[info.Path()] = h
+		indexMap[idx] = h
+	}
+
+	clen, ilen := len(chunkMap), len(indexMap)
+	if len(chunkMap) != len(indexMap) {
+		return nil, nil, fmt.Errorf("chunk number (%d) and index number (%d) mismatch", clen, ilen)
+	}
+
+	return chunkMap, indexMap, nil
 }
 
 func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu string) error {
@@ -256,16 +337,40 @@ func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu str
 		return err
 	}
 
-	size, err := ims.GetUploadedSize(ctx, name, uu)
+	chunks, err := ims.getBlobChunks(ctx, name, uu)
 	if err != nil {
 		return err
 	}
 
-	if size != uploadinfo.Size {
-		return fmt.Errorf("blob size (%d) mismatch, expecting %d", size, uploadinfo.Size)
+	chunkMap, indexMap, err := buildMaps(chunks, uploadinfo.Size)
+	if err != nil {
+		return err
 	}
 
-	// TODO move chunks to blobs store and generate  blob json
+	tophash, err := getTopHash(indexMap)
+	if err != nil {
+		return fmt.Errorf("failed to compute blob digest:", err.Error())
+	}
+
+	blobmfst, err := getBlobManifest(uploadinfo.Size, indexMap)
+	if err != nil {
+		return fmt.Errorf("failed to compute blob manifest:", err.Error())
+	}
+
+	// move chunks to blobs store
+	for k, v := range chunkMap {
+		// TODO dedup
+		bcps := blobChunkPathSpec{digest: tophash, subhash: v}.pathSpec()
+		if err = ims.driver.Move(ctx, k, bcps); err != nil {
+			return fmt.Errorf("failed to move chunks: %s", err.Error())
+		}
+	}
+
+	// create a blob manifest
+	bmps := blobManifestPathSpec{digest: tophash}.pathSpec()
+	if err = ims.driver.PutContent(ctx, bmps, []byte(blobmfst.String())); err != nil {
+		return fmt.Errorf("failed to write blob manifest: %s", err.Error())
+	}
 
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 	ims.driver.Delete(ctx, uups)
@@ -273,7 +378,7 @@ func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu str
 	return nil
 }
 
-func (ims ImageSearcher) GetChunkWriter(ctx context.Context, name string, uu string, index int) (io.WriteCloser, error) {
+func (ims ImageSearcher) GetChunkWriter(ctx context.Context, name string, uu string, index int, subhash string) (io.WriteCloser, error) {
 	// Check whether the upload UUID exists
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 
@@ -283,8 +388,8 @@ func (ims ImageSearcher) GetChunkWriter(ctx context.Context, name string, uu str
 	}
 
 	// Write the record of started time
-	ucps := uploadChunkPathSpec{name: name, id: uu, index: index}.pathSpec()
-	return ims.driver.Writer(ctx, ucps, true)
+	ucps := uploadChunkPathSpec{name: name, id: uu, index: index, subhash: subhash}.pathSpec()
+	return ims.driver.Writer(ctx, ucps, false)
 }
 
 func (ims ImageSearcher) GetBlobChunkReader(ctx context.Context, name string, tophash string, subhash string, offset int64) (io.ReadCloser, error) {
