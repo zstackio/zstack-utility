@@ -152,7 +152,6 @@ func getChunkIndex(r *http.Request) (int, error) {
 
 // PATCH /v1/{name}/blobs/uploads/{uuid}
 // Content-Length: <size of chunk>
-// Range: <start of range>-<end of range>
 func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	hashsum, err := getChunkHash(r)
 	if err != nil {
@@ -189,7 +188,6 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 
 // PUT /v1/{name}/blobs/uploads/{uuid}
 // Content-Length: <size of chunk>
-// Range: <start of range>-<end of range>
 // PUT the last chunk
 func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	hashsum, err := getChunkHash(r)

@@ -110,9 +110,9 @@ func GetBlobChunkReader(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return nil, fmt.Errorf("failed to build image searcher for blob digest: %s", d)
 	}
 
-	// TODO get it from HTTP header
-	offset := int64(0)
-	return s.GetBlobChunkReader(ctx, n, d, h, offset)
+	// In order to compute the chunk digest w/o reading partial chunks,
+	// we can't continue from the point of interruption.
+	return s.GetBlobChunkReader(ctx, n, d, h, 0)
 }
 
 func GetUploadQueryArgAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, uu string, s *storage.ImageSearcher) {
