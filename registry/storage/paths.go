@@ -45,9 +45,10 @@ var rootPrefix = path.Join(storagePathRoot, storagePathVersion)
 //      │       │
 //      │       └── uploads
 //      │           └─ <uuid>
-//      │              ├─ data (accumulative uploaded data)
-//      │              ├─ checksum (sha256:....)
-//      │              └─ started-time (of current chunk)
+//      │              ├─ upload-info
+//      │              ├─ chunk-1
+//      │              ├─ ...
+//      │              └─ chunk-n
 //      ├── fedora
 //      │   └── ...
 //      │
@@ -62,13 +63,13 @@ type urlSpec interface {
 	urlSpec() string
 }
 
-// The pathSpec for blob digest
-type blobDigestPathSpec struct {
+// The pathSpec for blob manifest
+type blobManifestPathSpec struct {
 	digest string
 }
 
-func (ps blobDigestPathSpec) pathSpec() string {
-	return path.Join(rootPrefix, "blobs", ps.digest[:2], ps.digest[2:], "json")
+func (ps blobManifestPathSpec) pathSpec() string {
+	return path.Join(rootPrefix, "blob-manifests", ps.digest[:2], ps.digest[2:])
 }
 
 // The pathSpec for blob chunks

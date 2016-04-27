@@ -12,6 +12,7 @@ import (
 	"image-store/registry/api/v1"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -121,6 +122,20 @@ func writeChunk(dest io.Writer, r *http.Request) error {
 	return nil
 }
 
+func getChunkIndex(r *http.Request) (int, error) {
+	s := strings.TrimSpace(r.Header.Get(v1.HnChunkIndex))
+	idx, err := strconv.Atoi(s)
+	if err != nil {
+		return idx, err
+	}
+
+	if idx <= 0 {
+		return idx, fmt.Errorf("invalid chunk index: %d", idx)
+	}
+
+	return idx, nil
+}
+
 // PATCH /v1/{name}/blobs/uploads/{uuid}
 // Content-Length: <size of chunk>
 // Range: <start of range>-<end of range>
@@ -130,8 +145,12 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// TODO get chunk index
-	index := 1
+	index, err := getChunkIndex(r)
+	if err != nil {
+		WriteHttpError(w, err, http.StatusBadRequest)
+		return
+	}
+
 	wr, err := s.GetChunkWriter(ctx, n, uu, index)
 	if err != nil {
 		WriteHttpError(w, err, http.StatusBadRequest)
@@ -158,8 +177,12 @@ func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// TODO get chunk index
-	index := 1
+	index, err := getChunkIndex(r)
+	if err != nil {
+		WriteHttpError(w, err, http.StatusBadRequest)
+		return
+	}
+
 	wr, err := s.GetChunkWriter(ctx, n, uu, index)
 	if err != nil {
 		WriteHttpError(w, err, http.StatusBadRequest)

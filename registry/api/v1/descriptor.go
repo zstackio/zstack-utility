@@ -13,7 +13,8 @@ const (
 	PvnHash      = "hash"
 
 	// HTTP Header Name
-	HnChunkHash = "X-Chunk-Hash"
+	HnChunkHash  = "X-Chunk-Hash"  // sha256(chunk)
+	HnChunkIndex = "X-Chunk-Index" // start from 1
 )
 
 const (

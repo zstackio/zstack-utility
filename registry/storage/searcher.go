@@ -146,7 +146,7 @@ func (ims ImageSearcher) PutManifest(ctx context.Context, nam string, ref string
 	}
 
 	// Check whether the image blob has been uploaded
-	bps := blobDigestPathSpec{digest: imf.Blobsum}.pathSpec()
+	bps := blobManifestPathSpec{digest: imf.Blobsum}.pathSpec()
 	if _, err := ims.driver.Stat(ctx, bps); err != nil {
 		return fmt.Errorf("image blob missing: %s", imf.Blobsum)
 	}
@@ -185,7 +185,7 @@ func (ims ImageSearcher) ListTags(ctx context.Context, name string) ([]string, e
 }
 
 func (ims ImageSearcher) GetBlobJsonSpec(name string, digest string) (string, error) {
-	ps := blobDigestPathSpec{digest: digest}
+	ps := blobManifestPathSpec{digest: digest}
 	if utils.IsBlobDigest(digest) {
 		return ps.pathSpec(), nil
 	}
