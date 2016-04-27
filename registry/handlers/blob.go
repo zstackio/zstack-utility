@@ -43,5 +43,7 @@ func GetBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	defer reader.Close()
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	io.Copy(w, reader)
+	if _, err = io.Copy(w, reader); err != nil {
+		WriteHttpError(w, err, http.StatusBadRequest)
+	}
 }

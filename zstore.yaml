@@ -1,5 +1,5 @@
 version: 0.1
-maxsize: 10g # the maximum size of an image blob
+maxsizemb: 1000 # the maximum size of an image blob in MB
 storage:
     cache:
         layerinfo: inmemory

@@ -40,6 +40,17 @@ func PrepareBlobUpload(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	cfg := GetGlobalConfig(ctx)
+	if cfg == nil {
+		WriteHttpError(w, errors.New("missing global config"), http.StatusBadRequest)
+		return
+	}
+
+	if cfg.MaxSizeInByte() < info.Size {
+		WriteHttpError(w, fmt.Errorf("image size (%d) too large", info.Size), http.StatusBadRequest)
+		return
+	}
+
 	loc, err := s.PrepareBlobUpload(ctx, n, info)
 	if err != nil {
 		switch err.(type) {

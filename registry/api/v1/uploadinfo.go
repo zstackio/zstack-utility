@@ -18,7 +18,6 @@ type UploadInfo struct {
 
 // Check whether an upload information is acceptable
 func (ui *UploadInfo) Ok() bool {
-	// TODO set a limit for the maximum size and number
 	return ui.Size > 0
 }
 
@@ -26,10 +25,4 @@ func (ui *UploadInfo) Ok() bool {
 func (ui *UploadInfo) String() string {
 	buf, _ := json.Marshal(ui)
 	return string(buf)
-}
-
-// To download an image blob, we first need to acquire its download info.
-type DownloadInfo struct {
-	Size   int64    `json:"size"`   // total size
-	Chunks []string `json:"chunks"` // hash of chunks
 }
