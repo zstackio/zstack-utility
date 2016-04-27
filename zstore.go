@@ -6,17 +6,24 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 
 	"image-store/config"
 	"image-store/registry/handlers"
 )
 
-var fconf = flag.String("conf", "zstore.yaml", "zstore configure file")
-var flogf = flag.String("logfile", "error.log", "error log file")
+var (
+	// Command line flags
+	fconf = flag.String("conf", "zstore.yaml", "zstore configure file")
+	flogf = flag.String("logfile", "error.log", "error log file")
+
+	// The program name
+	progname = path.Base(os.Args[0])
+)
 
 func parseArgs() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: licgen <flags>\n")
+		fmt.Fprintf(os.Stderr, "usage: %s [OPTION]\n", progname)
 		flag.PrintDefaults()
 	}
 

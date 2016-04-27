@@ -17,6 +17,10 @@ const (
 	HnChunkIndex = "X-Chunk-Index" // start from 1
 
 	ChunkStartIndex = 1
+
+	// The blob chunk size in byte (all chunks are of size 16 MB)
+	// except the last chunk of a blob.
+	BlobChunkSize = 16 * 1024 * 1024
 )
 
 const (

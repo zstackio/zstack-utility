@@ -47,7 +47,7 @@ type IStorageFE interface {
 	CompleteUpload(ctx context.Context, name string, uu string) error
 
 	// Get a write-closer instance
-	GetChunkWriter(ctx context.Context, name string, uu string, indx int, subhash string) (io.WriteCloser, error)
+	GetChunkWriter(ctx context.Context, name string, uu string, indx int, subhash string) (storagedriver.FileWriter, error)
 }
 
 type StorageFE struct {
@@ -380,7 +380,7 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 	return nil
 }
 
-func (sf StorageFE) GetChunkWriter(ctx context.Context, name string, uu string, index int, subhash string) (io.WriteCloser, error) {
+func (sf StorageFE) GetChunkWriter(ctx context.Context, name string, uu string, index int, subhash string) (storagedriver.FileWriter, error) {
 	// Check whether the upload UUID exists
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 

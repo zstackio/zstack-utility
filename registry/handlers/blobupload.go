@@ -16,10 +16,6 @@ import (
 	"strings"
 )
 
-// The blob chunk size in byte (all chunks are of size 16 MB)
-// except the last chunk of a blob.
-const BlobChunkSize = 16 * 1024 * 1024
-
 var ErrorUploadIncomplete = errors.New("upload incomplete")
 var ErrorInvalidChunkSize = errors.New("invalid chunk size")
 
@@ -105,7 +101,7 @@ func readWithHasher(r io.Reader, hasher hash.Hash, hashval string) (io.Reader, e
 
 func writeChunk(dest io.Writer, r *http.Request, hashsum string) error {
 	length := r.ContentLength
-	if length < 0 || length > BlobChunkSize {
+	if length < 0 || length > v1.BlobChunkSize {
 		return ErrorInvalidChunkSize
 	}
 
@@ -183,6 +179,11 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if err = wr.Commit(); err != nil {
+		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
+		return
+	}
+
 	return
 }
 
@@ -216,6 +217,11 @@ func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request)
 	defer wr.Close()
 
 	if err = writeChunk(wr, r, hashsum); err != nil {
+		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
+		return
+	}
+
+	if err = wr.Commit(); err != nil {
 		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
 		return
 	}
