@@ -49,30 +49,30 @@ func WithGlobalConfig(ctx context.Context, c *config.Configuration) context.Cont
 	return context.WithValue(ctx, ctxKeyGlobalCfg, c)
 }
 
-func getImageSearcher(ctx context.Context, w http.ResponseWriter) *storage.ImageSearcher {
+func getStorageFE(ctx context.Context, w http.ResponseWriter) storage.IStorageFE {
 	if d := GetStorageDriver(ctx); d != nil {
-		return storage.NewSearcher(d)
+		return storage.NewStorageFrontend(d)
 	} else {
 		WriteHttpError(w, errcode.NoStorageDriverError{}, http.StatusInternalServerError)
 		return nil
 	}
 }
 
-func GetNameAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, s *storage.ImageSearcher) {
+func GetNameAndSfe(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, s storage.IStorageFE) {
 	n = router.GetRequestVar(r, v1.PvnName)
-	s = getImageSearcher(ctx, w)
+	s = getStorageFE(ctx, w)
 	return
 }
 
-func GetManifestArgAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, ref string, s *storage.ImageSearcher) {
+func GetManifestArgAndSfe(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, ref string, s storage.IStorageFE) {
 	n = router.GetRequestVar(r, v1.PvnName)
 	ref = router.GetRequestVar(r, v1.PvnReference)
-	s = getImageSearcher(ctx, w)
+	s = getStorageFE(ctx, w)
 	return
 }
 
 // Get upload information and the name
-func GetUploadInfoAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, info *v1.UploadInfo, s *storage.ImageSearcher) {
+func GetUploadInfoAndSfe(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, info *v1.UploadInfo, s storage.IStorageFE) {
 	n = router.GetRequestVar(r, v1.PvnName)
 
 	var ui v1.UploadInfo
@@ -86,16 +86,16 @@ func GetUploadInfoAndSearcher(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	info = &ui
-	s = getImageSearcher(ctx, w)
+	s = getStorageFE(ctx, w)
 	return
 }
 
 func GetBlobJsonSpec(ctx context.Context, w http.ResponseWriter, r *http.Request) (string, error) {
 	n := router.GetRequestVar(r, v1.PvnName)
 	d := router.GetRequestVar(r, v1.PvnDigest)
-	s := getImageSearcher(ctx, w)
+	s := getStorageFE(ctx, w)
 	if s == nil {
-		return "", fmt.Errorf("failed to build image searcher for blob digest: %s", d)
+		return "", fmt.Errorf("failed to build storage frontend searcher for blob digest: %s", d)
 	}
 
 	return s.GetBlobJsonSpec(n, d)
@@ -105,9 +105,9 @@ func GetBlobChunkReader(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	n := router.GetRequestVar(r, v1.PvnName)
 	d := router.GetRequestVar(r, v1.PvnDigest)
 	h := router.GetRequestVar(r, v1.PvnHash)
-	s := getImageSearcher(ctx, w)
+	s := getStorageFE(ctx, w)
 	if s == nil {
-		return nil, fmt.Errorf("failed to build image searcher for blob digest: %s", d)
+		return nil, fmt.Errorf("failed to build storage frontend searcher for blob digest: %s", d)
 	}
 
 	// In order to compute the chunk digest w/o reading partial chunks,
@@ -115,9 +115,9 @@ func GetBlobChunkReader(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	return s.GetBlobChunkReader(ctx, n, d, h, 0)
 }
 
-func GetUploadQueryArgAndSearcher(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, uu string, s *storage.ImageSearcher) {
+func GetUploadQueryArgAndSfe(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, uu string, s storage.IStorageFE) {
 	n = router.GetRequestVar(r, v1.PvnName)
 	uu = router.GetRequestVar(r, v1.PvnUuid)
-	s = getImageSearcher(ctx, w)
+	s = getStorageFE(ctx, w)
 	return
 }

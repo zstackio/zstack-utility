@@ -30,7 +30,7 @@ var ErrorInvalidChunkSize = errors.New("invalid chunk size")
 //
 // Returns HTTP Accepted, with a Location header to be PATCH with.
 func PrepareBlobUpload(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	n, info, s := GetUploadInfoAndSearcher(ctx, w, r)
+	n, info, s := GetUploadInfoAndSfe(ctx, w, r)
 	if info == nil {
 		WriteHttpError(w, errors.New("invalid digest"), http.StatusBadRequest)
 		return
@@ -69,7 +69,7 @@ func PrepareBlobUpload(ctx context.Context, w http.ResponseWriter, r *http.Reque
 
 // GET /v1/{name}/blobs/uploads/{uuid}
 func GetUploadProgress(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	n, uu, s := GetUploadQueryArgAndSearcher(ctx, w, r)
+	n, uu, s := GetUploadQueryArgAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}
@@ -165,7 +165,7 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	n, uu, s := GetUploadQueryArgAndSearcher(ctx, w, r)
+	n, uu, s := GetUploadQueryArgAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}
@@ -202,7 +202,7 @@ func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	n, uu, s := GetUploadQueryArgAndSearcher(ctx, w, r)
+	n, uu, s := GetUploadQueryArgAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}
@@ -231,7 +231,7 @@ func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request)
 
 // DELETE /v1/{name}/blobs/uploads/{uuid}
 func CancelUpload(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	n, uu, s := GetUploadQueryArgAndSearcher(ctx, w, r)
+	n, uu, s := GetUploadQueryArgAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}

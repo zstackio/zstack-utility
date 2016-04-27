@@ -10,7 +10,7 @@ import (
 
 // GET  /v1/<name>/manifests/{reference}
 func GetManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	name, ref, s := GetManifestArgAndSearcher(ctx, w, r)
+	name, ref, s := GetManifestArgAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}
@@ -22,7 +22,7 @@ func GetManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 // PUT  /v1/<name>/manifests/{refrence}
 // body: Image Manifest in JSON
 func PutManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	name, ref, s := GetManifestArgAndSearcher(ctx, w, r)
+	name, ref, s := GetManifestArgAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}

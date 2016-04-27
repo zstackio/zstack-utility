@@ -12,9 +12,10 @@ import (
 	"strings"
 )
 
-// TODO add caching layer
-// Names and tags etc. will be converted to lowercase
-type Searcher interface {
+// The storage front-end. Names and tags etc. will be converted to lowercase
+//
+// TODO add a caching layer
+type IStorageFE interface {
 	// Returns images found in registry, empty array if not found.
 	FindImages(ctx context.Context, name string) ([]*v1.ImageManifest, error)
 
@@ -46,18 +47,19 @@ type Searcher interface {
 	CompleteUpload(ctx context.Context, name string, uu string) error
 
 	// Get a write-closer instance
-	GetChunkWriter(ctx context.Context, name string, uu string) (io.WriteCloser, error)
+	GetChunkWriter(ctx context.Context, name string, uu string, indx int, subhash string) (io.WriteCloser, error)
 }
 
-type ImageSearcher struct {
+type StorageFE struct {
+	IStorageFE
 	driver storagedriver.StorageDriver
 }
 
-func NewSearcher(d storagedriver.StorageDriver) *ImageSearcher {
-	return &ImageSearcher{driver: d}
+func NewStorageFrontend(d storagedriver.StorageDriver) IStorageFE {
+	return &StorageFE{driver: d}
 }
 
-func (ims ImageSearcher) FindImages(ctx context.Context, name string) ([]*v1.ImageManifest, error) {
+func (sf StorageFE) FindImages(ctx context.Context, name string) ([]*v1.ImageManifest, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -70,7 +72,7 @@ func getImageJson(ctx context.Context, d storagedriver.StorageDriver, ps string)
 	return v1.ParseImageManifest(buf)
 }
 
-func (ims ImageSearcher) GetManifest(ctx context.Context, nam string, ref string) (*v1.ImageManifest, error) {
+func (sf StorageFE) GetManifest(ctx context.Context, nam string, ref string) (*v1.ImageManifest, error) {
 	// If the reference is a tag -
 	//  1. get the digest via tag
 	//  2. get the manifest via digest
@@ -80,7 +82,7 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, nam string, ref string
 
 	if utils.IsDigest(refstr) {
 		ps := imageJsonPathSpec{name: name, id: refstr}.pathSpec()
-		res, err := ims.driver.List(ctx, ps)
+		res, err := sf.driver.List(ctx, ps)
 		if err != nil {
 			if _, ok := err.(storagedriver.PathNotFoundError); ok {
 				return nil, fmt.Errorf("digest not found: %s", ref)
@@ -90,7 +92,7 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, nam string, ref string
 
 		switch len(res) {
 		case 1:
-			return getImageJson(ctx, ims.driver, res[0])
+			return getImageJson(ctx, sf.driver, res[0])
 		case 0:
 			return nil, fmt.Errorf("internal error - no manifest found")
 		default:
@@ -100,7 +102,7 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, nam string, ref string
 
 	// ok - it is a tag
 	tps := tagPathSpec{name: name, tag: refstr}.pathSpec()
-	buf, err := ims.driver.GetContent(ctx, tps)
+	buf, err := sf.driver.GetContent(ctx, tps)
 	if err != nil {
 		return nil, err
 	}
@@ -111,10 +113,10 @@ func (ims ImageSearcher) GetManifest(ctx context.Context, nam string, ref string
 	}
 
 	ips := imageJsonPathSpec{name: name, id: idstr}.pathSpec()
-	return getImageJson(ctx, ims.driver, ips)
+	return getImageJson(ctx, sf.driver, ips)
 }
 
-func (ims ImageSearcher) PutManifest(ctx context.Context, nam string, ref string, imf *v1.ImageManifest) error {
+func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf *v1.ImageManifest) error {
 	// If the reference is a tag -
 	//  1. put the manifest
 	//  2. update the tag
@@ -140,25 +142,25 @@ func (ims ImageSearcher) PutManifest(ctx context.Context, nam string, ref string
 	// Check whether its parents exists
 	for _, pid := range imf.Parents {
 		ps := imageJsonPathSpec{name: name, id: pid}.pathSpec()
-		if _, err := ims.driver.Stat(ctx, ps); err != nil {
+		if _, err := sf.driver.Stat(ctx, ps); err != nil {
 			return err
 		}
 	}
 
 	// Check whether the image blob has been uploaded
 	bps := blobManifestPathSpec{digest: imf.Blobsum}.pathSpec()
-	if _, err := ims.driver.Stat(ctx, bps); err != nil {
+	if _, err := sf.driver.Stat(ctx, bps); err != nil {
 		return fmt.Errorf("image blob missing: %s", imf.Blobsum)
 	}
 
 	ps := imageJsonPathSpec{name: name, id: idstr}.pathSpec()
-	if err := ims.driver.PutContent(ctx, ps, []byte(imf.String())); err != nil {
+	if err := sf.driver.PutContent(ctx, ps, []byte(imf.String())); err != nil {
 		return errors.New("failed to update manifest")
 	}
 
 	if !isdigest {
 		tps := tagPathSpec{name: name, tag: refstr}.pathSpec()
-		if err := ims.driver.PutContent(ctx, tps, []byte(idstr)); err != nil {
+		if err := sf.driver.PutContent(ctx, tps, []byte(idstr)); err != nil {
 			return fmt.Errorf("failed to update tag '%s' with digest '%s'", refstr, idstr)
 		}
 	}
@@ -166,10 +168,10 @@ func (ims ImageSearcher) PutManifest(ctx context.Context, nam string, ref string
 	return nil
 }
 
-func (ims ImageSearcher) ListTags(ctx context.Context, name string) ([]string, error) {
+func (sf StorageFE) ListTags(ctx context.Context, name string) ([]string, error) {
 	ps := tagsPathSpec{name: name}.pathSpec()
 
-	xs, err := ims.driver.List(ctx, ps)
+	xs, err := sf.driver.List(ctx, ps)
 	if err != nil {
 		if _, ok := err.(storagedriver.PathNotFoundError); !ok {
 			return nil, err
@@ -184,7 +186,7 @@ func (ims ImageSearcher) ListTags(ctx context.Context, name string) ([]string, e
 	return res, nil
 }
 
-func (ims ImageSearcher) GetBlobJsonSpec(name string, digest string) (string, error) {
+func (sf StorageFE) GetBlobJsonSpec(name string, digest string) (string, error) {
 	ps := blobManifestPathSpec{digest: digest}
 	if utils.IsBlobDigest(digest) {
 		return ps.pathSpec(), nil
@@ -197,10 +199,10 @@ func (ims ImageSearcher) GetBlobJsonSpec(name string, digest string) (string, er
 //  1. generate a UUID to identify the upload session
 //  2. save the target digest value
 //  3. return the target location
-func (ims ImageSearcher) PrepareBlobUpload(ctx context.Context, name string, info *v1.UploadInfo) (string, error) {
+func (sf StorageFE) PrepareBlobUpload(ctx context.Context, name string, info *v1.UploadInfo) (string, error) {
 	uu := utils.NewUUID()
 	uips := uploadInfoPathSpec{name: name, id: uu}.pathSpec()
-	if err := ims.driver.PutContent(ctx, uips, []byte(info.String())); err != nil {
+	if err := sf.driver.PutContent(ctx, uips, []byte(info.String())); err != nil {
 		return "", err
 	}
 
@@ -208,20 +210,20 @@ func (ims ImageSearcher) PrepareBlobUpload(ctx context.Context, name string, inf
 	return urlps, nil
 }
 
-func (ims ImageSearcher) CancelUpload(ctx context.Context, name string, uu string) error {
+func (sf StorageFE) CancelUpload(ctx context.Context, name string, uu string) error {
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 
-	_, err := ims.driver.Stat(ctx, uups)
+	_, err := sf.driver.Stat(ctx, uups)
 	if err != nil {
 		return err
 	}
 
-	go ims.driver.Delete(ctx, uups)
+	go sf.driver.Delete(ctx, uups)
 	return nil
 }
 
-func (ims ImageSearcher) GetUploadedSize(ctx context.Context, name string, uu string) (int64, error) {
-	chunks, err := ims.getBlobChunks(ctx, name, uu)
+func (sf StorageFE) GetUploadedSize(ctx context.Context, name string, uu string) (int64, error) {
+	chunks, err := sf.getBlobChunks(ctx, name, uu)
 	if err != nil {
 		return 0, err
 	}
@@ -234,11 +236,11 @@ func (ims ImageSearcher) GetUploadedSize(ctx context.Context, name string, uu st
 	return size, nil
 }
 
-func (ims ImageSearcher) getBlobChunks(ctx context.Context, name string, uu string) ([]storagedriver.FileInfo, error) {
+func (sf StorageFE) getBlobChunks(ctx context.Context, name string, uu string) ([]storagedriver.FileInfo, error) {
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 
 	// List all chunks and check its size
-	ls, err := ims.driver.List(ctx, uups)
+	ls, err := sf.driver.List(ctx, uups)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +248,7 @@ func (ims ImageSearcher) getBlobChunks(ctx context.Context, name string, uu stri
 	result := make([]storagedriver.FileInfo, 0)
 	for _, fname := range ls {
 		if strings.HasPrefix(fname, chunkNamePrefix) {
-			info, err := ims.driver.Stat(ctx, fname)
+			info, err := sf.driver.Stat(ctx, fname)
 			if err != nil {
 				return nil, err
 			}
@@ -325,9 +327,9 @@ func buildMaps(chunks []storagedriver.FileInfo, totalSize int64) (map[string]str
 	return chunkMap, indexMap, nil
 }
 
-func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu string) error {
+func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) error {
 	uips := uploadInfoPathSpec{name: name, id: uu}.pathSpec()
-	content, err := ims.driver.GetContent(ctx, uips)
+	content, err := sf.driver.GetContent(ctx, uips)
 	if err != nil {
 		return err
 	}
@@ -337,7 +339,7 @@ func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu str
 		return err
 	}
 
-	chunks, err := ims.getBlobChunks(ctx, name, uu)
+	chunks, err := sf.getBlobChunks(ctx, name, uu)
 	if err != nil {
 		return err
 	}
@@ -361,39 +363,39 @@ func (ims ImageSearcher) CompleteUpload(ctx context.Context, name string, uu str
 	for k, v := range chunkMap {
 		// TODO dedup
 		bcps := blobChunkPathSpec{digest: tophash, subhash: v}.pathSpec()
-		if err = ims.driver.Move(ctx, k, bcps); err != nil {
+		if err = sf.driver.Move(ctx, k, bcps); err != nil {
 			return fmt.Errorf("failed to move chunks: %s", err.Error())
 		}
 	}
 
 	// create a blob manifest
 	bmps := blobManifestPathSpec{digest: tophash}.pathSpec()
-	if err = ims.driver.PutContent(ctx, bmps, []byte(blobmfst.String())); err != nil {
+	if err = sf.driver.PutContent(ctx, bmps, []byte(blobmfst.String())); err != nil {
 		return fmt.Errorf("failed to write blob manifest: %s", err.Error())
 	}
 
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
-	ims.driver.Delete(ctx, uups)
+	sf.driver.Delete(ctx, uups)
 
 	return nil
 }
 
-func (ims ImageSearcher) GetChunkWriter(ctx context.Context, name string, uu string, index int, subhash string) (io.WriteCloser, error) {
+func (sf StorageFE) GetChunkWriter(ctx context.Context, name string, uu string, index int, subhash string) (io.WriteCloser, error) {
 	// Check whether the upload UUID exists
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 
-	_, err := ims.driver.Stat(ctx, uups)
+	_, err := sf.driver.Stat(ctx, uups)
 	if err != nil {
 		return nil, err
 	}
 
 	// Write the record of started time
 	ucps := uploadChunkPathSpec{name: name, id: uu, index: index, subhash: subhash}.pathSpec()
-	return ims.driver.Writer(ctx, ucps, false)
+	return sf.driver.Writer(ctx, ucps, false)
 }
 
-func (ims ImageSearcher) GetBlobChunkReader(ctx context.Context, name string, tophash string, subhash string, offset int64) (io.ReadCloser, error) {
+func (sf StorageFE) GetBlobChunkReader(ctx context.Context, name string, tophash string, subhash string, offset int64) (io.ReadCloser, error) {
 	bcps := blobChunkPathSpec{digest: tophash, subhash: subhash}.pathSpec()
 
-	return ims.driver.Reader(ctx, bcps, offset)
+	return sf.driver.Reader(ctx, bcps, offset)
 }

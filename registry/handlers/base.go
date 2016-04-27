@@ -36,7 +36,7 @@ func getNameTag(key string) (name string, tag string, err *errcode.Error) {
 
 // GET /v1/{name} - list images by name
 func HandleNameList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	name, s := GetNameAndSearcher(ctx, w, r)
+	name, s := GetNameAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}
@@ -47,7 +47,7 @@ func HandleNameList(ctx context.Context, w http.ResponseWriter, r *http.Request)
 
 // GET /v1/{name}/tags/ - list tags by name
 func HandleTagList(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	name, s := GetNameAndSearcher(ctx, w, r)
+	name, s := GetNameAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}
