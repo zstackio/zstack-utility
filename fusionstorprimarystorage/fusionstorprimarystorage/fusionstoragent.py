@@ -4,6 +4,7 @@ import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
 import zstacklib.utils.log as log
 import zstacklib.utils.shell as shell
+import zstacklib.utils.lichbd as lichbd
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.lock as lock
@@ -80,7 +81,7 @@ class FusionstorAgent(object):
     CP_PATH = "/fusionstor/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/fusionstor/primarystorage/deletepool"
 
-    http_server = http.HttpServer(port=7762)
+    http_server = http.HttpServer(port=7764)
     http_server.logfile_path = log.get_logfile_path()
 
     def __init__(self):
@@ -101,44 +102,36 @@ class FusionstorAgent(object):
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
-        o = shell.call('fusionstor df -f json')
-        df = jsonobject.loads(o)
-
-        if df.stats.total_bytes__:
-            total = long(df.stats.total_bytes_)
-        elif df.stats.total_space__:
-            total = long(df.stats.total_space__) * 1024
-        else:
-            raise Exception('unknown fusionstor df output: %s' % o)
-
-        if df.stats.total_avail_bytes__:
-            avail = long(df.stats.total_avail_bytes_)
-        elif df.stats.total_avail__:
-            avail = long(df.stats.total_avail_) * 1024
-        else:
-            raise Exception('unknown fusionstor df output: %s' % o)
+        total = lichbd.lichbd_get_capacity()
+        used = lichbd.lichbd_get_used()
+        logger.debug("-------- total: %s, used: %s ---------" % (total, used))
 
         rsp.totalCapacity = total
-        rsp.availableCapacity = avail
+        rsp.availableCapacity = total - used
 
     def _get_file_size(self, path):
-        o = shell.call('rbd --format json info %s' % path)
-        o = jsonobject.loads(o)
-        return long(o.size_)
+        lichbd_file = os.path.join("/iscsi", path)
+        return lichbd.lichbd_file_size(lichbd_file)
 
     @replyerror
     def delete_pool(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for p in cmd.poolNames:
-            shell.call('fusionstor osd pool delete %s %s --yes-i-really-really-mean-it' % (p, p))
+            p = os.path.join("/iscsi", p)
+            lichbd.lichbd_unlink(p)
         return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def rollback_snapshot(self, req):
+        logger.debug("============ rollback_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
 
-        shell.call('rbd snap rollback %s' % spath)
+        src_path = self.spath2src_normal(spath)
+        snap_name = self.spath2normal(spath)
+        snap_path = "%s@%s" % (src_path, snap_name)
+        lichbd.lichbd_snap_rollback(snap_path)
+
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
@@ -149,73 +142,92 @@ class FusionstorAgent(object):
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
 
-        shell.call('rbd cp %s %s' % (src_path, dst_path))
+        src_path = os.path.join("/iscsi", src_path)
+        dst_path = os.path.join("/iscsi", dst_path)
+        lichbd.lichbd_copy(src_path, dst_path)
 
         rsp = CpRsp()
         rsp.size = self._get_file_size(dst_path)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
+    def spath2src_normal(self, spath):
+        #fusionstor://bak-t-95036217321343c2a8d64d32e085211e/382b3757a54045e5b7dbcfcdcfb07200@382b3757a54045e5b7dbcfcdcfb07200"
+        image_name, sp_name = spath.split('@')
+        return os.path.join("/iscsi", image_name)
+
+    def spath2normal(self, spath):
+        image_name, sp_name = spath.split('@')
+        return os.path.join("/iscsi", image_name.split("/")[0], "snap_" + sp_name)
+
     @replyerror
     def create_snapshot(self, req):
+        logger.debug("============ create_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
+        src_path = self.spath2src_normal(spath)
 
         do_create = True
+        image_name, sp_name = spath.split('@')
         if cmd.skipOnExisting:
-            image_name, sp_name = spath.split('@')
-            o = shell.call('rbd --format json snap ls %s' % image_name)
-            o = jsonobject.loads(o)
-            for s in o:
-                if s.name_ == sp_name:
-                    do_create = False
+            snaps = lichbd.lichbd_snap_list(src_path)
+            for s in snaps:
+                do_create = False
 
         if do_create:
-            shell.call('rbd snap create %s' % spath)
+            snap_path = "%s@%s" % (src_path, sp_name)
+            lichbd.lichbd_snap_create(snap_path)
 
         rsp = CreateSnapshotRsp()
-        rsp.size = self._get_file_size(spath)
+        rsp.size = self._get_file_size(src_path)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     @replyerror
     def delete_snapshot(self, req):
+        logger.debug("============ delete_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         spath = self._normalize_install_path(cmd.snapshotPath)
-
-        shell.call('rbd snap rm %s' % spath)
-
+        snap_path = "/iscsi/%s" % (spath)
+        lichbd.lichbd_snap_delete(snap_path)
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     @replyerror
     def unprotect_snapshot(self, req):
+        logger.debug("============ unprotect_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
 
-        shell.call('rbd snap unprotect %s' % spath)
+        #shell.call('rbd snap unprotect %s' % spath)
 
         return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def protect_snapshot(self, req):
+        logger.debug("============ protect_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
 
-        shell.call('rbd snap protect %s' % spath, exception=not cmd.ignoreError)
+        #shell.call('rbd snap protect %s' % spath, exception=not cmd.ignoreError)
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
 
     @replyerror
     def clone(self, req):
+        logger.debug("============ clone ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
 
-        shell.call('rbd clone %s %s' % (src_path, dst_path))
+        src_path = os.path.join("/iscsi", src_path)
+        dst_path = os.path.join("/iscsi", dst_path)
+
+        lichbd.lichbd_mkdir(os.path.dirname(dst_path))
+        lichbd.lichbd_snap_clone(src_path, dst_path)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -226,7 +238,7 @@ class FusionstorAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.path)
 
-        shell.call('rbd flatten %s' % path)
+        #shell.call('rbd flatten %s' % path)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -240,24 +252,11 @@ class FusionstorAgent(object):
     @replyerror
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        o = shell.call('fusionstor mon_status')
-        mon_status = jsonobject.loads(o)
-        fsid = mon_status.monmap.fsid_
-
-        existing_pools = shell.call('fusionstor osd lspools')
-        for pool in cmd.pools:
-            if pool.predefined and pool.name not in existing_pools:
-                raise Exception('cannot find pool[%s] in the fusionstor cluster, you must create it manually' % pool.name)
-            elif pool.name not in existing_pools:
-                shell.call('fusionstor osd pool create %s 100' % pool.name)
-
-        o = shell.call("fusionstor -f json auth get-or-create client.zstack mon 'allow r' osd 'allow *' 2>/dev/null").strip(' \n\r\t')
-        o = jsonobject.loads(o)
+        logger.debug("------- cmd: %s -------" % (cmd))
 
         rsp = InitRsp()
-        rsp.fsid = fsid
-        rsp.userKey = o[0].key_
+        rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
+        rsp.userKey = "AQDVyu9VXrozIhAAuT2yMARKBndq9g3W8KUQvw=="
         self._set_capacity_to_response(rsp)
 
         return jsonobject.dumps(rsp)
@@ -274,7 +273,10 @@ class FusionstorAgent(object):
 
         path = self._normalize_install_path(cmd.installPath)
         size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
-        shell.call('rbd create --size %s --image-format 2 %s' % (size_M, path))
+        size = "%dM" % (size_M)
+        path = "lichbd:%s" % (path)
+
+        lichbd.lichbd_create_raw(path, size)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -363,12 +365,8 @@ class FusionstorAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
 
-        o = shell.call('rbd snap ls --format json %s' % path)
-        o = jsonobject.loads(o)
-        if len(o) > 0:
-            raise Exception('unable to delete %s; the volume still has snapshots' % cmd.installPath)
-
-        shell.call('rbd rm %s' % path)
+        path = os.path.join("/iscsi", path)
+        lichbd.lichbd_unlink(path)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -380,6 +378,7 @@ class FusionstorDaemon(daemon.Daemon):
         super(FusionstorDaemon, self).__init__(pidfile)
 
     def run(self):
+        logger.debug("------- start fusionstor... -----------")
         self.agent = FusionstorAgent()
         self.agent.http_server.start()
 

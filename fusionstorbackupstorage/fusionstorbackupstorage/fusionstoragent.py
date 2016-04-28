@@ -4,6 +4,7 @@ import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
 import zstacklib.utils.log as log
 import zstacklib.utils.shell as shell
+import zstacklib.utils.lichbd as lichbd
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.lock as lock
@@ -58,7 +59,7 @@ class FusionstorAgent(object):
     PING_PATH = "/fusionstor/backupstorage/ping"
     ECHO_PATH = "/fusionstor/backupstorage/echo"
 
-    http_server = http.HttpServer(port=7761)
+    http_server = http.HttpServer(port=7763)
     http_server.logfile_path = log.get_logfile_path()
 
     def __init__(self):
@@ -69,25 +70,10 @@ class FusionstorAgent(object):
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
-        o = shell.call('fusionstor df -f json')
-        df = jsonobject.loads(o)
-
-        if df.stats.total_bytes__:
-            total = long(df.stats.total_bytes_)
-        elif df.stats.total_space__:
-            total = long(df.stats.total_space__) * 1024
-        else:
-            raise Exception('unknown fusionstor df output: %s' % o)
-
-        if df.stats.total_avail_bytes__:
-            avail = long(df.stats.total_avail_bytes_)
-        elif df.stats.total_avail__:
-            avail = long(df.stats.total_avail_) * 1024
-        else:
-            raise Exception('unknown fusionstor df output: %s' % o)
-
+        total = lichbd.lichbd_get_capacity()
+        used = lichbd.lichbd_get_used()
         rsp.totalCapacity = total
-        rsp.availableCapacity = avail
+        rsp.availableCapacity = total - used
 
     @replyerror
     def echo(self, req):
@@ -96,21 +82,10 @@ class FusionstorAgent(object):
 
     @replyerror
     def init(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        o = shell.call('fusionstor mon_status')
-        mon_status = jsonobject.loads(o)
-        fsid = mon_status.monmap.fsid_
-
-        existing_pools = shell.call('fusionstor osd lspools')
-        for pool in cmd.pools:
-            if pool.predefined and pool.name not in existing_pools:
-                raise Exception('cannot find pool[%s] in the fusionstor cluster, you must create it manually' % pool.name)
-            elif pool.name not in existing_pools:
-                shell.call('fusionstor osd pool create %s 100' % pool.name)
+        lichbd.lichbd_mkdir("/iscsi")
 
         rsp = InitRsp()
-        rsp.fsid = fsid
+        rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
         self._set_capacity_to_response(rsp)
 
         return jsonobject.dumps(rsp)
@@ -126,39 +101,20 @@ class FusionstorAgent(object):
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
 
-        shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s' % (cmd.url, pool, tmp_image_name))
+        lichbd_file = os.path.join("/iscsi", pool, image_name)
+        tmp_lichbd_file = os.path.join("/iscsi", pool, tmp_image_name)
+
+        lichbd.lichbd_mkdir(os.path.dirname(lichbd_file))
+        lichbd.lichbd_download(cmd.url, lichbd_file)
 
         @rollbackable
         def _1():
-            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+            lichbd.lichbd_unlink(lichbd_file)
         _1()
 
-        file_format = shell.call("set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
-        file_format = file_format.strip()
-        if file_format not in ['qcow2', 'raw']:
-            raise Exception('unknown image format: %s' % file_format)
-
-        if file_format == 'qcow2':
-            conf_path = None
-            try:
-                with open('/etc/fusionstor/fusionstor.conf', 'r') as fd:
-                    conf = fd.read()
-                    conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
-                    conf_path = linux.write_to_temp_file(conf)
-
-                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
-                shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
-            finally:
-                if conf_path:
-                    os.remove(conf_path)
-        else:
-            shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
-
-        o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
-        image_stats = jsonobject.loads(o)
-
+        size = lichbd.lichbd_file_size(lichbd_file)
         rsp = DownloadRsp()
-        rsp.size = long(image_stats.size_)
+        rsp.size = size
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
@@ -170,7 +126,8 @@ class FusionstorAgent(object):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool, image_name = self._parse_install_path(cmd.installPath)
-        shell.call('rbd rm %s/%s' % (pool, image_name))
+        lichbd_file = os.path.join("/iscsi", pool, image_name)
+        lichbd.lichbd_unlink(lichbd_file)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
