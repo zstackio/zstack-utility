@@ -155,6 +155,24 @@ def lichbd_snap_rollback(snap_path):
 
     return shellcmd.stdout
 
+def lichbd_snap_protect(snap_path):
+    cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --protect %s' % (snap_path)
+    shellcmd = shell.call(cmd)
+
+    if shellcmd.return_code != 0:
+        shell.raise_exp(shellcmd)
+
+    return shellcmd.stdout
+
+def lichbd_snap_unprotect(snap_path):
+    cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --unprotect %s' % (snap_path)
+    shellcmd = shell.call(cmd)
+
+    if shellcmd.return_code != 0:
+        shell.raise_exp(shellcmd)
+
+    return shellcmd.stdout
+
 def lichbd_download(url, image_path):
     shellcmd = shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | /opt/fusionstack/lich/libexec/lichfs --copy :- %s' % (url, image_path))
 
