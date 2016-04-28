@@ -222,21 +222,42 @@ func (sf StorageFE) CancelUpload(ctx context.Context, name string, uu string) er
 	return nil
 }
 
+func (sf StorageFE) getChunkSize(ctx context.Context, ucps *uploadChunkPathSpec) (int64, error) {
+	var ps string
+	if ucps.exist {
+		ps = blobChunkPathSpec{subhash: ucps.subhash}.pathSpec()
+	} else {
+		ps = ucps.pathSpec()
+	}
+
+	info, err := sf.driver.Stat(ctx, ps)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get chunk #%d size: %s", ucps.index, err)
+	}
+
+	return info.Size(), nil
+}
+
 func (sf StorageFE) GetUploadedSize(ctx context.Context, name string, uu string) (int64, error) {
-	chunks, err := sf.getBlobChunks(ctx, name, uu)
+	chunks, err := sf.getChunkPathSpecs(ctx, name, uu)
 	if err != nil {
 		return 0, err
 	}
 
 	var size int64
 	for _, info := range chunks {
-		size += info.Size()
+		sz, err := sf.getChunkSize(ctx, info)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get chunk #%d size: %s", info.index, err)
+		}
+
+		size += sz
 	}
 
 	return size, nil
 }
 
-func (sf StorageFE) getBlobChunks(ctx context.Context, name string, uu string) ([]storagedriver.FileInfo, error) {
+func (sf StorageFE) getChunkPathSpecs(ctx context.Context, name string, uu string) ([]*uploadChunkPathSpec, error) {
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 
 	// List all chunks and check its size
@@ -245,19 +266,10 @@ func (sf StorageFE) getBlobChunks(ctx context.Context, name string, uu string) (
 		return nil, err
 	}
 
-	var result []storagedriver.FileInfo
-	for _, fname := range ls {
-		if _, _, err = getIndexAndHash(fname); err == nil {
-			info, err := sf.driver.Stat(ctx, fname)
-			if err != nil {
-				return nil, err
-			}
-
-			if info.IsDir() {
-				return nil, fmt.Errorf("unexpected file: '%s'", fname)
-			}
-
-			result = append(result, info)
+	var result []*uploadChunkPathSpec
+	for _, ps := range ls {
+		if ucps, err := parseChunkPathSpec(ps); err == nil {
+			result = append(result, ucps)
 		}
 	}
 
@@ -299,7 +311,7 @@ func getTopHash(indexMap map[int]string) (string, error) {
 	return utils.Sha256Sum(bytes.NewReader(buffer.Bytes()))
 }
 
-func buildMaps(chunks []storagedriver.FileInfo, totalSize int64) (map[string]string, map[int]string, error) {
+func (sf StorageFE) buildMaps(ctx context.Context, chunks []*uploadChunkPathSpec, totalSize int64) (map[string]string, map[int]string, error) {
 	// A map of chunk filepath to digest
 	chunkMap := make(map[string]string)
 
@@ -307,16 +319,15 @@ func buildMaps(chunks []storagedriver.FileInfo, totalSize int64) (map[string]str
 	indexMap := make(map[int]string)
 
 	var size int64
-	for _, info := range chunks {
-		size += info.Size()
-
-		idx, h, err := getIndexAndHash(info.Path())
+	for _, ucps := range chunks {
+		sz, err := sf.getChunkSize(ctx, ucps)
 		if err != nil {
 			return nil, nil, err
 		}
+		size += sz
 
-		chunkMap[info.Path()] = h
-		indexMap[idx] = h
+		chunkMap[ucps.pathSpec()] = ucps.subhash
+		indexMap[ucps.index] = ucps.subhash
 	}
 
 	clen, ilen := len(chunkMap), len(indexMap)
@@ -325,7 +336,7 @@ func buildMaps(chunks []storagedriver.FileInfo, totalSize int64) (map[string]str
 	}
 
 	if size != totalSize {
-		return nil, nil, fmt.Errorf("uploaded chunk size (%d) not equal to file size (%d)", size, totalSize)
+		return nil, nil, fmt.Errorf("uploaded size (%d) not equal to file size (%d)", size, totalSize)
 	}
 
 	return chunkMap, indexMap, nil
@@ -343,7 +354,7 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 		return err
 	}
 
-	chunks, err := sf.getBlobChunks(ctx, name, uu)
+	chunks, err := sf.getChunkPathSpecs(ctx, name, uu)
 	if err != nil {
 		return err
 	}
@@ -352,7 +363,7 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 		return fmt.Errorf("no chunks found for %s", uu)
 	}
 
-	chunkMap, indexMap, err := buildMaps(chunks, uploadinfo.Size)
+	chunkMap, indexMap, err := sf.buildMaps(ctx, chunks, uploadinfo.Size)
 	if err != nil {
 		return err
 	}
@@ -368,18 +379,27 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 	}
 
 	// move chunks to blobs store
+	needGenerateManifest := false
 	for k, v := range chunkMap {
-		// TODO dedup
-		bcps := blobChunkPathSpec{digest: tophash, subhash: v}.pathSpec()
+		bcps := blobChunkPathSpec{subhash: v}.pathSpec()
+		// only move those not exists
+		if _, err := sf.driver.Stat(ctx, bcps); err == nil {
+			continue
+		}
+
+		needGenerateManifest = true
+
 		if err = sf.driver.Move(ctx, k, bcps); err != nil {
 			return fmt.Errorf("failed to move chunks: %s", err.Error())
 		}
 	}
 
-	// create a blob manifest
-	bmps := blobManifestPathSpec{digest: tophash}.pathSpec()
-	if err = sf.driver.PutContent(ctx, bmps, []byte(blobmfst.String())); err != nil {
-		return fmt.Errorf("failed to write blob manifest: %s", err.Error())
+	if needGenerateManifest {
+		// create a blob manifest
+		bmps := blobManifestPathSpec{digest: tophash}.pathSpec()
+		if err = sf.driver.PutContent(ctx, bmps, []byte(blobmfst.String())); err != nil {
+			return fmt.Errorf("failed to write blob manifest: %s", err.Error())
+		}
 	}
 
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
@@ -394,16 +414,28 @@ func (sf StorageFE) GetChunkWriter(ctx context.Context, name string, uu string, 
 
 	_, err := sf.driver.Stat(ctx, uups)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("no upload workspace for %s", uu)
 	}
 
-	// Write the record of started time
-	ucps := uploadChunkPathSpec{name: name, id: uu, index: index, subhash: subhash}.pathSpec()
-	return sf.driver.Writer(ctx, ucps, false)
+	// Upon new chunks, we check whether it exists before constructing FileWriter.
+	ucps := uploadChunkPathSpec{name: name, id: uu, index: index, subhash: subhash, exist: false}
+	_, err = sf.driver.Stat(ctx, blobChunkPathSpec{subhash: subhash}.pathSpec())
+	if err != nil {
+		// chunk does not exist
+		return sf.driver.Writer(ctx, ucps.pathSpec(), false)
+	}
+
+	// chunk exists
+	ucps.exist = true
+	if err := sf.driver.PutContent(ctx, ucps.pathSpec(), []byte("0")); err != nil {
+		return nil, fmt.Errorf("failed to upload chunk #%d: %s", index, err)
+	}
+
+	return utils.NopFileWriter, nil
 }
 
 func (sf StorageFE) GetBlobChunkReader(ctx context.Context, name string, tophash string, subhash string, offset int64) (io.ReadCloser, error) {
-	bcps := blobChunkPathSpec{digest: tophash, subhash: subhash}.pathSpec()
+	bcps := blobChunkPathSpec{subhash: subhash}.pathSpec()
 
 	return sf.driver.Reader(ctx, bcps, offset)
 }

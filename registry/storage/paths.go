@@ -3,15 +3,23 @@ package storage
 import (
 	"fmt"
 	"path"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
 const (
 	storagePathRoot    = "/registry"
 	storagePathVersion = "v1"
-	chunkNamePrefix    = "chunk"
+
+	chunkNamePrefix  = "chunk"
+	chunkExistPrefix = "exist"
 )
 
-var rootPrefix = path.Join(storagePathRoot, storagePathVersion)
+var (
+	rootPrefix = path.Join(storagePathRoot, storagePathVersion)
+	repoPrefix = path.Join(rootPrefix, "repos")
+)
 
 // The path layout in the storage backend is roughly as the following:
 //
@@ -74,12 +82,11 @@ func (ps blobManifestPathSpec) pathSpec() string {
 
 // The pathSpec for blob chunks
 type blobChunkPathSpec struct {
-	digest  string
 	subhash string
 }
 
 func (ps blobChunkPathSpec) pathSpec() string {
-	return path.Join(rootPrefix, "blobs", ps.digest[:2], ps.digest[2:], ps.subhash)
+	return path.Join(rootPrefix, "blobs", ps.subhash[:2], ps.subhash[2:])
 }
 
 // TODO get the "user" value from somewhere
@@ -90,7 +97,7 @@ type manifestsPathSpec struct {
 }
 
 func (ps manifestsPathSpec) pathSpec() string {
-	return path.Join(rootPrefix, "repos", ps.user, ps.name, "manifests")
+	return path.Join(repoPrefix, ps.user, ps.name, "manifests")
 }
 
 // The pathSpec for the tags directory
@@ -179,28 +186,83 @@ func (ps uploadInfoPathSpec) pathSpec() string {
 	return path.Join(ups, ps.id, "upload-info")
 }
 
-// the upload check sum pathSpec
+// the upload chunk pathSpec
+//
+// It can be in two forms, depending on whether the chunk exists or not.
+//  if not exists: upload-uuid-pathspec/chunk-1-d64c8e8e
+//  if exists:     upload-uuid-pathspec/exist-2-11401362
 type uploadChunkPathSpec struct {
 	user    string
 	name    string
 	id      string // uuid
 	index   int
 	subhash string
+	exist   bool
+}
+
+func getChunkPrefix(exist bool) string {
+	if exist {
+		return chunkExistPrefix
+	}
+	return chunkNamePrefix
 }
 
 func (ps uploadChunkPathSpec) pathSpec() string {
 	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
-	return path.Join(ups, ps.id, fmt.Sprintf("%s-%d-%s", chunkNamePrefix, ps.index, ps.subhash))
+	prefix := getChunkPrefix(ps.exist)
+	return path.Join(ups, ps.id, fmt.Sprintf("%s-%d-%s", prefix, ps.index, ps.subhash))
 }
 
-func getIndexAndHash(chunkps string) (int, string, error) {
-	var index int
-	var subhash string
-	name := path.Base(chunkps)
-	n, err := fmt.Sscanf(name, chunkNamePrefix+"-%d-%s", &index, &subhash)
-	if err != nil || n != 2 {
-		return 0, "", fmt.Errorf("unexpected chunk name: '%s'", name)
+type ChunkInfo struct {
+	index   int
+	subhash string
+	exist   bool
+}
+
+// Parse the 'chunkps'
+// /registry/v1/repos/[user/]name/manifests/uploads/uuid/chunk-1-d64c8e8e
+func parseChunkPathSpec(chunkps string) (*uploadChunkPathSpec, error) {
+	items := strings.Split(path.Base(chunkps), "-")
+	if len(items) != 3 {
+		return nil, fmt.Errorf("unexpected chunk pathspec: '%s'", chunkps)
 	}
 
-	return index, subhash, nil
+	var ucps uploadChunkPathSpec
+	switch items[0] {
+	case chunkNamePrefix:
+		ucps.exist = false
+	case chunkExistPrefix:
+		ucps.exist = true
+	default:
+		return nil, fmt.Errorf("unexpected chunk pathspec prefix: '%s'", chunkps)
+	}
+
+	idx, err := strconv.Atoi(items[1])
+	if err != nil {
+		return nil, fmt.Errorf("unexpected chunk pathspec index: '%s': %s", chunkps, err)
+	}
+
+	ucps.index = idx
+	ucps.subhash = items[2]
+
+	re := regexp.MustCompile(repoPrefix + `((/\w+){1,2})` + "/manifests/uploads/" + `(.*)`)
+	res := re.FindStringSubmatch(path.Dir(chunkps))
+	if len(res) != 4 {
+		return nil, fmt.Errorf("unexpected chunk pathspec: '%s'", chunkps)
+	}
+
+	ucps.id = res[3]
+
+	// res[1] might contain something like "/ubuntu", or "/david/ubuntu"
+	xs := strings.Split(res[1][1:], "/")
+	switch len(xs) {
+	case 1:
+		ucps.name = xs[0]
+	case 2:
+		ucps.user, ucps.name = xs[0], xs[1]
+	default:
+		return nil, fmt.Errorf("unexpected chunk pathspec uname: '%s'", chunkps)
+	}
+
+	return &ucps, nil
 }
