@@ -3,6 +3,7 @@
 @author: frank
 '''
 import errno
+import time
 import subprocess
 import zstacklib.utils.shell as shell
 from zstacklib.utils import log
@@ -12,7 +13,7 @@ logcmd = True
 logger = log.get_logger(__name__)
 
 def __call_shellcmd(cmd, exception=False, workdir=None):
-    shellcmd = ShellCmd(cmd, workdir)
+    shellcmd = shell.ShellCmd(cmd, workdir)
     shellcmd(exception)
     return shellcmd
 
