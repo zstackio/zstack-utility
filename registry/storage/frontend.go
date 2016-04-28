@@ -43,8 +43,8 @@ type IStorageFE interface {
 	// Cancel the upload
 	CancelUpload(ctx context.Context, name string, uu string) error
 
-	// Complete the upload
-	CompleteUpload(ctx context.Context, name string, uu string) error
+	// Complete the upload - returns tophash
+	CompleteUpload(ctx context.Context, name string, uu string) (string, error)
 
 	// Get a write-closer instance
 	GetChunkWriter(ctx context.Context, name string, uu string, indx int, subhash string) (storagedriver.FileWriter, error)
@@ -150,10 +150,15 @@ func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf
 	// Check whether the image blob has been uploaded
 	bps := blobManifestPathSpec{digest: imf.Blobsum}.pathSpec()
 	if _, err := sf.driver.Stat(ctx, bps); err != nil {
-		return fmt.Errorf("image blob missing: %s", imf.Blobsum)
+		return fmt.Errorf("image blob not exist: %s", imf.Blobsum)
 	}
 
+	// Check whether image digest already exists
 	ps := imageJsonPathSpec{name: name, id: idstr}.pathSpec()
+	if _, err := sf.driver.Stat(ctx, ps); err == nil {
+		return fmt.Errorf("image manifest already exist")
+	}
+
 	if err := sf.driver.PutContent(ctx, ps, []byte(imf.String())); err != nil {
 		return errors.New("failed to update manifest")
 	}
@@ -342,40 +347,40 @@ func (sf StorageFE) buildMaps(ctx context.Context, chunks []*uploadChunkPathSpec
 	return chunkMap, indexMap, nil
 }
 
-func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) error {
+func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) (string, error) {
 	uips := uploadInfoPathSpec{name: name, id: uu}.pathSpec()
 	content, err := sf.driver.GetContent(ctx, uips)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	var uploadinfo v1.UploadInfo
 	if err = utils.JsonDecode(bytes.NewReader(content), &uploadinfo); err != nil {
-		return err
+		return "", err
 	}
 
 	chunks, err := sf.getChunkPathSpecs(ctx, name, uu)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if len(chunks) == 0 {
-		return fmt.Errorf("no chunks found for %s", uu)
+		return "", fmt.Errorf("no chunks found for %s", uu)
 	}
 
 	chunkMap, indexMap, err := sf.buildMaps(ctx, chunks, uploadinfo.Size)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	tophash, err := getTopHash(indexMap)
 	if err != nil {
-		return fmt.Errorf("failed to compute blob digest:", err.Error())
+		return "", fmt.Errorf("failed to compute blob digest:", err.Error())
 	}
 
 	blobmfst, err := getBlobManifest(uploadinfo.Size, indexMap)
 	if err != nil {
-		return fmt.Errorf("failed to compute blob manifest:", err.Error())
+		return "", fmt.Errorf("failed to compute blob manifest:", err.Error())
 	}
 
 	// move chunks to blobs store
@@ -390,7 +395,7 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 		needGenerateManifest = true
 
 		if err = sf.driver.Move(ctx, k, bcps); err != nil {
-			return fmt.Errorf("failed to move chunks: %s", err.Error())
+			return "", fmt.Errorf("failed to move chunks: %s", err.Error())
 		}
 	}
 
@@ -398,14 +403,14 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 		// create a blob manifest
 		bmps := blobManifestPathSpec{digest: tophash}.pathSpec()
 		if err = sf.driver.PutContent(ctx, bmps, []byte(blobmfst.String())); err != nil {
-			return fmt.Errorf("failed to write blob manifest: %s", err.Error())
+			return "", fmt.Errorf("failed to write blob manifest: %s", err.Error())
 		}
 	}
 
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 	sf.driver.Delete(ctx, uups)
 
-	return nil
+	return tophash, nil
 }
 
 func (sf StorageFE) GetChunkWriter(ctx context.Context, name string, uu string, index int, subhash string) (storagedriver.FileWriter, error) {

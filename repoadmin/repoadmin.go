@@ -14,6 +14,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
+	"time"
 )
 
 var (
@@ -52,7 +54,7 @@ func newFlagSet(id string) *flag.FlagSet {
 	return fs
 }
 
-func uploadFile(sfe storage.IStorageFE, fh *os.File, size int64, name string, id string) error {
+func uploadFile(sfe storage.IStorageFE, fh *os.File, size int64, name string, id string) (string, error) {
 	var buffer []byte
 	offset, cache := int64(0), make([]byte, v1.BlobChunkSize)
 
@@ -65,38 +67,39 @@ func uploadFile(sfe storage.IStorageFE, fh *os.File, size int64, name string, id
 
 		_, err := fh.ReadAt(buffer, offset)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		subhash, err := utils.Sha256Sum(bytes.NewReader(buffer))
 		if err != nil {
-			return fmt.Errorf("failed to compute hash for chunk #%d: %s", index, err)
+			return "", fmt.Errorf("failed to compute hash for chunk #%d: %s", index, err)
 		}
 
 		chwr, err := sfe.GetChunkWriter(bgctx, name, id, index, subhash)
 		if err != nil {
-			return fmt.Errorf("failed to get writer for chunk #%d: %s", index, err)
+			return "", fmt.Errorf("failed to get writer for chunk #%d: %s", index, err)
 		}
 
 		defer chwr.Close()
 
 		_, err = chwr.Write(buffer)
 		if err != nil {
-			return fmt.Errorf("failed to upload chunk #%d: %s", index, err)
+			return "", fmt.Errorf("failed to upload chunk #%d: %s", index, err)
 		}
 
 		if err = chwr.Commit(); err != nil {
-			return fmt.Errorf("failed to commit chunk #%d: %s", index, err)
+			return "", fmt.Errorf("failed to commit chunk #%d: %s", index, err)
 		}
 
 		offset += v1.BlobChunkSize
 	}
 
-	if err := sfe.CompleteUpload(bgctx, name, id); err != nil {
-		return fmt.Errorf("failed to complete upload task %s: %s", id, err)
+	tophash, err := sfe.CompleteUpload(bgctx, name, id)
+	if err != nil {
+		return "", fmt.Errorf("failed to complete upload task %s: %s", id, err)
 	}
 
-	return nil
+	return tophash, nil
 }
 
 func doAdd(sfe storage.IStorageFE, args []string) error {
@@ -107,6 +110,7 @@ func doAdd(sfe storage.IStorageFE, args []string) error {
 	fauth := addcmd.String("author", "", "the author of the image")
 	farch := addcmd.String("arch", "", "the CPU arch of the image")
 	fdesc := addcmd.String("desc", "", "description of the image")
+	ftag := addcmd.String("tag", "latest", "tag of the image")
 
 	addcmd.Parse(args)
 
@@ -114,6 +118,7 @@ func doAdd(sfe storage.IStorageFE, args []string) error {
 		"name": *fname,
 		"file": *ffile,
 		"arch": *farch,
+		"tag":  *ftag,
 	}
 
 	for key, value := range mustHaveArgs {
@@ -140,12 +145,34 @@ func doAdd(sfe storage.IStorageFE, args []string) error {
 		return fmt.Errorf("prepare upload failed: %s", err)
 	}
 
-	err = uploadFile(sfe, fh, info.Size(), *fname, path.Base(uups))
+	tophash, err := uploadFile(sfe, fh, info.Size(), *fname, path.Base(uups))
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("adding image:", *fauth, *fdesc, uups)
+	// update image manifest
+	manifest := v1.ImageManifest{
+		Blobsum: tophash,
+		Created: time.Now().Format(time.RFC3339),
+		Author:  *fauth,
+		Arch:    *farch,
+		Desc:    *fdesc,
+		Size:    info.Size(),
+		Name:    *fname,
+	}
+
+	imageid, err := utils.Sha1Sum(strings.NewReader(manifest.String()))
+	if err != nil {
+		return fmt.Errorf("failed to generate image id: %s", err)
+	}
+
+	manifest.Id = imageid
+	err = sfe.PutManifest(bgctx, *fname, *ftag, &manifest)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("ImageId: %s Tag: %s\n", imageid, *ftag)
 	return nil
 }
 

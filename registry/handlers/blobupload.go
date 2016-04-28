@@ -190,6 +190,7 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 // PUT /v1/{name}/blobs/uploads/{uuid}
 // Content-Length: <size of chunk>
 // PUT the last chunk
+// Response Body: tophash
 func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	hashsum, err := getChunkHash(r)
 	if err != nil {
@@ -227,11 +228,13 @@ func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request)
 	}
 
 	// Complete upload.
-	if err = s.CompleteUpload(ctx, n, uu); err != nil {
+	tophash, err := s.CompleteUpload(ctx, n, uu)
+	if err != nil {
 		WriteHttpError(w, err, http.StatusBadRequest)
 		return
 	}
 
+	fmt.Fprintf(w, "%s", tophash)
 	return
 }
 
