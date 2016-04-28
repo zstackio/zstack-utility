@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-fusionstorb builder" basedir="../">
+    <property name="fusionstorb.bdir" location="${build.dir}/fusionstorb" />
+    <property name="fusionstorb.ansible.dir" location="${ansible.dir}/fusionstorb/" />
+
+    <target name="build-fusionstorb" >
+        <makeDir dir="${fusionstorb.bdir}" />
+
+        <checkProperty property="fusionstorb.source" />
+        <checkProperty property="fusionstorb.serviceFile" />
+        <checkFile file="${fusionstorb.source}" />
+        <checkFile file="${fusionstorb.source}/setup.py" />
+        <checkFile file="${fusionstorb.serviceFile}" />
+
+        <delete dir="${fusionstorb.source}/dist" />
+
+        <exec executable="python" dir="${fusionstorb.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${fusionstorb.bdir}/">
+            <fileset dir="${fusionstorb.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-fusionstorb">
+        <makeDir dir="${fusionstorb.ansible.dir}" />
+
+        <copy todir="${fusionstorb.ansible.dir}">
+            <fileset dir="${fusionstorb.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${fusionstorb.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${fusionstorb.serviceFile}" todir="${fusionstorb.ansible.dir}" />
+    </target>
+</project>
