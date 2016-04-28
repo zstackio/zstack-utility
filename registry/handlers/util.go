@@ -110,6 +110,7 @@ func GetBlobChunkReader(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return nil, fmt.Errorf("failed to build storage frontend searcher for blob digest: %s", d)
 	}
 
+	// TODO range read
 	// In order to compute the chunk digest w/o reading partial chunks,
 	// we can't continue from the point of interruption.
 	return s.GetBlobChunkReader(ctx, n, d, h, 0)

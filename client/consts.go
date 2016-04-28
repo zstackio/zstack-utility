@@ -12,8 +12,13 @@ const (
 	trustedHostsFilename = "client_data/trusted_hosts.pem"
 )
 
-func GetImageBlobPath(name string, digest string) string {
-	return path.Join(rootDir, "blobs", digest)
+// fs layout of disk images, manifests, working directories etc.
+func GetImageBlobPath(name string, blobsum string) string {
+	return path.Join(rootDir, "blobs", blobsum)
+}
+
+func GetBlobDownloadDir(name string, blobsum string) string {
+	return path.Join(rootDir, "wip", name, blobsum)
 }
 
 func GetImageManifestPath(name string, imgid string) string {

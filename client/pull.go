@@ -7,7 +7,6 @@ import (
 	"image-store/utils"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path"
 )
@@ -19,27 +18,139 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 		return err
 	}
 
-	blobpath := GetImageBlobPath(name, imf.Blobsum)
-	blobroute := v1.GetImageBlobRoute(name, imf.Blobsum)
-
-	err = cln.pullImageBlob(blobpath, blobroute, imf)
+	bmf, err := cln.getBlobManifest(name, imf.Blobsum)
 	if err != nil {
 		return err
 	}
 
+	imgfile, err := cln.downloadChunks(bmf, name, imf.Blobsum)
+	if err != nil {
+		return err
+	}
+
+	// the file name for saving the blob image
+	blobpath := GetImageBlobPath(name, imf.Blobsum)
+	os.MkdirAll(path.Dir(blobpath), 0775)
+	if err = os.Rename(imgfile, blobpath); err != nil {
+		return fmt.Errorf("failed to commit image blob: %s", err)
+	}
+
 	// write image manifest
 	if err = writeLocalManifest(name, imf); err != nil {
-		return fmt.Errorf("failed to update manifest file: %s", err.Error())
+		return fmt.Errorf("failed to update manifest file: %s", err)
 	}
 
 	os.Link(blobpath, GetImageFilePath(name, imf.Id))
 	return nil
 }
 
-func (cln *ZImageClient) getImageManifest(name, reference string) (*v1.ImageManifest, error) {
-	resp, err := cln.Get(v1.GetManifestRoute(name, reference))
+func (cln *ZImageClient) downloadChunk(dldir string, subhash string, route string) error {
+	dlfile := path.Join(dldir, subhash)
+
+	if checkBlobDigest(dlfile, subhash) == nil {
+		return nil
+	}
+
+	w, err := os.OpenFile(dlfile, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed in getting image manifest: %s", err.Error())
+		return err
+	}
+
+	defer w.Close()
+
+	resp, err := cln.Get(route)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("failed to download chunk %s", subhash)
+	}
+
+	defer resp.Body.Close()
+	if _, err = io.Copy(w, resp.Body); err != nil {
+		return fmt.Errorf("failed to download chunk %s: %s", subhash, err)
+	}
+
+	return nil
+}
+
+// TODO
+// 1. continue from last interrupt
+// 2. check parent blobs
+func (cln *ZImageClient) downloadChunks(bmf *v1.BlobManifest, name, tophash string) (string, error) {
+	// create the directory for saving chunks
+	dldir := GetBlobDownloadDir(name, tophash)
+	if err := os.MkdirAll(dldir, 0775); err != nil {
+		return "", err
+	}
+
+	// download chunks
+	for _, subhash := range bmf.Chunks {
+		route := cln.GetFullUrl(v1.GetBlobChunkRoute(name, tophash, subhash))
+		if err := cln.downloadChunk(dldir, subhash, route); err != nil {
+			return "", err
+		}
+
+		dlfile := path.Join(dldir, subhash)
+		if err := checkBlobDigest(dlfile, subhash); err != nil {
+			return "", fmt.Errorf("chunk %s corrupted: %s", subhash, err)
+		}
+	}
+
+	// combine chunk
+	imgfile := path.Join(dldir, tophash)
+	w, err := os.OpenFile(imgfile, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to create blob file: %s", err)
+	}
+
+	defer w.Close()
+
+	for _, subhash := range bmf.Chunks {
+		r, err := os.Open(path.Join(dldir, subhash))
+		if err != nil {
+			return "", fmt.Errorf("failed to read chunk %s", subhash)
+		}
+
+		defer r.Close()
+
+		if _, err = io.Copy(w, r); err != nil {
+			return "", fmt.Errorf("failed to write image file: %s", err)
+		}
+	}
+
+	for _, subhash := range bmf.Chunks {
+		os.Remove(path.Join(dldir, subhash))
+	}
+
+	return imgfile, nil
+}
+
+func (cln *ZImageClient) getBlobManifest(name, tophash string) (*v1.BlobManifest, error) {
+	resp, err := cln.Get(cln.GetFullUrl(v1.GetBlobManifestRoute(name, tophash)))
+	if err != nil {
+		return nil, fmt.Errorf("failed in getting blob manifest: %s", err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		var e errcode.Error
+		if err = utils.JsonDecode(resp.Body, &e); err != nil {
+			return nil, err
+		}
+		return nil, e
+	}
+
+	var bmf v1.BlobManifest
+	if err = utils.JsonDecode(resp.Body, &bmf); err != nil {
+		return nil, err
+	}
+
+	return &bmf, nil
+}
+
+func (cln *ZImageClient) getImageManifest(name, reference string) (*v1.ImageManifest, error) {
+	resp, err := cln.Get(cln.GetFullUrl(v1.GetManifestRoute(name, reference)))
+	if err != nil {
+		return nil, fmt.Errorf("failed in getting image manifest: %s", err)
 	}
 
 	defer resp.Body.Close()
@@ -64,45 +175,10 @@ func (cln *ZImageClient) getImageManifest(name, reference string) (*v1.ImageMani
 	return &imf, nil
 }
 
-func (cln *ZImageClient) pullImageBlob(blobpath string, blobroute string, imf *v1.ImageManifest) error {
-
-	var resp *http.Response
-	var err error
-
-	if info, err := os.Stat(blobpath); err == nil {
-		if info.Size() != imf.Size {
-			// continue from last
-			resp, err = cln.RangeGet(blobroute, info.Size())
-		} else {
-			// TODO: current blob exists, check parent image blobs.
-			return nil
-		}
-	} else {
-		resp, err = cln.Get(blobroute)
-	}
-
-	if err != nil {
-		return nil
-	}
-
-	defer resp.Body.Close()
-
-	if err = writeLocalImageBlob(blobpath, resp.Body); err != nil {
-		return fmt.Errorf("download image blob failed: %s", err.Error())
-	}
-
-	// verify the blobsum
-	if err = checkBlobDigest(blobpath, imf.Blobsum); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func writeLocalManifest(name string, imf *v1.ImageManifest) error {
 	fname := GetImageManifestPath(name, imf.Id)
 	if err := os.MkdirAll(path.Dir(fname), 0775); err != nil {
-		return fmt.Errorf("failed to create directory: %s", err.Error())
+		return fmt.Errorf("failed to create directory: %s", err)
 	}
 
 	return ioutil.WriteFile(fname, []byte(imf.String()), 0644)
@@ -110,7 +186,7 @@ func writeLocalManifest(name string, imf *v1.ImageManifest) error {
 
 func writeLocalImageBlob(blobpath string, r io.Reader) error {
 	if err := os.MkdirAll(path.Dir(blobpath), 0775); err != nil {
-		return fmt.Errorf("failed to create directory: %s", err.Error())
+		return fmt.Errorf("failed to create directory: %s", err)
 	}
 
 	w, err := os.OpenFile(blobpath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)

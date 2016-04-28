@@ -60,8 +60,12 @@ func GetTagListRoute(name string) string {
 	return path.Join(RouteNameV1, name, "tags")
 }
 
-func GetImageBlobRoute(name string, digest string) string {
-	return path.Join(RouteNameV1, name, "blobs", digest)
+func GetBlobManifestRoute(name string, tophash string) string {
+	return path.Join(RouteNameV1, name, "blobs", tophash)
+}
+
+func GetBlobChunkRoute(name string, tophash string, subhash string) string {
+	return path.Join(RouteNameV1, name, "blobs", tophash, "chunks", subhash)
 }
 
 func GetUploadRoute(name string) string {
