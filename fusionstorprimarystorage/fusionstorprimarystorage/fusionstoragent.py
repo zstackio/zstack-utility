@@ -197,21 +197,19 @@ class FusionstorAgent(object):
 
     @replyerror
     def unprotect_snapshot(self, req):
-        logger.debug("============ unprotect_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-
-        #shell.call('rbd snap unprotect %s' % spath)
+        src_path = os.path.join("/iscsi", spath)
+        lichbd.lichbd_snap_unprotect(src_path)
 
         return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def protect_snapshot(self, req):
-        logger.debug("============ protect_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-
-        #shell.call('rbd snap protect %s' % spath, exception=not cmd.ignoreError)
+        src_path = os.path.join("/iscsi", spath)
+        lichbd.lichbd_snap_protect(src_path)
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
@@ -274,7 +272,7 @@ class FusionstorAgent(object):
         path = self._normalize_install_path(cmd.installPath)
         size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
         size = "%dM" % (size_M)
-        path = "lichbd:%s" % (path)
+        path = "/iscsi/%s" % (path)
 
         lichbd.lichbd_create_raw(path, size)
 
