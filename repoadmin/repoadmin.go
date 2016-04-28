@@ -56,7 +56,7 @@ func uploadFile(sfe storage.IStorageFE, fh *os.File, size int64, name string, id
 	var buffer []byte
 	offset, cache := int64(0), make([]byte, v1.BlobChunkSize)
 
-	for index := 0; offset < size; index++ {
+	for index := v1.ChunkStartIndex; offset < size; index++ {
 		if offset+v1.BlobChunkSize <= size {
 			buffer = cache
 		} else {
@@ -70,30 +70,30 @@ func uploadFile(sfe storage.IStorageFE, fh *os.File, size int64, name string, id
 
 		subhash, err := utils.Sha256Sum(bytes.NewReader(buffer))
 		if err != nil {
-			return fmt.Errorf("failed to compute hash for chunk #%d", index)
+			return fmt.Errorf("failed to compute hash for chunk #%d: %s", index, err)
 		}
 
 		chwr, err := sfe.GetChunkWriter(bgctx, name, id, index, subhash)
 		if err != nil {
-			return fmt.Errorf("failed to get writer for chunk #%d:%s", index, err)
+			return fmt.Errorf("failed to get writer for chunk #%d: %s", index, err)
 		}
 
 		defer chwr.Close()
 
 		_, err = chwr.Write(buffer)
 		if err != nil {
-			return fmt.Errorf("failed to upload chunk #%d:%s", index, err)
+			return fmt.Errorf("failed to upload chunk #%d: %s", index, err)
 		}
 
 		if err = chwr.Commit(); err != nil {
-			return fmt.Errorf("failed to commit chunk #%d:%s", index, err)
+			return fmt.Errorf("failed to commit chunk #%d: %s", index, err)
 		}
 
 		offset += v1.BlobChunkSize
 	}
 
 	if err := sfe.CompleteUpload(bgctx, name, id); err != nil {
-		return fmt.Errorf("failed to complete upload task %s", id)
+		return fmt.Errorf("failed to complete upload task %s: %s", id, err)
 	}
 
 	return nil
@@ -124,20 +124,20 @@ func doAdd(sfe storage.IStorageFE, args []string) error {
 
 	fh, err := os.Open(*ffile)
 	if err != nil {
-		return fmt.Errorf("failed to open %s:%s", *ffile, err)
+		return fmt.Errorf("failed to open %s: %s", *ffile, err)
 	}
 
 	defer fh.Close()
 
 	info, err := fh.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to stat %s:%s", *ffile, err)
+		return fmt.Errorf("failed to stat %s: %s", *ffile, err)
 	}
 
 	uploadinfo := v1.UploadInfo{Size: info.Size()}
 	uups, err := sfe.PrepareBlobUpload(bgctx, *fname, &uploadinfo)
 	if err != nil {
-		return fmt.Errorf("prepare upload failed:%s", err)
+		return fmt.Errorf("prepare upload failed: %s", err)
 	}
 
 	err = uploadFile(sfe, fh, info.Size(), *fname, path.Base(uups))

@@ -245,9 +245,9 @@ func (sf StorageFE) getBlobChunks(ctx context.Context, name string, uu string) (
 		return nil, err
 	}
 
-	result := make([]storagedriver.FileInfo, 0)
+	var result []storagedriver.FileInfo
 	for _, fname := range ls {
-		if strings.HasPrefix(fname, chunkNamePrefix) {
+		if _, _, err = getIndexAndHash(fname); err == nil {
 			info, err := sf.driver.Stat(ctx, fname)
 			if err != nil {
 				return nil, err
@@ -324,6 +324,10 @@ func buildMaps(chunks []storagedriver.FileInfo, totalSize int64) (map[string]str
 		return nil, nil, fmt.Errorf("chunk number (%d) and index number (%d) mismatch", clen, ilen)
 	}
 
+	if size != totalSize {
+		return nil, nil, fmt.Errorf("uploaded chunk size (%d) not equal to file size (%d)", size, totalSize)
+	}
+
 	return chunkMap, indexMap, nil
 }
 
@@ -342,6 +346,10 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 	chunks, err := sf.getBlobChunks(ctx, name, uu)
 	if err != nil {
 		return err
+	}
+
+	if len(chunks) == 0 {
+		return fmt.Errorf("no chunks found for %s", uu)
 	}
 
 	chunkMap, indexMap, err := buildMaps(chunks, uploadinfo.Size)
