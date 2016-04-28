@@ -1307,6 +1307,8 @@ ExecStart=/usr/bin/zstack-ctl start
 ExecStop=/usr/bin/zstack-ctl stop
 Restart=on-abort
 RemainAfterExit=Yes
+TimeoutStartSec=300
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
