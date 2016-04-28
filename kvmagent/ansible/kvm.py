@@ -146,8 +146,9 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg.src = "%s/libvirtd" % file_root
     copy_arg.dest = "/etc/sysconfig/libvirtd"
     libvirtd_status = copy(copy_arg, host_post_info)
-    # name: flush forwarding chain avoid block VR packet
-    command = "iptables -F FORWARD"
+    # name: flush forwarding chain reject rule avoid block VR packet and keep sg rule
+    command = "iptables -C FORWARD -j REJECT --reject-with icmp-host-prohibited > /dev/null 2>&1 && iptables -D " \
+              "FORWARD -j REJECT --reject-with icmp-host-prohibited  > /dev/null 2>&1 || iptables-save"
     run_remote_command(command, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
@@ -262,6 +263,7 @@ if chroot_env == 'false':
             service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
         # name: restart kvmagent
         service_status("zstack-kvmagent", "state=restarted enabled=yes", host_post_info)
+
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy kvm agent successful", host_post_info, "INFO")
