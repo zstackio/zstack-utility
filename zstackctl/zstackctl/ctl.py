@@ -1093,6 +1093,9 @@ class StartAllCmd(Command):
                            ' if those services are installed'
         ctl.register_command(self)
 
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
+
     def run(self, args):
         def start_cassandra():
             exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
@@ -1114,7 +1117,10 @@ class StartAllCmd(Command):
 
         def start_mgmt_node():
             info(colored('Starting ZStack management node, it may take a few minutes...', 'blue'))
-            ctl.internal_run('start_node')
+            if args.daemon:
+                ctl.internal_run('start_node', '--daemon')
+            else:
+                ctl.internal_run('start_node')
 
         def start_ui():
             virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
@@ -1143,6 +1149,7 @@ class StartCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to start the management node on a remote machine')
         parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 300 seconds.', default=300)
+        parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
 
     def _start_remote(self, args):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
@@ -1274,6 +1281,8 @@ class StartCmd(Command):
 
             raise e
 
+        if not args.daemon:
+            shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack')
         info('successfully started management node')
 
 class StopCmd(Command):
@@ -3675,7 +3684,7 @@ class KairosdbCmd(Command):
         return find_process_by_cmdline('org.kairosdb.core.Main')
 
     def start(self, args):
-        shell("iptables-save | grep -- '-A INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT' > /dev/null || iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT")
+        shell("iptables-save | grep -- '-A INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT' > /dev/null || iptables -w -I INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT")
 
         pid = self._status(args)
         if pid:
@@ -3841,7 +3850,7 @@ class CassandraCmd(Command):
                             default=-1, required=False)
 
     def start(self, args):
-        shell("iptables-save | grep -- '-A INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT' > /dev/null || iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT")
+        shell("iptables-save | grep -- '-A INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT' > /dev/null || iptables -w -I INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT")
 
         pid = self._status(args)
         if pid:
