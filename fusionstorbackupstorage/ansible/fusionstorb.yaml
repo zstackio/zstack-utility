@@ -1,0 +1,95 @@
+---
+
+- hosts: "{{host}}"
+  vars:
+    - virtenv_path: "{{zstack_root}}/virtualenv/fusionstorb/"
+    - fusionstorb_root: "{{zstack_root}}/fusionstorb"
+    - file_root: "files/fusionstorb"
+    - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
+    - proxy: "{{http_proxy|default()}}"
+    - sproxy: "{{https_proxy|default()}}"
+    - yum_repos: "{{yum_repo|default('false')}}"
+
+  tasks:
+    - include: zstacklib.yaml
+
+    - name: create root directories
+      shell: "mkdir -p {{item}}"
+      with_items:
+        - "{{fusionstorb_root}}"
+        - "{{virtenv_path}}"
+
+    - name: install dependent packages on RedHat based OS from local
+      when: ansible_os_family == 'RedHat' and yum_repos != 'false'
+      shell: "yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y wget qemu-img"
+
+    - name: install dependent packages on RedHat based OS from online
+      when: ansible_os_family == 'RedHat' and yum_repos == 'false'
+      shell: "yum --nogpgcheck install -y wget qemu-img"
+
+    - name: install dependent packages on Debian based OS
+      when: ansible_os_family == 'Debian'
+      apt: pkg="{{item}}"
+      with_items:
+        - wget
+        - qemu-utils
+
+    - name: RHEL7 specific packages from user defined repos
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repos != 'false'
+      shell: "rpm -q iptables-services || yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y iptables-services "
+
+    - name: RHEL7 specific packages from online
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repos == 'false'
+      shell: "rpm -q iptables-services || yum --nogpgcheck install -y iptables-services"
+
+    - name: disable firewalld in RHEL7 and Centos7
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      shell: "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
+
+    - name: disable selinux on RedHat based OS
+      when: ansible_os_family == 'RedHat'
+      selinux: state=permissive policy=targeted
+
+    - shell: virtualenv --version | grep "12.1.1"
+      register: virtualenv_ret
+      ignore_errors: True
+
+    - name: install virtualenv
+      pip: name=virtualenv version=12.1.1 extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}"
+      when: virtualenv_ret.rc != 0
+
+    - name: create virtualenv
+      shell: "rm -rf {{virtenv_path}} && rm -rf {{fusionstorb_root}}/{{pkg_zstacklib}} && rm -f {{fusionstorb_root}}/{{pkg_fusionstorbagent}} && virtualenv --system-site-packages {{virtenv_path}}"
+
+    - name: copy zstacklib
+      copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{fusionstorb_root}}/{{pkg_zstacklib}}"
+      notify:
+        - install zstacklib
+
+    - name: copy fusionstor backupstorage agent
+      copy: src="{{file_root}}/{{pkg_fusionstorbagent}}" dest="{{fusionstorb_root}}/{{pkg_fusionstorbagent}}"
+      notify:
+        - install fusionstorbagent
+
+    - name: copy service file
+      when: ansible_os_family == 'RedHat' or ansible_os_family == 'Debian'
+      copy: src=files/fusionstorb/zstack-fusionstor-backupstorage dest=/etc/init.d/ mode=755
+
+    - meta: flush_handlers
+
+    - name: restart fusionstorbagent
+      service: name=zstack-fusionstor-backupstorage state=restarted enabled=yes
+
+  handlers:
+    - name: install zstacklib
+      environment:
+        http_proxy: "{{proxy}}"
+        https_proxy: "{{sproxy}}"
+      pip: name="{{fusionstorb_root}}/{{pkg_zstacklib}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}"
+
+    - name: install fusionstorbagent
+      environment:
+        http_proxy: "{{proxy}}"
+        https_proxy: "{{sproxy}}"
+      pip: name="{{fusionstorb_root}}/{{pkg_fusionstorbagent}}" extra_args="--ignore-installed --trusted-host {{trusted_host}} -i {{pip_url}}" virtualenv="{{virtenv_path}}"
+
