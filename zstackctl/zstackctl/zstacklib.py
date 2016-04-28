@@ -1276,10 +1276,35 @@ class ZstackLib(object):
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
             run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
             # set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
-            repo_aliyun_repo = CopyArg()
-            repo_aliyun_repo.src = "files/zstacklib/zstack-aliyun-yum.repo"
-            repo_aliyun_repo.dest = "/etc/yum.repos.d/zstack-aliyun-yum.repo"
-            copy(repo_aliyun_repo, host_post_info)
+            command = """
+echo -e "#aliyun base
+[alibase]
+name=CentOS-\$releasever - Base - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/
+gpgcheck=0
+enabled=0
+#released updates
+[aliupdates]
+name=CentOS-\$releasever - Updates -mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/
+enabled=0
+gpgcheck=0
+[aliextras]
+name=CentOS-\$releasever - Extras - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/
+enabled=0
+gpgcheck=0
+[aliepel]
+name=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com
+baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+        """
+            run_remote_command(command, host_post_info)
 
             if yum_repo == "false":
                 # yum_repo defined by user
@@ -1296,10 +1321,36 @@ class ZstackLib(object):
                     yum_install_package(pkg, host_post_info)
             else:
                 # set 163 mirror yum repo
-                repo_163_copy = CopyArg()
-                repo_163_copy.src = "files/zstacklib/zstack-163-yum.repo"
-                repo_163_copy.dest = "/etc/yum.repos.d/zstack-163-yum.repo"
-                copy(repo_163_copy, host_post_info)
+                command = """
+echo -e "#163 base
+[163base]
+name=CentOS-\$releasever - Base - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/
+gpgcheck=0
+enabled=0
+#released updates
+[163updates]
+name=CentOS-\$releasever - Updates - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/
+enabled=0
+gpgcheck=0
+#additional packages that may be useful
+[163extras]
+name=CentOS-\$releasever - Extras - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/
+enabled=0
+gpgcheck=0
+[ustcepel]
+name=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc
+baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
+        """
+                run_remote_command(command, host_post_info)
                 # install libselinux-python and other command system libs from user defined repos
                 # enable alibase repo for yum clean avoid no repo to be clean
                 command = (
@@ -1311,14 +1362,6 @@ class ZstackLib(object):
 
             # enable ntp service for RedHat
             service_status("ntpd", "state=restarted enabled=yes", host_post_info)
-            # check ansible 1.8 exist in local system
-            (status, output) = commands.getstatusoutput(" ansible --version | grep 1.8.2")
-            if status != 0:
-                (status, output) = commands.getstatusoutput("yum remove -y ansible && pip install -I "
-                            "%s/../ansible-1.8.2.tar.gz --trusted-host %s -i %s" % (current_dir, trusted_host, pip_url))
-                if status != 0:
-                    logger.error("ERROR: Install ansible 1.8.2 failed: %s " % output)
-                    sys.exit(1)
 
         elif distro == "Debian" or distro == "Ubuntu":
             # install dependency packages for Debian based OS
