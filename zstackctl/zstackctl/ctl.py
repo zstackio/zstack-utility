@@ -1282,7 +1282,7 @@ class StartCmd(Command):
             raise e
 
         if not args.daemon:
-            shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack')
+            shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception = False)
         info('successfully started management node')
 
 class StopCmd(Command):
