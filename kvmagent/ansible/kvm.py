@@ -146,10 +146,6 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg.src = "%s/libvirtd" % file_root
     copy_arg.dest = "/etc/sysconfig/libvirtd"
     libvirtd_status = copy(copy_arg, host_post_info)
-    # name: flush forwarding chain reject rule avoid block VR packet and keep sg rule
-    command = "iptables -C FORWARD -j REJECT --reject-with icmp-host-prohibited > /dev/null 2>&1 && iptables -D " \
-              "FORWARD -j REJECT --reject-with icmp-host-prohibited  > /dev/null 2>&1 || iptables-save"
-    run_remote_command(command, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install kvm related packages on Debian based OS
