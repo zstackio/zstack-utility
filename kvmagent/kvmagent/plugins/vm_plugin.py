@@ -8,6 +8,7 @@ from zstacklib.utils import xmlobject
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import lichbd
 from zstacklib.utils import sizeunit
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import linux
@@ -530,10 +531,10 @@ class IsoFusionstor(object):
         iqn = lichbd.lichbd_get_iqn()
         port = lichbd.lichbd_get_iscsiport()
 
-        path = self.volume.installPath.lstrip('ceph:').lstrip('//')
+        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         pool = path.split("/")[0]
         image = path.split("/")[1]
-        name = "%s:%s/%s" % (iqn, pool, image)
+        name = "%s:%s.%s/0" % (iqn, pool, image)
 
         disk = etree.Element('disk', {'type':'network', 'device':'cdrom'})
         source = etree.Element('source', None, {'name': name, 'protocol':'iscsi'})
@@ -552,10 +553,10 @@ class IdeFusionstor(object):
         port = lichbd.lichbd_get_iscsiport()
         iqn = lichbd.lichbd_get_iqn()
 
-        path = self.volume.installPath.lstrip('ceph:').lstrip('//')
+        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         pool = path.split("/")[0]
         image = path.split("/")[1]
-        name = "%s:%s/%s" % (iqn, pool, image)
+        name = "%s:%s.%s/0" % (iqn, pool, image)
 
         iscsi_path = "iscsi://%s:%s/%s" % (host, port, name)
         file_format = shell.call("set -o pipefail; qemu-img info %s| grep 'file format' | cut -d ':' -f 2" % (iscsi_path))
@@ -577,16 +578,16 @@ class VirtioFusionstor(object):
         port = lichbd.lichbd_get_iscsiport()
         iqn = lichbd.lichbd_get_iqn()
 
-        path = self.volume.installPath.lstrip('ceph:').lstrip('//')
+        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         pool = path.split("/")[0]
         image = path.split("/")[1]
-        name = "%s:%s/%s" % (iqn, pool, image)
+        name = "%s:%s.%s/0" % (iqn, pool, image)
 
         iscsi_path = "iscsi://%s:%s/%s" % (host, port, name)
         file_format = shell.call("set -o pipefail; qemu-img info %s| grep 'file format' | cut -d ':' -f 2" % (iscsi_path))
 
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
-        source = etree.Element('source', None, {'name': name, 'protocol':'iscsi'})
+        source = etree.Element('source', {'name': name, 'protocol':'iscsi'})
         e(source, 'host', None, {'name':host, 'port': str(port)})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
         e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'type':file_format, 'io':'native'})
@@ -1112,6 +1113,9 @@ class Vm(object):
                         elif volume.deviceType == 'ceph':
                             if xmlobject.has_element(disk, 'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
                                 return True
+                        elif volume.deviceType == 'fusionstor':
+                            if xmlobject.has_element(disk, 'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                                return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
                     return False
@@ -1153,7 +1157,7 @@ class Vm(object):
         def get_disk_name():
             if volume.deviceType == 'iscsi':
                 fmt = 'sd%s'
-            elif volume.deviceType in ['file', 'ceph']:
+            elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
                 if volume.useVirtio:
                     fmt = 'vd%s'
                 else:
@@ -1195,6 +1199,10 @@ class Vm(object):
                                     logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
                                     return False
                         elif volume.deviceType == 'ceph':
+                                if xmlobject.has_element(disk, 'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                                    logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                    return False
+                        elif volume.deviceType == 'fusionstor':
                                 if xmlobject.has_element(disk, 'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
                                     logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
                                     return False
@@ -1450,6 +1458,10 @@ class Vm(object):
             cdrom = bi.to_xmlobject()
         elif iso.path.startswith('ceph'):
             ic = IsoCeph()
+            ic.iso = iso
+            cdrom = ic.to_xmlobject()
+        elif iso.path.startswith('fusionstor'):
+            ic = IsoFusionstor()
             ic.iso = iso
             cdrom = ic.to_xmlobject()
         else:
@@ -1822,6 +1834,24 @@ class Vm(object):
                 else:
                     return ceph_blk()
 
+            def fusionstor_volume(dev_letter, virtio):
+                def fusionstor_virtio():
+                    vc = VirtioFusionstor()
+                    vc.volume = v
+                    vc.dev_letter = dev_letter
+                    return vc.to_xmlobject()
+
+                def ceph_blk():
+                    ic = IdeFusionstor()
+                    ic.volume = v
+                    ic.dev_letter = dev_letter
+                    return ic.to_xmlobject()
+
+                if virtio:
+                    return fusionstor_virtio()
+                else:
+                    return fusionstor_blk()
+
             def volume_qos(volume_xml_obj):
                 if not cmd.addons:
                     return
@@ -1862,6 +1892,8 @@ class Vm(object):
                     vol = iscsibased_volume(dev_letter, v.useVirtio)
                 elif v.deviceType == 'ceph':
                     vol = ceph_volume(dev_letter, v.useVirtio)
+                elif v.deviceType == 'fusionstor':
+                    vol = fusionstor_volume(dev_letter, v.useVirtio)
                 else:
                     raise Exception('unknown volume deivceType: %s' % v.deviceType)
 
