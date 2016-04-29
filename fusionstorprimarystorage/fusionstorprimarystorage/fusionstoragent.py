@@ -235,11 +235,13 @@ class FusionstorAgent(object):
     def flatten(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.path)
-
+        path = os.path.join("/iscsi", path)
         #shell.call('rbd flatten %s' % path)
+        #lichbd.lichbd_snap_flatten(path)
 
         rsp = AgentResponse()
-        self._set_capacity_to_response(rsp)
+        rsp.success = False
+        rsp.error = 'unsupported SimpleSftpBackupStorage,  only supports fusionstor backupstorage')
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -286,72 +288,29 @@ class FusionstorAgent(object):
 
         src_path = self._normalize_install_path(cmd.primaryStorageInstallPath)
         prikey_file = linux.write_to_temp_file(cmd.sshKey)
-
         bs_folder = os.path.dirname(cmd.backupStorageInstallPath)
-        shell.call('ssh -o StrictHostKeyChecking=no -i %s root@%s "mkdir -p %s"' %
-                   (prikey_file, cmd.hostname, bs_folder))
 
-        try:
-            shell.call("set -o pipefail; rbd export %s - | ssh -o StrictHostKeyChecking=no -i %s root@%s 'cat > %s'" %
-                        (src_path, prikey_file, cmd.hostname, cmd.backupStorageInstallPath))
-        finally:
-            os.remove(prikey_file)
-
-        return jsonobject.dumps(AgentResponse())
+        rsp = AgentResponse()
+        rsp.success = False
+        rsp.error = 'unsupported SimpleSftpBackupStorage,  only supports fusionstor backupstorage')
+        return jsonobject.dumps(rsp)
 
 
     @replyerror
     @rollback
     def sftp_download(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
         hostname = cmd.hostname
         prikey = cmd.sshKey
-
         pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
         tmp_image_name = 'tmp-%s' % image_name
-
         prikey_file = linux.write_to_temp_file(prikey)
 
-        @rollbackable
-        def _0():
-            tpath = "%s/%s" % (pool, tmp_image_name)
-            shell.call('rbd info %s > /dev/null && rbd rm %s' % (tpath, tpath))
-        _0()
-
-        try:
-            shell.call('set -o pipefail; ssh -o StrictHostKeyChecking=no -i %s root@%s "cat %s" | rbd import --image-format 2 - %s/%s' %
-                        (prikey_file, hostname, cmd.backupStorageInstallPath, pool, tmp_image_name))
-        finally:
-            os.remove(prikey_file)
-
-        @rollbackable
-        def _1():
-            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
-        _1()
-
-        file_format = shell.call("set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
-        file_format = file_format.strip()
-        if file_format not in ['qcow2', 'raw']:
-            raise Exception('unknown image format: %s' % file_format)
-
-        if file_format == 'qcow2':
-            conf_path = None
-            try:
-                with open('/etc/fusionstor/fusionstor.conf', 'r') as fd:
-                    conf = fd.read()
-                    conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
-                    conf_path = linux.write_to_temp_file(conf)
-
-                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
-                shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
-            finally:
-                if conf_path:
-                    os.remove(conf_path)
-        else:
-            shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
-
         rsp = AgentResponse()
-        self._set_capacity_to_response(rsp)
+        rsp.success = False
+        rsp.error = 'unsupported SimpleSftpBackupStorage,  only supports fusionstor backupstorage')
+        #self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -379,5 +338,3 @@ class FusionstorDaemon(daemon.Daemon):
         logger.debug("------- start fusionstor... -----------")
         self.agent = FusionstorAgent()
         self.agent.http_server.start()
-
-
