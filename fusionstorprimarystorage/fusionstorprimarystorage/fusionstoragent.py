@@ -241,7 +241,7 @@ class FusionstorAgent(object):
 
         rsp = AgentResponse()
         rsp.success = False
-        rsp.error = 'unsupported SimpleSftpBackupStorage,  only supports fusionstor backupstorage')
+        rsp.error = 'unsupported flatten')
         return jsonobject.dumps(rsp)
 
     @replyerror

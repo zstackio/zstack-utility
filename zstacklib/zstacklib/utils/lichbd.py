@@ -139,7 +139,7 @@ def lichbd_get_capacity():
     raise_exp("error: %s" % (0))
 
 def lichbd_snap_create(snap_path):
-    shellcmd = shell.call('/opt/fusionstack/libexec/lich.snapshot --create %s' % (snap_path))
+    shellcmd = call_try('/opt/fusionstack/libexec/lich.snapshot --create %s' % (snap_path))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
@@ -147,7 +147,7 @@ def lichbd_snap_create(snap_path):
 
 def lichbd_snap_list(image_path):
     snaps = []
-    shellcmd = shell.call('/opt/fusionstack/lich/libexec/lich.snapshot --list %s 2>/dev/null' % (image_path))
+    shellcmd = call_try('/opt/fusionstack/lich/libexec/lich.snapshot --list %s 2>/dev/null' % (image_path))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
@@ -158,7 +158,7 @@ def lichbd_snap_list(image_path):
 
 def lichbd_snap_delete(snap_path):
     cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --remove %s' % (snap_path)
-    shellcmd = shell.call(cmd)
+    shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
@@ -167,7 +167,7 @@ def lichbd_snap_delete(snap_path):
  
 def lichbd_snap_clone(src, dst):
     cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --clone %s %s' % (src, dst)
-    shellcmd = shell.call(cmd)
+    shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
@@ -176,7 +176,7 @@ def lichbd_snap_clone(src, dst):
 
 def lichbd_snap_rollback(snap_path):
     cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --rollback %s' % (snap_path)
-    shellcmd = shell.call(cmd)
+    shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
@@ -185,7 +185,7 @@ def lichbd_snap_rollback(snap_path):
 
 def lichbd_snap_protect(snap_path):
     cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --protect %s' % (snap_path)
-    shellcmd = shell.call(cmd)
+    shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
@@ -194,7 +194,7 @@ def lichbd_snap_protect(snap_path):
 
 def lichbd_snap_unprotect(snap_path):
     cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --unprotect %s' % (snap_path)
-    shellcmd = shell.call(cmd)
+    shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
@@ -202,7 +202,7 @@ def lichbd_snap_unprotect(snap_path):
     return shellcmd.stdout
 
 def lichbd_download(url, image_path):
-    shellcmd = shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | /opt/fusionstack/lich/libexec/lichfs --copy :- %s' % (url, image_path))
+    shellcmd = call_try('set -o pipefail; wget --no-check-certificate -q -O - %s | /opt/fusionstack/lich/libexec/lichfs --copy :- %s' % (url, image_path))
 
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
