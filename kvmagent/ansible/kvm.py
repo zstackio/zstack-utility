@@ -112,7 +112,7 @@ if distro == "RedHat" or distro == "CentOS":
         command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
         run_remote_command(command, host_post_info)
         # name: disable NetworkManager in RHEL7 and Centos7
-        service_status("NetworkManager", "state=stopped enabled=no", host_post_info)
+        service_status("NetworkManager", "state=stopped enabled=no", host_post_info, ignore_error=True)
 
     if init == 'true':
         # name: copy iptables initial rules in RedHat

@@ -1027,7 +1027,7 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
                 return pip_install_package(pip_install_arg, host_post_info)
 
 
-def service_status(name, args, host_post_info):
+def service_status(name, args, host_post_info, ignore_error=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
@@ -1042,24 +1042,50 @@ def service_status(name, args, host_post_info):
         module_args="name=%s " % name + args,
         pattern=host
     )
-    result = runner.run()
-    logger.debug(result)
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-        sys.exit(1)
+    if ignore_error is True:
+        try:
+            result = runner.run()
+            logger.debug(result)
+            if result['contacted'] == {}:
+                ansible_start = AnsibleStartResult()
+                ansible_start.host = host
+                ansible_start.post_url = post_url
+                ansible_start.result = result
+                handle_ansible_start(ansible_start)
+            else:
+                if 'failed' in result['contacted'][host]:
+                    details = "ERROR: change service %s status failed!" % name
+                    handle_ansible_info(details, host_post_info, "WARNING")
+                else:
+                    details = "SUCC: Service %s status changed" % name
+                    handle_ansible_info(details, host_post_info, "INFO")
+        except:
+            logger.debug("WARNING: The service %s status changed failed" % name)
     else:
-        if 'failed' in result['contacted'][host]:
-            description = "ERROR: change service status failed!"
-            handle_ansible_failed(description, result, host_post_info)
+        result = runner.run()
+        logger.debug(result)
+        if result['contacted'] == {}:
+            ansible_start = AnsibleStartResult()
+            ansible_start.host = host
+            ansible_start.post_url = post_url
+            ansible_start.result = result
+            handle_ansible_start(ansible_start)
             sys.exit(1)
         else:
-            details = "SUCC: Service status changed"
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
+            if 'failed' in result['contacted'][host]:
+                description = "ERROR: change service status failed!"
+                handle_ansible_failed(description, result, host_post_info)
+                sys.exit(1)
+            else:
+                details = "SUCC: Service status changed"
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+
+
+def update_file(dest, args, host_post_info):
+    '''Use this function to change the file content'''
+
+
 
 
 def update_file(dest, args, host_post_info):
