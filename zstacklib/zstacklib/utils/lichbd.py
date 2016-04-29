@@ -37,7 +37,7 @@ def raise_exp(shellcmd):
     err.append('return code: %s' % shellcmd.process.returncode)
     err.append('stdout: %s' % shellcmd.stdout)
     err.append('stderr: %s' % shellcmd.stderr)
-    raise ShellError('\n'.join(err))
+    raise shell.ShellError('\n'.join(err))
 
 def lichbd_config():
     pass
