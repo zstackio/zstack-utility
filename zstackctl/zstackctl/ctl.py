@@ -3582,11 +3582,10 @@ class ChangeIpCmd(Command):
               ('CloudBus.serverIp.0', cloudbus_server_ip),
             ])
             info("Update cloudbus server ip %s in %s " % (cloudbus_server_ip, zstack_conf_file))
-            if ctl.read_property('management.server.ip') is not None:
-                ctl.write_properties([
-                  ('management.server.ip', args.ip),
-                ])
-                info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
+            ctl.write_properties([
+              ('management.server.ip', args.ip),
+            ])
+            info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
             db_url = ctl.read_property('DB.url')
             db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
             db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
@@ -3595,7 +3594,7 @@ class ChangeIpCmd(Command):
             ])
             info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
         else:
-            info("Didn't find %s, skip update all ip" % zstack_conf_file  )
+            info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
 
         # Update kairosdb config file
