@@ -153,7 +153,6 @@ func doAdd(sfe storage.IStorageFE, args []string) error {
 	// update image manifest
 	manifest := v1.ImageManifest{
 		Blobsum: tophash,
-		Created: time.Now().Format(time.RFC3339),
 		Author:  *fauth,
 		Arch:    *farch,
 		Desc:    *fdesc,
@@ -167,9 +166,10 @@ func doAdd(sfe storage.IStorageFE, args []string) error {
 	}
 
 	manifest.Id = imageid
+	manifest.Created = time.Now().Format(time.RFC3339)
 	err = sfe.PutManifest(bgctx, *fname, *ftag, &manifest)
 	if err != nil {
-		return err
+		return fmt.Errorf("image id: %s: %s", imageid, err)
 	}
 
 	fmt.Printf("ImageId: %s Tag: %s\n", imageid, *ftag)
