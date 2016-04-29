@@ -3436,8 +3436,10 @@ class DumpMysqlCmd(Command):
 
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack"
-    host_log_list = ['zstack-sftpbackupstorage.log','zstack.log','zstack-dashboard.log','zstack-console-proxy.log',
-                     'zstack-ui.log']
+    host_log_list = ['zstack-sftpbackupstorage.log','zstack.log','zstack-kvmagent.log','ceph-backupstorage.log',
+                     'ceph-primarystorage.log', 'zstack-iscsi-filesystem-agent.log']
+    mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
+                   'zstack-dashboard.log']
 
     def __init__(self):
         super(CollectLogCmd, self).__init__()
@@ -3464,12 +3466,12 @@ class CollectLogCmd(Command):
         return host_vo
 
     def get_host_log(self, host_post_info, collect_dir):
-        info("Get host %s log..." % host_post_info.host)
+        info("Collecting log from host: %s ..." % host_post_info.host)
         tmp_collect_log_dir = "%s/tmp-collect-log/" % CollectLogCmd.zstack_log_dir
         command = "mkdir -p %s " % tmp_collect_log_dir
         run_remote_command(command, host_post_info)
         for log in CollectLogCmd.host_log_list:
-            command = "tail -n 3000 %s/%s > %s/%s-collect 2>&1 || true" \
+            command = "tail -n 10000 %s/%s > %s/%s-collect 2>&1 || true" \
                       % (CollectLogCmd.zstack_log_dir, log, tmp_collect_log_dir, log)
             run_remote_command(command, host_post_info)
         command = "tar zcf %s/collect-log.tar.gz %s" % (CollectLogCmd.zstack_log_dir, tmp_collect_log_dir)
@@ -3483,22 +3485,17 @@ class CollectLogCmd(Command):
         run_remote_command(command, host_post_info)
 
     def get_management_node_log(self, collect_dir):
-        info("Get management node log...")
+        info("Collecting log from this management node ...")
         if not os.path.exists(collect_dir + "/management-node"):
             os.makedirs(collect_dir + "/management-node")
-        (status, output) = commands.getstatusoutput("tail -n 3000 %s/../../logs/management-server.log > "
+        (status, output) = commands.getstatusoutput("tail -n 10000 %s/../../logs/management-server.log > "
                                                     "%s/management-node/management-server.log 2>&1 "
                                                     % (ctl.zstack_home, collect_dir))
         if status != 0:
             error("get management-server.log failed: %s" % output)
-        # some management node no ha.log
-        (status, output) = commands.getstatusoutput("tail -n 3000 %s/ha.log > %s/management-node/ha.log 2>&1 "
-                                                    % (CollectLogCmd.zstack_log_dir, collect_dir))
-
-        (status, output) = commands.getstatusoutput("tail -n 3000 %s/deploy.log > %s/management-node/deploy.log 2>&1 "
-                                                    % (CollectLogCmd.zstack_log_dir, collect_dir))
-        if status != 0:
-            error(output)
+        for log in CollectLogCmd.mn_log_list:
+            (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
+                                                        % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
 
     def generate_tar_ball(self, collect_dir):
         (status, output) = commands.getstatusoutput("tar zcf collect-log.tar.gz %s" % collect_dir)

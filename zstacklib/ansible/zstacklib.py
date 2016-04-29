@@ -127,7 +127,7 @@ def retry(times=3, sleep_time=3):
                     return f(*args, **kwargs)
                 except Exception as e:
                     time.sleep(sleep_time)
-            print "Network unstable, please try again later"
+            print "The host is inaccessible currently, please make sure the host can be connected then try again."
             sys.exit(1)
         return inner
     return wrap
