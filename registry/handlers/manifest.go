@@ -19,10 +19,10 @@ func GetManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	NewHttpResult(res, err).WriteResponse(w)
 }
 
-// PUT  /v1/<name>/manifests/{refrence}
+// PUT  /v1/<name>/manifests/{tag}
 // body: Image Manifest in JSON
 func PutManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	name, ref, s := GetManifestArgAndSfe(ctx, w, r)
+	name, tag, s := GetManifestArgAndSfe(ctx, w, r)
 	if s == nil {
 		return
 	}
@@ -35,7 +35,7 @@ func PutManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.PutManifest(ctx, name, ref, &imf); err != nil {
+	if err := s.PutManifest(ctx, name, tag, &imf); err != nil {
 		WriteHttpError(w, err, http.StatusBadRequest)
 		return
 	}

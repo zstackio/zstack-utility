@@ -18,6 +18,10 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 		return err
 	}
 
+	if _, err := os.Stat(GetImageFilePath(name, imf.Id)); err == nil {
+		return fmt.Errorf("%s:%s already exists", name, imf.Id)
+	}
+
 	bmf, err := cln.getBlobManifest(name, imf.Blobsum)
 	if err != nil {
 		return err

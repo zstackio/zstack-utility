@@ -32,3 +32,7 @@ func GetImageFilePath(name string, imgid string) string {
 	fname := GetImageManifestPath(name, imgid)
 	return strings.TrimSuffix(fname, ".json") + ".qcow2"
 }
+
+func GetImageTagPath(name string, tag string) string {
+	return path.Join(ImageRepoTopDir, name, "manifests", "tags", tag)
+}

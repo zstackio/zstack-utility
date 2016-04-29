@@ -9,6 +9,7 @@ import (
 	"image-store/registry/api/v1"
 	"image-store/utils"
 	"io"
+	"path"
 	"strings"
 )
 
@@ -72,6 +73,28 @@ func getImageJson(ctx context.Context, d storagedriver.StorageDriver, ps string)
 	return v1.ParseImageManifest(buf)
 }
 
+// When given a partial digest, we search it and check its uniqueness.
+func findImageIdInArray(lst []string, prefix string) (string, error) {
+	var res []string
+
+	// FIXME the code logic here assumes the schema of pathspec
+	for _, ps := range lst {
+		imageId := path.Base(ps)
+		if strings.HasPrefix(imageId, prefix) {
+			res = append(res, imageId)
+		}
+	}
+
+	switch len(res) {
+	case 1:
+		return res[0], nil
+	case 0:
+		return "", fmt.Errorf("no manifest found for digest: %s", prefix)
+	default:
+		return "", fmt.Errorf("digest is ambiguous: %s", prefix)
+	}
+}
+
 func (sf StorageFE) GetManifest(ctx context.Context, nam string, ref string) (*v1.ImageManifest, error) {
 	// If the reference is a tag -
 	//  1. get the digest via tag
@@ -81,8 +104,8 @@ func (sf StorageFE) GetManifest(ctx context.Context, nam string, ref string) (*v
 	name := strings.ToLower(nam)
 
 	if utils.IsDigest(refstr) {
-		ps := imageJsonPathSpec{name: name, id: refstr}.pathSpec()
-		res, err := sf.driver.List(ctx, ps)
+		topdir := imageJsonPathSpec{name: name, id: refstr}.revisionsDir()
+		res, err := sf.driver.List(ctx, topdir)
 		if err != nil {
 			if _, ok := err.(storagedriver.PathNotFoundError); ok {
 				return nil, fmt.Errorf("digest not found: %s", ref)
@@ -90,14 +113,13 @@ func (sf StorageFE) GetManifest(ctx context.Context, nam string, ref string) (*v
 			return nil, err
 		}
 
-		switch len(res) {
-		case 1:
-			return getImageJson(ctx, sf.driver, res[0])
-		case 0:
-			return nil, fmt.Errorf("internal error - no manifest found")
-		default:
-			return nil, fmt.Errorf("digest is ambiguous: %s", refstr)
+		id, err := findImageIdInArray(res, ref)
+		if err != nil {
+			return nil, err
 		}
+
+		ps := imageJsonPathSpec{name: name, id: id}.pathSpec()
+		return getImageJson(ctx, sf.driver, ps)
 	}
 
 	// ok - it is a tag
@@ -116,6 +138,7 @@ func (sf StorageFE) GetManifest(ctx context.Context, nam string, ref string) (*v
 	return getImageJson(ctx, sf.driver, ips)
 }
 
+// TODO check existence, simplify logic
 func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf *v1.ImageManifest) error {
 	// If the reference is a tag -
 	//  1. put the manifest
@@ -211,8 +234,7 @@ func (sf StorageFE) PrepareBlobUpload(ctx context.Context, name string, info *v1
 		return "", err
 	}
 
-	urlps := uploadUuidPathSpec{name: name, id: uu}.urlSpec()
-	return urlps, nil
+	return uu, nil
 }
 
 func (sf StorageFE) CancelUpload(ctx context.Context, name string, uu string) error {
@@ -375,16 +397,15 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 
 	tophash, err := getTopHash(indexMap)
 	if err != nil {
-		return "", fmt.Errorf("failed to compute blob digest:", err.Error())
+		return "", fmt.Errorf("failed to compute blob digest:", err)
 	}
 
 	blobmfst, err := getBlobManifest(uploadinfo.Size, indexMap)
 	if err != nil {
-		return "", fmt.Errorf("failed to compute blob manifest:", err.Error())
+		return "", fmt.Errorf("failed to compute blob manifest:", err)
 	}
 
 	// move chunks to blobs store
-	needGenerateManifest := false
 	for k, v := range chunkMap {
 		bcps := blobChunkPathSpec{subhash: v}.pathSpec()
 		// only move those not exists
@@ -392,25 +413,29 @@ func (sf StorageFE) CompleteUpload(ctx context.Context, name string, uu string) 
 			continue
 		}
 
-		needGenerateManifest = true
-
 		if err = sf.driver.Move(ctx, k, bcps); err != nil {
-			return "", fmt.Errorf("failed to move chunks: %s", err.Error())
+			return "", fmt.Errorf("failed to move chunks: %s", err)
 		}
 	}
 
-	if needGenerateManifest {
-		// create a blob manifest
-		bmps := blobManifestPathSpec{digest: tophash}.pathSpec()
-		if err = sf.driver.PutContent(ctx, bmps, []byte(blobmfst.String())); err != nil {
-			return "", fmt.Errorf("failed to write blob manifest: %s", err.Error())
-		}
+	// create a blob manifest
+	bmps := blobManifestPathSpec{digest: tophash}.pathSpec()
+	if err = sf.putContentIfNotExist(ctx, bmps, []byte(blobmfst.String())); err != nil {
+		return "", fmt.Errorf("failed to write blob manifest: %s", err)
 	}
 
 	uups := uploadUuidPathSpec{name: name, id: uu}.pathSpec()
 	sf.driver.Delete(ctx, uups)
 
 	return tophash, nil
+}
+
+func (sf StorageFE) putContentIfNotExist(ctx context.Context, ps string, data []byte) error {
+	if _, err := sf.driver.Stat(ctx, ps); err == nil {
+		return nil
+	}
+
+	return sf.driver.PutContent(ctx, ps, data)
 }
 
 func (sf StorageFE) GetChunkWriter(ctx context.Context, name string, uu string, index int, subhash string) (storagedriver.FileWriter, error) {

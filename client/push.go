@@ -2,22 +2,101 @@ package client
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"image-store/registry/api/v1"
 	"image-store/utils"
+	"io/ioutil"
 	"net/http"
+	"os"
+	"path"
+	"strconv"
 	"strings"
 )
 
+// Pushing an image involves the following steps:
+// 1. upload blob chunks
+// 2. upload image manifest
+// 3. update local tag
 func (cln *ZImageClient) Push(imgid string, tag string) error {
-	return errors.New("not implemented")
+	manifest, err := FindImageManifest(imgid)
+	if err != nil {
+		return fmt.Errorf("image id not found: %s", imgid)
+	}
+
+	uinfo := v1.UploadInfo{Size: manifest.Size}
+	loc, err := cln.PrepareUpload(manifest.Name, &uinfo)
+	if err != nil {
+		return fmt.Errorf("failed to prepare upload: %s", err)
+	}
+
+	tracePrintf("uploading image files to: %s\n", loc)
+	if err = cln.uploadFile(GetImageFilePath(manifest.Name, manifest.Id), uinfo.Size, loc); err != nil {
+		return fmt.Errorf("failed to upload file: %s", err)
+	}
+
+	tracePrintf("constructing image manifest, tag = %s\n", tag)
+	if err = cln.putImageManifest(manifest.Name, tag, manifest); err != nil {
+		return fmt.Errorf("failed to create image manifest: %s", err)
+	}
+
+	// update local tag file
+	tagfile := GetImageTagPath(manifest.Name, tag)
+	os.MkdirAll(path.Dir(tagfile), 0775)
+
+	if err = ioutil.WriteFile(tagfile, []byte(imgid), 0644); err != nil {
+		return fmt.Errorf("failed to upload local tag file: %s", err)
+	}
+
+	return nil
 }
 
-func (cln *ZImageClient) PrepareUpload(name string) (loc string, err error) {
+func (cln *ZImageClient) uploadFile(blobpath string, size int64, loc string) error {
+	fh, err := os.Open(blobpath)
+	if err != nil {
+		return err
+	}
+
+	defer fh.Close()
+
+	var buffer []byte
+	offset, cache := int64(0), make([]byte, v1.BlobChunkSize)
+
+	for index := v1.ChunkStartIndex; offset < size; index++ {
+		if offset+v1.BlobChunkSize <= size {
+			buffer = cache
+		} else {
+			buffer = cache[:(size % v1.BlobChunkSize)]
+		}
+
+		_, err := fh.ReadAt(buffer, offset)
+		if err != nil {
+			return err
+		}
+
+		subhash, err := utils.GetChunkDigest(bytes.NewReader(buffer))
+		if err != nil {
+			return fmt.Errorf("failed to compute hash for chunk #%d: %s", index, err)
+		}
+
+		if err = cln.uploadBlobChunk(loc, index, subhash, buffer); err != nil {
+			return fmt.Errorf("failed to upload chunk #%d: %s", index, err)
+		}
+
+		offset += v1.BlobChunkSize
+	}
+
+	return cln.CompleteBlobUpload(loc)
+}
+
+func (cln *ZImageClient) PrepareUpload(name string, uinfo *v1.UploadInfo) (loc string, err error) {
 	var resp *http.Response
 
-	resp, err = cln.Get(v1.GetUploadRoute(name))
+	route := cln.GetFullUrl(v1.GetUploadRoute(name))
+	body := strings.NewReader(uinfo.String())
+	req, err := http.NewRequest("POST", route, body)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = cln.Do(req)
 	if err != nil {
 		return
 	}
@@ -28,12 +107,15 @@ func (cln *ZImageClient) PrepareUpload(name string) (loc string, err error) {
 	}
 
 	loc = resp.Header.Get("Location")
+	if loc == "" {
+		err = fmt.Errorf("no location header from response header")
+	}
+
 	return
 }
 
-func (cln *ZImageClient) CancelUpload(name string, id string) error {
-	route := v1.GetUploadIdRoute(name, id)
-	req, err := http.NewRequest("DELETE", cln.GetFullUrl(route), nil)
+func (cln *ZImageClient) CancelUpload(loc string) error {
+	req, err := http.NewRequest("DELETE", cln.GetFullUrl(loc), nil)
 	if err != nil {
 		return err
 	}
@@ -64,8 +146,8 @@ func parseRangeHeader(hdr string) (int64, error) {
 	return size, nil
 }
 
-func (cln *ZImageClient) GetProgress(name string, id string) (int64, error) {
-	resp, err := cln.Get(v1.GetUploadIdRoute(name, id))
+func (cln *ZImageClient) GetProgress(loc string) (int64, error) {
+	resp, err := cln.Get(cln.GetFullUrl(loc))
 	if err != nil {
 		return 0, err
 	}
@@ -78,8 +160,8 @@ func (cln *ZImageClient) GetProgress(name string, id string) (int64, error) {
 	return parseRangeHeader(hdr)
 }
 
-func (cln *ZImageClient) putImageManifest(name string, refernce string, imf *v1.ImageManifest) error {
-	route, reader := v1.GetManifestRoute(name, refernce), strings.NewReader(imf.String())
+func (cln *ZImageClient) putImageManifest(name string, tag string, imf *v1.ImageManifest) error {
+	route, reader := v1.GetManifestRoute(name, tag), strings.NewReader(imf.String())
 	req, err := http.NewRequest("PUT", cln.GetFullUrl(route), reader)
 	if err != nil {
 		return err
@@ -97,26 +179,16 @@ func (cln *ZImageClient) putImageManifest(name string, refernce string, imf *v1.
 	return nil
 }
 
-func doBlobUpload(cln *ZImageClient, method string, name string, id string, startOffset int64, data []byte) (*http.Response, error) {
-	chunksha1, err := utils.Sha1Sum(bytes.NewReader(data))
+func (cln *ZImageClient) uploadBlobChunk(loc string, index int, subhash string, data []byte) error {
+	req, err := http.NewRequest("PATCH", cln.GetFullUrl(loc), bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("create upload request failed: '%s'", err.Error())
 	}
 
-	route := v1.GetUploadIdRoute(name, id)
-	req, err := http.NewRequest(method, cln.GetFullUrl(route), bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("upload request failed: '%s'", err.Error())
-	}
+	req.Header.Add(v1.HnChunkHash, subhash)
+	req.Header.Add(v1.HnChunkIndex, strconv.Itoa(index))
 
-	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", startOffset, startOffset+int64(len(data)-1)))
-	req.Header.Add(v1.HnChunkHash, chunksha1)
-
-	return cln.Do(req)
-}
-
-func (cln *ZImageClient) uploadBlobChunk(name string, id string, startOffset int64, data []byte) error {
-	resp, err := doBlobUpload(cln, "PATCH", name, id, startOffset, data)
+	resp, err := cln.Do(req)
 	if err != nil {
 		return err
 	}
@@ -128,8 +200,13 @@ func (cln *ZImageClient) uploadBlobChunk(name string, id string, startOffset int
 	return nil
 }
 
-func (cln *ZImageClient) completeBlobUpload(name string, id string, startOffset int64, data []byte) error {
-	resp, err := doBlobUpload(cln, "POST", name, id, startOffset, data)
+func (cln *ZImageClient) CompleteBlobUpload(loc string) error {
+	req, err := http.NewRequest("POST", cln.GetFullUrl(loc), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := cln.Do(req)
 	if err != nil {
 		return err
 	}

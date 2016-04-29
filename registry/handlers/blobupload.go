@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"bytes"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -47,7 +47,7 @@ func PrepareBlobUpload(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	loc, err := s.PrepareBlobUpload(ctx, n, info)
+	uu, err := s.PrepareBlobUpload(ctx, n, info)
 	if err != nil {
 		switch err.(type) {
 		case errcode.ConflictError, *errcode.ConflictError:
@@ -59,7 +59,7 @@ func PrepareBlobUpload(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	w.Header().Set("Location", loc)
+	w.Header().Set("Location", v1.GetUploadIdRoute(n, uu))
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -101,11 +101,11 @@ func readWithHasher(r io.Reader, hasher hash.Hash, hashval string) (io.Reader, e
 
 func writeChunk(dest io.Writer, r *http.Request, hashsum string) error {
 	length := r.ContentLength
-	if length < 0 || length > v1.BlobChunkSize {
+	if length <= 0 || length > v1.BlobChunkSize {
 		return ErrorInvalidChunkSize
 	}
 
-	content, err := readWithHasher(io.LimitReader(r.Body, length), sha1.New(), hashsum)
+	content, err := readWithHasher(io.LimitReader(r.Body, length), sha256.New(), hashsum)
 	if err != nil {
 		return err
 	}
@@ -148,6 +148,8 @@ func getChunkIndex(r *http.Request) (int, error) {
 
 // PATCH /v1/{name}/blobs/uploads/{uuid}
 // Content-Length: <size of chunk>
+// X-Chunk-Index: the index of the chunk
+// X-Chunk-Hash: the sub-hash of the chunk
 func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	hashsum, err := getChunkHash(r)
 	if err != nil {
@@ -175,55 +177,23 @@ func UploadBlobChunk(ctx context.Context, w http.ResponseWriter, r *http.Request
 	defer wr.Close()
 
 	if err = writeChunk(wr, r, hashsum); err != nil {
-		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
+		WriteHttpError(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if err = wr.Commit(); err != nil {
-		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
+		WriteHttpError(w, err, http.StatusBadRequest)
 		return
 	}
 
 	return
 }
 
-// PUT /v1/{name}/blobs/uploads/{uuid}
-// Content-Length: <size of chunk>
-// PUT the last chunk
+// POST /v1/{name}/blobs/uploads/{uuid}
 // Response Body: tophash
 func CompleteUpload(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	hashsum, err := getChunkHash(r)
-	if err != nil {
-		WriteHttpError(w, err, http.StatusBadRequest)
-		return
-	}
-
-	index, err := getChunkIndex(r)
-	if err != nil {
-		WriteHttpError(w, err, http.StatusBadRequest)
-		return
-	}
-
 	n, uu, s := GetUploadQueryArgAndSfe(ctx, w, r)
 	if s == nil {
-		return
-	}
-
-	wr, err := s.GetChunkWriter(ctx, n, uu, index, hashsum)
-	if err != nil {
-		WriteHttpError(w, err, http.StatusBadRequest)
-		return
-	}
-
-	defer wr.Close()
-
-	if err = writeChunk(wr, r, hashsum); err != nil {
-		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
-		return
-	}
-
-	if err = wr.Commit(); err != nil {
-		WriteHttpError(w, ErrorUploadIncomplete, http.StatusBadRequest)
 		return
 	}
 

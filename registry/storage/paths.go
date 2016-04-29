@@ -67,10 +67,6 @@ type pathSpec interface {
 	pathSpec() string
 }
 
-type urlSpec interface {
-	urlSpec() string
-}
-
 // The pathSpec for blob manifest
 type blobManifestPathSpec struct {
 	digest string
@@ -130,8 +126,12 @@ type imageJsonPathSpec struct {
 }
 
 func (ps imageJsonPathSpec) pathSpec() string {
+	return path.Join(ps.revisionsDir(), ps.id, "json")
+}
+
+func (ps imageJsonPathSpec) revisionsDir() string {
 	mps := manifestsPathSpec{user: ps.user, name: ps.name}.pathSpec()
-	return path.Join(mps, "revisions", ps.id, "json")
+	return path.Join(mps, "revisions")
 }
 
 // the tag pathSpec
@@ -167,11 +167,6 @@ type uploadUuidPathSpec struct {
 func (ps uploadUuidPathSpec) pathSpec() string {
 	ups := uploadsPathSpec{user: ps.user, name: ps.name}.pathSpec()
 	return path.Join(ups, ps.id)
-}
-
-func (ps uploadUuidPathSpec) urlSpec() string {
-	u := path.Join("/", storagePathVersion, ps.name, "blobs", "uploads", ps.id)
-	return u
 }
 
 // the upload info pathSpec
