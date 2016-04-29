@@ -139,7 +139,7 @@ def lichbd_get_capacity():
     raise_exp("error: %s" % (0))
 
 def lichbd_snap_create(snap_path):
-    shellcmd = call_try('/opt/fusionstack/libexec/lich.snapshot --create %s' % (snap_path))
+    shellcmd = call_try('/opt/fusionstack/lich/libexec/lich.snapshot --create %s' % (snap_path))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
