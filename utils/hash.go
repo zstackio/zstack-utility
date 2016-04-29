@@ -28,7 +28,7 @@ func Sha1Sum(r io.Reader) (string, error) {
 }
 
 // An image digest is a SHA-256 check sum.
-var GetImageDigest = Sha256Sum
+var GetChunkDigest = Sha256Sum
 
 // This function checks whether a string looks like a digest
 func IsDigest(s string) bool {

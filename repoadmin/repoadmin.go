@@ -14,7 +14,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"strings"
 	"time"
 )
 
@@ -70,7 +69,7 @@ func uploadFile(sfe storage.IStorageFE, fh *os.File, size int64, name string, id
 			return "", err
 		}
 
-		subhash, err := utils.Sha256Sum(bytes.NewReader(buffer))
+		subhash, err := utils.GetChunkDigest(bytes.NewReader(buffer))
 		if err != nil {
 			return "", fmt.Errorf("failed to compute hash for chunk #%d: %s", index, err)
 		}
@@ -155,24 +154,19 @@ func doAdd(sfe storage.IStorageFE, args []string) error {
 		Blobsum: tophash,
 		Author:  *fauth,
 		Arch:    *farch,
+		Created: time.Now().Format(time.RFC3339),
 		Desc:    *fdesc,
 		Size:    info.Size(),
 		Name:    *fname,
 	}
 
-	imageid, err := utils.Sha1Sum(strings.NewReader(manifest.String()))
-	if err != nil {
-		return fmt.Errorf("failed to generate image id: %s", err)
-	}
-
-	manifest.Id = imageid
-	manifest.Created = time.Now().Format(time.RFC3339)
+	manifest.Id = manifest.GenImageId()
 	err = sfe.PutManifest(bgctx, *fname, *ftag, &manifest)
 	if err != nil {
-		return fmt.Errorf("image id: %s: %s", imageid, err)
+		return fmt.Errorf("image id: %s: %s", manifest.Id, err)
 	}
 
-	fmt.Printf("ImageId: %s Tag: %s\n", imageid, *ftag)
+	fmt.Printf("ImageId: %s Tag: %s\n", manifest.Id, *ftag)
 	return nil
 }
 

@@ -12,6 +12,8 @@ const (
 	trustedHostsFilename = "client_data/trusted_hosts.pem"
 )
 
+var ImageRepoTopDir = path.Join(rootDir, "repos")
+
 // fs layout of disk images, manifests, working directories etc.
 func GetImageBlobPath(name string, blobsum string) string {
 	return path.Join(rootDir, "blobs", blobsum)
@@ -23,7 +25,7 @@ func GetBlobDownloadDir(name string, blobsum string) string {
 
 func GetImageManifestPath(name string, imgid string) string {
 	fname := imgid + ".json"
-	return path.Join(rootDir, "repos", name, "manifests", "revisions", fname)
+	return path.Join(ImageRepoTopDir, name, "manifests", "revisions", fname)
 }
 
 func GetImageFilePath(name string, imgid string) string {

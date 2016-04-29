@@ -35,19 +35,29 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 		return fmt.Errorf("failed to commit image blob: %s", err)
 	}
 
+	return finalizeBlobAndManifest(blobpath, imf)
+}
+
+func finalizeBlobAndManifest(blobpath string, imf *v1.ImageManifest) error {
+	dest := GetImageFilePath(imf.Name, imf.Id)
+	os.MkdirAll(path.Dir(dest), 0755)
+
+	if err := os.Link(blobpath, dest); err != nil {
+		return fmt.Errorf("failed to create image file: %s", err)
+	}
+
 	// write image manifest
-	if err = writeLocalManifest(name, imf); err != nil {
+	if err := writeLocalManifest(imf); err != nil {
 		return fmt.Errorf("failed to update manifest file: %s", err)
 	}
 
-	os.Link(blobpath, GetImageFilePath(name, imf.Id))
 	return nil
 }
 
 func (cln *ZImageClient) downloadChunk(dldir string, subhash string, route string) error {
 	dlfile := path.Join(dldir, subhash)
 
-	if checkBlobDigest(dlfile, subhash) == nil {
+	if checkChunkDigest(dlfile, subhash) == nil {
 		return nil
 	}
 
@@ -89,7 +99,7 @@ func (cln *ZImageClient) downloadChunks(bmf *v1.BlobManifest, name, tophash stri
 		}
 
 		dlfile := path.Join(dldir, subhash)
-		if err := checkBlobDigest(dlfile, subhash); err != nil {
+		if err := checkChunkDigest(dlfile, subhash); err != nil {
 			return "", fmt.Errorf("chunk %s corrupted: %s", subhash, err)
 		}
 	}
@@ -175,8 +185,8 @@ func (cln *ZImageClient) getImageManifest(name, reference string) (*v1.ImageMani
 	return &imf, nil
 }
 
-func writeLocalManifest(name string, imf *v1.ImageManifest) error {
-	fname := GetImageManifestPath(name, imf.Id)
+func writeLocalManifest(imf *v1.ImageManifest) error {
+	fname := GetImageManifestPath(imf.Name, imf.Id)
 	if err := os.MkdirAll(path.Dir(fname), 0775); err != nil {
 		return fmt.Errorf("failed to create directory: %s", err)
 	}
@@ -203,7 +213,7 @@ func writeLocalImageBlob(blobpath string, r io.Reader) error {
 	return nil
 }
 
-func checkBlobDigest(blobpath string, digest string) error {
+func checkChunkDigest(blobpath string, digest string) error {
 	fd, err := os.Open(blobpath)
 	if err != nil {
 		return err
@@ -211,7 +221,7 @@ func checkBlobDigest(blobpath string, digest string) error {
 
 	defer fd.Close()
 
-	d, err := utils.GetImageDigest(fd)
+	d, err := utils.GetChunkDigest(fd)
 	if err != nil {
 		return err
 	}

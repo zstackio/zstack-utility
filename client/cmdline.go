@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 // Global command line options
@@ -40,6 +41,13 @@ Commands:
 }
 
 var progname = path.Base(os.Args[0])
+var fverbose = false
+
+func tracePrintf(format string, a ...interface{}) {
+	if fverbose {
+		fmt.Printf(format, a...)
+	}
+}
 
 // Setup command line option for those subcommands
 func EvalCommand() {
@@ -47,6 +55,7 @@ func EvalCommand() {
 	privkey := flag.String("key", privateKeyFilename, "'libtrust' private key file")
 	trusted := flag.String("trusted", trustedHostsFilename, "'libtrust' trusted hosts")
 	server := flag.String("url", defaultServer, "the server address")
+	verbose := flag.Bool("verbose", false, "enable verbose output")
 
 	flag.Usage = func() { UsageExit(0) }
 	flag.Parse()
@@ -69,6 +78,7 @@ func EvalCommand() {
 		os.Exit(1)
 	}
 
+	fverbose = *verbose
 	f(&gopt, subCommandArgs[1:])
 }
 
@@ -82,27 +92,80 @@ var cmdTable = map[string]func(*GlobalOpt, []string){
 
 func doAdd(gopt *GlobalOpt, args []string) {
 	addCommand := flag.NewFlagSet("add", flag.ExitOnError)
-	pimgid := addCommand.String("parent", "", "the parent image id")
+	fparent := addCommand.String("parent", "", "the parent image id")
+	ffile := addCommand.String("file", "", "the path to image file")
+	fname := addCommand.String("name", "", "the image name ('ubuntu' etc.)")
+	fauth := addCommand.String("author", "", "the author string")
+	farch := addCommand.String("arch", "", "the CPU arch of the image")
+	fdesc := addCommand.String("desc", "", "the image description")
 	addCommand.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s %s [ flags ] <disk-image-file>\n\n", progname, "add")
+		fmt.Fprintf(os.Stderr, "usage: %s %s [ flags ]\n\n", progname, "add")
 		fmt.Fprintf(os.Stderr, "add an image file to  local repository\n")
 		addCommand.PrintDefaults()
 		os.Exit(1)
 	}
 	addCommand.Parse(args)
 
-	n, restargs := addCommand.NArg(), addCommand.Args()
-	switch {
-	case n == 0:
-		fmt.Fprintln(os.Stderr, "missing args for 'add'")
-		os.Exit(1)
-	case n > 1:
+	mustHaveArgs := map[string]string{
+		"file": *ffile,
+	}
+
+	for key, value := range mustHaveArgs {
+		if value == "" {
+			fmt.Fprintf(os.Stderr, "missing args for -%s\n", key)
+			os.Exit(1)
+		}
+	}
+
+	if n, restargs := addCommand.NArg(), addCommand.Args(); n > 0 {
 		fmt.Fprintf(os.Stderr, "too many args for 'add': %q\n", restargs)
 		os.Exit(1)
 	}
 
-	// do with *pimgid
-	fmt.Println("adding with parent image:", *pimgid)
+	tracePrintf("computing blob top hash for %s\n", *ffile)
+
+	// get the blob tophash and file size
+	digest, size, err := getBlobDigestAndSize(*ffile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	manifest, err := buildManifest(*fparent, *farch, *fname)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	manifest.Author = *fauth
+	manifest.Blobsum = digest
+	manifest.Created = time.Now().Format(time.RFC3339)
+	manifest.Desc = *fdesc
+	manifest.Size = size
+
+	manifest.Id = manifest.GenImageId()
+
+	tracePrintf("generated image id: %s\n", manifest.Id)
+
+	if _, err = os.Stat(GetImageManifestPath(manifest.Name, manifest.Id)); err == nil {
+		fmt.Fprintf(os.Stderr, "image already imported, id = %s\n", manifest.Id)
+		os.Exit(1)
+	}
+
+	// import image to local blob registry
+	blobpath := GetImageBlobPath(manifest.Name, digest)
+	if err = importLocalImage(*ffile, blobpath); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to import local image '%s': %s\n", *ffile, err)
+		os.Exit(1)
+	}
+
+	// create hard link of image file and generate local manifests
+	if err = finalizeBlobAndManifest(blobpath, manifest); err != nil {
+		fmt.Fprintf(os.Stderr, "failed in updating local manifest: %s", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("imported image: %s\n", manifest.Id)
 }
 
 func doPull(gopt *GlobalOpt, args []string) {

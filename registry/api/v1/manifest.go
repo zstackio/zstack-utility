@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image-store/utils"
+	"strings"
 )
 
 // The image manifest
@@ -52,4 +53,15 @@ func ParseImageManifest(buf []byte) (*ImageManifest, error) {
 	}
 
 	return nil, errors.New("invalid image manifest")
+}
+
+// Get existing image Id or generate a new one
+func (imf ImageManifest) GenImageId() string {
+	if imf.Id != "" {
+		return imf.Id
+	}
+
+	imf.Created = ""
+	s, _ := utils.Sha1Sum(strings.NewReader(imf.String()))
+	return s
 }
