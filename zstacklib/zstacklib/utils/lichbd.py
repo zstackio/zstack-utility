@@ -58,21 +58,24 @@ def lichbd_get_iscsiport():
     port = shellcmd.stdout.strip()
     return int(port)
 
-def lichbd_mkdir(path):
-    shellcmd = call_try('lichfs --mkdir %s 2>/dev/null' % (path))
+def lichbd_mkpool(path):
+    shellcmd = call_try('lichbd mkpool %s -p lichbd 2>/dev/null' % (path))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
             pass
         else:
             raise_exp(shellcmd)
 
-def lichbd_touch(path):
-    shellcmd = call_try('lichfs --touch %s 2>/dev/null' % (path))
+def lichbd_rmpool(path):
+    shellcmd = call_try('lichbd rmpool %s -p lichbd 2>/dev/null' % (path))
     if shellcmd.return_code != 0:
-        raise_exp(shellcmd)
+        if shellcmd.return_code == errno.EEXIST:
+            pass
+        else:
+            raise_exp(shellcmd)
 
-def lichbd_truncate(path, size):
-    shellcmd = call_try('lichfs --truncate %s %s 2>/dev/null' % (path, size))
+def lichbd_create(path, size):
+    shellcmd = call_try('lichbd create %s --size %s -p lichbd 2>/dev/null' % (path, size))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
             pass
@@ -80,25 +83,46 @@ def lichbd_truncate(path, size):
             raise_exp(shellcmd)
 
 def lichbd_create_raw(path, size):
-    lichbd_touch(path)
-    lichbd_truncate(path, size)
+    lichbd_create(path, size)
 
 def lichbd_copy(src_path, dst_path):
     shellcmd = None
     for i in range(5):
-        shellcmd = call_try('lichfs --copy %s %s 2>/dev/null' % (src_path, dst_path))
+        shellcmd = call_try('lichbd copy %s %s -p lichbd 2>/dev/null' % (src_path, dst_path))
         if shellcmd.return_code == 0:
             return shellcmd
         else:
             if dst_path.startswith(":"):
                 call("rm -rf %s" % (dst_path.lstrip(":")))
             else:
-                lichbd_unlink(dst_path)
+                lichbd_rm(dst_path)
 
     raise_exp(shellcmd)
 
-def lichbd_unlink(path):
-    shellcmd = call_try('lichfs --unlink %s 2>/dev/null' % path)
+def lichbd_import(src_path, dst_path):
+    shellcmd = None
+    for i in range(5):
+        shellcmd = call_try('lichbd import %s %s -p lichbd 2>/dev/null' % (src_path, dst_path))
+        if shellcmd.return_code == 0:
+            return shellcmd
+        else:
+            lichbd_rm(dst_path)
+
+    raise_exp(shellcmd)
+
+def lichbd_export(src_path, dst_path):
+    shellcmd = None
+    for i in range(5):
+        shellcmd = call_try('lichbd export %s %s -p lichbd 2>/dev/null' % (src_path, dst_path))
+        if shellcmd.return_code == 0:
+            return shellcmd
+        else:
+            call("rm -rf %s" % dst_path)
+
+    raise_exp(shellcmd)
+
+def lichbd_rm(path):
+    shellcmd = call_try('lichbd rm %s -p lichbd 2>/dev/null' % path)
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.ENOENT:
             pass
@@ -106,7 +130,7 @@ def lichbd_unlink(path):
             raise_exp(shellcmd)
 
 def lichbd_rename(dist, src):
-    shellcmd = call_try('lichfs --rename %s %s 2>/dev/null' % (src, dist))
+    shellcmd = call_try('lichbd mv %s %s -p lichbd 2>/dev/null' % (src, dist))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
             pass
@@ -114,7 +138,7 @@ def lichbd_rename(dist, src):
             raise_exp(shellcmd)
 
 def lichbd_file_size(path):
-    shellcmd = call_try("lichfs --stat %s 2>/dev/null | grep Size | awk '{print $2}'" % (path))
+    shellcmd = call_try("lichbd info %s -p lichbd 2>/dev/null | grep Size | awk '{print $2}'" % (path))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
@@ -122,7 +146,7 @@ def lichbd_file_size(path):
     return long(size)
 
 def lichbd_file_exist(path):
-    shellcmd = call_try("lichfs --stat %s" % (path))
+    shellcmd = call_try("lichbd info %s -p lichbd" % (path))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == 2:
             return False
@@ -156,7 +180,7 @@ def lichbd_get_capacity():
     raise_exp("error: %s" % (0))
 
 def lichbd_snap_create(snap_path):
-    shellcmd = call_try('/opt/fusionstack/lich/libexec/lich.snapshot --create %s' % (snap_path))
+    shellcmd = call_try('lichbd snap create %s -p lichbd' % (snap_path))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
@@ -164,7 +188,7 @@ def lichbd_snap_create(snap_path):
 
 def lichbd_snap_list(image_path):
     snaps = []
-    shellcmd = call_try('/opt/fusionstack/lich/libexec/lich.snapshot --list %s 2>/dev/null' % (image_path))
+    shellcmd = call_try('lichbd snap ls %s -p lichbd 2>/dev/null' % (image_path))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
@@ -174,7 +198,7 @@ def lichbd_snap_list(image_path):
     return snaps
 
 def lichbd_snap_delete(snap_path):
-    cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --remove %s' % (snap_path)
+    cmd = 'lichbd snap remove %s -p lichbd' % (snap_path)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -183,7 +207,7 @@ def lichbd_snap_delete(snap_path):
     return shellcmd.stdout
  
 def lichbd_snap_clone(src, dst):
-    cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --clone %s %s' % (src, dst)
+    cmd = 'lichbd clone %s %s -p lichbd' % (src, dst)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -192,7 +216,7 @@ def lichbd_snap_clone(src, dst):
     return shellcmd.stdout
 
 def lichbd_snap_rollback(snap_path):
-    cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --rollback %s' % (snap_path)
+    cmd = 'lichbd snap rollback %s -p lichbd' % (snap_path)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -201,7 +225,7 @@ def lichbd_snap_rollback(snap_path):
     return shellcmd.stdout
 
 def lichbd_snap_protect(snap_path):
-    cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --protect %s' % (snap_path)
+    cmd = 'lichbd snap protect %s -p lichbd' % (snap_path)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -210,7 +234,7 @@ def lichbd_snap_protect(snap_path):
     return shellcmd.stdout
 
 def lichbd_snap_unprotect(snap_path):
-    cmd = '/opt/fusionstack/lich/libexec/lich.snapshot --unprotect %s' % (snap_path)
+    cmd = 'lichbd snap unprotect %s -p lichbd' % (snap_path)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -218,10 +242,3 @@ def lichbd_snap_unprotect(snap_path):
 
     return shellcmd.stdout
 
-def lichbd_download(url, image_path):
-    shellcmd = call_try('set -o pipefail; wget --no-check-certificate -q -O - %s | /opt/fusionstack/lich/libexec/lichfs --copy :- %s' % (url, image_path))
-
-    if shellcmd.return_code != 0:
-        raise_exp(shellcmd)
-
-    return shellcmd.stdout

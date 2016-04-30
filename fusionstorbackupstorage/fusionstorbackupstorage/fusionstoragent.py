@@ -82,8 +82,6 @@ class FusionstorAgent(object):
 
     @replyerror
     def init(self, req):
-        lichbd.lichbd_mkdir("/lichbd")
-
         rsp = InitRsp()
         rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
         self._set_capacity_to_response(rsp)
@@ -97,19 +95,18 @@ class FusionstorAgent(object):
     @rollback
     def download(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
 
-        lichbd_file = os.path.join("/lichbd", pool, image_name)
-        tmp_lichbd_file = os.path.join("/lichbd", pool, tmp_image_name)
+        lichbd_file = os.path.join(pool, image_name)
+        tmp_lichbd_file = os.path.join(pool, tmp_image_name)
 
-        lichbd.lichbd_mkdir(os.path.dirname(lichbd_file))
-        lichbd.lichbd_download(cmd.url, tmp_lichbd_file)
+        lichbd.lichbd_mkpool(os.path.dirname(lichbd_file))
+        shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd import - %s -p lichbd' % (cmd.url, tmp_lichbd_file))
 
         @rollbackable
         def _1():
-            lichbd.lichbd_unlink(lichbd_file)
+            lichbd.lichbd_rm(lichbd_file)
         _1()
 
         file_format = shell.call("set -o pipefail; /usr/local/bin/qemu-img info rbd:%s/%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
@@ -119,9 +116,9 @@ class FusionstorAgent(object):
 
         if file_format == 'qcow2':
             shell.call('/usr/local/bin/qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s' % (pool, tmp_image_name, pool, image_name))
-            lichbd.lichbd_unlink(tmp_lichbd_file)
+            lichbd.lichbd_rm(tmp_lichbd_file)
         else:
-            lichbd.lichbd_rename(lichbd_file, tmp_lichbd_file)
+            lichbd.lichbd_mv(lichbd_file, tmp_lichbd_file)
 
         size = lichbd.lichbd_file_size(lichbd_file)
         rsp = DownloadRsp()
@@ -137,8 +134,8 @@ class FusionstorAgent(object):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool, image_name = self._parse_install_path(cmd.installPath)
-        lichbd_file = os.path.join("/lichbd", pool, image_name)
-        lichbd.lichbd_unlink(lichbd_file)
+        lichbd_file = os.path.join(pool, image_name)
+        lichbd.lichbd_rm(lichbd_file)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)

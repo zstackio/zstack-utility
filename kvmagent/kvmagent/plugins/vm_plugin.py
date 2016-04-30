@@ -545,11 +545,29 @@ class IsoFusionstor(object):
         self.iso = None
 
     def to_xmlobject(self):
+        iqn = lichbd.lichbd_get_iqn() 
+        port = lichbd.lichbd_get_iscsiport()
         makesure_qemu_with_lichbd()
-        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
+        snap = self.iso.path.lstrip('fusionstor:').lstrip('//')
+        path = self.iso.path.lstrip('fusionstor:').lstrip('//').split('@')[0]
 
+        shellcmd = shell.ShellCmd('lichbd mkpool %s -p iscsi' % path.split('/')[0])
+        shellcmd(False)
+        if shellcmd.return_code != 0 and shellcmd.return_code != 17:
+            shellcmd.raise_error()
+
+        shellcmd = shell.ShellCmd('lich.snapshot --clone %s %s' % (os.path.join('/lichbd/', snap), os.path.join('/iscsi/', path)))
+        shellcmd(False)
+        if shellcmd.return_code != 0 and shellcmd.return_code != 17:
+            shellcmd.raise_error()
+
+        pool = path.split('/')[0]
+        image = path.split('/')[1]
+        #iqn:pool.volume/0
+        path = '%s:%s.%s/0' % (iqn, pool, image)
         disk = etree.Element('disk', {'type':'network', 'device':'cdrom'})
-        source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
+        source = e(disk, 'source', None, {'name': path, 'protocol':'iscsi'})
+        e(source, 'host', None, {'name':'127.0.0.1', 'port':'3260'})
         e(disk, 'target', None, {'dev':'hdc', 'bus':'ide'})
         e(disk, 'readonly', None)
         return disk

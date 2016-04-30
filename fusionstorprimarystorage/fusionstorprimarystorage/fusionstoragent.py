@@ -109,24 +109,20 @@ class FusionstorAgent(object):
         rsp.availableCapacity = total - used
 
     def _get_file_size(self, path):
-        lichbd_file = os.path.join("/lichbd", path)
-        return lichbd.lichbd_file_size(lichbd_file)
+        return lichbd.lichbd_file_size(path)
 
     @replyerror
     def delete_pool(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for p in cmd.poolNames:
-            p = os.path.join("/lichbd", p)
-            lichbd.lichbd_unlink(p)
+            lichbd.lichbd_rmpool(p)
         return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def rollback_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-
-        lichbd.lichbd_snap_rollback(os.path.join("/lichbd", spath))
-
+        lichbd.lichbd_snap_rollback(spath)
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
@@ -137,10 +133,7 @@ class FusionstorAgent(object):
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
 
-        src_path = os.path.join("/lichbd", src_path)
-        dst_path = os.path.join("/lichbd", dst_path)
         lichbd.lichbd_copy(src_path, dst_path)
-
         rsp = CpRsp()
         rsp.size = self._get_file_size(dst_path)
         self._set_capacity_to_response(rsp)
@@ -155,21 +148,19 @@ class FusionstorAgent(object):
     def create_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        src_path = self.spath2src_normal(spath)
 
         do_create = True
         image_name, sp_name = spath.split('@')
         if cmd.skipOnExisting:
-            snaps = lichbd.lichbd_snap_list(src_path)
+            snaps = lichbd.lichbd_snap_list(image_name)
             for s in snaps:
                 do_create = False
 
         if do_create:
-            snap_path = "%s@%s" % (src_path, sp_name)
-            lichbd.lichbd_snap_create(snap_path)
+            lichbd.lichbd_snap_create(spath)
 
         rsp = CreateSnapshotRsp()
-        rsp.size = self._get_file_size(src_path)
+        rsp.size = self._get_file_size(image_name)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
@@ -177,7 +168,6 @@ class FusionstorAgent(object):
     def delete_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        snap_path = "/lichbd/%s" % (spath)
         lichbd.lichbd_snap_delete(snap_path)
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -187,7 +177,6 @@ class FusionstorAgent(object):
     def unprotect_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        src_path = os.path.join("/lichbd", spath)
         lichbd.lichbd_snap_unprotect(src_path)
 
         return jsonobject.dumps(AgentResponse())
@@ -196,7 +185,6 @@ class FusionstorAgent(object):
     def protect_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        src_path = os.path.join("/lichbd", spath)
         lichbd.lichbd_snap_protect(src_path)
 
         rsp = AgentResponse()
@@ -208,12 +196,9 @@ class FusionstorAgent(object):
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
 
-        src_path = os.path.join("/lichbd", src_path)
-        dst_path = os.path.join("/lichbd", dst_path)
-
-        _dir = os.path.dirname(dst_path)
-        if not lichbd.lichbd_file_exist(_dir):
-            lichbd.lichbd_mkdir(_dir)
+        _pool = os.path.dirname(dst_path)
+        if not lichbd.lichbd_file_exist(_pool):
+            lichbd.lichbd_mkpool(_pool)
 
         lichbd.lichbd_snap_clone(src_path, dst_path)
 
@@ -225,7 +210,6 @@ class FusionstorAgent(object):
     def flatten(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.path)
-        path = os.path.join("/lichbd", path)
         #shell.call('rbd flatten %s' % path)
         #lichbd.lichbd_snap_flatten(path)
 
@@ -263,11 +247,10 @@ class FusionstorAgent(object):
         path = self._normalize_install_path(cmd.installPath)
         size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
         size = "%dM" % (size_M)
-        path = "/lichbd/%s" % (path)
 
-        _dir = os.path.dirname(path)
-        if not lichbd.lichbd_file_exist(_dir):
-            lichbd.lichbd_mkdir(_dir)
+        _pool = os.path.dirname(path)
+        if not lichbd.lichbd_file_exist(_pool):
+            lichbd.lichbd_mkpool(_pool)
         lichbd.lichbd_create_raw(path, size)
 
         rsp = AgentResponse()
@@ -314,9 +297,7 @@ class FusionstorAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
 
-        path = os.path.join("/lichbd", path)
-        lichbd.lichbd_unlink(path)
-
+        lichbd.lichbd_rm(path)
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
