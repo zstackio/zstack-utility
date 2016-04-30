@@ -129,7 +129,7 @@ def lichbd_rm(path):
         else:
             raise_exp(shellcmd)
 
-def lichbd_rename(dist, src):
+def lichbd_mv(dist, src):
     shellcmd = call_try('lichbd mv %s %s -p lichbd 2>/dev/null' % (src, dist))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
