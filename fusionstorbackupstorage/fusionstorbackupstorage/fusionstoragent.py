@@ -122,7 +122,7 @@ class FusionstorAgent(object):
             lichbd.lichbd_unlink(tmp_lichbd_file)
             #shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         else:
-            lichbd.lich_rename(lichbd_file, tmp_lichbd_file)
+            lichbd.lichbd_rename(lichbd_file, tmp_lichbd_file)
 
         size = lichbd.lichbd_file_size(lichbd_file)
         rsp = DownloadRsp()
