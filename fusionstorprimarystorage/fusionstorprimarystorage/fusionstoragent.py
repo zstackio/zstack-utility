@@ -224,7 +224,10 @@ class FusionstorAgent(object):
         src_path = os.path.join("/lichbd", src_path)
         dst_path = os.path.join("/lichbd", dst_path)
 
-        lichbd.lichbd_mkdir(os.path.dirname(dst_path))
+        _dir = os.path.dirname(dst_path)
+        if not lichbd.lichbd_file_exist(_dir):
+            lichbd.lichbd_mkdir(_dir)
+
         lichbd.lichbd_snap_clone(src_path, dst_path)
 
         rsp = AgentResponse()
@@ -276,6 +279,9 @@ class FusionstorAgent(object):
         size = "%dM" % (size_M)
         path = "/lichbd/%s" % (path)
 
+        _dir = os.path.dirname(path)
+        if not lichbd.lichbd_file_exist(_dir):
+            lichbd.lichbd_mkdir(_dir)
         lichbd.lichbd_create_raw(path, size)
 
         rsp = AgentResponse()

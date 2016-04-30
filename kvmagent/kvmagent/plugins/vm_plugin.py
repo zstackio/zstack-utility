@@ -531,7 +531,7 @@ class IsoFusionstor(object):
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
 
         disk = etree.Element('disk', {'type':'network', 'device':'cdrom'})
-        e('source', None, {'name': path, 'protocol':'rbd'})
+        source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'hdc', 'bus':'ide'})
         e(disk, 'readonly', None)
         return disk
@@ -544,7 +544,7 @@ class IdeFusionstor(object):
     def to_xmlobject(self):
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
-        e('source', None, {'name': path, 'protocol':'rbd'})
+        source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'hd%s' % self.dev_letter, 'bus':'ide'})
         return disk
 
@@ -556,7 +556,7 @@ class VirtioFusionstor(object):
     def to_xmlobject(self):
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
-        e('source', {'name': path, 'protocol':'rbd'})
+        source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
         return disk
 
