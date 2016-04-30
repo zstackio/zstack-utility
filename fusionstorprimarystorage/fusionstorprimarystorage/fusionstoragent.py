@@ -104,7 +104,6 @@ class FusionstorAgent(object):
     def _set_capacity_to_response(self, rsp):
         total = lichbd.lichbd_get_capacity()
         used = lichbd.lichbd_get_used()
-        logger.debug("-------- total: %s, used: %s ---------" % (total, used))
 
         rsp.totalCapacity = total
         rsp.availableCapacity = total - used
@@ -123,14 +122,10 @@ class FusionstorAgent(object):
 
     @replyerror
     def rollback_snapshot(self, req):
-        logger.debug("============ rollback_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
 
-        src_path = self.spath2src_normal(spath)
-        snap_name = self.spath2normal(spath)
-        snap_path = "%s@%s" % (src_path, snap_name)
-        lichbd.lichbd_snap_rollback(snap_path)
+        lichbd.lichbd_snap_rollback(os.path.join("/lichbd", spath))
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -156,13 +151,8 @@ class FusionstorAgent(object):
         image_name, sp_name = spath.split('@')
         return os.path.join("/lichbd", image_name)
 
-    def spath2normal(self, spath):
-        image_name, sp_name = spath.split('@')
-        return os.path.join("/lichbd", image_name.split("/")[0], "snap_" + sp_name)
-
     @replyerror
     def create_snapshot(self, req):
-        logger.debug("============ create_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
         src_path = self.spath2src_normal(spath)
@@ -185,9 +175,7 @@ class FusionstorAgent(object):
 
     @replyerror
     def delete_snapshot(self, req):
-        logger.debug("============ delete_snapshot ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
         spath = self._normalize_install_path(cmd.snapshotPath)
         snap_path = "/lichbd/%s" % (spath)
         lichbd.lichbd_snap_delete(snap_path)
@@ -216,7 +204,6 @@ class FusionstorAgent(object):
 
     @replyerror
     def clone(self, req):
-        logger.debug("============ clone ==============")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
@@ -255,7 +242,6 @@ class FusionstorAgent(object):
     @replyerror
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        logger.debug("------- cmd: %s -------" % (cmd))
 
         rsp = InitRsp()
         rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
@@ -341,6 +327,5 @@ class FusionstorDaemon(daemon.Daemon):
         super(FusionstorDaemon, self).__init__(pidfile)
 
     def run(self):
-        logger.debug("------- start fusionstor... -----------")
         self.agent = FusionstorAgent()
         self.agent.http_server.start()

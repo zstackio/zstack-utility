@@ -120,7 +120,6 @@ class FusionstorAgent(object):
         if file_format == 'qcow2':
             shell.call('/usr/local/bin/qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s' % (pool, tmp_image_name, pool, image_name))
             lichbd.lichbd_unlink(tmp_lichbd_file)
-            #shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         else:
             lichbd.lichbd_rename(lichbd_file, tmp_lichbd_file)
 
