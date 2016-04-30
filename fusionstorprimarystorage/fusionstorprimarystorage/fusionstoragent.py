@@ -122,9 +122,21 @@ class FusionstorAgent(object):
     def rollback_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        lichbd.lichbd_snap_rollback(spath)
+
+        image = spath.split("@")[0]
+        snap =  spath.split("@")[1]
+        snaps = lichbd.lichbd_snap_list(image)
+        afters = snaps[(snaps.index(snap) + 1):]
+
         rsp = AgentResponse()
-        self._set_capacity_to_response(rsp)
+
+        if (len(afters) > 0):
+            rsp.success = False
+            rsp.error = 'need del snapshots: %s, only can rollback to last one' % (str(afters.reverse()))
+        else:
+            lichbd.lichbd_snap_rollback(spath)
+            self._set_capacity_to_response(rsp)
+
         return jsonobject.dumps(rsp)
 
     @replyerror
