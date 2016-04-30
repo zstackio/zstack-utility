@@ -197,7 +197,7 @@ class FusionstorAgent(object):
     def protect_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        lichbd.lichbd_snap_protect(src_path)
+        lichbd.lichbd_snap_protect(spath)
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
