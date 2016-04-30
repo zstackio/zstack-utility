@@ -131,8 +131,9 @@ class FusionstorAgent(object):
         rsp = AgentResponse()
 
         if (len(afters) > 0):
+            afters.reverse()
             rsp.success = False
-            rsp.error = 'need del snapshots: %s, only can rollback to last one' % (str(afters.reverse()))
+            rsp.error = 'need del snapshots: %s, only can rollback to last one' % (afters)
         else:
             lichbd.lichbd_snap_rollback(spath)
             self._set_capacity_to_response(rsp)
