@@ -525,7 +525,7 @@ class VirtioCeph(object):
 
 def makesure_qemu_with_lichbd():
     _lichbd = "/usr/local/bin/qemu-system-x86_64"
-    _system = kvmagent.get_()
+    _system = kvmagent.get_qemu_path()
     need_link = True
 
     if os.path.islink(_system):
