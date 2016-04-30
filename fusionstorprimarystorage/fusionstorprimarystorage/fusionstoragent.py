@@ -110,14 +110,14 @@ class FusionstorAgent(object):
         rsp.availableCapacity = total - used
 
     def _get_file_size(self, path):
-        lichbd_file = os.path.join("/iscsi", path)
+        lichbd_file = os.path.join("/lichbd", path)
         return lichbd.lichbd_file_size(lichbd_file)
 
     @replyerror
     def delete_pool(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for p in cmd.poolNames:
-            p = os.path.join("/iscsi", p)
+            p = os.path.join("/lichbd", p)
             lichbd.lichbd_unlink(p)
         return jsonobject.dumps(AgentResponse())
 
@@ -142,8 +142,8 @@ class FusionstorAgent(object):
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
 
-        src_path = os.path.join("/iscsi", src_path)
-        dst_path = os.path.join("/iscsi", dst_path)
+        src_path = os.path.join("/lichbd", src_path)
+        dst_path = os.path.join("/lichbd", dst_path)
         lichbd.lichbd_copy(src_path, dst_path)
 
         rsp = CpRsp()
@@ -154,11 +154,11 @@ class FusionstorAgent(object):
     def spath2src_normal(self, spath):
         #fusionstor://bak-t-95036217321343c2a8d64d32e085211e/382b3757a54045e5b7dbcfcdcfb07200@382b3757a54045e5b7dbcfcdcfb07200"
         image_name, sp_name = spath.split('@')
-        return os.path.join("/iscsi", image_name)
+        return os.path.join("/lichbd", image_name)
 
     def spath2normal(self, spath):
         image_name, sp_name = spath.split('@')
-        return os.path.join("/iscsi", image_name.split("/")[0], "snap_" + sp_name)
+        return os.path.join("/lichbd", image_name.split("/")[0], "snap_" + sp_name)
 
     @replyerror
     def create_snapshot(self, req):
@@ -189,7 +189,7 @@ class FusionstorAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         spath = self._normalize_install_path(cmd.snapshotPath)
-        snap_path = "/iscsi/%s" % (spath)
+        snap_path = "/lichbd/%s" % (spath)
         lichbd.lichbd_snap_delete(snap_path)
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -199,7 +199,7 @@ class FusionstorAgent(object):
     def unprotect_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        src_path = os.path.join("/iscsi", spath)
+        src_path = os.path.join("/lichbd", spath)
         lichbd.lichbd_snap_unprotect(src_path)
 
         return jsonobject.dumps(AgentResponse())
@@ -208,7 +208,7 @@ class FusionstorAgent(object):
     def protect_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        src_path = os.path.join("/iscsi", spath)
+        src_path = os.path.join("/lichbd", spath)
         lichbd.lichbd_snap_protect(src_path)
 
         rsp = AgentResponse()
@@ -221,8 +221,8 @@ class FusionstorAgent(object):
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
 
-        src_path = os.path.join("/iscsi", src_path)
-        dst_path = os.path.join("/iscsi", dst_path)
+        src_path = os.path.join("/lichbd", src_path)
+        dst_path = os.path.join("/lichbd", dst_path)
 
         lichbd.lichbd_mkdir(os.path.dirname(dst_path))
         lichbd.lichbd_snap_clone(src_path, dst_path)
@@ -235,7 +235,7 @@ class FusionstorAgent(object):
     def flatten(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.path)
-        path = os.path.join("/iscsi", path)
+        path = os.path.join("/lichbd", path)
         #shell.call('rbd flatten %s' % path)
         #lichbd.lichbd_snap_flatten(path)
 
@@ -274,7 +274,7 @@ class FusionstorAgent(object):
         path = self._normalize_install_path(cmd.installPath)
         size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
         size = "%dM" % (size_M)
-        path = "/iscsi/%s" % (path)
+        path = "/lichbd/%s" % (path)
 
         lichbd.lichbd_create_raw(path, size)
 
@@ -322,7 +322,7 @@ class FusionstorAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
 
-        path = os.path.join("/iscsi", path)
+        path = os.path.join("/lichbd", path)
         lichbd.lichbd_unlink(path)
 
         rsp = AgentResponse()

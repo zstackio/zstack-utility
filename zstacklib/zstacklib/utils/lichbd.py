@@ -105,6 +105,14 @@ def lichbd_unlink(path):
         else:
             raise_exp(shellcmd)
 
+def lichbd_rename(dist, src):
+    shellcmd = call_try('lichfs --rename %s %s 2>/dev/null' % (src, dist))
+    if shellcmd.return_code != 0:
+        if shellcmd.return_code == errno.EEXIST:
+            pass
+        else:
+            raise_exp(shellcmd)
+
 def lichbd_file_size(path):
     shellcmd = call_try("lichfs --stat %s 2>/dev/null | grep Size | awk '{print $2}'" % (path))
     if shellcmd.return_code != 0:

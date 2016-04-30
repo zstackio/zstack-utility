@@ -82,7 +82,7 @@ class FusionstorAgent(object):
 
     @replyerror
     def init(self, req):
-        lichbd.lichbd_mkdir("/iscsi")
+        lichbd.lichbd_mkdir("/lichbd")
 
         rsp = InitRsp()
         rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
@@ -101,16 +101,27 @@ class FusionstorAgent(object):
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
 
-        lichbd_file = os.path.join("/iscsi", pool, image_name)
-        tmp_lichbd_file = os.path.join("/iscsi", pool, tmp_image_name)
+        lichbd_file = os.path.join("/lichbd", pool, image_name)
+        tmp_lichbd_file = os.path.join("/lichbd", pool, tmp_image_name)
 
         lichbd.lichbd_mkdir(os.path.dirname(lichbd_file))
-        lichbd.lichbd_download(cmd.url, lichbd_file)
+        lichbd.lichbd_download(cmd.url, tmp_lichbd_file)
 
         @rollbackable
         def _1():
             lichbd.lichbd_unlink(lichbd_file)
         _1()
+
+        file_format = shell.call("set -o pipefail; qemu-img info rbd:%s/%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+        file_format = file_format.strip()
+        if file_format not in ['qcow2', 'raw']:
+            raise Exception('unknown image format: %s' % file_format)
+
+        if file_format == 'qcow2':
+            shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s' % (pool, tmp_image_name, pool, image_name, conf_path))
+            #shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+        else:
+            lichbd.lich_rename(lichbd_file, tmp_lichbd_file)
 
         size = lichbd.lichbd_file_size(lichbd_file)
         rsp = DownloadRsp()
@@ -126,7 +137,7 @@ class FusionstorAgent(object):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool, image_name = self._parse_install_path(cmd.installPath)
-        lichbd_file = os.path.join("/iscsi", pool, image_name)
+        lichbd_file = os.path.join("/lichbd", pool, image_name)
         lichbd.lichbd_unlink(lichbd_file)
 
         rsp = AgentResponse()

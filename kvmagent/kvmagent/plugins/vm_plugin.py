@@ -528,17 +528,10 @@ class IsoFusionstor(object):
         self.iso = None
 
     def to_xmlobject(self):
-        iqn = lichbd.lichbd_get_iqn()
-        port = lichbd.lichbd_get_iscsiport()
-
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        pool = path.split("/")[0]
-        image = path.split("/")[1]
-        name = "%s:%s.%s/0" % (iqn, pool, image)
 
         disk = etree.Element('disk', {'type':'network', 'device':'cdrom'})
-        source = etree.Element('source', None, {'name': name, 'protocol':'iscsi'})
-        e(source, 'host', None, {'name':'127.0.0.1', 'port': str(port)})
+        e('source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'hdc', 'bus':'ide'})
         e(disk, 'readonly', None)
         return disk
@@ -549,23 +542,10 @@ class IdeFusionstor(object):
         self.dev_letter = None
 
     def to_xmlobject(self):
-        host = "127.0.0.1"
-        port = lichbd.lichbd_get_iscsiport()
-        iqn = lichbd.lichbd_get_iqn()
-
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        pool = path.split("/")[0]
-        image = path.split("/")[1]
-        name = "%s:%s.%s/0" % (iqn, pool, image)
-
-        iscsi_path = "iscsi://%s:%s/%s" % (host, port, name)
-        file_format = shell.call("set -o pipefail; qemu-img info %s| grep 'file format' | cut -d ':' -f 2" % (iscsi_path))
-
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
-        source = etree.Element('source', None, {'name': name, 'protocol':'iscsi'})
-        e(source, 'host', None, {'name':host, 'port': str(port)})
+        e('source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'hd%s' % self.dev_letter, 'bus':'ide'})
-        e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'type':file_format, 'io':'native'})
         return disk
 
 class VirtioFusionstor(object):
@@ -574,23 +554,10 @@ class VirtioFusionstor(object):
         self.dev_letter = None
 
     def to_xmlobject(self):
-        host = "127.0.0.1"
-        port = lichbd.lichbd_get_iscsiport()
-        iqn = lichbd.lichbd_get_iqn()
-
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        pool = path.split("/")[0]
-        image = path.split("/")[1]
-        name = "%s:%s.%s/0" % (iqn, pool, image)
-
-        iscsi_path = "iscsi://%s:%s/%s" % (host, port, name)
-        file_format = shell.call("set -o pipefail; qemu-img info %s| grep 'file format' | cut -d ':' -f 2" % (iscsi_path))
-
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
-        source = etree.Element('source', {'name': name, 'protocol':'iscsi'})
-        e(source, 'host', None, {'name':host, 'port': str(port)})
+        e('source', {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
-        e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'type':file_format, 'io':'native'})
         return disk
 
 class VirtioIscsi(object):
