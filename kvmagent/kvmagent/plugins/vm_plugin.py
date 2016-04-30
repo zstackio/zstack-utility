@@ -523,11 +523,29 @@ class VirtioCeph(object):
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
         return disk
 
+def makesure_qemu_with_lichbd():
+    _lichbd = "/usr/local/bin/qemu-system-x86_64"
+    _system = kvmagent.get_()
+    need_link = True
+
+    if os.path.islink(_system):
+        link = shell.call("set -o pipefail; ls -l %s|cut -d '>' -f 2" % (_system))
+        if link == _lichbd:
+            need_link = False
+
+    if need_link:
+        logger.debug('replace %s to %s' % (_system, _lichbd))
+        mv_cmd = "mv %s -f --backup=numbered %s.bak" % (_system, _system)
+        shell.call(mv_cmd)
+        ln_cmd = "ln -s %s %s" % (_lichbd, _system)
+        shell.call(ln_cmd)
+
 class IsoFusionstor(object):
     def __init__(self):
         self.iso = None
 
     def to_xmlobject(self):
+        makesure_qemu_with_lichbd()
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
 
         disk = etree.Element('disk', {'type':'network', 'device':'cdrom'})
@@ -542,7 +560,9 @@ class IdeFusionstor(object):
         self.dev_letter = None
 
     def to_xmlobject(self):
+        makesure_qemu_with_lichbd()
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
+
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'hd%s' % self.dev_letter, 'bus':'ide'})
@@ -554,7 +574,9 @@ class VirtioFusionstor(object):
         self.dev_letter = None
 
     def to_xmlobject(self):
+        makesure_qemu_with_lichbd()
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
+
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
