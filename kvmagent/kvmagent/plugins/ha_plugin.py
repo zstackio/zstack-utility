@@ -84,7 +84,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
                                     'shutdown ourselves' % (gw, cmd.maxAttempts))
-                        shell.call('init 0')
+                        shell.call('pkill -9 qemu-kvm; init 0')
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
