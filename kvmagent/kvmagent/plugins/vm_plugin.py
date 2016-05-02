@@ -1849,7 +1849,7 @@ class Vm(object):
                     vc.dev_letter = dev_letter
                     return vc.to_xmlobject()
 
-                def ceph_blk():
+                def fusionstor_blk():
                     ic = IdeFusionstor()
                     ic.volume = v
                     ic.dev_letter = dev_letter
