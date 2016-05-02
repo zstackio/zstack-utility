@@ -1246,7 +1246,8 @@ class Vm(object):
 
 
     def _get_back_file(self, volume):
-        ret = shell.call('qemu-img info %s' % volume)
+        qemu_img = lichbd.lichbd_get_qemu_img_path()
+        ret = shell.call('%s info %s' % (qemu_img, volume))
         for l in ret.split('\n'):
             l = l.strip(' \n\t\r')
             if l == '':

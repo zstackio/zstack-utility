@@ -109,13 +109,14 @@ class FusionstorAgent(object):
             lichbd.lichbd_rm(lichbd_file)
         _1()
 
-        file_format = shell.call("set -o pipefail; /usr/local/bin/qemu-img info rbd:%s/%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+        qemu_img = lichbd.lichbd_get_qemu_img_path()
+        file_format = shell.call("set -o pipefail;%s info rbd:%s/%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (qemu_img, pool, tmp_image_name))
         file_format = file_format.strip()
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
 
         if file_format == 'qcow2':
-            shell.call('/usr/local/bin/qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s' % (pool, tmp_image_name, pool, image_name))
+            shell.call('%s convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s' % (qemu_img, pool, tmp_image_name, pool, image_name))
             lichbd.lichbd_rm(tmp_lichbd_file)
         else:
             lichbd.lichbd_mv(lichbd_file, tmp_lichbd_file)
