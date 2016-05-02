@@ -584,6 +584,7 @@ class IdeFusionstor(object):
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'hd%s' % self.dev_letter, 'bus':'ide'})
+        e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'io':'native'})
         return disk
 
 class VirtioFusionstor(object):
@@ -594,10 +595,13 @@ class VirtioFusionstor(object):
     def to_xmlobject(self):
         makesure_qemu_with_lichbd()
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
+        #because we have convert -O rbd, when download. so file_format = raw always.
+        file_format = 'raw'
 
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
+        e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'io':'native'})
         return disk
 
 class VirtioIscsi(object):
