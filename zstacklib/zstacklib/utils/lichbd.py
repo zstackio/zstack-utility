@@ -50,6 +50,10 @@ def lichbd_get_iqn():
     iqn = shellcmd.stdout.strip()
     return iqn
 
+def lichbd_get_qemu_path():
+    qemu_path = "/opt/fusionstack/qemu/bin/qemu-system-x86_64"
+    return qemu_path 
+
 def lichbd_get_iscsiport():
     shellcmd = call_try("""lich configdump 2>/dev/null|grep iscsi.port|awk -F":" '{print $2}'""")
     if shellcmd.return_code != 0:
