@@ -1303,10 +1303,12 @@ Before=shutdown.target reboot.target halt.target
 [Service]
 Type=forking
 User=root
-ExecStart=/usr/bin/zstack-ctl start
+ExecStart=/usr/bin/zstack-ctl start --daemon
 ExecStop=/usr/bin/zstack-ctl stop
 Restart=on-abort
 RemainAfterExit=Yes
+TimeoutStartSec=300
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
