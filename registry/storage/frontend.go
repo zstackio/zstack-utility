@@ -163,11 +163,9 @@ func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf
 	}
 
 	// Check whether its parents exists
-	for _, pid := range imf.Parents {
-		ps := imageJsonPathSpec{name: name, id: pid}.pathSpec()
-		if _, err := sf.driver.Stat(ctx, ps); err != nil {
-			return err
-		}
+	ps := imageJsonPathSpec{name: name, id: imf.Parent}.pathSpec()
+	if _, err := sf.driver.Stat(ctx, ps); err != nil {
+		return err
 	}
 
 	// Check whether the image blob has been uploaded
@@ -177,8 +175,8 @@ func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf
 	}
 
 	// Check whether image digest already exists
-	ps := imageJsonPathSpec{name: name, id: idstr}.pathSpec()
-	if _, err := sf.driver.Stat(ctx, ps); err == nil {
+	ijps := imageJsonPathSpec{name: name, id: idstr}.pathSpec()
+	if _, err := sf.driver.Stat(ctx, ijps); err == nil {
 		return fmt.Errorf("image manifest already exist")
 	}
 

@@ -47,7 +47,7 @@ func buildManifest(parent string, arch string, name string) (*v1.ImageManifest, 
 			manifest.Name = strings.ToLower(name)
 		}
 
-		manifest.Parents = append(manifest.Parents, parent)
+		manifest.Parent = parent
 	} else {
 		if arch == "" {
 			return nil, fmt.Errorf("missing value for '-arch' option")

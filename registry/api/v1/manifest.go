@@ -10,15 +10,15 @@ import (
 
 // The image manifest
 type ImageManifest struct {
-	Id      string   `json:"id"`
-	Parents []string `json:"parents"`
-	Blobsum string   `json:"blobsum"`
-	Created string   `json:"created"`
-	Author  string   `json:"author"`
-	Arch    string   `json:"architecture"`
-	Desc    string   `json:"desc"`
-	Size    int64    `json:"size"`
-	Name    string   `json:"name"`
+	Id      string `json:"id"`
+	Parent  string `json:"parent"`
+	Blobsum string `json:"blobsum"`
+	Created string `json:"created"`
+	Author  string `json:"author"`
+	Arch    string `json:"architecture"`
+	Desc    string `json:"desc"`
+	Size    int64  `json:"size"`
+	Name    string `json:"name"`
 }
 
 // Encode the image manifest to JSON string

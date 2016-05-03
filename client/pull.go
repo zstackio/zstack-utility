@@ -11,6 +11,31 @@ import (
 	"path"
 )
 
+// Returns a list of image ids of which we need to pull from server.
+func (cln *ZImageClient) buildChain(leaf *v1.ImageManifest) ([]*v1.ImageManifest, error) {
+	var res []*v1.ImageManifest
+	res = append(res, leaf)
+
+	for cursor := leaf; cursor.Parent != ""; {
+
+		imf, err := cln.getImageManifest(cursor.Name, cursor.Parent)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = os.Stat(GetImageManifestPath(cursor.Name, imf.Id))
+		if os.IsNotExist(err) {
+			res = append(res, imf)
+		} else {
+			break
+		}
+
+		cursor = imf
+	}
+
+	return res, nil
+}
+
 // Pull a disk image
 func (cln *ZImageClient) Pull(name string, reference string) error {
 	imf, err := cln.getImageManifest(name, reference)
@@ -22,18 +47,38 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 		return fmt.Errorf("%s:%s already exists", name, imf.Id)
 	}
 
-	bmf, err := cln.getBlobManifest(name, imf.Blobsum)
+	// reverse the list - so that we pull the parents first
+	imfs, err := cln.buildChain(imf)
+	if err != nil {
+		return nil
+	}
+
+	for i, j := 0, len(imfs); i < j; i, j = i+1, j-1 {
+		imfs[i], imfs[j] = imfs[j], imfs[i]
+	}
+
+	for _, imf = range imfs {
+		if err = cln.doPull(imf); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (cln *ZImageClient) doPull(imf *v1.ImageManifest) error {
+	bmf, err := cln.getBlobManifest(imf.Name, imf.Blobsum)
 	if err != nil {
 		return err
 	}
 
-	imgfile, err := cln.downloadChunks(bmf, name, imf.Blobsum)
+	imgfile, err := cln.downloadChunks(bmf, imf.Name, imf.Blobsum)
 	if err != nil {
 		return err
 	}
 
 	// the file name for saving the blob image
-	blobpath := GetImageBlobPath(name, imf.Blobsum)
+	blobpath := GetImageBlobPath(imf.Name, imf.Blobsum)
 	os.MkdirAll(path.Dir(blobpath), 0775)
 	if err = os.Rename(imgfile, blobpath); err != nil {
 		return fmt.Errorf("failed to commit image blob: %s", err)
