@@ -250,3 +250,12 @@ def lichbd_snap_unprotect(snap_path):
 
     return shellcmd.stdout
 
+def lichbd_get_format(path):
+    qemu_img = lichbd_get_qemu_img_path()
+    cmd = "set -o pipefail;%s info rbd:%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (qemu_img, path)
+    shellcmd = call_try(cmd)
+
+    if shellcmd.return_code != 0:
+        raise_exp(shellcmd)
+
+    return shellcmd.stdout.strip()

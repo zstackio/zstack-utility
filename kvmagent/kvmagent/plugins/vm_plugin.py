@@ -580,11 +580,12 @@ class IdeFusionstor(object):
     def to_xmlobject(self):
         makesure_qemu_with_lichbd()
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
+        file_format = lichbd.lichbd_get_format(path)
 
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'hd%s' % self.dev_letter, 'bus':'ide'})
-        e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'io':'native'})
+        e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'io':'native', 'type':file_format})
         return disk
 
 class VirtioFusionstor(object):
@@ -595,13 +596,12 @@ class VirtioFusionstor(object):
     def to_xmlobject(self):
         makesure_qemu_with_lichbd()
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        #because we have convert -O rbd, when download. so file_format = raw always.
-        file_format = 'raw'
+        file_format = lichbd.lichbd_get_format(path)
 
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
         source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
-        e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'io':'native'})
+        e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'io':'native', 'type':file_format})
         return disk
 
 class VirtioIscsi(object):

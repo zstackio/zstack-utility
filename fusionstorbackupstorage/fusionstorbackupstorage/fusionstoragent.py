@@ -106,6 +106,8 @@ class FusionstorAgent(object):
 
         @rollbackable
         def _1():
+            if lichbd.lichbd_file_exist(tmp_lichbd_file):
+                lichbd.lichbd_rm(tmp_lichbd_file)
             lichbd.lichbd_rm(lichbd_file)
         _1()
 
@@ -115,12 +117,7 @@ class FusionstorAgent(object):
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
 
-        if file_format == 'qcow2':
-            shell.call('%s convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s' % (qemu_img, pool, tmp_image_name, pool, image_name))
-            lichbd.lichbd_rm(tmp_lichbd_file)
-        else:
-            lichbd.lichbd_mv(lichbd_file, tmp_lichbd_file)
-
+        lichbd.lichbd_mv(lichbd_file, tmp_lichbd_file)
         size = lichbd.lichbd_file_size(lichbd_file)
         rsp = DownloadRsp()
         rsp.size = size
