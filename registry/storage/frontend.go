@@ -452,7 +452,10 @@ func (sf StorageFE) GetChunkWriter(ctx context.Context, name string, uu string, 
 	_, err = sf.driver.Stat(ctx, blobChunkPathSpec{subhash: subhash}.pathSpec())
 	if err != nil {
 		// chunk does not exist
-		return sf.driver.Writer(ctx, ucps.pathSpec(), false)
+		//
+		// In order to compute the chunk digest w/o reading partial chunks,
+		// we can't continue from the point of interruption.
+		return sf.driver.Writer(ctx, ucps.pathSpec(), false /* append */)
 	}
 
 	// chunk exists

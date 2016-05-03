@@ -101,6 +101,25 @@ func GetBlobJsonSpec(ctx context.Context, w http.ResponseWriter, r *http.Request
 	return s.GetBlobJsonSpec(n, d)
 }
 
+// We check whether there is a 'Range' header
+func getStartOffset(r *http.Request) (int64, error) {
+	var offset int64
+
+	// Note, "Range" is used for HTTP GET requesets;
+	// "Content-Range" header is for HTTP responses.
+	rh := r.Header.Get("Range")
+	if rh == "" {
+		return offset, nil
+	}
+
+	_, err := fmt.Sscanf(rh, "bytes %d-", &offset)
+	if err != nil {
+		return offset, fmt.Errorf("unexpected range header: %s: %s", rh, err)
+	}
+
+	return offset, nil
+}
+
 func GetBlobChunkReader(ctx context.Context, w http.ResponseWriter, r *http.Request) (io.ReadCloser, error) {
 	n := router.GetRequestVar(r, v1.PvnName)
 	d := router.GetRequestVar(r, v1.PvnDigest)
@@ -110,10 +129,12 @@ func GetBlobChunkReader(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return nil, fmt.Errorf("failed to build storage frontend searcher for blob digest: %s", d)
 	}
 
-	// TODO range read
-	// In order to compute the chunk digest w/o reading partial chunks,
-	// we can't continue from the point of interruption.
-	return s.GetBlobChunkReader(ctx, n, d, h, 0)
+	offset, err := getStartOffset(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetBlobChunkReader(ctx, n, d, h, offset)
 }
 
 func GetUploadQueryArgAndSfe(ctx context.Context, w http.ResponseWriter, r *http.Request) (n string, uu string, s storage.IStorageFE) {

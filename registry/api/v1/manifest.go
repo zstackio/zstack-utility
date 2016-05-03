@@ -37,7 +37,10 @@ func (imf *ImageManifest) Ok() bool {
 		return false
 	}
 
-	// TODO check others
+	if imf.Name == "" {
+		return false
+	}
+
 	return utils.IsDigest(imf.Blobsum)
 }
 
