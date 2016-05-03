@@ -39,14 +39,15 @@ func buildManifest(parent string, arch string, name string) (*v1.ImageManifest, 
 			if arch != m.Arch {
 				return nil, fmt.Errorf("arch (%s) conflict with parent arch", arch)
 			}
+
+			manifest.Arch = m.Arch
 		}
 
-		if name == "" {
-			manifest.Name = m.Name
-		} else {
-			manifest.Name = strings.ToLower(name)
+		if name != "" && name != m.Name {
+			return nil, fmt.Errorf("name (%s) should be the same as parent (%s)", name, m.Name)
 		}
 
+		manifest.Name = m.Name
 		manifest.Parent = parent
 	} else {
 		if arch == "" {
