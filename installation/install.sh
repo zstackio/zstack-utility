@@ -816,7 +816,7 @@ install_system_libs(){
 
 is_enable_ntpd(){
     echo_subtitle "Enable NTP"
-    if [$OS = $CENTOS7 -o $OS = $CENTOS6 ];then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ];then
         grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
         if [ $? -ne 0 ]; then
             echo "server 0.centos.pool.ntp.org iburst" >> /etc/ntp.conf
