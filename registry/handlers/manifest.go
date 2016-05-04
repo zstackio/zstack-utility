@@ -30,8 +30,18 @@ func PutManifest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var imf v1.ImageManifest
 
 	if err := utils.JsonDecode(r.Body, &imf); err != nil {
-		e2 := errcode.BuildBadRequest("unexpected body format", err)
+		e2 := errcode.BuildBadRequest("unexpected JSON body", err)
 		WriteHttpError(w, e2, http.StatusBadRequest)
+		return
+	}
+
+	id := imf.GenImageId()
+	if imf.Id == "" {
+		imf.Id = id
+	}
+
+	if !imf.Ok() {
+		WriteHttpError(w, errcode.BuildEInvalidParam("manifest", "unexpected field"), http.StatusBadRequest)
 		return
 	}
 

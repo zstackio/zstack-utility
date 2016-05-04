@@ -41,6 +41,11 @@ func (imf *ImageManifest) Ok() bool {
 		return false
 	}
 
+	// integrity check
+	if imf.Id != imf.GenImageId() {
+		return false
+	}
+
 	return utils.IsDigest(imf.Blobsum)
 }
 
@@ -58,12 +63,9 @@ func ParseImageManifest(buf []byte) (*ImageManifest, error) {
 	return nil, errors.New("invalid image manifest")
 }
 
-// Get existing image Id or generate a new one
+// Generate image id according to non-volatile value in manifest
 func (imf ImageManifest) GenImageId() string {
-	if imf.Id != "" {
-		return imf.Id
-	}
-
+	imf.Id = ""
 	imf.Created = ""
 	s, _ := utils.Sha1Sum(strings.NewReader(imf.String()))
 	return s
