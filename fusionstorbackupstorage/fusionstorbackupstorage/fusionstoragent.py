@@ -134,6 +134,7 @@ class FusionstorAgent(object):
         pool, image_name = self._parse_install_path(cmd.installPath)
         lichbd_file = os.path.join(pool, image_name)
         lichbd.lichbd_rm(lichbd_file)
+        lichbd.lichbd_rm(lichbd_file, "iscsi")
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
