@@ -9,10 +9,12 @@ ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 CENTOS6='CENTOS6'
 CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
+UBUNTU1604='UBUNTU16.04'
+UBUNTU='UBUNTU'
 UPGRADE='n'
 FORCE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
-SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404"
+SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404, $UBUNTU1604"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -61,9 +63,9 @@ MYSQL_USER_PASSWORD='zstack.password'
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
 ZSTACK_START_TIMEOUT=300
-ZSTACK_YUM_MIRROR=''
-YUM_MIRROR_163='163'
-YUM_MIRROR_ALIYUN='aliyun'
+ZSTACK_PKG_MIRROR=''
+PKG_MIRROR_163='163'
+PKG_MIRROR_ALIYUN='aliyun'
 ZSTACK_YUM_REPOS=''
 ZSTACK_LOCAL_YUM_REPOS='zstack-local'
 MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel'
@@ -307,7 +309,13 @@ check_system(){
     else
         grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
-            OS=$UBUNTU1404
+            grep '16.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
+            if [ $? -eq 0 ]; then
+                OS=$UBUNTU1604
+            else
+                OS=$UBUNTU1404
+            fi
+            . /etc/lsb-release
         else
             fail2 "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
         fi
@@ -316,7 +324,7 @@ check_system(){
     if [ $OS = $CENTOS6 ]; then
         yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos6_repo"
         #only support online installation for CentoS6.x
-        if [ -z "$YUM_ONLINE_REPO" -a -z "$ZSTACK_YUM_MIRROR" ]; then
+        if [ -z "$YUM_ONLINE_REPO" -a -z "$ZSTACK_PKG_MIRROR" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please do not use '-o' option to install. "
         fi
         yum_source="file://${yum_repo_folder}"
@@ -339,7 +347,7 @@ check_system(){
 
 cs_check_epel(){
     [ -z $YUM_ONLINE_REPO ] && return
-    [ ! -z $ZSTACK_YUM_MIRROR ] && return
+    [ ! -z $ZSTACK_PKG_MIRROR ] && return
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
             zstack-ctl show_configuration 2>/dev/null|grep Ansible.var.yum_repo >/dev/null 2>&1
@@ -618,7 +626,7 @@ install_ansible(){
         show_spinner ia_install_python_gcc_rh
         show_spinner ia_install_pip
         show_spinner ia_install_ansible
-    elif [ $OS = $UBUNTU1404 ]; then
+    elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         export DEBIAN_FRONTEND=noninteractive
         show_spinner ia_update_apt
         show_spinner ia_install_python_gcc_db
@@ -629,7 +637,7 @@ install_ansible(){
 
 iz_install_unzip(){
     echo_subtitle "Install unzip"
-    if [ $OS = $UBUNTU1404 ]; then
+    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         apt-get -y install unzip >>$ZSTACK_INSTALL_LOG 2>&1
         [ $? -ne 0 ] && fail "Install unzip fail."
         pass
@@ -755,8 +763,13 @@ is_install_general_libs_deb(){
     else
         mysql_pkg='mysql-client'
     fi
+    if [ $OS = $UBUNTU1404 ];then
+        openjdk=openjdk-7-jdk
+    else
+        openjdk=openjdk-8-jdk
+    fi
     apt-get -y install \
-        openjdk-7-jdk \
+        $openjdk \
         qemu-kvm \
         bridge-utils \
         wget \
@@ -790,7 +803,7 @@ is_install_general_libs_deb(){
 install_system_libs(){
     echo_title "Install System Libs"
     echo ""
-    if [ $OS != $UBUNTU1404 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
         show_spinner is_install_general_libs_rh
     else
         show_spinner is_install_general_libs_deb
@@ -803,7 +816,7 @@ install_system_libs(){
 
 is_enable_ntpd(){
     echo_subtitle "Enable NTP"
-    if [ $OS != $UBUNTU1404 ];then
+    if [$OS = $CENTOS7 -o $OS = $CENTOS6 ];then
         grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
         if [ $? -ne 0 ]; then
             echo "server 0.centos.pool.ntp.org iburst" >> /etc/ntp.conf
@@ -1505,7 +1518,7 @@ start_dashboard(){
 
 sd_install_dashboard(){
     echo_subtitle "Install ${PRODUCT_NAME} Web UI (takes a couple of minutes)"
-    zstack-ctl install_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl install_ui --force >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
         fail "failed to install zstack-dashboard in $ZSTACK_INSTALL_ROOT"
@@ -1522,7 +1535,25 @@ sd_start_dashboard(){
     pass
 }
 
-#create zstack log yum repo
+#create zstack local apt source list
+create_apt_source_list(){
+    /bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.bak >>$ZSTACK_INSTALL_LOG 2>&1
+    cat > /etc/apt/sources.list << EOF
+deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-security main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-updates main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-security main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-updates main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
+EOF
+}
+
+
+#create zstack local yum repo
 create_yum_repo(){
     cat > $zstack_163_repo_file << EOF
 #163 base
@@ -1681,7 +1712,7 @@ Options:
   -r ZSTACK_INSTALLATION_PATH
         the path where to install ${PRODUCT_NAME} management node.  The default path is $ZSTACK_INSTALL_ROOT
 
-  -R ZSTACK_YUM_MIRROR
+  -R ZSTACK_PKG_MIRROR
         which yum mirror user want to use to install ZStack required CentOS rpm packages. User can choose 163 or aliyun, like -R aliyun, -R 163 
 
   -t ZSTACK_START_TIMEOUT
@@ -1765,7 +1796,7 @@ do
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
-        R ) ZSTACK_YUM_MIRROR=$OPTARG && YUM_ONLINE_REPO='';;
+        R ) ZSTACK_PKG_MIRROR=$OPTARG && YUM_ONLINE_REPO='';;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
@@ -1775,12 +1806,12 @@ do
 done
 OPTIND=1
 
-if [ ! -z $ZSTACK_YUM_MIRROR ]; then
-    if [ "$ZSTACK_YUM_MIRROR" != "$YUM_MIRROR_163" -a "$ZSTACK_YUM_MIRROR" != "$YUM_MIRROR_ALIYUN" ]; then
-        echo -e "\n\tYou want to use yum mirror from '$ZSTACK_YUM_MIRROR' . But we only support yum mirrors for '$YUM_MIRROR_163' or '$YUM_MIRROR_ALIYUN'. Please fix it and rerun the installation.\n\n"
+if [ ! -z $ZSTACK_PKG_MIRROR ]; then
+    if [ "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_163" -a "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_ALIYUN" ]; then
+        echo -e "\n\tYou want to use yum mirror from '$ZSTACK_PKG_MIRROR' . But we only support yum mirrors for '$PKG_MIRROR_163' or '$PKG_MIRROR_ALIYUN'. Please fix it and rerun the installation.\n\n"
         exit 1
     fi
-    if [ $ZSTACK_YUM_MIRROR = $YUM_MIRROR_163 ]; then
+    if [ $ZSTACK_PKG_MIRROR = $PKG_MIRROR_163 ]; then
         ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
     else
         ZSTACK_YUM_REPOS=$MIRROR_ALI_YUM_REPOS
@@ -1915,8 +1946,14 @@ fi
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
 
-if [ $OS != $UBUNTU1404 ]; then
+if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
     create_yum_repo
+fi
+
+if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
+    if [ ! -z $ZSTACK_PKG_MIRROR ]; then
+        create_apt_source_list
+    fi
 fi
 
 #Download ${PRODUCT_NAME} all in one package
