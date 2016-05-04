@@ -4460,7 +4460,7 @@ class InstallWebUiCmd(Command):
 
     def run(self, args):
         if not args.host:
-            self._install_to_local()
+            self._install_to_local(args)
             return
 
         if not args.yum:

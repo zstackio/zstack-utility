@@ -685,6 +685,7 @@ is_install_general_libs_rh(){
             ntpdate \
             bzip2 \
             libffi-devel \
+            openssl-devel \
             net-tools \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
@@ -720,6 +721,7 @@ is_install_general_libs_rh(){
             ntpdate \
             bzip2 \
             libffi-devel \
+            openssl-devel \
             net-tools \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
@@ -778,6 +780,7 @@ is_install_general_libs_deb(){
         ntpdate \
         bzip2 \
         libffi-dev \
+        libssl-dev \
         $mysql_pkg \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install virtualenv failed"
