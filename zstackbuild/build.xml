@@ -61,6 +61,8 @@
     <import file="${basedir}/projects/zstack-iscsi.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephb.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephp.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-fusionstorb.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-fusionstorp.xml" optional="false" />
     <import file="${basedir}/projects/zstack-console-proxy.xml" optional="false" />
     <import file="${basedir}/projects/zstack-setting.xml" optional="false" />
     <import file="${basedir}/projects/zstack-testagent.xml" optional="false" />
@@ -174,9 +176,9 @@
         <echo message="[zstack_build_root] default path is /usr/local/zstack/root/, which is defined in build.properties. It should be the same parent folder for zstack-utility and zstack-woodpecker." />
     </target>
 
-    <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb, build-cephp, build-zstack-agent" />
+    <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb, build-cephp, build-zstack-agent, build-fusionstorb, build-fusionstorp" />
 
-    <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, assemble-agent-server, assemble-agent-collectd, copy-pypi-source" >
+    <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, assemble-agent-server, assemble-agent-collectd, copy-pypi-source, assemble-fusionstorb, assemble-fusionstorp" >
         <makeDir dir="${libs.dir}" />
         <exec executable="cp" dir="${libs.dir}" failonerror="true">
             <arg value="-f" />
