@@ -1550,6 +1550,7 @@ deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-updates main restric
 deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
 deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
 EOF
+    apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
 }
 
 
