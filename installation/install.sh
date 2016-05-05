@@ -1208,18 +1208,18 @@ cs_gen_sshkey(){
     echo_subtitle "Generate Temp SSH Key"
     [ ! -d /root/.ssh ] && mkdir -p /root/.ssh && chmod 700 /root/.ssh
     
-    dsa_key_file=$1/id_dsa
-    dsa_pub_key_file=$1/id_dsa.pub
+    rsa_key_file=$1/id_rsa
+    rsa_pub_key_file=$1/id_rsa.pub
     authorized_keys_file=/root/.ssh/authorized_keys
-    ssh-keygen -t dsa -N '' -f $dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1 
+    ssh-keygen -t rsa -N '' -f $rsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1 
     if [ ! -f $authorized_keys_file ]; then
-        cat $dsa_pub_key_file > $authorized_keys_file
+        cat $rsa_pub_key_file > $authorized_keys_file
         chmod 600 $authorized_keys_file
     else
-        ssh_pub_key=`cat $dsa_pub_key_file`
+        ssh_pub_key=`cat $rsa_pub_key_file`
         grep $ssh_pub_key $authorized_keys_file >/dev/null 2>&1
         if [ $? -ne 0 ]; then
-            cat $dsa_pub_key_file >> $authorized_keys_file
+            cat $rsa_pub_key_file >> $authorized_keys_file
         fi
     fi
     if [ -x /sbin/restorecon ]; then
@@ -1230,18 +1230,18 @@ cs_gen_sshkey(){
 
 cs_install_mysql(){
     echo_subtitle "Install Mysql Server"
-    dsa_key_file=$1/id_dsa
+    rsa_key_file=$1/id_rsa
     if [ -z $ZSTACK_YUM_REPOS ];then
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
-            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --root-password="$MYSQL_NEW_ROOT_PASSWORD" --debug >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --root-password="$MYSQL_NEW_ROOT_PASSWORD" --debug >>$ZSTACK_INSTALL_LOG 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$dsa_key_file --debug >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$rsa_key_file --debug >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     else
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
-            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS --root-password="$MYSQL_NEW_ROOT_PASSWORD" >>$ZSTACK_INSTALL_LOG --debug 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --yum=$ZSTACK_YUM_REPOS --root-password="$MYSQL_NEW_ROOT_PASSWORD" >>$ZSTACK_INSTALL_LOG --debug 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$rsa_key_file --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
     if [ $? -ne 0 ];then
@@ -1253,13 +1253,13 @@ cs_install_mysql(){
 
 cs_install_rabbitmq(){
     echo_subtitle "Install Rabbitmq Server"
-    dsa_key_file=$1/id_dsa
+    rsa_key_file=$1/id_rsa
     if [ -z $ZSTACK_YUM_REPOS ];then
-        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file" >>$ZSTACK_INSTALL_LOG
-        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --debug >>$ZSTACK_INSTALL_LOG 2>&1
+        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file" >>$ZSTACK_INSTALL_LOG
+        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --debug >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
-        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
+        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --yum=$ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
+        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     if [ $? -ne 0 ];then
@@ -1271,8 +1271,8 @@ cs_install_rabbitmq(){
 
 cs_clean_ssh_tmp_key(){
     #echo_subtitle "Clean up ssh temp key"
-    dsa_pub_key_file=$1/id_dsa.pub
-    ssh_pub_key=`cat $dsa_pub_key_file`
+    rsa_pub_key_file=$1/id_rsa.pub
+    ssh_pub_key=`cat $rsa_pub_key_file`
     authorized_keys_file=/root/.ssh/authorized_keys
     sed -i "\;$ssh_pub_key;d" $authorized_keys_file >>$ZSTACK_INSTALL_LOG 2>&1
     /bin/rm -rf $1
