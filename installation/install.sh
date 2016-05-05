@@ -570,6 +570,9 @@ upgrade_zstack(){
         INSTALL_MONITOR='y'
     fi
 
+    show_spinner uz_pre_upgrade
+    #rerun install system libs, upgrade might need new libs
+    is_install_system_libs
     show_spinner uz_upgrade_zstack
     cd /
     show_spinner cs_add_cronjob
@@ -616,6 +619,14 @@ upgrade_zstack(){
             fi
         fi
     fi
+}
+
+uz_pre_upgrade(){
+    echo_subtitle "Upgrading Pre-Checking"
+    #change zstack.properties config
+    ZSTACK_PROPERTIES=$ZSTACK_HOME/zstack.properties
+    sed -i 's/Ansible.var.yum_repo/Ansible.var.zstack_repo/' $ZSTACK_PROPERTIES >>$ZSTACK_INSTALL_LOG 2>&1
+    pass
 }
 
 install_ansible(){
@@ -800,14 +811,18 @@ is_install_general_libs_deb(){
     pass
 }
 
-install_system_libs(){
-    echo_title "Install System Libs"
-    echo ""
+is_install_system_libs(){
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
         show_spinner is_install_general_libs_rh
     else
         show_spinner is_install_general_libs_deb
     fi
+}
+
+install_system_libs(){
+    echo_title "Install System Libs"
+    echo ""
+    is_install_system_libs
     #mysql and rabbitmq will be installed by zstack-ctl later
     show_spinner is_install_virtualenv
     #enable ntpd
