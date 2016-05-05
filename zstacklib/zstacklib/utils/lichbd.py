@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import os
 import errno
 import time
 import subprocess
@@ -129,8 +130,8 @@ def lichbd_export(src_path, dst_path):
 
     raise_exp(shellcmd)
 
-def lichbd_rm(path):
-    shellcmd = call_try('lichbd rm %s -p lichbd 2>/dev/null' % path)
+def lichbd_rm(path, proto="lichbd"):
+    shellcmd = call_try('lichbd rm %s -p %s 2>/dev/null' % (path, proto))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.ENOENT:
             pass
@@ -259,3 +260,39 @@ def lichbd_get_format(path):
         raise_exp(shellcmd)
 
     return shellcmd.stdout.strip()
+
+def get_system_qemu_path():
+    _qemu_path = None
+    if not _qemu_path:
+        if os.path.exists('/usr/libexec/qemu-kvm'):
+            _qemu_path = '/usr/libexec/qemu-kvm'
+        elif os.path.exists('/bin/qemu-kvm'):
+            _qemu_path = '/bin/qemu-kvm'
+        elif os.path.exists('/usr/bin/qemu-system-x86_64'):
+            # ubuntu
+            _qemu_path = '/usr/bin/qemu-system-x86_64'
+        else:
+            raise shell.ShellError('\n'.join('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-x86_64'))
+
+    return _qemu_path
+
+def makesure_qemu_with_lichbd():
+    _lichbd = lichbd_get_qemu_path()
+    _system = get_system_qemu_path()
+    need_link = True
+
+    if os.path.islink(_system):
+        link = shell.call("set -o pipefail; ls -l %s|cut -d '>' -f 2" % (_system)).strip()
+        if link == _lichbd:
+            need_link = False
+
+    if need_link:
+        rm_cmd = "rm -f %s.tmp" % (_system)
+        shell.call(rm_cmd)
+
+        ln_cmd = "ln -s %s %s.tmp" % (_lichbd, _system)
+        shell.call(ln_cmd)
+
+        mv_cmd = "mv %s.tmp %s -f" % (_system, _system)
+        shell.call(mv_cmd)
+
