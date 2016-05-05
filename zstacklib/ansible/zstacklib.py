@@ -80,7 +80,7 @@ class HostPostInfo(object):
     def __init__(self):
         self.host = None
         self.vip= None
-        self.post_url = ""
+        self.post_url = None
         self.private_key = None
         self.host_inventory = None
         self.start_time = None
@@ -127,7 +127,7 @@ def retry(times=3, sleep_time=3):
                     return f(*args, **kwargs)
                 except Exception as e:
                     time.sleep(sleep_time)
-            print "The host is inaccessible currently, please make sure the host can be connected then try again."
+            print "Network unstable, please try again later"
             sys.exit(1)
         return inner
     return wrap
@@ -138,7 +138,7 @@ def create_log(logger_dir):
         os.makedirs(logger_dir)
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=1 * 1024 * 1024,
+    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=100 * 1024 * 1024,
                                                    backupCount=10)
     handler.setFormatter(fmt)
     logger.addHandler(handler)
