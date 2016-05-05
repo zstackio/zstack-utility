@@ -1565,7 +1565,7 @@ deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-updates 
 deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
 deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
 EOF
-    apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
 }
 
 
