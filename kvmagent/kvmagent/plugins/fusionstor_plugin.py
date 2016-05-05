@@ -9,6 +9,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import lichbd
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import thread
@@ -28,7 +29,7 @@ class FusionstorPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def fusionstor_query(self, req):
-        vm_plugin.makesure_qemu_with_lichbd()
+        lichbd.makesure_qemu_with_lichbd()
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     def start(self):
