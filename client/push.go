@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"fmt"
+	"image-store/registry/api/errcode"
 	"image-store/registry/api/v1"
 	"image-store/utils"
 	"io/ioutil"
@@ -13,38 +14,90 @@ import (
 	"strings"
 )
 
+func (cln *ZImageClient) getLocalParents(leaf *v1.ImageManifest) ([]*v1.ImageManifest, error) {
+	var res []*v1.ImageManifest
+
+	for cursor := leaf; cursor.Parent != ""; {
+
+		imf, err := cln.getImageManifest(cursor.Name, cursor.Parent)
+		if err == nil {
+			break // manifest exists
+		}
+
+		// check Not Found error specifically
+		if v, ok := err.(errcode.Error); ok && v.Code == http.StatusNotFound {
+			res = append(res, imf)
+		} else {
+			return nil, err
+		}
+
+		manifest, err := FindImageManifest(cursor.Parent)
+		if err != nil {
+			return nil, fmt.Errorf("local cache corrupted: %s", err)
+		}
+
+		cursor = manifest
+	}
+
+	// reverse the list - so that we pull the parents first
+	for i, j := 0, len(res); i < j; i, j = i+1, j-1 {
+		res[i], res[j] = res[j], res[i]
+	}
+
+	return res, nil
+}
+
 // Pushing an image involves the following steps:
 // 1. upload blob chunks
 // 2. upload image manifest
 // 3. update local tag
 func (cln *ZImageClient) Push(imgid string, tag string) error {
-	manifest, err := FindImageManifest(imgid)
+	leaf, err := FindImageManifest(imgid)
 	if err != nil {
 		return fmt.Errorf("image id not found: %s", imgid)
 	}
 
-	uinfo := v1.UploadInfo{Size: manifest.Size}
-	loc, err := cln.PrepareUpload(manifest.Name, &uinfo)
+	parents, err := cln.getLocalParents(leaf)
 	if err != nil {
-		return fmt.Errorf("failed to prepare upload: %s", err)
+		return nil
 	}
 
-	tracePrintf("uploading image files to: %s\n", loc)
-	if err = cln.uploadFile(GetImageFilePath(manifest.Name, manifest.Id), uinfo.Size, loc); err != nil {
-		return fmt.Errorf("failed to upload file: %s", err)
+	for _, p := range parents {
+		if err = cln.doPush(p, p.Id); err != nil {
+			return err
+		}
 	}
 
-	tracePrintf("constructing image manifest, tag = %s\n", tag)
-	if err = cln.putImageManifest(manifest.Name, tag, manifest); err != nil {
-		return fmt.Errorf("failed to create image manifest: %s", err)
+	if err = cln.doPush(leaf, tag); err != nil {
+		return err
 	}
 
 	// update local tag file
-	tagfile := GetImageTagPath(manifest.Name, tag)
+	tagfile := GetImageTagPath(leaf.Name, tag)
 	os.MkdirAll(path.Dir(tagfile), 0775)
 
 	if err = ioutil.WriteFile(tagfile, []byte(imgid), 0644); err != nil {
 		return fmt.Errorf("failed to upload local tag file: %s", err)
+	}
+
+	return nil
+}
+
+func (cln *ZImageClient) doPush(imf *v1.ImageManifest, ref string) error {
+	uinfo := v1.UploadInfo{Size: imf.Size}
+	loc, err := cln.PrepareUpload(imf.Name, &uinfo)
+	if err != nil {
+		return fmt.Errorf("failed to prepare upload: %s", err)
+	}
+
+	tracePrintf("uploading image (%s) to: %s\n", imf.Id, loc)
+	if err = cln.uploadFile(GetImageFilePath(imf.Name, imf.Id), uinfo.Size, loc); err != nil {
+		return fmt.Errorf("failed to upload file: %s", err)
+	}
+
+	tracePrintf("constructing image manifest, ref = %s\n", ref)
+	if err = cln.putImageManifest(imf.Name, ref, imf); err != nil {
+		return fmt.Errorf("failed to create image manifest: %s", err)
 	}
 
 	return nil
@@ -160,8 +213,8 @@ func (cln *ZImageClient) GetProgress(loc string) (int64, error) {
 	return parseRangeHeader(hdr)
 }
 
-func (cln *ZImageClient) putImageManifest(name string, tag string, imf *v1.ImageManifest) error {
-	route, reader := v1.GetManifestRoute(name, tag), strings.NewReader(imf.String())
+func (cln *ZImageClient) putImageManifest(name string, ref string, imf *v1.ImageManifest) error {
+	route, reader := v1.GetManifestRoute(name, ref), strings.NewReader(imf.String())
 	req, err := http.NewRequest("PUT", cln.GetFullUrl(route), reader)
 	if err != nil {
 		return err

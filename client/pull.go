@@ -12,7 +12,7 @@ import (
 )
 
 // Returns a list of image ids of which we need to pull from server.
-func (cln *ZImageClient) buildChain(leaf *v1.ImageManifest) ([]*v1.ImageManifest, error) {
+func (cln *ZImageClient) buildPullChain(leaf *v1.ImageManifest) ([]*v1.ImageManifest, error) {
 	var res []*v1.ImageManifest
 	res = append(res, leaf)
 
@@ -33,6 +33,11 @@ func (cln *ZImageClient) buildChain(leaf *v1.ImageManifest) ([]*v1.ImageManifest
 		cursor = imf
 	}
 
+	// reverse the list - so that we pull the parents first
+	for i, j := 0, len(res); i < j; i, j = i+1, j-1 {
+		res[i], res[j] = res[j], res[i]
+	}
+
 	return res, nil
 }
 
@@ -47,14 +52,9 @@ func (cln *ZImageClient) Pull(name string, reference string) error {
 		return fmt.Errorf("%s:%s already exists", name, imf.Id)
 	}
 
-	// reverse the list - so that we pull the parents first
-	imfs, err := cln.buildChain(imf)
+	imfs, err := cln.buildPullChain(imf)
 	if err != nil {
 		return nil
-	}
-
-	for i, j := 0, len(imfs); i < j; i, j = i+1, j-1 {
-		imfs[i], imfs[j] = imfs[j], imfs[i]
 	}
 
 	for _, imf = range imfs {
