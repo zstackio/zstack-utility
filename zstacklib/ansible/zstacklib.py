@@ -1395,7 +1395,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
 
         elif distro == "Debian" or distro == "Ubuntu":
             update_repo_raw_command = """
-/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.bak
+/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.{{ backup_time }}
 cat > /etc/apt/sources.list << EOF
 deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
 deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
@@ -1413,7 +1413,8 @@ EOF
                 update_repo_command_template = jinja2.Template(update_repo_raw_command)
                 update_repo_command = update_repo_command_template.render({
                     'zstack_repo' : zstack_repo,
-                    'DISTRIB_CODENAME' : distro_release
+                    'DISTRIB_CODENAME' : distro_release,
+                    'backup_time' : datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 })
                 run_remote_command(update_repo_command, host_post_info)
 

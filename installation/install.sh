@@ -1552,18 +1552,18 @@ sd_start_dashboard(){
 
 #create zstack local apt source list
 create_apt_source_list(){
-    /bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.bak >>$ZSTACK_INSTALL_LOG 2>&1
+    /bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.`date +%Y-%m-%d_%H-%M-%S` >>$ZSTACK_INSTALL_LOG 2>&1
     cat > /etc/apt/sources.list << EOF
-deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
-deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-security main restricted universe multiverse
-deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-updates main restricted universe multiverse
-deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
-deb http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
-deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
-deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-security main restricted universe multiverse
-deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-updates main restricted universe multiverse
-deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
-deb-src http://mirrors.aliyun.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-security main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-updates main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-security main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-updates main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
 EOF
     apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
 }
