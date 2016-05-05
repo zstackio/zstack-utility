@@ -129,8 +129,8 @@ def lichbd_export(src_path, dst_path):
 
     raise_exp(shellcmd)
 
-def lichbd_rm(path):
-    shellcmd = call_try('lichbd rm %s -p lichbd 2>/dev/null' % path)
+def lichbd_rm(path, proto="lichbd"):
+    shellcmd = call_try('lichbd rm %s -p %s 2>/dev/null' % (path, proto))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.ENOENT:
             pass

@@ -529,16 +529,19 @@ def makesure_qemu_with_lichbd():
     need_link = True
 
     if os.path.islink(_system):
-        link = shell.call("set -o pipefail; ls -l %s|cut -d '>' -f 2" % (_system))
+        link = shell.call("set -o pipefail; ls -l %s|cut -d '>' -f 2" % (_system)).strip()
         if link == _lichbd:
             need_link = False
 
     if need_link:
-        logger.debug('replace %s to %s' % (_system, _lichbd))
-        mv_cmd = "mv %s -f --backup=numbered %s.bak" % (_system, _system)
-        shell.call(mv_cmd)
-        ln_cmd = "ln -s %s %s" % (_lichbd, _system)
+        rm_cmd = "rm -f %s.tmp" % (_system)
+        shell.call(rm_cmd)
+
+        ln_cmd = "ln -s %s %s.tmp" % (_lichbd, _system)
         shell.call(ln_cmd)
+
+        mv_cmd = "mv %s.tmp %s -f" % (_system, _system)
+        shell.call(mv_cmd)
 
 class IsoFusionstor(object):
     def __init__(self):
