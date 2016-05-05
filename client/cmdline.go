@@ -276,7 +276,7 @@ func doImages(gopt *GlobalOpt, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("list local images")
+	printLocalImages()
 }
 
 func withClient(gopt *GlobalOpt, f func(*ZImageClient) error) {
