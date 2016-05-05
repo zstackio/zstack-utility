@@ -1432,7 +1432,7 @@ class InstallDbCmd(Command):
 
     def run(self, args):
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.yum_repo')
+            args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
         yaml = '''---
 - hosts: $host
