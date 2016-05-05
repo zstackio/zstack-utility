@@ -46,9 +46,10 @@ host_post_info.post_url = post_url
 host_post_info.private_key = args.private_key
 
 # include zstacklib.py
-(distro, distro_version) = get_remote_host_info(host_post_info)
+(distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
 zstacklib_args.distro_version = distro_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.yum_server = yum_server

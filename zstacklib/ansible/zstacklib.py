@@ -12,6 +12,7 @@ import json
 from logging.handlers import TimedRotatingFileHandler
 import time
 import functools
+import jinja2
 import commands
 
 # set global default value
@@ -44,6 +45,7 @@ class ZstackLibArgs(object):
         self.yum_server = None
         self.distro = None
         self.distro_version = None
+        self.distro_release = None
         self.zstack_root = None
         self.host_post_info = None
         self.pip_url = None
@@ -947,10 +949,11 @@ def get_remote_host_info(host_post_info):
         handle_ansible_start(ansible_start)
         sys.exit(1)
     else:
-        (distro, version) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
-                             int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version'])]
+        (distro, version, release) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
+                             int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
+                             result['contacted'][host]['ansible_facts']['ansible_distribution_release']]
         handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
-        return (distro, version)
+        return (distro, version, release)
 
 
 def set_ini_file(file, section, option, value, host_post_info):
@@ -1290,6 +1293,7 @@ def unarchive(unarchive_arg, host_post_info):
 class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
+        distro_release = args.distro_release
         zstack_repo = args.zstack_repo
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
@@ -1390,7 +1394,31 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
             service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
         elif distro == "Debian" or distro == "Ubuntu":
+            update_repo_raw_command = """
+/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.bak
+cat > /etc/apt/sources.list << EOF
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+EOF
+                """
+            if zstack_repo == 'aliyun' or zstack_repo == '163':
+                update_repo_command_template = jinja2.Template(update_repo_raw_command)
+                update_repo_command = update_repo_command_template.render({
+                    'zstack_repo' : zstack_repo,
+                    'DISTRIB_CODENAME' : distro_release
+                })
+                run_remote_command(update_repo_command, host_post_info)
+
             # install dependency packages for Debian based OS
+            # if last operation more than 24 hour, will update the cache again
             apt_update_cache(86400, host_post_info)
             for pkg in ["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                 apt_install_packages(pkg, host_post_info)
