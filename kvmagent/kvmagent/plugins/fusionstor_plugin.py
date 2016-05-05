@@ -28,7 +28,7 @@ class FusionstorPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def fusionstor_query(self, req):
-        makesure_qemu_with_lichbd()
+        vm_plugin.makesure_qemu_with_lichbd()
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     def start(self):
