@@ -1577,32 +1577,27 @@ exit 1
         self.install_cleanup_routine(cleanup_pre_install_script)
 
         post_install_script = '''
-if [ -f /etc/mysql/my.cnf ]; then
-    # Ubuntu
-    sed -i 's/^bind-address/#bind-address/' /etc/mysql/my.cnf
-    sed -i 's/^skip-networking/#skip-networking/' /etc/mysql/my.cnf
-    grep '^character-set-server' /etc/mysql/my.cnf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/mysql/my.cnf
-    fi
-    grep '^skip-name-resolve' /etc/mysql/my.cnf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/mysql/my.cnf
-    fi
+if [ -f /etc/mysql/conf.d/mysql.cnf ]; then
+    #ubuntu 16.04
+    mysql_conf=/etc/mysql/mysql.conf.d/mysqld.cnf
+elif [ -f /etc/mysql/my.cnf ]; then
+    # Ubuntu 14.04
+    mysql_conf=/etc/mysql/my.cnf
+elif [ -f /etc/my.cnf ]; then
+    # centos
+    mysql_conf=/etc/my.cnf
 fi
-
-if [ -f /etc/my.cnf ]; then
-    # CentOS
-    sed -i 's/^bind-address/#bind-address/' /etc/my.cnf
-    sed -i 's/^skip-networking/#skip-networking/' /etc/my.cnf
-    grep '^character-set-server' /etc/my.cnf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/my.cnf
-    fi
-    grep '^skip-name-resolve' /etc/my.cnf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/my.cnf
-    fi
+    
+sed -i 's/^bind-address/#bind-address/' $mysql_conf
+sed -i 's/^skip-networking/#skip-networking/' $mysql_conf
+sed -i 's/^bind-address/#bind-address/' $mysql_conf
+grep '^character-set-server' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    sed -i '/\[mysqld\]/a character-set-server=utf8\' $mysql_conf
+fi
+grep '^skip-name-resolve' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    sed -i '/\[mysqld\]/a skip-name-resolve\' $mysql_conf
 fi
 '''
         fd, post_install_script_path = tempfile.mkstemp()
