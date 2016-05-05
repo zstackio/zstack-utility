@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-fusionstorp builder" basedir="../">
+    <property name="fusionstorp.bdir" location="${build.dir}/fusionstorp" />
+    <property name="fusionstorp.ansible.dir" location="${ansible.dir}/fusionstorp/" />
+
+    <target name="build-fusionstorp" >
+        <makeDir dir="${fusionstorp.bdir}" />
+
+        <checkProperty property="fusionstorp.source" />
+        <checkProperty property="fusionstorp.serviceFile" />
+        <checkFile file="${fusionstorp.source}" />
+        <checkFile file="${fusionstorp.source}/setup.py" />
+        <checkFile file="${fusionstorp.serviceFile}" />
+
+        <delete dir="${fusionstorp.source}/dist" />
+
+        <exec executable="python" dir="${fusionstorp.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${fusionstorp.bdir}/">
+            <fileset dir="${fusionstorp.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-fusionstorp">
+        <makeDir dir="${fusionstorp.ansible.dir}" />
+
+        <copy todir="${fusionstorp.ansible.dir}">
+            <fileset dir="${fusionstorp.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${fusionstorp.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${fusionstorp.serviceFile}" todir="${fusionstorp.ansible.dir}" />
+    </target>
+</project>

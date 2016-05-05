@@ -29,6 +29,7 @@ import fcntl
 import commands
 import threading
 import itertools
+import datetime
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -3433,6 +3434,93 @@ class DumpMysqlCmd(Command):
                     os.remove(self.db_backup_dir + self.expired_file)
 
 
+class CollectLogCmd(Command):
+    zstack_log_dir = "/var/log/zstack"
+    host_log_list = ['zstack-sftpbackupstorage.log','zstack.log','zstack-kvmagent.log','ceph-backupstorage.log',
+                     'ceph-primarystorage.log', 'zstack-iscsi-filesystem-agent.log']
+    mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
+                   'zstack-dashboard.log']
+
+    def __init__(self):
+        super(CollectLogCmd, self).__init__()
+        self.name = "collect_log"
+        self.description = (
+            "Collect log for diagnose"
+        )
+        ctl.register_command(self)
+
+    #def install_argparse_arguments(self, parser):
+        #parser.add_argument('--simple-log', help='collect simple log on all hosts and management node ', default=False)
+        #parser.add_argument('--host', help='collect full log on this host and management node ', default=False)
+
+    def get_host_list(self):
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        query = MySqlCommandLineQuery()
+        query.host = db_hostname
+        query.port = db_port
+        query.user = db_user
+        query.password = db_password
+        query.table = 'zstack'
+        query.sql = "select * from HostVO"
+        host_vo = query.query()
+        return host_vo
+
+    def get_host_log(self, host_post_info, collect_dir):
+        info("Collecting log from host: %s ..." % host_post_info.host)
+        tmp_collect_log_dir = "%s/tmp-collect-log/" % CollectLogCmd.zstack_log_dir
+        command = "mkdir -p %s " % tmp_collect_log_dir
+        run_remote_command(command, host_post_info)
+        for log in CollectLogCmd.host_log_list:
+            command = "tail -n 10000 %s/%s > %s/%s-collect 2>&1 || true" \
+                      % (CollectLogCmd.zstack_log_dir, log, tmp_collect_log_dir, log)
+            run_remote_command(command, host_post_info)
+        command = "tar zcf %s/collect-log.tar.gz %s" % (CollectLogCmd.zstack_log_dir, tmp_collect_log_dir)
+        run_remote_command(command, host_post_info)
+        fetch_arg = FetchArg()
+        fetch_arg.src =  "%s/collect-log.tar.gz " % CollectLogCmd.zstack_log_dir
+        fetch_arg.dest = "%s/%s/" % (collect_dir, host_post_info.host)
+        fetch_arg.args = "fail_on_missing=yes flat=yes"
+        fetch(fetch_arg, host_post_info)
+        command = "rm -rf %s %s/collect-log.tar.gz " % (tmp_collect_log_dir, CollectLogCmd.zstack_log_dir)
+        run_remote_command(command, host_post_info)
+
+    def get_management_node_log(self, collect_dir):
+        info("Collecting log from this management node ...")
+        if not os.path.exists(collect_dir + "/management-node"):
+            os.makedirs(collect_dir + "/management-node")
+        (status, output) = commands.getstatusoutput("tail -n 10000 %s/../../logs/management-server.log > "
+                                                    "%s/management-node/management-server.log 2>&1 "
+                                                    % (ctl.zstack_home, collect_dir))
+        if status != 0:
+            error("get management-server.log failed: %s" % output)
+        for log in CollectLogCmd.mn_log_list:
+            (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
+                                                        % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
+
+    def generate_tar_ball(self, collect_dir):
+        (status, output) = commands.getstatusoutput("tar zcf collect-log.tar.gz %s" % collect_dir)
+        if status != 0:
+            error("Generate tarball failed: %s " % output)
+
+    def run(self, args):
+        run_command_dir = os.getcwd()
+        collect_dir = run_command_dir + "/" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        if not os.path.exists(collect_dir):
+            os.makedirs(collect_dir)
+        host_vo = self.get_host_list()
+        for host in host_vo:
+            host_ip = host['managementIp']
+            host_post_info = HostPostInfo()
+            host_post_info.host = host_ip
+            host_post_info.host_inventory = ctl.zstack_home + "/../../../ansible/hosts"
+            host_post_info.private_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
+            host_post_info.post_url = ""
+            self.get_host_log(host_post_info, collect_dir)
+
+        self.get_management_node_log(collect_dir)
+        self.generate_tar_ball(collect_dir)
+        info("The collect log generate at: %s/collect-log.tar.gz" % run_command_dir)
+
 
 class ChangeIpCmd(Command):
     def __init__(self):
@@ -3469,7 +3557,7 @@ class ChangeIpCmd(Command):
         else:
             cassandra_listen_address = args.ip
         if args.cloudbus_server_ip is not None:
-            cloudbus_server_ip = args.cloud_bus_server_ip
+            cloudbus_server_ip = args.cloudbus_server_ip
         else:
             cloudbus_server_ip = args.ip
         if args.mysql_ip is not None:
@@ -3491,11 +3579,10 @@ class ChangeIpCmd(Command):
               ('CloudBus.serverIp.0', cloudbus_server_ip),
             ])
             info("Update cloudbus server ip %s in %s " % (cloudbus_server_ip, zstack_conf_file))
-            if ctl.read_property('management.server.ip') is not None:
-                ctl.write_properties([
-                  ('management.server.ip', args.ip),
-                ])
-                info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
+            ctl.write_properties([
+              ('management.server.ip', args.ip),
+            ])
+            info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
             db_url = ctl.read_property('DB.url')
             db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
             db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
@@ -3504,7 +3591,7 @@ class ChangeIpCmd(Command):
             ])
             info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
         else:
-            info("Didn't find %s, skip update all ip" % zstack_conf_file  )
+            info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
 
         # Update kairosdb config file
@@ -5263,6 +5350,7 @@ def main():
     ChangeIpCmd()
     InstallHACmd()
     DumpMysqlCmd()
+    CollectLogCmd()
 
     try:
         ctl.run()

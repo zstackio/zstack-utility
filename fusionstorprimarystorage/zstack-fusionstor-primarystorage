@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# the following is chkconfig init header
+#
+# zstack-fusionstor-primarystorage:  zstack fusionstor primary storage agent daemon
+#
+# chkconfig: 345 97 03
+# description:  This is a daemon instructed by zstack management server \
+#               to perform primary storage related operations\
+#               See http://zstack.org
+#
+# processname: zstack-fusionstor-primarystorage
+# pidfile: /var/run/zstack/fusionstor-primarystorage.pid
+#
+
+check_status() {
+    pidfile='/var/run/zstack/fusionstor-primarystorage.pid'
+	if [ ! -f $pidfile ]; then
+		echo "zstack fusionstor-primarystorage agent is stopped"
+		exit 1
+	else
+		pid=`cat $pidfile`
+		ps -p $pid > /dev/null
+		if [ $? -eq 0 ]; then
+			echo "zstack fusionstor-primarystorage agent is running, pid is $pid"
+			exit 0
+		else
+			echo "zstack fusionstor-primarystorage is stopped, but pidfile at $pidfile is not cleaned. It may be caused by the agent crashed at last time, manually cleaning it would be ok"
+			exit 1
+		fi
+	fi
+}
+
+if [ $# -eq 0 ]; then
+	echo "usage: $0
+[start|stop|restart|status]"
+	exit 1
+fi
+
+if [ "$@" = "status" ]; then
+	check_status
+else
+	. /var/lib/zstack/virtualenv/fusionstorp/bin/activate && python -c "from fusionstorprimarystorage import cdaemon; cdaemon.main()" $@
+fi
+
+if [ $? -eq 0 ]; then
+    echo "$@ zstack fusionstor-primarystorage agent .... SUCCESS"
+    exit 0
+else
+    echo "$@ zstack fusionstor-primarystorage agent .... FAILED"
+    exit 1
+fi

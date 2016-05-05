@@ -1,4 +1,4 @@
-amqp==1.4.6
+amqp==1.4.9
 ansible==1.8.2
 anyjson==0.3.3
 argparse==1.3.0
@@ -10,7 +10,7 @@ Flask-Script==2.0.5
 importlib==1.0.3
 itsdangerous==0.24
 Jinja2==2.7.3
-kombu==3.0.26
+kombu==3.0.35
 librabbitmq==1.6.1
 MarkupSafe==0.23
 netaddr==0.7.14
@@ -30,6 +30,5 @@ urllib3==1.10.4
 virtualenv==12.1.1
 websockify==0.6.1
 Werkzeug==0.10.4
-flask-socketio==0.6.0
+flask-socketio==2.2
 versiontools==1.7
-ansible==1.8.2

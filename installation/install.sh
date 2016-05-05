@@ -1116,6 +1116,8 @@ cs_add_cronjob(){
 zstack_home=\`zstack-ctl status|grep ZSTACK_HOME|awk '{print \$2}'\`
 mn_log_folder=\$zstack_home/../../logs/
 
+[ ! -d \$mn_log_folder ] && exit 0
+
 target_file="localhost_access_log*.txt management-server*.log catalina*.log localhost*.log"
 for file in \$target_file; do
     cd \$mn_log_folder
