@@ -12,7 +12,7 @@ pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
 sproxy = ""
 chroot_env = 'false'
-yum_repo = 'false'
+zstack_repo = 'false'
 current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 pkg_sftpbackupstorage = ""
@@ -46,7 +46,7 @@ host_post_info.private_key = args.private_key
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_version = distro_version
-zstacklib_args.yum_repo = yum_repo
+zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
@@ -64,9 +64,9 @@ else:
     run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
-    if yum_repo != 'false':
+    if zstack_repo != 'false':
         # name: install sftp backup storage related packages on RedHat based OS from local
-        command = 'yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y openssh-clients' % yum_repo
+        command = 'yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y openssh-clients' % zstack_repo
         run_remote_command(command, host_post_info)
     else:
         # name: install sftp backup storage related packages on RedHat based OS from online

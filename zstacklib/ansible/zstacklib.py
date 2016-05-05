@@ -40,7 +40,7 @@ class AgentInstallArg(object):
 
 class ZstackLibArgs(object):
     def __init__(self):
-        self.yum_repo = None
+        self.zstack_repo = None
         self.yum_server = None
         self.distro = None
         self.distro_version = None
@@ -1290,7 +1290,7 @@ def unarchive(unarchive_arg, host_post_info):
 class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
-        yum_repo = args.yum_repo
+        zstack_repo = args.zstack_repo
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
         trusted_host = args.trusted_host
@@ -1332,8 +1332,8 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
         """
             run_remote_command(command, host_post_info)
 
-            if yum_repo == "false":
-                # yum_repo defined by user
+            if zstack_repo == "false":
+                # zstack_repo defined by user
                 yum_install_package("libselinux-python", host_post_info)
                 if epel_repo_exist is False:
                     copy_arg = CopyArg()
@@ -1383,7 +1383,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
                           "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                           "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                          "-y $pkg; done;") % yum_repo
+                          "-y $pkg; done;") % zstack_repo
                 run_remote_command(command, host_post_info)
 
             # enable ntp service for RedHat

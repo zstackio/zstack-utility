@@ -11,7 +11,7 @@ proxy = ""
 sproxy = ""
 chroot_env = 'false'
 init = 'false'
-yum_repo = 'false'
+zstack_repo = 'false'
 post_url = ""
 pkg_kvmagent = ""
 libvirtd_status = ""
@@ -50,7 +50,7 @@ host_post_info.private_key = args.private_key
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_version = distro_version
-zstacklib_args.yum_repo = yum_repo
+zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
@@ -68,19 +68,19 @@ else:
     run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
-    # handle yum_repo
-    if yum_repo != 'false':
+    # handle zstack_repo
+    if zstack_repo != 'false':
         # name: install kvm related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q openssh-clients qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils "
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass "
                    "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % yum_repo
+                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
             command = ("pkg_list=`rpm -q iptables-services | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
                        "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
-                       "--nogpgcheck install -y $pkg; done;") % yum_repo
+                       "--nogpgcheck install -y $pkg; done;") % zstack_repo
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
