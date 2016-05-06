@@ -556,7 +556,8 @@ ia_update_apt(){
     echo_subtitle "Update Apt Source"
     dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
-    apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update --fix-missing >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then 
         if [ -z $QUIET_INSTALLATION ]; then
             fail "Update apt source fail. If you do not need apt-get update, please add option '-q' and restart the installation. "
@@ -1596,7 +1597,8 @@ deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-updates 
 deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
 deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
 EOF
-    apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update --fix-missing >>$ZSTACK_INSTALL_LOG 2>&1
 }
 
 
