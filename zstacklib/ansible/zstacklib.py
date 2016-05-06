@@ -949,11 +949,17 @@ def get_remote_host_info(host_post_info):
         handle_ansible_start(ansible_start)
         sys.exit(1)
     else:
-        (distro, version, release) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
-                             int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
-                             result['contacted'][host]['ansible_facts']['ansible_distribution_release']]
-        handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
-        return (distro, version, release)
+        if 'ansible_facts' in result['contacted'][host]:
+            (distro, version, release) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
+                                 int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
+                                 result['contacted'][host]['ansible_facts']['ansible_distribution_release']]
+            handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
+            return (distro, version, release)
+        else:
+            description = "ERROR: get_remote_host_info on host %s failed!" % host
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
+
 
 
 def set_ini_file(file, section, option, value, host_post_info):
@@ -1083,12 +1089,6 @@ def service_status(name, args, host_post_info, ignore_error=False):
                 details = "SUCC: Service status changed"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
-
-
-def update_file(dest, args, host_post_info):
-    '''Use this function to change the file content'''
-
-
 
 
 def update_file(dest, args, host_post_info):
