@@ -289,6 +289,7 @@ You can also add '-q' to installer, then Installer will help you to set one.
 #Do preinstallation checking for CentOS and Ubuntu
 check_system(){
     echo_title "Check System"
+    echo ""
     cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep 'release 6' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
@@ -344,6 +345,21 @@ check_system(){
     cs_check_epel
     cs_check_hostname
     show_spinner do_check_system
+    show_spinner cs_create_repo
+}
+
+cs_create_repo(){
+    echo_subtitle "Update Package Repository"
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
+        create_yum_repo
+    fi
+    
+    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
+        if [ ! -z $ZSTACK_PKG_MIRROR ]; then
+            create_apt_source_list
+        fi
+    fi
+    pass
 }
 
 cs_check_epel(){
@@ -394,6 +410,7 @@ do_enable_sudo(){
 }
 
 do_check_system(){
+    echo_subtitle "Check System"
     if [ $UPGRADE = 'n' ]; then
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
             echo "stop zstack all services" >>$ZSTACK_INSTALL_LOG
@@ -1968,16 +1985,6 @@ fi
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
-
-if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
-    create_yum_repo
-fi
-
-if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
-    if [ ! -z $ZSTACK_PKG_MIRROR ]; then
-        create_apt_source_list
-    fi
-fi
 
 #Download ${PRODUCT_NAME} all in one package
 download_zstack
