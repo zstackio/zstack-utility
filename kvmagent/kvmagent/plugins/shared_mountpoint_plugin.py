@@ -34,9 +34,10 @@ class CheckBitsRsp(AgentRsp):
         super(CheckBitsRsp, self).__init__()
         self.existing = False
 
-class GetVolumeActualSizeRsp(AgentRsp):
+class GetVolumeSizeRsp(AgentRsp):
     def __init__(self):
-        super(GetVolumeActualSizeRsp, self).__init__()
+        super(GetVolumeSizeRsp, self).__init__()
+        self.size = None
         self.actualSize = None
 
 
@@ -53,7 +54,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/offlinemerge"
     CREATE_EMPTY_VOLUME_PATH = "/sharedmountpointpirmarystorage/volume/createempty"
     CHECK_BITS_PATH = "/sharedmountpointpirmarystorage/bits/check"
-    GET_VOLUME_ACTUAL_SIZE_PATH = "/sharedmountpointpirmarystorage/volume/getactualsize"
+    GET_VOLUME_SIZE_PATH = "/sharedmountpointpirmarystorage/volume/getsize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -68,7 +69,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
-        http_server.register_async_uri(self.GET_VOLUME_ACTUAL_SIZE_PATH, self.get_volume_actual_size)
+        http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
 
         self.mount_point = None
 
@@ -79,10 +80,10 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         return linux.get_disk_capacity_by_df(self.mount_point)
 
     @kvmagent.replyerror
-    def get_volume_actual_size(self, req):
+    def get_volume_size(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetVolumeActualSizeRsp()
-        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        rsp = GetVolumeSizeRsp()
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

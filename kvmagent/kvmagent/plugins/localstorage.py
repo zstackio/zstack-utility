@@ -53,10 +53,11 @@ class GetBackingFileRsp(AgentResponse):
         self.size = None
         self.backingFilePath = None
 
-class GetVolumeActualSizeRsp(AgentResponse):
+class GetVolumeSizeRsp(AgentResponse):
     def __init__(self):
-        super(GetVolumeActualSizeRsp, self).__init__()
+        super(GetVolumeSizeRsp, self).__init__()
         self.actualSize = None
+        self.size = None
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
 
@@ -80,7 +81,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_MD5_PATH = "/localstorage/getmd5"
     CHECK_MD5_PATH = "/localstorage/checkmd5"
     GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
-    GET_VOLUME_ACTUAL_SIZE = "/localstorage/volume/getactualsize"
+    GET_VOLUME_SIZE = "/localstorage/volume/getsize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -104,7 +105,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
-        http_server.register_async_uri(self.GET_VOLUME_ACTUAL_SIZE, self.get_volume_actual_size)
+        http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
 
         self.path = None
 
@@ -112,10 +113,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         pass
 
     @kvmagent.replyerror
-    def get_volume_actual_size(self, req):
+    def get_volume_size(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetVolumeActualSizeRsp()
-        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        rsp = GetVolumeSizeRsp()
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

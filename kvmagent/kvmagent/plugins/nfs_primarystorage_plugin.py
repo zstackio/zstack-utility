@@ -112,9 +112,10 @@ class OfflineMergeSnapshotRsp(NfsResponse):
     def __init__(self):
         super(OfflineMergeSnapshotRsp, self).__init__()
 
-class GetVolumeActualSizeRsp(NfsResponse):
+class GetVolumeSizeRsp(NfsResponse):
     def __init__(self):
-        super(GetVolumeActualSizeRsp, self).__init__()
+        super(GetVolumeSizeRsp, self).__init__()
+        self.size = None
         self.actualSize = None
 
         
@@ -139,7 +140,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     MOVE_BITS_PATH = "/nfsprimarystorage/movebits"
     OFFLINE_SNAPSHOT_MERGE = "/nfsprimarystorage/offlinesnapshotmerge"
     REMOUNT_PATH = "/nfsprimarystorage/remount"
-    GET_ACTUAL_SIZE_PATH = "/nfsprimarystorage/getvolumeactualsize"
+    GET_VOLUME_SIZE_PATH = "/nfsprimarystorage/getvolumesize"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
     
@@ -161,7 +162,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MOVE_BITS_PATH, self.move_bits)
         http_server.register_async_uri(self.OFFLINE_SNAPSHOT_MERGE, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.REMOUNT_PATH, self.remount)
-        http_server.register_async_uri(self.GET_ACTUAL_SIZE_PATH, self.get_volume_actual_size)
+        http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         self.mount_path = {}
         self.image_cache = None
 
@@ -181,11 +182,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(uuid)
 
     @kvmagent.replyerror
-    def get_volume_actual_size(self, req):
+    def get_volume_size(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetVolumeActualSizeRsp()
+        rsp = GetVolumeSizeRsp()
 
-        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
