@@ -1576,9 +1576,9 @@ exit 1
         self.install_cleanup_routine(cleanup_pre_install_script)
 
         post_install_script = '''
-if [ -f /etc/mysql/conf.d/mysql.cnf ]; then
+if [ -f /etc/mysql/mariadb.conf.d/50-server.cnf ]; then
     #ubuntu 16.04
-    mysql_conf=/etc/mysql/mysql.conf.d/mysqld.cnf
+    mysql_conf=/etc/mysql/mariadb.conf.d/50-server.cnf
 elif [ -f /etc/mysql/my.cnf ]; then
     # Ubuntu 14.04
     mysql_conf=/etc/mysql/my.cnf
