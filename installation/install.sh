@@ -1199,6 +1199,10 @@ EOF
 
 cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
+    if [ $UPGRADE = 'n' ]; then
+        zstack-ctl configure CloudBus.rabbitmqUsername = zstack
+        zstack-ctl configure CloudBus.rabbitmqPassword = zstack.password
+    fi
     if [ ! -z $ZSTACK_YUM_REPOS ];then
         zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_YUM_REPOS
     fi
@@ -1280,12 +1284,13 @@ cs_install_mysql(){
 cs_install_rabbitmq(){
     echo_subtitle "Install Rabbitmq Server"
     rsa_key_file=$1/id_rsa
+    common_params="--host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --rabbit-username=zstack --rabbit-password=zstack.password"
     if [ -z $ZSTACK_YUM_REPOS ];then
-        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file" >>$ZSTACK_INSTALL_LOG
-        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --debug >>$ZSTACK_INSTALL_LOG 2>&1
+        echo "zstack-ctl install_rabbitmq $common_params" >>$ZSTACK_INSTALL_LOG
+        zstack-ctl install_rabbitmq $common_params --debug >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --yum=$ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
-        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
+        echo "zstack-ctl install_rabbitmq $common_params --yum=$ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
+        zstack-ctl install_rabbitmq $common_params --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     if [ $? -ne 0 ];then
