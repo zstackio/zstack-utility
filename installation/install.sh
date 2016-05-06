@@ -819,6 +819,10 @@ is_install_general_libs_deb(){
         nfs-kernel-server \
         python-dev \
         gcc \
+        >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "install system lib 1 failed"
+
+    apt-get -y install \
         autoconf \
         iptables \
         tar \
@@ -834,7 +838,7 @@ is_install_general_libs_deb(){
         libssl-dev \
         $mysql_pkg \
         >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "install virtualenv failed"
+    [ $? -ne 0 ] && fail "install system lib 2 failed"
     pass
 }
 
