@@ -340,6 +340,7 @@ check_system(){
             fail2 "Did not find zstack-ctl. Can not use option '-u' to upgrade $PRODUCT_NAME . Please remove '-u' and do fresh installation."
         fi
     fi
+    show_spinner cs_pre_check
     cs_check_epel
     cs_check_hostname
     show_spinner do_check_system
@@ -350,7 +351,8 @@ cs_check_epel(){
     [ ! -z $ZSTACK_PKG_MIRROR ] && return
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
-            zstack-ctl show_configuration 2>/dev/null|grep Ansible.var.zstack_repo >/dev/null 2>&1
+            zstack_properties=$ZSTACK_HOME/zstack.properties
+            grep Ansible.var.zstack_repo $zstack_properties >/dev/null 2>&1
             [ $? -eq 0 ] && return
             if [ -z $QUIET_INSTALLATION ]; then
                 fail2 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
@@ -570,7 +572,6 @@ upgrade_zstack(){
         INSTALL_MONITOR='y'
     fi
 
-    show_spinner uz_pre_upgrade
     #rerun install system libs, upgrade might need new libs
     is_install_system_libs
     show_spinner uz_upgrade_zstack
@@ -621,8 +622,8 @@ upgrade_zstack(){
     fi
 }
 
-uz_pre_upgrade(){
-    echo_subtitle "Upgrading Pre-Checking"
+cs_pre_check(){
+    echo_subtitle "Pre-Checking"
     #change zstack.properties config
     ZSTACK_PROPERTIES=$ZSTACK_HOME/zstack.properties
     sed -i 's/Ansible.var.yum_repo/Ansible.var.zstack_repo/' $ZSTACK_PROPERTIES >>$ZSTACK_INSTALL_LOG 2>&1
