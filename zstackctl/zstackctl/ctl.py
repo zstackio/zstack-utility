@@ -1470,8 +1470,8 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'Debian'
       apt: pkg={{item}} update_cache=yes
       with_items:
-        - mysql-client
-        - mysql-server
+        - mariadb-client
+        - mariabd-server
       register: install_result
 
     - name: open 3306 port
