@@ -29,7 +29,6 @@ import fcntl
 import commands
 import threading
 import itertools
-import datetime
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -3500,7 +3499,7 @@ class CollectLogCmd(Command):
 
     def run(self, args):
         run_command_dir = os.getcwd()
-        collect_dir = run_command_dir + "/" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        collect_dir = run_command_dir + "/" + datetime.now().strftime("%Y-%m-%d_%H-%M")
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
         host_vo = self.get_host_list()
