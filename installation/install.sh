@@ -556,7 +556,7 @@ ia_update_apt(){
     echo_subtitle "Update Apt Source"
     dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
-    apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then 
         if [ -z $QUIET_INSTALLATION ]; then
             fail "Update apt source fail. If you do not need apt-get update, please add option '-q' and restart the installation. "
@@ -663,7 +663,9 @@ install_ansible(){
         show_spinner ia_install_ansible
     elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         export DEBIAN_FRONTEND=noninteractive
-        show_spinner ia_update_apt
+        if [ -z $ZSTACK_PKG_MIRROR ]; then
+            show_spinner ia_update_apt
+        fi
         show_spinner ia_install_python_gcc_db
         show_spinner ia_install_pip
         show_spinner ia_install_ansible
