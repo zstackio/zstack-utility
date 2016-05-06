@@ -27,26 +27,33 @@ class MergeSnapshotRsp(AgentRsp):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
         self.size = None
+        self.actualSize = None
 
 class CheckBitsRsp(AgentRsp):
     def __init__(self):
         super(CheckBitsRsp, self).__init__()
         self.existing = False
 
+class GetVolumeActualSizeRsp(AgentRsp):
+    def __init__(self):
+        super(GetVolumeActualSizeRsp, self).__init__()
+        self.actualSize = None
+
 
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
-    CONNECT_PATH = "/sharedmountpointpirmarystorage/connect";
-    CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointpirmarystorage/createrootvolume";
-    DELETE_BITS_PATH = "/sharedmountpointpirmarystorage/bits/delete";
-    CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointpirmarystorage/createtemplatefromvolume";
-    UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointpirmarystorage/sftp/upload";
-    DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointpirmarystorage/sftp/download";
-    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/volume/revertfromsnapshot";
-    MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/merge";
-    OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/offlinemerge";
-    CREATE_EMPTY_VOLUME_PATH = "/sharedmountpointpirmarystorage/volume/createempty";
-    CHECK_BITS_PATH = "/sharedmountpointpirmarystorage/bits/check";
+    CONNECT_PATH = "/sharedmountpointpirmarystorage/connect"
+    CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointpirmarystorage/createrootvolume"
+    DELETE_BITS_PATH = "/sharedmountpointpirmarystorage/bits/delete"
+    CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointpirmarystorage/createtemplatefromvolume"
+    UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointpirmarystorage/sftp/upload"
+    DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointpirmarystorage/sftp/download"
+    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/volume/revertfromsnapshot"
+    MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/merge"
+    OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/offlinemerge"
+    CREATE_EMPTY_VOLUME_PATH = "/sharedmountpointpirmarystorage/volume/createempty"
+    CHECK_BITS_PATH = "/sharedmountpointpirmarystorage/bits/check"
+    GET_VOLUME_ACTUAL_SIZE_PATH = "/sharedmountpointpirmarystorage/volume/getactualsize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -61,6 +68,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
+        http_server.register_async_uri(self.GET_VOLUME_ACTUAL_SIZE_PATH, self.get_volume_actual_size)
 
         self.mount_point = None
 
@@ -69,6 +77,13 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.mount_point)
+
+    @kvmagent.replyerror
+    def get_volume_actual_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVolumeActualSizeRsp()
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def connect(self, req):
@@ -173,7 +188,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
-        rsp.size = os.path.getsize(cmd.workspaceInstallPath)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)

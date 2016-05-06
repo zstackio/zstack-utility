@@ -1229,6 +1229,9 @@ class StartCmd(Command):
                 '-Djava.security.egd=file:/dev/./urandom'
             ]
 
+            if ctl.extra_arguments:
+                catalina_opts.extend(ctl.extra_arguments)
+
             co = ctl.get_env('CATALINA_OPTS')
             if co:
                 info('use CATALINA_OPTS[%s] set in environment zstack environment variables; check out them by "zstack-ctl getenv"' % co)
@@ -1239,6 +1242,7 @@ class StartCmd(Command):
 
         def start_mgmt_node():
             shell('sudo -u zstack sh %s -DappName=zstack' % os.path.join(ctl.zstack_home, self.START_SCRIPT))
+
             info("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 
         def wait_mgmt_node_start():

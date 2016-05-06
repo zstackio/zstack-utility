@@ -79,6 +79,7 @@ class DownloadResponse(AgentResponse):
         self.imageUuid = None
         self.md5Sum = None
         self.size = None
+        self.actualSize = None
 
 class WriteImageMetaDataResponse(AgentResponse):
     def __init__(self):
@@ -97,6 +98,12 @@ class GetSshKeyResponse(AgentResponse):
     def __init__(self):
         self.sshKey = None
         super(GetSshKeyResponse, self).__init__()
+
+class GetImageSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetImageActualSizeRsp, self).__init__()
+        self.actualSize = None
+        self.size = None
         
 def replyerror(func):
     @functools.wraps(func)
@@ -127,7 +134,8 @@ class SftpBackupStorageAgent(object):
     GET_SSHKEY_PATH = "/sftpbackupstorage/sshkey"
     ECHO_PATH = "/sftpbackupstorage/echo"
     WRITE_IMAGE_METADATA = "/sftpbackupstorage/writeimagemetadata"
-    
+    GET_IMAGE_SIZE = "/sftpbackupstorage/getimagesize"
+
     IMAGE_TEMPLATE = 'template'
     IMAGE_ISO = 'iso'
     URL_HTTP = 'http'
@@ -155,7 +163,14 @@ class SftpBackupStorageAgent(object):
     def echo(self, req):
         logger.debug('get echoed')
         return ''
-        
+
+    @replyerror
+    def get_image_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetImageSizeRsp()
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        return jsonobject.dumps(rsp)
+
     @replyerror
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -241,7 +256,8 @@ class SftpBackupStorageAgent(object):
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
         (total, avail) = self.get_capacity()
         rsp.md5Sum = md5sum
-        rsp.size = size
+        rsp.actualSize = size
+        rsp.size = linux.qcow2_virtualsize(install_path)
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
         return jsonobject.dumps(rsp)
@@ -287,6 +303,7 @@ class SftpBackupStorageAgent(object):
         self.http_server.register_async_uri(self.GET_SSHKEY_PATH, self.get_sshkey)
         self.http_server.register_async_uri(self.WRITE_IMAGE_METADATA, self.write_image_metadata)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
+        self.http_server.register_async_uri(self.GET_IMAGE_SIZE, self.get_image_size)
         self.storage_path = None
         self.uuid = None
 
