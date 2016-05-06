@@ -1471,7 +1471,7 @@ class InstallDbCmd(Command):
       apt: pkg={{item}} update_cache=yes
       with_items:
         - mariadb-client
-        - mariabd-server
+        - mariadb-server
       register: install_result
 
     - name: open 3306 port
