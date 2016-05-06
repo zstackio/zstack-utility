@@ -125,7 +125,7 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def fact(self, req):
         rsp = HostFactResponse()
-        qemu_img_version = shell.call("qemu-img | grep 'qemu-img version' | cut -d ' ' -f 3")
+        qemu_img_version = shell.call("qemu-img --version| grep 'qemu-img version' | cut -d ' ' -f 3")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
