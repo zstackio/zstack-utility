@@ -14,8 +14,6 @@ import (
 )
 
 // The storage front-end. Names and tags etc. will be converted to lowercase
-//
-// TODO add a caching layer
 type IStorageFE interface {
 	// Returns images found in registry, empty array if not found.
 	FindImages(ctx context.Context, name string) ([]*v1.ImageManifest, error)
@@ -53,15 +51,33 @@ type IStorageFE interface {
 
 type StorageFE struct {
 	IStorageFE
+	istat  *ImageStat
 	driver storagedriver.StorageDriver
 }
 
 func NewStorageFrontend(d storagedriver.StorageDriver) IStorageFE {
-	return &StorageFE{driver: d}
+	sfe := &StorageFE{driver: d}
+
+	ctx := context.Background()
+	res := make(map[string]*v1.ImageManifest)
+	xs, err := d.List(ctx, repoPrefix)
+	if err != nil {
+		return sfe
+	}
+
+	for _, fullpath := range xs {
+		name := path.Base(fullpath)
+		if imf, err := sfe.GetManifest(ctx, name, "latest"); err == nil {
+			res[name] = imf
+		}
+	}
+
+	sfe.istat = NewImageStat(res)
+	return sfe
 }
 
 func (sf StorageFE) FindImages(ctx context.Context, name string) ([]*v1.ImageManifest, error) {
-	return nil, errors.New("not implemented")
+	return sf.istat.Search(name), nil
 }
 
 func getImageJson(ctx context.Context, d storagedriver.StorageDriver, ps string) (*v1.ImageManifest, error) {
@@ -191,6 +207,7 @@ func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf
 		}
 	}
 
+	sf.istat.Update(name, imf)
 	return nil
 }
 

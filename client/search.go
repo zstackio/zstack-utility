@@ -3,6 +3,7 @@ package client
 import (
 	"errors"
 	"fmt"
+	"image-store/registry/api/errcode"
 	"image-store/registry/api/v1"
 	"image-store/utils"
 	"io/ioutil"
@@ -13,10 +14,34 @@ import (
 )
 
 func (cln *ZImageClient) Search(name string) ([]*v1.ImageManifest, error) {
-	return nil, errors.New("not implemented")
+	resp, err := cln.Get(cln.GetFullUrl(v1.GetNameListRoute(name)))
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		var e errcode.Error
+		if err = utils.JsonDecode(resp.Body, &e); err != nil {
+			return nil, err
+		}
+		return nil, e
+	}
+
+	var xms []*v1.ImageManifest
+	if err = utils.JsonDecode(resp.Body, &xms); err != nil {
+		return nil, err
+	}
+
+	return xms, nil
 }
 
 func dumpManifests(xms []*v1.ImageManifest) {
+	fmt.Printf("%16s %s\n", "NAME", "Description")
+	for _, imf := range xms {
+		fmt.Printf("%16s %s\n", imf.Name, imf.Desc)
+	}
 }
 
 func ListImageManifests() ([]*v1.ImageManifest, error) {

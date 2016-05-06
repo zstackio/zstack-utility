@@ -56,6 +56,10 @@ func GetManifestRoute(name string, reference string) string {
 	return path.Join(RouteNameV1, name, "manifests", reference)
 }
 
+func GetNameListRoute(name string) string {
+	return path.Join(RouteNameV1, name)
+}
+
 func GetTagListRoute(name string) string {
 	return path.Join(RouteNameV1, name, "tags")
 }
