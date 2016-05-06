@@ -351,9 +351,11 @@ cs_check_epel(){
     [ ! -z $ZSTACK_PKG_MIRROR ] && return
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
-            zstack_properties=$ZSTACK_HOME/zstack.properties
-            grep Ansible.var.zstack_repo $zstack_properties >/dev/null 2>&1
-            [ $? -eq 0 ] && return
+            if [ $UPGRADE != 'n' ]; then
+                zstack_properties=`zstack-ctl status|grep zstack.properties|awk '{print $2}'`
+                grep Ansible.var.zstack_repo $zstack_properties >/dev/null 2>&1
+                [ $? -eq 0 ] && return
+            fi
             if [ -z $QUIET_INSTALLATION ]; then
                 fail2 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
 
@@ -625,8 +627,12 @@ upgrade_zstack(){
 cs_pre_check(){
     echo_subtitle "Pre-Checking"
     #change zstack.properties config
-    ZSTACK_PROPERTIES=$ZSTACK_HOME/zstack.properties
-    sed -i 's/Ansible.var.yum_repo/Ansible.var.zstack_repo/' $ZSTACK_PROPERTIES >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $UPGRADE != 'n' ]; then
+        zstack_properties=`zstack-ctl status|grep zstack.properties|awk '{print $2}'`
+    else
+        zstack_properties=$ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES
+    fi
+    sed -i 's/Ansible.var.yum_repo/Ansible.var.zstack_repo/' $zstack_properties >>$ZSTACK_INSTALL_LOG 2>&1
     pass
 }
 
