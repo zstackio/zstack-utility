@@ -4115,11 +4115,22 @@ class InstallManagementNodeCmd(Command):
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
 
-    - name: install dependencies Debian OS
-      when: ansible_os_family == 'Debian'
+    - name: install openjdk on Ubuntu 14.04
+      when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
       apt: pkg={{item}} update_cache=yes
       with_items:
         - openjdk-7-jdk
+
+    - name: install openjdk on Ubuntu 16.04
+      when: ansible_os_family == 'Debian' and ansible_distribution_version == '16.04'
+      apt: pkg={{item}} update_cache=yes
+      with_items:
+        - openjdk-8-jdk
+
+    - name: install dependencies Debian OS 
+      when: ansible_os_family == 'Debian'
+      apt: pkg={{item}} update_cache=yes
+      with_items:
         - wget
         - python-dev
         - gcc
