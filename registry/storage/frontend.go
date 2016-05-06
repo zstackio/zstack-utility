@@ -11,9 +11,10 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync"
 )
 
-// The storage front-end. Names and tags etc. will be converted to lowercase
+// The storage front-end interface. Names and tags etc. will be converted to lowercase
 type IStorageFE interface {
 	// Returns images found in registry, empty array if not found.
 	FindImages(ctx context.Context, name string) ([]*v1.ImageManifest, error)
@@ -49,20 +50,23 @@ type IStorageFE interface {
 	GetChunkWriter(ctx context.Context, name string, uu string, indx int, subhash string) (storagedriver.FileWriter, error)
 }
 
+// The storage frontend
 type StorageFE struct {
 	IStorageFE
-	istat  *ImageStat
 	driver storagedriver.StorageDriver
 }
 
-func NewStorageFrontend(d storagedriver.StorageDriver) IStorageFE {
-	sfe := &StorageFE{driver: d}
+var imageStat *ImageStat
+var imageStateOnce sync.Once
+
+func initImageState(sfe *StorageFE) error {
+	res := make(map[string]*v1.ImageManifest)
+	defer func() { imageStat = NewImageStat(res) }()
 
 	ctx := context.Background()
-	res := make(map[string]*v1.ImageManifest)
-	xs, err := d.List(ctx, repoPrefix)
+	xs, err := sfe.driver.List(ctx, repoPrefix)
 	if err != nil {
-		return sfe
+		return err
 	}
 
 	for _, fullpath := range xs {
@@ -72,12 +76,18 @@ func NewStorageFrontend(d storagedriver.StorageDriver) IStorageFE {
 		}
 	}
 
-	sfe.istat = NewImageStat(res)
+	return nil
+}
+
+func NewStorageFrontend(d storagedriver.StorageDriver) IStorageFE {
+	sfe := &StorageFE{driver: d}
+	imageStateOnce.Do(func() { initImageState(sfe) })
+
 	return sfe
 }
 
 func (sf StorageFE) FindImages(ctx context.Context, name string) ([]*v1.ImageManifest, error) {
-	return sf.istat.Search(name), nil
+	return imageStat.Search(name), nil
 }
 
 func getImageJson(ctx context.Context, d storagedriver.StorageDriver, ps string) (*v1.ImageManifest, error) {
@@ -207,7 +217,7 @@ func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf
 		}
 	}
 
-	sf.istat.Update(name, imf)
+	imageStat.Update(name, imf)
 	return nil
 }
 

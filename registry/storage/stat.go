@@ -15,9 +15,7 @@ type ImageStat struct {
 
 // Create an image statistic
 func NewImageStat(c map[string]*v1.ImageManifest) *ImageStat {
-	s := new(ImageStat)
-	s.cache = c
-	return s
+	return &ImageStat{cache: c}
 }
 
 func match(name, key string) bool {

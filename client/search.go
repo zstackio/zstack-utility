@@ -38,7 +38,7 @@ func (cln *ZImageClient) Search(name string) ([]*v1.ImageManifest, error) {
 }
 
 func dumpManifests(xms []*v1.ImageManifest) {
-	fmt.Printf("%16s %s\n", "NAME", "Description")
+	fmt.Printf("%-16s %s\n", "NAME", "Description")
 	for _, imf := range xms {
 		fmt.Printf("%16s %s\n", imf.Name, imf.Desc)
 	}
