@@ -1200,8 +1200,8 @@ EOF
 cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
     if [ $UPGRADE = 'n' ]; then
-        zstack-ctl configure CloudBus.rabbitmqUsername = zstack
-        zstack-ctl configure CloudBus.rabbitmqPassword = zstack.password
+        zstack-ctl configure CloudBus.rabbitmqUsername=zstack
+        zstack-ctl configure CloudBus.rabbitmqPassword=zstack.password
     fi
     if [ ! -z $ZSTACK_YUM_REPOS ];then
         zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_YUM_REPOS
