@@ -69,7 +69,7 @@ if virtual_env_status is False:
 # name: make sure virtualenv has been setup
 # here change "rm -rf virtualenv" to "-f %s/bin/python" till zstack 2.0 due to a bug exist in old version, we need to
 # make sure all users upgrade to new version
-command = "rm -rf %s && virtualenv %s " % (virtenv_path, virtenv_path)
+command = "rm -rf %s && virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
