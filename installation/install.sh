@@ -824,14 +824,14 @@ is_install_general_libs_deb(){
         python-libvirt \
         libvirt-bin \
         vlan \
-        nfs-common \
-        nfs-kernel-server \
         python-dev \
         gcc \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 1 failed"
 
     apt-get -y install \
+        nfs-common \
+        nfs-kernel-server \
         autoconf \
         iptables \
         tar \
