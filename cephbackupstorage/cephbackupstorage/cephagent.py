@@ -12,6 +12,7 @@ import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils import plugin
 from zstacklib.utils.rollback import rollback, rollbackable
 import os
+import os.path
 import functools
 import traceback
 import pprint
@@ -35,6 +36,13 @@ class DownloadRsp(AgentResponse):
     def __init__(self):
         super(DownloadRsp, self).__init__()
         self.size = None
+        self.actualSize = None
+
+class GetImageSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetImageSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
 
 def replyerror(func):
     @functools.wraps(func)
@@ -57,6 +65,7 @@ class CephAgent(object):
     DELETE_IMAGE_PATH = "/ceph/backupstorage/image/delete"
     PING_PATH = "/ceph/backupstorage/ping"
     ECHO_PATH = "/ceph/backupstorage/echo"
+    GET_IMAGE_SIZE_PATH = "/ceph/backupstorage/image/getsize"
 
     http_server = http.HttpServer(port=7761)
     http_server.logfile_path = log.get_logfile_path()
@@ -66,6 +75,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
+        self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -93,6 +103,22 @@ class CephAgent(object):
     def echo(self, req):
         logger.debug('get echoed')
         return ''
+
+    def _normalize_install_path(self, path):
+        return path.lstrip('ceph:').lstrip('//')
+
+    def _get_file_size(self, path):
+        o = shell.call('rbd --format json info %s' % path)
+        o = jsonobject.loads(o)
+        return long(o.size_)
+
+    @replyerror
+    def get_image_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetImageSizeRsp()
+        path = self._normalize_install_path(cmd.installPath)
+        rsp.size = self._get_file_size(path)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def init(self, req):
@@ -126,7 +152,18 @@ class CephAgent(object):
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
 
-        shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s' % (cmd.url, pool, tmp_image_name))
+        if cmd.urlScheme in ['http', 'https']:
+            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s' % (cmd.url, pool, tmp_image_name))
+            actual_size = linux.get_file_size_by_http_head(cmd.url)
+        elif cmd.urlScheme == 'file':
+            src_path = cmd.url.lstrip('file:')
+            src_path = os.path.normpath(src_path)
+            if not os.path.isfile(src_path):
+                raise Exception('cannot find the file[%s]' % src_path)
+            shell.call("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
+            actual_size = os.path.getsize(src_path)
+        else:
+            raise Exception('unknown url scheme[%s] for the url[%s]' % (cmd.urlScheme, cmd.url))
 
         @rollbackable
         def _1():
@@ -159,6 +196,7 @@ class CephAgent(object):
 
         rsp = DownloadRsp()
         rsp.size = long(image_stats.size_)
+        rsp.actualSize = actual_size
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 

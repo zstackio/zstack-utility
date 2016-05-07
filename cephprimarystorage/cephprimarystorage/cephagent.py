@@ -41,11 +41,19 @@ class CpRsp(AgentResponse):
     def __init__(self):
         super(CpRsp, self).__init__()
         self.size = None
+        self.actualSize = None
 
 class CreateSnapshotRsp(AgentResponse):
     def __init__(self):
         super(CreateSnapshotRsp, self).__init__()
         self.size = None
+        self.actualSize = None
+
+class GetVolumeSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetVolumeSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
 
 def replyerror(func):
     @functools.wraps(func)
@@ -79,6 +87,7 @@ class CephAgent(object):
     UNPROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/unprotect"
     CP_PATH = "/ceph/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/ceph/primarystorage/deletepool"
+    GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -98,6 +107,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.SFTP_UPLOAD_PATH, self.sftp_upload)
         self.http_server.register_async_uri(self.CP_PATH, self.cp)
         self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
+        self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -125,6 +135,14 @@ class CephAgent(object):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
         return long(o.size_)
+
+    @replyerror
+    def get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.installPath)
+        rsp = GetVolumeSizeRsp()
+        rsp.size = self._get_file_size(path)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def delete_pool(self, req):

@@ -228,6 +228,15 @@ def umount_by_url(url):
     for p in paths:
         umount(p, is_exception=False)
 
+
+def get_file_size_by_http_head(url):
+    output = shell.ShellCmd('curl --head %s' % url)()
+    for l in output.split('\n'):
+        if 'Content-Length' in l:
+            filesize = l.split(':')[1].strip()
+            return long(filesize)
+    return None
+
 def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callback_data=None, cert_check=False):
     def get_percentage(filesize, dst):
         try:
