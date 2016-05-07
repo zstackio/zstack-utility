@@ -556,8 +556,13 @@ ia_update_apt(){
     echo_subtitle "Update Apt Source"
     dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
+    #Fix Ubuntu conflicted dpkg lock issue. 
+    if [ -f /etc/init.d/unattended-upgrades ]; then
+        /etc/init.d/unattended-upgrades stop  >/dev/null 2>&1
+        update-rc.d -f unattended-upgrades remove >/dev/null 2>&1
+    fi
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
-    apt-get update --fix-missing >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then 
         if [ -z $QUIET_INSTALLATION ]; then
             fail "Update apt source fail. If you do not need apt-get update, please add option '-q' and restart the installation. "
@@ -1605,8 +1610,13 @@ deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-updates 
 deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
 deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
 EOF
+    #Fix Ubuntu conflicted dpkg lock issue. 
+    if [ -f /etc/init.d/unattended-upgrades ]; then
+        /etc/init.d/unattended-upgrades stop  >/dev/null 2>&1
+        update-rc.d -f unattended-upgrades remove >/dev/null 2>&1
+    fi
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
-    apt-get update --fix-missing >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then
         fail "apt-get update package failed."
     fi
