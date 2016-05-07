@@ -128,47 +128,31 @@ func ListTags(name string) (map[string]string, error) {
 	return m, nil
 }
 
+// Find image manifest with an image id
+// The Id can be partial, e.g. "d41d8cd98" instead of "d41d8cd98f00b2..."
 func FindImageManifest(imgid string) (*v1.ImageManifest, error) {
-	var result *v1.ImageManifest
-
-	_, err := os.Stat(ImageRepoTopDir)
+	xms, err := ListImageManifests()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return result, nil
-		}
 		return nil, err
 	}
 
-	target := imgid + ".json"
-	err2 := filepath.Walk(ImageRepoTopDir,
-		func(pathname string, fi os.FileInfo, err error) (e error) {
-			if fi.IsDir() {
-				return nil
-			}
+	var result *v1.ImageManifest
+	cnt := 0
 
-			if !strings.Contains(pathname, "/manifests/revisions/") {
-				return filepath.SkipDir
-			}
-
-			if path.Base(pathname) == target {
-				result, e = parseImageManifest(pathname)
-				if e != nil {
-					return e
-				}
-			}
-
-			return nil
-		})
-
-	if err2 != nil {
-		return nil, err2
+	for _, ims := range xms {
+		if strings.HasPrefix(ims.Id, imgid) {
+			result, cnt = ims, cnt+1
+		}
 	}
 
-	if result == nil {
+	switch cnt {
+	case 0:
 		return nil, errors.New("not found")
+	case 1:
+		return result, nil
+	default:
+		return nil, fmt.Errorf("vague image id: %s", imgid)
 	}
-
-	return result, nil
 }
 
 func parseImageManifest(f string) (*v1.ImageManifest, error) {
