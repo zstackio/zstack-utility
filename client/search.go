@@ -87,8 +87,8 @@ func ListImageManifests() ([]*v1.ImageManifest, error) {
 	return result, nil
 }
 
-// List tags for image with 'name' and returns a map of image id to tag
-func ListTags(name string) (map[string]string, error) {
+// List tags for image with 'name' and returns a map of tag to image id
+func ListLocalTags(name string) (map[string]string, error) {
 	m := make(map[string]string)
 
 	_, err := os.Stat(ImageRepoTopDir)
@@ -114,12 +114,12 @@ func ListTags(name string) (map[string]string, error) {
 				return e
 			}
 
-			tag, id := path.Base(pathname), string(buf)
+			tag, id := path.Base(pathname), strings.TrimSpace(string(buf))
 			if utils.ParseImageId(id) == nil {
-				return fmt.Errorf("invalid id for tag: %s", tag)
+				return fmt.Errorf("invalid id (%s) for tag '%s'", id, tag)
 			}
 
-			m[id] = tag
+			m[tag] = id
 			return nil
 		})
 

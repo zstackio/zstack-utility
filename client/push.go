@@ -76,7 +76,7 @@ func (cln *ZImageClient) Push(imgid string, tag string) error {
 	tagfile := GetImageTagPath(leaf.Name, tag)
 	os.MkdirAll(path.Dir(tagfile), 0775)
 
-	if err = ioutil.WriteFile(tagfile, []byte(imgid), 0644); err != nil {
+	if err = ioutil.WriteFile(tagfile, []byte(leaf.Id), 0644); err != nil {
 		return fmt.Errorf("failed to upload local tag file: %s", err)
 	}
 

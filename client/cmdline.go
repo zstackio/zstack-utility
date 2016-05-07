@@ -29,6 +29,7 @@ Options:
 
 Commands:
  images    list local images
+ lstags    list tags of an image
  search    search remote registry by name
  pull      pull an image (default to ":latest")
  add       add image to local repo (may have a parent)
@@ -88,6 +89,7 @@ var cmdTable = map[string]func(*GlobalOpt, []string){
 	"add":    doAdd,
 	"search": doSearch,
 	"images": doImages,
+	"lstags": doListTag,
 }
 
 func doAdd(gopt *GlobalOpt, args []string) {
@@ -261,6 +263,45 @@ func doSearch(gopt *GlobalOpt, args []string) {
 	})
 }
 
+func doListTag(gopt *GlobalOpt, args []string) {
+	lstagCommand := flag.NewFlagSet("lstags", flag.ExitOnError)
+	lstagCommand.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: %s %s <name>\n\n", progname, "lstags")
+		fmt.Fprintf(os.Stderr, "list tags of an image\n")
+		lstagCommand.PrintDefaults()
+		os.Exit(1)
+	}
+	remote := lstagCommand.Bool("remote", false, "search remote registry instead")
+	lstagCommand.Parse(args)
+
+	n, restargs := lstagCommand.NArg(), lstagCommand.Args()
+	switch {
+	case n == 0:
+		fmt.Fprintln(os.Stderr, "missing args for 'lstags'")
+		os.Exit(1)
+	case n > 1:
+		fmt.Fprintf(os.Stderr, "too many args for 'lstags': %q\n", restargs)
+		os.Exit(1)
+	}
+
+	name := restargs[0]
+	var tags map[string]string // a map from tag to image id
+	var err error
+
+	if *remote {
+		tags, err = getRemoteTags(gopt, name)
+	} else {
+		tags, err = ListLocalTags(name)
+	}
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	dumpTags(tags)
+}
+
 func doImages(gopt *GlobalOpt, args []string) {
 	imagesCommand := flag.NewFlagSet("images", flag.ExitOnError)
 	imagesCommand.Usage = func() {
@@ -272,7 +313,7 @@ func doImages(gopt *GlobalOpt, args []string) {
 	imagesCommand.Parse(args)
 
 	if imagesCommand.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "too many args for 'images': %q", imagesCommand.Args())
+		fmt.Fprintf(os.Stderr, "too many args for 'images': %q\n", imagesCommand.Args())
 		os.Exit(1)
 	}
 
@@ -288,6 +329,6 @@ func withClient(gopt *GlobalOpt, f func(*ZImageClient) error) {
 
 	err = f(cln)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		fmt.Fprintln(os.Stderr, err)
 	}
 }

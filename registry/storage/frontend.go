@@ -26,7 +26,8 @@ type IStorageFE interface {
 	PutManifest(ctx context.Context, name string, ref string, imf *v1.ImageManifest) error
 
 	// List tags under a name
-	ListTags(ctx context.Context, name string) ([]string, error)
+	// Returns a map from tag to image id
+	ListTags(ctx context.Context, name string) (map[string]string, error)
 
 	// Get the blob json
 	GetBlobJsonSpec(name string, digest string) (string, error)
@@ -219,9 +220,8 @@ func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf
 	return nil
 }
 
-func (sf StorageFE) ListTags(ctx context.Context, name string) ([]string, error) {
+func (sf StorageFE) ListTags(ctx context.Context, name string) (map[string]string, error) {
 	ps := tagsPathSpec{name: name}.pathSpec()
-
 	xs, err := sf.driver.List(ctx, ps)
 	if err != nil {
 		if _, ok := err.(storagedriver.PathNotFoundError); !ok {
@@ -229,9 +229,14 @@ func (sf StorageFE) ListTags(ctx context.Context, name string) ([]string, error)
 		}
 	}
 
-	res := make([]string, len(xs))
-	for i, v := range xs {
-		res[i] = strings.TrimPrefix(v, ps+"/")
+	res := make(map[string]string)
+	for _, v := range xs {
+		if buf, err := sf.driver.GetContent(ctx, v); err != nil {
+			continue
+		} else {
+			tag, id := path.Base(v), string(buf)
+			res[tag] = id
+		}
 	}
 
 	return res, nil
