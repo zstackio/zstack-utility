@@ -186,8 +186,11 @@ func printLocalImages() {
 		fmt.Println(err)
 	}
 
-	fmt.Printf("NAME             TAG                 IMAGE ID            CREATED             SIZE\n")
+	fmt.Printf("%-16s %-12s %-16s %-25s %s\n",
+		"NAME", "TAG", "IMAGE ID", "CREATED", "SIZE")
+
 	for _, imf := range manifests {
-		fmt.Printf("%16s %16s %16s %16s %d\n", imf.Name, "", imf.Id, imf.Created, imf.Size)
+		fmt.Printf("%-16s %-12s %-16s %-25s %d\n",
+			imf.Name, "", imf.Id[:16], imf.Created, imf.Size)
 	}
 }
