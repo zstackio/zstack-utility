@@ -1599,8 +1599,6 @@ sd_start_dashboard(){
 
 #create zstack local apt source list
 create_apt_source_list(){
-    dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
     /bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.`date +%Y-%m-%d_%H-%M-%S` >>$ZSTACK_INSTALL_LOG 2>&1
     cat > /etc/apt/sources.list << EOF
 deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
@@ -1621,6 +1619,8 @@ EOF
         pid=`lsof /var/lib/dpkg/lock|grep lock|awk '{print $2}'`
         [ ! -z $pid ] && kill -9 $pid >$ZSTACK_INSTALL_LOG 2>&1
     fi
+    dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "execute \`dpkg --configure -a\` failed."
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
     apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then
