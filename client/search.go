@@ -38,11 +38,11 @@ func (cln *ZImageClient) Search(name string) ([]*v1.ImageManifest, error) {
 }
 
 func dumpManifests(xms []*v1.ImageManifest) {
-	fmt.Printf("%-16s %-16s %-6s %-12s %s\n",
-		"NAME", "AUTHOR", "ARCH", "SIZE", "Description")
+	fmt.Printf("%-16s %-16s %-12s %-6s %-12s %-25s %s\n",
+		"NAME", "IMAGE ID", "AUTHOR", "ARCH", "SIZE", "CREATED TIME", "Description")
 	for _, imf := range xms {
-		fmt.Printf("%-16s %-16s %-6s %-12d %s\n",
-			imf.Name, imf.Author, imf.Arch, imf.Size, imf.Desc)
+		fmt.Printf("%-16s %-16s %-12s %-6s %-12d %-25s %s\n",
+			imf.Name, imf.Id[:16], imf.Author, imf.Arch, imf.Size, imf.Created, imf.Desc)
 	}
 }
 
@@ -172,11 +172,5 @@ func printLocalImages() {
 		fmt.Println(err)
 	}
 
-	fmt.Printf("%-16s %-12s %-16s %-25s %s\n",
-		"NAME", "TAG", "IMAGE ID", "CREATED", "SIZE")
-
-	for _, imf := range manifests {
-		fmt.Printf("%-16s %-12s %-16s %-25s %d\n",
-			imf.Name, "", imf.Id[:16], imf.Created, imf.Size)
-	}
+	dumpManifests(manifests)
 }
