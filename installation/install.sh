@@ -1603,6 +1603,9 @@ deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backport
 EOF
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
     apt-get update --fix-missing >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ]; then
+        fail "apt-get update package failed."
+    fi
 }
 
 
