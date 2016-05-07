@@ -34,7 +34,7 @@ func (cln *ZImageClient) buildPullChain(leaf *v1.ImageManifest) ([]*v1.ImageMani
 	}
 
 	// reverse the list - so that we pull the parents first
-	for i, j := 0, len(res); i < j; i, j = i+1, j-1 {
+	for i, j := 0, len(res)-1; i < j; i, j = i+1, j-1 {
 		res[i], res[j] = res[j], res[i]
 	}
 

@@ -40,7 +40,7 @@ func (cln *ZImageClient) getLocalParents(leaf *v1.ImageManifest) ([]*v1.ImageMan
 	}
 
 	// reverse the list - so that we pull the parents first
-	for i, j := 0, len(res); i < j; i, j = i+1, j-1 {
+	for i, j := 0, len(res)-1; i < j; i, j = i+1, j-1 {
 		res[i], res[j] = res[j], res[i]
 	}
 
@@ -59,15 +59,17 @@ func (cln *ZImageClient) Push(imgid string, tag string) error {
 
 	parents, err := cln.getLocalParents(leaf)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	for _, p := range parents {
+		tracePrintf("pushing parent: %s\n", p.Id)
 		if err = cln.doPush(p, p.Id); err != nil {
 			return err
 		}
 	}
 
+	tracePrintf("pushing leaf: %s, tag = %s\n", leaf.Id, tag)
 	if err = cln.doPush(leaf, tag); err != nil {
 		return err
 	}
