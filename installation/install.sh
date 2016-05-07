@@ -558,8 +558,10 @@ ia_update_apt(){
     [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
     #Fix Ubuntu conflicted dpkg lock issue. 
     if [ -f /etc/init.d/unattended-upgrades ]; then
-        /etc/init.d/unattended-upgrades stop  >/dev/null 2>&1
-        update-rc.d -f unattended-upgrades remove >/dev/null 2>&1
+        /etc/init.d/unattended-upgrades stop  >$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d -f unattended-upgrades remove >$ZSTACK_INSTALL_LOG 2>&1
+        pid=`lsof /var/lib/dpkg/lock|grep lock|awk '{print $2}'`
+        [ ! -z $pid ] && kill -9 $pid >$ZSTACK_INSTALL_LOG 2>&1
     fi
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
     apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
@@ -671,9 +673,9 @@ install_ansible(){
         show_spinner ia_install_ansible
     elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         export DEBIAN_FRONTEND=noninteractive
-        if [ -z $ZSTACK_PKG_MIRROR ]; then
-            show_spinner ia_update_apt
-        fi
+        #if [ -z $ZSTACK_PKG_MIRROR ]; then
+        #    show_spinner ia_update_apt
+        #fi
         show_spinner ia_install_python_gcc_db
         show_spinner ia_install_pip
         show_spinner ia_install_ansible
@@ -1597,6 +1599,8 @@ sd_start_dashboard(){
 
 #create zstack local apt source list
 create_apt_source_list(){
+    dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
     /bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.`date +%Y-%m-%d_%H-%M-%S` >>$ZSTACK_INSTALL_LOG 2>&1
     cat > /etc/apt/sources.list << EOF
 deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
@@ -1612,8 +1616,10 @@ deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backport
 EOF
     #Fix Ubuntu conflicted dpkg lock issue. 
     if [ -f /etc/init.d/unattended-upgrades ]; then
-        /etc/init.d/unattended-upgrades stop  >/dev/null 2>&1
-        update-rc.d -f unattended-upgrades remove >/dev/null 2>&1
+        /etc/init.d/unattended-upgrades stop  >$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d -f unattended-upgrades remove >$ZSTACK_INSTALL_LOG 2>&1
+        pid=`lsof /var/lib/dpkg/lock|grep lock|awk '{print $2}'`
+        [ ! -z $pid ] && kill -9 $pid >$ZSTACK_INSTALL_LOG 2>&1
     fi
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
     apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
