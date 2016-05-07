@@ -239,23 +239,23 @@ cs_check_hostname(){
     current_hostname=`hostname`
     if [ "localhost" = $current_hostname ] || [ "localhost.localdomain" = $current_hostname ] ; then
         CHANGE_HOSTNAME=`echo $MANAGEMENT_IP|sed 's/\./-/g'`
-        CHANGE_HOSTS="127.0.0.1 $CHANGE_HOSTNAME"
+        CHANGE_HOSTS="$MANAGEMENT_IP $CHANGE_HOSTNAME"
         which hostnamectl >>/dev/null 2>&1
         if [ $? -ne 0 ]; then
             hostname $CHANGE_HOSTNAME
-            echo "127.0.0.1 $CHANGE_HOSTNAME"  >>/etc/hosts
+            echo "$MANAGEMENT_IP $CHANGE_HOSTNAME"  >>/etc/hosts
         else
             hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
-            echo "127.0.0.1 $CHANGE_HOSTNAME"  >>/etc/hosts
+            echo "$MANAGEMENT_IP $CHANGE_HOSTNAME"  >>/etc/hosts
         fi
         echo "Your OS hostname is set as $current_hostname, which will block vm live migration. You can set a special hostname, or directly use $CHANGE_HOSTNAME by running following commands in CentOS6:
 
         hostname $CHANGE_HOSTNAME
-        echo 127.0.0.1 $CHANGE_HOSTNAME >> /etc/hosts
+        echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
 
 or following commands in CentOS7:
         hostnamectl set-hostname $CHANGE_HOSTNAME
-        echo 127.0.0.1 $CHANGE_HOSTNAME >> /etc/hosts
+        echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
 
 " >> $ZSTACK_INSTALL_LOG
         return 0
@@ -478,11 +478,11 @@ ia_check_ip_hijack(){
     [ $? -eq 0 ] && return 0
     
     echo "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
-    It's likely your DNS server has been hijacking, please try fixing it or add \"127.0.0.1 $HOSTNAME\" to /etc/hosts by \n\n \`echo \"127.0.0.1 $HOSTNAME\" >>/etc/hosts\`.
+    It's likely your DNS server has been hijacking, please try fixing it or add \"$MANAGEMENT_IP $HOSTNAME\" to /etc/hosts by \n\n \`echo \"$MANAGEMENT_IP $HOSTNAME\" >>/etc/hosts\`.
 " >> $ZSTACK_INSTALL_LOG
     
-    echo "127.0.0.1 $HOSTNAME" >>/etc/hosts
-    CHANGE_HOSTS='127.0.0.1 $HOSTNAME'
+    echo "$MANAGEMENT_IP $HOSTNAME" >>/etc/hosts
+    CHANGE_HOSTS='$MANAGEMENT_IP $HOSTNAME'
 }
 
 ia_install_python_gcc_rh(){
