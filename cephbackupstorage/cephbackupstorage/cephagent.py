@@ -152,10 +152,11 @@ class CephAgent(object):
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
 
-        if cmd.urlScheme in ['http', 'https']:
-            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s' % (cmd.url, pool, tmp_image_name))
+        if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
+            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s'
+                       % (cmd.url, pool, tmp_image_name))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
-        elif cmd.urlScheme == 'file':
+        elif cmd.url.startswith('file://'):
             src_path = cmd.url.lstrip('file:')
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
@@ -163,7 +164,7 @@ class CephAgent(object):
             shell.call("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
             actual_size = os.path.getsize(src_path)
         else:
-            raise Exception('unknown url scheme[%s] for the url[%s]' % (cmd.urlScheme, cmd.url))
+            raise Exception('unknown url[%s]' % cmd.url)
 
         @rollbackable
         def _1():
