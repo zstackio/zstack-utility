@@ -191,8 +191,7 @@ func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf
 
 	// Check whether its parents exists
 	if imf.Parent != "" {
-		ps := imageJsonPathSpec{name: name, id: imf.Parent}.pathSpec()
-		if _, err := sf.driver.Stat(ctx, ps); err != nil {
+		if _, err := sf.GetManifest(ctx, name, imf.Parent); err != nil {
 			return fmt.Errorf("parent (%s) does not exist", imf.Parent)
 		}
 	}

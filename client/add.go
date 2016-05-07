@@ -48,7 +48,7 @@ func buildManifest(parent string, arch string, name string) (*v1.ImageManifest, 
 		}
 
 		manifest.Name = m.Name
-		manifest.Parent = parent
+		manifest.Parent = m.Id
 	} else {
 		if arch == "" {
 			return nil, fmt.Errorf("missing value for '-arch' option")
