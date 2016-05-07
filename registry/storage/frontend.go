@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/docker/distribution/context"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
+	"image-store/registry/api/errcode"
 	"image-store/registry/api/v1"
 	"image-store/utils"
 	"io"
@@ -135,7 +136,7 @@ func (sf StorageFE) GetManifest(ctx context.Context, nam string, ref string) (*v
 		res, err := sf.driver.List(ctx, topdir)
 		if err != nil {
 			if _, ok := err.(storagedriver.PathNotFoundError); ok {
-				return nil, fmt.Errorf("digest not found: %s", ref)
+				return nil, errcode.BuildENotFound(ref, err)
 			}
 			return nil, err
 		}

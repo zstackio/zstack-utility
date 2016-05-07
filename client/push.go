@@ -19,21 +19,20 @@ func (cln *ZImageClient) getLocalParents(leaf *v1.ImageManifest) ([]*v1.ImageMan
 
 	for cursor := leaf; cursor.Parent != ""; {
 
-		imf, err := cln.getImageManifest(cursor.Name, cursor.Parent)
+		_, err := cln.getImageManifest(cursor.Name, cursor.Parent)
 		if err == nil {
 			break // manifest exists
 		}
 
-		// check Not Found error specifically
-		if v, ok := err.(errcode.Error); ok && v.Code == http.StatusNotFound {
-			res = append(res, imf)
-		} else {
-			return nil, err
+		manifest, err2 := FindImageManifest(cursor.Parent)
+		if err2 != nil {
+			return nil, fmt.Errorf("local cache corrupted on %s: %s", cursor.Parent, err)
 		}
 
-		manifest, err := FindImageManifest(cursor.Parent)
-		if err != nil {
-			return nil, fmt.Errorf("local cache corrupted: %s", err)
+		if v, ok := err.(errcode.Error); ok && v.Code == http.StatusNotFound {
+			res = append(res, manifest) // check NotFound error specifically
+		} else {
+			return nil, err // unexpected server error
 		}
 
 		cursor = manifest
