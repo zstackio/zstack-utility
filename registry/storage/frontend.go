@@ -189,25 +189,23 @@ func (sf StorageFE) PutManifest(ctx context.Context, nam string, ref string, imf
 	}
 
 	// Check whether its parents exists
-	ps := imageJsonPathSpec{name: name, id: imf.Parent}.pathSpec()
-	if _, err := sf.driver.Stat(ctx, ps); err != nil {
-		return err
+	if imf.Parent != "" {
+		ps := imageJsonPathSpec{name: name, id: imf.Parent}.pathSpec()
+		if _, err := sf.driver.Stat(ctx, ps); err != nil {
+			return fmt.Errorf("parent (%s) does not exist", imf.Parent)
+		}
 	}
 
 	// Check whether the image blob has been uploaded
 	bps := blobManifestPathSpec{digest: imf.Blobsum}.pathSpec()
 	if _, err := sf.driver.Stat(ctx, bps); err != nil {
-		return fmt.Errorf("image blob not exist: %s", imf.Blobsum)
+		return fmt.Errorf("image blob does not exist: %s", imf.Blobsum)
 	}
 
 	// Check whether image digest already exists
 	ijps := imageJsonPathSpec{name: name, id: idstr}.pathSpec()
-	if _, err := sf.driver.Stat(ctx, ijps); err == nil {
-		return fmt.Errorf("image manifest already exist")
-	}
-
-	if err := sf.driver.PutContent(ctx, ps, []byte(imf.String())); err != nil {
-		return errors.New("failed to update manifest")
+	if err := sf.putContentIfNotExist(ctx, ijps, []byte(imf.String())); err != nil {
+		return fmt.Errorf("failed to update manifest: %s", err)
 	}
 
 	if !isdigest {
