@@ -368,7 +368,7 @@ cs_check_epel(){
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
             if [ $UPGRADE != 'n' ]; then
-                zstack_properties=`zstack-ctl status|grep zstack.properties|awk '{print $2}'`
+                zstack_properties=`zstack-ctl status 2>/dev/null|grep zstack.properties|awk '{print $2}'`
                 grep Ansible.var.zstack_repo $zstack_properties >/dev/null 2>&1
                 [ $? -eq 0 ] && return
             fi
@@ -599,13 +599,15 @@ upgrade_zstack(){
     show_spinner cs_add_cronjob
     show_spinner cs_enable_zstack_service
 
-    if [ -z $ONLY_INSTALL_ZSTACK ]; then
-        if [ ! -z $INSTALL_MONITOR ] ; then
-            show_spinner iz_install_cassandra
+    if [ ! -z $INSTALL_MONITOR ] ; then
+        show_spinner iz_install_cassandra
+        if [ -z $ONLY_INSTALL_ZSTACK ]; then
             show_spinner sz_start_cassandra
-            show_spinner iz_install_kairosdb
         fi
-    
+        show_spinner iz_install_kairosdb
+    fi
+
+    if [ -z $ONLY_INSTALL_ZSTACK ]; then
         if [ -z $NEED_KEEP_DB ];then
             if [ $CURRENT_STATUS = 'y' ]; then
                 if [ -z $NOT_START_ZSTACK ]; then
@@ -646,7 +648,7 @@ cs_pre_check(){
     echo_subtitle "Pre-Checking"
     #change zstack.properties config
     if [ $UPGRADE != 'n' ]; then
-        zstack_properties=`zstack-ctl status|grep zstack.properties|awk '{print $2}'`
+        zstack_properties=`zstack-ctl status 2>/dev/null|grep zstack.properties|awk '{print $2}'`
     else
         zstack_properties=$ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES
     fi
@@ -998,12 +1000,14 @@ uz_upgrade_zstack(){
         fail "failed to upgrade local management node"
     fi
 
-    if [ -z $ONLY_INSTALL_ZSTACK ] ; then
-        if [ -f $upgrade_folder/apache-cassandra* ]; then
-            /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-            /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
+    #Will install cassandra and kairosdb, no matter it is installed or not.
+    #This will help fix some issue when upgrading. 
+    if [ -f $upgrade_folder/apache-cassandra* ]; then
+        /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+        /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
     
+    if [ -z $ONLY_INSTALL_ZSTACK ] ; then
         cd /; rm -rf $upgrade_folder
     
         if [ -z $NEED_KEEP_DB ];then
@@ -1982,7 +1986,7 @@ if [ $UPGRADE = 'y' ]; then
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
     mkdir -p $upgrade_folder
-    zstack-ctl status |grep 'Running' >/dev/null 2>&1
+    zstack-ctl status 2>/dev/null|grep 'Running' >/dev/null 2>&1
     if [ $? -eq 0 ]; then
         CURRENT_STATUS='y'
     else
@@ -2010,7 +2014,7 @@ if [ $UPGRADE = 'y' ]; then
     upgrade_zstack
     cd /; rm -rf $upgrade_zstack
 
-    [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
+    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
     echo ""
     echo_star_line
     echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
@@ -2128,7 +2132,7 @@ fi
 
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
-    [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
+    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
 fi
 
 echo ""

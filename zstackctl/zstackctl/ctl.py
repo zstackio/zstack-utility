@@ -809,7 +809,12 @@ class ShowStatusCmd(Command):
                 write_status('Unknown')
 
         def show_version():
-            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+            try:
+                db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+            except:
+                info_list.append('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                return 
+
             if db_password:
                 cmd = ShellCmd('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_password, db_hostname, db_port))
