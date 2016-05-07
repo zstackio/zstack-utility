@@ -30,7 +30,7 @@ func match(name, key string) bool {
 
 	len, ridx := len(name), idx+len(key)
 	if ridx < len {
-		return unicode.IsPunct(rune(name[ridx]))
+		return unicode.IsPunct(rune(name[ridx])) || unicode.IsDigit(rune(name[ridx]))
 	}
 
 	return true
