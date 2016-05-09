@@ -44,6 +44,11 @@ class GetImageSizeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class PingRsp(AgentResponse):
+    def __init__(self):
+        super(PingRsp, self).__init__()
+        self.operationFailure = False
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -203,7 +208,18 @@ class CephAgent(object):
 
     @replyerror
     def ping(self, req):
-        return jsonobject.dumps(AgentResponse())
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = PingRsp()
+        create_img = shell.ShellCmd('rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
+        create_img(False)
+        if create_img.return_code != 0:
+            rsp.success = False
+            rsp.operationFailure = True
+            rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
+        else:
+            rm_img = shell.ShellCmd('rbd rm %s' % cmd.testImagePath)
+            rm_img(False)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def delete(self, req):
