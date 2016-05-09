@@ -118,7 +118,7 @@ def get_size(size):
         return size
 
     def strip_size_unit():
-        return long(size[:-1])
+        return float(size[:-1])
 
     if size.endswith('b') or size.endswith('B'):
         return Byte.toByte(strip_size_unit())

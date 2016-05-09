@@ -478,7 +478,9 @@ def qcow2_size_and_actual_size(file_path):
     if actual_size == "null":
         actual_size = None
     else:
-        actual_size = sizeunit.get_size(actual_size)
+        # actual_size = sizeunit.get_size(actual_size)
+        # use the os.path.getsize instead of parsing qemu-img output as it's not accurate
+        actual_size = os.path.getsize(file_path)
 
     return virtual_size, actual_size
 
