@@ -2850,7 +2850,7 @@ wsrep_sst_method=rsync
             service_status("mysql","state=started enabled=yes", self.host3_post_info)
         service_status("mysql","state=restarted enabled=yes", self.host1_post_info)
 
-        self.init_install = check_command_status("mysql -u root --password='' -e 'exit' ", self.host1_post_info)
+        self.init_install = run_remote_command("mysql -u root --password='' -e 'exit' ", self.host1_post_info, return_status=True)
         if self.init_install is True:
             #self.command = "mysql -u root --password='' -Bse \"show status like 'wsrep_%%';\""
             #galera_status = run_remote_command(self.command, self.host2_post_info)

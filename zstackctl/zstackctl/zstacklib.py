@@ -12,6 +12,7 @@ import json
 from logging.handlers import TimedRotatingFileHandler
 import time
 import functools
+import jinja2
 import commands
 
 # set global default value
@@ -40,10 +41,11 @@ class AgentInstallArg(object):
 
 class ZstackLibArgs(object):
     def __init__(self):
-        self.yum_repo = None
+        self.zstack_repo = None
         self.yum_server = None
         self.distro = None
         self.distro_version = None
+        self.distro_release = None
         self.zstack_root = None
         self.host_post_info = None
         self.pip_url = None
@@ -126,12 +128,17 @@ def retry(times=3, sleep_time=3):
                 try:
                     return f(*args, **kwargs)
                 except Exception as e:
+                    logger.error(e)
                     time.sleep(sleep_time)
             print "The host is inaccessible currently, please make sure the host can be connected then try again."
             sys.exit(1)
         return inner
     return wrap
 
+def error(msg):
+    logger.error(msg)
+    sys.stderr.write('ERROR: %s\n' % msg)
+    sys.exit(1)
 
 def create_log(logger_dir):
     if not os.path.exists(logger_dir):
@@ -153,8 +160,8 @@ def post_msg(msg, post_url):
         # This output will capture by management log
         print msg.data.description + "\nDetail: " + msg.data.details
     else:
-        logger.info("ERROR: undefined message type: %s" % msg.type)
-        sys.exit(1)
+        error("ERROR: undefined message type: %s" % msg.type)
+
     if post_url == "":
         logger.info("Warning: no post_url defined by user")
         return 0
@@ -165,9 +172,7 @@ def post_msg(msg, post_url):
         response.close()
     except URLError, e:
         logger.debug(e.reason)
-        logger.info("Please check the post_url: %s and check the server status" % post_url)
-        print "Please check the post_url: %s and check the server status" % post_url
-        sys.exit(1)
+        error("Please check the post_url: %s and check the server status" % post_url)
 
 
 def handle_ansible_start(ansible_start):
@@ -238,7 +243,7 @@ def agent_install(install_arg, host_post_info):
     if pip_install_package(pip_install_arg, host_post_info) is False:
         command = "rm -rf %s && rm -rf %s" % (install_arg.virtenv_path, install_arg.agent_root)
         run_remote_command(command, host_post_info)
-        sys.exit(1)
+        error("agent %s install failed" % install_arg.agent_name)
 
 
 def yum_enable_repo(name, enablerepo, host_post_info):
@@ -539,10 +544,15 @@ def apt_install_packages(name, host_post_info):
             description = "ERROR: Apt install %s failed!" % name
             handle_ansible_failed(description, result, host_post_info)
             sys.exit(1)
-        else:
+        elif 'changed' in result['contacted'][host]:
             details = "SUCC: apt install package %s " % name
             handle_ansible_info(details, host_post_info, "INFO")
             return True
+        else:
+            description = "ERROR: Apt install %s meet unknown issue: %s" % (name, result)
+            handle_ansible_failed(description, result, host_post_info)
+            sys.exit(1)
+
 
 
 def pip_install_package(pip_install_arg, host_post_info):
@@ -555,7 +565,10 @@ def pip_install_package(pip_install_arg, host_post_info):
     post_url = host_post_info.post_url
     version = pip_install_arg.version
     if pip_install_arg.extra_args is not None:
-        extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] + '\"'
+        if 'pip' not in name:
+            extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] + '\"'
+        else:
+            extra_args = '\"' + pip_install_arg.extra_args.split('"')[1] + '\"'
     else:
         extra_args = None
     virtualenv = pip_install_arg.virtualenv
@@ -722,7 +735,7 @@ def fetch(fetch_arg, host_post_info):
 
 
 @retry(times=3, sleep_time=3)
-def run_remote_command(command, host_post_info):
+def run_remote_command(command, host_post_info, return_status=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
@@ -757,50 +770,14 @@ def run_remote_command(command, host_post_info):
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
-                description = "ERROR: command %s failed!" % command
-                handle_ansible_failed(description, result, host_post_info)
-                sys.exit(1)
-
-
-@retry(times=3, sleep_time=3)
-def check_command_status(command, host_post_info):
-    start_time = datetime.now()
-    host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
-    host = host_post_info.host
-    post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args=command,
-        pattern=host
-    )
-    result = runner.run()
-    logger.debug(result)
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-        sys.exit(1)
-    else:
-        if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
-            raise Exception(result)
-        else:
-            status = result['contacted'][host]['rc']
-            if status == 0:
-                details = "SUCC shell command: '%s' return 0 " % command
-                handle_ansible_info(details, host_post_info, "INFO")
-                return True
-            else:
-                details = "INFO: shell command %s failed " % command
-                handle_ansible_info(details, host_post_info, "WARNING")
-                return False
+                if return_status is False:
+                    description = "ERROR: command %s failed!" % command
+                    handle_ansible_failed(description, result, host_post_info)
+                    sys.exit(1)
+                else:
+                    details = "ERROR: shell command %s failed " % command
+                    handle_ansible_info(details, host_post_info, "WARNING")
+                    return False
 
 
 @retry(times=3, sleep_time=3)
@@ -957,6 +934,7 @@ def get_remote_host_info(host_post_info):
             description = "ERROR: get_remote_host_info on host %s failed!" % host
             handle_ansible_failed(description, result, host_post_info)
             sys.exit(1)
+
 
 
 def set_ini_file(file, section, option, value, host_post_info):
@@ -1290,15 +1268,16 @@ def unarchive(unarchive_arg, host_post_info):
 class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
-        yum_repo = args.yum_repo
+        distro_release = args.distro_release
+        zstack_repo = args.zstack_repo
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
         trusted_host = args.trusted_host
         pip_url = args.pip_url
         pip_version = "7.0.3"
-        epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
         current_dir =  os.path.dirname(os.path.realpath(__file__))
         if distro == "CentOS" or distro == "RedHat":
+            epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
             run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
             # set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
@@ -1332,8 +1311,8 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
         """
             run_remote_command(command, host_post_info)
 
-            if yum_repo == "false":
-                # yum_repo defined by user
+            if zstack_repo == "false":
+                # zstack_repo defined by user
                 yum_install_package("libselinux-python", host_post_info)
                 if epel_repo_exist is False:
                     copy_arg = CopyArg()
@@ -1383,15 +1362,56 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
                           "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                           "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                          "-y $pkg; done;") % yum_repo
+                          "-y $pkg; done;") % zstack_repo
                 run_remote_command(command, host_post_info)
 
             # enable ntp service for RedHat
             service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
         elif distro == "Debian" or distro == "Ubuntu":
+            command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
+                      % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            run_remote_command(command, host_post_info)
+            update_repo_raw_command = """
+cat > /etc/apt/sources.list << EOF
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+                """
+            if 'ali' in zstack_repo:
+                update_repo_command_template = jinja2.Template(update_repo_raw_command)
+                update_repo_command = update_repo_command_template.render({
+                    'zstack_repo' : 'aliyun',
+                    'DISTRIB_CODENAME' : distro_release
+                })
+                run_remote_command(update_repo_command, host_post_info)
+            if '163' in zstack_repo:
+                update_repo_command_template = jinja2.Template(update_repo_raw_command)
+                update_repo_command = update_repo_command_template.render({
+                    'zstack_repo' : '163',
+                    'DISTRIB_CODENAME' : distro_release
+                })
+                run_remote_command(update_repo_command, host_post_info)
+
             # install dependency packages for Debian based OS
-            apt_update_cache(86400, host_post_info)
+            # if last operation more than 24 hour, will update the cache again
+            service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
+            #apt_update_cache(86400, host_post_info)
+            command = 'apt-get clean'
+            run_remote_command(command, host_post_info)
+            command = "apt-get update -o Acquire::http::No-Cache=True"
+            apt_update_status = run_remote_command(command, host_post_info, return_status=True)
+            if apt_update_status is False:
+                error("apt-get update on host %s failed, please update the repo on the host manually and try again."
+                      % host_post_info.host )
+
             for pkg in ["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                 apt_install_packages(pkg, host_post_info)
 
@@ -1399,8 +1419,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
             run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
 
         else:
-            logger.info("ERROR: Unsupported distribution")
-            sys.exit(1)
+            error("ERROR: Unsupported distribution")
 
         # check the pip 7.0.3 exist in system to avoid site-packages enable potential issue
         pip_match = check_pip_version(pip_version, host_post_info)
