@@ -463,6 +463,8 @@ def qcow2_size_and_actual_size(file_path):
     if cmd.return_code != 0:
         raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
 
+    logger.debug('qcow2_size_and_actual_size: %s' % cmd.stdout)
+
     out = cmd.stdout.strip(" \t\n\r")
     virtual_size, actual_size = out.split(" ")
     if virtual_size == "null" and actual_size == "null":
