@@ -121,13 +121,17 @@ def get_size(size):
         return float(size[:-1])
 
     if size.endswith('b') or size.endswith('B'):
-        return Byte.toByte(strip_size_unit())
+        s = Byte.toByte(strip_size_unit())
     elif size.endswith('k') or size.endswith('K'):
-        return KiloByte.toByte(strip_size_unit())
+        s = KiloByte.toByte(strip_size_unit())
     elif size.endswith('m') or size.endswith('M'):
-        return MegaByte.toByte(strip_size_unit())
+        s = MegaByte.toByte(strip_size_unit())
     elif size.endswith('g') or size.endswith('G'):
-        return GigaByte.toByte(strip_size_unit())
+        s = GigaByte.toByte(strip_size_unit())
     elif size.endswith('t') or size.endswith('T'):
-        return TeraByte.toByte(strip_size_unit())
+        s = TeraByte.toByte(strip_size_unit())
+    else:
+        raise Exception('unknown size unit[%s]' % size)
+
+    return long(s)
 
