@@ -3,6 +3,7 @@ package client
 import (
 	"flag"
 	"fmt"
+	"image-store/imgtool"
 	"os"
 	"path"
 	"strings"
@@ -94,7 +95,6 @@ var cmdTable = map[string]func(*GlobalOpt, []string){
 
 func doAdd(gopt *GlobalOpt, args []string) {
 	addCommand := flag.NewFlagSet("add", flag.ExitOnError)
-	fparent := addCommand.String("parent", "", "the parent image id")
 	ffile := addCommand.String("file", "", "the path to image file")
 	fname := addCommand.String("name", "", "the image name ('ubuntu' etc.)")
 	fauth := addCommand.String("author", "", "the author string")
@@ -126,6 +126,28 @@ func doAdd(gopt *GlobalOpt, args []string) {
 
 	tracePrintf("computing blob top hash for %s\n", *ffile)
 
+	imginfo, err := imgtool.GetImageInfo(*ffile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get image info: %s\n", err)
+		os.Exit(1)
+	}
+
+	if imginfo.Format != imgtool.Qcow2 {
+		fmt.Fprintf(os.Stderr, "unexpected image format: %s\n", *ffile)
+		os.Exit(1)
+	}
+
+	var parent string
+	if imginfo.HasParent() {
+		imgid, err := imginfo.GetParentImageId()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "unexpected parent: %s\n", imginfo.BackingFile)
+			os.Exit(1)
+		}
+
+		parent = imgid.String()
+	}
+
 	// get the blob tophash and file size
 	digest, size, err := getBlobDigestAndSize(*ffile)
 	if err != nil {
@@ -133,7 +155,7 @@ func doAdd(gopt *GlobalOpt, args []string) {
 		os.Exit(1)
 	}
 
-	manifest, err := buildManifest(*fparent, *farch, *fname)
+	manifest, err := buildManifest(parent, *farch, *fname)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -144,6 +166,7 @@ func doAdd(gopt *GlobalOpt, args []string) {
 	manifest.Created = time.Now().Format(time.RFC3339)
 	manifest.Desc = *fdesc
 	manifest.Size = size
+	manifest.VirtualSize = imginfo.VirtualSize
 
 	manifest.Id = manifest.GenImageId()
 

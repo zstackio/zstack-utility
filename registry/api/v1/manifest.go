@@ -10,15 +10,16 @@ import (
 
 // The image manifest
 type ImageManifest struct {
-	Id      string `json:"id"`
-	Parent  string `json:"parent"`
-	Blobsum string `json:"blobsum"`
-	Created string `json:"created"`
-	Author  string `json:"author"`
-	Arch    string `json:"architecture"`
-	Desc    string `json:"desc"`
-	Size    int64  `json:"size"`
-	Name    string `json:"name"`
+	Id          string `json:"id"`
+	Parent      string `json:"parent"`
+	Blobsum     string `json:"blobsum"`
+	Created     string `json:"created"`
+	Author      string `json:"author"`
+	Arch        string `json:"architecture"`
+	Desc        string `json:"desc"`
+	Size        int64  `json:"size"`
+	VirtualSize int64  `json:"virtualsize"`
+	Name        string `json:"name"`
 }
 
 // Encode the image manifest to JSON string
@@ -33,7 +34,7 @@ func (imf *ImageManifest) Ok() bool {
 		return false
 	}
 
-	if imf.Size <= 0 {
+	if imf.Size <= 0 || imf.VirtualSize <= 0 {
 		return false
 	}
 
