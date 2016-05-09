@@ -558,10 +558,10 @@ ia_update_apt(){
     [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
     #Fix Ubuntu conflicted dpkg lock issue. 
     if [ -f /etc/init.d/unattended-upgrades ]; then
-        /etc/init.d/unattended-upgrades stop  >$ZSTACK_INSTALL_LOG 2>&1
-        update-rc.d -f unattended-upgrades remove >$ZSTACK_INSTALL_LOG 2>&1
+        /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d -f unattended-upgrades remove >>$ZSTACK_INSTALL_LOG 2>&1
         pid=`lsof /var/lib/dpkg/lock|grep lock|awk '{print $2}'`
-        [ ! -z $pid ] && kill -9 $pid >$ZSTACK_INSTALL_LOG 2>&1
+        [ ! -z $pid ] && kill -9 $pid >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
     apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1614,10 +1614,12 @@ deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backport
 EOF
     #Fix Ubuntu conflicted dpkg lock issue. 
     if [ -f /etc/init.d/unattended-upgrades ]; then
-        /etc/init.d/unattended-upgrades stop  >$ZSTACK_INSTALL_LOG 2>&1
-        update-rc.d -f unattended-upgrades remove >$ZSTACK_INSTALL_LOG 2>&1
+        /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d -f unattended-upgrades remove >>$ZSTACK_INSTALL_LOG 2>&1
         pid=`lsof /var/lib/dpkg/lock|grep lock|awk '{print $2}'`
-        [ ! -z $pid ] && kill -9 $pid >$ZSTACK_INSTALL_LOG 2>&1
+        [ ! -z $pid ] && kill -9 $pid >>$ZSTACK_INSTALL_LOG 2>&1
+        which systemctl >/dev/null 2>&1
+        [ $? -eq 0 ] && systemctl stop apt-daily >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "execute \`dpkg --configure -a\` failed."
