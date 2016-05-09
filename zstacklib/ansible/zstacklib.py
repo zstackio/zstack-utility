@@ -515,6 +515,46 @@ def apt_update_cache(cache_valid_time, host_post_info):
             return True
 
 
+def check_pkg_status(name_list, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    private_key = host_post_info.private_key
+    host_inventory = host_post_info.host_inventory
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting check package %s exist in system... " % name_list, host_post_info, "INFO")
+    for name in name_list:
+        runner = ansible.runner.Runner(
+            host_list=host_inventory,
+            private_key_file=private_key,
+            module_name='shell',
+            module_args='dpkg-query -l %s | grep ^ii ' % name,
+            pattern=host
+        )
+        result = runner.run()
+        logger.debug(result)
+        if result['contacted'] == {}:
+            ansible_start = AnsibleStartResult()
+            ansible_start.host = host
+            ansible_start.post_url = post_url
+            ansible_start.result = result
+            handle_ansible_start(ansible_start)
+            sys.exit(1)
+        else:
+            if 'rc' not in result['contacted'][host]:
+                logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+                raise Exception(result)
+            else:
+                status = result['contacted'][host]['rc']
+                if status == 0:
+                    details = "SUCC: The package %s exist in system" % name
+                    handle_ansible_info(details, host_post_info, "INFO")
+                else:
+                    details = "SUCC: The package %s not exist in system" % name
+                    handle_ansible_info(details, host_post_info, "INFO")
+                    return False
+
+
 def apt_install_packages(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1401,19 +1441,20 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
                 run_remote_command(update_repo_command, host_post_info)
 
             # install dependency packages for Debian based OS
-            # if last operation more than 24 hour, will update the cache again
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
-            command = 'apt-get clean'
-            run_remote_command(command, host_post_info)
-            command = "apt-get update -o Acquire::http::No-Cache=True"
-            apt_update_status = run_remote_command(command, host_post_info, return_status=True)
-            if apt_update_status is False:
-                error("apt-get update on host %s failed, please update the repo on the host manually and try again."
-                      % host_post_info.host )
-
-            for pkg in ["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
-                apt_install_packages(pkg, host_post_info)
+            install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]
+            all_pkg_exist = check_pkg_status(install_pkg_list, host_post_info)
+            if all_pkg_exist is False:
+                command = 'apt-get clean'
+                run_remote_command(command, host_post_info)
+                command = "apt-get update -o Acquire::http::No-Cache=True"
+                apt_update_status = run_remote_command(command, host_post_info, return_status=True)
+                if apt_update_status is False:
+                    error("apt-get update on host %s failed, please update the repo on the host manually and try again."
+                          % host_post_info.host )
+                for pkg in install_pkg_list:
+                    apt_install_packages(pkg, host_post_info)
 
             # name: enable ntp service for Debian
             run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
