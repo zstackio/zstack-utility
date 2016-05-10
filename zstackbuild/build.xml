@@ -91,6 +91,10 @@
             <arg value="${pypi.source.folder}" />
             <arg value="./" />
         </exec>
+        <exec executable="bash" dir="${pypi.parent.dir}" failonerror="true">
+            <arg value="${remove.pypi.symlink}" />
+            <arg value="${pypi.parent.dir}/pypi" />
+        </exec>
     </target>
 
     <target name="copy-centos6-repo" >
