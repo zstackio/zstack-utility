@@ -3234,9 +3234,12 @@ exit 1
 
         if args.rabbit_username and args.rabbit_password:
             post_script = '''set -e
-rabbitmqctl add_user $username $password
-rabbitmqctl set_user_tags $username administrator
-rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
+rabbitmqctl list_users|grep 'zstack'
+if [ $$? -ne 0 ]; then
+    rabbitmqctl add_user $username $password
+    rabbitmqctl set_user_tags $username administrator
+    rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
+fi
 '''
             t = string.Template(post_script)
             post_script = t.substitute({
