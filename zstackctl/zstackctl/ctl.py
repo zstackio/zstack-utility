@@ -3233,9 +3233,10 @@ exit 1
         self.install_cleanup_routine(cleanup_prescript)
 
         if args.rabbit_username and args.rabbit_password:
-            post_script = '''set -e
+            post_script = '''set -x
 rabbitmqctl list_users|grep 'zstack'
 if [ $$? -ne 0 ]; then
+    set -e
     rabbitmqctl add_user $username $password
     rabbitmqctl set_user_tags $username administrator
     rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
