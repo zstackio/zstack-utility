@@ -25,6 +25,9 @@ parser.add_argument('-e', type=str, help='set additional variables as key=value 
 args = parser.parse_args()
 argument_dict = eval(args.e)
 locals().update(argument_dict)
+# if use offline image, we will use mn node as http server
+if zstack_repo == 'zstack-local':
+    zstack_repo = 'zstack-mn'
 
 # update the variable from shell arguments
 virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root

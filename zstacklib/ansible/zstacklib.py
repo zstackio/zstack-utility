@@ -1365,8 +1365,9 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                 for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                     yum_install_package(pkg, host_post_info)
             else:
-                # set 163 mirror yum repo
-                command = """
+                if '163' in zstack_repo:
+                    # set 163 mirror yum repo
+                    command = """
 echo -e "#163 base
 [163base]
 name=CentOS-\$releasever - Base - mirrors.163.com
@@ -1395,7 +1396,21 @@ failovermethod=priority
 enabled=0
 gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
         """
-                run_remote_command(command, host_post_info)
+                    run_remote_command(command, host_post_info)
+                elif zstack_repo == 'zstack-mn':
+                    generate_mn_repo_raw_command = """
+echo -e "[zstack-mn]
+name=zstack-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-dvd/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
+               """
+                    generate_mn_repo_template = jinja2.Template(generate_mn_repo_raw_command)
+                    generate_mn_repo_command = generate_mn_repo_template.render({
+                       'yum_server' : yum_server
+                    })
+                    run_remote_command(generate_mn_repo_command, host_post_info)
+
                 # install libselinux-python and other command system libs from user defined repos
                 # enable alibase repo for yum clean avoid no repo to be clean
                 command = (
