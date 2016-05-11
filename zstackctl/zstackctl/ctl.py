@@ -1818,7 +1818,7 @@ class InstallHACmd(Command):
 
 
         #init variables
-        self.yum_repo = ctl.read_property('Ansible.var.yum_repo')
+        self.yum_repo = ctl.read_property('Ansible.var.zstack_repo')
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
@@ -3152,7 +3152,7 @@ class InstallRabbitCmd(Command):
             raise CtlError('--rabbit-username and --rabbit-password must be both set or not set')
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.yum_repo')
+            args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
         yaml = '''---
 - hosts: $host
@@ -4073,7 +4073,7 @@ class InstallManagementNodeCmd(Command):
             raise CtlError('%s is not an directory' % args.source_dir)
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.yum_repo')
+            args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
         apache_tomcat = None
         zstack = None
@@ -4482,7 +4482,7 @@ class InstallWebUiCmd(Command):
             return
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.yum_repo')
+            args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
         tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
         if not os.path.isdir(tools_path):
