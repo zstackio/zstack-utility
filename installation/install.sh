@@ -614,6 +614,7 @@ upgrade_zstack(){
         show_spinner iz_install_kairosdb
     fi
 
+    show_spinner cs_config_zstack_properties
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         if [ -z $NEED_KEEP_DB ];then
             if [ $CURRENT_STATUS = 'y' ]; then
@@ -621,7 +622,6 @@ upgrade_zstack(){
                     if [ ! -z $INSTALL_MONITOR ] ; then
                         show_spinner sz_start_kairosdb
                     fi
-                    show_spinner cs_config_zstack_properties
                     show_spinner sz_start_zstack
                 fi
             fi
@@ -643,7 +643,6 @@ upgrade_zstack(){
         if [ -z $NEED_KEEP_DB ];then
             if [ $CURRENT_STATUS = 'y' ]; then
                 if [ -z $NOT_START_ZSTACK ]; then
-                    show_spinner cs_config_zstack_properties
                     show_spinner sz_start_zstack
                 fi
             fi
@@ -1231,6 +1230,15 @@ cs_config_zstack_properties(){
     fi
     if [ $? -ne 0 ];then
         fail "failed to add yum repo to $ZSTACK_PROPERTIES"
+    fi
+    #create symbolic link for /opt/zstack-dvd for hosts doing offline 
+    # installation
+    rm -f $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
+    ln -s /opt/zstack-dvd $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        fail "failed to create symbolic link for $ZSTACK_HOME/static/zstack-dvd . 
+        The contents in the folder: `ls $ZSTACK_HOME/static/zstack-dvd` . 
+        If this folder existed. Please move it to other place and rerun the installation."
     fi
     pass
 }
