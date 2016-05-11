@@ -13,6 +13,9 @@ zstack_repo = 'false'
 post_url = ""
 pkg_cephpagent = ""
 virtualenv_version = "12.1.1"
+remote_user = "root"
+remote_pass = None
+remote_port = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph primary strorage to host')
@@ -39,6 +42,11 @@ host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
 host_post_info.private_key = args.private_key
+host_post_info.remote_user = remote_user
+host_post_info.remote_pass = remote_pass
+host_post_info.remote_port = remote_port
+if remote_pass is not None:
+    host_post_info.become = True
 
 # include zstacklib.py
 (distro, distro_version, distro_release) = get_remote_host_info(host_post_info)

@@ -15,6 +15,9 @@ zstack_repo = 'false'
 post_url = ""
 pkg_appliancevm = ""
 virtualenv_version = "12.1.1"
+remote_user = "root"
+remote_pass = None
+remote_port = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy appliancevm to management node')
