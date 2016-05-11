@@ -44,6 +44,7 @@ ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
+UPGRADE_LOCK=/tmp/zstack_upgrade.lock
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
 
@@ -77,6 +78,12 @@ CHANGE_HOSTS=''
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 LICENSE_FILE='zstack-license'
+
+cleanup_function(){
+    /bin/rm -f $UPGRADE_LOCK
+    /bin/rm -f $INSTALLATION_FAILURE
+    /bin/rm -f $zstack_tmp_file
+}
 
 show_download()
 {
@@ -187,8 +194,7 @@ cancel(){
     tput rc
     echo -e "$(tput setaf 3)Installation canceled by User\n$(tput sgr0)"
     echo "The detailed installation log could be found in $ZSTACK_INSTALL_LOG"
-    /bin/rm -f $INSTALLATION_FAILURE
-    /bin/rm -f $zstack_tmp_file
+    cleanup_function
     exit 1
 }
 
@@ -199,6 +205,7 @@ fail(){
     #tput cub 6
     #echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     #echo -e "$(tput setaf 1)  Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    cleanup_function
     echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
     echo "-------------"
@@ -2014,6 +2021,11 @@ if [ ! -z $HTTP_PROXY ]; then
 fi
 
 if [ $UPGRADE = 'y' ]; then
+    if [ -f $UPGRADE_LOCK ]; then
+        echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"
+        echo -e "$(tput setaf 1)  Reason: $UPGRADE_LOCK exist. If no other upgrading operation, please manually remove $UPGRADE_LOCK."
+    fi
+    touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
     mkdir -p $upgrade_folder
@@ -2044,6 +2056,7 @@ if [ $UPGRADE = 'y' ]; then
     #only upgrade zstack
     upgrade_zstack
     cd /; rm -rf $upgrade_zstack
+    cleanup_function
 
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
     echo ""
