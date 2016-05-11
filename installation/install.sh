@@ -1043,7 +1043,7 @@ uz_upgrade_zstack(){
         fi
         rabbitmq_user_password=`zstack-ctl show_configuration|grep CloudBus.rabbitmqPassword|awk '{print $3}'` >>$ZSTACK_INSTALL_LOG 2>&1
         rabbitmq_user_name=`zstack-ctl show_configuration|grep CloudBus.rabbitmqUsername|awk '{print $3}'` >>$ZSTACK_INSTALL_LOG 2>&1
-        if [ -z $rabbitmq_user_name ]; then
+        if [ ! -z $rabbitmq_user_name ]; then
             rabbitmqctl add_user $rabbitmq_user_name $rabbitmq_user_password >>$ZSTACK_INSTALL_LOG 2>&1
             rabbitmqctl set_user_tags $rabbitmq_user_name administrator >>$ZSTACK_INSTALL_LOG 2>&1
             rabbitmqctl set_permissions -p / $rabbitmq_user_name ".*" ".*" ".*" >>$ZSTACK_INSTALL_LOG 2>&1
