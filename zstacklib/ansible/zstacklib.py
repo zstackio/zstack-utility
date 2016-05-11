@@ -509,7 +509,7 @@ def check_pkg_status(name_list, host_post_info):
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
     for name in name_list:
-        runner_args.module_args = 'dpkg-query -l %s | grep ^ii ' % name,
+        runner_args.module_args = 'dpkg-query -l %s | grep ^ii ' % name
         zstack_runner = ZstackRunner(runner_args)
         result = zstack_runner.run()
         logger.debug(result)
