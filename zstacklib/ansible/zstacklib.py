@@ -1315,6 +1315,7 @@ class ZstackLib(object):
         trusted_host = args.trusted_host
         pip_url = args.pip_url
         pip_version = "7.0.3"
+        yum_server = args.yum_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
         if distro == "CentOS" or distro == "RedHat":
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
