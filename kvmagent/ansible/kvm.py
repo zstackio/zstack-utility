@@ -154,7 +154,7 @@ if distro == "RedHat" or distro == "CentOS":
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install kvm related packages on Debian based OS
     for pkg in ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin',
-                'vlan', 'nfs-common', 'open-iscsi', 'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'arping']:
+                'vlan', 'nfs-common', 'open-iscsi', 'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping']:
         apt_install_packages(pkg, host_post_info)
     # name: copy default libvirtd conf in Debian
     copy_arg = CopyArg()
