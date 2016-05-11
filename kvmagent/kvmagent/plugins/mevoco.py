@@ -48,7 +48,7 @@ class DhcpEnv(object):
         self.dhcp_netmask = None
 
     # def _cleanup_old_ebtable_rules(self):
-    #     scmd = shell.ShellCmd('ebtables-save | grep ":ZSTACK*"')
+    #     scmd = shell.ShellCmd('ebtables -L| grep ":ZSTACK*"')
     #     scmd(False)
     #     if scmd.return_code != 0:
     #         return
@@ -134,32 +134,32 @@ exit_on_error
 
 CHAIN_NAME="ZSTACK-$DHCP_IP"
 
-ebtables-save | grep -w ":$CHAIN_NAME" > /dev/null
+ebtables -L "$CHAIN_NAME" > /dev/null 2>&1
 
 if [ $? -ne 0 ]; then
     ebtables -N $CHAIN_NAME
     ebtables -I FORWARD -j $CHAIN_NAME
 fi
 
-ebtables-save | grep "$CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
+ebtables -L $CHAIN_NAME| grep "-p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -I $CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
     exit_on_error
 fi
 
-ebtables-save | grep "$CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
+ebtables -L $CHAIN_NAME| grep "-p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -I $CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
     exit_on_error
 fi
 
-ebtables-save | grep "$CHAIN_NAME -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
+ebtables -L $CHAIN_NAME| grep "-p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -I $CHAIN_NAME -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP
     exit_on_error
 fi
 
-ebtables-save | grep "$CHAIN_NAME -p IPv4 -i $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
+ebtables -L $CHAIN_NAME| grep "-p IPv4 -i $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -I $CHAIN_NAME -p IPv4 -i $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP
     exit_on_error
@@ -284,7 +284,7 @@ exit_on_error $LINENO
 
 CHAIN_NAME="USERDATA-$BR_NAME"
 
-ebtables-save | grep -w ":$CHAIN_NAME" > /dev/null
+ebtables -t nat -L $CHAIN_NAME >/dev/null 2>&1
 if [ $? -ne 0 ]; then
     ebtables -t nat -N $CHAIN_NAME
     exit_on_error $LINENO
@@ -292,10 +292,10 @@ if [ $? -ne 0 ]; then
     exit_on_error $LINENO
 fi
 
-rule="$CHAIN_NAME -p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst $mac --dnat-target ACCEPT"
-ebtables-save | grep -- "$rule" > /dev/null
+rule="-p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst $mac --dnat-target ACCEPT"
+ebtables -t nat -L $CHAIN_NAME| grep -- "$rule" > /dev/null
 if [ $? -ne 0 ]; then
-    ebtables -t nat -I $rule
+    ebtables -t nat -I $CHAIN_NAME $rule
     exit_on_error $LINENO
 fi
 
