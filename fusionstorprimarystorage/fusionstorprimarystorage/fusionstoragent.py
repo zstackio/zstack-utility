@@ -240,6 +240,13 @@ class FusionstorAgent(object):
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
+        existing_pools = lichbd.lichbd_lspools()
+        for pool in cmd.pools:
+            if pool.predefined and pool.name not in existing_pools:
+                raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
+            elif pool.name not in existing_pools:
+                lichbd.lichbd_mkpool(pool.name)
+
         rsp = InitRsp()
         rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
         rsp.userKey = "AQDVyu9VXrozIhAAuT2yMARKBndq9g3W8KUQvw=="

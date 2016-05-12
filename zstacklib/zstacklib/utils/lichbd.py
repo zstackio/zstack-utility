@@ -75,6 +75,16 @@ def lichbd_mkpool(path):
         else:
             raise_exp(shellcmd)
 
+def lichbd_lspools():
+    shellcmd = call_try('lichbd lspools -p lichbd 2>/dev/null')
+    if shellcmd.return_code != 0:
+        if shellcmd.return_code == errno.EEXIST:
+            pass
+        else:
+            raise_exp(shellcmd)
+
+    return shellcmd.stdout
+
 def lichbd_rmpool(path):
     shellcmd = call_try('lichbd rmpool %s -p lichbd 2>/dev/null' % (path))
     if shellcmd.return_code != 0:
