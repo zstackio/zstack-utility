@@ -55,6 +55,11 @@ class GetVolumeSizeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class PingRsp(AgentResponse):
+    def __init__(self):
+        super(PingRsp, self).__init__()
+        self.operationFailure = False
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -88,6 +93,7 @@ class CephAgent(object):
     CP_PATH = "/ceph/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/ceph/primarystorage/deletepool"
     GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
+    PING_PATH = "/ceph/primarystorage/ping"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -108,6 +114,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.CP_PATH, self.cp)
         self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
         self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -135,6 +142,21 @@ class CephAgent(object):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
         return long(o.size_)
+
+    @replyerror
+    def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = PingRsp()
+        create_img = shell.ShellCmd('rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
+        create_img(False)
+        if create_img.return_code != 0:
+            rsp.success = False
+            rsp.operationFailure = True
+            rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
+        else:
+            rm_img = shell.ShellCmd('rbd rm %s' % cmd.testImagePath)
+            rm_img(False)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def get_volume_size(self, req):
@@ -371,10 +393,6 @@ class CephAgent(object):
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
-
-    @replyerror
-    def ping(self, req):
-        return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def delete(self, req):
