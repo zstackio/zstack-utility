@@ -187,16 +187,23 @@ def lichbd_get_used():
             used = long(l.split("used:")[-1])
             return used
 
-    raise_exp("error: %s" % (0))
+    raise shell.ShellError('\n'.join('lichbd_get_used'))
 
 def lichbd_get_capacity():
-    o = lichbd_cluster_stat()
+    try:
+        o = lichbd_cluster_stat()
+    except Except, e:
+        raise shell.ShellError('\n'.join('lichbd_get_capacity'))
+
+    total = 0
+    used = 0
     for l in o.split("\n"):
         if 'capacity:' in l:
             total = long(l.split("capacity:")[-1])
-            return total
+        elif 'used:' in l:
+            used = long(l.split("used:")[-1])
 
-    raise_exp("error: %s" % (0))
+    return total, used
 
 def lichbd_snap_create(snap_path):
     shellcmd = call_try('lichbd snap create %s -p lichbd' % (snap_path))

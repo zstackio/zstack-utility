@@ -37,6 +37,10 @@ class DownloadRsp(AgentResponse):
         super(DownloadRsp, self).__init__()
         self.size = None
 
+class PingRsp(AgentResponse):
+    def __init__(self):
+        super(PingRsp, self).__init__()
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -70,8 +74,7 @@ class FusionstorAgent(object):
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
-        total = lichbd.lichbd_get_capacity()
-        used = lichbd.lichbd_get_used()
+        total, used = lichbd.lichbd_get_capacity()
         rsp.totalCapacity = total
         rsp.availableCapacity = total - used
 
@@ -126,7 +129,9 @@ class FusionstorAgent(object):
 
     @replyerror
     def ping(self, req):
-        return jsonobject.dumps(AgentResponse())
+        rsp = PingRsp()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def delete(self, req):

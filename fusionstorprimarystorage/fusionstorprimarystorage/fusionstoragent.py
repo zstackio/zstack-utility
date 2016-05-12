@@ -102,8 +102,7 @@ class FusionstorAgent(object):
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
-        total = lichbd.lichbd_get_capacity()
-        used = lichbd.lichbd_get_used()
+        total, used = lichbd.lichbd_get_capacity()
 
         rsp.totalCapacity = total
         rsp.availableCapacity = total - used
