@@ -67,10 +67,15 @@ ZSTACK_START_TIMEOUT=300
 ZSTACK_PKG_MIRROR=''
 PKG_MIRROR_163='163'
 PKG_MIRROR_ALIYUN='aliyun'
+#used for all in one installer and upgrader. 
 ZSTACK_YUM_REPOS=''
 ZSTACK_LOCAL_YUM_REPOS='zstack-local'
+ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn'
+ZSTACK_MN_UPGRADE_REPOS='zstack-mn'
 MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel'
 MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel'
+#used for zstack.properties Ansible.var.zstack_repo
+ZSTACK_PROPERTIES_REPO=''
 
 QUIET_INSTALLATION=''
 CHANGE_HOSTNAME=''
@@ -1230,8 +1235,8 @@ cs_config_zstack_properties(){
         zstack-ctl configure CloudBus.rabbitmqUsername=zstack
         zstack-ctl configure CloudBus.rabbitmqPassword=zstack.password
     fi
-    if [ ! -z $ZSTACK_YUM_REPOS ];then
-        zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_YUM_REPOS
+    if [ ! -z $ZSTACK_PROPERTIES_REPO ];then
+        zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_PROPERTIES_REPO
     fi
     if [ $? -ne 0 ];then
         fail "failed to add yum repo to $ZSTACK_PROPERTIES"
@@ -1737,6 +1742,20 @@ EOF
 
 }
 
+set_zstack_repo(){
+    zstack-ctl setenv zstack_local_repo=$ZSTACK_YUM_REPOS
+}
+
+get_zstack_repo(){
+    ZSTACK_YUM_REPOS=`zstack-ctl getenv| grep 'zstack_local_repo' | awk -F'=' '{print $2}'`
+    [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.zstack_repo' | awk '{print $3}'`
+    [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.yum_repo' | awk '{print $3}'`
+    if [ ! -z $ZSTACK_YUM_REPOS ];then
+        ZSTACK_YUM_REPOS=`echo $ZSTACK_YUM_REPOS|sed 's/zstack-mn/zstack-local/g'`
+        echo $ZSTACK_YUM_REPOS |grep "zstack-local" >/dev/null 2>&1
+        ZSTACK_YUM_REPOS='zstack-local'
+    fi
+}
 
 help (){
     echo "
@@ -1911,13 +1930,20 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     fi
     if [ $ZSTACK_PKG_MIRROR = $PKG_MIRROR_163 ]; then
         ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
+        ZSTACK_PROPERTIES_REPO=$MIRROR_163_YUM_REPOS
     else
         ZSTACK_YUM_REPOS=$MIRROR_ALI_YUM_REPOS
+        ZSTACK_PROPERTIES_REPO=$MIRROR_ALI_YUM_REPOS
     fi
 elif [ -z $YUM_ONLINE_REPO ]; then
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
+    if [ $UPGRADE = 'n' ]; then
+        ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
+    else
+        ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_UPGRADE_REPOS
+    fi
 elif [ $UPGRADE != 'n' ]; then
-    ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.zstack_repo' | awk '{print $3}'`
+    get_zstack_repo
 fi
 
 README=$ZSTACK_INSTALL_ROOT/readme
