@@ -182,7 +182,7 @@ def retry(times=3, sleep_time=3):
                 except Exception as e:
                     logger.error(e)
                     time.sleep(sleep_time)
-            error("The task failed, please make sure the host can be connected and no error happened, then try again. "\
+            error("The task failed, please make sure the host can be connected and no error happened, then try again. "
                   "Below is detail:\n %s" % e)
         return inner
     return wrap
@@ -1132,6 +1132,7 @@ def unarchive(unarchive_arg, host_post_info):
     runner_args.module_name = 'unarchive'
     runner_args.module_args = unarchive_args
     zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     result = zstack_runner.run()
     if result['contacted'] == {}:
@@ -1243,7 +1244,7 @@ enabled=0
 gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
         """
                     run_remote_command(command, host_post_info)
-                elif zstack_repo == 'zstack-mn':
+                if 'zstack-mn' in zstack_repo:
                     generate_mn_repo_raw_command = """
 echo -e "[zstack-mn]
 name=zstack-mn
@@ -1256,7 +1257,19 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                        'yum_server' : yum_server
                     })
                     run_remote_command(generate_mn_repo_command, host_post_info)
-
+                if 'qemu-kvm-ev-mn' in zstack_repo:
+                    generate_kvm_repo_raw_command = """
+echo -e "[qemu-kvm-ev-mn]
+name=qemu-kvm-ev-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-dvd/Extra/qemu-kvm-ev/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
+               """
+                    generate_kvm_repo_template = jinja2.Template(generate_kvm_repo_raw_command)
+                    generate_kvm_repo_command = generate_kvm_repo_template.render({
+                        'yum_server':yum_server
+                    })
+                    run_remote_command(generate_kvm_repo_command, host_post_info)
                 # install libselinux-python and other command system libs from user defined repos
                 # enable alibase repo for yum clean avoid no repo to be clean
                 command = (

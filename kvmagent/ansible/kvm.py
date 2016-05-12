@@ -37,10 +37,6 @@ iproute_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % file_root
 iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
 dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
 dnsmasq_local_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % kvm_root
-# if use offline image, we will use mn node as http server
-if zstack_repo == 'zstack-local':
-    zstack_repo = 'zstack-mn'
-
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)

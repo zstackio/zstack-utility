@@ -34,9 +34,6 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/sftpbackupstorage/" % zstack_root
-# if use offline image, we will use mn node as http server
-if zstack_repo == 'zstack-local':
-    zstack_repo = 'zstack-mn'
 sftp_root = "%s/sftpbackupstorage" % zstack_root
 # create log
 logger_dir = "/var/log/zstack/"

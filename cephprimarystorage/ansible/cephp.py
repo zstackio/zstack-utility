@@ -31,9 +31,6 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/cephp/" % zstack_root
 cephp_root = "%s/cephp" % zstack_root
-# if use offline image, we will use mn node as http server
-if zstack_repo == 'zstack-local':
-    zstack_repo = 'zstack-mn'
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
