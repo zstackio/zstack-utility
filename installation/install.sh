@@ -76,6 +76,7 @@ MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel'
 MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel'
 #used for zstack.properties Ansible.var.zstack_repo
 ZSTACK_PROPERTIES_REPO=''
+ZSTACK_OFFLINE_INSTALL='n'
 
 QUIET_INSTALLATION=''
 CHANGE_HOSTNAME=''
@@ -433,7 +434,7 @@ do_check_system(){
         fail "User checking failure: ${PRODUCT_NAME} installation must be run with user: root . Current user is: `whoami`. Please append 'sudo'."
     fi
 
-    if [ ! -z $ZSTACK_YUM_REPOS ];then
+    if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
         ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ]; then
             fail "Network checking failure: can not reach $WEBSITE. Please make sure your DNS (/etc/resolv.conf) is configured correctly. Or you can override WEBSITE by \`export WEBSITE=YOUR_INTERNAL_YUM_SERVER\` before doing installation. "
@@ -1753,7 +1754,11 @@ get_zstack_repo(){
     if [ ! -z $ZSTACK_YUM_REPOS ];then
         ZSTACK_YUM_REPOS=`echo $ZSTACK_YUM_REPOS|sed 's/zstack-mn/zstack-local/g'`
         echo $ZSTACK_YUM_REPOS |grep "zstack-local" >/dev/null 2>&1
-        ZSTACK_YUM_REPOS='zstack-local'
+        if [ $? -eq 0 ]; then
+            ZSTACK_YUM_REPOS='zstack-local'
+            ZSTACK_OFFLINE_INSTALL='y'
+        fi
+        YUM_ONLINE_REPO=''
     fi
 }
 
@@ -1936,6 +1941,7 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
         ZSTACK_PROPERTIES_REPO=$MIRROR_ALI_YUM_REPOS
     fi
 elif [ -z $YUM_ONLINE_REPO ]; then
+    ZSTACK_OFFLINE_INSTALL='y'
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
     if [ $UPGRADE = 'n' ]; then
         ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
