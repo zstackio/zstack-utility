@@ -293,7 +293,7 @@ def get_system_qemu_path():
 
     return _qemu_path
 
-def get_system_qemu_path():
+def get_system_qemu_img_path():
     _qemu_img_path = None
     if not _qemu_img_path:
         if os.path.exists('/usr/bin/qemu-img'):
