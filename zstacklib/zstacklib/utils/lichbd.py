@@ -293,6 +293,21 @@ def get_system_qemu_path():
 
     return _qemu_path
 
+def get_system_qemu_path():
+    _qemu_img_path = None
+    if not _qemu_img_path:
+        if os.path.exists('/usr/bin/qemu-img'):
+            _qemu_img_path = '/usr/bin/qemu-img'
+        elif os.path.exists('/bin/qemu-img'):
+            _qemu_img_path = '/bin/qemu-img'
+        elif os.path.exists('/usr/local/bin/qemu-img'):
+            # ubuntu
+            _qemu_img_path = '/usr/local/bin/qemu-img'
+        else:
+            raise shell.ShellError('\n'.join('Could not find qemu-img in /bin/qemu-img or /usr/bin/qemu-img or /usr/local/bin/qemu-img'))
+
+    return  _qemu_img_path
+
 def makesure_qemu_with_lichbd():
     _lichbd = lichbd_get_qemu_path()
     _system = get_system_qemu_path()
@@ -313,3 +328,22 @@ def makesure_qemu_with_lichbd():
         mv_cmd = "mv %s.tmp %s -f" % (_system, _system)
         shell.call(mv_cmd)
 
+def makesure_qemu_img_with_lichbd():
+    _lichbd = lichbd_get_qemu_img_path()
+    _system = get_system_qemu_img_path()
+    need_link = True
+
+    if os.path.islink(_system):
+        link = shell.call("set -o pipefail; ls -l %s|cut -d '>' -f 2" % (_system)).strip()
+        if link == _lichbd:
+            need_link = False
+
+    if need_link:
+        rm_cmd = "rm -f %s.tmp" % (_system)
+        shell.call(rm_cmd)
+
+        ln_cmd = "ln -s %s %s.tmp" % (_lichbd, _system)
+        shell.call(ln_cmd)
+
+        mv_cmd = "mv %s.tmp %s -f" % (_system, _system)
+        shell.call(mv_cmd)

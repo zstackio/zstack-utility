@@ -242,7 +242,7 @@ class FusionstorAgent(object):
         existing_pools = lichbd.lichbd_lspools()
         for pool in cmd.pools:
             if pool.predefined and pool.name not in existing_pools:
-                raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
+                raise Exception('cannot find pool[%s] in the fusionstor cluster, you must create it manually' % pool.name)
             elif pool.name not in existing_pools:
                 lichbd.lichbd_mkpool(pool.name)
 
