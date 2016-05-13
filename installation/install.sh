@@ -1398,7 +1398,7 @@ cs_enable_zstack_service(){
         cat > /etc/systemd/system/zstack.service <<EOF
 [Unit]
 Description=zstack Service
-After=syslog.target network.target
+After=syslog.target network.target rabbitmq-server.service mariadb.service
 Before=shutdown.target reboot.target halt.target
 
 [Service]
