@@ -1946,6 +1946,8 @@ elif [ $UPGRADE != 'n' ]; then
     get_zstack_repo
 fi
 
+[ ! -z $ZSTACK_YUM_REPOS ] && set_zstack_repo
+
 README=$ZSTACK_INSTALL_ROOT/readme
 
 echo "${PRODUCT_NAME} installation root path: $ZSTACK_INSTALL_ROOT" >>$ZSTACK_INSTALL_LOG
