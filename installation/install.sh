@@ -616,16 +616,21 @@ upgrade_zstack(){
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_enable_zstack_service
+    show_spinner cs_config_zstack_properties
 
-    if [ ! -z $INSTALL_MONITOR ] ; then
+    #when using -i option, will not upgrade cassandra and kairosdb
+    if [ -z $ONLY_INSTALL_ZSTACK ] && [ ! -z $INSTALL_MONITOR ] ; then
         show_spinner iz_install_cassandra
-        if [ -z $ONLY_INSTALL_ZSTACK ]; then
-            show_spinner sz_start_cassandra
-        fi
+        show_spinner sz_start_cassandra
         show_spinner iz_install_kairosdb
     fi
 
-    show_spinner cs_config_zstack_properties
+    if [ $UI_INSTALLATION_STATUS = 'y' ]; then
+        echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+        show_spinner sd_install_dashboard
+    fi
+
+    #When using -i option, will not upgrade kariosdb and not start zstack
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         if [ -z $NEED_KEEP_DB ];then
             if [ $CURRENT_STATUS = 'y' ]; then
@@ -638,25 +643,9 @@ upgrade_zstack(){
             fi
         fi
     
-        if [ $UI_INSTALLATION_STATUS = 'y' ]; then
-            if [ $UI_CURRENT_STATUS = 'y' ]; then
-                echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-                /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
-                show_spinner sd_install_dashboard
-                echo "start dashboard" >>$ZSTACK_INSTALL_LOG
-                show_spinner sd_start_dashboard
-            else
-                echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-                show_spinner sd_install_dashboard
-            fi
-        fi
-    else
-        if [ -z $NEED_KEEP_DB ];then
-            if [ $CURRENT_STATUS = 'y' ]; then
-                if [ -z $NOT_START_ZSTACK ]; then
-                    show_spinner sz_start_zstack
-                fi
-            fi
+        if [ $UI_CURRENT_STATUS = 'y' ]; then
+            echo "start dashboard" >>$ZSTACK_INSTALL_LOG
+            show_spinner sd_start_dashboard
         fi
     fi
 }
@@ -975,9 +964,9 @@ uz_upgrade_zstack(){
         fail "failed to upgrade zstack-ctl"
     fi
 
-    zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
-
+    #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
         if [ ! -z $DEBUG ]; then
             if [ $FORCE = 'n' ];then
                 zstack-ctl upgrade_db --dry-run
@@ -995,6 +984,10 @@ uz_upgrade_zstack(){
             cd /; rm -rf $upgrade_folder
             fail "Database upgrading dry-run failed. You probably should use -F option to do force upgrading."
         fi
+    else
+        #Only stop node and ui, when using -i
+        zstack-ctl stop_node >>$ZSTACK_INSTALL_LOG 2>&1
+        zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     if [ ! -z $DEBUG ]; then
@@ -1024,6 +1017,7 @@ uz_upgrade_zstack(){
         /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     
+    #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ] ; then
         cd /; rm -rf $upgrade_folder
     
@@ -1798,7 +1792,8 @@ Options:
         http://CURRENT_MACHINE_IP/image/ . Doesn't effect when use -u to upgrade
         zstack or -l to install some system libs. 
 
-  -i    only install ${PRODUCT_NAME} management node and dependent packages
+  -i    only install ${PRODUCT_NAME} management node and dependent packages.
+        ZStack won't automatically be started when use '-i'.
 
   -I MANAGEMENT_NODE_NETWORK_INTERFACE | MANAGEMENT_NODE_IP_ADDRESS
         e.g. -I eth0, -I eth0:1, -I 192.168.0.1
