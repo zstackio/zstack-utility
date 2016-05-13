@@ -2062,7 +2062,8 @@ fi
 if [ $UPGRADE = 'y' ]; then
     if [ -f $UPGRADE_LOCK ]; then
         echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"
-        echo -e "$(tput setaf 1)  Reason: $UPGRADE_LOCK exist. If no other upgrading operation, please manually remove $UPGRADE_LOCK."
+        echo -e "$(tput setaf 1)  Reason: $UPGRADE_LOCK exist. If no other upgrading operation, please manually remove $UPGRADE_LOCK.\n$(tput sgr0)"
+        exit 1
     fi
     touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
