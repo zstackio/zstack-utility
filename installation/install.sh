@@ -1526,10 +1526,10 @@ sz_start_cassandra(){
     if [ $? -ne 0 ];then
        fail "failed to start Cassandra"
     fi
-    #zstack-ctl deploy_cassandra_db  >>$ZSTACK_INSTALL_LOG 2>&1
-    #if [ $? -ne 0 ];then
-    #   fail "failed to deploy Cassandra db"
-    #fi
+    zstack-ctl deploy_cassandra_db  >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to deploy Cassandra db"
+    fi
     pass
 }
 
