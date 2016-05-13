@@ -690,7 +690,7 @@ def get_cpu_memory_used_by_running_vms():
     used_cpu = 0
     used_memory = 0
     for vm  in runnings:
-        used_cpu += (vm.get_cpu_num() * vm.get_cpu_speed())
+        used_cpu += vm.get_cpu_num()
         used_memory += vm.get_memory()
 
     return (used_cpu, used_memory)
