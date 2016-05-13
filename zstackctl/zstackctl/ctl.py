@@ -4810,7 +4810,8 @@ class UpgradeDbCmd(Command):
         error_if_tool_is_missing('mysql')
 
         db_url = ctl.get_db_url()
-        db_url = db_url.replace('{database}', 'zstack')
+        db_url_params = db_url.split('//')
+        db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
         if 'zstack' not in db_url:
             db_url = '%s/zstack' % db_url.rstrip('/')
 
