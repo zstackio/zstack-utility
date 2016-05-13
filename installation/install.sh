@@ -612,6 +612,7 @@ upgrade_zstack(){
 
     #rerun install system libs, upgrade might need new libs
     is_install_system_libs
+    show_spinner uz_stop_zstack
     show_spinner uz_upgrade_zstack
     cd /
     show_spinner cs_add_cronjob
@@ -945,6 +946,19 @@ iz_unpack_zstack(){
     pass
 }
 
+uz_stop_zstack(){
+    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        echo_subtitle "Stop ${PRODUCT_NAME}"
+        zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        #Only stop node and ui, when using -i
+        echo_subtitle "Stop Management Node and UI"
+        zstack-ctl stop_node >>$ZSTACK_INSTALL_LOG 2>&1
+        zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    pass
+}
+
 uz_upgrade_zstack(){
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
     cd $upgrade_folder
@@ -966,7 +980,6 @@ uz_upgrade_zstack(){
 
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
-        zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
         if [ ! -z $DEBUG ]; then
             if [ $FORCE = 'n' ];then
                 zstack-ctl upgrade_db --dry-run
@@ -984,10 +997,6 @@ uz_upgrade_zstack(){
             cd /; rm -rf $upgrade_folder
             fail "Database upgrading dry-run failed. You probably should use -F option to do force upgrading."
         fi
-    else
-        #Only stop node and ui, when using -i
-        zstack-ctl stop_node >>$ZSTACK_INSTALL_LOG 2>&1
-        zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     if [ ! -z $DEBUG ]; then
