@@ -1226,7 +1226,7 @@ EOF
 
 cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
-    if [ $UPGRADE = 'n' ]; then
+    if [ $UPGRADE = 'n' ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
         zstack-ctl configure CloudBus.rabbitmqUsername=zstack
         zstack-ctl configure CloudBus.rabbitmqPassword=zstack.password
     fi
