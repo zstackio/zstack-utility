@@ -575,7 +575,7 @@ ia_update_apt(){
         [ ! -z $pid ] && kill -9 $pid >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
-    apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True --fix-missing>>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then 
         if [ -z $QUIET_INSTALLATION ]; then
             fail "Update apt source fail. If you do not need apt-get update, please add option '-q' and restart the installation. "
@@ -1654,7 +1654,7 @@ EOF
     dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "execute \`dpkg --configure -a\` failed."
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
-    apt-get update -o Acquire::http::No-Cache=True >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True --fix-missing>>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then
         fail "apt-get update package failed."
     fi

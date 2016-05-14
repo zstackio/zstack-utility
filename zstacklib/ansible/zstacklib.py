@@ -1322,7 +1322,7 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             if all_pkg_exist is False:
                 command = 'apt-get clean'
                 run_remote_command(command, host_post_info)
-                command = "apt-get update -o Acquire::http::No-Cache=True"
+                command = "apt-get update -o Acquire::http::No-Cache=True --fix-missing"
                 apt_update_status = run_remote_command(command, host_post_info, return_status=True)
                 if apt_update_status is False:
                     error("apt-get update on host %s failed, please update the repo on the host manually and try again."
