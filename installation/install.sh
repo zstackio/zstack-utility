@@ -1748,11 +1748,11 @@ EOF
 }
 
 set_zstack_repo(){
-    zstack-ctl setenv zstack_local_repo=$ZSTACK_YUM_REPOS
+    zstack-ctl setenv zstack_local_repo=$ZSTACK_YUM_REPOS 2>/dev/null
 }
 
 get_zstack_repo(){
-    ZSTACK_YUM_REPOS=`zstack-ctl getenv| grep 'zstack_local_repo' | awk -F'=' '{print $2}'`
+    ZSTACK_YUM_REPOS=`zstack-ctl getenv 2>/dev/null| grep 'zstack_local_repo' | awk -F'=' '{print $2}'`
     [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.zstack_repo' | awk '{print $3}'`
     [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.yum_repo' | awk '{print $3}'`
     if [ ! -z $ZSTACK_YUM_REPOS ];then
