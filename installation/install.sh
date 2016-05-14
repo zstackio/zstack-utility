@@ -708,7 +708,7 @@ is_install_general_libs_rh(){
         mysql_pkg='mysql'
     fi
     if [ ! -z $ZSTACK_YUM_REPOS ]; then
-        yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata
+        yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
         echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
         yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y \
             libselinux-python \
