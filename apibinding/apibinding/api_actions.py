@@ -3786,6 +3786,18 @@ class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
         self.out = evt
         return self.out
 
+class QueryResourcePriceAction(inventory.APIQueryResourcePriceMsg):
+    def __init__(self):
+        super(QueryResourcePriceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryResourcePriceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
     def __init__(self):
         super(CreateResourcePriceAction, self).__init__()
@@ -3794,18 +3806,6 @@ class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateResourcePriceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class QueryCassandraAction(inventory.APIQueryCassandraMsg):
-    def __init__(self):
-        super(QueryCassandraAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryCassandraAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
