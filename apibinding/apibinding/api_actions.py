@@ -1494,6 +1494,18 @@ class GetVmMigrationCandidateHostsAction(inventory.APIGetVmMigrationCandidateHos
         self.out = evt
         return self.out
 
+class GetVmStartingCandidateClustersHostsAction(inventory.APIGetVmStartingCandidateClustersHostsMsg):
+    def __init__(self):
+        super(GetVmStartingCandidateClustersHostsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmStartingCandidateClustersHostsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVmAttachableL3NetworkAction(inventory.APIGetVmAttachableL3NetworkMsg):
     def __init__(self):
         super(GetVmAttachableL3NetworkAction, self).__init__()
