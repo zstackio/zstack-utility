@@ -10,10 +10,13 @@ pip_url = 'https://pypi.python.org/simple/'
 proxy = ""
 sproxy = ""
 chroot_env = 'false'
-yum_repo = 'false'
+zstack_repo = 'false'
 post_url = ""
 pkg_consoleproxy = ""
 virtualenv_version = "12.1.1"
+remote_user = "root"
+remote_pass = None
+remote_port = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy consoleproxy to management node')
@@ -25,7 +28,6 @@ parser.add_argument('-e', type=str, help='set additional variables as key=value 
 args = parser.parse_args()
 argument_dict = eval(args.e)
 locals().update(argument_dict)
-
 # update the variable from shell arguments
 virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
 consoleproxy_root = "%s/console" % zstack_root
@@ -37,13 +39,19 @@ host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
 host_post_info.private_key = args.private_key
+host_post_info.remote_user = remote_user
+host_post_info.remote_pass = remote_pass
+host_post_info.remote_port = remote_port
+if remote_pass is not None:
+    host_post_info.become = True
 
 # include zstacklib.py
-(distro, distro_version) = get_remote_host_info(host_post_info)
+(distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
 zstacklib_args.distro_version = distro_version
-zstacklib_args.yum_repo = yum_repo
+zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
@@ -94,7 +102,6 @@ if copy_zstacklib != "changed:False":
     agent_install_arg.agent_name = "zstacklib"
     agent_install_arg.agent_root = consoleproxy_root
     agent_install_arg.pkg_name = pkg_zstacklib
-    agent_install_arg.virtualenv_site_packages = "yes"
     agent_install(agent_install_arg, host_post_info)
 
 # name: install consoleproxy

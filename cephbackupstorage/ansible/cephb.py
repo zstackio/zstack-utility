@@ -9,10 +9,13 @@ file_root = "files/cephb"
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
 sproxy = ""
-yum_repo = 'false'
+zstack_repo = 'false'
 post_url = ""
 pkg_cephbagent = ""
 virtualenv_version = "12.1.1"
+remote_user = "root"
+remote_pass = None
+remote_port = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph backup strorage to host')
@@ -36,13 +39,19 @@ host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
 host_post_info.private_key = args.private_key
+host_post_info.remote_user = remote_user
+host_post_info.remote_pass = remote_pass
+host_post_info.remote_port = remote_port
+if remote_pass is not None:
+    host_post_info.become = True
 
 # include zstacklib.py
-(distro, distro_version) = get_remote_host_info(host_post_info)
+(distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
 zstacklib_args.distro_version = distro_version
-zstacklib_args.yum_repo = yum_repo
+zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
@@ -72,12 +81,12 @@ command = "rm -rf %s && virtualenv --system-site-packages %s " % (virtenv_path, 
 run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
-    if yum_repo != 'false':
-        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img" % yum_repo
+    if zstack_repo != 'false':
+        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img" % zstack_repo
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             command = "rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s " \
-                      "--nogpgcheck install -y iptables-services " % yum_repo
+                      "--nogpgcheck install -y iptables-services " % zstack_repo
             run_remote_command(command, host_post_info)
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)

@@ -29,11 +29,13 @@ class MergeSnapshotRsp(AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
         self.size = None
+        self.actualSize = None
 
 class RebaseAndMergeSnapshotsRsp(AgentResponse):
     def __init__(self):
         super(RebaseAndMergeSnapshotsRsp, self).__init__()
         self.size = None
+        self.actualSize = None
 
 class CheckBitsRsp(AgentResponse):
     def __init__(self):
@@ -50,6 +52,12 @@ class GetBackingFileRsp(AgentResponse):
         super(GetBackingFileRsp, self).__init__()
         self.size = None
         self.backingFilePath = None
+
+class GetVolumeSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetVolumeSizeRsp, self).__init__()
+        self.actualSize = None
+        self.size = None
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
 
@@ -73,6 +81,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_MD5_PATH = "/localstorage/getmd5"
     CHECK_MD5_PATH = "/localstorage/checkmd5"
     GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
+    GET_VOLUME_SIZE = "/localstorage/volume/getsize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -96,11 +105,19 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
+        http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
 
         self.path = None
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVolumeSizeRsp()
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def get_backing_file_path(self, req):
@@ -228,7 +245,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
-        rsp.size = os.path.getsize(cmd.workspaceInstallPath)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
@@ -251,7 +268,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         linux.qcow2_create_template(latest, cmd.workspaceInstallPath)
-        rsp.size = os.path.getsize(cmd.workspaceInstallPath)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)

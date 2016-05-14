@@ -9,10 +9,12 @@ ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 CENTOS6='CENTOS6'
 CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
+UBUNTU1604='UBUNTU16.04'
+UBUNTU='UBUNTU'
 UPGRADE='n'
 FORCE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
-SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404"
+SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404, $UBUNTU1604"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -42,6 +44,7 @@ ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
+UPGRADE_LOCK=/tmp/zstack_upgrade.lock
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
 
@@ -61,13 +64,19 @@ MYSQL_USER_PASSWORD='zstack.password'
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
 ZSTACK_START_TIMEOUT=300
-ZSTACK_YUM_MIRROR=''
-YUM_MIRROR_163='163'
-YUM_MIRROR_ALIYUN='aliyun'
+ZSTACK_PKG_MIRROR=''
+PKG_MIRROR_163='163'
+PKG_MIRROR_ALIYUN='aliyun'
+#used for all in one installer and upgrader. 
 ZSTACK_YUM_REPOS=''
 ZSTACK_LOCAL_YUM_REPOS='zstack-local'
+ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn'
+ZSTACK_MN_UPGRADE_REPOS='zstack-mn'
 MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel'
 MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel'
+#used for zstack.properties Ansible.var.zstack_repo
+ZSTACK_PROPERTIES_REPO=''
+ZSTACK_OFFLINE_INSTALL='n'
 
 QUIET_INSTALLATION=''
 CHANGE_HOSTNAME=''
@@ -75,6 +84,12 @@ CHANGE_HOSTS=''
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 LICENSE_FILE='zstack-license'
+
+cleanup_function(){
+    /bin/rm -f $UPGRADE_LOCK
+    /bin/rm -f $INSTALLATION_FAILURE
+    /bin/rm -f $zstack_tmp_file
+}
 
 show_download()
 {
@@ -185,8 +200,7 @@ cancel(){
     tput rc
     echo -e "$(tput setaf 3)Installation canceled by User\n$(tput sgr0)"
     echo "The detailed installation log could be found in $ZSTACK_INSTALL_LOG"
-    /bin/rm -f $INSTALLATION_FAILURE
-    /bin/rm -f $zstack_tmp_file
+    cleanup_function
     exit 1
 }
 
@@ -197,6 +211,7 @@ fail(){
     #tput cub 6
     #echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     #echo -e "$(tput setaf 1)  Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    cleanup_function
     echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
     echo "-------------"
@@ -237,23 +252,23 @@ cs_check_hostname(){
     current_hostname=`hostname`
     if [ "localhost" = $current_hostname ] || [ "localhost.localdomain" = $current_hostname ] ; then
         CHANGE_HOSTNAME=`echo $MANAGEMENT_IP|sed 's/\./-/g'`
-        CHANGE_HOSTS="127.0.0.1 $CHANGE_HOSTNAME"
+        CHANGE_HOSTS="$MANAGEMENT_IP $CHANGE_HOSTNAME"
         which hostnamectl >>/dev/null 2>&1
         if [ $? -ne 0 ]; then
             hostname $CHANGE_HOSTNAME
-            echo "127.0.0.1 $CHANGE_HOSTNAME"  >>/etc/hosts
+            echo "$MANAGEMENT_IP $CHANGE_HOSTNAME"  >>/etc/hosts
         else
             hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
-            echo "127.0.0.1 $CHANGE_HOSTNAME"  >>/etc/hosts
+            echo "$MANAGEMENT_IP $CHANGE_HOSTNAME"  >>/etc/hosts
         fi
         echo "Your OS hostname is set as $current_hostname, which will block vm live migration. You can set a special hostname, or directly use $CHANGE_HOSTNAME by running following commands in CentOS6:
 
         hostname $CHANGE_HOSTNAME
-        echo 127.0.0.1 $CHANGE_HOSTNAME >> /etc/hosts
+        echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
 
 or following commands in CentOS7:
         hostnamectl set-hostname $CHANGE_HOSTNAME
-        echo 127.0.0.1 $CHANGE_HOSTNAME >> /etc/hosts
+        echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
 
 " >> $ZSTACK_INSTALL_LOG
         return 0
@@ -287,6 +302,7 @@ You can also add '-q' to installer, then Installer will help you to set one.
 #Do preinstallation checking for CentOS and Ubuntu
 check_system(){
     echo_title "Check System"
+    echo ""
     cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep 'release 6' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
@@ -307,7 +323,13 @@ check_system(){
     else
         grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
-            OS=$UBUNTU1404
+            grep '16.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
+            if [ $? -eq 0 ]; then
+                OS=$UBUNTU1604
+            else
+                OS=$UBUNTU1404
+            fi
+            . /etc/lsb-release
         else
             fail2 "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
         fi
@@ -316,7 +338,7 @@ check_system(){
     if [ $OS = $CENTOS6 ]; then
         yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos6_repo"
         #only support online installation for CentoS6.x
-        if [ -z "$YUM_ONLINE_REPO" -a -z "$ZSTACK_YUM_MIRROR" ]; then
+        if [ -z "$YUM_ONLINE_REPO" -a -z "$ZSTACK_PKG_MIRROR" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please do not use '-o' option to install. "
         fi
         yum_source="file://${yum_repo_folder}"
@@ -332,18 +354,35 @@ check_system(){
             fail2 "Did not find zstack-ctl. Can not use option '-u' to upgrade $PRODUCT_NAME . Please remove '-u' and do fresh installation."
         fi
     fi
+    show_spinner cs_pre_check
     cs_check_epel
     cs_check_hostname
     show_spinner do_check_system
+    show_spinner cs_create_repo
+}
+
+cs_create_repo(){
+    echo_subtitle "Update Package Repository"
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
+        create_yum_repo
+    fi
+    
+    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
+        if [ ! -z $ZSTACK_PKG_MIRROR ]; then
+            create_apt_source_list
+        fi
+    fi
+    pass
 }
 
 cs_check_epel(){
     [ -z $YUM_ONLINE_REPO ] && return
-    [ ! -z $ZSTACK_YUM_MIRROR ] && return
+    [ ! -z $ZSTACK_PKG_MIRROR ] && return
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
-            zstack-ctl show_configuration 2>/dev/null|grep Ansible.var.yum_repo >/dev/null 2>&1
-            [ $? -eq 0 ] && return
+            if [ $UPGRADE != 'n' ]; then
+                [ ! -z $ZSTACK_YUM_REPOS ] && return
+            fi
             if [ -z $QUIET_INSTALLATION ]; then
                 fail2 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
 
@@ -382,6 +421,7 @@ do_enable_sudo(){
 }
 
 do_check_system(){
+    echo_subtitle "Check System"
     if [ $UPGRADE = 'n' ]; then
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
             echo "stop zstack all services" >>$ZSTACK_INSTALL_LOG
@@ -394,7 +434,7 @@ do_check_system(){
         fail "User checking failure: ${PRODUCT_NAME} installation must be run with user: root . Current user is: `whoami`. Please append 'sudo'."
     fi
 
-    if [ ! -z $ZSTACK_YUM_REPOS ];then
+    if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
         ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ]; then
             fail "Network checking failure: can not reach $WEBSITE. Please make sure your DNS (/etc/resolv.conf) is configured correctly. Or you can override WEBSITE by \`export WEBSITE=YOUR_INTERNAL_YUM_SERVER\` before doing installation. "
@@ -449,11 +489,11 @@ ia_check_ip_hijack(){
     [ $? -eq 0 ] && return 0
     
     echo "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
-    It's likely your DNS server has been hijacking, please try fixing it or add \"127.0.0.1 $HOSTNAME\" to /etc/hosts by \n\n \`echo \"127.0.0.1 $HOSTNAME\" >>/etc/hosts\`.
+    It's likely your DNS server has been hijacking, please try fixing it or add \"$MANAGEMENT_IP $HOSTNAME\" to /etc/hosts by \n\n \`echo \"$MANAGEMENT_IP $HOSTNAME\" >>/etc/hosts\`.
 " >> $ZSTACK_INSTALL_LOG
     
-    echo "127.0.0.1 $HOSTNAME" >>/etc/hosts
-    CHANGE_HOSTS='127.0.0.1 $HOSTNAME'
+    echo "$MANAGEMENT_IP $HOSTNAME" >>/etc/hosts
+    CHANGE_HOSTS='$MANAGEMENT_IP $HOSTNAME'
 }
 
 ia_install_python_gcc_rh(){
@@ -527,7 +567,15 @@ ia_update_apt(){
     echo_subtitle "Update Apt Source"
     dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
-    apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
+    #Fix Ubuntu conflicted dpkg lock issue. 
+    if [ -f /etc/init.d/unattended-upgrades ]; then
+        /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d -f unattended-upgrades remove >>$ZSTACK_INSTALL_LOG 2>&1
+        pid=`lsof /var/lib/dpkg/lock|grep lock|awk '{print $2}'`
+        [ ! -z $pid ] && kill -9 $pid >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True --fix-missing>>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then 
         if [ -z $QUIET_INSTALLATION ]; then
             fail "Update apt source fail. If you do not need apt-get update, please add option '-q' and restart the installation. "
@@ -562,52 +610,57 @@ upgrade_zstack(){
         INSTALL_MONITOR='y'
     fi
 
+    #rerun install system libs, upgrade might need new libs
+    is_install_system_libs
+    show_spinner uz_stop_zstack
     show_spinner uz_upgrade_zstack
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_enable_zstack_service
+    show_spinner cs_config_zstack_properties
 
+    #when using -i option, will not upgrade cassandra and kairosdb
+    if [ -z $ONLY_INSTALL_ZSTACK ] && [ ! -z $INSTALL_MONITOR ] ; then
+        show_spinner iz_install_cassandra
+        show_spinner sz_start_cassandra
+        show_spinner iz_install_kairosdb
+    fi
+
+    if [ $UI_INSTALLATION_STATUS = 'y' ]; then
+        echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
+        show_spinner sd_install_dashboard
+    fi
+
+    #When using -i option, will not upgrade kariosdb and not start zstack
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
-        if [ ! -z $INSTALL_MONITOR ] ; then
-            show_spinner iz_install_cassandra
-            show_spinner sz_start_cassandra
-            show_spinner iz_install_kairosdb
-        fi
-    
         if [ -z $NEED_KEEP_DB ];then
             if [ $CURRENT_STATUS = 'y' ]; then
                 if [ -z $NOT_START_ZSTACK ]; then
                     if [ ! -z $INSTALL_MONITOR ] ; then
                         show_spinner sz_start_kairosdb
                     fi
-                    show_spinner cs_config_zstack_properties
                     show_spinner sz_start_zstack
                 fi
             fi
         fi
     
-        if [ $UI_INSTALLATION_STATUS = 'y' ]; then
-            if [ $UI_CURRENT_STATUS = 'y' ]; then
-                echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-                /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
-                show_spinner sd_install_dashboard
-                echo "start dashboard" >>$ZSTACK_INSTALL_LOG
-                show_spinner sd_start_dashboard
-            else
-                echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-                show_spinner sd_install_dashboard
-            fi
-        fi
-    else
-        if [ -z $NEED_KEEP_DB ];then
-            if [ $CURRENT_STATUS = 'y' ]; then
-                if [ -z $NOT_START_ZSTACK ]; then
-                    show_spinner cs_config_zstack_properties
-                    show_spinner sz_start_zstack
-                fi
-            fi
+        if [ $UI_CURRENT_STATUS = 'y' ]; then
+            echo "start dashboard" >>$ZSTACK_INSTALL_LOG
+            show_spinner sd_start_dashboard
         fi
     fi
+}
+
+cs_pre_check(){
+    echo_subtitle "Pre-Checking"
+    #change zstack.properties config
+    if [ $UPGRADE != 'n' ]; then
+        zstack_properties=`zstack-ctl status 2>/dev/null|grep zstack.properties|awk '{print $2}'`
+    else
+        zstack_properties=$ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES
+    fi
+    sed -i 's/Ansible.var.yum_repo/Ansible.var.zstack_repo/' $zstack_properties >>$ZSTACK_INSTALL_LOG 2>&1
+    pass
 }
 
 install_ansible(){
@@ -618,9 +671,11 @@ install_ansible(){
         show_spinner ia_install_python_gcc_rh
         show_spinner ia_install_pip
         show_spinner ia_install_ansible
-    elif [ $OS = $UBUNTU1404 ]; then
+    elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         export DEBIAN_FRONTEND=noninteractive
-        show_spinner ia_update_apt
+        #if [ -z $ZSTACK_PKG_MIRROR ]; then
+        #    show_spinner ia_update_apt
+        #fi
         show_spinner ia_install_python_gcc_db
         show_spinner ia_install_pip
         show_spinner ia_install_ansible
@@ -629,7 +684,7 @@ install_ansible(){
 
 iz_install_unzip(){
     echo_subtitle "Install unzip"
-    if [ $OS = $UBUNTU1404 ]; then
+    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         apt-get -y install unzip >>$ZSTACK_INSTALL_LOG 2>&1
         [ $? -ne 0 ] && fail "Install unzip fail."
         pass
@@ -646,7 +701,6 @@ iz_install_unzip(){
 
 is_install_general_libs_rh(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
-    yum clean metadata >/dev/null 2>&1
     which mysql >/dev/null 2>&1
     if [ $? -eq 0 ];then
         mysql_pkg=''
@@ -654,6 +708,7 @@ is_install_general_libs_rh(){
         mysql_pkg='mysql'
     fi
     if [ ! -z $ZSTACK_YUM_REPOS ]; then
+        yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
         echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
         yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y \
             libselinux-python \
@@ -684,10 +739,13 @@ is_install_general_libs_rh(){
             ntp \
             ntpdate \
             bzip2 \
+            libffi-devel \
+            openssl-devel \
             net-tools \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
+        yum clean metadata >/dev/null 2>&1
         echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
         yum install -y \
             libselinux-python \
@@ -718,6 +776,8 @@ is_install_general_libs_rh(){
             ntp \
             ntpdate \
             bzip2 \
+            libffi-devel \
+            openssl-devel \
             net-tools \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
@@ -751,8 +811,13 @@ is_install_general_libs_deb(){
     else
         mysql_pkg='mysql-client'
     fi
+    if [ $OS = $UBUNTU1404 ];then
+        openjdk=openjdk-7-jdk
+    else
+        openjdk=openjdk-8-jdk
+    fi
     apt-get -y install \
-        openjdk-7-jdk \
+        $openjdk \
         qemu-kvm \
         bridge-utils \
         wget \
@@ -760,10 +825,14 @@ is_install_general_libs_deb(){
         python-libvirt \
         libvirt-bin \
         vlan \
-        nfs-common \
-        nfs-kernel-server \
         python-dev \
         gcc \
+        >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "install system lib 1 failed"
+
+    apt-get -y install \
+        nfs-common \
+        nfs-kernel-server \
         autoconf \
         iptables \
         tar \
@@ -775,20 +844,26 @@ is_install_general_libs_deb(){
         ntp  \
         ntpdate \
         bzip2 \
+        libffi-dev \
+        libssl-dev \
         $mysql_pkg \
         >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "install virtualenv failed"
+    [ $? -ne 0 ] && fail "install system lib 2 failed"
     pass
+}
+
+is_install_system_libs(){
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
+        show_spinner is_install_general_libs_rh
+    else
+        show_spinner is_install_general_libs_deb
+    fi
 }
 
 install_system_libs(){
     echo_title "Install System Libs"
     echo ""
-    if [ $OS != $UBUNTU1404 ]; then
-        show_spinner is_install_general_libs_rh
-    else
-        show_spinner is_install_general_libs_deb
-    fi
+    is_install_system_libs
     #mysql and rabbitmq will be installed by zstack-ctl later
     show_spinner is_install_virtualenv
     #enable ntpd
@@ -797,7 +872,7 @@ install_system_libs(){
 
 is_enable_ntpd(){
     echo_subtitle "Enable NTP"
-    if [ $OS != $UBUNTU1404 ];then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ];then
         grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
         if [ $? -ne 0 ]; then
             echo "server 0.centos.pool.ntp.org iburst" >> /etc/ntp.conf
@@ -872,6 +947,19 @@ iz_unpack_zstack(){
     pass
 }
 
+uz_stop_zstack(){
+    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        echo_subtitle "Stop ${PRODUCT_NAME}"
+        zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        #Only stop node and ui, when using -i
+        echo_subtitle "Stop Management Node and UI"
+        zstack-ctl stop_node >>$ZSTACK_INSTALL_LOG 2>&1
+        zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    pass
+}
+
 uz_upgrade_zstack(){
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
     cd $upgrade_folder
@@ -891,8 +979,7 @@ uz_upgrade_zstack(){
         fail "failed to upgrade zstack-ctl"
     fi
 
-    zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
-
+    #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         if [ ! -z $DEBUG ]; then
             if [ $FORCE = 'n' ];then
@@ -933,12 +1020,15 @@ uz_upgrade_zstack(){
         fail "failed to upgrade local management node"
     fi
 
-    if [ -z $ONLY_INSTALL_ZSTACK ] ; then
-        if [ -f $upgrade_folder/apache-cassandra* ]; then
-            /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-            /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
+    #Will install cassandra and kairosdb, no matter it is installed or not.
+    #This will help fix some issue when upgrading. 
+    if [ -f $upgrade_folder/apache-cassandra* ]; then
+        /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+        /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
     
+    #Do not upgrade db, when using -i
+    if [ -z $ONLY_INSTALL_ZSTACK ] ; then
         cd /; rm -rf $upgrade_folder
     
         if [ -z $NEED_KEEP_DB ];then
@@ -967,6 +1057,13 @@ uz_upgrade_zstack(){
         rabbitmqctl start_app  >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
             fail "failed to reset rabbitmq and start rabbitmq"
+        fi
+        rabbitmq_user_password=`zstack-ctl show_configuration|grep CloudBus.rabbitmqPassword|awk '{print $3}'` >>$ZSTACK_INSTALL_LOG 2>&1
+        rabbitmq_user_name=`zstack-ctl show_configuration|grep CloudBus.rabbitmqUsername|awk '{print $3}'` >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ ! -z $rabbitmq_user_name ]; then
+            rabbitmqctl add_user $rabbitmq_user_name $rabbitmq_user_password >>$ZSTACK_INSTALL_LOG 2>&1
+            rabbitmqctl set_user_tags $rabbitmq_user_name administrator >>$ZSTACK_INSTALL_LOG 2>&1
+            rabbitmqctl set_permissions -p / $rabbitmq_user_name ".*" ".*" ".*" >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
 
@@ -1139,11 +1236,24 @@ EOF
 
 cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
-    if [ ! -z $ZSTACK_YUM_REPOS ];then
-        zstack-ctl configure Ansible.var.yum_repo=$ZSTACK_YUM_REPOS
+    if [ $UPGRADE = 'n' ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
+        zstack-ctl configure CloudBus.rabbitmqUsername=zstack
+        zstack-ctl configure CloudBus.rabbitmqPassword=zstack.password
+    fi
+    if [ ! -z $ZSTACK_PROPERTIES_REPO ];then
+        zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_PROPERTIES_REPO
     fi
     if [ $? -ne 0 ];then
         fail "failed to add yum repo to $ZSTACK_PROPERTIES"
+    fi
+    #create symbolic link for /opt/zstack-dvd for hosts doing offline 
+    # installation
+    rm -f $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
+    ln -s /opt/zstack-dvd $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        fail "failed to create symbolic link for $ZSTACK_HOME/static/zstack-dvd . 
+        The contents in the folder: `ls $ZSTACK_HOME/static/zstack-dvd` . 
+        If this folder existed. Please move it to other place and rerun the installation."
     fi
     pass
 }
@@ -1174,18 +1284,18 @@ cs_gen_sshkey(){
     echo_subtitle "Generate Temp SSH Key"
     [ ! -d /root/.ssh ] && mkdir -p /root/.ssh && chmod 700 /root/.ssh
     
-    dsa_key_file=$1/id_dsa
-    dsa_pub_key_file=$1/id_dsa.pub
+    rsa_key_file=$1/id_rsa
+    rsa_pub_key_file=$1/id_rsa.pub
     authorized_keys_file=/root/.ssh/authorized_keys
-    ssh-keygen -t dsa -N '' -f $dsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1 
+    ssh-keygen -t rsa -N '' -f $rsa_key_file >>$ZSTACK_INSTALL_LOG 2>&1 
     if [ ! -f $authorized_keys_file ]; then
-        cat $dsa_pub_key_file > $authorized_keys_file
+        cat $rsa_pub_key_file > $authorized_keys_file
         chmod 600 $authorized_keys_file
     else
-        ssh_pub_key=`cat $dsa_pub_key_file`
+        ssh_pub_key=`cat $rsa_pub_key_file`
         grep $ssh_pub_key $authorized_keys_file >/dev/null 2>&1
         if [ $? -ne 0 ]; then
-            cat $dsa_pub_key_file >> $authorized_keys_file
+            cat $rsa_pub_key_file >> $authorized_keys_file
         fi
     fi
     if [ -x /sbin/restorecon ]; then
@@ -1196,18 +1306,18 @@ cs_gen_sshkey(){
 
 cs_install_mysql(){
     echo_subtitle "Install Mysql Server"
-    dsa_key_file=$1/id_dsa
+    rsa_key_file=$1/id_rsa
     if [ -z $ZSTACK_YUM_REPOS ];then
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
-            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --root-password="$MYSQL_NEW_ROOT_PASSWORD" --debug >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --root-password="$MYSQL_NEW_ROOT_PASSWORD" --debug >>$ZSTACK_INSTALL_LOG 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$dsa_key_file --debug >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$rsa_key_file --debug >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     else
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
-            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS --root-password="$MYSQL_NEW_ROOT_PASSWORD" >>$ZSTACK_INSTALL_LOG --debug 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --yum=$ZSTACK_YUM_REPOS --root-password="$MYSQL_NEW_ROOT_PASSWORD" >>$ZSTACK_INSTALL_LOG --debug 2>&1
         else
-            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
+            zstack-ctl install_db --host=$MANAGEMENT_IP --login-password="$MYSQL_ROOT_PASSWORD" --root-password="$MYSQL_NEW_ROOT_PASSWORD" --ssh-key=$rsa_key_file --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
     if [ $? -ne 0 ];then
@@ -1219,13 +1329,14 @@ cs_install_mysql(){
 
 cs_install_rabbitmq(){
     echo_subtitle "Install Rabbitmq Server"
-    dsa_key_file=$1/id_dsa
+    rsa_key_file=$1/id_rsa
+    common_params="--host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --rabbit-username=zstack --rabbit-password=zstack.password"
     if [ -z $ZSTACK_YUM_REPOS ];then
-        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file" >>$ZSTACK_INSTALL_LOG
-        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --debug >>$ZSTACK_INSTALL_LOG 2>&1
+        echo "zstack-ctl install_rabbitmq $common_params" >>$ZSTACK_INSTALL_LOG
+        zstack-ctl install_rabbitmq $common_params --debug >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        echo "zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
-        zstack-ctl install_rabbitmq --host=$MANAGEMENT_IP --ssh-key=$dsa_key_file --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
+        echo "zstack-ctl install_rabbitmq $common_params --yum=$ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
+        zstack-ctl install_rabbitmq $common_params --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     if [ $? -ne 0 ];then
@@ -1237,8 +1348,8 @@ cs_install_rabbitmq(){
 
 cs_clean_ssh_tmp_key(){
     #echo_subtitle "Clean up ssh temp key"
-    dsa_pub_key_file=$1/id_dsa.pub
-    ssh_pub_key=`cat $dsa_pub_key_file`
+    rsa_pub_key_file=$1/id_rsa.pub
+    ssh_pub_key=`cat $rsa_pub_key_file`
     authorized_keys_file=/root/.ssh/authorized_keys
     sed -i "\;$ssh_pub_key;d" $authorized_keys_file >>$ZSTACK_INSTALL_LOG 2>&1
     /bin/rm -rf $1
@@ -1297,7 +1408,7 @@ cs_enable_zstack_service(){
         cat > /etc/systemd/system/zstack.service <<EOF
 [Unit]
 Description=zstack Service
-After=syslog.target network.target
+After=syslog.target network.target rabbitmq-server.service mariadb.service
 Before=shutdown.target reboot.target halt.target
 
 [Service]
@@ -1419,10 +1530,10 @@ sz_start_cassandra(){
     if [ $? -ne 0 ];then
        fail "failed to start Cassandra"
     fi
-    #zstack-ctl deploy_cassandra_db  >>$ZSTACK_INSTALL_LOG 2>&1
-    #if [ $? -ne 0 ];then
-    #   fail "failed to deploy Cassandra db"
-    #fi
+    zstack-ctl deploy_cassandra_db  >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to deploy Cassandra db"
+    fi
     pass
 }
 
@@ -1499,7 +1610,7 @@ start_dashboard(){
 
 sd_install_dashboard(){
     echo_subtitle "Install ${PRODUCT_NAME} Web UI (takes a couple of minutes)"
-    zstack-ctl install_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl install_ui --force >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
         fail "failed to install zstack-dashboard in $ZSTACK_INSTALL_ROOT"
@@ -1516,7 +1627,41 @@ sd_start_dashboard(){
     pass
 }
 
-#create zstack log yum repo
+#create zstack local apt source list
+create_apt_source_list(){
+    /bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.`date +%Y-%m-%d_%H-%M-%S` >>$ZSTACK_INSTALL_LOG 2>&1
+    cat > /etc/apt/sources.list << EOF
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-security main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-updates main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
+deb http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-security main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-updates main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-proposed main restricted universe multiverse
+deb-src http://mirrors.$ZSTACK_PKG_MIRROR.com/ubuntu/ $DISTRIB_CODENAME-backports main restricted universe multiverse
+EOF
+    #Fix Ubuntu conflicted dpkg lock issue. 
+    if [ -f /etc/init.d/unattended-upgrades ]; then
+        /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d -f unattended-upgrades remove >>$ZSTACK_INSTALL_LOG 2>&1
+        pid=`lsof /var/lib/dpkg/lock|grep lock|awk '{print $2}'`
+        [ ! -z $pid ] && kill -9 $pid >>$ZSTACK_INSTALL_LOG 2>&1
+        which systemctl >/dev/null 2>&1
+        [ $? -eq 0 ] && systemctl stop apt-daily >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "execute \`dpkg --configure -a\` failed."
+    apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True --fix-missing>>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ]; then
+        fail "apt-get update package failed."
+    fi
+}
+
+
+#create zstack local yum repo
 create_yum_repo(){
     cat > $zstack_163_repo_file << EOF
 #163 base
@@ -1602,6 +1747,24 @@ EOF
 
 }
 
+set_zstack_repo(){
+    zstack-ctl setenv zstack_local_repo=$ZSTACK_YUM_REPOS 2>/dev/null
+}
+
+get_zstack_repo(){
+    ZSTACK_YUM_REPOS=`zstack-ctl getenv 2>/dev/null| grep 'zstack_local_repo' | awk -F'=' '{print $2}'`
+    [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.zstack_repo' | awk '{print $3}'`
+    [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.yum_repo' | awk '{print $3}'`
+    if [ ! -z $ZSTACK_YUM_REPOS ];then
+        ZSTACK_YUM_REPOS=`echo $ZSTACK_YUM_REPOS|sed 's/zstack-mn/zstack-local/g'`
+        echo $ZSTACK_YUM_REPOS |grep "zstack-local" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            ZSTACK_YUM_REPOS='zstack-local'
+            ZSTACK_OFFLINE_INSTALL='y'
+        fi
+        YUM_ONLINE_REPO=''
+    fi
+}
 
 help (){
     echo "
@@ -1639,7 +1802,8 @@ Options:
         http://CURRENT_MACHINE_IP/image/ . Doesn't effect when use -u to upgrade
         zstack or -l to install some system libs. 
 
-  -i    only install ${PRODUCT_NAME} management node and dependent packages
+  -i    only install ${PRODUCT_NAME} management node and dependent packages.
+        ZStack won't automatically be started when use '-i'.
 
   -I MANAGEMENT_NODE_NETWORK_INTERFACE | MANAGEMENT_NODE_IP_ADDRESS
         e.g. -I eth0, -I eth0:1, -I 192.168.0.1
@@ -1675,7 +1839,7 @@ Options:
   -r ZSTACK_INSTALLATION_PATH
         the path where to install ${PRODUCT_NAME} management node.  The default path is $ZSTACK_INSTALL_ROOT
 
-  -R ZSTACK_YUM_MIRROR
+  -R ZSTACK_PKG_MIRROR
         which yum mirror user want to use to install ZStack required CentOS rpm packages. User can choose 163 or aliyun, like -R aliyun, -R 163 
 
   -t ZSTACK_START_TIMEOUT
@@ -1759,7 +1923,7 @@ do
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
-        R ) ZSTACK_YUM_MIRROR=$OPTARG && YUM_ONLINE_REPO='';;
+        R ) ZSTACK_PKG_MIRROR=$OPTARG && YUM_ONLINE_REPO='';;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
@@ -1769,21 +1933,31 @@ do
 done
 OPTIND=1
 
-if [ ! -z $ZSTACK_YUM_MIRROR ]; then
-    if [ "$ZSTACK_YUM_MIRROR" != "$YUM_MIRROR_163" -a "$ZSTACK_YUM_MIRROR" != "$YUM_MIRROR_ALIYUN" ]; then
-        echo -e "\n\tYou want to use yum mirror from '$ZSTACK_YUM_MIRROR' . But we only support yum mirrors for '$YUM_MIRROR_163' or '$YUM_MIRROR_ALIYUN'. Please fix it and rerun the installation.\n\n"
+if [ ! -z $ZSTACK_PKG_MIRROR ]; then
+    if [ "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_163" -a "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_ALIYUN" ]; then
+        echo -e "\n\tYou want to use yum mirror from '$ZSTACK_PKG_MIRROR' . But we only support yum mirrors for '$PKG_MIRROR_163' or '$PKG_MIRROR_ALIYUN'. Please fix it and rerun the installation.\n\n"
         exit 1
     fi
-    if [ $ZSTACK_YUM_MIRROR = $YUM_MIRROR_163 ]; then
+    if [ $ZSTACK_PKG_MIRROR = $PKG_MIRROR_163 ]; then
         ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
+        ZSTACK_PROPERTIES_REPO=$MIRROR_163_YUM_REPOS
     else
         ZSTACK_YUM_REPOS=$MIRROR_ALI_YUM_REPOS
+        ZSTACK_PROPERTIES_REPO=$MIRROR_ALI_YUM_REPOS
     fi
-else
-    if [ -z $YUM_ONLINE_REPO ]; then
-        ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
+elif [ -z $YUM_ONLINE_REPO ]; then
+    ZSTACK_OFFLINE_INSTALL='y'
+    ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
+    if [ $UPGRADE = 'n' ]; then
+        ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
+    else
+        ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_UPGRADE_REPOS
     fi
+elif [ $UPGRADE != 'n' ]; then
+    get_zstack_repo
 fi
+
+[ ! -z $ZSTACK_YUM_REPOS ] && set_zstack_repo
 
 README=$ZSTACK_INSTALL_ROOT/readme
 
@@ -1886,10 +2060,16 @@ if [ ! -z $HTTP_PROXY ]; then
 fi
 
 if [ $UPGRADE = 'y' ]; then
+    if [ -f $UPGRADE_LOCK ]; then
+        echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"
+        echo -e "$(tput setaf 1)  Reason: $UPGRADE_LOCK exist. If no other upgrading operation, please manually remove $UPGRADE_LOCK.\n$(tput sgr0)"
+        exit 1
+    fi
+    touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
     mkdir -p $upgrade_folder
-    zstack-ctl status |grep 'Running' >/dev/null 2>&1
+    zstack-ctl status 2>/dev/null|grep 'Running' >/dev/null 2>&1
     if [ $? -eq 0 ]; then
         CURRENT_STATUS='y'
     else
@@ -1909,10 +2089,6 @@ fi
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
 
-if [ $OS != $UBUNTU1404 ]; then
-    create_yum_repo
-fi
-
 #Download ${PRODUCT_NAME} all in one package
 download_zstack
 
@@ -1920,8 +2096,9 @@ if [ $UPGRADE = 'y' ]; then
     #only upgrade zstack
     upgrade_zstack
     cd /; rm -rf $upgrade_zstack
+    cleanup_function
 
-    [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
+    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
     echo ""
     echo_star_line
     echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
@@ -2039,7 +2216,7 @@ fi
 
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
-    [ -z $VERSION ] && VERSION=`zstack-ctl status|grep version|awk '{print $2}'`
+    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
 fi
 
 echo ""

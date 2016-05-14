@@ -23,9 +23,9 @@ class ShellCmd(object):
         '''
         self.cmd = cmd
         if pipe:
-            self.process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, executable='/bin/sh', cwd=workdir)
+            self.process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, executable='/bin/bash', cwd=workdir)
         else:
-            self.process = subprocess.Popen(cmd, shell=True, executable='/bin/sh', cwd=workdir)
+            self.process = subprocess.Popen(cmd, shell=True, executable='/bin/bash', cwd=workdir)
             
         self.stdout = None
         self.stderr = None

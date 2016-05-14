@@ -96,11 +96,13 @@ class MergeSnapshotResponse(NfsResponse):
     def __init__(self):
         super(MergeSnapshotResponse, self).__init__()
         self.size = None
+        self.actualSize = None
 
 class RebaseAndMergeSnapshotsResponse(NfsResponse):
     def __init__(self):
         super(RebaseAndMergeSnapshotsResponse, self).__init__()
         self.size = None
+        self.actualSize = None
 
 class MoveBitsRsp(NfsResponse):
     def __init__(self):
@@ -109,6 +111,12 @@ class MoveBitsRsp(NfsResponse):
 class OfflineMergeSnapshotRsp(NfsResponse):
     def __init__(self):
         super(OfflineMergeSnapshotRsp, self).__init__()
+
+class GetVolumeSizeRsp(NfsResponse):
+    def __init__(self):
+        super(GetVolumeSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
 
         
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
@@ -132,6 +140,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     MOVE_BITS_PATH = "/nfsprimarystorage/movebits"
     OFFLINE_SNAPSHOT_MERGE = "/nfsprimarystorage/offlinesnapshotmerge"
     REMOUNT_PATH = "/nfsprimarystorage/remount"
+    GET_VOLUME_SIZE_PATH = "/nfsprimarystorage/getvolumesize"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
     
@@ -153,6 +162,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MOVE_BITS_PATH, self.move_bits)
         http_server.register_async_uri(self.OFFLINE_SNAPSHOT_MERGE, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.REMOUNT_PATH, self.remount)
+        http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         self.mount_path = {}
         self.image_cache = None
 
@@ -170,6 +180,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     def _set_capacity_to_response(self, uuid, rsp):
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(uuid)
+
+    @kvmagent.replyerror
+    def get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVolumeSizeRsp()
+
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def merge_snapshot_to_volume(self, req):
@@ -221,7 +239,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         try:
             linux.qcow2_create_template(latest, cmd.workspaceInstallPath)
-            rsp.size = os.path.getsize(cmd.workspaceInstallPath)
+            rsp.size, rsp.actualSize = cmd.workspaceInstallPath
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -242,7 +260,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         try:
             linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
-            rsp.size = os.path.getsize(cmd.workspaceInstallPath)
+            rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
             logger.warn(linux.get_exception_stacktrace())

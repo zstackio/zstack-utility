@@ -16,6 +16,7 @@ import threading
 from zstacklib.utils import shell
 from zstacklib.utils import log
 from zstacklib.utils import lock
+from zstacklib.utils import sizeunit
 
 
 logger = log.get_logger(__name__)
@@ -226,6 +227,15 @@ def umount_by_url(url):
     if not paths: return
     for p in paths:
         umount(p, is_exception=False)
+
+
+def get_file_size_by_http_head(url):
+    output = shell.ShellCmd('curl --head %s' % url)()
+    for l in output.split('\n'):
+        if 'Content-Length' in l:
+            filesize = l.split(':')[1].strip()
+            return long(filesize)
+    return None
 
 def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callback_data=None, cert_check=False):
     def get_percentage(filesize, dst):
@@ -447,6 +457,33 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
         if batch_file_path:
             os.remove(batch_file_path)
 
+def qcow2_size_and_actual_size(file_path):
+    cmd = shell.ShellCmd('''set -o pipefail; qemu-img info %s |  awk '{if (/^virtual size:/) {vs=substr($4,2)}; if (/^disk size:/) {ds=$3} } END{print vs?vs:"null", ds?ds:"null"}' ''' % file_path)
+    cmd(False)
+    if cmd.return_code != 0:
+        raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
+
+    logger.debug('qcow2_size_and_actual_size: %s' % cmd.stdout)
+
+    out = cmd.stdout.strip(" \t\n\r")
+    virtual_size, actual_size = out.split(" ")
+    if virtual_size == "null" and actual_size == "null":
+        raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
+
+    if virtual_size == "null":
+        virtual_size = None
+    else:
+        virtual_size = long(virtual_size)
+
+    if actual_size == "null":
+        actual_size = None
+    else:
+        # actual_size = sizeunit.get_size(actual_size)
+        # use the os.path.getsize instead of parsing qemu-img output as it's not accurate
+        actual_size = os.path.getsize(file_path)
+
+    return virtual_size, actual_size
+
 def qcow2_clone(src, dst):
     shell.ShellCmd('/usr/bin/qemu-img create -b %s -f qcow2 %s' % (src, dst))()
     shell.ShellCmd('chmod 666 %s' % dst)()
@@ -475,6 +512,14 @@ def qcow2_rebase(backing_file, target):
 
 def qcow2_rebase_no_check(backing_file, target):
     shell.call('/usr/bin/qemu-img rebase -u -f qcow2 -b %s %s' % (backing_file, target))
+
+def qcow2_virtualsize(file_path):
+    cmd = shell.ShellCmd("set -o pipefail; qemu-img info %s | grep -w 'virtual size' | awk -F '(' '{print $2}' | awk '{print $1}'" % file_path)
+    cmd(False)
+    if cmd.return_code != 0:
+        raise Exception('cannot get the virtual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
+    out = cmd.stdout.strip(' \t\r\n')
+    return long(out)
 
 def rmdir_if_empty(dirpath):
     try:

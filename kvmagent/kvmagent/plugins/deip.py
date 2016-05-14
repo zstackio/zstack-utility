@@ -89,10 +89,10 @@ delete_outer_dev() {
 
 delete_arp_rule() {
     CHAIN_NAME=$NIC_NAME-gw
-    ebtables-save | grep -w ":$CHAIN_NAME" > /dev/null
+    ebtables -t nat -L $CHAIN_NAME >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        rule="PREROUTING -i $NIC_NAME -j $CHAIN_NAME"
-        ebtables-save | grep -- "-A $rule" > /dev/null && ebtables -t nat -D $rule
+        rule="-i $NIC_NAME -j $CHAIN_NAME"
+        ebtables -t nat -L PREROUTING | grep -- "$rule" > /dev/null && ebtables -t nat -D PREROUTING $rule
         exit_on_error $LINENO
 
         ebtables -t nat -F $CHAIN_NAME
@@ -224,16 +224,16 @@ set_default_route_if_needed() {
 set_gateway_arp_if_needed() {
     CHAIN_NAME=$NIC_NAME-gw
 
-    ebtables-save | grep -w ":$CHAIN_NAME" > /dev/null || ebtables -t nat -N $CHAIN_NAME
+    ebtables -t nat -L $CHAIN_NAME > /dev/null 2>&1 || ebtables -t nat -N $CHAIN_NAME
     exit_on_error $LINENO
 
-    rule="PREROUTING -i $NIC_NAME -j $CHAIN_NAME"
-    ebtables-save | grep -- "$rule" > /dev/null || ebtables -t nat -I $rule
+    rule="-i $NIC_NAME -j $CHAIN_NAME"
+    ebtables -t nat -L PREROUTING | grep -- "$rule" >/dev/null 2>&1 || ebtables -t nat -I PREROUTING $rule
     exit_on_error $LINENO
 
     gateway=`eval $NS ip link | grep -w $PRI_IDEV -A 1 | awk '/link\/ether/{print $2}'`
-    rule="$CHAIN_NAME -p ARP --arp-op Request --arp-ip-dst $NIC_GATEWAY -j arpreply --arpreply-mac $gateway"
-    ebtables-save | grep -- "$rule" > /dev/null || ebtables -t nat -A $rule
+    rule="-p ARP --arp-op Request --arp-ip-dst $NIC_GATEWAY -j arpreply --arpreply-mac $gateway"
+    ebtables -t nat -L $CHAIN_NAME | grep -- "$rule" >/dev/null 2>&1 || ebtables -t nat -A $CHAIN_NAME $rule
     exit_on_error $LINENO
 }
 

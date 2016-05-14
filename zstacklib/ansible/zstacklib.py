@@ -12,6 +12,7 @@ import json
 from logging.handlers import TimedRotatingFileHandler
 import time
 import functools
+import jinja2
 import commands
 
 # set global default value
@@ -40,14 +41,14 @@ class AgentInstallArg(object):
 
 class ZstackLibArgs(object):
     def __init__(self):
-        self.yum_repo = None
+        self.zstack_repo = None
         self.yum_server = None
         self.distro = None
         self.distro_version = None
+        self.distro_release = None
         self.zstack_root = None
         self.host_post_info = None
         self.pip_url = None
-        self.trusted_host = None
 
 
 class Log(object):
@@ -78,11 +79,18 @@ class AnsibleStartResult(object):
 
 class HostPostInfo(object):
     def __init__(self):
-        self.host = None
-        self.vip= None
-        self.post_url = None
+        self.trusted_host = None
+        self.remote_user = 'root'
+        self.remote_pass = None
+        self.remote_port = None
+        self.become = False
+        self.become_exe = '/usr/bin/sudo'
+        self.become_user = 'root'
         self.private_key = None
         self.host_inventory = None
+        self.host = None
+        self.vip= None
+        self.post_url = ""
         self.start_time = None
         self.rabbit_password = None
         self.mysql_password = None
@@ -118,6 +126,52 @@ class UnarchiveArg(object):
         self.dest = None
         self.args = None
 
+
+class ZstackRunnerArg(object):
+    def  __init__(self):
+        self.host_post_info = None
+        self.module_name = None
+        self.module_args = None
+
+
+class ZstackRunner(object):
+    def __init__(self, runner_args):
+        self.host_inventory = runner_args.host_post_info.host_inventory
+        self.private_key = runner_args.host_post_info.private_key
+        self.host = runner_args.host_post_info.host
+        self.post_url = runner_args.host_post_info.post_url
+        self.pattern = runner_args.host_post_info.host
+        self.module_name = runner_args.module_name
+        self.module_args = runner_args.module_args
+        self.remote_port = runner_args.host_post_info.remote_port
+        self.remote_user = runner_args.host_post_info.remote_user
+        self.remote_pass = runner_args.host_post_info.remote_pass
+        self.become = runner_args.host_post_info.become
+        self.become_user = runner_args.host_post_info.become_user
+        self.become_pass = runner_args.host_post_info.remote_pass
+
+    def run(self):
+        runner = ansible.runner.Runner(
+            host_list=self.host_inventory,
+            private_key_file=self.private_key,
+            module_name=self.module_name,
+            module_args=self.module_args,
+            pattern=self.host,
+            remote_port=self.remote_port,
+            remote_user=self.remote_user,
+            remote_pass=self.remote_pass,
+            become = self.become,
+            become_user=self.become_user,
+            become_pass=self.become_pass
+        )
+        result = runner.run()
+        return  result
+
+def error(msg):
+    logger.error(msg)
+    sys.stderr.write('ERROR: %s\n' % msg)
+    sys.exit(1)
+
 def retry(times=3, sleep_time=3):
     def wrap(f):
         @functools.wraps(f)
@@ -126,9 +180,10 @@ def retry(times=3, sleep_time=3):
                 try:
                     return f(*args, **kwargs)
                 except Exception as e:
+                    logger.error(e)
                     time.sleep(sleep_time)
-            print "Network unstable, please try again later"
-            sys.exit(1)
+            error("The task failed, please make sure the host can be connected and no error happened, then try again. "
+                  "Below is detail:\n %s" % e)
         return inner
     return wrap
 
@@ -151,10 +206,10 @@ def post_msg(msg, post_url):
     elif msg.type == "error":
         data = json.dumps({"code": msg.data.code, "description": msg.data.description, "details": msg.data.details})
         # This output will capture by management log
-        print msg.data.description + "\nDetail: " + msg.data.details
+        error(msg.data.description + "\nDetail: " + msg.data.details)
     else:
-        logger.info("ERROR: undefined message type: %s" % msg.type)
-        sys.exit(1)
+        error("ERROR: undefined message type: %s" % msg.type)
+
     if post_url == "":
         logger.info("Warning: no post_url defined by user")
         return 0
@@ -165,9 +220,7 @@ def post_msg(msg, post_url):
         response.close()
     except URLError, e:
         logger.debug(e.reason)
-        logger.info("Please check the post_url: %s and check the server status" % post_url)
-        print "Please check the post_url: %s and check the server status" % post_url
-        sys.exit(1)
+        error("Please check the post_url: %s and check the server status" % post_url)
 
 
 def handle_ansible_start(ansible_start):
@@ -238,26 +291,21 @@ def agent_install(install_arg, host_post_info):
     if pip_install_package(pip_install_arg, host_post_info) is False:
         command = "rm -rf %s && rm -rf %s" % (install_arg.virtenv_path, install_arg.agent_root)
         run_remote_command(command, host_post_info)
-        sys.exit(1)
+        error("agent %s install failed" % install_arg.agent_name)
 
 
 def yum_enable_repo(name, enablerepo, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-
     handle_ansible_info("INFO: Starting enable yum repo %s ... " % name, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='yum',
-        module_args='name=' + name + ' enablerepo=' + enablerepo + " state=present",
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'yum'
+    runner_args.module_args = 'name=' + name + ' enablerepo=' + enablerepo + " state=present"
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -265,13 +313,10 @@ def yum_enable_repo(name, enablerepo, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
-
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: Enable yum repo failed"
             handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
         else:
             details = "SUCC: yum enable repo %s " % enablerepo
             handle_ansible_info(details, host_post_info, "INFO")
@@ -282,19 +327,15 @@ def yum_enable_repo(name, enablerepo, host_post_info):
 def yum_check_package(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Searching yum package %s ... " % name, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args='rpm -q %s ' % name,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'shell'
+    runner_args.module_args = 'rpm -q %s ' % name,
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -302,10 +343,9 @@ def yum_check_package(name, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning("Maybe network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
@@ -322,8 +362,6 @@ def yum_check_package(name, host_post_info):
 def script(file, host_post_info, script_arg=None):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Running script %s on host %s ... " % (file,host), host_post_info, "INFO")
@@ -331,14 +369,12 @@ def script(file, host_post_info, script_arg=None):
         args = file + " " + script_arg
     else:
         args = file
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='script',
-        module_args=args,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'script'
+    runner_args.module_args = args
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -346,7 +382,6 @@ def script(file, host_post_info, script_arg=None):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'rc' not in result['contacted'][host]:
             logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
@@ -360,25 +395,22 @@ def script(file, host_post_info, script_arg=None):
             else:
                 description = "ERROR: The script %s failed on host %s" % (file, host)
                 handle_ansible_failed(description, result, host_post_info)
-                sys.exit(1)
+
 
 @retry(times=3, sleep_time=3)
 def yum_install_package(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting yum install package %s ... " % name, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args='rpm -q %s ' % name,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'shell'
+    runner_args.module_args = "rpm -q %s" % name
+    runner_args.name = name
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -386,7 +418,6 @@ def yum_install_package(name, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'rc' not in result['contacted'][host]:
             logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
@@ -400,19 +431,16 @@ def yum_install_package(name, host_post_info):
             else:
                 details = "Installing package %s ..." % name
                 handle_ansible_info(details, host_post_info, "INFO")
-                runner = ansible.runner.Runner(
-                    host_list=host_inventory,
-                    private_key_file=private_key,
-                    module_name='yum',
-                    module_args='name=' + name + ' disable_gpg_check=no  state=latest',
-                    pattern=host
-                )
-                result = runner.run()
+                runner_args = ZstackRunnerArg()
+                runner_args.host_post_info = host_post_info
+                runner_args.module_name = 'yum'
+                runner_args.module_args = 'name=' + name + ' disable_gpg_check=no state=latest'
+                zstack_runner = ZstackRunner(runner_args)
+                result = zstack_runner.run()
                 logger.debug(result)
                 if 'failed' in result['contacted'][host]:
                     description = "ERROR: YUM install package %s failed" % name
                     handle_ansible_failed(description, result, host_post_info)
-                    sys.exit(1)
                 else:
                     details = "SUCC: yum install package %s successful!" % name
                     handle_ansible_info(details, host_post_info, "INFO")
@@ -428,14 +456,12 @@ def yum_remove_package(name, host_post_info):
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting yum remove package %s ... " % name, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args='yum list installed ' + name,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'shell'
+    runner_args.module_args = 'yum list installed ' + name
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -443,7 +469,6 @@ def yum_remove_package(name, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     if 'rc' not in result['contacted'][host]:
         logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
         raise Exception(result)
@@ -452,19 +477,16 @@ def yum_remove_package(name, host_post_info):
         if status == 0:
             details = "Removing %s ... " % name
             handle_ansible_info(details, host_post_info, "INFO")
-            runner = ansible.runner.Runner(
-                host_list=host_inventory,
-                private_key_file=private_key,
-                module_name='yum',
-                module_args='name=' + name + ' state=absent',
-                pattern=host
-            )
-            result = runner.run()
+            runner_args = ZstackRunnerArg()
+            runner_args.host_post_info = host_post_info
+            runner_args.module_name = 'yum'
+            runner_args.module_args = 'name=' + name + ' state=absent',
+            zstack_runner = ZstackRunner(runner_args)
+            result = zstack_runner.run()
             logger.debug(result)
             if 'failed' in result['contacted'][host]:
                 description = "ERROR: Yum remove package %s failed!" % name
                 handle_ansible_failed(description, result, host_post_info)
-                sys.exit(1)
             else:
                 details = "SUCC: Remove package %s " % name
                 handle_ansible_info(details, host_post_info, "INFO")
@@ -475,57 +497,55 @@ def yum_remove_package(name, host_post_info):
             return True
 
 
-def apt_update_cache(cache_valid_time, host_post_info):
+def check_pkg_status(name_list, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting apt update cache ", host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='apt',
-        module_args='update_cache=yes cache_valid_time=%d' % cache_valid_time,
-        pattern=host
-    )
-    result = runner.run()
-    logger.debug(result)
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-        sys.exit(1)
-    else:
-        if 'failed' in result['contacted'][host]:
-            description = "ERROR: Apt update cache failed!"
-            handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
+    handle_ansible_info("INFO: Starting check package %s exist in system... " % name_list, host_post_info, "INFO")
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'shell'
+    for name in name_list:
+        runner_args.module_args = 'dpkg-query -l %s | grep ^ii ' % name
+        zstack_runner = ZstackRunner(runner_args)
+        result = zstack_runner.run()
+        logger.debug(result)
+        if result['contacted'] == {}:
+            ansible_start = AnsibleStartResult()
+            ansible_start.host = host
+            ansible_start.post_url = post_url
+            ansible_start.result = result
+            handle_ansible_start(ansible_start)
         else:
-            details = "SUCC: apt update cache successful! "
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
+            if 'rc' not in result['contacted'][host]:
+                logger.warning("Maybe network problem, try again now, ansible reply is below:\n %s" % result)
+                raise Exception(result)
+            else:
+                status = result['contacted'][host]['rc']
+                if status == 0:
+                    details = "SUCC: The package %s exist in system" % name
+                    handle_ansible_info(details, host_post_info, "INFO")
+                else:
+                    details = "SUCC: The package %s not exist in system" % name
+                    handle_ansible_info(details, host_post_info, "INFO")
+                    return False
 
 
 def apt_install_packages(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting apt install package %s ... " % name, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='apt',
-        module_args='name=' + name + ' state=present',
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'apt'
+    runner_args.module_args = 'name=' + name + ' state=present'
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -533,35 +553,37 @@ def apt_install_packages(name, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: Apt install %s failed!" % name
             handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
-        else:
+        elif 'changed' in result['contacted'][host]:
             details = "SUCC: apt install package %s " % name
             handle_ansible_info(details, host_post_info, "INFO")
             return True
+        else:
+            description = "ERROR: Apt install %s meet unknown issue: %s" % (name, result)
+            handle_ansible_failed(description, result, host_post_info)
+
 
 
 def pip_install_package(pip_install_arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     name = pip_install_arg.name
     host = host_post_info.host
     post_url = host_post_info.post_url
     version = pip_install_arg.version
     if pip_install_arg.extra_args is not None:
-        extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] + '\"'
+        if 'pip' not in name:
+            extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] + '\"'
+        else:
+            extra_args = '\"' + pip_install_arg.extra_args.split('"')[1] + '\"'
     else:
         extra_args = None
     virtualenv = pip_install_arg.virtualenv
     virtualenv_site_packages = pip_install_arg.virtualenv_site_packages
     handle_ansible_info("INFO: Pip installing module %s ..." % name, host_post_info, "INFO")
-    option = 'name=' + name
     param_dict = {}
     param_dict_raw = dict(version=version, extra_args=extra_args, virtualenv=virtualenv,
                           virtualenv_site_packages=virtualenv_site_packages)
@@ -569,14 +591,12 @@ def pip_install_package(pip_install_arg, host_post_info):
         if param_dict_raw[item] is not None:
             param_dict[item] = param_dict_raw[item]
     option = 'name=' + name + ' ' + ' '.join(['{0}={1}'.format(k, v) for k, v in param_dict.iteritems()])
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='pip',
-        module_args=option,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'pip'
+    runner_args.module_args = option
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -584,7 +604,6 @@ def pip_install_package(pip_install_arg, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: pip install package %s failed!" % name
@@ -598,21 +617,16 @@ def pip_install_package(pip_install_arg, host_post_info):
 def cron(name, arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting set cron task %s ... " % arg, host_post_info, "INFO")
     args = 'name=%s %s' % (name,arg)
-
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='cron',
-        module_args=args,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'cron'
+    runner_args.module_args = args
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -620,12 +634,10 @@ def cron(name, arg, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: set cron task %s failed!" % arg
             handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
         else:
             details = "SUCC: set cron task %s " % arg
             handle_ansible_info(details, host_post_info, "INFO")
@@ -635,8 +647,6 @@ def cron(name, arg, host_post_info):
 def copy(copy_arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     src = copy_arg.src
     dest = copy_arg.dest
     args = copy_arg.args
@@ -647,15 +657,12 @@ def copy(copy_arg, host_post_info):
         copy_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
         copy_args = 'src=' + src + ' dest=' + dest
-
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='copy',
-        module_args=copy_args,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'copy'
+    runner_args.module_args = copy_args
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -663,12 +670,10 @@ def copy(copy_arg, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: copy %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
         else:
             change_status = "changed:" + str(result['contacted'][host]['changed'])
             details = "SUCC: copy %s to %s, the change status is %s" % (src, dest, change_status)
@@ -679,8 +684,6 @@ def copy(copy_arg, host_post_info):
 def fetch(fetch_arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     src = fetch_arg.src
     dest = fetch_arg.dest
     args = fetch_arg.args
@@ -691,15 +694,12 @@ def fetch(fetch_arg, host_post_info):
         fetch_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
         fetch_args = 'src=' + src + ' dest=' + dest
-
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='fetch',
-        module_args=fetch_args,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'fetch'
+    runner_args.module_args = fetch_args
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -722,7 +722,7 @@ def fetch(fetch_arg, host_post_info):
 
 
 @retry(times=3, sleep_time=3)
-def run_remote_command(command, host_post_info):
+def run_remote_command(command, host_post_info, return_status=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     private_key = host_post_info.private_key
@@ -730,14 +730,13 @@ def run_remote_command(command, host_post_info):
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args=command,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'shell'
+    runner_args.module_args = command
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
+    print result
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -757,69 +756,29 @@ def run_remote_command(command, host_post_info):
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
-                description = "ERROR: command %s failed!" % command
-                handle_ansible_failed(description, result, host_post_info)
-                sys.exit(1)
-
-
-@retry(times=3, sleep_time=3)
-def check_command_status(command, host_post_info):
-    start_time = datetime.now()
-    host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
-    host = host_post_info.host
-    post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args=command,
-        pattern=host
-    )
-    result = runner.run()
-    logger.debug(result)
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-        sys.exit(1)
-    else:
-        if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
-            raise Exception(result)
-        else:
-            status = result['contacted'][host]['rc']
-            if status == 0:
-                details = "SUCC shell command: '%s' return 0 " % command
-                handle_ansible_info(details, host_post_info, "INFO")
-                return True
-            else:
-                details = "INFO: shell command %s failed " % command
-                handle_ansible_info(details, host_post_info, "WARNING")
-                return False
+                if return_status is False:
+                    description = "ERROR: command %s failed!" % command
+                    handle_ansible_failed(description, result, host_post_info)
+                    sys.exit(1)
+                else:
+                    details = "ERROR: shell command %s failed " % command
+                    handle_ansible_info(details, host_post_info, "WARNING")
+                    return False
 
 
 @retry(times=3, sleep_time=3)
 def check_pip_version(version, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Check pip version %s exist ..." % version, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args="pip --version | grep %s" % version,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'shell'
+    runner_args.module_args = "pip --version | grep %s" % version
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -827,7 +786,6 @@ def check_pip_version(version, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'rc' not in result['contacted'][host]:
             logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
@@ -848,19 +806,15 @@ def check_pip_version(version, host_post_info):
 def file_dir_exist(name, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting check file or dir exist %s ... " % name, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='stat',
-        module_args=name,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'stat'
+    runner_args.module_args = name
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -868,7 +822,6 @@ def file_dir_exist(name, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'stat' not in result['contacted'][host]:
             logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
@@ -889,20 +842,16 @@ def file_operation(file, args, host_post_info):
     ''''This function will change file attribute'''
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting change file %s ... " % file, host_post_info, "INFO")
     args = "path=%s " % file + args
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='file',
-        module_args=args,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'file'
+    runner_args.module_args = args
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -910,7 +859,6 @@ def file_operation(file, args, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
             details = "INFO: %s not be changed" % file
@@ -925,19 +873,15 @@ def file_operation(file, args, host_post_info):
 def get_remote_host_info(host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting get remote host %s info ... " % host, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='setup',
-        module_args='filter=ansible_distribution*',
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'setup'
+    runner_args.module_args = 'filter=ansible_distribution*'
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -945,30 +889,30 @@ def get_remote_host_info(host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
-        (distro, version) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
-                             int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version'])]
-        handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
-        return (distro, version)
+        if 'ansible_facts' in result['contacted'][host]:
+            (distro, version, release) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
+                                 int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
+                                 result['contacted'][host]['ansible_facts']['ansible_distribution_release']]
+            handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
+            return (distro, version, release)
+        else:
+            description = "ERROR: get_remote_host_info on host %s failed!" % host
+            handle_ansible_failed(description, result, host_post_info)
 
 
 def set_ini_file(file, section, option, value, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting update file %s section %s ... " % (file, section), host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='ini_file',
-        module_args='dest=' + file + ' section=' + section + ' option=' + option + " value=" + value,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'ini_file'
+    runner_args.module_args = 'dest=' + file + ' section=' + section + ' option=' + option + " value=" + value
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -976,7 +920,6 @@ def set_ini_file(file, section, option, value, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         details = "SUCC: Update file: %s option: %s value %s" % (file, option, value)
         handle_ansible_info(details, host_post_info, "INFO")
@@ -987,19 +930,15 @@ def set_ini_file(file, section, option, value, host_post_info):
 def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting install virtualenv-%s ... " % version, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args='virtualenv --version | grep %s' % version,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'shell'
+    runner_args.module_args ='virtualenv --version | grep %s' % version
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -1007,7 +946,6 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'rc' not in result['contacted'][host]:
             logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
@@ -1030,21 +968,17 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
 def service_status(name, args, host_post_info, ignore_error=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Changing %s service status to %s " % (name, args), host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='service',
-        module_args="name=%s " % name + args,
-        pattern=host
-    )
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'service'
+    runner_args.module_args ="name=%s " % name + args
+    zstack_runner = ZstackRunner(runner_args)
     if ignore_error is True:
         try:
-            result = runner.run()
+            result = zstack_runner.run()
             logger.debug(result)
             if result['contacted'] == {}:
                 ansible_start = AnsibleStartResult()
@@ -1062,7 +996,7 @@ def service_status(name, args, host_post_info, ignore_error=False):
         except:
             logger.debug("WARNING: The service %s status changed failed" % name)
     else:
-        result = runner.run()
+        result = zstack_runner.run()
         logger.debug(result)
         if result['contacted'] == {}:
             ansible_start = AnsibleStartResult()
@@ -1070,12 +1004,10 @@ def service_status(name, args, host_post_info, ignore_error=False):
             ansible_start.post_url = post_url
             ansible_start.result = result
             handle_ansible_start(ansible_start)
-            sys.exit(1)
         else:
             if 'failed' in result['contacted'][host]:
                 description = "ERROR: change service status failed!"
                 handle_ansible_failed(description, result, host_post_info)
-                sys.exit(1)
             else:
                 details = "SUCC: Service status changed"
                 handle_ansible_info(details, host_post_info, "INFO")
@@ -1084,27 +1016,17 @@ def service_status(name, args, host_post_info, ignore_error=False):
 
 def update_file(dest, args, host_post_info):
     '''Use this function to change the file content'''
-
-
-
-
-def update_file(dest, args, host_post_info):
-    '''Use this function to change the file content'''
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Updating file %s" % dest, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='lineinfile',
-        module_args="dest=%s %s" % (dest, args),
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'lineinfile'
+    runner_args.module_args = "dest=%s %s" % (dest, args)
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -1112,49 +1034,12 @@ def update_file(dest, args, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: Update file %s failed" % dest
             handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
         else:
             details = "SUCC: Update file %s" % dest
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
-
-
-def change_iptables(args, host_post_info):
-    start_time = datetime.now()
-    host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
-    host = host_post_info.host
-    post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Changing iptables", host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='iptables',
-        module_args=args,
-        pattern=host
-    )
-    result = runner.run()
-    logger.debug(result)
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-        sys.exit(1)
-    else:
-        if 'failed' in result['contacted'][host]:
-            description = "ERROR: change iptables: %s failed" % args
-            handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
-        else:
-            details = "SUCC: change iptables with %s" % args
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -1162,19 +1047,15 @@ def change_iptables(args, host_post_info):
 def set_selinux(args, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Set selinux status to %s" % args, host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='selinux',
-        module_args=args,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'selinux'
+    runner_args.module_args = args
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -1182,12 +1063,10 @@ def set_selinux(args, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: set selinux to %s failed" % args
             handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
         else:
             details = "SUCC: Reset selinux to %s" % args
             handle_ansible_info(details, host_post_info, "INFO")
@@ -1198,21 +1077,16 @@ def authorized_key(user, key_path, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     if not os.path.exists(key_path):
-        logger.info("key_path %s is not exist!" % key_path)
-        sys.exit(1)
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
+        error("key_path %s is not exist!" % key_path)
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Updating key %s to host %s" % (key_path, host), host_post_info, "INFO")
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='shell',
-        module_args="cat %s" % key_path,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'shell'
+    runner_args.module_args = "cat %s" % key_path
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -1220,24 +1094,20 @@ def authorized_key(user, key_path, host_post_info):
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         key = result['contacted'][host]['stdout']
         key = '\'' + key + '\''
         args = "user=%s key=%s" % (user, key)
-        runner = ansible.runner.Runner(
-            host_list=host_inventory,
-            private_key_file=private_key,
-            module_name='authorized_key',
-            module_args= args,
-            pattern=host
-        )
-        result = runner.run()
+        runner_args = ZstackRunnerArg()
+        runner_args.host_post_info = host_post_info
+        runner_args.module_name ='authorized_key'
+        runner_args.module_args = args
+        zstack_runner = ZstackRunner(runner_args)
+        result = zstack_runner.run()
         logger.debug(result)
         if 'failed' in result['contacted'][host]:
             description = "ERROR: Authorized on remote host %s failed!" % host
             handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
         else:
             details = "SUCC: update public key to host %s" % host
             handle_ansible_info(details, host_post_info, "INFO")
@@ -1247,8 +1117,6 @@ def authorized_key(user, key_path, host_post_info):
 def unarchive(unarchive_arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     src = unarchive_arg.src
     dest = unarchive_arg.dest
     args = unarchive_arg.args
@@ -1259,28 +1127,24 @@ def unarchive(unarchive_arg, host_post_info):
         unarchive_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
         unarchive_args = 'src=' + src + ' dest=' + dest
-
-    runner = ansible.runner.Runner(
-        host_list=host_inventory,
-        private_key_file=private_key,
-        module_name='unarchive',
-        module_args=unarchive_args,
-        pattern=host
-    )
-    result = runner.run()
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'unarchive'
+    runner_args.module_args = unarchive_args
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
     logger.debug(result)
+    result = zstack_runner.run()
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
         ansible_start.post_url = post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-        sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: unarchive %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
-            sys.exit(1)
         else:
             details = "SUCC: unarchive %s to %s" % (src, dest)
             handle_ansible_info(details, host_post_info, "INFO")
@@ -1290,15 +1154,17 @@ def unarchive(unarchive_arg, host_post_info):
 class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
-        yum_repo = args.yum_repo
+        distro_release = args.distro_release
+        zstack_repo = args.zstack_repo
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
         trusted_host = args.trusted_host
         pip_url = args.pip_url
         pip_version = "7.0.3"
-        epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
+        yum_server = args.yum_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
         if distro == "CentOS" or distro == "RedHat":
+            epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
             run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
             # set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
@@ -1332,8 +1198,8 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
         """
             run_remote_command(command, host_post_info)
 
-            if yum_repo == "false":
-                # yum_repo defined by user
+            if zstack_repo == "false":
+                # zstack_repo defined by user
                 yum_install_package("libselinux-python", host_post_info)
                 if epel_repo_exist is False:
                     copy_arg = CopyArg()
@@ -1346,8 +1212,9 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                 for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                     yum_install_package(pkg, host_post_info)
             else:
-                # set 163 mirror yum repo
-                command = """
+                if '163' in zstack_repo:
+                    # set 163 mirror yum repo
+                    command = """
 echo -e "#163 base
 [163base]
 name=CentOS-\$releasever - Base - mirrors.163.com
@@ -1376,31 +1243,98 @@ failovermethod=priority
 enabled=0
 gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
         """
-                run_remote_command(command, host_post_info)
+                    run_remote_command(command, host_post_info)
+                if 'zstack-mn' in zstack_repo:
+                    generate_mn_repo_raw_command = """
+echo -e "[zstack-mn]
+name=zstack-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-dvd/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
+               """
+                    generate_mn_repo_template = jinja2.Template(generate_mn_repo_raw_command)
+                    generate_mn_repo_command = generate_mn_repo_template.render({
+                       'yum_server' : yum_server
+                    })
+                    run_remote_command(generate_mn_repo_command, host_post_info)
+                if 'qemu-kvm-ev-mn' in zstack_repo:
+                    generate_kvm_repo_raw_command = """
+echo -e "[qemu-kvm-ev-mn]
+name=qemu-kvm-ev-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-dvd/Extra/qemu-kvm-ev/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
+               """
+                    generate_kvm_repo_template = jinja2.Template(generate_kvm_repo_raw_command)
+                    generate_kvm_repo_command = generate_kvm_repo_template.render({
+                        'yum_server':yum_server
+                    })
+                    run_remote_command(generate_kvm_repo_command, host_post_info)
                 # install libselinux-python and other command system libs from user defined repos
                 # enable alibase repo for yum clean avoid no repo to be clean
                 command = (
                           "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                           "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                          "-y $pkg; done;") % yum_repo
+                          "-y $pkg; done;") % zstack_repo
                 run_remote_command(command, host_post_info)
 
             # enable ntp service for RedHat
             service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
         elif distro == "Debian" or distro == "Ubuntu":
+            command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
+                      % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            run_remote_command(command, host_post_info)
+            update_repo_raw_command = """
+cat > /etc/apt/sources.list << EOF
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+                """
+            if 'ali' in zstack_repo:
+                update_repo_command_template = jinja2.Template(update_repo_raw_command)
+                update_repo_command = update_repo_command_template.render({
+                    'zstack_repo' : 'aliyun',
+                    'DISTRIB_CODENAME' : distro_release
+                })
+                run_remote_command(update_repo_command, host_post_info)
+            if '163' in zstack_repo:
+                update_repo_command_template = jinja2.Template(update_repo_raw_command)
+                update_repo_command = update_repo_command_template.render({
+                    'zstack_repo' : '163',
+                    'DISTRIB_CODENAME' : distro_release
+                })
+                run_remote_command(update_repo_command, host_post_info)
+
             # install dependency packages for Debian based OS
-            apt_update_cache(86400, host_post_info)
-            for pkg in ["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
-                apt_install_packages(pkg, host_post_info)
+            service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
+            #apt_update_cache(86400, host_post_info)
+            install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]
+            all_pkg_exist = check_pkg_status(install_pkg_list, host_post_info)
+            if all_pkg_exist is False:
+                command = 'apt-get clean'
+                run_remote_command(command, host_post_info)
+                command = "apt-get update -o Acquire::http::No-Cache=True --fix-missing"
+                apt_update_status = run_remote_command(command, host_post_info, return_status=True)
+                if apt_update_status is False:
+                    error("apt-get update on host %s failed, please update the repo on the host manually and try again."
+                          % host_post_info.host )
+                for pkg in install_pkg_list:
+                    apt_install_packages(pkg, host_post_info)
 
             # name: enable ntp service for Debian
             run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
 
         else:
-            logger.info("ERROR: Unsupported distribution")
-            sys.exit(1)
+            error("ERROR: Unsupported distribution")
 
         # check the pip 7.0.3 exist in system to avoid site-packages enable potential issue
         pip_match = check_pip_version(pip_version, host_post_info)

@@ -29,7 +29,6 @@ import fcntl
 import commands
 import threading
 import itertools
-import datetime
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -810,7 +809,12 @@ class ShowStatusCmd(Command):
                 write_status('Unknown')
 
         def show_version():
-            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+            try:
+                db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+            except:
+                info_list.append('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                return 
+
             if db_password:
                 cmd = ShellCmd('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_password, db_hostname, db_port))
@@ -1230,6 +1234,9 @@ class StartCmd(Command):
                 '-Djava.security.egd=file:/dev/./urandom'
             ]
 
+            if ctl.extra_arguments:
+                catalina_opts.extend(ctl.extra_arguments)
+
             co = ctl.get_env('CATALINA_OPTS')
             if co:
                 info('use CATALINA_OPTS[%s] set in environment zstack environment variables; check out them by "zstack-ctl getenv"' % co)
@@ -1240,6 +1247,7 @@ class StartCmd(Command):
 
         def start_mgmt_node():
             shell('sudo -u zstack sh %s -DappName=zstack' % os.path.join(ctl.zstack_home, self.START_SCRIPT))
+
             info("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 
         def wait_mgmt_node_start():
@@ -1432,7 +1440,7 @@ class InstallDbCmd(Command):
 
     def run(self, args):
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.yum_repo')
+            args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
         yaml = '''---
 - hosts: $host
@@ -1471,8 +1479,8 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'Debian'
       apt: pkg={{item}} update_cache=yes
       with_items:
-        - mysql-client
-        - mysql-server
+        - mariadb-client
+        - mariadb-server
       register: install_result
 
     - name: open 3306 port
@@ -1541,7 +1549,7 @@ class InstallDbCmd(Command):
             change_root_password_cmd = '/usr/bin/mysqladmin -u root password {{root_password}}'
 
         pre_install_script = '''
-echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
 
 echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
 
@@ -1577,32 +1585,27 @@ exit 1
         self.install_cleanup_routine(cleanup_pre_install_script)
 
         post_install_script = '''
-if [ -f /etc/mysql/my.cnf ]; then
-    # Ubuntu
-    sed -i 's/^bind-address/#bind-address/' /etc/mysql/my.cnf
-    sed -i 's/^skip-networking/#skip-networking/' /etc/mysql/my.cnf
-    grep '^character-set-server' /etc/mysql/my.cnf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/mysql/my.cnf
-    fi
-    grep '^skip-name-resolve' /etc/mysql/my.cnf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/mysql/my.cnf
-    fi
+if [ -f /etc/mysql/mariadb.conf.d/50-server.cnf ]; then
+    #ubuntu 16.04
+    mysql_conf=/etc/mysql/mariadb.conf.d/50-server.cnf
+elif [ -f /etc/mysql/my.cnf ]; then
+    # Ubuntu 14.04
+    mysql_conf=/etc/mysql/my.cnf
+elif [ -f /etc/my.cnf ]; then
+    # centos
+    mysql_conf=/etc/my.cnf
 fi
-
-if [ -f /etc/my.cnf ]; then
-    # CentOS
-    sed -i 's/^bind-address/#bind-address/' /etc/my.cnf
-    sed -i 's/^skip-networking/#skip-networking/' /etc/my.cnf
-    grep '^character-set-server' /etc/my.cnf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a character-set-server=utf8\' /etc/my.cnf
-    fi
-    grep '^skip-name-resolve' /etc/my.cnf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a skip-name-resolve\' /etc/my.cnf
-    fi
+    
+sed -i 's/^bind-address/#bind-address/' $mysql_conf
+sed -i 's/^skip-networking/#skip-networking/' $mysql_conf
+sed -i 's/^bind-address/#bind-address/' $mysql_conf
+grep '^character-set-server' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    sed -i '/\[mysqld\]/a character-set-server=utf8\' $mysql_conf
+fi
+grep '^skip-name-resolve' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    sed -i '/\[mysqld\]/a skip-name-resolve\' $mysql_conf
 fi
 '''
         fd, post_install_script_path = tempfile.mkstemp()
@@ -1815,7 +1818,7 @@ class InstallHACmd(Command):
 
 
         #init variables
-        self.yum_repo = ctl.read_property('Ansible.var.yum_repo')
+        self.yum_repo = ctl.read_property('Ansible.var.zstack_repo')
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
@@ -2847,7 +2850,7 @@ wsrep_sst_method=rsync
             service_status("mysql","state=started enabled=yes", self.host3_post_info)
         service_status("mysql","state=restarted enabled=yes", self.host1_post_info)
 
-        self.init_install = check_command_status("mysql -u root --password='' -e 'exit' ", self.host1_post_info)
+        self.init_install = run_remote_command("mysql -u root --password='' -e 'exit' ", self.host1_post_info, return_status=True)
         if self.init_install is True:
             #self.command = "mysql -u root --password='' -Bse \"show status like 'wsrep_%%';\""
             #galera_status = run_remote_command(self.command, self.host2_post_info)
@@ -3149,7 +3152,7 @@ class InstallRabbitCmd(Command):
             raise CtlError('--rabbit-username and --rabbit-password must be both set or not set')
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.yum_repo')
+            args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
         yaml = '''---
 - hosts: $host
@@ -3194,7 +3197,7 @@ class InstallRabbitCmd(Command):
 '''
 
         pre_script = '''
-echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
 
 echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
 
@@ -3230,10 +3233,14 @@ exit 1
         self.install_cleanup_routine(cleanup_prescript)
 
         if args.rabbit_username and args.rabbit_password:
-            post_script = '''set -e
-rabbitmqctl add_user $username $password
-rabbitmqctl set_user_tags $username administrator
-rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
+            post_script = '''set -x
+rabbitmqctl list_users|grep 'zstack'
+if [ $$? -ne 0 ]; then
+    set -e
+    rabbitmqctl add_user $username $password
+    rabbitmqctl set_user_tags $username administrator
+    rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
+fi
 '''
             t = string.Template(post_script)
             post_script = t.substitute({
@@ -3438,6 +3445,7 @@ class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack"
     host_log_list = ['zstack-sftpbackupstorage.log','zstack.log','zstack-kvmagent.log','ceph-backupstorage.log',
                      'ceph-primarystorage.log', 'zstack-iscsi-filesystem-agent.log']
+    # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log']
 
@@ -3504,7 +3512,7 @@ class CollectLogCmd(Command):
 
     def run(self, args):
         run_command_dir = os.getcwd()
-        collect_dir = run_command_dir + "/" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        collect_dir = run_command_dir + "/" + datetime.now().strftime("%Y-%m-%d_%H-%M")
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
         host_vo = self.get_host_list()
@@ -4065,7 +4073,7 @@ class InstallManagementNodeCmd(Command):
             raise CtlError('%s is not an directory' % args.source_dir)
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.yum_repo')
+            args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
         apache_tomcat = None
         zstack = None
@@ -4116,11 +4124,22 @@ class InstallManagementNodeCmd(Command):
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
 
-    - name: install dependencies Debian OS
-      when: ansible_os_family == 'Debian'
+    - name: install openjdk on Ubuntu 14.04
+      when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
       apt: pkg={{item}} update_cache=yes
       with_items:
         - openjdk-7-jdk
+
+    - name: install openjdk on Ubuntu 16.04
+      when: ansible_os_family == 'Debian' and ansible_distribution_version == '16.04'
+      apt: pkg={{item}} update_cache=yes
+      with_items:
+        - openjdk-8-jdk
+
+    - name: install dependencies Debian OS 
+      when: ansible_os_family == 'Debian'
+      apt: pkg={{item}} update_cache=yes
+      with_items:
         - wget
         - python-dev
         - gcc
@@ -4195,7 +4214,7 @@ class InstallManagementNodeCmd(Command):
         pre_script = '''
 [ -f /etc/yum.repos.d/epel.repo ] || echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 
-echo -e "#aliyun base\n[alibase]\nname=CentOS-\$$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
 
 echo -e "#163 base\n[163base]\nname=CentOS-\$$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
 
@@ -4444,22 +4463,26 @@ class InstallWebUiCmd(Command):
         parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
         parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
+        parser.add_argument('--force', help="delete existing virtualenv and resinstall zstack ui and all dependencies", action="store_true", default=False)
 
-    def _install_to_local(self):
+    def _install_to_local(self, args):
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
         if not os.path.isfile(install_script):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
 
         info('found installation script at %s, start installing ZStack web UI' % install_script)
-        shell('bash %s zstack-dashboard' % install_script)
+        if args.force:
+            shell('bash %s zstack-dashboard force' % install_script)
+        else:
+            shell('bash %s zstack-dashboard' % install_script)
 
     def run(self, args):
         if not args.host:
-            self._install_to_local()
+            self._install_to_local(args)
             return
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.yum_repo')
+            args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
         tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
         if not os.path.isdir(tools_path):
@@ -4538,7 +4561,7 @@ class InstallWebUiCmd(Command):
 '''
 
         pre_script = '''
-echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
 
 echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
 '''
@@ -4787,7 +4810,8 @@ class UpgradeDbCmd(Command):
         error_if_tool_is_missing('mysql')
 
         db_url = ctl.get_db_url()
-        db_url = db_url.replace('{database}', 'zstack')
+        db_url_params = db_url.split('//')
+        db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
         if 'zstack' not in db_url:
             db_url = '%s/zstack' % db_url.rstrip('/')
 

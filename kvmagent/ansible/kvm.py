@@ -11,11 +11,14 @@ proxy = ""
 sproxy = ""
 chroot_env = 'false'
 init = 'false'
-yum_repo = 'false'
+zstack_repo = 'false'
 post_url = ""
 pkg_kvmagent = ""
 libvirtd_status = ""
 virtualenv_version = "12.1.1"
+remote_user = "root"
+remote_pass = None
+remote_port = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
@@ -34,7 +37,6 @@ iproute_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % file_root
 iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
 dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
 dnsmasq_local_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % kvm_root
-
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
@@ -44,13 +46,19 @@ host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
 host_post_info.private_key = args.private_key
+host_post_info.remote_user = remote_user
+host_post_info.remote_pass = remote_pass
+host_post_info.remote_port = remote_port
+if remote_pass is not None:
+    host_post_info.become = True
 
 # include zstacklib.py
-(distro, distro_version) = get_remote_host_info(host_post_info)
+(distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
 zstacklib_args.distro_version = distro_version
-zstacklib_args.yum_repo = yum_repo
+zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
@@ -68,19 +76,19 @@ else:
     run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
-    # handle yum_repo
-    if yum_repo != 'false':
+    # handle zstack_repo
+    if zstack_repo != 'false':
         # name: install kvm related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q openssh-clients qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils "
-                   "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass "
+                   "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
                    "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % yum_repo
+                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
             command = ("pkg_list=`rpm -q iptables-services | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
                        "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
-                       "--nogpgcheck install -y $pkg; done;") % yum_repo
+                       "--nogpgcheck install -y $pkg; done;") % zstack_repo
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
@@ -150,7 +158,7 @@ if distro == "RedHat" or distro == "CentOS":
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install kvm related packages on Debian based OS
     for pkg in ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin',
-                'vlan', 'nfs-common', 'open-iscsi', 'lighttpd', 'dnsmasq', 'sshpass', 'rsync']:
+                'vlan', 'nfs-common', 'open-iscsi', 'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap']:
         apt_install_packages(pkg, host_post_info)
     # name: copy default libvirtd conf in Debian
     copy_arg = CopyArg()
