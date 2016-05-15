@@ -102,8 +102,8 @@ if distro == "RedHat" or distro == "CentOS":
 
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install isci related packages on Debian based OS
-    for pkg in ['iscsitarget', 'iscsitarget-dkms', 'tgt', 'wget', 'qemu-utils']:
-        apt_install_packages(pkg, host_post_info)
+    install_pkg_list = ['iscsitarget', 'iscsitarget-dkms', 'tgt', 'wget', 'qemu-utils']
+    apt_install_packages(install_pkg_list, host_post_info)
     # name: enable tgtd daemon on Debian
     service_status("iscsitarget", "state=started enabled=yes", host_post_info)
 

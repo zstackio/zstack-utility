@@ -131,8 +131,8 @@ if distro == "RedHat" or distro == "CentOS":
         service_status("zstack-appliancevm", "enabled=yes state=stopped", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    for pkg in ['iputils-arping', 'tcpdump', 'ethtool']:
-        apt_install_packages("openssh-client", host_post_info)
+    install_pkg_list = ['iputils-arping', 'tcpdump', 'ethtool']
+    apt_install_packages(install_pkg_list, host_post_info)
     # name: copy iptables initial rules in Debian
     copy_arg = CopyArg()
     copy_arg.src = "%s/iptables" % file_root

@@ -82,7 +82,7 @@ if distro == "RedHat" or distro == "CentOS":
         yum_install_package("openssh-clients", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    apt_install_packages("openssh-client", host_post_info)
+    apt_install_packages(["openssh-client"], host_post_info)
 
 else:
     print "unsupported OS!"

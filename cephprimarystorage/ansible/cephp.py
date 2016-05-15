@@ -90,8 +90,8 @@ if distro == "RedHat" or distro == "CentOS":
     set_selinux("state=permissive policy=targeted", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    for pkg in ["wget", "qemu-utils"]:
-        apt_install_packages(pkg, host_post_info)
+    install_pkg_list = ["wget", "qemu-utils"]
+    apt_install_packages(install_pkg_list, host_post_info)
 else:
     print "unsupported OS!"
     sys.exit(1)

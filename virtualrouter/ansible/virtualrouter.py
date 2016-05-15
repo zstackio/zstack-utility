@@ -82,7 +82,7 @@ if distro == "RedHat" or distro == "CentOS":
             yum_install_package(pkg, host_post_info)
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install virtual router related packages for Debian
-    apt_install_packages("dnsmasq", host_post_info)
+    apt_install_packages(["dnsmasq"], host_post_info)
 else:
     print "unsupported OS!"
     sys.exit(1)

@@ -534,36 +534,47 @@ def check_pkg_status(name_list, host_post_info):
                     return False
 
 
-def apt_install_packages(name, host_post_info):
-    start_time = datetime.now()
-    host_post_info.start_time = start_time
-    host = host_post_info.host
-    post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting apt install package %s ... " % name, host_post_info, "INFO")
-    runner_args = ZstackRunnerArg()
-    runner_args.host_post_info = host_post_info
-    runner_args.module_name = 'apt'
-    runner_args.module_args = 'name=' + name + ' state=present'
-    zstack_runner = ZstackRunner(runner_args)
-    result = zstack_runner.run()
-    logger.debug(result)
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-    else:
-        if 'failed' in result['contacted'][host]:
-            description = "ERROR: Apt install %s failed!" % name
-            handle_ansible_failed(description, result, host_post_info)
-        elif 'changed' in result['contacted'][host]:
-            details = "SUCC: apt install package %s " % name
-            handle_ansible_info(details, host_post_info, "INFO")
-            return True
+def apt_install_packages(name_list, host_post_info):
+    def _apt_install_package(name, host_post_info):
+        start_time = datetime.now()
+        host_post_info.start_time = start_time
+        host = host_post_info.host
+        post_url = host_post_info.post_url
+        handle_ansible_info("INFO: Starting apt install package %s ... " % name, host_post_info, "INFO")
+        runner_args = ZstackRunnerArg()
+        runner_args.host_post_info = host_post_info
+        runner_args.module_name = 'apt'
+        runner_args.module_args = 'name=' + name + ' state=present'
+        zstack_runner = ZstackRunner(runner_args)
+        result = zstack_runner.run()
+        logger.debug(result)
+        if result['contacted'] == {}:
+            ansible_start = AnsibleStartResult()
+            ansible_start.host = host
+            ansible_start.post_url = post_url
+            ansible_start.result = result
+            handle_ansible_start(ansible_start)
         else:
-            description = "ERROR: Apt install %s meet unknown issue: %s" % (name, result)
-            handle_ansible_failed(description, result, host_post_info)
+            if 'failed' in result['contacted'][host]:
+                description = "ERROR: Apt install %s failed!" % name
+                handle_ansible_failed(description, result, host_post_info)
+            elif 'changed' in result['contacted'][host]:
+                details = "SUCC: apt install package %s " % name
+                handle_ansible_info(details, host_post_info, "INFO")
+                return True
+            else:
+                description = "ERROR: Apt install %s meet unknown issue: %s" % (name, result)
+                handle_ansible_failed(description, result, host_post_info)
+    all_pkg_exist = check_pkg_status(name_list, host_post_info)
+    if all_pkg_exist is False:
+        command = "apt-get clean && apt-get update -o Acquire::http::No-Cache=True --fix-missing"
+        apt_update_status = run_remote_command(command, host_post_info, return_status=True)
+        if apt_update_status is False:
+            error("apt-get update on host %s failed, please update the repo on the host manually and try again."
+                  % host_post_info.host )
+        for pkg in name_list:
+            _apt_install_package(pkg, host_post_info)
+
 
 
 
@@ -1318,17 +1329,7 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
             install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]
-            all_pkg_exist = check_pkg_status(install_pkg_list, host_post_info)
-            if all_pkg_exist is False:
-                command = 'apt-get clean'
-                run_remote_command(command, host_post_info)
-                command = "apt-get update -o Acquire::http::No-Cache=True --fix-missing"
-                apt_update_status = run_remote_command(command, host_post_info, return_status=True)
-                if apt_update_status is False:
-                    error("apt-get update on host %s failed, please update the repo on the host manually and try again."
-                          % host_post_info.host )
-                for pkg in install_pkg_list:
-                    apt_install_packages(pkg, host_post_info)
+            apt_install_packages(install_pkg_list, host_post_info)
 
             # name: enable ntp service for Debian
             run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
