@@ -72,8 +72,8 @@ ZSTACK_YUM_REPOS=''
 ZSTACK_LOCAL_YUM_REPOS='zstack-local'
 ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn'
 ZSTACK_MN_UPGRADE_REPOS='zstack-mn'
-MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel'
-MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel'
+MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel,163-qemu-ev'
+MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel,ali-qemu-ev'
 #used for zstack.properties Ansible.var.zstack_repo
 ZSTACK_PROPERTIES_REPO=''
 ZSTACK_OFFLINE_INSTALL='n'
@@ -1761,6 +1761,16 @@ get_zstack_repo(){
         if [ $? -eq 0 ]; then
             ZSTACK_YUM_REPOS='zstack-local'
             ZSTACK_OFFLINE_INSTALL='y'
+        fi
+        echo $ZSTACK_YUM_REPOS |grep "ali" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            ZSTACK_YUM_REPOS=$MIRROR_ALI_YUM_REPOS
+            ZSTACK_PROPERTIES_REPO=MIRROR_ALI_YUM_REPOS
+        fi
+        echo $ZSTACK_YUM_REPOS |grep "163" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
+            ZSTACK_PROPERTIES_REPO=MIRROR_163_YUM_REPOS
         fi
         YUM_ONLINE_REPO=''
     fi

@@ -1220,7 +1220,12 @@ name=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.ali
 baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
 failovermethod=priority
 enabled=0
-gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+gpgcheck=0
+[ali-qemu-ev]
+name=CentOS-$releasever - QEMU EV
+baseurl=http://mirrors.aliyun.com/centos/$releasever/virt/$basearch/kvm-common/
+gpgcheck=0
+enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
         """
             run_remote_command(command, host_post_info)
 
@@ -1235,7 +1240,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     # install epel-release
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "centos-release-qemu-ev"]:
                     yum_install_package(pkg, host_post_info)
             else:
                 if '163' in zstack_repo:
@@ -1267,7 +1272,12 @@ name=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc
 baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
 failovermethod=priority
 enabled=0
-gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
+gpgcheck=0
+[163-qemu-ev]
+name=CentOS-$releasever - QEMU EV
+baseurl=http://mirrors.163.com/centos/$releasever/virt/$basearch/kvm-common/
+gpgcheck=0
+enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
         """
                     run_remote_command(command, host_post_info)
                 if 'zstack-mn' in zstack_repo:
