@@ -731,13 +731,29 @@ def fetch(fetch_arg, host_post_info):
             # pass the fetch result to outside
             return change_status
 
+def check_host_reachable(host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    host = host_post_info.host
+    handle_ansible_info("INFO: Starting check host %s is reachable ..." % host, host_post_info, "INFO")
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'ping'
+    runner_args.module_args = ''
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        return False
+    elif result['contacted'][host]['ping'] == 'pong':
+        return True
+    else:
+        error("Unknown error when check host %s is reachable" % host)
 
 @retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info, return_status=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
@@ -747,7 +763,6 @@ def run_remote_command(command, host_post_info, return_status=False):
     runner_args.module_args = command
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
-    print result
     logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
@@ -1357,5 +1372,6 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
 def main():
     # Reserve for test api
     pass
+
 if __name__ == "__main__":
     main()
