@@ -1914,7 +1914,7 @@ class InstallHACmd(Command):
             self.local_map['mysql_connect_timeout'] = 2000
             self.local_map['mysql_socket_timeout'] = 2000
 
-        self.add_public_key_command = ' if [ ! -d ~/.ssh ]; then mkdir -p ~/.ssh; chmod 700 ~/.ssh; fi && if [ ! -f ~/.ssh/authorized_keys ]; ' \
+        self.add_public_key_command = 'if [ ! -d ~/.ssh ]; then mkdir -p ~/.ssh; chmod 700 ~/.ssh; fi && if [ ! -f ~/.ssh/authorized_keys ]; ' \
                                       'then touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; fi && pub_key="%s";grep ' \
                                       '"%s" ~/.ssh/authorized_keys > /dev/null; if [ $? -eq 1 ]; ' \
                                       'then echo "%s" >> ~/.ssh/authorized_keys; fi  && exit 0;'\
@@ -3496,23 +3496,26 @@ class CollectLogCmd(Command):
         return host_vo
 
     def get_host_log(self, host_post_info, collect_dir):
-        info("Collecting log from host: %s ..." % host_post_info.host)
-        tmp_collect_log_dir = "%s/tmp-collect-log/" % CollectLogCmd.zstack_log_dir
-        command = "mkdir -p %s " % tmp_collect_log_dir
-        run_remote_command(command, host_post_info)
-        for log in CollectLogCmd.host_log_list:
-            command = "tail -n 10000 %s/%s > %s/%s-collect 2>&1 || true" \
-                      % (CollectLogCmd.zstack_log_dir, log, tmp_collect_log_dir, log)
+        if check_host_reachable(host_post_info) is True:
+            info("Collecting log from host: %s ..." % host_post_info.host)
+            collect_log_dir = "%s/collect-log/" % CollectLogCmd.zstack_log_dir
+            command = "mkdir -p %s " % collect_log_dir
             run_remote_command(command, host_post_info)
-        command = "tar zcf %s/collect-log.tar.gz %s" % (CollectLogCmd.zstack_log_dir, tmp_collect_log_dir)
-        run_remote_command(command, host_post_info)
-        fetch_arg = FetchArg()
-        fetch_arg.src =  "%s/collect-log.tar.gz " % CollectLogCmd.zstack_log_dir
-        fetch_arg.dest = "%s/%s/" % (collect_dir, host_post_info.host)
-        fetch_arg.args = "fail_on_missing=yes flat=yes"
-        fetch(fetch_arg, host_post_info)
-        command = "rm -rf %s %s/collect-log.tar.gz " % (tmp_collect_log_dir, CollectLogCmd.zstack_log_dir)
-        run_remote_command(command, host_post_info)
+            for log in CollectLogCmd.host_log_list:
+                command = "if [ -f %s/%s ]; then tail -n 10000 %s/%s > %s/%s-collect 2>&1; fi || true" \
+                          % (CollectLogCmd.zstack_log_dir, log, CollectLogCmd.zstack_log_dir, log, collect_log_dir, log)
+                run_remote_command(command, host_post_info)
+            command = "cd %s && tar zcf collect-log.tar.gz collect-log" % (CollectLogCmd.zstack_log_dir)
+            run_remote_command(command, host_post_info)
+            fetch_arg = FetchArg()
+            fetch_arg.src =  "%s/collect-log.tar.gz " % CollectLogCmd.zstack_log_dir
+            fetch_arg.dest = "%s/%s/" % (collect_dir, host_post_info.host)
+            fetch_arg.args = "fail_on_missing=yes flat=yes"
+            fetch(fetch_arg, host_post_info)
+            command = "rm -rf %s %s/collect-log.tar.gz " % (collect_log_dir, CollectLogCmd.zstack_log_dir)
+            run_remote_command(command, host_post_info)
+        else:
+            warn("Host %s is unreachable!" % host_post_info.host)
 
     def get_management_node_log(self, collect_dir):
         info("Collecting log from this management node ...")
@@ -3527,16 +3530,18 @@ class CollectLogCmd(Command):
             (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
                                                         % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
 
-    def generate_tar_ball(self, collect_dir):
-        (status, output) = commands.getstatusoutput("tar zcf collect-log.tar.gz %s" % collect_dir)
+    def generate_tar_ball(self, collect_dir, time_stamp):
+        (status, output) = commands.getstatusoutput("tar zcf collect-log-%s.tar.gz %s" % (time_stamp, collect_dir))
         if status != 0:
             error("Generate tarball failed: %s " % output)
 
     def run(self, args):
         run_command_dir = os.getcwd()
-        collect_dir = run_command_dir + "/" + datetime.now().strftime("%Y-%m-%d_%H-%M")
+        time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
+        collect_dir = run_command_dir + "/" + 'collect-log-' + time_stamp
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
+        self.get_management_node_log(collect_dir)
         host_vo = self.get_host_list()
         for host in host_vo:
             host_ip = host['managementIp']
@@ -3547,9 +3552,8 @@ class CollectLogCmd(Command):
             host_post_info.post_url = ""
             self.get_host_log(host_post_info, collect_dir)
 
-        self.get_management_node_log(collect_dir)
-        self.generate_tar_ball(collect_dir)
-        info("The collect log generate at: %s/collect-log.tar.gz" % run_command_dir)
+        self.generate_tar_ball(collect_dir, time_stamp)
+        info("The collect log generate at: %s/collect-log-%s.tar.gz" % (run_command_dir, time_stamp))
 
 
 class ChangeIpCmd(Command):
