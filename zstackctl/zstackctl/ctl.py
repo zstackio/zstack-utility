@@ -1032,13 +1032,22 @@ def get_management_node_pid():
     if not os.path.exists(pid_file_path):
         return None
 
+    def is_zstack_process(pid):
+        cmdline = os.path.join('/proc/%s/cmdline' % pid)
+        with open(cmdline, 'r') as fd:
+            content = fd.read()
+            return 'appName=zstack' in content
+
     with open(pid_file_path, 'r') as fd:
         pid = fd.read()
         try:
             pid = int(pid)
             proc_pid = '/proc/%s' % pid
             if os.path.exists(proc_pid):
-                return pid
+                if is_zstack_process(pid):
+                    return pid
+                else:
+                    return None
         except Exception:
             return None
 
