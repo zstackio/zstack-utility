@@ -80,9 +80,9 @@ def configure_log(log_path, level=logging.DEBUG, log_to_console=False):
 def get_logger(name, logfd=None):
     return LogConfig.get_log_config().get_logger(name, logfd)
 
-def cleanup_log(hostname, username, password):
+def cleanup_log(hostname, username, password, port = 22):
     import ssh
-    ssh.execute('''cd /var/log/zstack; tar --ignore-failed-read -zcf zstack-logs-`date +%y%m%d-%H%M%S`.tgz *.log.* *.log; find . -name "*.log"|while read file; do echo "" > $file; done''', hostname, username, password)
+    ssh.execute('''cd /var/log/zstack; tar --ignore-failed-read -zcf zstack-logs-`date +%y%m%d-%H%M%S`.tgz *.log.* *.log; find . -name "*.log"|while read file; do echo "" > $file; done''', hostname, username, password, port=port)
 
 def cleanup_local_log():
     import shell
