@@ -1451,6 +1451,10 @@ class InstallDbCmd(Command):
         if not args.yum:
             args.yum = ctl.read_property('Ansible.var.zstack_repo')
 
+        script = ShellCmd("ip addr |grep 'inet '|grep -v '127.0.0.1'|awk '{print $2}'|awk -F '/' '{print $1}'")
+        script(True)
+        current_host_ips = script.stdout.split('\n')
+
         yaml = '''---
 - hosts: $host
   remote_user: root
@@ -1545,12 +1549,21 @@ class InstallDbCmd(Command):
 
         if not args.root_password and not args.login_password:
             args.root_password = '''"''"'''
-            grant_access_cmd = '''/usr/bin/mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % args.host
-        elif not args.root_password:
-            args.root_password = args.login_password
-            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password)
+            more_cmd = ' '
+            for ip in current_host_ips:
+                if not ip:
+                    continue
+                more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION;"  % ip
+            grant_access_cmd = '''/usr/bin/mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; %s FLUSH PRIVILEGES;"''' % (args.host, more_cmd)
         else:
-            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password)
+            if not args.root_password:
+                args.root_password = args.login_password
+            more_cmd = ' '
+            for ip in current_host_ips:
+                if not ip:
+                    continue
+                more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;"  % (ip, args.root_password)
+            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; %s FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password, more_cmd)
 
         if args.login_password is not None:
             change_root_password_cmd = '/usr/bin/mysqladmin -u root -p{{login_password}} password {{root_password}}'
