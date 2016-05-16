@@ -1241,7 +1241,7 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     # install epel-release
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "centos-release-qemu-ev"]:
                     yum_install_package(pkg, host_post_info)
             else:
                 # generate repo defined in zstack_repo
