@@ -531,6 +531,7 @@ class IsoFusionstor(object):
         iqn = lichbd.lichbd_get_iqn() 
         port = lichbd.lichbd_get_iscsiport()
         lichbd.makesure_qemu_with_lichbd()
+        lichbd.makesure_qemu_img_with_lichbd()
         snap = self.iso.path.lstrip('fusionstor:').lstrip('//')
         path = self.iso.path.lstrip('fusionstor:').lstrip('//').split('@')[0]
 
@@ -562,6 +563,7 @@ class IdeFusionstor(object):
 
     def to_xmlobject(self):
         lichbd.makesure_qemu_with_lichbd()
+        lichbd.makesure_qemu_img_with_lichbd()
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         file_format = lichbd.lichbd_get_format(path)
 
@@ -578,6 +580,7 @@ class VirtioFusionstor(object):
 
     def to_xmlobject(self):
         lichbd.makesure_qemu_with_lichbd()
+        lichbd.makesure_qemu_img_with_lichbd()
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         file_format = lichbd.lichbd_get_format(path)
 
@@ -1233,8 +1236,7 @@ class Vm(object):
 
 
     def _get_back_file(self, volume):
-        qemu_img = lichbd.lichbd_get_qemu_img_path()
-        ret = shell.call('%s info %s' % (qemu_img, volume))
+        ret = shell.call('qemu-img info %s' % volume)
         for l in ret.split('\n'):
             l = l.strip(' \n\t\r')
             if l == '':

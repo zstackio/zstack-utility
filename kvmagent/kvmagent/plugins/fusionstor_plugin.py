@@ -30,6 +30,7 @@ class FusionstorPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def fusionstor_query(self, req):
         lichbd.makesure_qemu_with_lichbd()
+        lichbd.makesure_qemu_img_with_lichbd()
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     def start(self):

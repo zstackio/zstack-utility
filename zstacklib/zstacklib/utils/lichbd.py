@@ -75,6 +75,16 @@ def lichbd_mkpool(path):
         else:
             raise_exp(shellcmd)
 
+def lichbd_lspools():
+    shellcmd = call_try('lichbd lspools -p lichbd 2>/dev/null')
+    if shellcmd.return_code != 0:
+        if shellcmd.return_code == errno.EEXIST:
+            pass
+        else:
+            raise_exp(shellcmd)
+
+    return shellcmd.stdout
+
 def lichbd_rmpool(path):
     shellcmd = call_try('lichbd rmpool %s -p lichbd 2>/dev/null' % (path))
     if shellcmd.return_code != 0:
@@ -177,16 +187,23 @@ def lichbd_get_used():
             used = long(l.split("used:")[-1])
             return used
 
-    raise_exp("error: %s" % (0))
+    raise shell.ShellError('\n'.join('lichbd_get_used'))
 
 def lichbd_get_capacity():
-    o = lichbd_cluster_stat()
+    try:
+        o = lichbd_cluster_stat()
+    except Except, e:
+        raise shell.ShellError('\n'.join('lichbd_get_capacity'))
+
+    total = 0
+    used = 0
     for l in o.split("\n"):
         if 'capacity:' in l:
             total = long(l.split("capacity:")[-1])
-            return total
+        elif 'used:' in l:
+            used = long(l.split("used:")[-1])
 
-    raise_exp("error: %s" % (0))
+    return total, used
 
 def lichbd_snap_create(snap_path):
     shellcmd = call_try('lichbd snap create %s -p lichbd' % (snap_path))
@@ -276,6 +293,21 @@ def get_system_qemu_path():
 
     return _qemu_path
 
+def get_system_qemu_img_path():
+    _qemu_img_path = None
+    if not _qemu_img_path:
+        if os.path.exists('/usr/bin/qemu-img'):
+            _qemu_img_path = '/usr/bin/qemu-img'
+        elif os.path.exists('/bin/qemu-img'):
+            _qemu_img_path = '/bin/qemu-img'
+        elif os.path.exists('/usr/local/bin/qemu-img'):
+            # ubuntu
+            _qemu_img_path = '/usr/local/bin/qemu-img'
+        else:
+            raise shell.ShellError('\n'.join('Could not find qemu-img in /bin/qemu-img or /usr/bin/qemu-img or /usr/local/bin/qemu-img'))
+
+    return  _qemu_img_path
+
 def makesure_qemu_with_lichbd():
     _lichbd = lichbd_get_qemu_path()
     _system = get_system_qemu_path()
@@ -296,3 +328,22 @@ def makesure_qemu_with_lichbd():
         mv_cmd = "mv %s.tmp %s -f" % (_system, _system)
         shell.call(mv_cmd)
 
+def makesure_qemu_img_with_lichbd():
+    _lichbd = lichbd_get_qemu_img_path()
+    _system = get_system_qemu_img_path()
+    need_link = True
+
+    if os.path.islink(_system):
+        link = shell.call("set -o pipefail; ls -l %s|cut -d '>' -f 2" % (_system)).strip()
+        if link == _lichbd:
+            need_link = False
+
+    if need_link:
+        rm_cmd = "rm -f %s.tmp" % (_system)
+        shell.call(rm_cmd)
+
+        ln_cmd = "ln -s %s %s.tmp" % (_lichbd, _system)
+        shell.call(ln_cmd)
+
+        mv_cmd = "mv %s.tmp %s -f" % (_system, _system)
+        shell.call(mv_cmd)

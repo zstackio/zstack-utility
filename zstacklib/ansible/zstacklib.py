@@ -193,7 +193,7 @@ def create_log(logger_dir):
         os.makedirs(logger_dir)
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=1 * 1024 * 1024,
+    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=100 * 1024 * 1024,
                                                    backupCount=10)
     handler.setFormatter(fmt)
     logger.addHandler(handler)
