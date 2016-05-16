@@ -141,6 +141,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     OFFLINE_SNAPSHOT_MERGE = "/nfsprimarystorage/offlinesnapshotmerge"
     REMOUNT_PATH = "/nfsprimarystorage/remount"
     GET_VOLUME_SIZE_PATH = "/nfsprimarystorage/getvolumesize"
+    PING_PATH = "/nfsprimarystorage/ping"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
     
@@ -163,6 +164,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.OFFLINE_SNAPSHOT_MERGE, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.REMOUNT_PATH, self.remount)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        http_server.register_async_uri(self.PING_PATH, self.ping)
         self.mount_path = {}
         self.image_cache = None
 
@@ -180,6 +182,25 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     def _set_capacity_to_response(self, uuid, rsp):
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(uuid)
+
+    @kvmagent.replyerror
+    def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        mount_path = self.mount_path[cmd.uuid]
+        if not mount_path or not os.path.isdir(mount_path):
+            raise Exception('the mount path[%s] of the nfs primary storage[uuid:%s] is not existing' % (mount_path, cmd.uuid))
+
+        test_file = os.path.join(mount_path, '%s-ping-test-file' % uuidhelper.uuid())
+        touch = shell.ShellCmd('timeout 60 touch %s' % test_file)
+        touch(False)
+        if touch.return_code == 124:
+            raise Exception('unable to access the mount path[%s] of the nfs primary storage[uuid:%s] in 60s, timeout' %
+                            (mount_path, cmd.uuid))
+        elif touch.return_code != 0:
+            touch.raise_error()
+
+        shell.call('rm -f %s' % test_file)
+        return jsonobject.dumps(NfsResponse())
 
     @kvmagent.replyerror
     def get_volume_size(self, req):
