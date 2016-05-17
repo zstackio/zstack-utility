@@ -713,10 +713,8 @@ is_install_general_libs_rh(){
         yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y \
             libselinux-python \
             java-1.7.0-openjdk \
-            qemu-kvm \
             bridge-utils \
             wget \
-            qemu-img \
             libvirt-python \
             libvirt \
             nfs-utils \
@@ -750,10 +748,8 @@ is_install_general_libs_rh(){
         yum install -y \
             libselinux-python \
             java-1.7.0-openjdk \
-            qemu-kvm \
             bridge-utils \
             wget \
-            qemu-img \
             libvirt-python \
             libvirt \
             nfs-utils \
@@ -818,10 +814,8 @@ is_install_general_libs_deb(){
     fi
     apt-get -y install \
         $openjdk \
-        qemu-kvm \
         bridge-utils \
         wget \
-        qemu-utils \
         python-libvirt \
         libvirt-bin \
         vlan \
@@ -1702,6 +1696,13 @@ failovermethod=priority
 enabled=0
 gpgcheck=0
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-\$releasever
+
+[163-qemu-ev]
+name=CentOS-\$releasever - QEMU EV
+baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
+gpgcheck=0
+enabled=0
+
 EOF
 
     cat > $zstack_ali_repo_file << EOF
@@ -1743,6 +1744,13 @@ failovermethod=priority
 enabled=0
 gpgcheck=0
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-\$releasever
+
+[ali-qemu-ev]
+name=CentOS-\$releasever - QEMU EV
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/virt/\$basearch/kvm-common/
+gpgcheck=0
+enabled=0
+
 EOF
 
 }
