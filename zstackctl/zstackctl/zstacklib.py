@@ -398,7 +398,8 @@ def script(file, host_post_info, script_arg=None):
 
 
 @retry(times=3, sleep_time=3)
-def yum_install_package(name, host_post_info):
+def yum_install_package(name, host_post_info, \
+        ignore_error=False, force_install=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -424,7 +425,7 @@ def yum_install_package(name, host_post_info):
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
-            if status == 0:
+            if status == 0 and not force_install:
                 details = "SKIP: The package %s exist in system" % name
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
@@ -438,7 +439,7 @@ def yum_install_package(name, host_post_info):
                 zstack_runner = ZstackRunner(runner_args)
                 result = zstack_runner.run()
                 logger.debug(result)
-                if 'failed' in result['contacted'][host]:
+                if 'failed' in result['contacted'][host] and not ignore_error:
                     description = "ERROR: YUM install package %s failed" % name
                     handle_ansible_failed(description, result, host_post_info)
                 else:
@@ -754,8 +755,6 @@ def check_host_reachable(host_post_info):
 def run_remote_command(command, host_post_info, return_status=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
@@ -897,7 +896,7 @@ def file_operation(file, args, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
-
+@retry(times=3, sleep_time=3)
 def get_remote_host_info(host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -925,8 +924,8 @@ def get_remote_host_info(host_post_info):
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
             return (distro, version, release)
         else:
-            description = "ERROR: get_remote_host_info on host %s failed!" % host
-            handle_ansible_failed(description, result, host_post_info)
+            logger.warning("get_remote_host_info on host %s failed!" % host)
+            raise Exception(result)
 
 
 def set_ini_file(file, section, option, value, host_post_info):
@@ -1222,7 +1221,12 @@ name=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.ali
 baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
 failovermethod=priority
 enabled=0
-gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+gpgcheck=0
+[ali-qemu-ev]
+name=CentOS-\$releasever - QEMU EV
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/virt/\$basearch/kvm-common/
+gpgcheck=0
+enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
         """
             run_remote_command(command, host_post_info)
 
@@ -1240,6 +1244,7 @@ gpgcheck=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                 for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                     yum_install_package(pkg, host_post_info)
             else:
+                # generate repo defined in zstack_repo
                 if '163' in zstack_repo:
                     # set 163 mirror yum repo
                     command = """
@@ -1269,7 +1274,12 @@ name=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc
 baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
 failovermethod=priority
 enabled=0
-gpgcheck=0" > /etc/yum.repos.d/zstack-163-yum.repo
+gpgcheck=0
+[163-qemu-ev]
+name=CentOS-\$releasever - QEMU EV
+baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
+gpgcheck=0
+enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
         """
                     run_remote_command(command, host_post_info)
                 if 'zstack-mn' in zstack_repo:
@@ -1374,5 +1384,6 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
 def main():
     # Reserve for test api
     pass
+
 if __name__ == "__main__":
     main()
