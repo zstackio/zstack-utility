@@ -398,7 +398,8 @@ def script(file, host_post_info, script_arg=None):
 
 
 @retry(times=3, sleep_time=3)
-def yum_install_package(name, host_post_info):
+def yum_install_package(name, host_post_info, \
+        ignore_error=False, force_install=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -424,7 +425,7 @@ def yum_install_package(name, host_post_info):
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
-            if status == 0:
+            if status == 0 and not force_install:
                 details = "SKIP: The package %s exist in system" % name
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
@@ -438,7 +439,7 @@ def yum_install_package(name, host_post_info):
                 zstack_runner = ZstackRunner(runner_args)
                 result = zstack_runner.run()
                 logger.debug(result)
-                if 'failed' in result['contacted'][host]:
+                if 'failed' in result['contacted'][host] and not ignore_error:
                     description = "ERROR: YUM install package %s failed" % name
                     handle_ansible_failed(description, result, host_post_info)
                 else:
@@ -1217,6 +1218,11 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
             if zstack_repo == "false":
                 # zstack_repo defined by user
                 yum_install_package("libselinux-python", host_post_info)
+                #FIXME: In some system (virtual router), 
+                # it doesn't enable extras. Have to skip qemu 2.3.
+                yum_install_package("centos-release-qemu-ev", \
+                        host_post_info, \
+                        ignore_error = True)
                 if epel_repo_exist is False:
                     copy_arg = CopyArg()
                     copy_arg.src = "files/zstacklib/epel-release-source.repo"
@@ -1225,7 +1231,7 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     # install epel-release
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "centos-release-qemu-ev"]:
+                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                     yum_install_package(pkg, host_post_info)
             else:
                 if '163' in zstack_repo:
