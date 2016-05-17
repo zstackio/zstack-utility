@@ -1233,11 +1233,6 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
             if zstack_repo == "false":
                 # zstack_repo defined by user
                 yum_install_package("libselinux-python", host_post_info)
-                #FIXME: In some system (virtual router), 
-                # it doesn't enable extras. Have to skip qemu 2.3.
-                yum_install_package("centos-release-qemu-ev", \
-                        host_post_info, \
-                        ignore_error = True)
                 if epel_repo_exist is False:
                     copy_arg = CopyArg()
                     copy_arg.src = "files/zstacklib/epel-release-source.repo"
