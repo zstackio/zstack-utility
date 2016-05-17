@@ -36,6 +36,9 @@ if zstack_repo == 'zstack-local':
 # update the variable from shell arguments
 virtenv_path = "%s/virtualenv/appliancevm/" % zstack_root
 appliancevm_root = "%s/appliancevm" % zstack_root
+# create log
+logger_dir = "/var/log/zstack/"
+create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
