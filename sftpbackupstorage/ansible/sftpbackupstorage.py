@@ -75,14 +75,16 @@ else:
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
         # name: install sftp backup storage related packages on RedHat based OS from local
-        command = 'yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y openssh-clients' % zstack_repo
+        command = 'yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y openssh-clients qemu-img' % zstack_repo
         run_remote_command(command, host_post_info)
     else:
         # name: install sftp backup storage related packages on RedHat based OS from online
         yum_install_package("openssh-clients", host_post_info)
+        yum_install_package("qemu-img", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
     apt_install_packages(["openssh-client"], host_post_info)
+    apt_install_packages(["qemu-utils"], host_post_info)
 
 else:
     print "unsupported OS!"
