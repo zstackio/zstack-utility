@@ -896,7 +896,7 @@ def file_operation(file, args, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
-
+@retry(times=3, sleep_time=3)
 def get_remote_host_info(host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -924,8 +924,8 @@ def get_remote_host_info(host_post_info):
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
             return (distro, version, release)
         else:
-            description = "ERROR: get_remote_host_info on host %s failed!" % host
-            handle_ansible_failed(description, result, host_post_info)
+            logger.warning("get_remote_host_info on host %s failed!" % host)
+            raise Exception(result)
 
 
 def set_ini_file(file, section, option, value, host_post_info):
