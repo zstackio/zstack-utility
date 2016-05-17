@@ -1223,8 +1223,8 @@ failovermethod=priority
 enabled=0
 gpgcheck=0
 [ali-qemu-ev]
-name=CentOS-$releasever - QEMU EV
-baseurl=http://mirrors.aliyun.com/centos/$releasever/virt/$basearch/kvm-common/
+name=CentOS-\$releasever - QEMU EV
+baseurl=http://mirrors.aliyun.com/centos/\$releasever/virt/\$basearch/kvm-common/
 gpgcheck=0
 enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
         """
@@ -1280,8 +1280,8 @@ failovermethod=priority
 enabled=0
 gpgcheck=0
 [163-qemu-ev]
-name=CentOS-$releasever - QEMU EV
-baseurl=http://mirrors.163.com/centos/$releasever/virt/$basearch/kvm-common/
+name=CentOS-\$releasever - QEMU EV
+baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
 gpgcheck=0
 enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
         """
