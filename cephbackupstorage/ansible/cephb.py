@@ -91,7 +91,7 @@ if distro == "RedHat" or distro == "CentOS":
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
-        for pkg in ["wget", "qemu-img"]:
+        for pkg in ["centos-release-qemu-ev", "wget", "qemu-img"]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             yum_install_package("iptables-services", host_post_info)
