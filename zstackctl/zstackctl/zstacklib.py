@@ -1244,10 +1244,7 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                 for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                     yum_install_package(pkg, host_post_info)
             else:
-<<<<<<< HEAD
                 # generate repo defined in zstack_repo
-=======
->>>>>>> Add ping moudle for check host status when collect log
                 if '163' in zstack_repo:
                     # set 163 mirror yum repo
                     command = """
