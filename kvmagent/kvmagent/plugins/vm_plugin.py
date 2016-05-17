@@ -901,10 +901,26 @@ class Vm(object):
             if not self.is_alive():
                 return True
 
+            def force_undefine():
+                try:
+                    self.domain.undefine()
+                except libvirt.libvirtError as e:
+                    if 'cannot undefine transient domain' not in str(e):
+                        raise
+
+                    # the vm is in transient state, do our best to kill it
+                    pid = linux.find_process_by_cmdline(['qemu', self.uuid])
+                    if not pid:
+                        logger.warn('cannot find the PID of the transient VM[uuid:%s]' % self.uuid)
+                        raise
+
+                    # force to kill the VM
+                    shell.call('kill -9 %s' % pid)
+
             try:
                 self.domain.undefineFlags(libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE|libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA)
             except libvirt.libvirtError:
-                self.domain.undefine()
+                force_undefine()
 
             return self.wait_for_state_change(None)
 
