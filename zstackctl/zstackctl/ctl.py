@@ -3918,7 +3918,7 @@ class DeployCassandraDbCmd(Command):
         if isinstance(cips, list):
             cip = cips[0]
         else:
-            cip = cips
+            cip = cips.split(',')[0]
 
         cport = ctl.read_property('Cassandra.port')
         if not cport:
