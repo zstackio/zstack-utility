@@ -4254,7 +4254,7 @@ class InstallManagementNodeCmd(Command):
       shell: "cd /tmp/; tar jxf $pypi_tar_path_dest"
 
     - name: install pip from local source
-      shell: "cd $pypi_path; pip install --ignore-installed pip*.tar.gz"
+      shell: "cd $pypi_path/simple/pip/; pip install --ignore-installed pip*.tar.gz"
 
     - name: install ansible from local source
       pip: name="ansible" extra_args="-i file://$pypi_path/simple --ignore-installed --trusted-host localhost"
