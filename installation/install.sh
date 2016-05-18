@@ -478,19 +478,18 @@ ia_check_ip_hijack(){
     
     pintret=`ping -c 1 -W 2 $HOSTNAME 2>/dev/null | head -n1`
     echo $pintret | grep 'PING' > /dev/null
-    [ $? -ne 0 ] && return 0
-    
-    ip=`echo $pintret | cut -d' ' -f 3 | cut -d'(' -f 2 | cut -d')' -f 1`
-    
-    ip_1=`echo $ip | cut -d'.' -f 1`
-    [ "127" = "$ip_1" ] && return 0
-    
-    ip addr | grep $ip > /dev/null
-    [ $? -eq 0 ] && return 0
-    
-    echo "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
-    It's likely your DNS server has been hijacking, please try fixing it or add \"$MANAGEMENT_IP $HOSTNAME\" to /etc/hosts by \n\n \`echo \"$MANAGEMENT_IP $HOSTNAME\" >>/etc/hosts\`.
+    if [ $? -eq 0 ]; then
+        ip=`echo $pintret | cut -d' ' -f 3 | cut -d'(' -f 2 | cut -d')' -f 1`
+        ip_1=`echo $ip | cut -d'.' -f 1`
+        [ "127" = "$ip_1" ] && return 0
+        
+        ip addr | grep $ip > /dev/null
+        [ $? -eq 0 ] && return 0
+        
+        echo "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
+        It's likely your DNS server has been hijacking, please try fixing it or add \"$MANAGEMENT_IP $HOSTNAME\" to /etc/hosts by \n\n \`echo \"$MANAGEMENT_IP $HOSTNAME\" >>/etc/hosts\`.
 " >> $ZSTACK_INSTALL_LOG
+    fi
     
     echo "$MANAGEMENT_IP $HOSTNAME" >>/etc/hosts
     CHANGE_HOSTS='$MANAGEMENT_IP $HOSTNAME'
