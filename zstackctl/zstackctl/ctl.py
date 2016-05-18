@@ -104,7 +104,7 @@ class CtlError(Exception):
     pass
 
 def warn(msg):
-    sys.stdout.write('WARNING: %s\n' % msg)
+    sys.stdout.write(colored('WARNING: %s\n' % msg, 'yellow'))
 
 def error(msg):
     sys.stderr.write(colored('ERROR: %s\n' % msg, 'red'))
@@ -3242,7 +3242,6 @@ class InstallRabbitCmd(Command):
       with_items:
         - rabbitmq-server
 
-
     - name: open 5672 port
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT
 
@@ -3251,6 +3250,9 @@ class InstallRabbitCmd(Command):
 
     - name: open 15672 port
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT
+
+    - name: install rabbitmq management plugin
+      shell: rabbitmq-plugins enable rabbitmq_management
 
     - name: enable RabbitMQ
       service: name=rabbitmq-server state=started enabled=yes
@@ -3297,7 +3299,6 @@ exit 1
 
         if args.rabbit_username and args.rabbit_password:
             post_script = '''set -x
-rabbitmq-plugins enable rabbitmq_management
 rabbitmqctl list_users|grep 'zstack'
 if [ $$? -ne 0 ]; then
     set -e
