@@ -49,6 +49,11 @@ class PingRsp(AgentResponse):
         super(PingRsp, self).__init__()
         self.operationFailure = False
 
+class GetFactsRsp(AgentResponse):
+    def __init__(self):
+        super(GetFactsRsp, self).__init__()
+        self.fsid = None
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -71,6 +76,7 @@ class CephAgent(object):
     PING_PATH = "/ceph/backupstorage/ping"
     ECHO_PATH = "/ceph/backupstorage/echo"
     GET_IMAGE_SIZE_PATH = "/ceph/backupstorage/image/getsize"
+    GET_FACTS = "/ceph/primarystorage/facts"
 
     http_server = http.HttpServer(port=7761)
     http_server.logfile_path = log.get_logfile_path()
@@ -81,6 +87,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
+        self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -123,6 +130,17 @@ class CephAgent(object):
         rsp = GetImageSizeRsp()
         path = self._normalize_install_path(cmd.installPath)
         rsp.size = self._get_file_size(path)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def get_facts(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        o = shell.call('ceph mon_status')
+        mon_status = jsonobject.loads(o)
+        fsid = mon_status.monmap.fsid_
+
+        rsp = GetFactsRsp()
+        rsp.fsid = fsid
         return jsonobject.dumps(rsp)
 
     @replyerror
