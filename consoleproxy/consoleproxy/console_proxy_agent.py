@@ -187,16 +187,25 @@ class ConsoleProxyAgent(object):
     @lock.lock('console-proxy')
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        keywords = [cmd.token, cmd.proxyHostname, str(cmd.proxyPort)]
-        pid = linux.find_process_by_cmdline(keywords)
-        if pid:
-            shell.call("kill %s" % pid)
+
+        out = shell.call("ps aux |  grep %s | grep -v grep | awk '{print $2}'" % cmd.token)
+        pids = []
+        for o in out.split('\n'):
+            o = o.strip(' \t\r\n')
+            if not o:
+                continue
+
+            pids.append(o)
+
+        for pid in pids:
+            shell.call("kill -9 %s" % pid)
             log_file = self._make_proxy_log_file_name(cmd)
             shell.call("rm -f %s" % log_file)
             token_file = self._make_token_file_name(cmd)
             shell.call("rm -f %s" % token_file)
-            shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null && iptables -D INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (cmd.proxyPort, cmd.proxyPort))
             logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
+
+        shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null && iptables -D INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (cmd.proxyPort, cmd.proxyPort))
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
