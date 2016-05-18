@@ -1219,14 +1219,52 @@ class StartCmd(Command):
         def check_rabbitmq():
             RABBIT_PORT = 5672
 
+            def check_username_password_if_need(ip, username, password):
+                if not username or not password:
+                    return
+
+                cmd = ShellCmd('curl -u %s:%s http://%s:15672/api/whoami' % (username, password, ip))
+                cmd(False)
+                if cmd.return_code == 7:
+                    warn('unable to connect to the rabbitmq management plugin at %s:15672. The possible reasons are:\n'
+                         '  1) the plugin is not installed, you can install it by "rabbitmq-plugins enable rabbitmq_management"\n'
+                         '  2) the port 15672 is blocked by the firewall\n'
+                         'without the plugin, we cannot check the validity of the rabbitmq username/password configured in zstack.properties' % ip)
+
+                elif cmd.return_code != 0:
+                    cmd.raise_error()
+                else:
+                    if 'error' in cmd.stdout:
+                        raise CtlError('unable tot connect to the rabbitmq server[ip:%s] with username/password configured in zstack.properties.\n'
+                                       'If you have reset the rabbimtq server, get the username/password from zstack.properties and do followings on the rabbitmq server:\n'
+                                       '1) rabbitmqctl add_user $username $password\n'
+                                       '2) rabbitmqctl set_user_tags $username administrator\n'
+                                       '3) rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"\n' % ip)
+
+
             with on_error('unable to get RabbitMQ server IPs from %s, please check CloudBus.serverIp.0'):
                 ips = ctl.read_property_list('CloudBus.serverIp.')
                 if not ips:
                     raise CtlError('no RabbitMQ IPs defined in %s, please specify it use CloudBus.serverIp.0=the_ip' % ctl.properties_file_path)
 
+                rabbit_username = ctl.read_property('CloudBus.rabbitmqUsername')
+                rabbit_password = ctl.read_property('CloudBus.rabbitmqPassword')
+
+                if rabbit_password and not rabbit_username:
+                    raise CtlError('CloudBus.rabbitmqPassword is set but CloudBus.rabbitmqUsername is missing in zstack.properties')
+                elif not rabbit_password and rabbit_username:
+                    raise CtlError('CloudBus.rabbitmqUsername is set but CloudBus.rabbitmqPassword is missing in zstack.properties')
+
                 success = False
+                workable_ip = None
                 for key, ip in ips:
-                    if check_ip_port(ip, RABBIT_PORT):
+                    if ":" in ip:
+                        ip, port = ip.split(':')
+                    else:
+                        port = RABBIT_PORT
+
+                    if check_ip_port(ip, port):
+                        workable_ip = ip
                         success = True
                     else:
                         warn('cannot connect to the RabbitMQ server[ip:%s, port:%s]' % (ip, RABBIT_PORT))
@@ -1234,6 +1272,8 @@ class StartCmd(Command):
                 if not success:
                     raise CtlError('cannot connect to all RabbitMQ servers[ip:%s, port:%s] defined in %s' %
                                     (ips, RABBIT_PORT, ctl.properties_file_path))
+                else:
+                    check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
         def prepare_setenv():
             setenv_path = os.path.join(ctl.zstack_home, self.SET_ENV_SCRIPT)
@@ -3256,6 +3296,7 @@ exit 1
 
         if args.rabbit_username and args.rabbit_password:
             post_script = '''set -x
+rabbitmq-plugins enable rabbitmq_management
 rabbitmqctl list_users|grep 'zstack'
 if [ $$? -ne 0 ]; then
     set -e
