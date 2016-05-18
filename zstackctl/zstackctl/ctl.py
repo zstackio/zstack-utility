@@ -3319,6 +3319,7 @@ exit 1
 
         if args.rabbit_username and args.rabbit_password:
             post_script = '''set -x
+rabbitmq-plugins enable rabbitmq_management
 rabbitmqctl list_users|grep 'zstack'
 if [ $$? -ne 0 ]; then
     set -e
