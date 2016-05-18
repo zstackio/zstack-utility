@@ -1879,8 +1879,11 @@ class InstallHACmd(Command):
 
 
 
-        #init variables
+        # init variables
         self.yum_repo = ctl.read_property('Ansible.var.zstack_repo')
+        # avoid http server didn't start when install package
+        if 'zstack-mn' in self.yum_repo:
+            self.yum_repo.replace("zstack-mn","zstack-local")
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
@@ -3009,7 +3012,7 @@ fi
             self.copy_arg.args = "mode='u+x,g+x,o+x'"
             copy(self.copy_arg,self.host3_post_info)
 
-        #check network
+        # check network
         self.check_network_raw_script='''#!/bin/bash
 MYSQL_HOST="{{ host }}"
 MYSQL_PORT="3306"
@@ -3054,8 +3057,6 @@ echo $TIMEST >> /var/log/check-network.log
         def cleanup_gelerachk_script():
             os.remove(self.galera_check_network_host1_file)
             os.remove(self.galera_check_network_host2_file)
-            if len(self.host_post_info_list) == 3:
-                os.remove(self.galera_check_network_host3_file)
             self.install_cleanup_routine(cleanup_gelerachk_script)
 
         self.copy_arg = CopyArg()
