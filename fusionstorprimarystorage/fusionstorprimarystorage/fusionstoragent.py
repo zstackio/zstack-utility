@@ -209,8 +209,9 @@ class FusionstorAgent(object):
 
     def spath2src_normal(self, spath):
         #fusionstor://bak-t-95036217321343c2a8d64d32e085211e/382b3757a54045e5b7dbcfcdcfb07200@382b3757a54045e5b7dbcfcdcfb07200"
+        protocol = lichbd.get_protocol()
         image_name, sp_name = spath.split('@')
-        return os.path.join("/lichbd", image_name)
+        return os.path.join("/", protocol, image_name)
 
     @replyerror
     def create_snapshot(self, req):
