@@ -66,6 +66,12 @@ class GetFactsRsp(AgentResponse):
         super(GetFactsRsp, self).__init__()
         self.fsid = None
 
+class GetVolumeSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetVolumeSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -134,6 +140,18 @@ class FusionstorAgent(object):
     def _get_file_size(self, path):
         return lichbd.lichbd_file_size(path)
 
+    def _get_file_actual_size(self, path):
+        return lichbd.lichbd_file_actual_size(path)
+
+    @replyerror
+    def get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.installPath)
+        rsp = GetVolumeSizeRsp()
+        rsp.size = self._get_file_size(path)
+        rsp.actualSize = self._get_file_actual_size(path)
+        return jsonobject.dumps(rsp)
+
     @replyerror
     def get_facts(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -146,14 +164,15 @@ class FusionstorAgent(object):
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PingRsp()
-        create_img = shell.ShellCmd('rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
+        protocol = lichbd.get_protocol()
+        create_img = shell.ShellCmd('lichbd create %s %p --size 1' % (cmd.testImagePath, protocol))
         create_img(False)
         if create_img.return_code != 0:
             rsp.success = False
             rsp.operationFailure = True
             rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
         else:
-            rm_img = shell.ShellCmd('rbd rm %s' % cmd.testImagePath)
+            rm_img = shell.ShellCmd('lichbd rm %s %p' % (cmd.testImagePath, protocol))
             rm_img(False)
         return jsonobject.dumps(rsp)
 
