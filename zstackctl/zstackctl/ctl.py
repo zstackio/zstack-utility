@@ -3255,7 +3255,7 @@ class InstallRabbitCmd(Command):
       shell: rabbitmq-plugins enable rabbitmq_management
 
     - name: enable RabbitMQ
-      service: name=rabbitmq-server state=started enabled=yes
+      service: name=rabbitmq-server state=restarted enabled=yes
 
     - name: post-install script
       script: $post_install_script
