@@ -42,11 +42,29 @@ class CpRsp(AgentResponse):
     def __init__(self):
         super(CpRsp, self).__init__()
         self.size = None
+        self.actualSize = None
 
 class CreateSnapshotRsp(AgentResponse):
     def __init__(self):
         super(CreateSnapshotRsp, self).__init__()
         self.size = None
+        self.actualSize = None
+
+class GetVolumeSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetVolumeSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
+class PingRsp(AgentResponse):
+    def __init__(self):
+        super(PingRsp, self).__init__()
+        self.operationFailure = False
+
+class GetFactsRsp(AgentResponse):
+    def __init__(self):
+        super(GetFactsRsp, self).__init__()
+        self.fsid = None
 
 def replyerror(func):
     @functools.wraps(func)
@@ -80,6 +98,9 @@ class FusionstorAgent(object):
     UNPROTECT_SNAPSHOT_PATH = "/fusionstor/primarystorage/snapshot/unprotect"
     CP_PATH = "/fusionstor/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/fusionstor/primarystorage/deletepool"
+    GET_VOLUME_SIZE_PATH = "/fusionstor/primarystorage/getvolumesize"
+    PING_PATH = "/fusionstor/primarystorage/ping"
+    GET_FACTS = "/fusionstor/primarystorage/facts"
 
     http_server = http.HttpServer(port=7764)
     http_server.logfile_path = log.get_logfile_path()
@@ -99,6 +120,9 @@ class FusionstorAgent(object):
         self.http_server.register_async_uri(self.SFTP_UPLOAD_PATH, self.sftp_upload)
         self.http_server.register_async_uri(self.CP_PATH, self.cp)
         self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
+        self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        self.http_server.register_async_uri(self.PING_PATH, self.ping)
+        self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -109,6 +133,38 @@ class FusionstorAgent(object):
 
     def _get_file_size(self, path):
         return lichbd.lichbd_file_size(path)
+
+    @replyerror
+    def get_facts(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        rsp = GetFactsRsp()
+        rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = PingRsp()
+        create_img = shell.ShellCmd('rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
+        create_img(False)
+        if create_img.return_code != 0:
+            rsp.success = False
+            rsp.operationFailure = True
+            rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
+        else:
+            rm_img = shell.ShellCmd('rbd rm %s' % cmd.testImagePath)
+            rm_img(False)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.installPath)
+        rsp = GetVolumeSizeRsp()
+        rsp.size = self._get_file_size(path)
+        rsp.actualSize = self._get_file_actual_size(path)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def delete_pool(self, req):
@@ -306,10 +362,6 @@ class FusionstorAgent(object):
         rsp.error = 'unsupported SimpleSftpBackupStorage,  only supports fusionstor backupstorage'
         #self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
-
-    @replyerror
-    def ping(self, req):
-        return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def delete(self, req):
