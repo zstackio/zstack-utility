@@ -813,7 +813,7 @@ class ShowStatusCmd(Command):
                 db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
             except:
                 info_list.append('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
-                return 
+                return
 
             if db_password:
                 cmd = ShellCmd('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
@@ -1657,7 +1657,7 @@ elif [ -f /etc/my.cnf ]; then
     # centos
     mysql_conf=/etc/my.cnf
 fi
-    
+
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
 sed -i 's/^skip-networking/#skip-networking/' $mysql_conf
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
@@ -4203,7 +4203,7 @@ class InstallManagementNodeCmd(Command):
       with_items:
         - openjdk-8-jdk
 
-    - name: install dependencies Debian OS 
+    - name: install dependencies Debian OS
       when: ansible_os_family == 'Debian'
       apt: pkg={{item}} update_cache=yes
       with_items:
@@ -4609,7 +4609,7 @@ class InstallWebUiCmd(Command):
       apt: pkg=python-pip update_cache=yes
 
     - name: install pip from local source
-      shell: "cd $pypi_path; pip install --ignore-installed pip*.tar.gz"
+      shell: "cd $pypi_path/simple/pip/; pip install --ignore-installed pip*.tar.gz"
 
     - shell: virtualenv --version | grep "12.1.1"
       register: virtualenv_ret
