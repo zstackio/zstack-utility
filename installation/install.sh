@@ -1175,6 +1175,8 @@ install_db_msgbus(){
     show_spinner cs_install_mysql $ssh_tmp_dir
     #deploy initial database
     show_spinner cs_deploy_db
+    #check hostname and ip again before install rabbitmq
+    ia_check_ip_hijack
     #install rabbitmq server
     show_spinner cs_install_rabbitmq $ssh_tmp_dir
     cs_clean_ssh_tmp_key $ssh_tmp_dir
