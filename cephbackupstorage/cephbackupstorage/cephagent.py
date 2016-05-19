@@ -76,7 +76,7 @@ class CephAgent(object):
     PING_PATH = "/ceph/backupstorage/ping"
     ECHO_PATH = "/ceph/backupstorage/echo"
     GET_IMAGE_SIZE_PATH = "/ceph/backupstorage/image/getsize"
-    GET_FACTS = "/ceph/primarystorage/facts"
+    GET_FACTS = "/ceph/backupstorage/facts"
 
     http_server = http.HttpServer(port=7761)
     http_server.logfile_path = log.get_logfile_path()
