@@ -208,9 +208,11 @@ class FusionstorAgent(object):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool, image_name = self._parse_install_path(cmd.installPath)
+        protocol = lichbd.get_protocol()
         lichbd_file = os.path.join(pool, image_name)
         lichbd.lichbd_rm(lichbd_file)
-        lichbd.lichbd_rm(lichbd_file, "iscsi")
+        if protocol == 'lichbd':
+            lichbd.lichbd_rm(lichbd_file, "iscsi")
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
