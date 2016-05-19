@@ -2327,8 +2327,8 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, self.output))
 
         # deploy cassandra_db
-        # self.command = 'zstack-ctl deploy_cassandra_db'
-        # run_remote_command(self.command, self.host1_post_info)
+        self.command = 'zstack-ctl deploy_cassandra_db'
+        run_remote_command(self.command, self.host1_post_info)
 
         # change Cassadra duplication number
         #self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : " \
@@ -3192,6 +3192,15 @@ class RabbitmqHA(InstallHACmd):
         run_remote_command(self.command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
             run_remote_command(self.command, self.host3_post_info)
+        self.command = "rabbitmq-plugins enable rabbitmq_management"
+        run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(self.command, self.host2_post_info)
+        if len(self.host_post_info_list) == 3:
+            run_remote_command(self.command, self.host3_post_info)
+        service_status("rabbitmq-server","state=restarted enabled=yes", self.host1_post_info)
+        service_status("rabbitmq-server", "state=restarted enabled=yes", self.host2_post_info)
+        if len(self.host_post_info_list) == 3:
+            service_status("rabbitmq-server", "state=restarted enabled=yes", self.host3_post_info)
 
 
 class InstallRabbitCmd(Command):
