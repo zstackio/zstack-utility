@@ -1779,7 +1779,7 @@ get_zstack_repo(){
         echo $ZSTACK_YUM_REPOS |grep "163" >/dev/null 2>&1
         if [ $? -eq 0 ]; then
             ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
-            ZSTACK_PROPERTIES_REPO=MIRROR_163_YUM_REPOS
+            ZSTACK_PROPERTIES_REPO=$MIRROR_163_YUM_REPOS
         fi
         YUM_ONLINE_REPO=''
     fi
