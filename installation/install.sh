@@ -2120,6 +2120,8 @@ download_zstack
 if [ $UPGRADE = 'y' ]; then
     #only upgrade zstack
     upgrade_zstack
+
+    zstack-ctl setenv UPGRADE_START=true
     cd /; rm -rf $upgrade_zstack
     cleanup_function
 
