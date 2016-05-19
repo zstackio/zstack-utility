@@ -63,6 +63,7 @@ MYSQL_USER_PASSWORD='zstack.password'
 
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
+UPGRADE_MONITOR=''
 ZSTACK_START_TIMEOUT=300
 ZSTACK_PKG_MIRROR=''
 PKG_MIRROR_163='163'
@@ -619,7 +620,8 @@ upgrade_zstack(){
     show_spinner cs_config_zstack_properties
 
     #when using -i option, will not upgrade cassandra and kairosdb
-    if [ -z $ONLY_INSTALL_ZSTACK ] && [ ! -z $INSTALL_MONITOR ] ; then
+    #if [ -z $ONLY_INSTALL_ZSTACK ] && [ ! -z $INSTALL_MONITOR ] ; then
+    if [ ! -z $UPGRADE_MONITOR ] ; then
         show_spinner iz_install_cassandra
         show_spinner sz_start_cassandra
         show_spinner iz_install_kairosdb
@@ -635,7 +637,8 @@ upgrade_zstack(){
         if [ -z $NEED_KEEP_DB ];then
             if [ $CURRENT_STATUS = 'y' ]; then
                 if [ -z $NOT_START_ZSTACK ]; then
-                    if [ ! -z $INSTALL_MONITOR ] ; then
+                    #if [ ! -z $INSTALL_MONITOR ] ; then
+                    if [ ! -z $UPGRADE_MONITOR ] ; then
                         show_spinner sz_start_kairosdb
                     fi
                     show_spinner sz_start_zstack
@@ -1841,6 +1844,8 @@ Options:
 
   -m    install monitor. Depends on monitor capability in package.
 
+  -M    install monitor when upgrade. Used when upgrade ZStack to Mevoco.
+
   -n NFS_PATH
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
         to upgrade zstack or -l to install some system libs. 
@@ -1922,7 +1927,7 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmNoquz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmMNoquz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
@@ -1936,6 +1941,7 @@ do
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
         m ) INSTALL_MONITOR='y';;
+        M ) UPGRADE_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
         o ) YUM_ONLINE_REPO='' && [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';; #do not use yum online repo.
         P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
