@@ -1231,7 +1231,8 @@ class StartCmd(Command):
                 cmd(False)
                 if cmd.return_code == 7:
                     warn('unable to connect to the rabbitmq management plugin at %s:15672. The possible reasons are:\n'
-                         '  1) the plugin is not installed, you can install it by "rabbitmq-plugins enable rabbitmq_management"\n'
+                         '  1) the plugin is not installed, you can install it by "rabbitmq-plugins enable rabbitmq_management,"\n'
+                         '     then restart the rabbitmq by "service rabbitmq-server restart"\n'
                          '  2) the port 15672 is blocked by the firewall\n'
                          'without the plugin, we cannot check the validity of the rabbitmq username/password configured in zstack.properties' % ip)
 
