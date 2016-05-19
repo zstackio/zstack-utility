@@ -1882,6 +1882,8 @@ class InstallHACmd(Command):
         # avoid http server didn't start when install package
         if 'zstack-mn' in self.yum_repo:
             self.yum_repo = self.yum_repo.replace("zstack-mn","zstack-local")
+        if 'qemu-kvm-ev-mn' in self.yum_repo:
+            self.yum_repo = self.yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
