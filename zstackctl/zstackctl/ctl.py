@@ -367,6 +367,10 @@ class Ctl(object):
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
         return env.read_property(name)
 
+    def delete_env(self, name):
+        env = PropertyFile(SetEnvironmentVariableCmd.PATH)
+        env.delete_properties([name])
+
     def put_envs(self, vs):
         if not os.path.exists(SetEnvironmentVariableCmd.PATH):
             shell('su - zstack -c "mkdir -p %s"' % os.path.dirname(SetEnvironmentVariableCmd.PATH))
@@ -1286,6 +1290,10 @@ class StartCmd(Command):
             if ctl.extra_arguments:
                 catalina_opts.extend(ctl.extra_arguments)
 
+            upgrade_start = ctl.get_env('UPGRADE_START')
+            if upgrade_start:
+                catalina_opts.append('-DupgradeStartOn=true')
+
             co = ctl.get_env('CATALINA_OPTS')
             if co:
                 info('use CATALINA_OPTS[%s] set in environment zstack environment variables; check out them by "zstack-ctl getenv"' % co)
@@ -1325,7 +1333,7 @@ class StartCmd(Command):
         check_rabbitmq()
         prepare_setenv()
         start_mgmt_node()
-        #sleep a while, since zstack won't start up so quick
+        #sleep a while, since zstack won't start up so quickly
         time.sleep(5)
 
         try:
@@ -1342,6 +1350,8 @@ class StartCmd(Command):
         if not args.daemon:
             shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception = False)
         info('successfully started management node')
+
+        ctl.delete_env('UPGRADE_START')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
