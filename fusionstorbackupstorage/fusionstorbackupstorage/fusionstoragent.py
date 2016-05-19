@@ -194,16 +194,14 @@ class FusionstorAgent(object):
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PingRsp()
-        protocol = lichbd.get_protocol()
-        create_img = shell.ShellCmd('lichbd create %s %s --size 1M' % (cmd.testImagePath, protocol))
-        create_img(False)
-        if create_img.return_code != 0:
+        try:
+            lichbd.lichbd_create(cmd.testImagePath, '1M')
+            lichbd.lichbd_rm(cmd.testImagePath)
+        except Exception, e:
             rsp.success = False
             rsp.operationFailure = True
-            rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
-        else:
-            rm_img = shell.ShellCmd('lichbd rm %s %s' % (cmd.testImagePath, protocol))
-            rm_img(False)
+            rsp.error = "%s" % (e)
+
         return jsonobject.dumps(rsp)
 
     @replyerror
