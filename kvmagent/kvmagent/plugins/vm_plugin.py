@@ -632,11 +632,15 @@ class VirtioIscsi(object):
 def get_vm_by_uuid(uuid, exception_if_not_existing=True):
     try:
         # libvirt may not be able to find a VM when under a heavy workload, we re-try here
-        @linux.retry(times=3, sleep_time=1)
         @LibvirtAutoReconnect
         def call_libvirt(conn):
             return conn.lookupByName(uuid)
-        vm = Vm.from_virt_domain(call_libvirt())
+
+        @linux.retry(times=3, sleep_time=1)
+        def retry_call_libvirt():
+            return call_libvirt()
+
+        vm = Vm.from_virt_domain(retry_call_libvirt())
         return vm
     except libvirt.libvirtError as e:
         error_code = e.get_error_code()
