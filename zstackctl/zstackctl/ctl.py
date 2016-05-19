@@ -1877,13 +1877,11 @@ class InstallHACmd(Command):
             if args.host2 == args.host3 or args.host1 == args.host3:
                 error("The host1, host2 and host3 should not be the same ip address!")
 
-
-
         # init variables
         self.yum_repo = ctl.read_property('Ansible.var.zstack_repo')
         # avoid http server didn't start when install package
         if 'zstack-mn' in self.yum_repo:
-            self.yum_repo.replace("zstack-mn","zstack-local")
+            self.yum_repo = self.yum_repo.replace("zstack-mn","zstack-local")
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
