@@ -1822,6 +1822,18 @@ class CreateVolumeSnapshotAction(inventory.APICreateVolumeSnapshotMsg):
         self.out = evt
         return self.out
 
+class GetVolumeCapabilitiesAction(inventory.APIGetVolumeCapabilitiesMsg):
+    def __init__(self):
+        super(GetVolumeCapabilitiesAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVolumeCapabilitiesAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RecoverDataVolumeAction(inventory.APIRecoverDataVolumeMsg):
     def __init__(self):
         super(RecoverDataVolumeAction, self).__init__()
