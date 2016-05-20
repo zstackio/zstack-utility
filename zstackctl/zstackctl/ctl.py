@@ -4098,7 +4098,11 @@ class CassandraCmd(Command):
             info('cassandra is already stopped')
             return
 
-        shell('kill %s' % pid)
+        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+        if not exe:
+            shell('kill %s' % pid)
+        else:
+            shell('cd %s; bash nodetool flush; kill %s' % (os.path.dirname(exe), pid))
 
         count = 30
         while count > 0:
