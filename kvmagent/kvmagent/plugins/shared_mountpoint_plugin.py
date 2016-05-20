@@ -151,7 +151,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(cmd.primaryStorageInstallPath):
                 raise kvmagent.KvmError('cannot find %s' % cmd.primaryStorageInstallPath)
 
-            linux.scp_upload(cmd.hostname, cmd.sshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath)
+            linux.scp_upload(cmd.hostname, cmd.sshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath, sshPort=cmd.sshPort)
 
         upload()
 
@@ -162,7 +162,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, sshPort=cmd.sshPort)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
 
