@@ -354,7 +354,7 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
-        scp_cmd = 'scp -p %d -o StrictHostKeyChecking=no -i {0} {1}@{2}:{3} {4}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath)
+        scp_cmd = 'scp -p {0} -o StrictHostKeyChecking=no -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath)
         shell.call(scp_cmd)
     finally:
         if sshkey_file:
