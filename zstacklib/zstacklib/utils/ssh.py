@@ -110,7 +110,7 @@ def execute(command, hostname, username, password, exception_if_error=True, \
     finally:
         ssh.close()
 
-def make_ssh_no_password(target, username, password):
+def make_ssh_no_password(target, username, password, port=22):
     id_rsa = '/root/.ssh/id_rsa'
     id_rsa_pub = '/root/.ssh/id_rsa.pub'
     id_dsa_pub = '/root/.ssh/id_dsa.pub'
@@ -128,4 +128,4 @@ def make_ssh_no_password(target, username, password):
     pub_id = open(id_pub).readline().strip()
     mk_ssh_no_passwd="if [ ! -f ~/.ssh/authorized_keys ]; then mkdir -p ~/.ssh/; chmod 700 ~/.ssh/; touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; fi ; grep '%s' ~/.ssh/authorized_keys > /dev/null; if [ $? -ne 0 ]; then echo -e '\n%s\n' >> ~/.ssh/authorized_keys; sed -i '/^$/d' ~/.ssh/authorized_keys;fi;" % (pub_id, pub_id)
 
-    execute(mk_ssh_no_passwd, target, username, password)
+    execute(mk_ssh_no_passwd, target, username, password, True, port)
