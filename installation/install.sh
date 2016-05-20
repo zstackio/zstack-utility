@@ -945,13 +945,13 @@ iz_unpack_zstack(){
 
 uz_stop_zstack(){
     if [ ! -z $ONLY_INSTALL_ZSTACK ] || ([ $UPGRADE = 'y' ] && [ -z $UPGRADE_MONITOR ]);then
-        echo_subtitle "Stop ${PRODUCT_NAME}"
-        zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
-    else
         #Only stop node and ui, when using -i or -u without -M
         echo_subtitle "Stop Management Node and UI"
         zstack-ctl stop_node >>$ZSTACK_INSTALL_LOG 2>&1
         zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        echo_subtitle "Stop ${PRODUCT_NAME}"
+        zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     pass
 }
