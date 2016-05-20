@@ -299,7 +299,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(cmd.primaryStorageInstallPath):
                 raise kvmagent.KvmError('cannot find %s' % cmd.primaryStorageInstallPath)
 
-            linux.scp_upload(cmd.backupStorageHostName, cmd.backupStorageSshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath)
+            linux.scp_upload(cmd.backupStorageHostName, cmd.backupStorageSshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath, sshPort=cmd.sshPort)
 
         try:
             upload()

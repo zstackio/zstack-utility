@@ -374,7 +374,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(cmd.primaryStorageInstallPath):
                 raise kvmagent.KvmError('cannot find %s' % cmd.primaryStorageInstallPath)
 
-            linux.scp_upload(cmd.hostname, cmd.sshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath)
+            linux.scp_upload(cmd.hostname, cmd.sshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath, sshPort=cmd.sshPort)
 
         try:
             upload()
@@ -390,7 +390,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
         try:
-            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, sshPort=cmd.sshPort)
             logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
         except Exception as e:
             content = traceback.format_exc()
