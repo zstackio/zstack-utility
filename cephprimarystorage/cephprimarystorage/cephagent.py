@@ -346,8 +346,8 @@ class CephAgent(object):
         prikey_file = linux.write_to_temp_file(cmd.sshKey)
 
         bs_folder = os.path.dirname(cmd.backupStorageInstallPath)
-        shell.call('ssh -o StrictHostKeyChecking=no -i %s root@%s "mkdir -p %s"' %
-                   (prikey_file, cmd.hostname, bs_folder))
+        shell.call('ssh -p %d -o StrictHostKeyChecking=no -i %s root@%s "mkdir -p %s"' %
+                   (cmd.sshPort, prikey_file, cmd.hostname, bs_folder))
 
         try:
             shell.call("set -o pipefail; rbd export %s - | ssh -o StrictHostKeyChecking=no -i %s root@%s 'cat > %s'" %
@@ -364,6 +364,7 @@ class CephAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         hostname = cmd.hostname
         prikey = cmd.sshKey
+        port = cmd.sshPort
 
         pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
         tmp_image_name = 'tmp-%s' % image_name
@@ -377,8 +378,8 @@ class CephAgent(object):
         _0()
 
         try:
-            shell.call('set -o pipefail; ssh -o StrictHostKeyChecking=no -i %s root@%s "cat %s" | rbd import --image-format 2 - %s/%s' %
-                        (prikey_file, hostname, cmd.backupStorageInstallPath, pool, tmp_image_name))
+            shell.call('set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -i %s root@%s "cat %s" | rbd import --image-format 2 - %s/%s' %
+                        (port, prikey_file, hostname, cmd.backupStorageInstallPath, pool, tmp_image_name))
         finally:
             os.remove(prikey_file)
 
