@@ -254,7 +254,7 @@ class FusionstorAgent(object):
     def delete_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        lichbd.lichbd_snap_delete(snap_path)
+        lichbd.lichbd_snap_delete(spath)
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
