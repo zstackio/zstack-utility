@@ -624,36 +624,29 @@ upgrade_zstack(){
     show_spinner cs_enable_zstack_service
     show_spinner cs_config_zstack_properties
 
-    #when using -i option, will not upgrade cassandra and kairosdb
-    #if [ -z $ONLY_INSTALL_ZSTACK ] && [ ! -z $INSTALL_MONITOR ] ; then
-    if [ ! -z $UPGRADE_MONITOR ] ; then
-        show_spinner iz_install_cassandra
-        show_spinner sz_start_cassandra
-        show_spinner iz_install_kairosdb
-    fi
-
     if [ $UI_INSTALLATION_STATUS = 'y' ]; then
         echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
         show_spinner sd_install_dashboard
     fi
 
     #When using -i option, will not upgrade kariosdb and not start zstack
+    # It means user will manually upgrade database. 
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        if [ ! -z $UPGRADE_MONITOR ] ; then
+            show_spinner iz_install_cassandra
+            show_spinner sz_start_cassandra
+            show_spinner iz_install_kairosdb
+            show_spinner sz_start_kairosdb
+        elif [ ! -z $INSTALL_MONITOR ] ; then
+            #when monitor libs are ready, we need to try to start then, 
+            # although we didn't stop them when upgrading.
+            # Upgrade zstack need to run deploy cassandra db in start cassandra task. 
+            show_spinner sz_start_cassandra
+            show_spinner sz_start_kairosdb
+        fi
         #when using -k option, will not start zstack.
-        if [ -z $NEED_KEEP_DB ];then
-            if [ $CURRENT_STATUS = 'y' ]; then
-                if [ -z $NOT_START_ZSTACK ]; then
-                    if [ ! -z $UPGRADE_MONITOR ] ; then
-                        show_spinner sz_start_kairosdb
-                    elif [ ! -z $INSTALL_MONITOR ] ; then
-                        #when monitor libs are ready, we need to try to start then, 
-                        # although we didn't stop them when upgrading.
-                        show_spinner sz_start_cassandra
-                        show_spinner sz_start_kairosdb
-                    fi
-                    show_spinner sz_start_zstack
-                fi
-            fi
+        if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
+            show_spinner sz_start_zstack
         fi
     
         if [ $UI_CURRENT_STATUS = 'y' ]; then
