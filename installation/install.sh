@@ -1533,7 +1533,7 @@ check_zstack_server(){
 
 sz_start_cassandra(){
     echo_subtitle "Start Cassandra"
-    zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
+    #zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl cassandra --start --wait-timeout=180 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Cassandra"
@@ -1547,7 +1547,7 @@ sz_start_cassandra(){
 
 sz_start_kairosdb(){
     echo_subtitle "Start Kairosdb"
-    zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
+    #zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl kairosdb --start --wait-timeout=60 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Kairosdb"
