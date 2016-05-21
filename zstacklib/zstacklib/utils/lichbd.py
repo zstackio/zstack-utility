@@ -13,6 +13,22 @@ logcmd = True
 
 logger = log.get_logger(__name__)
 
+class FusionStor():
+    PROTOCOL = None
+    def __init__(self):
+        #protocol: lichbd, sheepdog and nbd
+        self.PROTOCOL = 'nbd'
+
+    def set_protocol(self, protocol):
+        self.PROTOCOL = protocol
+
+    def get_protocol(self):
+        return self.PROTOCOL
+
+def get_protocol():
+    fusionstor = FusionStor()
+    return fusionstor.get_protocol()
+
 def __call_shellcmd(cmd, exception=False, workdir=None):
     shellcmd = shell.ShellCmd(cmd, workdir)
     shellcmd(exception)
@@ -25,7 +41,7 @@ def call_try(cmd, exception=False, workdir=None, try_num = None):
     shellcmd = None
     for i in range(try_num):
         shellcmd = __call_shellcmd(cmd, False, workdir)
-        if shellcmd.return_code == 0:
+        if shellcmd.return_code == 0 or shellcmd.return_code == errno.EEXIST:
             break
 
         time.sleep(1)
@@ -68,7 +84,8 @@ def lichbd_get_iscsiport():
     return int(port)
 
 def lichbd_mkpool(path):
-    shellcmd = call_try('lichbd mkpool %s -p lichbd 2>/dev/null' % (path))
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd mkpool %s -p %s 2>/dev/null' % (path, protocol))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
             pass
@@ -76,7 +93,8 @@ def lichbd_mkpool(path):
             raise_exp(shellcmd)
 
 def lichbd_lspools():
-    shellcmd = call_try('lichbd lspools -p lichbd 2>/dev/null')
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd lspools -p %s 2>/dev/null' % protocol)
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
             pass
@@ -86,7 +104,8 @@ def lichbd_lspools():
     return shellcmd.stdout
 
 def lichbd_rmpool(path):
-    shellcmd = call_try('lichbd rmpool %s -p lichbd 2>/dev/null' % (path))
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd rmpool %s -p %s 2>/dev/null' % (path, protocol))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
             pass
@@ -94,7 +113,8 @@ def lichbd_rmpool(path):
             raise_exp(shellcmd)
 
 def lichbd_create(path, size):
-    shellcmd = call_try('lichbd create %s --size %s -p lichbd 2>/dev/null' % (path, size))
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd create %s --size %s -p %s 2>/dev/null' % (path, size, protocol))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
             pass
@@ -106,42 +126,43 @@ def lichbd_create_raw(path, size):
 
 def lichbd_copy(src_path, dst_path):
     shellcmd = None
-    for i in range(5):
-        shellcmd = call_try('lichbd copy %s %s -p lichbd 2>/dev/null' % (src_path, dst_path))
-        if shellcmd.return_code == 0:
-            return shellcmd
-        else:
-            if dst_path.startswith(":"):
-                call("rm -rf %s" % (dst_path.lstrip(":")))
-            else:
-                lichbd_rm(dst_path)
-
-    raise_exp(shellcmd)
-
-def lichbd_import(src_path, dst_path):
-    shellcmd = None
-    for i in range(5):
-        shellcmd = call_try('lichbd import %s %s -p lichbd 2>/dev/null' % (src_path, dst_path))
-        if shellcmd.return_code == 0:
-            return shellcmd
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd copy %s %s -p %s 2>/dev/null' % (src_path, dst_path, protocol))
+    if shellcmd.return_code == 0:
+        return shellcmd
+    else:
+        if dst_path.startswith(":"):
+            call("rm -rf %s" % (dst_path.lstrip(":")))
         else:
             lichbd_rm(dst_path)
 
     raise_exp(shellcmd)
 
-def lichbd_export(src_path, dst_path):
+def lichbd_import(src_path, dst_path):
     shellcmd = None
-    for i in range(5):
-        shellcmd = call_try('lichbd export %s %s -p lichbd 2>/dev/null' % (src_path, dst_path))
-        if shellcmd.return_code == 0:
-            return shellcmd
-        else:
-            call("rm -rf %s" % dst_path)
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd import %s %s -p %s 2>/dev/null' % (src_path, dst_path, protocol))
+    if shellcmd.return_code == 0:
+        return shellcmd
+    else:
+        lichbd_rm(dst_path)
 
     raise_exp(shellcmd)
 
-def lichbd_rm(path, proto="lichbd"):
-    shellcmd = call_try('lichbd rm %s -p %s 2>/dev/null' % (path, proto))
+def lichbd_export(src_path, dst_path):
+    shellcmd = None
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd export %s %s -p %s 2>/dev/null' % (src_path, dst_path, protocol))
+    if shellcmd.return_code == 0:
+        return shellcmd
+    else:
+        call("rm -rf %s" % dst_path)
+
+    raise_exp(shellcmd)
+
+def lichbd_rm(path):
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd rm %s -p %s 2>/dev/null' % (path, protocol))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.ENOENT:
             pass
@@ -149,26 +170,51 @@ def lichbd_rm(path, proto="lichbd"):
             raise_exp(shellcmd)
 
 def lichbd_mv(dist, src):
-    shellcmd = call_try('lichbd mv %s %s -p lichbd 2>/dev/null' % (src, dist))
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd mv %s %s -p %s 2>/dev/null' % (src, dist, protocol))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == errno.EEXIST:
             pass
         else:
             raise_exp(shellcmd)
 
+"""
 def lichbd_file_size(path):
-    shellcmd = call_try("lichbd info %s -p lichbd 2>/dev/null | grep Size | awk '{print $2}'" % (path))
+    protocol = get_protocol()
+    shellcmd = call_try("lichbd info %s -p %s 2>/dev/null | grep Size | awk '{print $2}'" % (path, protocol))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
     size = shellcmd.stdout.strip()
     return long(size)
+"""
+
+def lichbd_file_size(path):
+    protocol = get_protocol()
+    shellcmd = call_try("lichbd info %s -p %s 2>/dev/null | grep chknum | awk '{print $3}'" % (path, protocol))
+    if shellcmd.return_code != 0:
+        raise_exp(shellcmd)
+
+    size = shellcmd.stdout.strip()
+    return long(size) * 1024 * 1024
+
+def lichbd_file_actual_size(path):
+    protocol = get_protocol()
+    shellcmd = call_try("lichbd info %s -p %s 2>/dev/null | grep localized | awk '{print $3}'" % (path, protocol))
+    if shellcmd.return_code != 0:
+        raise_exp(shellcmd)
+
+    size = shellcmd.stdout.strip()
+    return long(size) * 1024 * 1024
 
 def lichbd_file_exist(path):
-    shellcmd = call_try("lichbd info %s -p lichbd" % (path))
+    protocol = get_protocol()
+    shellcmd = call_try("lichbd info %s -p %s" % (path, protocol))
     if shellcmd.return_code != 0:
         if shellcmd.return_code == 2:
             return False
+        elif shellcmd.return_code == 21:
+            return True
         else:
             raise_exp(shellcmd)
     return True
@@ -206,7 +252,8 @@ def lichbd_get_capacity():
     return total, used
 
 def lichbd_snap_create(snap_path):
-    shellcmd = call_try('lichbd snap create %s -p lichbd' % (snap_path))
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd snap create %s -p %s' % (snap_path, protocol))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
@@ -214,7 +261,8 @@ def lichbd_snap_create(snap_path):
 
 def lichbd_snap_list(image_path):
     snaps = []
-    shellcmd = call_try('lichbd snap ls %s -p lichbd 2>/dev/null' % (image_path))
+    protocol = get_protocol()
+    shellcmd = call_try('lichbd snap ls %s -p %s 2>/dev/null' % (image_path, protocol))
     if shellcmd.return_code != 0:
         raise_exp(shellcmd)
 
@@ -224,7 +272,8 @@ def lichbd_snap_list(image_path):
     return snaps
 
 def lichbd_snap_delete(snap_path):
-    cmd = 'lichbd snap remove %s -p lichbd' % (snap_path)
+    protocol = get_protocol()
+    cmd = 'lichbd snap remove %s -p lichbd' % (snap_path, protocol)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -233,7 +282,8 @@ def lichbd_snap_delete(snap_path):
     return shellcmd.stdout
  
 def lichbd_snap_clone(src, dst):
-    cmd = 'lichbd clone %s %s -p lichbd' % (src, dst)
+    protocol = get_protocol()
+    cmd = 'lichbd clone %s %s -p %s' % (src, dst, protocol)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -242,7 +292,8 @@ def lichbd_snap_clone(src, dst):
     return shellcmd.stdout
 
 def lichbd_snap_rollback(snap_path):
-    cmd = 'lichbd snap rollback %s -p lichbd' % (snap_path)
+    protocol = get_protocol()
+    cmd = 'lichbd snap rollback %s -p %s' % (snap_path, protocol)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -251,7 +302,8 @@ def lichbd_snap_rollback(snap_path):
     return shellcmd.stdout
 
 def lichbd_snap_protect(snap_path):
-    cmd = 'lichbd snap protect %s -p lichbd' % (snap_path)
+    protocol = get_protocol()
+    cmd = 'lichbd snap protect %s -p %s' % (snap_path, protocol)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -260,7 +312,8 @@ def lichbd_snap_protect(snap_path):
     return shellcmd.stdout
 
 def lichbd_snap_unprotect(snap_path):
-    cmd = 'lichbd snap unprotect %s -p lichbd' % (snap_path)
+    protocol = get_protocol()
+    cmd = 'lichbd snap unprotect %s -p %s' % (snap_path, protocol)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
@@ -269,8 +322,17 @@ def lichbd_snap_unprotect(snap_path):
     return shellcmd.stdout
 
 def lichbd_get_format(path):
-    qemu_img = lichbd_get_qemu_img_path()
-    cmd = "set -o pipefail;%s info rbd:%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (qemu_img, path)
+    protocol = get_protocol()
+    if protocol == 'lichbd':
+        qemu_img = lichbd_get_qemu_img_path()
+        cmd = "set -o pipefail;%s info rbd:%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (qemu_img, path)
+    elif protocol == 'sheepdog':
+        cmd = "set -o pipefail;qemu-img info sheepdog+unix:///%s?socket=/tmp/sheepdog.socket 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % path
+    elif protocol == 'nbd':
+        cmd = "set -o pipefail;qemu-img info nbd:unix:/tmp/nbd-socket:exportname=%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % path
+    else:
+        raise shell.ShellError('Do not supprot protocols, only supprot lichbd and sheepdog')
+
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
