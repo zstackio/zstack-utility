@@ -608,6 +608,11 @@ upgrade_zstack(){
     echo ""
     if [ -f $upgrade_folder/apache-cassandra* ]; then
         INSTALL_MONITOR='y'
+        #if there isn't cassandra installed, will install cassandra
+        cassandra_log_folder=`zstack-ctl getenv |grep 'CASSANDRA_LOG'|awk -F'=' '{print $2}' 2>/dev/null`
+        if [ -z $cassandra_log_folder ] || [ ! -d `dirname $cassandra_log_folder` ]; then
+            UPGRADE_MONITOR='y'
+        fi
     fi
 
     #rerun install system libs, upgrade might need new libs
@@ -634,11 +639,16 @@ upgrade_zstack(){
 
     #When using -i option, will not upgrade kariosdb and not start zstack
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        #when using -k option, will not start zstack.
         if [ -z $NEED_KEEP_DB ];then
             if [ $CURRENT_STATUS = 'y' ]; then
                 if [ -z $NOT_START_ZSTACK ]; then
-                    #if [ ! -z $INSTALL_MONITOR ] ; then
                     if [ ! -z $UPGRADE_MONITOR ] ; then
+                        show_spinner sz_start_kairosdb
+                    elif [ ! -z $INSTALL_MONITOR ] ; then
+                        #when monitor libs are ready, we need to try to start then, 
+                        # although we didn't stop them when upgrading.
+                        show_spinner sz_start_cassandra
                         show_spinner sz_start_kairosdb
                     fi
                     show_spinner sz_start_zstack
@@ -1943,7 +1953,7 @@ do
         m ) INSTALL_MONITOR='y';;
         M ) UPGRADE_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
-        o ) YUM_ONLINE_REPO='' && [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';; #do not use yum online repo.
+        o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';; #do not use yum online repo.
         P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
@@ -1971,7 +1981,6 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
         ZSTACK_PROPERTIES_REPO=$MIRROR_ALI_YUM_REPOS
     fi
 elif [ -z $YUM_ONLINE_REPO ]; then
-    ZSTACK_OFFLINE_INSTALL='y'
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
     if [ $UPGRADE = 'n' ]; then
         ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
