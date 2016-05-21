@@ -2197,19 +2197,20 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def vm_sync(self, req):
         rsp = VmSyncResponse()
-        vms = get_running_vms()
-        running_vms = {}
-        for vm in vms:
-            if vm.state == Vm.VM_STATE_RUNNING:
-                running_vms[vm.uuid] = Vm.VM_STATE_RUNNING
-            else:
-                try:
-                    logger.debug('VM[uuid:%s] is in state of %s, destroy it' % (vm.uuid, vm.state))
-                    vm.destroy()
-                except:
-                    logger.warn(linux.get_exception_stacktrace())
-
-        rsp.states = running_vms
+        # vms = get_running_vms()
+        # running_vms = {}
+        # for vm in vms:
+        #     if vm.state == Vm.VM_STATE_RUNNING:
+        #         running_vms[vm.uuid] = Vm.VM_STATE_RUNNING
+        #     else:
+        #         try:
+        #             logger.debug('VM[uuid:%s] is in state of %s, destroy it' % (vm.uuid, vm.state))
+        #             vm.destroy()
+        #         except:
+        #             logger.warn(linux.get_exception_stacktrace())
+        #
+        # rsp.states = running_vms
+        rsp.states = get_all_vm_states()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
