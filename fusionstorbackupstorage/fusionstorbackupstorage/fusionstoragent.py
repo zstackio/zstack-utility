@@ -153,10 +153,11 @@ class FusionstorAgent(object):
         lichbd_file = os.path.join(pool, image_name)
         tmp_lichbd_file = os.path.join(pool, tmp_image_name)
 
+        protocol = lichbd.get_protocol()
         lichbd.lichbd_mkpool(os.path.dirname(lichbd_file))
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
-            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd import - %s -p lichbd' % (cmd.url, tmp_lichbd_file))
+            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd import - %s -p %s' % (cmd.url, tmp_lichbd_file, protocol))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
         elif cmd.url.startswith('file://'):
             src_path = cmd.url.lstrip('file:')
