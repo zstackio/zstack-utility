@@ -3577,6 +3577,11 @@ class CollectLogCmd(Command):
             fetch(fetch_arg, host_post_info)
             command = "rm -rf %s %s/collect-log.tar.gz " % (collect_log_dir, CollectLogCmd.zstack_log_dir)
             run_remote_command(command, host_post_info)
+            (status, output) = commands.getstatusoutput("cd %s/%s/ && tar zxf collect-log.tar.gz" % (collect_dir, host_post_info.host))
+            if status != 0:
+                warn("Uncompress %s/%s/collect-log.tar.gz meet problem: %s" % (collect_dir, host_post_info.host, output))
+            else:
+                (status, output) = commands.getstatusoutput("rm -f %s/%s/collect-log.tar.gz" % (collect_dir, host_post_info.host))
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
