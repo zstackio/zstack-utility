@@ -3580,6 +3580,24 @@ class CollectLogCmd(Command):
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
+    def get_host_ssh_info(self, host_ip):
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        query = MySqlCommandLineQuery()
+        query.host = db_hostname
+        query.port = db_port
+        query.user = db_user
+        query.password = db_password
+        query.table = 'zstack'
+        query.sql = "select * from HostVO where managementIp='%s'" % host_ip
+        host_uuid = query.query()[0]['uuid']
+        query.sql = "select * from KVMHostVO where uuid='%s'" % host_uuid
+        ssh_info = query.query()[0]
+        username = ssh_info['username']
+        password = ssh_info['password']
+        ssh_port = ssh_info['port']
+        return (username, password, ssh_port)
+
+
     def get_management_node_log(self, collect_dir):
         info("Collecting log from this management node ...")
         if not os.path.exists(collect_dir + "/management-node"):
@@ -3607,8 +3625,14 @@ class CollectLogCmd(Command):
         self.get_management_node_log(collect_dir)
         host_vo = self.get_host_list()
         for host in host_vo:
-            host_ip = host['managementIp']
             host_post_info = HostPostInfo()
+            host_ip = host['managementIp']
+            (host_user, host_password, host_port) = self.get_host_ssh_info(host_ip)
+            if host_user != 'root' and host_password is not None:
+                host_post_info.become = True
+                host_post_info.remote_user = host_user
+                host_post_info.remote_pass = host_password
+            host_post_info.remote_port = host_port
             host_post_info.host = host_ip
             host_post_info.host_inventory = ctl.zstack_home + "/../../../ansible/hosts"
             host_post_info.private_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
