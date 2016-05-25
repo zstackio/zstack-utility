@@ -4640,6 +4640,7 @@ class InstallWebUiCmd(Command):
 
   tasks:
     - name: pre-install script
+      when: ansible_os_family == 'RedHat' and yum_repo != 'false'
       script: $pre_install_script
 
     - name: install Python pip for RedHat OS from user defined repo
