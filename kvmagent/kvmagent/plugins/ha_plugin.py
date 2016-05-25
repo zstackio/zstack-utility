@@ -45,6 +45,19 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     mon_url = '\;'.join(cmd.monUrls)
                     mon_url = mon_url.replace(':', '\\\:')
+                    create = shell.ShellCmd('timeout %s qemu-img create -f raw rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s 1' %
+                                                (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
+                    create(False)
+                    if create.return_code == 0:
+                        failure = 0
+                        continue
+                    elif "File exists" in create.stderr:
+                        pass
+                    else:
+                        failure += 1
+                        logger.warn('cannot create heartbeat image; %s' % create.stderr)
+                        continue
+
                     touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
                                            (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
                     touch(False)
@@ -52,19 +65,6 @@ class HaPlugin(kvmagent.KvmAgent):
                     if touch.return_code == 0:
                         failure = 0
                         continue
-
-                    if touch.return_code != 0 and 'No such file or directory' in touch.stderr:
-                        # the heart beat file is not there, create it
-                        create = shell.ShellCmd('timeout %s qemu-img create -f raw rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s 1' %
-                                                (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
-                        create(False)
-                        if touch.return_code == 0:
-                            failure = 0
-                            continue
-                        else:
-                            logger.warn('cannot create heartbeat image; %s' % create.stderr)
-                    else:
-                        logger.warn('cannot read heartbeat file; %s' % touch.stderr)
 
                     failure += 1
                     if failure == cmd.maxAttempts:
@@ -74,7 +74,7 @@ class HaPlugin(kvmagent.KvmAgent):
                             if not vm_uuid:
                                 continue
 
-                            vm_pid = shell.call("ps aux | grep qemu-kvm | grep %s | awk '{print $2}'" % vm_uuid)
+                            vm_pid = shell.call("ps aux | grep qemu-kvm | awk '/%s/{print $2}'" % vm_uuid)
                             vm_pid = vm_pid.strip(' \t\n\r')
                             kill = shell.ShellCmd('kill -9 %s' % vm_pid)
                             kill(False)
