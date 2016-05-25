@@ -273,7 +273,7 @@ def lichbd_snap_list(image_path):
 
 def lichbd_snap_delete(snap_path):
     protocol = get_protocol()
-    cmd = 'lichbd snap remove %s -p lichbd' % (snap_path, protocol)
+    cmd = 'lichbd snap remove %s -p %s' % (snap_path, protocol)
     shellcmd = call_try(cmd)
 
     if shellcmd.return_code != 0:
