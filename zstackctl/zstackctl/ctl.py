@@ -4078,7 +4078,7 @@ class CassandraCmd(Command):
         # cd to the /bin folder to start cassandra, otherwise the command line
         # will be too long to be truncated by the linux /proc/[pid]/cmdline, which
         # leads _status() not working
-        shell('cd %s && bash %s' % (os.path.dirname(exe), os.path.basename(exe)))
+        shell('cd %s && MAX_HEAP_SIZE=1024M HEAP_NEWSIZE=256M bash %s' % (os.path.dirname(exe), os.path.basename(exe)))
         info('successfully starts cassandra')
 
         if args.wait_timeout <= 0:
