@@ -1437,6 +1437,25 @@ class Vm(object):
         else:
             e(interface, 'model', None, attrib={'type':'e1000'})
 
+        def nic_qos():
+            if not cmd.addons:
+                return
+
+            qos = cmd.addons['NicQos']
+            if not qos:
+                return
+
+            if not qos.outboundBandwidth and not qos.inboundBandwidth:
+                return
+
+            bandwidth = e(interface, 'bandwidth')
+            if qos.outboundBandwidth:
+                e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth)})
+            if qos.inboundBandwidth:
+                e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth)})
+
+        nic_qos()
+
         return etree.tostring(interface)
 
     def _wait_vm_run_until_seconds(self, sec):
