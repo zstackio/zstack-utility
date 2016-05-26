@@ -331,7 +331,7 @@ def write_to_temp_file(content):
     tmp_fd.close()
     return tmp_path
 
-def ssh(hostname, sshkey, cmd, user='root'):
+def ssh(hostname, sshkey, cmd, user='root', sshPort=22):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
 
@@ -339,12 +339,12 @@ def ssh(hostname, sshkey, cmd, user='root'):
     shell.call('chmod 600 %s' % sshkey_file)
 
     try:
-        return shell.call('ssh -o StrictHostKeyChecking=no -i %s %s@%s "%s"' % (sshkey_file, user, hostname, cmd))
+        return shell.call('ssh -p %d -o StrictHostKeyChecking=no -i %s %s@%s "%s"' % (sshPort, sshkey_file, user, hostname, cmd))
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
 
-def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root'):
+def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root', sshPort=22):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
 
@@ -354,13 +354,13 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
-        scp_cmd = 'scp -o StrictHostKeyChecking=no -i {0} {1}@{2}:{3} {4}'.format(sshkey_file, host_account, hostname, src_filepath, dst_filepath)
+        scp_cmd = 'scp -P {0} -o StrictHostKeyChecking=no -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath)
         shell.call(scp_cmd)
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
 
-def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root'):
+def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root', sshPort=22):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
 
@@ -371,15 +371,15 @@ def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root'
     shell.call('chmod 600 %s' % sshkey_file)
     try:
         dst_dir = os.path.dirname(dst_filepath)
-        ssh_cmd = 'ssh -o StrictHostKeyChecking=no -i %s %s@%s "mkdir -p %s"' % (sshkey_file, host_account, hostname, dst_dir)
+        ssh_cmd = 'ssh -p %d -o StrictHostKeyChecking=no -i %s %s@%s "mkdir -p %s"' % (sshPort, sshkey_file, host_account, hostname, dst_dir)
         shell.call(ssh_cmd)
-        scp_cmd = 'scp -o StrictHostKeyChecking=no -i %s %s %s@%s:%s' % (sshkey_file, src_filepath, host_account, hostname, dst_filepath)
+        scp_cmd = 'scp -P %d -o StrictHostKeyChecking=no -i %s %s %s@%s:%s' % (sshPort, sshkey_file, src_filepath, host_account, hostname, dst_filepath)
         shell.call(scp_cmd)
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
 
-def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, callback=None, callback_data=None):
+def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, callback=None, callback_data=None, sshPort=22):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
 
@@ -387,7 +387,7 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
         try:
             keyfile_path = create_ssh_key_file()
             batch_cmd = 'ls -s %s' % filename
-            cmdstr = '/usr/bin/ssh -o StrictHostKeyChecking=no -i %s %s "%s"' % (keyfile_path, hostname, batch_cmd)
+            cmdstr = '/usr/bin/ssh -p %d -o StrictHostKeyChecking=no -i %s %s "%s"' % (sshPort, keyfile_path, hostname, batch_cmd)
             cmd = shell.ShellCmd(cmdstr)
             cmd()
             output = cmd.stdout.strip()

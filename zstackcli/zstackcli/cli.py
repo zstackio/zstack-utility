@@ -53,6 +53,8 @@ query_param_keys = \
         ['conditions', 'count', 'limit', 'start', 'timeout', \
         'replyWithCount', 'sortBy', 'sortDirection', 'fields']
 
+NOT_QUERY_MYSQL_APIS = ['APIQueryResourcePriceMsg', 'QueryResourcePrice']
+
 def clean_password_in_cli_history():
     cmd_historys = open(CLI_HISTORY, 'r').readlines()
     new_cmd_historys = []
@@ -163,7 +165,7 @@ class Cli(object):
             if apiname in self.words_db:
                 self.is_cmd = False
                 self.words = ['%s=' % field for field in self.api_class_params['API%sMsg' % apiname]]
-                if apiname.startswith('Query'):
+                if apiname.startswith('Query') and not apiname in NOT_QUERY_MYSQL_APIS:
                     real_api_name = 'API%sMsg' % apiname
                     prepare_query_words(real_api_name)
                     if not ('UserTag' in apiname or 'SystemTag' in apiname):
@@ -277,7 +279,7 @@ Parse command parameters error:
                 raise CliError('"%s" is not an API message' % apiname)
 
             #'=' will be used for more meanings than 'equal' in Query API
-            if apiname.startswith('APIQuery'):
+            if apiname.startswith('APIQuery') and not apiname in NOT_QUERY_MYSQL_APIS:
                 return apiname, pairs[1:]
 
             all_params = {}
@@ -413,7 +415,7 @@ Parse command parameters error:
             if creator:
                 return creator(apiname, params)
 
-            if apiname.startswith('APIQuery'):
+            if apiname.startswith('APIQuery')  and not apiname in NOT_QUERY_MYSQL_APIS:
                 params = generate_query_params(apiname, params)
 
             msg = eval('inventory.%s()' % apiname)
@@ -566,7 +568,7 @@ Parse command parameters error:
             matches_ot = []
             currtext = readline.get_line_buffer()
             apiname = currtext.split()[0]
-            if apiname.startswith('Query'):
+            if apiname.startswith('Query') and not apiname in NOT_QUERY_MYSQL_APIS:
                 query_cmd = True
             else:
                 query_cmd = False

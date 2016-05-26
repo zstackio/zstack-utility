@@ -63,6 +63,7 @@ MYSQL_USER_PASSWORD='zstack.password'
 
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
+UPGRADE_MONITOR=''
 ZSTACK_START_TIMEOUT=300
 ZSTACK_PKG_MIRROR=''
 PKG_MIRROR_163='163'
@@ -607,6 +608,11 @@ upgrade_zstack(){
     echo ""
     if [ -f $upgrade_folder/apache-cassandra* ]; then
         INSTALL_MONITOR='y'
+        #if there isn't cassandra installed, will install cassandra
+        cassandra_log_folder=`zstack-ctl getenv |grep 'CASSANDRA_LOG'|awk -F'=' '{print $2}' 2>/dev/null`
+        if [ -z $cassandra_log_folder ] || [ ! -d `dirname $cassandra_log_folder` ]; then
+            UPGRADE_MONITOR='y'
+        fi
     fi
 
     #rerun install system libs, upgrade might need new libs
@@ -618,29 +624,29 @@ upgrade_zstack(){
     show_spinner cs_enable_zstack_service
     show_spinner cs_config_zstack_properties
 
-    #when using -i option, will not upgrade cassandra and kairosdb
-    if [ -z $ONLY_INSTALL_ZSTACK ] && [ ! -z $INSTALL_MONITOR ] ; then
-        show_spinner iz_install_cassandra
-        show_spinner sz_start_cassandra
-        show_spinner iz_install_kairosdb
-    fi
-
     if [ $UI_INSTALLATION_STATUS = 'y' ]; then
         echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
         show_spinner sd_install_dashboard
     fi
 
     #When using -i option, will not upgrade kariosdb and not start zstack
+    # It means user will manually upgrade database. 
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
-        if [ -z $NEED_KEEP_DB ];then
-            if [ $CURRENT_STATUS = 'y' ]; then
-                if [ -z $NOT_START_ZSTACK ]; then
-                    if [ ! -z $INSTALL_MONITOR ] ; then
-                        show_spinner sz_start_kairosdb
-                    fi
-                    show_spinner sz_start_zstack
-                fi
-            fi
+        if [ ! -z $UPGRADE_MONITOR ] ; then
+            show_spinner iz_install_cassandra
+            show_spinner sz_start_cassandra
+            show_spinner iz_install_kairosdb
+            show_spinner sz_start_kairosdb
+        elif [ ! -z $INSTALL_MONITOR ] ; then
+            #when monitor libs are ready, we need to try to start then, 
+            # although we didn't stop them when upgrading.
+            # Upgrade zstack need to run deploy cassandra db in start cassandra task. 
+            show_spinner sz_start_cassandra
+            show_spinner sz_start_kairosdb
+        fi
+        #when using -k option, will not start zstack.
+        if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
+            show_spinner sz_start_zstack
         fi
     
         if [ $UI_CURRENT_STATUS = 'y' ]; then
@@ -941,14 +947,14 @@ iz_unpack_zstack(){
 }
 
 uz_stop_zstack(){
-    if [ -z $ONLY_INSTALL_ZSTACK ]; then
-        echo_subtitle "Stop ${PRODUCT_NAME}"
-        zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        #Only stop node and ui, when using -i
+    if [ ! -z $ONLY_INSTALL_ZSTACK ] || ([ $UPGRADE = 'y' ] && [ -z $UPGRADE_MONITOR ]);then
+        #Only stop node and ui, when using -i or -u without -M
         echo_subtitle "Stop Management Node and UI"
         zstack-ctl stop_node >>$ZSTACK_INSTALL_LOG 2>&1
         zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        echo_subtitle "Stop ${PRODUCT_NAME}"
+        zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     pass
 }
@@ -1520,7 +1526,7 @@ check_zstack_server(){
 
 sz_start_cassandra(){
     echo_subtitle "Start Cassandra"
-    zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
+    #zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl cassandra --start --wait-timeout=180 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Cassandra"
@@ -1534,7 +1540,7 @@ sz_start_cassandra(){
 
 sz_start_kairosdb(){
     echo_subtitle "Start Kairosdb"
-    zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
+    #zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl kairosdb --start --wait-timeout=60 >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to start Kairosdb"
@@ -1779,7 +1785,7 @@ get_zstack_repo(){
         echo $ZSTACK_YUM_REPOS |grep "163" >/dev/null 2>&1
         if [ $? -eq 0 ]; then
             ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
-            ZSTACK_PROPERTIES_REPO=MIRROR_163_YUM_REPOS
+            ZSTACK_PROPERTIES_REPO=$MIRROR_163_YUM_REPOS
         fi
         YUM_ONLINE_REPO=''
     fi
@@ -1840,6 +1846,8 @@ Options:
   -l    only just install ${PRODUCT_NAME} dependent libraries
 
   -m    install monitor. Depends on monitor capability in package.
+
+  -M    install monitor when upgrade. Used when upgrade ZStack to Mevoco.
 
   -n NFS_PATH
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
@@ -1922,7 +1930,7 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmNoquz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmMNoquz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
@@ -1936,8 +1944,9 @@ do
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
         m ) INSTALL_MONITOR='y';;
+        M ) UPGRADE_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
-        o ) YUM_ONLINE_REPO='' && [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';; #do not use yum online repo.
+        o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';; #do not use yum online repo.
         P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
@@ -1965,7 +1974,6 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
         ZSTACK_PROPERTIES_REPO=$MIRROR_ALI_YUM_REPOS
     fi
 elif [ -z $YUM_ONLINE_REPO ]; then
-    ZSTACK_OFFLINE_INSTALL='y'
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
     if [ $UPGRADE = 'n' ]; then
         ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
@@ -2114,6 +2122,8 @@ download_zstack
 if [ $UPGRADE = 'y' ]; then
     #only upgrade zstack
     upgrade_zstack
+
+    zstack-ctl setenv UPGRADE_START=true
     cd /; rm -rf $upgrade_zstack
     cleanup_function
 

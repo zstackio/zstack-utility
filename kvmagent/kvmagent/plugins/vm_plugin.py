@@ -666,10 +666,16 @@ class VirtioIscsi(object):
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True):
     try:
+        # libvirt may not be able to find a VM when under a heavy workload, we re-try here
         @LibvirtAutoReconnect
         def call_libvirt(conn):
             return conn.lookupByName(uuid)
-        vm = Vm.from_virt_domain(call_libvirt())
+
+        @linux.retry(times=3, sleep_time=1)
+        def retry_call_libvirt():
+            return call_libvirt()
+
+        vm = Vm.from_virt_domain(retry_call_libvirt())
         return vm
     except libvirt.libvirtError as e:
         error_code = e.get_error_code()
@@ -2226,13 +2232,20 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def vm_sync(self, req):
         rsp = VmSyncResponse()
-        try:
-            rsp.states = get_all_vm_states()
-        except kvmagent.KvmError as e:
-            logger.warn(linux.get_exception_stacktrace())
-            rsp.error = str(e)
-            rsp.success = False
-
+        # vms = get_running_vms()
+        # running_vms = {}
+        # for vm in vms:
+        #     if vm.state == Vm.VM_STATE_RUNNING:
+        #         running_vms[vm.uuid] = Vm.VM_STATE_RUNNING
+        #     else:
+        #         try:
+        #             logger.debug('VM[uuid:%s] is in state of %s, destroy it' % (vm.uuid, vm.state))
+        #             vm.destroy()
+        #         except:
+        #             logger.warn(linux.get_exception_stacktrace())
+        #
+        # rsp.states = running_vms
+        rsp.states = get_all_vm_states()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

@@ -367,6 +367,10 @@ class Ctl(object):
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
         return env.read_property(name)
 
+    def delete_env(self, name):
+        env = PropertyFile(SetEnvironmentVariableCmd.PATH)
+        env.delete_properties([name])
+
     def put_envs(self, vs):
         if not os.path.exists(SetEnvironmentVariableCmd.PATH):
             shell('su - zstack -c "mkdir -p %s"' % os.path.dirname(SetEnvironmentVariableCmd.PATH))
@@ -1227,7 +1231,8 @@ class StartCmd(Command):
                 cmd(False)
                 if cmd.return_code == 7:
                     warn('unable to connect to the rabbitmq management plugin at %s:15672. The possible reasons are:\n'
-                         '  1) the plugin is not installed, you can install it by "rabbitmq-plugins enable rabbitmq_management"\n'
+                         '  1) the plugin is not installed, you can install it by "rabbitmq-plugins enable rabbitmq_management,"\n'
+                         '     then restart the rabbitmq by "service rabbitmq-server restart"\n'
                          '  2) the port 15672 is blocked by the firewall\n'
                          'without the plugin, we cannot check the validity of the rabbitmq username/password configured in zstack.properties' % ip)
 
@@ -1286,6 +1291,10 @@ class StartCmd(Command):
             if ctl.extra_arguments:
                 catalina_opts.extend(ctl.extra_arguments)
 
+            upgrade_start = ctl.get_env('UPGRADE_START')
+            if upgrade_start:
+                catalina_opts.append('-DupgradeStartOn=true')
+
             co = ctl.get_env('CATALINA_OPTS')
             if co:
                 info('use CATALINA_OPTS[%s] set in environment zstack environment variables; check out them by "zstack-ctl getenv"' % co)
@@ -1325,7 +1334,7 @@ class StartCmd(Command):
         check_rabbitmq()
         prepare_setenv()
         start_mgmt_node()
-        #sleep a while, since zstack won't start up so quick
+        #sleep a while, since zstack won't start up so quickly
         time.sleep(5)
 
         try:
@@ -1342,6 +1351,8 @@ class StartCmd(Command):
         if not args.daemon:
             shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception = False)
         info('successfully started management node')
+
+        ctl.delete_env('UPGRADE_START')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
@@ -1877,13 +1888,13 @@ class InstallHACmd(Command):
             if args.host2 == args.host3 or args.host1 == args.host3:
                 error("The host1, host2 and host3 should not be the same ip address!")
 
-
-
         # init variables
         self.yum_repo = ctl.read_property('Ansible.var.zstack_repo')
         # avoid http server didn't start when install package
         if 'zstack-mn' in self.yum_repo:
-            self.yum_repo.replace("zstack-mn","zstack-local")
+            self.yum_repo = self.yum_repo.replace("zstack-mn","zstack-local")
+        if 'qemu-kvm-ev-mn' in self.yum_repo:
+            self.yum_repo = self.yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
@@ -2327,8 +2338,8 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, self.output))
 
         # deploy cassandra_db
-        # self.command = 'zstack-ctl deploy_cassandra_db'
-        # run_remote_command(self.command, self.host1_post_info)
+        self.command = 'zstack-ctl deploy_cassandra_db'
+        run_remote_command(self.command, self.host1_post_info)
 
         # change Cassadra duplication number
         #self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : " \
@@ -3192,6 +3203,15 @@ class RabbitmqHA(InstallHACmd):
         run_remote_command(self.command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
             run_remote_command(self.command, self.host3_post_info)
+        self.command = "rabbitmq-plugins enable rabbitmq_management"
+        run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(self.command, self.host2_post_info)
+        if len(self.host_post_info_list) == 3:
+            run_remote_command(self.command, self.host3_post_info)
+        service_status("rabbitmq-server","state=restarted enabled=yes", self.host1_post_info)
+        service_status("rabbitmq-server", "state=restarted enabled=yes", self.host2_post_info)
+        if len(self.host_post_info_list) == 3:
+            service_status("rabbitmq-server", "state=restarted enabled=yes", self.host3_post_info)
 
 
 class InstallRabbitCmd(Command):
@@ -3255,7 +3275,7 @@ class InstallRabbitCmd(Command):
       shell: rabbitmq-plugins enable rabbitmq_management
 
     - name: enable RabbitMQ
-      service: name=rabbitmq-server state=started enabled=yes
+      service: name=rabbitmq-server state=restarted enabled=yes
 
     - name: post-install script
       script: $post_install_script
@@ -3557,8 +3577,31 @@ class CollectLogCmd(Command):
             fetch(fetch_arg, host_post_info)
             command = "rm -rf %s %s/collect-log.tar.gz " % (collect_log_dir, CollectLogCmd.zstack_log_dir)
             run_remote_command(command, host_post_info)
+            (status, output) = commands.getstatusoutput("cd %s/%s/ && tar zxf collect-log.tar.gz" % (collect_dir, host_post_info.host))
+            if status != 0:
+                warn("Uncompress %s/%s/collect-log.tar.gz meet problem: %s" % (collect_dir, host_post_info.host, output))
+            else:
+                (status, output) = commands.getstatusoutput("rm -f %s/%s/collect-log.tar.gz" % (collect_dir, host_post_info.host))
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
+
+    def get_host_ssh_info(self, host_ip):
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        query = MySqlCommandLineQuery()
+        query.host = db_hostname
+        query.port = db_port
+        query.user = db_user
+        query.password = db_password
+        query.table = 'zstack'
+        query.sql = "select * from HostVO where managementIp='%s'" % host_ip
+        host_uuid = query.query()[0]['uuid']
+        query.sql = "select * from KVMHostVO where uuid='%s'" % host_uuid
+        ssh_info = query.query()[0]
+        username = ssh_info['username']
+        password = ssh_info['password']
+        ssh_port = ssh_info['port']
+        return (username, password, ssh_port)
+
 
     def get_management_node_log(self, collect_dir):
         info("Collecting log from this management node ...")
@@ -3587,8 +3630,14 @@ class CollectLogCmd(Command):
         self.get_management_node_log(collect_dir)
         host_vo = self.get_host_list()
         for host in host_vo:
-            host_ip = host['managementIp']
             host_post_info = HostPostInfo()
+            host_ip = host['managementIp']
+            (host_user, host_password, host_port) = self.get_host_ssh_info(host_ip)
+            if host_user != 'root' and host_password is not None:
+                host_post_info.become = True
+                host_post_info.remote_user = host_user
+                host_post_info.remote_pass = host_password
+            host_post_info.remote_port = host_port
             host_post_info.host = host_ip
             host_post_info.host_inventory = ctl.zstack_home + "/../../../ansible/hosts"
             host_post_info.private_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
@@ -4029,7 +4078,7 @@ class CassandraCmd(Command):
         # cd to the /bin folder to start cassandra, otherwise the command line
         # will be too long to be truncated by the linux /proc/[pid]/cmdline, which
         # leads _status() not working
-        shell('cd %s && bash %s' % (os.path.dirname(exe), os.path.basename(exe)))
+        shell('cd %s && MAX_HEAP_SIZE=1024M HEAP_NEWSIZE=256M bash %s' % (os.path.dirname(exe), os.path.basename(exe)))
         info('successfully starts cassandra')
 
         if args.wait_timeout <= 0:
@@ -4078,7 +4127,11 @@ class CassandraCmd(Command):
             info('cassandra is already stopped')
             return
 
-        shell('kill %s' % pid)
+        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+        if not exe:
+            shell('kill %s' % pid)
+        else:
+            shell('cd %s; bash nodetool flush; kill %s' % (os.path.dirname(exe), pid))
 
         count = 30
         while count > 0:
@@ -4587,6 +4640,7 @@ class InstallWebUiCmd(Command):
 
   tasks:
     - name: pre-install script
+      when: ansible_os_family == 'RedHat' and yum_repo != 'false'
       script: $pre_install_script
 
     - name: install Python pip for RedHat OS from user defined repo
