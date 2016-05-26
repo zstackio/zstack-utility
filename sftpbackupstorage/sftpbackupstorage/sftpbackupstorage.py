@@ -101,7 +101,7 @@ class GetSshKeyResponse(AgentResponse):
 
 class GetImageSizeRsp(AgentResponse):
     def __init__(self):
-        super(GetImageActualSizeRsp, self).__init__()
+        super(GetImageSizeRsp, self).__init__()
         self.actualSize = None
         self.size = None
         
