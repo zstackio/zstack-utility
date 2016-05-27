@@ -114,7 +114,8 @@ if copy_consoleproxy != "changed:False":
 
 # name: restart consoleproxy
 if chroot_env == 'false':
-    service_status("zstack-consoleproxy", "state=restarted enabled=yes", host_post_info)
+    command = "service zstack-consoleproxy restart"
+    run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy consoleproxy agent successful", host_post_info, "INFO")

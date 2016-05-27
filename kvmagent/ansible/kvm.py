@@ -175,8 +175,7 @@ elif distro == "Debian" or distro == "Ubuntu":
         service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
 
 else:
-    print "unsupported OS!"
-    sys.exit(1)
+    error("unsupported OS!")
 
 # name: remove libvirt default bridge
 command = '(ifconfig virbr0 &> /dev/null && virsh net-destroy default > ' \
@@ -259,14 +258,14 @@ if chroot_env == 'false':
                 or qemu_conf_status != "changed:False":
             # name: restart redhat libvirtd
             service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
-        # name: restart kvmagent
-        service_status("zstack-kvmagent", "state=restarted enabled=yes", host_post_info)
     elif distro == "Debian" or distro == "Ubuntu":
         if libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
             # name: restart debian libvirtd
             service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
-        # name: restart kvmagent
-        service_status("zstack-kvmagent", "state=restarted enabled=yes", host_post_info)
+    # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
+    # the kvm agent status when we want to restart it to use the latest kvm agent code
+    command = "service zstack-kvmagent restart"
+    run_remote_command(command, host_post_info)
 
 
 host_post_info.start_time = start_time
