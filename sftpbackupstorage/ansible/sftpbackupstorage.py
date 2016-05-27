@@ -75,7 +75,8 @@ else:
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
         # name: install sftp backup storage related packages on RedHat based OS from local
-        command = 'yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y openssh-clients qemu-img' % zstack_repo
+        command = ("pkg_list=`rpm -q openssh-clients qemu-img | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
     else:
         # name: install sftp backup storage related packages on RedHat based OS from online
@@ -89,8 +90,7 @@ elif distro == "Debian" or distro == "Ubuntu":
     apt_install_packages(["qemu-utils"], host_post_info)
 
 else:
-    print "unsupported OS!"
-    sys.exit(1)
+    error("unsupported OS!")
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)

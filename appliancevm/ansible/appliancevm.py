@@ -111,7 +111,8 @@ run_remote_command(command, host_post_info)
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
         # name: install appliance vm related packages on RedHat based OS from user defined repo
-        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y iputils tcpdump ethtool" % zstack_repo
+        command = ("pkg_list=`rpm -q iputils tcpdump ethtool | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
     else:
         # name: install appliance vm related packages on RedHat based OS
@@ -163,9 +164,7 @@ elif distro == "Debian" or distro == "Ubuntu":
     run_remote_command(command, host_post_info)
 
 else:
-    print "unsupported OS!"
-    sys.exit(1)
-
+    error("unsupported OS!")
 
 # name: install zstacklib
 if copy_zstacklib != "changed:False":

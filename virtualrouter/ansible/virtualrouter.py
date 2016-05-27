@@ -71,8 +71,10 @@ else:
 
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
-        # name: install appliance vm related packages on RedHat based OS from user defined repo
-        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y haproxy dnsmasq" % zstack_repo
+        # name: install vr related packages on RedHat based OS from user defined repo
+        command = ("pkg_list=`rpm -q haproxy dnsmasq | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+        run_remote_command(command, host_post_info)
     else:
         # name: install virtual router related packages for RedHat
         for pkg in ["haproxy", "dnsmasq"]:
@@ -81,8 +83,7 @@ elif distro == "Debian" or distro == "Ubuntu":
     # name: install virtual router related packages for Debian
     apt_install_packages(["dnsmasq"], host_post_info)
 else:
-    print "unsupported OS!"
-    sys.exit(1)
+    error("unsupported OS!")
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
