@@ -140,7 +140,8 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart cephbagent
-service_status("zstack-ceph-backupstorage", "state=restarted enabled=yes", host_post_info)
+command = "service zstack-ceph-backupstorage restart"
+run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy cephbackup agent successful", host_post_info, "INFO")

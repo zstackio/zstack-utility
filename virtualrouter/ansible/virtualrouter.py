@@ -158,7 +158,8 @@ copy(copy_arg, host_post_info)
 
 if chroot_env == 'false':
     # name: restart vr
-    service_status("zstack-virtualrouter", "enabled=yes state=restarted", host_post_info)
+    command = "service zstack-virtualrouter restart"
+    run_remote_command(command, host_post_info)
     # name: restart dnsmasq
     service_status("dnsmasq", "state=restarted enabled=yes", host_post_info)
 else:

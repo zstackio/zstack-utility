@@ -143,7 +143,8 @@ if sftp_copy_result != "changed:False":
 
 # name: restart sftp
 if chroot_env == 'false':
-    service_status("zstack-sftpbackupstorage", "state=restarted enabled=yes", host_post_info)
+    command = "service zstack-sftpbackupstorage restart"
+    run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploysftpbackupstorage agent successful", host_post_info, "INFO")

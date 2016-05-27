@@ -184,7 +184,8 @@ if copy_appliancevm != "changed:False":
 
 if chroot_env == 'false':
     # name: restart appliancevm
-    service_status("zstack-appliancevm", "enabled=yes state=restarted", host_post_info)
+    command = "service restart zstack-appliancevm"
+    run_remote_command(command, host_post_info)
 else:
     if distro == "RedHat" or distro == "CentOS":
         # name: restart iptables
