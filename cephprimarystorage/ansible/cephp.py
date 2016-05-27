@@ -71,7 +71,8 @@ else:
 
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
-        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img" % zstack_repo
+        command = ("pkg_list=`rpm -q wget qemu-img | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             command = "rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s --nogpgcheck install" \
@@ -93,8 +94,7 @@ elif distro == "Debian" or distro == "Ubuntu":
     install_pkg_list = ["wget", "qemu-utils"]
     apt_install_packages(install_pkg_list, host_post_info)
 else:
-    print "unsupported OS!"
-    sys.exit(1)
+    error("unsupported OS!")
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
