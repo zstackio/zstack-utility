@@ -61,6 +61,8 @@ def add_backup_storage(deployConfig, session_uuid):
             action.username = bs.username_
             action.password = bs.password_
             action.hostname = bs.hostname_
+            if hasattr(bs, 'sshPort_'):
+                action.port = bs.sshPort_
             action.timeout = AddKVMHostTimeOut #for some platform slowly salt execution
             action.type = inventory.SFTP_BACKUP_STORAGE_TYPE
             if bs.uuid__:
@@ -571,6 +573,8 @@ def add_host(deployConfig, session_uuid, host_ip = None, zone_name = None, \
                     action.username = host.username_
                     action.password = host.password_
                     action.timeout = AddKVMHostTimeOut
+                    if hasattr(host, 'sshPort_'):
+                        action.port = host.sshPort_
                 elif cluster.hypervisorType_ == inventory.SIMULATOR_HYPERVISOR_TYPE:
                     action = api_actions.AddSimulatorHostAction()
                     if host.cpuCapacity__:
