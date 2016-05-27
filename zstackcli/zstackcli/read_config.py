@@ -55,6 +55,35 @@ class JsonToXml(object):
 
         return xml_item
 
+    def generate_mon_xml(self):
+        if not self.json_object:
+            return None
+
+        xml_item = etree.SubElement(self.xml_parent, self.xml_name)
+        json_dict = vars(self.json_object)
+        for key,value in json_dict.iteritems():
+            if not key in self.not_save and not isinstance(value, list) and \
+                    not isinstance(value, dict) and \
+                    not isinstance(value, jsonobject.JsonObject):
+                value = str(value)
+                xml_item.set(key, value)
+            if key == 'mons':
+                mons = value
+                monurls = ''
+                for mon in mons:
+                    mon_dict = vars(mon)
+                    monurl = mon_dict['sshUsername'] + ':' + \
+                            mon_dict['sshPassword'] + '@' + \
+                            mon_dict['hostname'] + ':' + \
+                            str(mon_dict['sshPort'])
+                    if not monurls:
+                        monurls = monurl
+                    else:
+                        monurls = monurls + ';' + monurl
+                xml_item.set('monUrls', monurls)
+
+        return xml_item
+
 def add_xml_items(json_object_list, xml_name, xml_parent_element, not_save=''):
     for json_object in json_object_list:
         json_to_xml = JsonToXml(json_object, xml_name, xml_parent_element, \
@@ -153,7 +182,7 @@ def get_backup_storage(xml_root, session_uuid = None):
         elif bs.type == inventory.CEPH_BACKUP_STORAGE_TYPE:
        	    json_to_xml = JsonToXml(bs, 'cephBackupStorage', xml_item, \
                    'attachedZoneUuids availableCapacity totalCapacity')
-            json_to_xml.generate_xml()
+            json_to_xml.generate_mon_xml()
 
     cond = res_ops.gen_query_conditions('type', '=', 'SimulatorBackupStorage')
     simulator_bss = res_ops.safely_get_resource(res_ops.BACKUP_STORAGE, \
@@ -217,7 +246,7 @@ def get_zone(xml_root, session_uuid = None):
             elif ps.type == inventory.CEPH_PRIMARY_STORAGE_TYPE:
        	        json_to_xml = JsonToXml(ps, 'cephPrimaryStorage', pss_xml, \
                         'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
-                json_to_xml.generate_xml()
+                json_to_xml.generate_mon_xml()
             elif ps.type == inventory.LOCAL_STORAGE_TYPE:
        	        json_to_xml = JsonToXml(ps, 'localPrimaryStorage', pss_xml, \
                         'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
