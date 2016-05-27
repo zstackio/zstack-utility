@@ -3,6 +3,8 @@
 # Usage: bash install.sh
 #DEBUG='y'
 PRODUCT_NAME=${PRODUCT_NAME:-"ZStack"}
+SS100='SS100'
+SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 
@@ -1243,6 +1245,9 @@ cs_config_zstack_properties(){
     fi
     if [ ! -z $ZSTACK_PROPERTIES_REPO ];then
         zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_PROPERTIES_REPO
+    fi
+    if [ $PRODUCT_NAME = $SS100 ] ; then
+        zstack-ctl configure stor.type=$SS100_STORAGE
     fi
     if [ $? -ne 0 ];then
         fail "failed to add yum repo to $ZSTACK_PROPERTIES"
