@@ -371,7 +371,7 @@ def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root'
     shell.call('chmod 600 %s' % sshkey_file)
     try:
         dst_dir = os.path.dirname(dst_filepath)
-        ssh_cmd = 'ssh -p %d -o StrictHostKeyChecking=no -i %s %s@%s "mkdir -p %s"' % (sshPort, sshkey_file, host_account, hostname, dst_dir)
+        ssh_cmd = 'ssh -p %d -o StrictHostKeyChecking=no -i %s %s@%s "mkdir -m 777 -p %s"' % (sshPort, sshkey_file, host_account, hostname, dst_dir)
         shell.call(ssh_cmd)
         scp_cmd = 'scp -P %d -o StrictHostKeyChecking=no -i %s %s %s@%s:%s' % (sshPort, sshkey_file, src_filepath, host_account, hostname, dst_filepath)
         shell.call(scp_cmd)
