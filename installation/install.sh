@@ -1247,7 +1247,7 @@ cs_config_zstack_properties(){
         zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_PROPERTIES_REPO
     fi
     if [ $PRODUCT_NAME = $SS100 ] ; then
-        zstack-ctl configure stor.type=$SS100_STORAGE
+        zstack-ctl configure Fusionstor.type=$SS100_STORAGE
     fi
     if [ $? -ne 0 ];then
         fail "failed to add yum repo to $ZSTACK_PROPERTIES"
