@@ -74,7 +74,7 @@ if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
         # name: install iscsi related packages on RedHat based OS from user defined repo
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget " \
-                  "qemu-img scsi-target-utils"  % zstack_repo
+                  "qemu-img-ev-2.3.0 scsi-target-utils"  % zstack_repo
         run_remote_command(command, host_post_info)
         # name: RHEL7 specific packages from user defined repos
         if distro_version >= 7:
@@ -84,7 +84,7 @@ if distro == "RedHat" or distro == "CentOS":
 
     else:
         # name: install isci related packages on RedHat based OS from online
-        for pkg in ['centos-release-qemu-ev', 'wget', 'qemu-img', 'scsi-target-utils']:
+        for pkg in ['centos-release-qemu-ev', 'wget', 'qemu-img-ev-2.3.0', 'scsi-target-utils']:
             yum_install_package(pkg, host_post_info)
             # name: RHEL7 specific packages from online
             yum_install_package("iptables-services", host_post_info)
