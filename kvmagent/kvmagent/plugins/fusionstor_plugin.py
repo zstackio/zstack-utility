@@ -29,8 +29,15 @@ class FusionstorPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def fusionstor_query(self, req):
-        lichbd.makesure_qemu_with_lichbd()
-        lichbd.makesure_qemu_img_with_lichbd()
+        protocol = lichbd.get_protocol()
+        if protocol == 'lichbd':
+            lichbd.makesure_qemu_with_lichbd()
+            lichbd.makesure_qemu_img_with_lichbd()
+        elif protocol == 'sheepdog' or protocol == 'nbd':
+            lichbd.makesure_qemu_with_lichbd()
+        else:
+            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
+
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     def start(self):

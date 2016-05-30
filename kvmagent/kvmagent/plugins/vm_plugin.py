@@ -528,30 +528,43 @@ class IsoFusionstor(object):
         self.iso = None
 
     def to_xmlobject(self):
-        iqn = lichbd.lichbd_get_iqn() 
-        port = lichbd.lichbd_get_iscsiport()
-        lichbd.makesure_qemu_with_lichbd()
-        lichbd.makesure_qemu_img_with_lichbd()
+        protocol = lichbd.get_protocol()
         snap = self.iso.path.lstrip('fusionstor:').lstrip('//')
         path = self.iso.path.lstrip('fusionstor:').lstrip('//').split('@')[0]
+        if protocol == 'lichbd':
+            iqn = lichbd.lichbd_get_iqn() 
+            port = lichbd.lichbd_get_iscsiport()
+            lichbd.makesure_qemu_with_lichbd()
+            lichbd.makesure_qemu_img_with_lichbd()
 
-        shellcmd = shell.ShellCmd('lichbd mkpool %s -p iscsi' % path.split('/')[0])
-        shellcmd(False)
-        if shellcmd.return_code != 0 and shellcmd.return_code != 17:
-            shellcmd.raise_error()
+            shellcmd = shell.ShellCmd('lichbd mkpool %s -p iscsi' % path.split('/')[0])
+            shellcmd(False)
+            if shellcmd.return_code != 0 and shellcmd.return_code != 17:
+                shellcmd.raise_error()
 
-        shellcmd = shell.ShellCmd('lich.snapshot --clone %s %s' % (os.path.join('/lichbd/', snap), os.path.join('/iscsi/', path)))
-        shellcmd(False)
-        if shellcmd.return_code != 0 and shellcmd.return_code != 17:
-            shellcmd.raise_error()
+            shellcmd = shell.ShellCmd('lich.snapshot --clone %s %s' % (os.path.join('/lichbd/', snap), os.path.join('/iscsi/', path)))
+            shellcmd(False)
+            if shellcmd.return_code != 0 and shellcmd.return_code != 17:
+                shellcmd.raise_error()
 
-        pool = path.split('/')[0]
-        image = path.split('/')[1]
-        #iqn:pool.volume/0
-        path = '%s:%s.%s/0' % (iqn, pool, image)
+            pool = path.split('/')[0]
+            image = path.split('/')[1]
+            #iqn:pool.volume/0
+            path = '%s:%s.%s/0' % (iqn, pool, image)
+            protocol = 'iscsi'
+        elif protocol == 'sheepdog' or protocol == 'nbd':
+            lichbd.makesure_qemu_with_lichbd()
+        else:
+            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
+
         disk = etree.Element('disk', {'type':'network', 'device':'cdrom'})
-        source = e(disk, 'source', None, {'name': path, 'protocol':'iscsi'})
-        e(source, 'host', None, {'name':'127.0.0.1', 'port':'3260'})
+        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
+        if protocol == 'iscsi':
+            e(source, 'host', None, {'name':'127.0.0.1', 'port':'3260'})
+        elif protocol == 'sheepdog':
+            e(source, 'host', None, {'name':'127.0.0.1', 'port':'7000'})
+        elif protocol == 'nbd':
+            e(source, 'host', None, {'name':'unix', 'port':'/tmp/nbd-socket'})
         e(disk, 'target', None, {'dev':'hdc', 'bus':'ide'})
         e(disk, 'readonly', None)
         return disk
@@ -562,13 +575,24 @@ class IdeFusionstor(object):
         self.dev_letter = None
 
     def to_xmlobject(self):
-        lichbd.makesure_qemu_with_lichbd()
-        lichbd.makesure_qemu_img_with_lichbd()
+        protocol = lichbd.get_protocol()
+        if protocol == 'lichbd':
+            lichbd.makesure_qemu_with_lichbd()
+            lichbd.makesure_qemu_img_with_lichbd()
+        elif protocol == 'sheepdog' or protocol == 'nbd':
+            lichbd.makesure_qemu_with_lichbd()
+        else:
+            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
+
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         file_format = lichbd.lichbd_get_format(path)
 
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
-        source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
+        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
+        if protocol == 'sheepdog':
+            e(source, 'host', None, {'name':'127.0.0.1', 'port':'7000'})
+        elif protocol == 'nbd':
+            e(source, 'host', None, {'name':'unix', 'port':'/tmp/nbd-socket'})
         e(disk, 'target', None, {'dev':'hd%s' % self.dev_letter, 'bus':'ide'})
         e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'io':'native', 'type':file_format})
         return disk
@@ -579,13 +603,24 @@ class VirtioFusionstor(object):
         self.dev_letter = None
 
     def to_xmlobject(self):
-        lichbd.makesure_qemu_with_lichbd()
-        lichbd.makesure_qemu_img_with_lichbd()
+        protocol = lichbd.get_protocol()
+        if protocol == 'lichbd':
+            lichbd.makesure_qemu_with_lichbd()
+            lichbd.makesure_qemu_img_with_lichbd()
+        elif protocol == 'sheepdog' or protocol == 'nbd':
+            lichbd.makesure_qemu_with_lichbd()
+        else:
+            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
+
         path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
         file_format = lichbd.lichbd_get_format(path)
 
         disk = etree.Element('disk', {'type':'network', 'device':'disk'})
-        source = e(disk, 'source', None, {'name': path, 'protocol':'rbd'})
+        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
+        if protocol == 'sheepdog':
+            e(source, 'host', None, {'name':'127.0.0.1', 'port':'7000'})
+        elif protocol == 'nbd':
+            e(source, 'host', None, {'name':'unix', 'port':'/tmp/nbd-socket'})
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
         e(disk, 'driver', None, {'cache':'none', 'name':'qemu', 'io':'native', 'type':file_format})
         return disk

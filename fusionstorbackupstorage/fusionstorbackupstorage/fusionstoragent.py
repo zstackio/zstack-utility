@@ -13,6 +13,7 @@ import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils import plugin
 from zstacklib.utils.rollback import rollback, rollbackable
 import os
+import os.path
 import functools
 import traceback
 import pprint
@@ -36,10 +37,23 @@ class DownloadRsp(AgentResponse):
     def __init__(self):
         super(DownloadRsp, self).__init__()
         self.size = None
+        self.actualSize = None
+
+class GetImageSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetImageSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
 
 class PingRsp(AgentResponse):
     def __init__(self):
         super(PingRsp, self).__init__()
+        self.operationFailure = False
+
+class GetFactsRsp(AgentResponse):
+    def __init__(self):
+        super(GetFactsRsp, self).__init__()
+        self.fsid = None
 
 def replyerror(func):
     @functools.wraps(func)
@@ -62,6 +76,8 @@ class FusionstorAgent(object):
     DELETE_IMAGE_PATH = "/fusionstor/backupstorage/image/delete"
     PING_PATH = "/fusionstor/backupstorage/ping"
     ECHO_PATH = "/fusionstor/backupstorage/echo"
+    GET_IMAGE_SIZE_PATH = "/fusionstor/backupstorage/image/getsize"
+    GET_FACTS = "/fusionstor/backupstorage/facts"
 
     http_server = http.HttpServer(port=7763)
     http_server.logfile_path = log.get_logfile_path()
@@ -71,6 +87,8 @@ class FusionstorAgent(object):
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
+        self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
+        self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -82,6 +100,28 @@ class FusionstorAgent(object):
     def echo(self, req):
         logger.debug('get echoed')
         return ''
+
+    def _normalize_install_path(self, path):
+        return path.lstrip('fusionstor:').lstrip('//')
+
+    def _get_file_size(self, path):
+        return lichbd.lichbd_file_size(path)
+
+    @replyerror
+    def get_image_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetImageSizeRsp()
+        path = self._normalize_install_path(cmd.installPath)
+        rsp.size = self._get_file_size(path)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def get_facts(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        rsp = GetFactsRsp()
+        rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def init(self, req):
@@ -113,8 +153,21 @@ class FusionstorAgent(object):
         lichbd_file = os.path.join(pool, image_name)
         tmp_lichbd_file = os.path.join(pool, tmp_image_name)
 
+        protocol = lichbd.get_protocol()
         lichbd.lichbd_mkpool(os.path.dirname(lichbd_file))
-        shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd import - %s -p lichbd' % (cmd.url, tmp_lichbd_file))
+
+        if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
+            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd import - %s -p %s' % (cmd.url, tmp_lichbd_file, protocol))
+            actual_size = linux.get_file_size_by_http_head(cmd.url)
+        elif cmd.url.startswith('file://'):
+            src_path = cmd.url.lstrip('file:')
+            src_path = os.path.normpath(src_path)
+            if not os.path.isfile(src_path):
+                raise Exception('cannot find the file[%s]' % src_path)
+            lichbd.lichbd_import(src_path, tmp_lichbd_file)
+            actual_size = os.path.getsize(src_path)
+        else:
+            raise Exception('unknown url[%s]' % cmd.url)
 
         @rollbackable
         def _1():
@@ -123,32 +176,44 @@ class FusionstorAgent(object):
             lichbd.lichbd_rm(lichbd_file)
         _1()
 
-        qemu_img = lichbd.lichbd_get_qemu_img_path()
-        file_format = shell.call("set -o pipefail;%s info rbd:%s/%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (qemu_img, pool, tmp_image_name))
-        file_format = file_format.strip()
+        file_format = lichbd.lichbd_get_format(tmp_lichbd_file)
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
 
+
         lichbd.lichbd_mv(lichbd_file, tmp_lichbd_file)
+
         size = lichbd.lichbd_file_size(lichbd_file)
+
         rsp = DownloadRsp()
         rsp.size = size
+        rsp.actualSize = actual_size
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     @replyerror
     def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PingRsp()
-        self._set_capacity_to_response(rsp)
+        try:
+            lichbd.lichbd_create(cmd.testImagePath, '1M')
+            lichbd.lichbd_rm(cmd.testImagePath)
+        except Exception, e:
+            rsp.success = False
+            rsp.operationFailure = True
+            rsp.error = "%s" % (e)
+
         return jsonobject.dumps(rsp)
 
     @replyerror
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool, image_name = self._parse_install_path(cmd.installPath)
+        protocol = lichbd.get_protocol()
         lichbd_file = os.path.join(pool, image_name)
         lichbd.lichbd_rm(lichbd_file)
-        lichbd.lichbd_rm(lichbd_file, "iscsi")
+        if protocol == 'lichbd':
+            lichbd.lichbd_rm(lichbd_file, "iscsi")
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
