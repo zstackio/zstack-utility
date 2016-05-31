@@ -1722,7 +1722,7 @@ class Vm(object):
         def commit_to_intermediate_file():
             # libvirt blockCommit is from @top to @base; however, parameters @srcPath and @destPath in cmd indicate
             # direction @base to @top. We reverse the direction here for using blockCommit
-            do_commit(cmd.srcPath, cmd.destPath, libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE)
+            do_commit(cmd.srcPath, cmd.destPath, libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE | libvirt.VIR_DOMAIN_BLOCK_COMMIT_ACTIVE)
 
         if cmd.fullRebase:
             rebase_all_to_active_file()
