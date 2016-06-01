@@ -2017,6 +2017,23 @@ class InstallHACmd(Command):
             InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
             InstallHACmd.spinner_status['recovery_cluster'] = True
             ZstackSpinner(self.spinner_info)
+            # kill mysql process to make sure mysql bootstrap can work
+            service_status("mysql", "state=stopped", self.host1_post_info)
+            self.mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host1_post_info, return_status=True)
+            if self.mysqld_status is True:
+                run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host1_post_info)
+
+            service_status("mysql", "state=stopped", self.host2_post_info)
+            self.mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host2_post_info, return_status=True)
+            if self.mysqld_status is True:
+                run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host2_post_info)
+
+            if args.host3_info is not False:
+                service_status("mysql", "state=stopped", self.host3_post_info)
+                self.mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host3_post_info, return_status=True)
+                if self.mysqld_status is True:
+                    run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host3_post_info)
+
             self.command = "service mysql bootstrap"
             (status, output) = commands.getstatusoutput(self.command)
             if status != 0:
