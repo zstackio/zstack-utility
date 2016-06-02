@@ -141,25 +141,25 @@ if [ $? -ne 0 ]; then
     ebtables -I FORWARD -j $CHAIN_NAME
 fi
 
-ebtables -L $CHAIN_NAME| grep "-p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
+ebtables -L $CHAIN_NAME| grep -- "-p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -I $CHAIN_NAME -p ARP -o $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
     exit_on_error
 fi
 
-ebtables -L $CHAIN_NAME| grep "-p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
+ebtables -L $CHAIN_NAME| grep -- "-p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -I $CHAIN_NAME -p ARP -i $BR_PHY_DEV --arp-ip-dst $DHCP_IP -j DROP
     exit_on_error
 fi
 
-ebtables -L $CHAIN_NAME| grep "-p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
+ebtables -L $CHAIN_NAME | grep -- "-p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -I $CHAIN_NAME -p IPv4 -o $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP
     exit_on_error
 fi
 
-ebtables -L $CHAIN_NAME| grep "-p IPv4 -i $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
+ebtables -L $CHAIN_NAME| grep -- "-p IPv4 -i $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null
 if [ $? -ne 0 ]; then
     ebtables -I $CHAIN_NAME -p IPv4 -i $BR_PHY_DEV --ip-proto udp --ip-sport 67:68 -j DROP
     exit_on_error

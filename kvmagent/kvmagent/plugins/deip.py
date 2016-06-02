@@ -69,6 +69,7 @@ class DEip(kvmagent.KvmAgent):
 PUB_ODEV={{pub_odev}}
 NS_NAME="{{ns_name}}"
 NIC_NAME="{{nicName}}"
+PRI_ODEV={{pri_odev}}
 
 exit_on_error() {
     if [ $? -ne 0 ]; then
@@ -100,6 +101,18 @@ delete_arp_rule() {
         ebtables -t nat -X $CHAIN_NAME
         exit_on_error $LINENO
     fi
+
+    BLOCK_CHAIN_NAME=$PRI_ODEV-arp
+    ebtables -t nat -L $BLOCK_CHAIN_NAME > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        rule="-p ARP -o $PRI_ODEV -j $BLOCK_CHAIN_NAME"
+        ebtables -t nat -L POSTROUTING | grep -- "$rule" > /dev/null && ebtables -t nat -D POSTROUTING $rule
+
+        ebtables -t nat -F $BLOCK_CHAIN_NAME
+        exit_on_error $LINENO
+        ebtables -t nat -X $BLOCK_CHAIN_NAME
+        exit_on_error $LINENO
+    fi
 }
 
 delete_namespace
@@ -114,6 +127,7 @@ exit 0
 
             ctx = {
                 "pub_odev": "%s_eo" % dev_base_name,
+                "pri_odev": "%s_o" % dev_base_name,
                 "ns_name": "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
             }
             ctx.update(eip.__dict__)
@@ -137,6 +151,7 @@ NIC_NAME="{{nicName}}"
 NIC_GATEWAY="{{nicGateway}}"
 NIC_NETMASK="{{nicNetmask}}"
 NIC_IP={{nicIp}}
+NIC_MAC={{nicMac}}
 NS_NAME="{{ns_name}}"
 EBTABLE_CHAIN_NAME={{ebtable_chain_name}}
 PRI_BR_PHY_DEV={{pri_br_dev}}
@@ -235,6 +250,18 @@ set_gateway_arp_if_needed() {
     rule="-p ARP --arp-op Request --arp-ip-dst $NIC_GATEWAY -j arpreply --arpreply-mac $gateway"
     ebtables -t nat -L $CHAIN_NAME | grep -- "$rule" >/dev/null 2>&1 || ebtables -t nat -A $CHAIN_NAME $rule
     exit_on_error $LINENO
+
+    BLOCK_CHAIN_NAME=$PRI_ODEV-arp
+    ebtables -t nat -L $BLOCK_CHAIN_NAME > /dev/null 2>&1 || ebtables -t nat -N $BLOCK_CHAIN_NAME
+    exit_on_error $LINENO
+
+    rule="-p ARP -o $PRI_ODEV -j $BLOCK_CHAIN_NAME"
+    ebtables -t nat -L POSTROUTING | grep -- "$rule" > /dev/null 2>&1 || ebtables -t nat -I POSTROUTING $rule
+    exit_on_error $LINENO
+
+    rule="-p ARP -o $PRI_ODEV --arp-op Request --arp-ip-dst $NIC_GATEWAY --arp-mac-src ! $NIC_MAC -j DROP"
+    ebtables -t nat -L $BLOCK_CHAIN_NAME | grep -- "$rule" > /dev/null 2>&1 || ebtables -t nat -A $BLOCK_CHAIN_NAME $rule
+    exit_on_error $LINENO
 }
 
 eval $NS ip link show > /dev/null || ip netns add $NS_NAME
@@ -269,6 +296,9 @@ exit 0
             dev_base_name = eip.nicName.lstrip('vnic')
             dev_base_name = dev_base_name.replace(".", "_")
 
+            # ebtables will replace 00 to 0 in its output
+            eip.nicMac = eip.nicMac.replace('00', '0')
+
             ctx = {
                 "pub_odev": "%s_eo" % dev_base_name,
                 "pub_idev": "%s_ei" % dev_base_name,
@@ -278,6 +308,7 @@ exit 0
                 "ebtable_chain_name": eip.vmBridgeName,
                 "ns_name": "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
             }
+
             ctx.update(eip.__dict__)
             tmpt = Template(create_eip_cmd)
             cmd = tmpt.render(ctx)
