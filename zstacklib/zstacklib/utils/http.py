@@ -198,8 +198,8 @@ class HttpServer(object):
         self.server.log.error_file = ''
         self.server.log.access_file = ''
         self.server.log.screen = False
-        self.server.log.access_log = log.get_logger(__name__)
-        self.server.log.error_log = log.get_logger(__name__)
+        self.server.log.access_log = logger
+        self.server.log.error_log = logger
 
     def start(self):
         self._build()
