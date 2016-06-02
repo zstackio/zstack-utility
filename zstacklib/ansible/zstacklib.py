@@ -95,6 +95,7 @@ class HostPostInfo(object):
         self.rabbit_password = None
         self.mysql_password = None
         self.mysql_userpassword = None
+        self.transport = 'smart'
 
 
 class PipInstallArg(object):
@@ -149,9 +150,11 @@ class ZstackRunner(object):
         self.become = runner_args.host_post_info.become
         self.become_user = runner_args.host_post_info.become_user
         self.become_pass = runner_args.host_post_info.remote_pass
+        self.transport = runner_args.host_post_info.transport
 
     def run(self):
         runner = ansible.runner.Runner(
+            transport=self.transport,
             host_list=self.host_inventory,
             private_key_file=self.private_key,
             module_name=self.module_name,

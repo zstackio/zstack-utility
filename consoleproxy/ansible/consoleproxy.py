@@ -35,15 +35,10 @@ host_post_info = HostPostInfo()
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
-host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_inventory = args.i
 host_post_info.post_url = post_url
-host_post_info.private_key = args.private_key
-host_post_info.remote_user = remote_user
-host_post_info.remote_pass = remote_pass
-host_post_info.remote_port = remote_port
-if remote_pass is not None and remote_user != 'root':
-    host_post_info.become = True
+host_post_info.transport = 'local'
 
 # include zstacklib.py
 (distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
