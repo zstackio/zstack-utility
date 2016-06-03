@@ -98,7 +98,7 @@ if distro == "RedHat" or distro == "CentOS":
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from online
-            for pkg in ['centos-release-qemu-ev', 'qemu-kvm-ev-2.3.0', 'qemu-img-ev-2.3.0', 'iptables-services']:
+            for pkg in ['qemu-kvm-ev-2.3.0', 'qemu-img-ev-2.3.0', 'iptables-services']:
                 yum_install_package(pkg, host_post_info)
         else:
             for pkg in ['qemu-kvm', 'qemu-img']:

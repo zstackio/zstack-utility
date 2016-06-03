@@ -6,3 +6,10 @@ enabled=1
 #baseurl=http://mirror.centos.org/centos/7/extras/$basearch/
 #gpgcheck=1
 #gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+#
+[centos-qemu-ev]
+name=CentOS-7 - QEMU EV
+baseurl=http://mirror.centos.org/centos/7/virt/$basearch/kvm-common/
+enabled=1
+#gpgcheck=1
+#gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Virtualization
