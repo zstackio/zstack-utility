@@ -13,10 +13,12 @@ CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
 UBUNTU1604='UBUNTU16.04'
 UBUNTU='UBUNTU'
+RHEL7='RHEL7'
+ISOFT4='ISOFT4'
 UPGRADE='n'
 FORCE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
-SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404, $UBUNTU1604"
+SUPPORTED_OS="$CENTOS7, $UBUNTU1404, $ISOFT4, $RHEL7"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -308,11 +310,12 @@ check_system(){
     echo ""
     cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep 'release 6' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
+        grep 'CentOS release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
             OS=$CENTOS6
+            fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
         else
-            grep 'release 7' /etc/redhat-release >>$ZSTACK_INSTALL_LOG 2>&1
+            grep 'CentOS Linux release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
                 OS=$CENTOS7
                 rpm -q libvirt |grep 1.1.1-29 >/dev/null 2>&1
@@ -320,7 +323,17 @@ check_system(){
                     fail2 "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
                 fi
             else
-                fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
+                grep 'iSoft Linux release 4' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
+                if [ $? -eq 0 ]; then
+                    OS=$ISOFT4
+                else
+                    grep 'Red Hat Enterprise Linux Server release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
+                    if [ $? -eq 0 ]; then
+                        OS=$RHEL7
+                    else
+                        fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
+                    fi
+                fi
             fi
         fi
     else
@@ -329,6 +342,7 @@ check_system(){
             grep '16.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
                 OS=$UBUNTU1604
+                fail2 "Host OS checking failure: your system is: $OS, we can only support $SUPPORTED_OS currently"
             else
                 OS=$UBUNTU1404
             fi
@@ -338,16 +352,11 @@ check_system(){
         fi
     fi
     
-    if [ $OS = $CENTOS6 ]; then
-        yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos6_repo"
-        #only support online installation for CentoS6.x
-        if [ -z "$YUM_ONLINE_REPO" -a -z "$ZSTACK_PKG_MIRROR" ]; then
-            fail2 "Your system is $OS . ${PRODUCT_NAME} installer doesn't suport offline installation for $OS . Please do not use '-o' option to install. "
+    if [ $OS != $CENTOS7 -o $OS != $UBUNTU1404 ]; then
+        #only support offline installation for CentoS7.x
+        if [ -z "$YUM_ONLINE_REPO" ]; then
+            fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
         fi
-        yum_source="file://${yum_repo_folder}"
-    elif [ $OS = $CENTOS7 ]; then
-        yum_repo_folder="${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/centos7_repo"
-        yum_source="file://${yum_repo_folder}"
     fi
     debug "Your system is: $OS"
 
@@ -358,7 +367,8 @@ check_system(){
         fi
     fi
     show_spinner cs_pre_check
-    cs_check_epel
+    # management node doesn't need epel.
+    #cs_check_epel
     cs_check_hostname
     show_spinner do_check_system
     show_spinner cs_create_repo
@@ -401,17 +411,28 @@ enabled=1
 gpgcheck=0
 
 '
-#            else
-#                cat > /etc/yum.repos.d/epel.repo << EOF
-#[epel]
-#name=Extra Packages for Enterprise Linux \$releasever - \$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
-#enabled=1
-#gpgcheck=0
-#EOF
-#                SETUP_EPEL='y'
+            else
+                cat > /etc/yum.repos.d/epel.repo << EOF
+[epel]
+name=Extra Packages for Enterprise Linux \$releasever - \$basearch
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
+enabled=1
+gpgcheck=0
+EOF
+                SETUP_EPEL='y'
             fi
         fi
+    elif [ "$OS" = $RHEL7 -o "$OS" = $ISOFT4 ]; then
+        if [ ! -f /etc/yum.repos.d/epel.repo ]; then
+            cat > /etc/yum.repos.d/epel.repo << EOF
+[epel]
+name=Extra Packages for Enterprise Linux 7 - \$basearch
+mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch
+enabled=1
+gpgcheck=0
+EOF
+        fi
+
     fi
 }
 
@@ -539,7 +560,7 @@ ia_install_pip(){
 
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
         yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
     else
         apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
@@ -673,20 +694,18 @@ cs_pre_check(){
 install_ansible(){
     echo_title "Install Ansible"
     echo ""
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
         show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
-        show_spinner ia_install_pip
-        show_spinner ia_install_ansible
     elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         export DEBIAN_FRONTEND=noninteractive
         #if [ -z $ZSTACK_PKG_MIRROR ]; then
         #    show_spinner ia_update_apt
         #fi
         show_spinner ia_install_python_gcc_db
-        show_spinner ia_install_pip
-        show_spinner ia_install_ansible
     fi
+    show_spinner ia_install_pip
+    show_spinner ia_install_ansible
 }
 
 iz_install_unzip(){
@@ -854,7 +873,7 @@ is_install_general_libs_deb(){
 }
 
 is_install_system_libs(){
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
         show_spinner is_install_general_libs_rh
     else
         show_spinner is_install_general_libs_deb
@@ -873,11 +892,11 @@ install_system_libs(){
 
 is_enable_ntpd(){
     echo_subtitle "Enable NTP"
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ];then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ];then
         grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
         if [ $? -ne 0 ]; then
-            echo "server 0.centos.pool.ntp.org iburst" >> /etc/ntp.conf
-            echo "server 1.centos.pool.ntp.org iburst" >> /etc/ntp.conf
+            echo "server 0.pool.ntp.org iburst" >> /etc/ntp.conf
+            echo "server 1.pool.ntp.org iburst" >> /etc/ntp.conf
         fi
         chkconfig ntpd on >>$ZSTACK_INSTALL_LOG 2>&1
         service ntpd restart >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1447,7 +1466,7 @@ cs_setup_nfs(){
         chkconfig rpcbind on >>$ZSTACK_INSTALL_LOG 2>&1
         service rpcbind restart >>$ZSTACK_INSTALL_LOG 2>&1
         service nfs restart >>$ZSTACK_INSTALL_LOG 2>&1
-    elif [ $OS = $CENTOS7 ]; then
+    elif [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
         systemctl enable rpcbind >>$ZSTACK_INSTALL_LOG 2>&1
         systemctl enable nfs-server >>$ZSTACK_INSTALL_LOG 2>&1
         systemctl enable nfs-lock >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1482,7 +1501,7 @@ cs_setup_http(){
     mkdir $HTTP_FOLDER
     chmod 777 $HTTP_FOLDER
     chmod o+x $ZSTACK_INSTALL_ROOT
-    if [ $OS = $CENTOS7 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
         chkconfig httpd on >>$ZSTACK_INSTALL_LOG 2>&1
         cat > /etc/httpd/conf.d/zstack-http.conf <<EOF
 Alias /image/ "$HTTP_FOLDER/"
