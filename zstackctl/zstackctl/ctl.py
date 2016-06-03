@@ -1182,24 +1182,12 @@ class StartCmd(Command):
         boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
         shell('rm -f %s' % boot_error_log)
 
-        default_pid_file_path = os.path.join(os.path.expanduser('~zstack'), "management-server.pid")
-        if os.path.exists(default_pid_file_path):
-            with open(default_pid_file_path, 'r') as fd:
-                pid = fd.read()
-                pid = pid.strip(' \n\t\r')
-
-            proc_cmdline = os.path.join('/proc/%s/cmdline', pid)
-            if os.path.exists(proc_cmdline):
-                with open(proc_cmdline, 'r') as fd:
-                    cmdline = fd.read()
-                    if 'appName=zstack' in cmdline:
-                        info('the management node[pid:%s] is already running' % pid)
-                        return
-
         pid = get_management_node_pid()
         if pid:
             info('the management node[pid:%s] is already running' % pid)
             return
+        else:
+            rm ('rm -f %s' % os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
 
         def check_ip_port(host, port):
             import socket
