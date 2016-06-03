@@ -1059,8 +1059,8 @@ uz_upgrade_zstack(){
         if [ $? -ne 0 ];then
             fail "failed to reset rabbitmq and start rabbitmq"
         fi
-        rabbitmq_user_password=`zstack-ctl show_configuration|grep CloudBus.rabbitmqPassword|awk '{print $3}'` >>$ZSTACK_INSTALL_LOG 2>&1
-        rabbitmq_user_name=`zstack-ctl show_configuration|grep CloudBus.rabbitmqUsername|awk '{print $3}'` >>$ZSTACK_INSTALL_LOG 2>&1
+        rabbitmq_user_password=`zstack-ctl show_configuration|grep CloudBus.rabbitmqPassword|awk '{print $3}'|tr -d '\n'|tr -d '\r'` >>$ZSTACK_INSTALL_LOG 2>&1
+        rabbitmq_user_name=`zstack-ctl show_configuration|grep CloudBus.rabbitmqUsername|awk '{print $3}'|tr -d '\n'|tr -d '\r'` >>$ZSTACK_INSTALL_LOG 2>&1
         if [ ! -z $rabbitmq_user_name ]; then
             rabbitmqctl add_user $rabbitmq_user_name $rabbitmq_user_password >>$ZSTACK_INSTALL_LOG 2>&1
             rabbitmqctl set_user_tags $rabbitmq_user_name administrator >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1773,8 +1773,8 @@ set_zstack_repo(){
 
 get_zstack_repo(){
     ZSTACK_YUM_REPOS=`zstack-ctl getenv 2>/dev/null| grep 'zstack_local_repo' | awk -F'=' '{print $2}'`
-    [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.zstack_repo' | awk '{print $3}'`
-    [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.yum_repo' | awk '{print $3}'`
+    [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.zstack_repo' | awk '{print $3}'|tr -d '\n'|tr -d '\r'`
+    [ -z $ZSTACK_YUM_REPOS ] && ZSTACK_YUM_REPOS=`zstack-ctl show_configuration | grep 'Ansible.var.yum_repo' | awk '{print $3}'|tr -d '\n'|tr -d '\r'`
     if [ ! -z $ZSTACK_YUM_REPOS ];then
         ZSTACK_YUM_REPOS=`echo $ZSTACK_YUM_REPOS|sed 's/zstack-mn/zstack-local/g'`
         echo $ZSTACK_YUM_REPOS |grep "zstack-local" >/dev/null 2>&1
