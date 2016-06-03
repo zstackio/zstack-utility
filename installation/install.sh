@@ -352,7 +352,7 @@ check_system(){
         fi
     fi
     
-    if [ $OS != $CENTOS7 -o $OS != $UBUNTU1404 ]; then
+    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 ]; then
         #only support offline installation for CentoS7.x
         if [ -z "$YUM_ONLINE_REPO" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
@@ -367,8 +367,7 @@ check_system(){
         fi
     fi
     show_spinner cs_pre_check
-    # management node doesn't need epel.
-    #cs_check_epel
+    cs_check_epel
     cs_check_hostname
     show_spinner do_check_system
     show_spinner cs_create_repo
@@ -396,22 +395,22 @@ cs_check_epel(){
             if [ $UPGRADE != 'n' ]; then
                 [ ! -z $ZSTACK_YUM_REPOS ] && return
             fi
-            if [ -z $QUIET_INSTALLATION ]; then
-                fail2 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
-
-Or you can choose to use -R 163 or -R aliyun to install.
-
-Or if you have set the epel in other file, rather than /etc/yum.repos.d/epel.repo, you can add -q to ask installer to ignore checking. The example for /etc/yum.repos.d/epel.repo is like:
-
-#cat /etc/yum.repos.d/epel.repo
-[epel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearch
-mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
-enabled=1
-gpgcheck=0
-
-'
-            else
+#            if [ -z $QUIET_INSTALLATION ]; then
+#                fail2 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
+#
+#Or you can choose to use -R 163 or -R aliyun to install.
+#
+#Or if you have set the epel in other file, rather than /etc/yum.repos.d/epel.repo, you can add -q to ask installer to ignore checking. The example for /etc/yum.repos.d/epel.repo is like:
+#
+##cat /etc/yum.repos.d/epel.repo
+#[epel]
+#name=Extra Packages for Enterprise Linux \$releasever - \$basearch
+#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
+#enabled=1
+#gpgcheck=0
+#
+#'
+#            else
                 cat > /etc/yum.repos.d/epel.repo << EOF
 [epel]
 name=Extra Packages for Enterprise Linux \$releasever - \$basearch
@@ -420,7 +419,7 @@ enabled=1
 gpgcheck=0
 EOF
                 SETUP_EPEL='y'
-            fi
+#            fi
         fi
     elif [ "$OS" = $RHEL7 -o "$OS" = $ISOFT4 ]; then
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
@@ -431,8 +430,8 @@ mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearc
 enabled=1
 gpgcheck=0
 EOF
+            SETUP_EPEL='y'
         fi
-
     fi
 }
 
