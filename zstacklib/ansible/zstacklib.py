@@ -438,7 +438,7 @@ def yum_install_package(name, host_post_info, \
                 runner_args = ZstackRunnerArg()
                 runner_args.host_post_info = host_post_info
                 runner_args.module_name = 'yum'
-                runner_args.module_args = 'name=' + name + ' disable_gpg_check=no state=latest'
+                runner_args.module_args = 'name=' + name + ' disable_gpg_check=yes state=latest'
                 zstack_runner = ZstackRunner(runner_args)
                 result = zstack_runner.run()
                 logger.debug(result)

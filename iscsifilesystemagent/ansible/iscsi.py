@@ -84,7 +84,7 @@ if distro == "RedHat" or distro == "CentOS":
 
     else:
         # name: install isci related packages on RedHat based OS from online
-        for pkg in ['centos-release-qemu-ev', 'wget', 'qemu-img-ev-2.3.0', 'scsi-target-utils']:
+        for pkg in ['wget', 'qemu-img-ev-2.3.0', 'scsi-target-utils']:
             yum_install_package(pkg, host_post_info)
             # name: RHEL7 specific packages from online
             yum_install_package("iptables-services", host_post_info)

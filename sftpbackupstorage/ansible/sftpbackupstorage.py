@@ -82,7 +82,6 @@ if distro == "RedHat" or distro == "CentOS":
         # name: install sftp backup storage related packages on RedHat based OS from online
         yum_install_package("openssh-clients", host_post_info)
         #For install Qemu 2.3. Need to enable extras repo
-        yum_install_package("centos-release-qemu-ev", host_post_info)
         yum_install_package("qemu-img-ev-2.3.0", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
