@@ -1187,7 +1187,7 @@ class StartCmd(Command):
             info('the management node[pid:%s] is already running' % pid)
             return
         else:
-            rm ('rm -f %s' % os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
+            shell('rm -f %s' % os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
 
         def check_ip_port(host, port):
             import socket
