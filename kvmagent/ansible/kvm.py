@@ -92,13 +92,18 @@ if distro == "RedHat" or distro == "CentOS":
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
-        for pkg in ['centos-release-qemu-ev', 'openssh-clients', 'qemu-kvm-ev-2.3.0', 'bridge-utils', 'wget', 'qemu-img-ev-2.3.0', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
+        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'dnsmasq', 'iproute', 'sshpass',
                     'rsync', 'nmap']:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from online
-            yum_install_package("iptables-services", host_post_info)
+            for pkg in ['centos-release-qemu-ev', 'qemu-kvm-ev-2.3.0', 'qemu-img-ev-2.3.0', 'iptables-services']:
+                yum_install_package(pkg, host_post_info)
+        else:
+            for pkg in ['qemu-kvm', 'qemu-img']:
+                yum_install_package(pkg, host_post_info)
+
 
     # handle distro version specific task
     if distro_version < 7:

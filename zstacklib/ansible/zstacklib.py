@@ -1185,6 +1185,7 @@ class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
         distro_release = args.distro_release
+        distro_version = args.distro_version
         zstack_repo = args.zstack_repo
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
@@ -1220,7 +1221,7 @@ baseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/
 enabled=0
 gpgcheck=0
 [aliepel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com
+name=Extra Packages for Enterprise Linux \$releasever - \$basearch - mirrors.aliyun.com
 baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
 failovermethod=priority
 enabled=0
@@ -1236,6 +1237,13 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
             if zstack_repo == "false":
                 # zstack_repo defined by user
                 yum_install_package("libselinux-python", host_post_info)
+                # Enable extra repo for install centos-release-qemu-ev in kvm.py
+                if distro_version >= 7 :
+                    copy_arg = CopyArg()
+                    copy_arg.src = "files/zstacklib/zstack-redhat.repo"
+                    copy_arg.dest = "/etc/yum.repos.d/"
+                    copy(copy_arg, host_post_info)
+                # install epel-release
                 if epel_repo_exist is False:
                     copy_arg = CopyArg()
                     copy_arg.src = "files/zstacklib/epel-release-source.repo"

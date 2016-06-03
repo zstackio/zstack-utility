@@ -1,0 +1,8 @@
+# This repo for install centos-release-qemu-ev
+[extras]
+name=CentOS-7 - Extras
+mirrorlist=http://mirrorlist.centos.org/?release=7&arch=$basearch&repo=extras&infra=$infra
+enabled=1
+#baseurl=http://mirror.centos.org/centos/7/extras/$basearch/
+#gpgcheck=1
+#gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
