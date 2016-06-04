@@ -113,7 +113,7 @@ if distro == "RedHat" or distro == "CentOS":
         copy_arg.dest = iproute_local_pkg
         copy(copy_arg, host_post_info)
         # name: Update iproute for RHEL6
-        command = "rpm -q iproute-2.6.32-130.el6ost.netns.2.x86_64 || yum install -y %s" % iproute_local_pkg
+        command = "rpm -q iproute-2.6.32-130.el6ost.netns.2.x86_64 || yum install --nogpgcheck -y %s" % iproute_local_pkg
         run_remote_command(command, host_post_info)
         # name: disable NetworkManager in RHEL6 and Centos6
         network_manager_installed = yum_check_package("NetworkManager", host_post_info)
@@ -150,7 +150,7 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg.dest = "%s" % dnsmasq_local_pkg
     copy(copy_arg, host_post_info)
     # name: Update dnsmasq for RHEL6 and RHEL7
-    command = "rpm -q dnsmasq-2.68-1 || yum install -y %s" % dnsmasq_local_pkg
+    command = "rpm -q dnsmasq-2.68-1 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
     run_remote_command(command, host_post_info)
     # name: disable selinux on RedHat based OS
     set_selinux("state=permissive policy=targeted", host_post_info)
