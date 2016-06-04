@@ -1746,7 +1746,7 @@ class InstallHACmd(Command):
         parser.add_argument('--drop', action='store_true', default=False,
                             help="Force delete mysql data for re-deploy HA")
         parser.add_argument('--keep-db', action='store_true', default=False,
-                            help='keep existing zstack database and not raise error.')
+                            help='keep existing zstack database and not raise error')
         parser.add_argument('--recovery-from-this-host', action='store_true', default=False,
                             help="This argument for admin to recovery mysql from the last shutdown mysql server")
         parser.add_argument('--perfect-mode', action='store_true', default=False,
@@ -2255,8 +2255,24 @@ class InstallHACmd(Command):
                     "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
                     "%s:9160,%s:9160'" % (args.host1, args.host2), self.host1_post_info)
         update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
+                    "regexp='kairosdb\.datastore\.cassandra\.replication_factor' line='kairosdb.datastore.cassandra."
+                    "replication_factor = 3'", self.host1_post_info)
+        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
+                    "regexp='kairosdb\.datastore\.cassandra\.write_consistency_level' line='kairosdb.datastore."
+                    "cassandra.write_consistency_level = ONE'", self.host1_post_info)
+        # set cron task to sync data
+        cron("sync_kairosdb_data","minute='0' hour='3' job='%s/apache-cassandra-2.2.3/javadoc/org/"
+                                  "apache/cassandra/tools/nodetool repair 2>&1'" % ctl.USER_ZSTACK_HOME_DIR, self.host1_post_info)
+
+        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
                     "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
                     "%s:9160,%s:9160'" % (args.host1, args.host2), self.host2_post_info)
+        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
+                    "regexp='kairosdb\.datastore\.cassandra\.replication_factor' line='kairosdb.datastore.cassandra."
+                    "replication_factor = 3'", self.host2_post_info)
+        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
+                    "regexp='kairosdb\.datastore\.cassandra\.write_consistency_level' line='kairosdb.datastore."
+                    "cassandra.write_consistency_level = ONE'", self.host2_post_info)
         if args.host3_info is not False:
             update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
                         "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
@@ -2267,6 +2283,12 @@ class InstallHACmd(Command):
             update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
                         "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
                         "%s:9160,%s:9160,%s:9160'" % (args.host1, args.host2, args.host3), self.host3_post_info)
+            update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
+                        "regexp='kairosdb\.datastore\.cassandra\.replication_factor' line='kairosdb.datastore.cassandra."
+                        "replication_factor = 3",self.host3_post_info)
+            update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
+                        "regexp='kairosdb\.datastore\.cassandra\.write_consistency_level' line='kairosdb.datastore."
+                        "cassandra.write_consistency_level = ONE'", self.host3_post_info)
 
         # copy zstack-1 property to zstack-2 and update the management.server.ip
         # update zstack-1 firstly
