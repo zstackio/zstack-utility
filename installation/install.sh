@@ -1149,7 +1149,11 @@ iz_install_zstackctl(){
 iz_install_cassandra(){
     echo_subtitle "Install Cassandra"
     zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl install_cassandra "{\"rpc_address\":\"$MANAGEMENT_IP\", \"listen_address\":\"$MANAGEMENT_IP\"}" >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ -z $NEED_DROP_DB ]; then
+        zstack-ctl install_cassandra "{\"rpc_address\":\"$MANAGEMENT_IP\", \"listen_address\":\"$MANAGEMENT_IP\"}" >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        zstack-ctl install_cassandra --drop "{\"rpc_address\":\"$MANAGEMENT_IP\", \"listen_address\":\"$MANAGEMENT_IP\"}" >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
     if [ $? -ne 0 ];then
        fail "failed to install Cassandra"
     fi

@@ -3803,6 +3803,7 @@ class InstallCassandraCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--file', help='path to the apache-cassandra-2.2.3-bin.tar.gz', required=False)
+        parser.add_argument('--drop', help='drop old cassandar database in /var/lib/cassandra', default=False, action='store_true', required=False)
         parser.add_argument('--user-zstack', help='do all operations with user zstack', default=True, action='store_true', required=False)
         parser.add_argument('--listen-address', help='the IP used for both rpc_address and listen_address.'
                                                      'This option is overridden if rpc_address or listen_address'
@@ -3817,6 +3818,9 @@ class InstallCassandraCmd(Command):
 
         if not args.file.endswith("apache-cassandra-2.2.3-bin.tar.gz"):
             raise CtlError('at this version, zstack only support apache-cassandra-2.2.3-bin.tar.gz')
+
+        if args.drop:
+            shell('rm -rf /var/lib/cassandra')
 
         shell('su - zstack -c "tar xzf %s -C %s"' % (args.file, ctl.USER_ZSTACK_HOME_DIR))
         cassandra_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3")
