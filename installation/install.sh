@@ -460,7 +460,13 @@ do_check_system(){
     if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
         ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ]; then
-            fail "Network checking failure: can not reach $WEBSITE. Please make sure your DNS (/etc/resolv.conf) is configured correctly. Or you can override WEBSITE by \`export WEBSITE=YOUR_INTERNAL_YUM_SERVER\` before doing installation. "
+            ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
+            if [ $? -ne 0 ]; then
+                ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
+                if [ $? -ne 0 ]; then
+                    fail "Network checking failure: can not reach $WEBSITE. Please make sure your DNS (/etc/resolv.conf) is configured correctly. Or you can override WEBSITE by \`export WEBSITE=YOUR_INTERNAL_YUM_SERVER\` before doing installation. "
+                fi
+            fi
         fi
     fi
 
