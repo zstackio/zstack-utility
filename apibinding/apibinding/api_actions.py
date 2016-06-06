@@ -28,6 +28,18 @@ class AddMonToCephBackupStorageAction(inventory.APIAddMonToCephBackupStorageMsg)
         self.out = evt
         return self.out
 
+class UpdateMonToCephBackupStorageAction(inventory.APIUpdateMonToCephBackupStorageMsg):
+    def __init__(self):
+        super(UpdateMonToCephBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateMonToCephBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RemoveMonFromCephBackupStorageAction(inventory.APIRemoveMonFromCephBackupStorageMsg):
     def __init__(self):
         super(RemoveMonFromCephBackupStorageAction, self).__init__()
@@ -3226,6 +3238,30 @@ class DeleteVmInstanceHaLevelAction(inventory.APIDeleteVmInstanceHaLevelMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteVmInstanceHaLevelAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class QueryLogAction(inventory.APIQueryLogMsg):
+    def __init__(self):
+        super(QueryLogAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryLogAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteLogAction(inventory.APIDeleteLogMsg):
+    def __init__(self):
+        super(DeleteLogAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteLogAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
