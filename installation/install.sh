@@ -1262,6 +1262,17 @@ EOF
 EOF
     fi
 
+    #will save cassandra key keyspace(zstack_billing) when install mevoco.
+    if [ ! -z $INSTALL_MONITOR ]; then
+        crontab -l 2>/dev/null |grep 'zstack-ctl dump_cassandra' >/dev/null
+        if [ $? -ne 0 ]; then
+            crontab <<EOF
+`crontab -l 2>/dev/null`
+32 0,12 * * * zstack-ctl dump_cassandra --keep-amount 14
+EOF
+        fi
+    fi
+
     pass
 }
 

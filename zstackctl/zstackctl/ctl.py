@@ -3540,6 +3540,10 @@ class DumpCassandraCmd(Command):
         snapshot_keyword = 'Snapshot directory:'
         cassandra_cqlsh = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
         cassandra_bin_path = os.path.dirname(cassandra_cqlsh)
+        if not os.path.exist(cassandra_bin_path):
+            info("Not find cassandra folder: %s" % cassandra_bin_path)
+            return
+
         shell('cd %s; bash nodetool flush %s' % (cassandra_bin_path, args.keyspace))
         output = shell('cd %s; bash nodetool snapshot %s' % (cassandra_bin_path, args.keyspace)).split('\n')
         for line in output:
