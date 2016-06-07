@@ -3485,7 +3485,7 @@ class DumpCassandraCmd(Command):
         output = shell('cd %s; bash nodetool snapshot %s' % (cassandra_bin_path, args.keyspace)).split('\n')
         for line in output:
             if snapshot_keyword in line:
-                snapshot_name = line.split(snapshot_keyword)[0].strip()
+                snapshot_name = line.split(snapshot_keyword)[1].strip()
 
         try:
             snapshot_name
@@ -3499,7 +3499,7 @@ class DumpCassandraCmd(Command):
         db_backup_dir = "/var/lib/zstack/cassandra-backup/"
         if os.path.exists(db_backup_dir) is False:
             os.mkdir(db_backup_dir)
-        db_backup_name = db_backup_dir + args.file_name + "-" + backup_timestamp + '.tgz'
+        db_backup_name = db_backup_dir + args.file_name + "-" + args.keyspace + "-" + backup_timestamp + '.tgz'
         shell('tar zcf %s %s' % (db_backup_name, snapshot_folders))
 
         print "Backup cassandra %s successful! You can check the file at %s" % (args.keyspace, db_backup_name)
