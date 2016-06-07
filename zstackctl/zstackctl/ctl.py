@@ -3457,6 +3457,59 @@ class InstallKairosdbCmd(Command):
 
         info('successfully installed kairosdb, the config file is written to %s' % original_conf_path)
 
+class DumpCassandraCmd(Command):
+    def __init__(self):
+        super(DumpCassandraCmd, self).__init__()
+        self.name = "dump_cassandra"
+        self.description = (
+            "Dump cassandra database for backup"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--file-name',
+                            help="The filename you want to save the database, default is 'zstack-backup-cassandra-db'",
+                            default="zstack-backup-cassandra-db")
+        parser.add_argument('--keep-amount',type=int,
+                            help="The amount of backup files you want to keep, older backup files will be deleted, default number is 60",
+                            default=60)
+        parser.add_argument('--keyspace',type=str,
+                            help="The keyspace to be backuped, the default keyspace is zstack_billing",
+                            default='zstack_billing')
+
+    def run(self, args):
+        snapshot_keyword = 'Snapshot directory:'
+        cassandra_cqlsh = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+        cassandra_bin_path = os.path.dirname(cassandra_cqlsh)
+        shell('cd %s; bash nodetool flush %s' % (cassandra_bin_path, args.keyspace))
+        output = shell('cd %s; bash nodetool snapshot %s' % (cassandra_bin_path, args.keyspace)).split('\n')
+        for line in output:
+            if snapshot_keyword in line:
+                snapshot_name = line.split(snapshot_keyword)[0].strip()
+
+        try:
+            snapshot_name
+        except:
+            raise ExceptionWrapper('create snapshot failed for: %s' % args.keyspace)
+
+        snapshot_folders = '/var/lib/cassandra/data/%s/*/snapshots/%s' % (args.keyspace, snapshot_name)
+
+        keep_amount = args.keep_amount
+        backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        db_backup_dir = "/var/lib/zstack/cassandra-backup/"
+        if os.path.exists(db_backup_dir) is False:
+            os.mkdir(db_backup_dir)
+        db_backup_name = db_backup_dir + args.file_name + "-" + backup_timestamp + '.tgz'
+        shell('tar zcf %s %s' % (db_backup_name, snapshot_folders))
+
+        print "Backup cassandra %s successful! You can check the file at %s" % (args.keyspace, db_backup_name)
+        # remove old file
+        if len(os.listdir(db_backup_dir)) > keep_amount:
+            backup_files_list = [s for s in os.listdir(db_backup_dir) if os.path.isfile(os.path.join(db_backup_dir, s))]
+            backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(db_backup_dir, s)))
+            for expired_file in backup_files_list:
+                if expired_file not in backup_files_list[-keep_amount:]:
+                    os.remove(db_backup_dir + expired_file)
 
 class DumpMysqlCmd(Command):
     def __init__(self):
@@ -5485,6 +5538,7 @@ def main():
     ChangeIpCmd()
     InstallHACmd()
     DumpMysqlCmd()
+    DumpCassandraCmd()
     CollectLogCmd()
 
     try:
