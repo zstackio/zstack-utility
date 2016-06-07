@@ -3516,6 +3516,62 @@ class InstallKairosdbCmd(Command):
 
         info('successfully installed kairosdb, the config file is written to %s' % original_conf_path)
 
+class RestoreCassandraCmd(Command):
+    def __init__(self):
+        super(RestoreCassandraCmd, self).__init__()
+        self.name = "restore_cassandra"
+        self.description = (
+            "Restore Cassandra database Keyspace from backuped tar ball"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--file',
+                            '-f',
+                            help="The backed up canssandra keyspace tar ball, which will be used to restore.",
+                            required = True)
+
+    def _status(self):
+        return find_process_by_cmdline('org.apache.cassandra.service.CassandraDaemon')
+
+    def run(self, args):
+        if not os.path.exists(args.file):
+            raise CtlError("Not find file: %s to restore cassandra" % args.file)
+
+        pid = self._status()
+        if pid:
+            raise CtlError("Cassandra (PID: %s) should be stopped by `zstack-ctl cassandra --stop`, before restore keyspace" % pid)
+
+        cassandra_data_folder = '/var/lib/cassandra/data/'
+        if not os.path.exists(cassandra_data_folder):
+            raise CtlError("Not find cassandra data folder: %s. Please install cassandra firstly" % cassandra_data_folder)
+
+        tempfolder = "/tmp/zstack_tmp_cassandra_restore_folder"
+        shell('rm -rf %s; mkdir %s' % (tempfolder, tempfolder))
+
+        shell('cd %s ; tar zxf %s' % (tempfolder, args.file))
+
+        src_data_folder = tempfolder + '/var/lib/cassandra/data/'
+        keyspace = os.listdir(src_data_folder)[0]
+        if not keyspace:
+            raise CtlError("No any keyspace in :%s. Make sure you are using the right file to restore keyspace." % src_keyspace_folder)
+
+        src_keyspace_folder = src_data_folder + keyspace
+        dst_keyspace_folder = cassandra_data_folder + keyspace
+        shell('rm -rf %s; mkdir %s' % (dst_keyspace_folder, dst_keyspace_folder))
+
+        for table in os.listdir(src_keyspace_folder):
+            dst_table_folder = dst_keyspace_folder + '/' + table
+            src_table_folder = src_keyspace_folder + '/' + table
+            snapshots_folder = src_table_folder + '/snapshots'
+            if len(os.listdir(snapshots_folder)) != 1:
+                raise CtlError('Do not known which snapshot to be restore in %s: %s' % (snapshots_folder, os.listdir(snapshots_folder)))
+
+            shell('mkdir %s; cp %s/*/* %s' % (dst_table_folder, snapshots_folder, dst_table_folder))
+
+        print "Restore cassandra keyspace %s successful from %s!" % (keyspace, args.file)
+        shell('rm -rf %s' % tempfolder)
+
 class DumpCassandraCmd(Command):
     def __init__(self):
         super(DumpCassandraCmd, self).__init__()
@@ -3540,7 +3596,7 @@ class DumpCassandraCmd(Command):
         snapshot_keyword = 'Snapshot directory:'
         cassandra_cqlsh = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
         cassandra_bin_path = os.path.dirname(cassandra_cqlsh)
-        if not os.path.exist(cassandra_bin_path):
+        if not os.path.exists(cassandra_bin_path):
             info("Not find cassandra folder: %s" % cassandra_bin_path)
             return
 
@@ -3553,7 +3609,7 @@ class DumpCassandraCmd(Command):
         try:
             snapshot_name
         except:
-            raise ExceptionWrapper('create snapshot failed for: %s' % args.keyspace)
+            raise CtlError('create snapshot failed for: %s' % args.keyspace)
 
         snapshot_folders = '/var/lib/cassandra/data/%s/*/snapshots/%s' % (args.keyspace, snapshot_name)
 
@@ -5587,44 +5643,45 @@ class StartUiCmd(Command):
 
 def main():
     BootstrapCmd()
-    DeployDBCmd()
-    ShowStatusCmd()
-    TailLogCmd()
-    StartCmd()
-    StopCmd()
-    SaveConfigCmd()
-    RestoreConfigCmd()
+    CassandraCmd()
+    ChangeIpCmd()
+    CollectLogCmd()
     ConfigureCmd()
+    DumpMysqlCmd()
+    DumpCassandraCmd()
+    DeployDBCmd()
+    DeployCassandraDbCmd()
+    GetEnvironmentVariableCmd()
+    InstallWebUiCmd()
+    InstallHACmd()
     InstallDbCmd()
     InstallRabbitCmd()
     InstallManagementNodeCmd()
+    InstallCassandraCmd()
+    InstallKairosdbCmd()
+    InstallLicenseCmd()
+    KairosdbCmd()
     ShowConfiguration()
     SetEnvironmentVariableCmd()
-    GetEnvironmentVariableCmd()
-    InstallWebUiCmd()
+    RollbackManagementNodeCmd()
+    RollbackDatabaseCmd()
+    RestoreConfigCmd()
+    RestartNodeCmd()
+    RestoreCassandraCmd()
+    ShowStatusCmd()
+    StartCmd()
+    StopCmd()
+    SaveConfigCmd()
+    StartUiCmd()
+    StopUiCmd()
+    StartAllCmd()
+    StopAllCmd()
+    TailLogCmd()
+    UiStatusCmd()
+    UnsetEnvironmentVariableCmd()
     UpgradeManagementNodeCmd()
     UpgradeDbCmd()
     UpgradeCtlCmd()
-    RollbackManagementNodeCmd()
-    RollbackDatabaseCmd()
-    StartUiCmd()
-    StopUiCmd()
-    UiStatusCmd()
-    InstallCassandraCmd()
-    InstallKairosdbCmd()
-    CassandraCmd()
-    KairosdbCmd()
-    StartAllCmd()
-    StopAllCmd()
-    InstallLicenseCmd()
-    UnsetEnvironmentVariableCmd()
-    RestartNodeCmd()
-    DeployCassandraDbCmd()
-    ChangeIpCmd()
-    InstallHACmd()
-    DumpMysqlCmd()
-    DumpCassandraCmd()
-    CollectLogCmd()
 
     try:
         ctl.run()
