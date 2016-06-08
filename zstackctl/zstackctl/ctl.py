@@ -3521,7 +3521,7 @@ class RestoreCassandraCmd(Command):
         super(RestoreCassandraCmd, self).__init__()
         self.name = "restore_cassandra"
         self.description = (
-            "Restore Cassandra database Keyspace from backuped tar ball"
+            "Restore Cassandra database Keyspace from backuped tar ball.\n This will clean up all Cassandra keyspace and deploy Cassandra again with backed up csv files."
         )
         ctl.register_command(self)
 
@@ -3538,36 +3538,60 @@ class RestoreCassandraCmd(Command):
         if not os.path.exists(args.file):
             raise CtlError("Not find file: %s to restore cassandra" % args.file)
 
-        pid = self._status()
-        if pid:
-            raise CtlError("Cassandra (PID: %s) should be stopped by `zstack-ctl cassandra --stop`, before restore keyspace" % pid)
+        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+        if not exe:
+            raise CtlError('cannot find the variable[%s] in %s. Have you installed cassandra?' %
+                           (InstallCassandraCmd.CASSANDRA_EXEC, SetEnvironmentVariableCmd.PATH))
 
-        cassandra_data_folder = '/var/lib/cassandra/data/'
-        if not os.path.exists(cassandra_data_folder):
-            raise CtlError("Not find cassandra data folder: %s. Please install cassandra firstly" % cassandra_data_folder)
+        cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
+        if not os.path.isfile(cqlsh):
+            raise CtlError('cannot find the cqlsh at %s, is cassandra installed?' % cqlsh)
+
+        cips = ctl.read_property('Cassandra.contactPoints')
+        if not cips:
+            raise CtlError('cannot find Cassandra IP address in zstack.properties, have you installed Cassandra?'
+                           'If you have installed Cassandra, please configure Cassandra.contactPoints in the zstack.properties')
+
+        if isinstance(cips, list):
+            cip = cips[0]
+        else:
+            cip = cips.split(',')[0]
+
+        cport = ctl.read_property('Cassandra.port')
+        if not cport:
+            cport = 9042
+        else:
+            cport = int(cport)
+
+        ctl.internal_run('stop')
+        shell("rm -rf /var/lib/cassandra")
+
+        ctl.internal_run('cassandra', '--start --wait-timeout 120')
+
+        ret = shell_return('%s %s %s -e "DESC KEYSPACES"' % (cqlsh, cip, cport))
+        if ret != 0:
+            raise CtlError('Cassandra seems not running. Not able to reover Cassandra this time.')
+
+        ctl.internal_run('deploy_cassandra_db')
 
         tempfolder = "/tmp/zstack_tmp_cassandra_restore_folder"
         shell('rm -rf %s; mkdir %s' % (tempfolder, tempfolder))
-
         shell('cd %s ; tar zxf %s' % (tempfolder, args.file))
 
-        src_data_folder = tempfolder + '/var/lib/cassandra/data/'
-        keyspace = os.listdir(src_data_folder)[0]
-        if not keyspace:
-            raise CtlError("No any keyspace in :%s. Make sure you are using the right file to restore keyspace." % src_keyspace_folder)
+        backup_files = os.listdir(tempfolder)
+        for backup_file in backup_files:
+            if backup_file.endswith('csv'):
+                file_name = backup_file.split('.')
+                keyspace = file_name[0]
+                table = file_name[1]
 
-        src_keyspace_folder = src_data_folder + keyspace
-        dst_keyspace_folder = cassandra_data_folder + keyspace
-        shell('rm -rf %s; mkdir %s' % (dst_keyspace_folder, dst_keyspace_folder))
+            with open('%s/%s' % (tempfolder, backup_file), 'r') as fd:
+                if not fd.read().strip():
+                    continue
 
-        for table in os.listdir(src_keyspace_folder):
-            dst_table_folder = dst_keyspace_folder + '/' + table
-            src_table_folder = src_keyspace_folder + '/' + table
-            snapshots_folder = src_table_folder + '/snapshots'
-            if len(os.listdir(snapshots_folder)) != 1:
-                raise CtlError('Do not known which snapshot to be restore in %s: %s' % (snapshots_folder, os.listdir(snapshots_folder)))
-
-            shell('mkdir %s; cp %s/*/* %s' % (dst_table_folder, snapshots_folder, dst_table_folder))
+            cmd = "COPY %s.%s FROM '%s'" % (keyspace, table, backup_file)
+            info("Restore %s ..." % keyspace + '.' + table)
+            shell('cd %s; %s %s %s -e "%s"' % (tempfolder, cqlsh, cip, cport, cmd))
 
         print "Restore cassandra keyspace %s successful from %s!" % (keyspace, args.file)
         shell('rm -rf %s' % tempfolder)
@@ -3593,41 +3617,80 @@ class DumpCassandraCmd(Command):
                             default='zstack_billing')
 
     def run(self, args):
-        snapshot_keyword = 'Snapshot directory:'
-        cassandra_cqlsh = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
-        cassandra_bin_path = os.path.dirname(cassandra_cqlsh)
-        if not os.path.exists(cassandra_bin_path):
-            info("Not find cassandra folder: %s" % cassandra_bin_path)
-            return
+        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
+        if not exe:
+            raise CtlError('cannot find the variable[%s] in %s. Have you installed cassandra?' %
+                           (InstallCassandraCmd.CASSANDRA_EXEC, SetEnvironmentVariableCmd.PATH))
 
-        shell('cd %s; bash nodetool flush %s' % (cassandra_bin_path, args.keyspace))
-        output = shell('cd %s; bash nodetool snapshot %s' % (cassandra_bin_path, args.keyspace)).split('\n')
-        for line in output:
-            if snapshot_keyword in line:
-                snapshot_name = line.split(snapshot_keyword)[1].strip()
+        cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
+        if not os.path.isfile(cqlsh):
+            raise CtlError('cannot find the cqlsh at %s, is cassandra installed?' % cqlsh)
 
-        try:
-            snapshot_name
-        except:
-            raise CtlError('create snapshot failed for: %s' % args.keyspace)
+        cips = ctl.read_property('Cassandra.contactPoints')
+        if not cips:
+            raise CtlError('cannot find Cassandra IP address in zstack.properties, have you installed Cassandra?'
+                           'If you have installed Cassandra, please configure Cassandra.contactPoints in the zstack.properties')
 
-        snapshot_folders = '/var/lib/cassandra/data/%s/*/snapshots/%s' % (args.keyspace, snapshot_name)
+        if isinstance(cips, list):
+            cip = cips[0]
+        else:
+            cip = cips.split(',')[0]
 
-        keep_amount = args.keep_amount
+        cport = ctl.read_property('Cassandra.port')
+        if not cport:
+            cport = 9042
+        else:
+            cport = int(cport)
+
+        ret = shell_return('%s %s %s -e "DESC KEYSPACES"' % (cqlsh, cip, cport))
+        if ret != 0:
+            raise CtlError('Cassandra seems not running, please start it using "zstack-ctl cassandra --start"')
+
+        ret = shell_return('%s %s %s -e "USE %s"' % (cqlsh, cip, cport, args.keyspace))
+        if ret != 0:
+            raise CtlError('KEYSPACE: [%s] is not existed. Please run `zstack-ctl deploy_cassandra_db` firstly.' % args.keyspace)
+
+        tables = shell('%s %s %s -e "USE %s; DESC TABLES;"' % (cqlsh, cip, cport, args.keyspace)).strip().split()
+
+        tempfolder = "/tmp/zstack_tmp_cassandra_save_folder"
+        shell('rm -rf %s; mkdir %s' % (tempfolder, tempfolder))
+
+        begin_string = 'CREATE TABLE'
+        end_string = 'PRIMARY KEY'
+        for table in tables:
+            lines = shell('%s %s %s -e "USE %s; DESC TABLE %s"' % (cqlsh, cip, cport, args.keyspace, table)).strip().split('\n')
+            columes = []
+            for line in lines:
+                line = line.strip()
+                if line.startswith(begin_string):
+                    continue
+                if line.startswith(end_string):
+                    break
+                
+                columes.append(line.split()[0])
+
+            table_sav_file = '%s.%s.csv' % (args.keyspace, table)
+            cmd = "COPY %s (%s) to '%s'" % (table, ','.join(columes), table_sav_file)
+            try:
+                shell('cd %s; %s %s %s -e "USE %s; %s"' % (tempfolder, cqlsh, cip, cport, args.keyspace, cmd))
+            except Exception as e:
+                raise CtlError('Backup KEYSPACE: [%s] TABLE: [%s] failed by command: \n %s. \n\nReason is: \n%s' % (args.keyspace, table, cmd, e))
+
         backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         db_backup_dir = "/var/lib/zstack/cassandra-backup/"
         if os.path.exists(db_backup_dir) is False:
             os.mkdir(db_backup_dir)
         db_backup_name = db_backup_dir + args.file_name + "-" + args.keyspace + "-" + backup_timestamp + '.tgz'
-        shell('tar zcf %s %s' % (db_backup_name, snapshot_folders))
+        shell('cd %s; tar zcf %s *.csv' % (tempfolder, db_backup_name))
 
-        print "Backup cassandra %s successful! You can check the file at %s" % (args.keyspace, db_backup_name)
+        print "Backup cassandra %s successful!\nYou can check the file at %s" % (args.keyspace, db_backup_name)
+        shell('rm -rf %s' % tempfolder)
         # remove old file
-        if len(os.listdir(db_backup_dir)) > keep_amount:
+        if len(os.listdir(db_backup_dir)) > args.keep_amount:
             backup_files_list = [s for s in os.listdir(db_backup_dir) if os.path.isfile(os.path.join(db_backup_dir, s))]
             backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(db_backup_dir, s)))
             for expired_file in backup_files_list:
-                if expired_file not in backup_files_list[-keep_amount:]:
+                if expired_file not in backup_files_list[-args.keep_amount:]:
                     os.remove(db_backup_dir + expired_file)
 
 class DumpMysqlCmd(Command):
@@ -3676,7 +3739,7 @@ class DumpMysqlCmd(Command):
             (self.status, self.output) = commands.getstatusoutput(self.command)
             if self.status != 0:
                 error(self.output)
-        print "Backup mysql successful! You can check the file at %s.gz" % self.db_backup_name
+        print "Backup mysql successful!\nYou can check the file at %s.gz" % self.db_backup_name
         # remove old file
         if len(os.listdir(self.db_backup_dir)) > self.keep_amount:
             self.backup_files_list = [s for s in os.listdir(self.db_backup_dir) if os.path.isfile(os.path.join(self.db_backup_dir, s))]
@@ -4021,7 +4084,7 @@ class InstallCassandraCmd(Command):
         ctl.put_envs([
           (self.CASSANDRA_EXEC, os.path.join(cassandra_dir, 'bin/cassandra')),
           (self.CASSANDRA_CONF, yaml_conf),
-          (self.CASSANDRA_LOG, os.path.join(cassandra_dir, 'log')),
+          (self.CASSANDRA_LOG, os.path.join(cassandra_dir, 'logs/system.log')),
         ])
         info('configs are written into %s' % yaml_conf)
 
