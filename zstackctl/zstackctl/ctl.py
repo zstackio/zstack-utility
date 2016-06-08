@@ -1760,19 +1760,19 @@ class InstallHACmd(Command):
         with open("/proc/net/route") as gateway:
             try:
                 for item in gateway:
-                    self.fields = item.strip().split()
-                    if self.fields[1] != '00000000' or not int(self.fields[3], 16) & 2:
+                    fields = item.strip().split()
+                    if fields[1] != '00000000' or not int(fields[3], 16) & 2:
                         continue
-                    return socket.inet_ntoa(struct.pack("=L", int(self.fields[2], 16)))
+                    return socket.inet_ntoa(struct.pack("=L", int(fields[2], 16)))
             except ValueError:
                 return None
 
     def get_formatted_netmask(self, device_name):
         '''This function will return formatted netmask. eg. 172.20.12.16/24 will return 24'''
-        self.netmask = socket.inet_ntoa(fcntl.ioctl(socket.socket(socket.AF_INET, socket.SOCK_DGRAM),
+        netmask = socket.inet_ntoa(fcntl.ioctl(socket.socket(socket.AF_INET, socket.SOCK_DGRAM),
                                                     35099, struct.pack('256s', device_name))[20:24])
-        self.formatted_netmask = sum([bin(int(x)).count('1') for x in self.netmask.split('.')])
-        return self.formatted_netmask
+        formatted_netmask = sum([bin(int(x)).count('1') for x in netmask.split('.')])
+        return formatted_netmask
 
     def get_ip_by_interface(self, device_name):
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1790,53 +1790,53 @@ class InstallHACmd(Command):
             if ':' not in host_info.split('@')[0]:
                 error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
             else:
-                self.user = host_info.split('@')[0].split(':')[0]
-                self.password = host_info.split('@')[0].split(':')[1]
-                if self.user != "" and self.user != "root":
+                user = host_info.split('@')[0].split(':')[0]
+                password = host_info.split('@')[0].split(':')[1]
+                if user != "" and user != "root":
                    print "Only root user can be supported, please change user to root"
-                if self.user == "":
-                    self.user = "root"
+                if user == "":
+                    user = "root"
             # get ip and port
             if ':' not in host_info.split('@')[1]:
-                self.ip = host_info.split('@')[1]
-                self.port = '22'
+                ip = host_info.split('@')[1]
+                port = '22'
             else:
-                self.ip = host_info.split('@')[1].split(':')[0]
-                self.port = host_info.split('@')[1].split(':')[1]
-            return (self.user, self.password, self.ip, self.port)
+                ip = host_info.split('@')[1].split(':')[0]
+                port = host_info.split('@')[1].split(':')[1]
+            return (user, password, ip, port)
 
     def run(self, args):
-        self.spinner_info = SpinnerInfo()
-        self.spinner_info.output = "Checking system and init environment"
-        self.spinner_info.name = 'check_init'
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Checking system and init environment"
+        spinner_info.name = 'check_init'
         InstallHACmd.spinner_status['check_init'] = True
-        ZstackSpinner(self.spinner_info)
+        ZstackSpinner(spinner_info)
         # check gw ip is available
         if args.gateway is None:
             if self.get_default_gateway() is None:
                 error("Can't get the gateway IP address from system, please check your route table or pass specific " \
                       "gateway through \"--gateway\" argument")
             else:
-                self.gateway_ip = self.get_default_gateway()
+                gateway_ip = self.get_default_gateway()
         else:
-            self.gateway_ip = args.gateway
-        (self.status, self.output) = commands.getstatusoutput('ping -c 1 %s' % self.gateway_ip)
-        if self.status != 0:
-            error("The gateway %s unreachable!" % self.gateway_ip)
+            gateway_ip = args.gateway
+        (status, output) = commands.getstatusoutput('ping -c 1 %s' % gateway_ip)
+        if status != 0:
+            error("The gateway %s unreachable!" % gateway_ip)
         # check input host info
-        self.host1_info = args.host1_info
-        self.host1_connect_info_list = self.check_host_info_format(self.host1_info)
-        args.host1 = self.host1_connect_info_list[2]
-        args.host1_password = self.host1_connect_info_list[1]
-        self.host2_info = args.host2_info
-        self.host2_connect_info_list = self.check_host_info_format(self.host2_info)
-        args.host2 = self.host2_connect_info_list[2]
-        args.host2_password = self.host2_connect_info_list[1]
+        host1_info = args.host1_info
+        host1_connect_info_list = self.check_host_info_format(host1_info)
+        args.host1 = host1_connect_info_list[2]
+        args.host1_password = host1_connect_info_list[1]
+        host2_info = args.host2_info
+        host2_connect_info_list = self.check_host_info_format(host2_info)
+        args.host2 = host2_connect_info_list[2]
+        args.host2_password = host2_connect_info_list[1]
         if args.host3_info is not False:
-            self.host3_info = args.host3_info
-            self.host3_connect_info_list = self.check_host_info_format(self.host3_info)
-            args.host3 = self.host3_connect_info_list[2]
-            args.host3_password = self.host3_connect_info_list[1]
+            host3_info = args.host3_info
+            host3_connect_info_list = self.check_host_info_format(host3_info)
+            args.host3 = host3_connect_info_list[2]
+            args.host3_password = host3_connect_info_list[1]
 
 
         # check root password is available
@@ -1845,38 +1845,38 @@ class InstallHACmd(Command):
         elif args.host3_info is not False:
             if not args.host1_password == args.host2_password == args.host3_password:
                 error("All hosts root password must be the same. Please check your host password!")
-        self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+        command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
                       'StrictHostKeyChecking=no  root@%s echo ""' % (args.host1_password, args.host1)
-        (self.status, self.output) = commands.getstatusoutput(self.command)
-        if self.status != 0:
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
             error("The host: '%s' password '%s' incorrect! please check it!" % (args.host1, args.host1_password))
-        self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+        command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
                       'StrictHostKeyChecking=no  root@%s echo ""' % (args.host2_password, args.host2)
-        (self.status, self.output) = commands.getstatusoutput(self.command)
-        if self.status != 0:
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
             error("The host: '%s' password '%s' incorrect! please check it!" % (args.host2, args.host2_password))
         if args.host3_info is not False:
-            self.command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+            command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
                           'StrictHostKeyChecking=no  root@%s echo ""' % (args.host3_password, args.host3)
-            (self.status, self.output) = commands.getstatusoutput(self.command)
-            if self.status != 0:
+            (status, output) = commands.getstatusoutput(command)
+            if status != 0:
                 error("The host: '%s' password '%s' incorrect! please check it!" % (args.host3, args.host3_password))
 
         # check image type
-        self.zstack_local_repo = os.path.isfile("/etc/yum.repos.d/zstack-local.repo")
-        self.galera_repo = os.path.isfile("/etc/yum.repos.d/galera.repo")
-        if self.zstack_local_repo is False or self.galera_repo is False:
+        zstack_local_repo = os.path.isfile("/etc/yum.repos.d/zstack-local.repo")
+        galera_repo = os.path.isfile("/etc/yum.repos.d/galera.repo")
+        if zstack_local_repo is False or galera_repo is False:
             error("This feature only support ZStack community CentOS 7 image")
 
         # check network configuration
-        self.interface_list = os.listdir('/sys/class/net/')
-        if 'br_eth0' not in self.interface_list:
+        interface_list = os.listdir('/sys/class/net/')
+        if 'br_eth0' not in interface_list:
             error("Make sure you have already run the 'zs-network-setting' to setup the network environment")
 
         # check user start this command on host1
         if args.recovery_from_this_host is False:
-            self.local_ip = self.get_ip_by_interface("br_eth0")
-            if args.host1 != self.local_ip:
+            local_ip = self.get_ip_by_interface("br_eth0")
+            if args.host1 != local_ip:
                 error("Please run this command at host1 %s, or change your host1 ip to local host ip" % args.host1)
 
         # check user input wrong host2 ip
@@ -1887,22 +1887,22 @@ class InstallHACmd(Command):
                 error("The host1, host2 and host3 should not be the same ip address!")
 
         # init variables
-        self.yum_repo = ctl.read_property('Ansible.var.zstack_repo')
+        yum_repo = ctl.read_property('Ansible.var.zstack_repo')
         # avoid http server didn't start when install package
-        if 'zstack-mn' in self.yum_repo:
-            self.yum_repo = self.yum_repo.replace("zstack-mn","zstack-local")
-        if 'qemu-kvm-ev-mn' in self.yum_repo:
-            self.yum_repo = self.yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
+        if 'zstack-mn' in yum_repo:
+            yum_repo = yum_repo.replace("zstack-mn","zstack-local")
+        if 'qemu-kvm-ev-mn' in yum_repo:
+            yum_repo = yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
-        self.private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
-        self.public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
-        if os.path.isfile(self.public_key_name) is not True:
-            self.command = "echo -e  'y\n'|ssh-keygen -q -t rsa -N \"\" -f %s" % self.private_key_name
-            (self.status, self.output) = commands.getstatusoutput(self.command)
-            if self.status != 0:
-                error("Generate private key %s failed! Generate manually or rerun the process!" % self.private_key_name)
-        with open(self.public_key_name) as self.public_key_file:
-            self.public_key = self.public_key_file.read()
+        private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
+        public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
+        if os.path.isfile(public_key_name) is not True:
+            command = "echo -e  'y\n'|ssh-keygen -q -t rsa -N \"\" -f %s" % private_key_name
+            (status, output) = commands.getstatusoutput(command)
+            if status != 0:
+                error("Generate private key %s failed! Generate manually or rerun the process!" % private_key_name)
+        with open(public_key_name) as public_key_file:
+            public_key = public_key_file.read()
         # create log
         InstallHACmd.logger_dir = "/var/log/zstack/"
         create_log(InstallHACmd.logger_dir)
@@ -1913,17 +1913,17 @@ class InstallHACmd(Command):
             with  open('%s/conf/host' % InstallHACmd.current_dir ,'w') as f:
                 f.writelines([args.host1+'\n', args.host2+'\n', args.host3+'\n'])
 
-        #self.host_inventory = '%s,%s' % (args.host1, args.host2)
-        self.host_inventory = InstallHACmd.current_dir + '/conf/host'
+        #host_inventory = '%s,%s' % (args.host1, args.host2)
+        host_inventory = InstallHACmd.current_dir + '/conf/host'
 
         # init host1 parameter
         self.host1_post_info = HostPostInfo()
         self.host1_post_info.host = args.host1
-        self.host1_post_info.host_inventory = self.host_inventory
-        self.host1_post_info.private_key = self.private_key_name
-        self.host1_post_info.yum_repo = self.yum_repo
+        self.host1_post_info.host_inventory = host_inventory
+        self.host1_post_info.private_key = private_key_name
+        self.host1_post_info.yum_repo = yum_repo
         self.host1_post_info.vip = args.vip
-        self.host1_post_info.gateway_ip = self.gateway_ip
+        self.host1_post_info.gateway_ip = gateway_ip
         self.host1_post_info.rabbit_password = args.rabbit_password
         self.host1_post_info.mysql_password = args.mysql_root_password
         self.host1_post_info.mysql_userpassword = args.mysql_user_password
@@ -1932,11 +1932,11 @@ class InstallHACmd(Command):
         # init host2 parameter
         self.host2_post_info = HostPostInfo()
         self.host2_post_info.host = args.host2
-        self.host2_post_info.host_inventory = self.host_inventory
-        self.host2_post_info.private_key = self.private_key_name
-        self.host2_post_info.yum_repo = self.yum_repo
+        self.host2_post_info.host_inventory = host_inventory
+        self.host2_post_info.private_key = private_key_name
+        self.host2_post_info.yum_repo = yum_repo
         self.host2_post_info.vip = args.vip
-        self.host2_post_info.gateway_ip = self.gateway_ip
+        self.host2_post_info.gateway_ip = gateway_ip
         self.host2_post_info.rabbit_password = args.rabbit_password
         self.host2_post_info.mysql_password = args.mysql_root_password
         self.host2_post_info.mysql_userpassword = args.mysql_user_password
@@ -1946,11 +1946,11 @@ class InstallHACmd(Command):
             # init host3 parameter
             self.host3_post_info = HostPostInfo()
             self.host3_post_info.host = args.host3
-            self.host3_post_info.host_inventory = self.host_inventory
-            self.host3_post_info.private_key = self.private_key_name
-            self.host3_post_info.yum_repo = self.yum_repo
+            self.host3_post_info.host_inventory = host_inventory
+            self.host3_post_info.private_key = private_key_name
+            self.host3_post_info.yum_repo = yum_repo
             self.host3_post_info.vip = args.vip
-            self.host3_post_info.gateway_ip = self.gateway_ip
+            self.host3_post_info.gateway_ip = gateway_ip
             self.host3_post_info.rabbit_password = args.rabbit_password
             self.host3_post_info.mysql_password = args.mysql_root_password
             self.host3_post_info.mysql_userpassword = args.mysql_user_password
@@ -1963,148 +1963,148 @@ class InstallHACmd(Command):
             "mysql_socket_timeout" : 60000
         }
         if args.perfect_mode is True:
-            self.local_map['mysql_connect_timeout'] = 2000
-            self.local_map['mysql_socket_timeout'] = 2000
+            local_map['mysql_connect_timeout'] = 2000
+            local_map['mysql_socket_timeout'] = 2000
 
-        self.add_public_key_command = 'if [ ! -d ~/.ssh ]; then mkdir -p ~/.ssh; chmod 700 ~/.ssh; fi && if [ ! -f ~/.ssh/authorized_keys ]; ' \
+        add_public_key_command = 'if [ ! -d ~/.ssh ]; then mkdir -p ~/.ssh; chmod 700 ~/.ssh; fi && if [ ! -f ~/.ssh/authorized_keys ]; ' \
                                       'then touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; fi && pub_key="%s";grep ' \
                                       '"%s" ~/.ssh/authorized_keys > /dev/null; if [ $? -eq 1 ]; ' \
                                       'then echo "%s" >> ~/.ssh/authorized_keys; fi  && exit 0;'\
-                                      % (self.public_key.strip('\n'), self.public_key.strip('\n'), self.public_key.strip('\n'))
+                                      % (public_key.strip('\n'), public_key.strip('\n'), public_key.strip('\n'))
 
         # add ha public key to host1
-        self.ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+        ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s'" % \
-                                  (args.host1_password, args.host1, self.add_public_key_command)
-        (status, output) = commands.getstatusoutput(self.ssh_add_public_key_command)
+                                  (args.host1_password, args.host1, add_public_key_command)
+        (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
         if status != 0:
             error(output)
 
         # add ha public key to host2
-        self.ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+        ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
-                                  (args.host2_password, args.host2, self.add_public_key_command)
-        (status, output) = commands.getstatusoutput(self.ssh_add_public_key_command)
+                                  (args.host2_password, args.host2, add_public_key_command)
+        (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
         if status != 0:
             error(output)
 
         # add ha public key to host3
         if args.host3_info is not False:
-            self.ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+            ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                               "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
-                                              (args.host3_password, args.host3, self.add_public_key_command)
-            (status, output) = commands.getstatusoutput(self.ssh_add_public_key_command)
+                                              (args.host3_password, args.host3, add_public_key_command)
+            (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
             if status != 0:
                 error(output)
 
 
         # sync ansible key in two host
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
-        self.copy_arg.dest = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
-        copy(self.copy_arg,self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
+        copy_arg.dest = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
+        copy(copy_arg,self.host2_post_info)
         if args.host3_info is not False:
-            copy(self.copy_arg,self.host3_post_info)
+            copy(copy_arg,self.host3_post_info)
 
         # check whether to recovery the HA cluster
         if args.recovery_from_this_host is True:
-            self.local_ip = self.get_ip_by_interface("br_eth0")
-            self.spinner_info = SpinnerInfo()
-            self.spinner_info.output = "Starting to recovery mysql from this host"
-            self.spinner_info.name = "recovery_cluster"
+            local_ip = self.get_ip_by_interface("br_eth0")
+            spinner_info = SpinnerInfo()
+            spinner_info.output = "Starting to recovery mysql from this host"
+            spinner_info.name = "recovery_cluster"
             InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
             InstallHACmd.spinner_status['recovery_cluster'] = True
-            ZstackSpinner(self.spinner_info)
+            ZstackSpinner(spinner_info)
             # kill mysql process to make sure mysql bootstrap can work
             service_status("mysql", "state=stopped", self.host1_post_info)
-            self.mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host1_post_info, return_status=True)
-            if self.mysqld_status is True:
+            mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host1_post_info, return_status=True)
+            if mysqld_status is True:
                 run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host1_post_info)
 
             service_status("mysql", "state=stopped", self.host2_post_info)
-            self.mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host2_post_info, return_status=True)
-            if self.mysqld_status is True:
+            mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host2_post_info, return_status=True)
+            if mysqld_status is True:
                 run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host2_post_info)
 
             if args.host3_info is not False:
                 service_status("mysql", "state=stopped", self.host3_post_info)
-                self.mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host3_post_info, return_status=True)
-                if self.mysqld_status is True:
+                mysqld_status = run_remote_command("netstat -ltnp | grep 4567", self.host3_post_info, return_status=True)
+                if mysqld_status is True:
                     run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host3_post_info)
 
-            self.command = "service mysql bootstrap"
-            (status, output) = commands.getstatusoutput(self.command)
+            command = "service mysql bootstrap"
+            (status, output) = commands.getstatusoutput(command)
             if status != 0:
                 error(output)
             else:
-                #self.command = "service mysql start"
-                if self.local_ip == self.host1_post_info.host:
+                #command = "service mysql start"
+                if local_ip == self.host1_post_info.host:
                     # make sure vip will be on this host, so start haproxy firstly
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
-                    #run_remote_command(self.command, self.host2_post_info)
+                    #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=started", self.host2_post_info)
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
                     if args.host3_info is not False:
-                        #run_remote_command(self.command, self.host3_post_info)
+                        #run_remote_command(command, self.host3_post_info)
                         service_status("mysql","state=started", self.host3_post_info)
                         service_status("haproxy","state=started", self.host3_post_info)
                         service_status("keepalived","state=started", self.host3_post_info)
-                    #self.command = "service mysql restart"
-                    #run_remote_command(self.command, self.host1_post_info)
+                    #command = "service mysql restart"
+                    #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=restarted", self.host1_post_info)
 
-                elif self.local_ip == self.host2_post_info.host:
+                elif local_ip == self.host2_post_info.host:
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
-                    #run_remote_command(self.command, self.host1_post_info)
+                    #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=started", self.host1_post_info)
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
                     if args.host3_info is not False:
-                        #run_remote_command(self.command, self.host3_post_info)
+                        #run_remote_command(command, self.host3_post_info)
                         service_status("mysql","state=started", self.host3_post_info)
                         service_status("haproxy","state=started", self.host3_post_info)
                         service_status("keepalived","state=started", self.host3_post_info)
-                    #self.command = "service mysql restart"
-                    #run_remote_command(self.command, self.host2_post_info)
+                    #command = "service mysql restart"
+                    #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=restarted", self.host2_post_info)
                 else:
                     # localhost must be host3
                     service_status("haproxy","state=started", self.host3_post_info)
                     service_status("keepalived","state=started", self.host3_post_info)
-                    #run_remote_command(self.command, self.host1_post_info)
+                    #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=started", self.host1_post_info)
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
                     service_status("mysql","state=started", self.host2_post_info)
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
-                    #self.command = "service mysql restart"
-                    #run_remote_command(self.command, self.host2_post_info)
+                    #command = "service mysql restart"
+                    #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=restarted", self.host3_post_info)
 
                 # start mevoco
-                self.spinner_info.output = "Starting Mevoco"
-                self.spinner_info.name = "mevoco"
+                spinner_info.output = "Starting Mevoco"
+                spinner_info.name = "mevoco"
                 InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
                 InstallHACmd.spinner_status['mevoco'] = True
-                ZstackSpinner(self.spinner_info)
-                self.command = "zstack-ctl start"
-                (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s"
-                                                                     % (self.private_key_name, args.host1, self.command))
-                if self.status != 0:
-                    error("Something wrong on host: %s\n %s" % (args.host1, self.output))
-                (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s"
-                                                                     % (self.private_key_name, args.host2, self.command))
-                if self.status != 0:
-                    error("Something wrong on host: %s\n %s" % (args.host2, self.output))
+                ZstackSpinner(spinner_info)
+                command = "zstack-ctl start"
+                (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s"
+                                                                     % (private_key_name, args.host1, command))
+                if status != 0:
+                    error("Something wrong on host: %s\n %s" % (args.host1, output))
+                (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s"
+                                                                     % (private_key_name, args.host2, command))
+                if status != 0:
+                    error("Something wrong on host: %s\n %s" % (args.host2, output))
                 if args.host3_info is not False:
-                    (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s"
-                                                                         % (self.private_key_name, args.host3, self.command))
-                    if self.status != 0:
-                        error("Something wrong on host: %s\n %s" % (args.host2, self.output))
+                    (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s"
+                                                                         % (private_key_name, args.host3, command))
+                    if status != 0:
+                        error("Something wrong on host: %s\n %s" % (args.host2, output))
                 InstallHACmd.spinner_status['mevoco'] = False
                 time.sleep(.2)
             info("The cluster has been recovery!")
@@ -2116,19 +2116,19 @@ class InstallHACmd(Command):
         if args.host3_info is not False:
             service_status("iptables","state=restarted",self.host3_post_info)
         # remove mariadb for avoiding conflict with mevoco install process
-        self.command = "rpm -q mariadb | grep 'not installed' || yum remove -y mariadb"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        command = "rpm -q mariadb | grep 'not installed' || yum remove -y mariadb"
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
 
-        self.command = "hostnamectl set-hostname zstack-1"
-        run_remote_command(self.command, self.host1_post_info)
-        self.command = "hostnamectl set-hostname zstack-2"
-        run_remote_command(self.command, self.host2_post_info)
+        command = "hostnamectl set-hostname zstack-1"
+        run_remote_command(command, self.host1_post_info)
+        command = "hostnamectl set-hostname zstack-2"
+        run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            self.command = "hostnamectl set-hostname zstack-3"
-            run_remote_command(self.command, self.host3_post_info)
+            command = "hostnamectl set-hostname zstack-3"
+            run_remote_command(command, self.host3_post_info)
 
         # remove old zstack-1 and zstack-2 in hosts file
         update_file("/etc/hosts", "regexp='\.*zstack\.*' state=absent", self.host1_post_info)
@@ -2146,98 +2146,98 @@ class InstallHACmd(Command):
             update_file("/etc/hosts", "line='%s zstack-2'" % args.host2, self.host3_post_info)
             update_file("/etc/hosts", "line='%s zstack-3'" % args.host3, self.host3_post_info)
 
-        self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
+        command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
                        " ; iptables-save > /dev/null 2>&1" % (self.host2_post_info.host, self.host2_post_info.host)
-        run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(command, self.host1_post_info)
         if args.host3_info is not False:
-            self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
+            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
                            " ; iptables-save > /dev/null 2>&1" % (self.host3_post_info.host, self.host3_post_info.host)
-            run_remote_command(self.command, self.host1_post_info)
-        self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
+            run_remote_command(command, self.host1_post_info)
+        command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
                        " ; iptables-save > /dev/null 2>&1" % (self.host1_post_info.host, self.host1_post_info.host)
-        run_remote_command(self.command, self.host2_post_info)
+        run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
+            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
                            " ; iptables-save > /dev/null 2>&1" % (self.host3_post_info.host, self.host3_post_info.host)
-            run_remote_command(self.command, self.host2_post_info)
+            run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
+            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
                            " ; iptables-save > /dev/null 2>&1" % (self.host1_post_info.host, self.host1_post_info.host)
-            run_remote_command(self.command, self.host3_post_info)
-            self.command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
+            run_remote_command(command, self.host3_post_info)
+            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
                            " ; iptables-save > /dev/null 2>&1" % (self.host2_post_info.host, self.host2_post_info.host)
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
 
         # stop haproxy and keepalived service for avoiding terminal status  disturb
-        self.command = "service keepalived stop && service haproxy stop || echo True"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        command = "service keepalived stop && service haproxy stop || echo True"
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
 
         #pass all the variables to other HA deploy process
         InstallHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info]
         if args.host3_info is not False:
             InstallHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info, self.host3_post_info]
         # setup mysql ha
-        self.spinner_info = SpinnerInfo()
-        self.spinner_info.output = "Starting to deploy Mysql HA"
-        self.spinner_info.name = 'mysql'
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to deploy Mysql HA"
+        spinner_info.name = 'mysql'
         InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['mysql'] = True
-        ZstackSpinner(self.spinner_info)
+        ZstackSpinner(spinner_info)
         MysqlHA()()
 
         # setup rabbitmq ha
-        self.spinner_info = SpinnerInfo()
-        self.spinner_info.output ="Starting to deploy Rabbitmq HA"
-        self.spinner_info.name = 'rabbitmq'
+        spinner_info = SpinnerInfo()
+        spinner_info.output ="Starting to deploy Rabbitmq HA"
+        spinner_info.name = 'rabbitmq'
         InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['rabbitmq'] = True
-        ZstackSpinner(self.spinner_info)
+        ZstackSpinner(spinner_info)
         RabbitmqHA()()
 
         # setup haproxy and keepalived
-        self.spinner_info = SpinnerInfo()
-        self.spinner_info.output = "Starting to deploy Haproxy and Keepalived"
-        self.spinner_info.name = 'haproxy_keepalived'
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to deploy Haproxy and Keepalived"
+        spinner_info.name = 'haproxy_keepalived'
         InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['haproxy_keepalived'] = True
-        ZstackSpinner(self.spinner_info)
+        ZstackSpinner(spinner_info)
         HaproxyKeepalived()()
 
         #install database on local management node
-        self.command = "zstack-ctl stop"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        command = "zstack-ctl stop"
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
         if args.keep_db is True:
-            self.command = "zstack-ctl deploydb --keep-db --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
+            command = "zstack-ctl deploydb --keep-db --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
                            % (args.host1, args.mysql_user_password, args.mysql_root_password)
-            run_remote_command(self.command, self.host1_post_info)
+            run_remote_command(command, self.host1_post_info)
         elif args.drop is True:
-            self.command = "zstack-ctl deploydb --drop --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
+            command = "zstack-ctl deploydb --drop --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
                            % (args.host1, args.mysql_user_password, args.mysql_root_password)
-            run_remote_command(self.command, self.host1_post_info)
+            run_remote_command(command, self.host1_post_info)
         else:
-            self.command = "zstack-ctl deploydb --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
+            command = "zstack-ctl deploydb --host=%s --port=3306 --zstack-password=%s --root-password=%s" \
                            % (args.host1, args.mysql_user_password, args.mysql_root_password)
-            run_remote_command(self.command, self.host1_post_info)
+            run_remote_command(command, self.host1_post_info)
 
-        self.command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306/{database}?connectTimeout=%d\&socketTimeout=%d"\
+        command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306/{database}?connectTimeout=%d\&socketTimeout=%d"\
                        % (args.vip, self.local_map['mysql_connect_timeout'], self.local_map['mysql_socket_timeout'])
-        run_remote_command(self.command, self.host1_post_info)
-        self.command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
-        run_remote_command(self.command, self.host1_post_info)
+        run_remote_command(command, self.host1_post_info)
+        command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
+        run_remote_command(command, self.host1_post_info)
 
         # cassandra HA only need to change the config file, so unnecessary to wrap the process in a class
-        self.spinner_info = SpinnerInfo()
-        self.spinner_info.output = "Starting to deploy Cassandra HA"
-        self.spinner_info.name = "Cassandra"
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to deploy Cassandra HA"
+        spinner_info.name = "Cassandra"
         InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['Cassandra'] = True
-        ZstackSpinner(self.spinner_info)
+        ZstackSpinner(spinner_info)
         update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
                     "regexp='seeds:' line='  - seeds: \"%s,%s\"'" % (args.host1, args.host2), self.host1_post_info)
         update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
@@ -2319,15 +2319,15 @@ class InstallHACmd(Command):
         update_file("%s" % ctl.properties_file_path,
                     "regexp='management\.server\.ip' line='management.server.ip = %s'" %
                     args.host1, self.host1_post_info)
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = ctl.properties_file_path
-        self.copy_arg.dest = ctl.properties_file_path
-        copy(self.copy_arg, self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = ctl.properties_file_path
+        copy_arg.dest = ctl.properties_file_path
+        copy(copy_arg, self.host2_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='management\.server\.ip' line='management.server.ip = %s'"
                     % args.host2, self.host2_post_info)
         if args.host3_info is not False:
-            copy(self.copy_arg, self.host3_post_info)
+            copy(copy_arg, self.host3_post_info)
             update_file("%s" % ctl.properties_file_path,
                         "regexp='management\.server\.ip' line='management.server.ip = %s'"
                         % args.host3, self.host3_post_info)
@@ -2335,88 +2335,88 @@ class InstallHACmd(Command):
 
         # start Cassadra and KairosDB
         # backup old cassandra dir avoid changing keyspace error
-        self.command = "[ -d /var/lib/cassandra/ ] && mv /var/lib/cassandra/ /var/lib/cassandra-%s/ || echo '' " \
+        command = "[ -d /var/lib/cassandra/ ] && mv /var/lib/cassandra/ /var/lib/cassandra-%s/ || echo '' " \
                        % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        run_remote_command(self.command, self.host1_post_info)
-        self.command = 'zstack-ctl cassandra --start --wait-timeout 120'
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                             (self.private_key_name, args.host1, self.command))
-        if self.status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host1, self.output))
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                             (self.private_key_name, args.host2, self.command))
-        if self.status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host2, self.output))
+        run_remote_command(command, self.host1_post_info)
+        command = 'zstack-ctl cassandra --start --wait-timeout 120'
+        (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (private_key_name, args.host1, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (args.host1, output))
+        (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (private_key_name, args.host2, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (args.host2, output))
         if args.host3_info is not False:
-            (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                                 (self.private_key_name, args.host3, self.command))
-            if self.status != 0:
-                error("Something wrong on host: %s\n %s" % (args.host3, self.output))
+            (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                                 (private_key_name, args.host3, command))
+            if status != 0:
+                error("Something wrong on host: %s\n %s" % (args.host3, output))
 
-        self.spinner_info = SpinnerInfo()
-        self.spinner_info.output = "Starting to deploy Kairosdb HA"
-        self.spinner_info.name = "Kairosdb"
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to deploy Kairosdb HA"
+        spinner_info.name = "Kairosdb"
         InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['Kairosdb'] = True
-        ZstackSpinner(self.spinner_info)
-        self.command = 'zstack-ctl kairosdb --start --wait-timeout 120'
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                             (self.private_key_name, args.host1, self.command))
-        if self.status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host1, self.output))
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                             (self.private_key_name, args.host2, self.command))
-        if self.status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host2, self.output))
+        ZstackSpinner(spinner_info)
+        command = 'zstack-ctl kairosdb --start --wait-timeout 120'
+        (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (private_key_name, args.host1, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (args.host1, output))
+        (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (private_key_name, args.host2, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (args.host2, output))
         if args.host3_info is not False:
-            (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                                 (self.private_key_name, args.host3, self.command))
-            if self.status != 0:
-                error("Something wrong on host: %s\n %s" % (args.host3, self.output))
+            (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                                 (private_key_name, args.host3, command))
+            if status != 0:
+                error("Something wrong on host: %s\n %s" % (args.host3, output))
 
         # deploy cassandra_db
-        self.command = 'zstack-ctl deploy_cassandra_db'
-        run_remote_command(self.command, self.host1_post_info)
+        command = 'zstack-ctl deploy_cassandra_db'
+        run_remote_command(command, self.host1_post_info)
 
         # change Cassadra duplication number
         #self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : " \
         #                       "'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
-        #self.command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % \
+        #command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % \
         #               (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
-        #run_remote_command(self.command, self.host1_post_info)
+        #run_remote_command(command, self.host1_post_info)
 
         #finally, start zstack-1 and zstack-2
-        self.spinner_info = SpinnerInfo()
-        self.spinner_info.output = "Starting Mevoco"
-        self.spinner_info.name = "mevoco"
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting Mevoco"
+        spinner_info.name = "mevoco"
         InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
         InstallHACmd.spinner_status['mevoco'] = True
-        ZstackSpinner(self.spinner_info)
+        ZstackSpinner(spinner_info)
         # Add zstack-ctl start to rc.local for auto recovery when system reboot
-        self.command = "service iptables save"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        command = "service iptables save"
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            run_remote_command(self.command, self.host3_post_info)
-        self.command = "zstack-ctl install_ui"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+            run_remote_command(command, self.host3_post_info)
+        command = "zstack-ctl install_ui"
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            run_remote_command(self.command, self.host3_post_info)
-        self.command = "zstack-ctl start"
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                             (self.private_key_name, args.host1, self.command))
-        if self.status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host1, self.output))
-        (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                             (self.private_key_name, args.host2, self.command))
-        if self.status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host2, self.output))
+            run_remote_command(command, self.host3_post_info)
+        command = "zstack-ctl start"
+        (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (private_key_name, args.host1, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (args.host1, output))
+        (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                             (private_key_name, args.host2, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (args.host2, output))
         if args.host3_info is not False:
-            (self.status, self.output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
-                                                                 (self.private_key_name, args.host3, self.command))
-            if self.status != 0:
-                error("Something wrong on host: %s\n %s" % (args.host3, self.output))
+            (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+                                                                 (private_key_name, args.host3, command))
+            if status != 0:
+                error("Something wrong on host: %s\n %s" % (args.host3, output))
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
 
@@ -2446,13 +2446,13 @@ class HaproxyKeepalived(InstallHACmd):
         self.gateway = self.host1_post_info.gateway_ip
 
     def __call__(self):
-        self.command = ("yum clean --enablerepo=zstack-local metadata && pkg_list=`rpm -q haproxy keepalived"
+        command = ("yum clean --enablerepo=zstack-local metadata && pkg_list=`rpm -q haproxy keepalived"
                         " | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                         "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % self.yum_repo
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
         update_file("/etc/sysconfig/rsyslog","regexp='^SYSLOGD_OPTIONS=\"\"' line='SYSLOGD_OPTIONS=\"-r -m 0\"'", self.host1_post_info)
         update_file("/etc/sysconfig/rsyslog","regexp='^SYSLOGD_OPTIONS=\"\"' line='SYSLOGD_OPTIONS=\"-r -m 0\"'", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
@@ -2467,11 +2467,11 @@ class HaproxyKeepalived(InstallHACmd):
             update_file("/etc/rsyslog.conf","line='$ModLoad imudp'", self.host3_post_info)
             update_file("/etc/rsyslog.conf","line='$UDPServerRun 514'", self.host3_post_info)
             update_file("/etc/rsyslog.conf","line='local2.*   /var/log/haproxy.log'", self.host3_post_info)
-        self.command = "touch /var/log/haproxy.log"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        command = "touch /var/log/haproxy.log"
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
         file_operation("/var/log/haproxy.log","owner=haproxy group=haproxy", self.host1_post_info)
         file_operation("/var/log/haproxy.log","owner=haproxy group=haproxy", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
@@ -2645,50 +2645,50 @@ listen  proxy-kairosdb 0.0.0.0:58080
     option tcpka
         '''
 
-        self.haproxy_conf_template = jinja2.Template(haproxy_raw_conf)
-        self.haproxy_host1_conf = self.haproxy_conf_template.render({
+        haproxy_conf_template = jinja2.Template(haproxy_raw_conf)
+        haproxy_host1_conf = haproxy_conf_template.render({
             'host1' : self.host1_post_info.host,
             'host2' : self.host2_post_info.host
         })
         if len(self.host_post_info_list) == 3:
-            self.haproxy_host1_conf = self.haproxy_conf_template.render({
+            haproxy_host1_conf = haproxy_conf_template.render({
                 'host1' : self.host1_post_info.host,
                 'host2' : self.host2_post_info.host,
                 'host3' : self.host3_post_info.host
             })
 
         # The host1 and host2 and host3 use the same config file
-        self.host1_config, self.haproxy_host1_conf_file = tempfile.mkstemp()
-        self.f1 = os.fdopen(self.host1_config, 'w')
-        self.f1.write(self.haproxy_host1_conf)
-        self.f1.close()
+        host1_config, haproxy_host1_conf_file = tempfile.mkstemp()
+        f1 = os.fdopen(host1_config, 'w')
+        f1.write(haproxy_host1_conf)
+        f1.close()
 
         def cleanup_haproxy_config_file():
-            os.remove(self.haproxy_host1_conf_file)
+            os.remove(haproxy_host1_conf_file)
         self.install_cleanup_routine(cleanup_haproxy_config_file)
 
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.haproxy_host1_conf_file
-        self.copy_arg.dest = "/etc/haproxy/haproxy.cfg"
-        copy(self.copy_arg,self.host1_post_info)
-        copy(self.copy_arg,self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = haproxy_host1_conf_file
+        copy_arg.dest = "/etc/haproxy/haproxy.cfg"
+        copy(copy_arg,self.host1_post_info)
+        copy(copy_arg,self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            copy(self.copy_arg,self.host3_post_info)
+            copy(copy_arg,self.host3_post_info)
 
         #config haproxy firewall
-        self.command = "! iptables -C INPUT -p tcp -m tcp --dport 53306 -j ACCEPT > /dev/null 2>&1 && iptables -I INPUT -p tcp -m tcp --dport 53306 -j ACCEPT; " \
+        command = "! iptables -C INPUT -p tcp -m tcp --dport 53306 -j ACCEPT > /dev/null 2>&1 && iptables -I INPUT -p tcp -m tcp --dport 53306 -j ACCEPT; " \
                        "! iptables -C INPUT -p tcp -m tcp --dport 55672 -j ACCEPT > /dev/null 2>&1  &&  iptables -I INPUT -p tcp -m tcp --dport 55672 -j ACCEPT ; " \
                        "! iptables -C INPUT -p tcp -m tcp --dport 80 -j ACCEPT > /dev/null 2>&1  && iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT ; " \
                        "! iptables -C INPUT -p tcp -m tcp --dport 9132 -j ACCEPT > /dev/null 2>&1 &&  iptables -I INPUT -p tcp -m tcp --dport 9132 -j ACCEPT ; " \
                        "! iptables -C INPUT -p tcp -m tcp --dport 8888 -j ACCEPT > /dev/null 2>&1 &&  iptables -I INPUT -p tcp -m tcp --dport 8888 -j ACCEPT ; " \
                        "! iptables -C INPUT -p tcp -m tcp --dport 6033 -j ACCEPT > /dev/null 2>&1 && iptables -I INPUT -p tcp -m tcp --dport 6033 -j ACCEPT; iptables-save "
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
 
         #config keepalived
-        self.keepalived_raw_config = '''
+        keepalived_raw_config = '''
 ! Configuration File for keepalived
 global_defs {
    router_id HAPROXY_LOAD
@@ -2719,81 +2719,81 @@ vrrp_instance VI_1 {
 }
         '''
 
-        self.virtual_router_id = random.randint(1, 255)
-        self.auth_pass = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(15))
-        self.master_priority = 100
-        self.slave_priority = 90
-        self.second_slave_priority = 80
-        self.keepalived_template = jinja2.Template(self.keepalived_raw_config)
-        self.keepalived_host1_config = self.keepalived_template.render({
-            'vrouter_id': self.virtual_router_id,
-            'priority': self.master_priority,
-            'auth_passwd': self.auth_pass,
+        virtual_router_id = random.randint(1, 255)
+        auth_pass = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(15))
+        master_priority = 100
+        slave_priority = 90
+        second_slave_priority = 80
+        keepalived_template = jinja2.Template(keepalived_raw_config)
+        keepalived_host1_config = keepalived_template.render({
+            'vrouter_id': virtual_router_id,
+            'priority': master_priority,
+            'auth_passwd': auth_pass,
             'vip': self.vip,
             'netmask': self.get_formatted_netmask('br_eth0')
         })
 
-        self.keepalived_host2_config = self.keepalived_template.render({
-            'vrouter_id': self.virtual_router_id,
-            'priority': self.slave_priority,
-            'auth_passwd': self.auth_pass,
+        keepalived_host2_config = keepalived_template.render({
+            'vrouter_id': virtual_router_id,
+            'priority': slave_priority,
+            'auth_passwd': auth_pass,
             'vip': self.vip,
             'netmask': self.get_formatted_netmask('br_eth0')
         })
 
         if len(self.host_post_info_list) == 3:
-            self.keepalived_host3_config = self.keepalived_template.render({
-                'vrouter_id': self.virtual_router_id,
-                'priority': self.second_slave_priority,
-                'auth_passwd': self.auth_pass,
+            keepalived_host3_config = keepalived_template.render({
+                'vrouter_id': virtual_router_id,
+                'priority': second_slave_priority,
+                'auth_passwd': auth_pass,
                 'vip': self.vip,
                 'netmask': self.get_formatted_netmask('br_eth0')
             })
 
-        self.host1_config, self.keepalived_host1_config_file = tempfile.mkstemp()
-        self.f1 = os.fdopen(self.host1_config, 'w')
-        self.f1.write(self.keepalived_host1_config)
-        self.f1.close()
-        self.host2_config, self.keepalived_host2_config_file = tempfile.mkstemp()
-        self.f2 = os.fdopen(self.host1_config, 'w')
-        self.f2.write(self.keepalived_host2_config)
-        self.f2.close()
+        host1_config, keepalived_host1_config_file = tempfile.mkstemp()
+        f1 = os.fdopen(host1_config, 'w')
+        f1.write(keepalived_host1_config)
+        f1.close()
+        host2_config, keepalived_host2_config_file = tempfile.mkstemp()
+        f2 = os.fdopen(host1_config, 'w')
+        f2.write(keepalived_host2_config)
+        f2.close()
         if len(self.host_post_info_list) == 3:
-            self.host3_config, self.keepalived_host3_config_file = tempfile.mkstemp()
-            self.f3 = os.fdopen(self.host3_config, 'w')
-            self.f3.write(self.keepalived_host3_config)
-            self.f3.close()
+            host3_config, keepalived_host3_config_file = tempfile.mkstemp()
+            f3 = os.fdopen(host3_config, 'w')
+            f3.write(keepalived_host3_config)
+            f3.close()
 
         def cleanup_keepalived_config_file():
-            os.remove(self.keepalived_host1_config_file)
-            os.remove(self.keepalived_host2_config_file)
+            os.remove(keepalived_host1_config_file)
+            os.remove(keepalived_host2_config_file)
             if len(self.host_post_info_list) == 3:
-                os.remove(self.keepalived_host3_config_file)
+                os.remove(keepalived_host3_config_file)
             self.install_cleanup_routine(cleanup_keepalived_config_file)
 
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.keepalived_host1_config_file
-        self.copy_arg.dest = "/etc/keepalived/keepalived.conf"
-        copy(self.copy_arg, self.host1_post_info)
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.keepalived_host2_config_file
-        self.copy_arg.dest = "/etc/keepalived/keepalived.conf"
-        copy(self.copy_arg, self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = keepalived_host1_config_file
+        copy_arg.dest = "/etc/keepalived/keepalived.conf"
+        copy(copy_arg, self.host1_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = keepalived_host2_config_file
+        copy_arg.dest = "/etc/keepalived/keepalived.conf"
+        copy(copy_arg, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            self.copy_arg = CopyArg()
-            self.copy_arg.src = self.keepalived_host3_config_file
-            self.copy_arg.dest = "/etc/keepalived/keepalived.conf"
-            copy(self.copy_arg, self.host3_post_info)
+            copy_arg = CopyArg()
+            copy_arg.src = keepalived_host3_config_file
+            copy_arg.dest = "/etc/keepalived/keepalived.conf"
+            copy(copy_arg, self.host3_post_info)
 
         # copy keepalived-kill.sh to host
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = "%s/conf/keepalived-kill.sh" % InstallHACmd.current_dir
-        self.copy_arg.dest = "/usr/local/bin/keepalived-kill.sh"
-        self.copy_arg.args = "mode='u+x,g+x,o+x'"
-        copy(self.copy_arg, self.host1_post_info)
-        copy(self.copy_arg, self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = "%s/conf/keepalived-kill.sh" % InstallHACmd.current_dir
+        copy_arg.dest = "/usr/local/bin/keepalived-kill.sh"
+        copy_arg.args = "mode='u+x,g+x,o+x'"
+        copy(copy_arg, self.host1_post_info)
+        copy(copy_arg, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            copy(self.copy_arg, self.host3_post_info)
+            copy(copy_arg, self.host3_post_info)
 
         # restart haproxy and keepalived
         service_status("keepalived", "state=restarted enabled=yes", self.host1_post_info)
@@ -2817,15 +2817,15 @@ class MysqlHA(InstallHACmd):
         self.mysql_password = self.host1_post_info.mysql_password
 
     def __call__(self):
-        self.command = ("yum clean --enablerepo=zstack-local metadata && pkg_list=`rpm -q MariaDB-Galera-server xinetd rsync openssl-libs "
+        command = ("yum clean --enablerepo=zstack-local metadata && pkg_list=`rpm -q MariaDB-Galera-server xinetd rsync openssl-libs "
                    " | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                    "--disablerepo=* --enablerepo=%s,mariadb install -y $pkg; done;") % self.yum_repo
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
         # Generate galera config file and copy to host1 host2
-        self.galera_raw_config= '''[mysqld]
+        galera_raw_config= '''[mysqld]
 skip-name-resolve=1
 character-set-server=utf8
 binlog_format=ROW
@@ -2854,7 +2854,7 @@ wsrep_sst_method=rsync
 '''
         if len(self.host_post_info_list) == 3:
         # Generate galera config file and copy to host1 host2 host3
-            self.galera_raw_config= '''[mysqld]
+            galera_raw_config= '''[mysqld]
 skip-name-resolve=1
 character-set-server=utf8
 binlog_format=ROW
@@ -2881,52 +2881,52 @@ wsrep_causal_reads=0
 wsrep_notify_cmd=
 wsrep_sst_method=rsync
 '''
-        self.galera_config_template = jinja2.Template(self.galera_raw_config)
+        galera_config_template = jinja2.Template(galera_raw_config)
 
-        self.galera_config_host1 = self.galera_config_template.render({
+        galera_config_host1 = galera_config_template.render({
             'host1' : self.host1_post_info.host,
             'host2' : self.host2_post_info.host
         })
         if len(self.host_post_info_list) == 3:
-            self.galera_config_host1 = self.galera_config_template.render({
+            galera_config_host1 = galera_config_template.render({
                 'host1' : self.host1_post_info.host,
                 'host2' : self.host2_post_info.host,
                 'host3' : self.host3_post_info.host
             })
 
-        self.galera_config_host2 = self.galera_config_template.render({
+        galera_config_host2 = galera_config_template.render({
             'host1' : self.host2_post_info.host,
             'host2' : self.host1_post_info.host
         })
         if len(self.host_post_info_list) == 3:
-            self.galera_config_host2 = self.galera_config_template.render({
+            galera_config_host2 = galera_config_template.render({
                 'host1' : self.host2_post_info.host,
                 'host2' : self.host3_post_info.host,
                 'host3' : self.host1_post_info.host
             })
 
         if len(self.host_post_info_list) == 3:
-            self.galera_config_host3 = self.galera_config_template.render({
+            galera_config_host3 = galera_config_template.render({
                 'host1' : self.host3_post_info.host,
                 'host2' : self.host1_post_info.host,
                 'host3' : self.host2_post_info.host
             })
 
-        self.host1_config, self.galera_config_host1_file = tempfile.mkstemp()
-        self.f1 = os.fdopen(self.host1_config, 'w')
-        self.f1.write(self.galera_config_host1)
-        self.f1.close()
+        host1_config, galera_config_host1_file = tempfile.mkstemp()
+        f1 = os.fdopen(host1_config, 'w')
+        f1.write(galera_config_host1)
+        f1.close()
 
-        self.host2_config, self.galera_config_host2_file = tempfile.mkstemp()
-        self.f2 = os.fdopen(self.host2_config, 'w')
-        self.f2.write(self.galera_config_host2)
-        self.f2.close()
+        host2_config, galera_config_host2_file = tempfile.mkstemp()
+        f2 = os.fdopen(host2_config, 'w')
+        f2.write(galera_config_host2)
+        f2.close()
 
         if len(self.host_post_info_list) == 3:
-            self.host3_config, self.galera_config_host3_file = tempfile.mkstemp()
-            self.f3 = os.fdopen(self.host3_config, 'w')
-            self.f3.write(self.galera_config_host3)
-            self.f3.close()
+            host3_config, galera_config_host3_file = tempfile.mkstemp()
+            f3 = os.fdopen(host3_config, 'w')
+            f3.write(galera_config_host3)
+            f3.close()
 
         def cleanup_galera_config_file():
             os.remove(self.galera_config_host1_file)
@@ -2935,40 +2935,40 @@ wsrep_sst_method=rsync
                 os.remove(self.galera_config_host3_file)
         self.install_cleanup_routine(cleanup_galera_config_file)
 
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.galera_config_host1_file
-        self.copy_arg.dest = "/etc/my.cnf.d/galera.cnf"
-        copy(self.copy_arg, self.host1_post_info)
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.galera_config_host2_file
-        self.copy_arg.dest = "/etc/my.cnf.d/galera.cnf"
-        copy(self.copy_arg, self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = galera_config_host1_file
+        copy_arg.dest = "/etc/my.cnf.d/galera.cnf"
+        copy(copy_arg, self.host1_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = galera_config_host2_file
+        copy_arg.dest = "/etc/my.cnf.d/galera.cnf"
+        copy(copy_arg, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            self.copy_arg = CopyArg()
-            self.copy_arg.src = self.galera_config_host3_file
-            self.copy_arg.dest = "/etc/my.cnf.d/galera.cnf"
-            copy(self.copy_arg, self.host3_post_info)
+            copy_arg = CopyArg()
+            copy_arg.src = galera_config_host3_file
+            copy_arg.dest = "/etc/my.cnf.d/galera.cnf"
+            copy(copy_arg, self.host3_post_info)
 
         # restart mysql service to enable galera config
-        self.command = "service mysql stop || echo True"
+        command = "service mysql stop || echo True"
         #service_status("mysql", "state=stopped", self.host1_post_info)
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
-        self.command = "service mysql bootstrap"
-        run_remote_command(self.command, self.host1_post_info)
+            run_remote_command(command, self.host3_post_info)
+        command = "service mysql bootstrap"
+        run_remote_command(command, self.host1_post_info)
         service_status("mysql","state=started enabled=yes", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
             service_status("mysql","state=started enabled=yes", self.host3_post_info)
         service_status("mysql","state=restarted enabled=yes", self.host1_post_info)
 
-        self.init_install = run_remote_command("mysql -u root --password='' -e 'exit' ", self.host1_post_info, return_status=True)
-        if self.init_install is True:
-            #self.command = "mysql -u root --password='' -Bse \"show status like 'wsrep_%%';\""
-            #galera_status = run_remote_command(self.command, self.host2_post_info)
+        init_install = run_remote_command("mysql -u root --password='' -e 'exit' ", self.host1_post_info, return_status=True)
+        if init_install is True:
+            #command = "mysql -u root --password='' -Bse \"show status like 'wsrep_%%';\""
+            #galera_status = run_remote_command(command, self.host2_post_info)
             #create zstack user
-            self.command =" mysql -u root --password='' -Bse 'grant ALL PRIVILEGES on *.* to zstack@\"localhost\" Identified by \"%s\"; " \
+            command =" mysql -u root --password='' -Bse 'grant ALL PRIVILEGES on *.* to zstack@\"localhost\" Identified by \"%s\"; " \
                           "grant ALL PRIVILEGES on *.* to zstack@\"zstack-1\" Identified by \"%s\"; " \
                           "grant ALL PRIVILEGES on *.* to zstack@\"%%\" Identified by \"%s\"; " \
                           "grant ALL PRIVILEGES on *.* to root@\"%%\" Identified by \"%s\";" \
@@ -2977,10 +2977,10 @@ wsrep_sst_method=rsync
                           "flush privileges;'" % (self.host1_post_info.mysql_userpassword, self.host1_post_info.mysql_userpassword,
                                                  self.host1_post_info.mysql_userpassword,self.host1_post_info.mysql_password,
                                                  self.host1_post_info.mysql_password, self.host1_post_info.mysql_password)
-            run_remote_command(self.command, self.host1_post_info)
+            run_remote_command(command, self.host1_post_info)
 
         # config mysqlchk_status.sh on zstack-1 and zstack-2
-        self.mysqlchk_raw_script = '''#!/bin/sh
+        mysqlchk_raw_script = '''#!/bin/sh
 MYSQL_HOST="{{ host1 }}"
 MYSQL_PORT="3306"
 MYSQL_USERNAME="{{ mysql_username }}"
@@ -2999,69 +2999,69 @@ else
         /bin/echo -e "MySQL is *down*."
 fi
 '''
-        self.mysqlchk_template = jinja2.Template(self.mysqlchk_raw_script)
-        self.mysqlchk_script_host1 = self.mysqlchk_template.render({
+        mysqlchk_template = jinja2.Template(mysqlchk_raw_script)
+        mysqlchk_script_host1 = mysqlchk_template.render({
             'host1' : self.host1_post_info.host,
             'mysql_username' : "zstack",
             'mysql_password' : self.host1_post_info.mysql_userpassword
         })
-        self.mysqlchk_script_host2 = self.mysqlchk_template.render({
+        mysqlchk_script_host2 = mysqlchk_template.render({
             'host1' : self.host2_post_info.host,
             'mysql_username' : "zstack",
             'mysql_password' : self.host2_post_info.mysql_userpassword
         })
         if len(self.host_post_info_list) == 3:
-            self.mysqlchk_script_host3 = self.mysqlchk_template.render({
+            mysqlchk_script_host3 = mysqlchk_template.render({
                 'host1' : self.host3_post_info.host,
                 'mysql_username' : "zstack",
                 'mysql_password' : self.host3_post_info.mysql_userpassword
             })
 
 
-        self.host1_config, self.mysqlchk_script_host1_file = tempfile.mkstemp()
-        self.f1 = os.fdopen(self.host1_config, 'w')
-        self.f1.write(self.mysqlchk_script_host1)
-        self.f1.close()
+        host1_config, mysqlchk_script_host1_file = tempfile.mkstemp()
+        f1 = os.fdopen(host1_config, 'w')
+        f1.write(mysqlchk_script_host1)
+        f1.close()
 
-        self.host2_config, self.mysqlchk_script_host2_file = tempfile.mkstemp()
-        self.f2 = os.fdopen(self.host2_config, 'w')
-        self.f2.write(self.mysqlchk_script_host2)
-        self.f2.close()
+        host2_config, mysqlchk_script_host2_file = tempfile.mkstemp()
+        f2 = os.fdopen(host2_config, 'w')
+        f2.write(mysqlchk_script_host2)
+        f2.close()
 
         if len(self.host_post_info_list) == 3:
-            self.host3_config, self.mysqlchk_script_host3_file = tempfile.mkstemp()
-            self.f3 = os.fdopen(self.host3_config, 'w')
-            self.f3.write(self.mysqlchk_script_host3)
-            self.f3.close()
+            host3_config, mysqlchk_script_host3_file = tempfile.mkstemp()
+            f3 = os.fdopen(host3_config, 'w')
+            f3.write(mysqlchk_script_host3)
+            f3.close()
 
         def cleanup_mysqlchk_script():
-            os.remove(self.mysqlchk_script_host1_file)
-            os.remove(self.mysqlchk_script_host2_file)
+            os.remove(mysqlchk_script_host1_file)
+            os.remove(mysqlchk_script_host2_file)
             if len(self.host_post_info_list) == 3:
-                os.remove(self.mysqlchk_script_host3_file)
+                os.remove(mysqlchk_script_host3_file)
             self.install_cleanup_routine(cleanup_mysqlchk_script)
 
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.mysqlchk_script_host1_file
-        self.copy_arg.dest = "/usr/local/bin/mysqlchk_status.sh"
-        self.copy_arg.args = "mode='u+x,g+x,o+x'"
-        copy(self.copy_arg,self.host1_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = mysqlchk_script_host1_file
+        copy_arg.dest = "/usr/local/bin/mysqlchk_status.sh"
+        copy_arg.args = "mode='u+x,g+x,o+x'"
+        copy(copy_arg,self.host1_post_info)
 
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.mysqlchk_script_host2_file
-        self.copy_arg.dest = "/usr/local/bin/mysqlchk_status.sh"
-        self.copy_arg.args = "mode='u+x,g+x,o+x'"
-        copy(self.copy_arg,self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = mysqlchk_script_host2_file
+        copy_arg.dest = "/usr/local/bin/mysqlchk_status.sh"
+        copy_arg.args = "mode='u+x,g+x,o+x'"
+        copy(copy_arg,self.host2_post_info)
 
         if len(self.host_post_info_list) == 3:
-            self.copy_arg = CopyArg()
-            self.copy_arg.src = self.mysqlchk_script_host3_file
-            self.copy_arg.dest = "/usr/local/bin/mysqlchk_status.sh"
-            self.copy_arg.args = "mode='u+x,g+x,o+x'"
-            copy(self.copy_arg,self.host3_post_info)
+            copy_arg = CopyArg()
+            copy_arg.src = mysqlchk_script_host3_file
+            copy_arg.dest = "/usr/local/bin/mysqlchk_status.sh"
+            copy_arg.args = "mode='u+x,g+x,o+x'"
+            copy(copy_arg,self.host3_post_info)
 
         # check network
-        self.check_network_raw_script='''#!/bin/bash
+        check_network_raw_script='''#!/bin/bash
 MYSQL_HOST="{{ host }}"
 MYSQL_PORT="3306"
 MYSQL_USERNAME="root"
@@ -3082,42 +3082,42 @@ fi
 TIMEST=`date`
 echo $TIMEST >> /var/log/check-network.log
         '''
-        self.galera_check_network = jinja2.Template(self.check_network_raw_script)
-        self.galera_check_network_host1 = self.galera_check_network.render({
+        galera_check_network = jinja2.Template(check_network_raw_script)
+        galera_check_network_host1 = galera_check_network.render({
             'host' : self.host1_post_info.host,
             'mysql_root_password' : self.host1_post_info.mysql_password
         })
-        self.galera_check_network_host2 = self.galera_check_network.render({
+        galera_check_network_host2 = galera_check_network.render({
             'host' : self.host2_post_info.host,
             'mysql_root_password' : self.host1_post_info.mysql_password
         })
 
-        self.host1_config, self.galera_check_network_host1_file = tempfile.mkstemp()
-        self.f1 = os.fdopen(self.host1_config, 'w')
-        self.f1.write(self.galera_check_network_host1)
-        self.f1.close()
+        host1_config, galera_check_network_host1_file = tempfile.mkstemp()
+        f1 = os.fdopen(host1_config, 'w')
+        f1.write(galera_check_network_host1)
+        f1.close()
 
-        self.host2_config, self.galera_check_network_host2_file = tempfile.mkstemp()
-        self.f2 = os.fdopen(self.host2_config, 'w')
-        self.f2.write(self.galera_check_network_host2)
-        self.f2.close()
+        host2_config, galera_check_network_host2_file = tempfile.mkstemp()
+        f2 = os.fdopen(host2_config, 'w')
+        f2.write(galera_check_network_host2)
+        f2.close()
 
         def cleanup_gelerachk_script():
-            os.remove(self.galera_check_network_host1_file)
-            os.remove(self.galera_check_network_host2_file)
+            os.remove(galera_check_network_host1_file)
+            os.remove(galera_check_network_host2_file)
             self.install_cleanup_routine(cleanup_gelerachk_script)
 
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.galera_check_network_host1_file
-        self.copy_arg.dest = "/usr/local/zstack/check-network.sh"
-        self.copy_arg.args = "mode='u+x,g+x,o+x'"
-        copy(self.copy_arg,self.host1_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = galera_check_network_host1_file
+        copy_arg.dest = "/usr/local/zstack/check-network.sh"
+        copy_arg.args = "mode='u+x,g+x,o+x'"
+        copy(copy_arg,self.host1_post_info)
 
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = self.galera_check_network_host2_file
-        self.copy_arg.dest = "/usr/local/zstack/check-network.sh"
-        self.copy_arg.args = "mode='u+x,g+x,o+x'"
-        copy(self.copy_arg,self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = galera_check_network_host2_file
+        copy_arg.dest = "/usr/local/zstack/check-network.sh"
+        copy_arg.args = "mode='u+x,g+x,o+x'"
+        copy(copy_arg,self.host2_post_info)
 
         # set cron task for network status
         cron("check_node_2_status1","job=\"/usr/local/zstack/check-network.sh %s %s\"" % (self.host2_post_info.host,
@@ -3143,13 +3143,13 @@ echo $TIMEST >> /var/log/check-network.log
                  (self.host2_post_info.host, self.host2_post_info.gateway_ip), self.host1_post_info)
 
         #config xinetd for service check
-        self.copy_arg = CopyArg()
-        self.copy_arg.src = "%s/conf/mysql-check" % InstallHACmd.current_dir
-        self.copy_arg.dest = "/etc/xinetd.d/mysql-check"
-        copy(self.copy_arg,self.host1_post_info)
-        copy(self.copy_arg,self.host2_post_info)
+        copy_arg = CopyArg()
+        copy_arg.src = "%s/conf/mysql-check" % InstallHACmd.current_dir
+        copy_arg.dest = "/etc/xinetd.d/mysql-check"
+        copy(copy_arg,self.host1_post_info)
+        copy(copy_arg,self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            copy(self.copy_arg,self.host3_post_info)
+            copy(copy_arg,self.host3_post_info)
 
         # add service name
         update_file("/etc/services", "line='mysqlcheck      6033/tcp     #MYSQL status check'", self.host1_post_info)
@@ -3158,11 +3158,11 @@ echo $TIMEST >> /var/log/check-network.log
             update_file("/etc/services", "line='mysqlcheck      6033/tcp     #MYSQL status check'", self.host3_post_info)
 
         # start service
-        self.command = "systemctl daemon-reload"
-        run_remote_command(self.command,self.host1_post_info)
-        run_remote_command(self.command,self.host2_post_info)
+        command = "systemctl daemon-reload"
+        run_remote_command(command,self.host1_post_info)
+        run_remote_command(command,self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command,self.host3_post_info)
+            run_remote_command(command,self.host3_post_info)
         service_status("xinetd","state=restarted enabled=yes",self.host1_post_info)
         service_status("xinetd","state=restarted enabled=yes",self.host2_post_info)
         if len(self.host_post_info_list) == 3:
@@ -3200,19 +3200,19 @@ class RabbitmqHA(InstallHACmd):
         self.yum_repo = self.host1_post_info.yum_repo
         self.rabbit_password= self.host1_post_info.rabbit_password
     def __call__(self):
-        self.command = ("yum clean --enablerepo=zstack-local metadata && pkg_list=`rpm -q rabbitmq-server"
+        command = ("yum clean --enablerepo=zstack-local metadata && pkg_list=`rpm -q rabbitmq-server"
                " | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                "--disablerepo=* --enablerepo=%s,mariadb install -y $pkg; done;") % self.yum_repo
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
         # clear erlang process for new deploy
-        self.command = "echo True || pkill -f .*erlang.*  > /dev/null 2>&1 && rm -rf /var/lib/rabbitmq/* && service rabbitmq-server stop "
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        command = "echo True || pkill -f .*erlang.*  > /dev/null 2>&1 && rm -rf /var/lib/rabbitmq/* && service rabbitmq-server stop "
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
 
         # to start rabbitmq-server
         service_status("rabbitmq-server","state=started enabled=yes", self.host1_post_info)
@@ -3220,31 +3220,31 @@ class RabbitmqHA(InstallHACmd):
         if len(self.host_post_info_list) == 3:
             service_status("rabbitmq-server", "state=started enabled=yes", self.host3_post_info)
         # add zstack user in this cluster
-        self.command = "rabbitmqctl add_user zstack %s" %  self.rabbit_password
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+        command = "rabbitmqctl add_user zstack %s" %  self.rabbit_password
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
-        self.command = "rabbitmqctl set_user_tags zstack administrator"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+            run_remote_command(command, self.host3_post_info)
+        command = "rabbitmqctl set_user_tags zstack administrator"
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
-        self.command = "rabbitmqctl change_password zstack %s" % self.rabbit_password
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+            run_remote_command(command, self.host3_post_info)
+        command = "rabbitmqctl change_password zstack %s" % self.rabbit_password
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
-        self.command = 'rabbitmqctl set_permissions -p \/ zstack ".*" ".*" ".*"'
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+            run_remote_command(command, self.host3_post_info)
+        command = 'rabbitmqctl set_permissions -p \/ zstack ".*" ".*" ".*"'
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
-        self.command = "rabbitmq-plugins enable rabbitmq_management"
-        run_remote_command(self.command, self.host1_post_info)
-        run_remote_command(self.command, self.host2_post_info)
+            run_remote_command(command, self.host3_post_info)
+        command = "rabbitmq-plugins enable rabbitmq_management"
+        run_remote_command(command, self.host1_post_info)
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(self.command, self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
         service_status("rabbitmq-server","state=restarted enabled=yes", self.host1_post_info)
         service_status("rabbitmq-server", "state=restarted enabled=yes", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
@@ -3668,7 +3668,7 @@ class DumpCassandraCmd(Command):
                     continue
                 if line.startswith(end_string):
                     break
-                
+
                 columes.append(line.split()[0])
 
             table_sav_file = '%s.%s.csv' % (args.keyspace, table)
@@ -3713,42 +3713,42 @@ class DumpMysqlCmd(Command):
                             default=60)
 
     def run(self, args):
-        (self.db_hostname, self.db_port, self.db_user, self.db_password) = ctl.get_live_mysql_portal()
-        self.file_name = args.file_name
-        self.keep_amount = args.keep_amount
-        self.backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.db_backup_dir = "/var/lib/zstack/mysql-backup/"
-        if os.path.exists(self.db_backup_dir) is False:
-            os.mkdir(self.db_backup_dir)
-        self.db_backup_name = self.db_backup_dir + self.file_name + "-" + self.backup_timestamp
-        if self.db_hostname == "localhost" or self.db_hostname == "127.0.0.1":
-            if self.db_password is None or self.db_password == "":
-                self.db_connect_password = ""
+        (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        file_name = args.file_name
+        keep_amount = args.keep_amount
+        backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        db_backup_dir = "/var/lib/zstack/mysql-backup/"
+        if os.path.exists(db_backup_dir) is False:
+            os.mkdir(db_backup_dir)
+        db_backup_name = db_backup_dir + file_name + "-" + backup_timestamp
+        if db_hostname == "localhost" or db_hostname == "127.0.0.1":
+            if db_password is None or db_password == "":
+                db_connect_password = ""
             else:
-                self.db_connect_password = "-p" + self.db_password
-            self.command = "mysqldump --add-drop-database  --databases -u %s %s -P %s zstack zstack_rest | gzip > %s "\
-                           % (self.db_user, self.db_connect_password, self.db_port, self.db_backup_name + ".gz")
-            (self.status, self.output) = commands.getstatusoutput(self.command)
-            if self.status != 0:
-                error(self.output)
+                db_connect_password = "-p" + db_password
+            command = "mysqldump --add-drop-database  --databases -u %s %s -P %s zstack zstack_rest | gzip > %s "\
+                           % (db_user, db_connect_password, db_port, db_backup_name + ".gz")
+            (status, output) = commands.getstatusoutput(command)
+            if status != 0:
+                error(output)
         else:
-            if self.db_password is None or self.db_password == "":
-                self.db_connect_password = ""
+            if db_password is None or db_password == "":
+                db_connect_password = ""
             else:
-                self.db_connect_password = "-p" + self.db_password
-            self.command = "mysqldump --add-drop-database  --databases -u %s %s --host %s -P %s zstack zstack_rest | gzip > %s " \
-                           % (self.db_user, self.db_connect_password, self.db_hostname, self.db_port, self.db_backup_name + ".gz")
-            (self.status, self.output) = commands.getstatusoutput(self.command)
-            if self.status != 0:
-                error(self.output)
-        print "Backup mysql successful!\nYou can check the file at %s.gz" % self.db_backup_name
+                db_connect_password = "-p" + db_password
+            command = "mysqldump --add-drop-database  --databases -u %s %s --host %s -P %s zstack zstack_rest | gzip > %s " \
+                           % (db_user, db_connect_password, db_hostname, db_port, db_backup_name + ".gz")
+            (status, output) = commands.getstatusoutput(command)
+            if status != 0:
+                error(output)
+        print "Backup mysql successful! You can check the file at %s.gz" % db_backup_name
         # remove old file
-        if len(os.listdir(self.db_backup_dir)) > self.keep_amount:
-            self.backup_files_list = [s for s in os.listdir(self.db_backup_dir) if os.path.isfile(os.path.join(self.db_backup_dir, s))]
-            self.backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(self.db_backup_dir, s)))
-            for self.expired_file in self.backup_files_list:
-                if self.expired_file not in self.backup_files_list[-self.keep_amount:]:
-                    os.remove(self.db_backup_dir + self.expired_file)
+        if len(os.listdir(db_backup_dir)) > keep_amount:
+            backup_files_list = [s for s in os.listdir(db_backup_dir) if os.path.isfile(os.path.join(db_backup_dir, s))]
+            backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(db_backup_dir, s)))
+            for expired_file in backup_files_list:
+                if expired_file not in backup_files_list[-keep_amount:]:
+                    os.remove(db_backup_dir + expired_file)
 
 
 class CollectLogCmd(Command):
