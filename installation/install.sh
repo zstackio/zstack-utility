@@ -225,6 +225,7 @@ fail(){
 
 #not for spin task fail
 fail2(){
+    cleanup_function
     tput cub 6
     echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     echo -e "$(tput setaf 1)  Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
@@ -2007,8 +2008,7 @@ OPTIND=1
 
 if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     if [ "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_163" -a "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_ALIYUN" ]; then
-        echo -e "\n\tYou want to use yum mirror from '$ZSTACK_PKG_MIRROR' . But we only support yum mirrors for '$PKG_MIRROR_163' or '$PKG_MIRROR_ALIYUN'. Please fix it and rerun the installation.\n\n"
-        exit 1
+        fail2 "\n\tYou want to use yum mirror from '$ZSTACK_PKG_MIRROR' . But we only support yum mirrors for '$PKG_MIRROR_ALIYUN' or '$PKG_MIRROR_163'. Please fix it and rerun the installation.\n\n"
     fi
     if [ $ZSTACK_PKG_MIRROR = $PKG_MIRROR_163 ]; then
         ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
@@ -2044,17 +2044,15 @@ unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*.rpm"
 unzip_el6_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el6*.rpm"
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
-    echo "Cannot not identify default network interface. Please set management
+    fail2 "Cannot not identify default network interface. Please set management
    node IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'."
-    exit 1
 fi
 
 ip addr show $MANAGEMENT_INTERFACE >/dev/null 2>&1
 if [ $? -ne 0 ];then
     ip addr show |grep $MANAGEMENT_INTERFACE |grep inet >/dev/null 2>&1
     if [ $? -ne 0 ]; then
-        echo "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'" 
-        exit 1
+        fail2 "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'" 
     fi
     MANAGEMENT_IP=$MANAGEMENT_INTERFACE
 else
@@ -2076,12 +2074,9 @@ if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
                 mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
                 if [ $? -ne 0 ]; then
                     if [ -z $QUIET_INSTALLATION ]; then
-                        echo ""
-                        echo "Cannot not login mysql!
+                        fail2 "\nCannot not login mysql!
  If you have mysql root password, please add option '-P MYSQL_ROOT_PASSWORD'.
- If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again."
-                        echo ""
-                        exit 1
+ If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again.\n"
                     fi
                 else
                     MYSQL_ROOT_PASSWORD=$MYSQL_NEW_ROOT_PASSWORD
