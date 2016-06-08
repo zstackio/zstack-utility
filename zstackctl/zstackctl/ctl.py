@@ -3589,8 +3589,8 @@ class RestoreCassandraCmd(Command):
                 if not fd.read().strip():
                     continue
 
-            cmd = "COPY %s.%s FROM '%s'" % (keyspace, table, backup_file)
-            info("Restore %s ..." % keyspace + '.' + table)
+            cmd = "COPY %s.%s FROM '%s' with DELIMITER='\t'" % (keyspace, table, backup_file)
+            info("Restore %s.%s" % (keyspace, table))
             shell('cd %s; %s %s %s -e "%s"' % (tempfolder, cqlsh, cip, cport, cmd))
 
         print "Restore cassandra keyspace %s successful from %s!" % (keyspace, args.file)
@@ -3642,6 +3642,8 @@ class DumpCassandraCmd(Command):
         else:
             cport = int(cport)
 
+        shell('cd %s; bash nodetool flush' % os.path.dirname(cqlsh))
+
         ret = shell_return('%s %s %s -e "DESC KEYSPACES"' % (cqlsh, cip, cport))
         if ret != 0:
             raise CtlError('Cassandra seems not running, please start it using "zstack-ctl cassandra --start"')
@@ -3670,7 +3672,7 @@ class DumpCassandraCmd(Command):
                 columes.append(line.split()[0])
 
             table_sav_file = '%s.%s.csv' % (args.keyspace, table)
-            cmd = "COPY %s (%s) to '%s'" % (table, ','.join(columes), table_sav_file)
+            cmd = "COPY %s (%s) to '%s' with DELIMITER='\t'" % (table, ','.join(columes), table_sav_file)
             try:
                 shell('cd %s; %s %s %s -e "USE %s; %s"' % (tempfolder, cqlsh, cip, cport, args.keyspace, cmd))
             except Exception as e:
