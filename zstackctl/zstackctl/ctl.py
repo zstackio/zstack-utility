@@ -3751,6 +3751,55 @@ class DumpMysqlCmd(Command):
                     os.remove(db_backup_dir + expired_file)
 
 
+class RestoreMysqlCmd(Command):
+    def __init__(self):
+        super(RestoreMysqlCmd, self).__init__()
+        self.name = "restore_mysql"
+        self.description = (
+            "Restore mysql data from backup file"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--from-file',
+                            help="The backup filename under /var/lib/zstack/mysql-backup/ ",
+                            required=True)
+        parser.add_argument('--mysql-root-password',
+                            help="mysql root password",
+                            default=None)
+
+    def run(self, args):
+        (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        # only root user can restore database
+        db_password = args.mysql_root_password
+        db_backup_name = args.from_file
+        if os.path.exists(db_backup_name) is False:
+            error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
+        error_if_tool_is_missing('gunzip')
+        shell_no_pipe('zstack-ctl stop_node')
+        info("Starting recover data ...")
+        if db_hostname == "localhost" or db_hostname == "127.0.0.1":
+            if db_password is None or db_password == "":
+                db_connect_password = ""
+            else:
+                db_connect_password = "-p" + db_password
+            for database in ['zstack','zstack_rest']:
+                command = "gunzip < %s | mysql -uroot %s -P %s %s" \
+                          % (db_backup_name, db_connect_password, db_port, database)
+                shell_no_pipe(command)
+        else:
+            if db_password is None or db_password == "":
+                db_connect_password = ""
+            else:
+                db_connect_password = "-p" + db_password
+            for database in ['zstack','zstack_rest']:
+                command = "gunzip < %s | mysql -uroot %s --host %s -P %s %s" \
+                      % (db_backup_name, db_connect_password, db_hostname, db_port, database)
+                shell_no_pipe(command)
+        shell_no_pipe('zstack-ctl start_node')
+        info("Recover data successfully!")
+
+
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack"
     host_log_list = ['zstack-sftpbackupstorage.log','zstack.log','zstack-kvmagent.log','ceph-backupstorage.log',
@@ -5747,6 +5796,7 @@ def main():
     UpgradeManagementNodeCmd()
     UpgradeDbCmd()
     UpgradeCtlCmd()
+    RestoreMysqlCmd()
 
     try:
         ctl.run()
