@@ -744,7 +744,7 @@ is_install_general_libs_rh(){
         echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
         yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y \
             libselinux-python \
-            java-1.7.0-openjdk \
+            java-1.8.0-openjdk \
             bridge-utils \
             wget \
             libvirt-python \
