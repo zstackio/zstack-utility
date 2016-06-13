@@ -382,10 +382,20 @@ class Ctl(object):
         if os.getuid() != 0:
             raise CtlError('zstack-ctl needs root privilege, please run with sudo')
 
-        subparsers = self.main_parser.add_subparsers(help="All sub-commands", dest="sub_command_name")
-        for cmd in self.command_list:
-            cmd.install_argparse_arguments(subparsers.add_parser(cmd.name, help=cmd.description + '\n\n'))
+        metavar_list = []
+        for n,cmd in enumerate(self.command_list):
+            if cmd.hide is False:
+                metavar_list.append(cmd.name)
+            else:
+                self.command_list[n].description = None
 
+        metavar_string = '{' + ','.join(metavar_list) + '}'
+        subparsers = self.main_parser.add_subparsers(help="All sub-commands", dest="sub_command_name", metavar=metavar_string)
+        for cmd in self.command_list:
+            if cmd.description is not None:
+                cmd.install_argparse_arguments(subparsers.add_parser(cmd.name, help=cmd.description + '\n\n'))
+            else:
+                cmd.install_argparse_arguments(subparsers.add_parser(cmd.name))
         args, self.extra_arguments = self.main_parser.parse_known_args(sys.argv[1:])
         self.verbose = args.verbose
         globals()['verbose'] = self.verbose
@@ -642,6 +652,7 @@ class Command(object):
     def __init__(self):
         self.name = None
         self.description = None
+        self.hide = False
         self.cleanup_routines = []
 
     def install_argparse_arguments(self, parser):
@@ -3523,6 +3534,7 @@ class RestoreCassandraCmd(Command):
         self.description = (
             "Restore Cassandra database Keyspace from backuped tar ball.\n This will clean up all Cassandra keyspace and deploy Cassandra again with backed up csv files."
         )
+        self.hide = True
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -3758,6 +3770,7 @@ class RestoreMysqlCmd(Command):
         self.description = (
             "Restore mysql data from backup file"
         )
+        self.hide = True
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
