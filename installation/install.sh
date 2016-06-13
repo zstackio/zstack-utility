@@ -779,7 +779,7 @@ is_install_general_libs_rh(){
         echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
         yum install -y \
             libselinux-python \
-            java-1.7.0-openjdk \
+            java-1.8.0-openjdk \
             bridge-utils \
             wget \
             libvirt-python \
@@ -839,11 +839,7 @@ is_install_general_libs_deb(){
     else
         mysql_pkg='mysql-client'
     fi
-    if [ $OS = $UBUNTU1404 ];then
-        openjdk=openjdk-7-jdk
-    else
-        openjdk=openjdk-8-jdk
-    fi
+    openjdk=openjdk-8-jdk
     apt-get -y install \
         $openjdk \
         bridge-utils \
