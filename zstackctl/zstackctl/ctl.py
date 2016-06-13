@@ -3789,6 +3789,8 @@ class RestoreMysqlCmd(Command):
         if os.path.exists(db_backup_name) is False:
             error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
         error_if_tool_is_missing('gunzip')
+        info("Backup mysql before restore data ...")
+        shell_no_pipe('zstack-ctl dump_mysql')
         shell_no_pipe('zstack-ctl stop_node')
         info("Starting recover data ...")
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
