@@ -812,10 +812,18 @@ is_install_general_libs_rh(){
     fi
 
     if [ $? -ne 0 ];then
-        yum clean metadata >/dev/null 2>&1
+        #yum clean metadata >/dev/null 2>&1
         fail "install system libraries failed."
+    fi
+
+    rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ]; then
+        fail "java-1.8.0-openjdk is not installed. Did you forget to update to latest ZStack community ISO?"
     else
-        yum clean metadata >/dev/null 2>&1
+        #yum clean metadata >/dev/null 2>&1
+        #set java 8 as default jre.
+        update-alternatives --install /usr/bin/java java /usr/lib/jvm/jre-1.8.0/bin/java 0 >>$ZSTACK_INSTALL_LOG 2>&1
+        update-alternatives --set java /usr/lib/jvm/jre-1.8.0/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
         pass
     fi
 }
@@ -840,6 +848,11 @@ is_install_general_libs_deb(){
         mysql_pkg='mysql-client'
     fi
     openjdk=openjdk-8-jdk
+
+    #install openjdk ppa for openjdk-8
+    add-apt-repository ppa:openjdk-r/ppa -y >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update  >>$ZSTACK_INSTALL_LOG 2>&1
+
     apt-get -y install \
         $openjdk \
         bridge-utils \
@@ -871,6 +884,10 @@ is_install_general_libs_deb(){
         $mysql_pkg \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
+
+    #set java 8 as default jre.
+    update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
+    update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac >>$ZSTACK_INSTALL_LOG 2>&1
     pass
 }
 
