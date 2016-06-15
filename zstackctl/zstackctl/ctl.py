@@ -1200,6 +1200,12 @@ class StartCmd(Command):
         else:
             shell('rm -f %s' % os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
 
+        def check_java_version():
+            ver = shell('java -version 2>&1 | grep -w version')
+            if '1.8' not in ver:
+                raise CtlError('ZStack requires Java8, your current version is %s\n'
+                               'please run "update-alternatives --config java" to set Java to Java8')
+
         def check_ip_port(host, port):
             import socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1328,6 +1334,7 @@ class StartCmd(Command):
         if user != 'root':
             raise CtlError('please use sudo or root user')
 
+        check_java_version()
         check_8080()
         check_msyql()
         check_rabbitmq()
