@@ -322,6 +322,10 @@ def lichbd_snap_unprotect(snap_path):
     return shellcmd.stdout
 
 def lichbd_get_format(path):
+    o = shell.call('lich.node --stat 2>/dev/null')
+    if 'running' not in o:
+        raise shell.ShellError('the lichd process of this node is not running, Please check the lichd service')
+
     protocol = get_protocol()
     if protocol == 'lichbd':
         qemu_img = lichbd_get_qemu_img_path()
