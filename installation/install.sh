@@ -818,7 +818,12 @@ is_install_general_libs_rh(){
 
     rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then
-        fail "java-1.8.0-openjdk is not installed. Did you forget to update to latest ZStack community ISO?"
+        fail "java-1.8.0-openjdk is not installed. Did you forget updating management node local repos to latest CentOS ZStack Community ISO? Please use following steps to update local repos:
+        1. cd /opt
+        2. wget http://www.mevoco.com/downloads/scripts/zstack-repo-upgrade.sh
+        3. download latest CentOS ZStack community ISO to /opt/ , e.g.  /opt/ZStack-Community-x86_64-DVD-1.3.0.iso
+        4. bash /opt/zstack-repo-upgrade.sh
+        "
     else
         #yum clean metadata >/dev/null 2>&1
         #set java 8 as default jre.
