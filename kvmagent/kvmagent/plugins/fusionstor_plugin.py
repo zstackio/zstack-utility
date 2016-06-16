@@ -31,12 +31,15 @@ class FusionstorPlugin(kvmagent.KvmAgent):
     def fusionstor_query(self, req):
         protocol = lichbd.get_protocol()
         if protocol == 'lichbd':
-            lichbd.makesure_qemu_with_lichbd()
             lichbd.makesure_qemu_img_with_lichbd()
         elif protocol == 'sheepdog' or protocol == 'nbd':
-            lichbd.makesure_qemu_with_lichbd()
+            pass
         else:
             raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
+
+        o = shell.call('lich.node --stat 2>/dev/null')
+        if 'running' not in o:
+            raise shell.ShellError('the lichd process of this node is not running, Please check the lichd service')
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
