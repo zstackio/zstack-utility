@@ -51,23 +51,12 @@ class ZstackLibArgs(object):
         self.pip_url = None
 
 
-class Log(object):
-    def __init__(self):
-        self.level = None
-        self.details = None
-
-
-class Error(object):
-    def __init__(self):
-        self.code = None
-        self.description = None
-        self.details = None
-
-
 class Msg(object):
     def ___init__(self):
-        self.type = None
-        self.data = None
+        self.level = None
+        self.label = None
+        self.parameters = None
+        self.details = None
 
 
 class AnsibleStartResult(object):
@@ -91,6 +80,8 @@ class HostPostInfo(object):
         self.host = None
         self.vip= None
         self.post_url = ""
+        self.post_label = None
+        self.post_label_param = None
         self.start_time = None
         self.rabbit_password = None
         self.mysql_password = None
@@ -203,44 +194,46 @@ def create_log(logger_dir):
 
 
 def post_msg(msg, post_url):
-    logger.info(msg.data.details)
-    if msg.type == "log":
-        data = json.dumps({"level": msg.data.level, "details": msg.data.details})
-    elif msg.type == "error":
-        data = json.dumps({"code": msg.data.code, "description": msg.data.description, "details": msg.data.details})
-        # This output will capture by management log
-        error(msg.data.description + "\nDetail: " + msg.data.details)
+    '''post message to zstack, label for support i18n'''
+    if msg.parameters is not None:
+        data = json.dumps({"label": msg.label, "level": msg.level, "parameters": msg.parameters})
     else:
-        error("ERROR: undefined message type: %s" % msg.type)
-
+        data = json.dumps({"label": msg.label ,"level": msg.level})
     if post_url == "":
         logger.info("Warning: no post_url defined by user")
         return 0
-    try:
-        headers = {"content-type": "application/json"}
-        req = urllib2.Request(post_url, data, headers)
-        response = urllib2.urlopen(req)
-        response.close()
-    except URLError, e:
-        logger.debug(e.reason)
-        error("Please check the post_url: %s and check the server status" % post_url)
+    if msg.label is not None:
+        try:
+            headers = {"content-type": "application/json"}
+            req = urllib2.Request(post_url, data, headers)
+            response = urllib2.urlopen(req)
+            response.close()
+        except URLError, e:
+            logger.debug(e.reason)
+            error("Please check the post_url: %s and check the server status" % post_url)
+    else:
+        logger.warn("No label defined for message")
+    # This output will capture by management log for debug
+    if msg.level == "ERROR":
+        error(msg.details)
+    elif msg.level == "WARNING":
+        logger.warn(msg.details)
+    else:
+        logger.info(msg.details)
 
 
 def handle_ansible_start(ansible_start):
     msg = Msg()
-    error = Error()
-    error.code = "ansible.1000"
-    error.description = "ERROR: Can't start ansible process"
-    error.details = "Can't start ansible process to host: %s Detail: %s  \n" % (ansible_start.host,
+    msg.details = "Can't start ansible process to host: %s Detail: %s  \n" % (ansible_start.host,
                                                                                 ansible_start.result)
-    msg.type = "error"
-    msg.data = error
+    msg.label = "ansible.start.error"
+    msg.level = "ERROR"
+    msg.parameters = [host]
     post_msg(msg, ansible_start.post_url)
 
 
 def handle_ansible_failed(description, result, host_post_info):
     msg = Msg()
-    error = Error()
     host = host_post_info.host
     post_url = host_post_info.post_url
     start_time = host_post_info.start_time
@@ -248,43 +241,44 @@ def handle_ansible_failed(description, result, host_post_info):
     # Fix python2.6 compatible issue: no total_seconds() attribute for timedelta
     td = end_time - start_time
     cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10 ** 6) / 10 ** 6.0 * 1000
-    error.code = "ansible.1001"
-    error.description = "[ HOST: %s ] " % host_post_info.host + description + " [ cost %sms to finish ]" % int(cost_time)
+    msg.label = host_post_info.post_label
+    msg.parameters = host_post_info.post_label_param
     if 'stderr' in result['contacted'][host]:
-        error.details = "[ HOST: %s ] " % host_post_info.host + "ERROR: \n" + result['contacted'][host]['stderr']
+        msg.details = "[ HOST: %s ] " % host_post_info.host + description + "error: " + result['contacted'][host]['stderr']
     elif 'msg' in result['contacted'][host]:
-        error.details = "[ HOST: %s ] " % host_post_info.host +  "ERROR: \n" + result['contacted'][host]['msg']
-    msg.type = "error"
-    msg.data = error
+        msg.details = "[ HOST: %s ] " % host_post_info.host + description + "error: " + result['contacted'][host]['msg']
+    msg.level = "ERROR"
     post_msg(msg, post_url)
 
 
 def handle_ansible_info(details, host_post_info, level):
     msg = Msg()
-    log = Log()
     post_url = host_post_info.post_url
     start_time = host_post_info.start_time
     end_time = datetime.now()
     # Fix python2.6 compatible issue: no total_seconds() attribute for timedelta
     td = end_time - start_time
     cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10 ** 6) / 10 ** 6.0 * 1000
-    log.level = level
     if "SUCC" in details:
-        log.details = "[ HOST: %s ] " % host_post_info.host + details + " [ cost %sms to finish ]" % int(cost_time)
+        msg.details = "[ HOST: %s ] " % host_post_info.host + details + " [ cost %sms to finish ]" % int(cost_time)
     else:
-        log.details = "[ HOST: %s ] " % host_post_info.host + details
-    msg.type = "log"
-    msg.data = log
+        msg.details = "[ HOST: %s ] " % host_post_info.host + details
+    msg.level = level
+    msg.label = host_post_info.post_label
+    msg.parameters = host_post_info.post_label_param
     post_msg(msg, post_url)
 
 
 def agent_install(install_arg, host_post_info):
-    handle_ansible_info("INFO: Start to install %s .................." % install_arg.agent_name, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.install.agent"
+    host_post_info.post_label_param = [install_arg.agent_name]
+    handle_ansible_info("INFO: Start to install %s ......" % install_arg.agent_name, host_post_info, "INFO")
     pip_install_arg = PipInstallArg()
     pip_install_arg.extra_args = "\"--trusted-host %s -i %s\"" % (install_arg.trusted_host, install_arg.pip_url)
     # upgrade only
     if install_arg.init_install is False:
-        handle_ansible_info("INFO: Only need to upgrade %s .................." % install_arg.agent_name, host_post_info,
+        host_post_info.post_label = "ansible.upgrade.agent"
+        handle_ansible_info("INFO: Only need to upgrade %s ......" % install_arg.agent_name, host_post_info,
                             "INFO")
         pip_install_arg.extra_args = "\"--trusted-host %s -i %s -U \"" % (install_arg.trusted_host, install_arg.pip_url)
 
@@ -302,6 +296,8 @@ def yum_enable_repo(name, enablerepo, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
+    host_post_info.post_label = "ansible.yum.enable.repo"
+    host_post_info.post_label_param = name
     handle_ansible_info("INFO: Starting enable yum repo %s ... " % name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
@@ -319,9 +315,12 @@ def yum_enable_repo(name, enablerepo, host_post_info):
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: Enable yum repo failed"
+            host_post_info.post_label = "ansible.yum.enable.repo.fail"
             handle_ansible_failed(description, result, host_post_info)
         else:
             details = "SUCC: yum enable repo %s " % enablerepo
+            host_post_info.post_label = "ansible.yum.enable.repo.succ"
+            host_post_info.post_label_param = enablerepo
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -332,6 +331,8 @@ def yum_check_package(name, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
+    host_post_info.post_label = "ansible.yum.search.pkg"
+    host_post_info.post_label_param = name
     handle_ansible_info("INFO: Searching yum package %s ... " % name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
@@ -354,10 +355,12 @@ def yum_check_package(name, host_post_info):
             status = result['contacted'][host]['rc']
             if status == 0:
                 details = "SUCC: The package %s exist in system" % name
+                host_post_info.post_label = "ansible.yum.search.pkg.succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
                 details = "SUCC: The package %s not exist in system" % name
+                host_post_info.post_label = "ansible.yum.search.pkg.fail"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return False
 
@@ -367,6 +370,8 @@ def script(file, host_post_info, script_arg=None):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
+    host_post_info.post_label = "ansible.script.run"
+    host_post_info.post_label_param = [file, host]
     handle_ansible_info("INFO: Running script %s on host %s ... " % (file,host), host_post_info, "INFO")
     if script_arg is not None:
         args = file + " " + script_arg
@@ -393,20 +398,25 @@ def script(file, host_post_info, script_arg=None):
             status = result['contacted'][host]['rc']
             if status == 0:
                 details = "SUCC: The script %s on host %s finish " % (file, host)
+                host_post_info.post_label = "ansible.script.run.succ"
+                host_post_info.post_label_param = file
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
                 description = "ERROR: The script %s failed on host %s" % (file, host)
+                host_post_info.post_label = "ansible.script.run.fail"
+                host_post_info.post_label_param = file
                 handle_ansible_failed(description, result, host_post_info)
 
 
 @retry(times=3, sleep_time=3)
-def yum_install_package(name, host_post_info, \
-        ignore_error=False, force_install=False):
+def yum_install_package(name, host_post_info, ignore_error=False, force_install=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
+    host_post_info.post_label = "ansible.yum.start.install.package"
+    host_post_info.post_label_param = name
     handle_ansible_info("INFO: Starting yum install package %s ... " % name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
@@ -430,10 +440,12 @@ def yum_install_package(name, host_post_info, \
             status = result['contacted'][host]['rc']
             if status == 0 and not force_install:
                 details = "SKIP: The package %s exist in system" % name
+                host_post_info.post_label = "ansible.skip.install.pkg"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
-                details = "Installing package %s ..." % name
+                details = "INFO: Yum installing package %s ..." % name
+                host_post_info.post_label = "ansible.yum.install.pkg"
                 handle_ansible_info(details, host_post_info, "INFO")
                 runner_args = ZstackRunnerArg()
                 runner_args.host_post_info = host_post_info
@@ -444,9 +456,11 @@ def yum_install_package(name, host_post_info, \
                 logger.debug(result)
                 if 'failed' in result['contacted'][host] and not ignore_error:
                     description = "ERROR: YUM install package %s failed" % name
-                    handle_ansible_failed(description, result, host_post_info)
+                    host_post_info.post_label = "ansible.yum.install.pkg.fail"
+                    handle_ansible_failed(description,  result, host_post_info)
                 else:
-                    details = "SUCC: yum install package %s successful!" % name
+                    details = "SUCC: yum install package %s successfully" % name
+                    host_post_info.post_label = "ansible.yum.install.pkg.succ"
                     handle_ansible_info(details, host_post_info, "INFO")
                     return True
 
@@ -454,12 +468,12 @@ def yum_install_package(name, host_post_info, \
 @retry(times=3, sleep_time=3)
 def yum_remove_package(name, host_post_info):
     start_time = datetime.now()
+    host_post_info.post_label_param = name
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting yum remove package %s ... " % name, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.yum.start.remove.pkg"
+    handle_ansible_info("INFO: yum start removing package %s ... " % name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -479,7 +493,8 @@ def yum_remove_package(name, host_post_info):
     else:
         status = result['contacted'][host]['rc']
         if status == 0:
-            details = "Removing %s ... " % name
+            details = "INFO: yum removing %s ... " % name
+            host_post_info.post_label = "ansible.yum.remove.pkg"
             handle_ansible_info(details, host_post_info, "INFO")
             runner_args = ZstackRunnerArg()
             runner_args.host_post_info = host_post_info
@@ -489,14 +504,17 @@ def yum_remove_package(name, host_post_info):
             result = zstack_runner.run()
             logger.debug(result)
             if 'failed' in result['contacted'][host]:
-                description = "ERROR: Yum remove package %s failed!" % name
+                description = "ERROR: yum remove package %s failed" % name
+                host_post_info.post_label = "ansible.yum.remove.pkg.fail"
                 handle_ansible_failed(description, result, host_post_info)
             else:
-                details = "SUCC: Remove package %s " % name
+                details = "SUCC: yum remove package %s successfully" % name
+                host_post_info.post_label = "ansible.yum.remove.pkg.succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
         else:
             details = "SKIP: The package %s is not exist in system" % name
+            host_post_info.post_label = "ansible.skip.remove.pkg"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -504,15 +522,17 @@ def yum_remove_package(name, host_post_info):
 def check_pkg_status(name_list, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    private_key = host_post_info.private_key
-    host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting check package %s exist in system... " % name_list, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.check.pkgs.exist"
+    post_name_list = ','.join(name_list)
+    host_post_info.post_label_param = post_name_list
+    handle_ansible_info("INFO: check all packages %s exist in system... " % name_list, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
     for name in name_list:
+        host_post_info.post_label_param = name
         runner_args.module_args = 'dpkg-query -l %s | grep ^ii ' % name
         zstack_runner = ZstackRunner(runner_args)
         result = zstack_runner.run()
@@ -530,10 +550,12 @@ def check_pkg_status(name_list, host_post_info):
             else:
                 status = result['contacted'][host]['rc']
                 if status == 0:
-                    details = "SUCC: The package %s exist in system" % name
+                    details = "SUCC: the package %s exist in system" % name
+                    host_post_info.post_label = "ansible.check.pkg.exist.succ"
                     handle_ansible_info(details, host_post_info, "INFO")
                 else:
-                    details = "SUCC: The package %s not exist in system" % name
+                    details = "SUCC: the package %s not exist in system" % name
+                    host_post_info.post_label = "ansible.check.pkg.exist.fail"
                     handle_ansible_info(details, host_post_info, "INFO")
                     return False
 
@@ -544,7 +566,9 @@ def apt_install_packages(name_list, host_post_info):
         host_post_info.start_time = start_time
         host = host_post_info.host
         post_url = host_post_info.post_url
-        handle_ansible_info("INFO: Starting apt install package %s ... " % name, host_post_info, "INFO")
+        host_post_info.post_label_param = name
+        host_post_info.post_label = "ansible.apt.install.pkg"
+        handle_ansible_info("INFO: starting apt install package %s ... " % name, host_post_info, "INFO")
         runner_args = ZstackRunnerArg()
         runner_args.host_post_info = host_post_info
         runner_args.module_name = 'apt'
@@ -560,14 +584,18 @@ def apt_install_packages(name_list, host_post_info):
             handle_ansible_start(ansible_start)
         else:
             if 'failed' in result['contacted'][host]:
-                description = "ERROR: Apt install %s failed!" % name
+                description = "ERROR: apt install package %s failed" % name
+                host_post_info.post_label = "ansible.apt.install.pkg.fail"
                 handle_ansible_failed(description, result, host_post_info)
             elif 'changed' in result['contacted'][host]:
-                details = "SUCC: apt install package %s " % name
+                details = "SUCC: apt install package %s successfully" % name
+                host_post_info.post_label = "ansible.apt.install.pkg.succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
-                description = "ERROR: Apt install %s meet unknown issue: %s" % (name, result)
+                description = "ERROR: apt install package %s meet unknown issue: %s" % (name, result)
+                host_post_info.post_label = "ansible.apt.install.pkg.issue"
+                host_post_info.post_label_param = None
                 handle_ansible_failed(description, result, host_post_info)
     all_pkg_exist = check_pkg_status(name_list, host_post_info)
     if all_pkg_exist is False:
@@ -598,7 +626,9 @@ def pip_install_package(pip_install_arg, host_post_info):
         extra_args = None
     virtualenv = pip_install_arg.virtualenv
     virtualenv_site_packages = pip_install_arg.virtualenv_site_packages
-    handle_ansible_info("INFO: Pip installing module %s ..." % name, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.pip.install.pkg"
+    host_post_info.post_label_param = name
+    handle_ansible_info("INFO: pip installing package %s ..." % name, host_post_info, "INFO")
     param_dict = {}
     param_dict_raw = dict(version=version, extra_args=extra_args, virtualenv=virtualenv,
                           virtualenv_site_packages=virtualenv_site_packages)
@@ -621,11 +651,13 @@ def pip_install_package(pip_install_arg, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: pip install package %s failed!" % name
+            description = "ERROR: pip install package %s failed" % name
+            host_post_info.post_label = "ansible.pip.install.pkg.fail"
             handle_ansible_failed(description, result, host_post_info)
             return False
         else:
-            details = "SUCC: Install python module %s " % name
+            details = "SUCC: pip install pacakge %s successfully " % name
+            host_post_info.post_label = "ansible.pip.install.pkg.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -634,7 +666,9 @@ def cron(name, arg, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting set cron task %s ... " % arg, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.cron.set.task"
+    host_post_info.post_label_param = arg
+    handle_ansible_info("INFO: starting set cron task %s ... " % arg, host_post_info, "INFO")
     args = 'name=%s %s' % (name,arg)
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
@@ -652,9 +686,11 @@ def cron(name, arg, host_post_info):
     else:
         if 'failed' in result['contacted'][host]:
             description = "ERROR: set cron task %s failed!" % arg
+            host_post_info.post_label = "ansible.cron.set.task.fail"
             handle_ansible_failed(description, result, host_post_info)
         else:
-            details = "SUCC: set cron task %s " % arg
+            details = "SUCC: set cron task %s successfully " % arg
+            host_post_info.post_label = "ansible.cron.set.task.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             # pass the copy result to outside
             return True
@@ -667,7 +703,9 @@ def copy(copy_arg, host_post_info):
     args = copy_arg.args
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting copy %s to %s ... " % (src, dest), host_post_info, "INFO")
+    host_post_info.post_label = "ansible.copy.start"
+    host_post_info.post_label_param = [src, dest]
+    handle_ansible_info("INFO: starting copy %s to %s ... " % (src, dest), host_post_info, "INFO")
     if args is not None:
         copy_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
@@ -687,11 +725,14 @@ def copy(copy_arg, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: copy %s to %s failed!" % (src, dest)
+            description = "ERROR: copy %s to %s failed" % (src, dest)
+            host_post_info.post_label = "ansible.copy.fail"
             handle_ansible_failed(description, result, host_post_info)
         else:
             change_status = "changed:" + str(result['contacted'][host]['changed'])
-            details = "SUCC: copy %s to %s, the change status is %s" % (src, dest, change_status)
+            details = "SUCC: copy %s to %s successfully, the change status is %s" % (src, dest, change_status)
+            host_post_info.post_label = "ansible.copy.change"
+            host_post_info.post_label_param = [src, dest, change_status]
             handle_ansible_info(details, host_post_info, "INFO")
             # pass the copy result to outside
             return change_status
@@ -704,7 +745,9 @@ def fetch(fetch_arg, host_post_info):
     args = fetch_arg.args
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting fetch %s to %s ... " % (src, dest), host_post_info, "INFO")
+    host_post_info.post_label = "ansible.fetch.start"
+    host_post_info.post_label_param = [src, dest]
+    handle_ansible_info("INFO: starting fetch %s to %s ... " % (src, dest), host_post_info, "INFO")
     if args is not None:
         fetch_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
@@ -725,17 +768,20 @@ def fetch(fetch_arg, host_post_info):
         sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: fetch file from %s to %s failed!" % (src, dest)
+            description = "ERROR: fetch from %s to %s failed" % (src, dest)
+            host_post_info.post_label = "ansible.fetch.fail"
             handle_ansible_failed(description, result, host_post_info)
             sys.exit(1)
         else:
             change_status = "changed:" + str(result['contacted'][host]['changed'])
             details = "SUCC: fetch %s to %s, the change status is %s" % (src, dest, change_status)
+            host_post_info.post_label = "ansible.fetch.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             # pass the fetch result to outside
             return change_status
 
 def check_host_reachable(host_post_info):
+    '''This interface used by zstackctl'''
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -760,7 +806,9 @@ def run_remote_command(command, host_post_info, return_status=False):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.command"
+    host_post_info.post_label_param = command
+    handle_ansible_info("INFO: starting run command [ %s ] ..." % command, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -782,16 +830,19 @@ def run_remote_command(command, host_post_info, return_status=False):
         else:
             status = result['contacted'][host]['rc']
             if status == 0:
-                details = "SUCC: shell command: '%s' " % command
+                details = "SUCC: run shell command: %s successfully " % command
+                host_post_info.post_label = "ansible.command.succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
                 if return_status is False:
-                    description = "ERROR: command %s failed!" % command
+                    description = "ERROR: run shell command: %s failed!" % command
+                    host_post_info.post_label = "ansible.command.fail"
                     handle_ansible_failed(description, result, host_post_info)
                     sys.exit(1)
                 else:
                     details = "ERROR: shell command %s failed " % command
+                    host_post_info.post_label = "ansible.command.fail"
                     handle_ansible_info(details, host_post_info, "WARNING")
                     return False
 
@@ -802,7 +853,9 @@ def check_pip_version(version, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Check pip version %s exist ..." % version, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.check.pip.version"
+    host_post_info.post_label_param = version
+    handle_ansible_info("INFO: check pip version %s exist ..." % version, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -823,11 +876,13 @@ def check_pip_version(version, host_post_info):
         else:
             status = result['contacted'][host]['rc']
             if status == 0:
-                details = "SUCC: Check pip-%s exist in system " % version
+                details = "SUCC: pip-%s exist in system " % version
+                host_post_info.post_label = "ansible.check.pip.version.succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
-                details = "INFO: Check pip-%s is not exist in system" % version
+                details = "INFO: pip-%s not exist in system" % version
+                host_post_info.post_label = "ansible.check.pip.version.fail"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return False
 
@@ -838,7 +893,9 @@ def file_dir_exist(name, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting check file or dir exist %s ... " % name, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.check.file.dir.exist"
+    host_post_info.post_label_param = name
+    handle_ansible_info("INFO: starting check file or dir %s exist ... " % name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'stat'
@@ -860,10 +917,12 @@ def file_dir_exist(name, host_post_info):
             status = result['contacted'][host]['stat']['exists']
             if status is True:
                 details = "INFO: %s exist" % name
+                host_post_info.post_label = "ansible.check.file.dir.exist.succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
                 details = "INFO: %s not exist" % name
+                host_post_info.post_label = "ansible.check.file.dir.exist.fail"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return False
 
@@ -874,7 +933,9 @@ def file_operation(file, args, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting change file %s ... " % file, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.change.file.attribute.start"
+    host_post_info.post_label_param = file
+    handle_ansible_info("INFO: starting change file attribute %s ... " % file, host_post_info, "INFO")
     args = "path=%s " % file + args
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
@@ -892,10 +953,12 @@ def file_operation(file, args, host_post_info):
     else:
         if 'failed' in result['contacted'][host]:
             details = "INFO: %s not be changed" % file
+            host_post_info.post_label = "ansible.change.file.attribute.fail"
             handle_ansible_info(details, host_post_info, "INFO")
             return False
         else:
             details = "INFO: %s changed successfully" % file
+            host_post_info.post_label = "ansible.change.file.attribute.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -905,7 +968,9 @@ def get_remote_host_info(host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting get remote host %s info ... " % host, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.get.host.info"
+    host_post_info.post_label_param = host
+    handle_ansible_info("INFO: starting get remote host %s info ... " % host, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'setup'
@@ -924,19 +989,22 @@ def get_remote_host_info(host_post_info):
             (distro, version, release) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
                                  int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
                                  result['contacted'][host]['ansible_facts']['ansible_distribution_release']]
+            host_post_info.post_label = "ansible.get.host.info.succ"
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
             return (distro, version, release)
         else:
+            host_post_info.post_label = "ansible.get.host.info.succ"
             logger.warning("get_remote_host_info on host %s failed!" % host)
             raise Exception(result)
-
 
 def set_ini_file(file, section, option, value, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting update file %s section %s ... " % (file, section), host_post_info, "INFO")
+    host_post_info.post_label = "ansible.set.ini.file"
+    host_post_info.post_label_param = [file, section]
+    handle_ansible_info("INFO: starting update file %s section %s ... " % (file, section), host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'ini_file'
@@ -951,7 +1019,9 @@ def set_ini_file(file, section, option, value, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        details = "SUCC: Update file: %s option: %s value %s" % (file, option, value)
+        details = "SUCC: update file: %s option: %s value %s" % (file, option, value)
+        host_post_info.post_label = "ansible.set.ini.file.succ"
+        host_post_info.post_label_param = [file, option, value]
         handle_ansible_info(details, host_post_info, "INFO")
     return True
 
@@ -962,7 +1032,9 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting install virtualenv-%s ... " % version, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.check.install.virtualenv"
+    host_post_info.post_label_param = version
+    handle_ansible_info("INFO: starting install virtualenv-%s ... " % version, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -983,7 +1055,8 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
         else:
             status = result['contacted'][host]['rc']
             if status == 0:
-                details = "SUCC: The virtualenv-%s exist in system" % version
+                details = "SUCC: the virtualenv-%s exist in system" % version
+                host_post_info.post_label = "ansible.check.install.virtualenv.succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
@@ -1000,7 +1073,9 @@ def service_status(name, args, host_post_info, ignore_error=False):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Changing %s service status to %s " % (name, args), host_post_info, "INFO")
+    host_post_info.post_label = "ansible.service.status"
+    host_post_info.post_label_param = [name, args]
+    handle_ansible_info("INFO: changing %s service status to %s " % (name, args), host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'service'
@@ -1019,9 +1094,11 @@ def service_status(name, args, host_post_info, ignore_error=False):
             else:
                 if 'failed' in result['contacted'][host]:
                     details = "ERROR: change service %s status failed!" % name
+                    host_post_info.post_label = "ansible.service.status.fail"
                     handle_ansible_info(details, host_post_info, "WARNING")
                 else:
-                    details = "SUCC: Service %s status changed" % name
+                    details = "SUCC: change service %s status to %s successfully" % (name, args)
+                    host_post_info.post_label = "ansible.service.status.succ"
                     handle_ansible_info(details, host_post_info, "INFO")
         except:
             logger.debug("WARNING: The service %s status changed failed" % name)
@@ -1036,10 +1113,12 @@ def service_status(name, args, host_post_info, ignore_error=False):
             handle_ansible_start(ansible_start)
         else:
             if 'failed' in result['contacted'][host]:
-                description = "ERROR: change service status failed!"
+                description = "ERROR: change service %s status to %s failed!" % (name, args)
+                host_post_info.post_label = "ansible.service.status.fail"
                 handle_ansible_failed(description, result, host_post_info)
             else:
-                details = "SUCC: Service status changed"
+                details = "SUCC: change service %s status to %s successfully" % (name, args)
+                host_post_info.post_label = "ansible.service.status.succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
 
@@ -1050,7 +1129,9 @@ def update_file(dest, args, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Updating file %s" % dest, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.update.file"
+    host_post_info.post_label_param = dest
+    handle_ansible_info("INFO: updating file %s" % dest, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'lineinfile'
@@ -1066,10 +1147,12 @@ def update_file(dest, args, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: Update file %s failed" % dest
+            description = "ERROR: update file %s failed" % dest
+            host_post_info.post_label = "ansible.update.file.fail"
             handle_ansible_failed(description, result, host_post_info)
         else:
-            details = "SUCC: Update file %s" % dest
+            details = "SUCC: update file %s successfully" % dest
+            host_post_info.post_label = "ansible.update.file.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -1079,7 +1162,9 @@ def set_selinux(args, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Set selinux status to %s" % args, host_post_info, "INFO")
+    host_post_info.post_label = "ansible.set.selinux"
+    host_post_info.post_label_param = args
+    handle_ansible_info("INFO: set selinux status to %s" % args, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'selinux'
@@ -1095,10 +1180,12 @@ def set_selinux(args, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: set selinux to %s failed" % args
+            description = "ERROR: set selinux status to %s failed" % args
+            host_post_info.post_label = "ansible.set.selinux.fail"
             handle_ansible_failed(description, result, host_post_info)
         else:
-            details = "SUCC: Reset selinux to %s" % args
+            details = "SUCC: set selinux to %s successfully" % args
+            host_post_info.post_label = "ansible.set.selinux.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -1110,7 +1197,9 @@ def authorized_key(user, key_path, host_post_info):
         error("key_path %s is not exist!" % key_path)
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Updating key %s to host %s" % (key_path, host), host_post_info, "INFO")
+    host_post_info.post_label = "ansible.add.key"
+    host_post_info.post_label_param = [key_path, host]
+    handle_ansible_info("INFO: updating key %s to host %s" % (key_path, host), host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -1136,10 +1225,12 @@ def authorized_key(user, key_path, host_post_info):
         result = zstack_runner.run()
         logger.debug(result)
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: Authorized on remote host %s failed!" % host
+            description = "ERROR: update key %s to host %s failed" % (key_path,host)
+            host_post_info.post_label = "ansible.add.key.fail"
             handle_ansible_failed(description, result, host_post_info)
         else:
-            details = "SUCC: update public key to host %s" % host
+            details = "SUCC: update key %s to host %s successfully" % (key_path, host)
+            host_post_info.post_label = "ansible.add.key.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
@@ -1152,7 +1243,9 @@ def unarchive(unarchive_arg, host_post_info):
     args = unarchive_arg.args
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting unarchive %s to %s ... " % (src, dest), host_post_info, "INFO")
+    host_post_info.post_label = "ansible.unarchive"
+    host_post_info.post_label_param = [src, dest]
+    handle_ansible_info("INFO: starting unarchive %s to %s ... " % (src, dest), host_post_info, "INFO")
     if args != None:
         unarchive_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
@@ -1173,10 +1266,12 @@ def unarchive(unarchive_arg, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: unarchive %s to %s failed!" % (src, dest)
+            description = "ERROR: unarchive %s to %s failed" % (src, dest)
+            host_post_info.post_label = "ansible.unarchive.fail"
             handle_ansible_failed(description, result, host_post_info)
         else:
-            details = "SUCC: unarchive %s to %s" % (src, dest)
+            details = "SUCC: unarchive %s to %s successfully" % (src, dest)
+            host_post_info.post_label = "ansible.unarchive.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
