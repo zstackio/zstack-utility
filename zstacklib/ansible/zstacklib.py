@@ -196,6 +196,8 @@ def create_log(logger_dir):
 def post_msg(msg, post_url):
     '''post message to zstack, label for support i18n'''
     if msg.parameters is not None:
+        if type(msg.parameters) is str:
+            msg.parameters = msg.parameters.split(',')
         data = json.dumps({"label": msg.label, "level": msg.level, "parameters": msg.parameters})
     else:
         data = json.dumps({"label": msg.label ,"level": msg.level})
@@ -210,7 +212,7 @@ def post_msg(msg, post_url):
             response.close()
         except URLError, e:
             logger.debug(e.reason)
-            error("Please check the post_url: %s and check the server status" % post_url)
+            logger.warn("Post msg failed! Please check the post_url: %s and check the server status" % post_url)
     else:
         logger.warn("No label defined for message")
     # This output will capture by management log for debug
@@ -806,8 +808,9 @@ def run_remote_command(command, host_post_info, return_status=False):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    host_post_info.post_label = "ansible.command"
-    host_post_info.post_label_param = command
+    if host_post_info.post_label is None:
+        host_post_info.post_label = "ansible.command"
+        host_post_info.post_label_param = command
     handle_ansible_info("INFO: starting run command [ %s ] ..." % command, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
@@ -831,18 +834,18 @@ def run_remote_command(command, host_post_info, return_status=False):
             status = result['contacted'][host]['rc']
             if status == 0:
                 details = "SUCC: run shell command: %s successfully " % command
-                host_post_info.post_label = "ansible.command.succ"
+                host_post_info.post_label = host_post_info.post_label + ".succ"
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
                 if return_status is False:
                     description = "ERROR: run shell command: %s failed!" % command
-                    host_post_info.post_label = "ansible.command.fail"
+                    host_post_info.post_label = host_post_info.post_label + ".fail"
                     handle_ansible_failed(description, result, host_post_info)
                     sys.exit(1)
                 else:
                     details = "ERROR: shell command %s failed " % command
-                    host_post_info.post_label = "ansible.command.fail"
+                    host_post_info.post_label = host_post_info.post_label + ".fail"
                     handle_ansible_info(details, host_post_info, "WARNING")
                     return False
 
@@ -1292,6 +1295,8 @@ class ZstackLib(object):
         if distro == "CentOS" or distro == "RedHat":
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
+            host_post_info.post_label = "ansible.shell.remove.file"
+            host_post_info.post_label_param = "systemd scope files"
             run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
             # set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
             command = """
@@ -1327,6 +1332,8 @@ baseurl=http://mirrors.aliyun.com/centos/\$releasever/virt/\$basearch/kvm-common
 gpgcheck=0
 enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
         """
+            host_post_info.post_label = "ansible.shell.deploy.repo"
+            host_post_info.post_label_param = "aliyun"
             run_remote_command(command, host_post_info)
 
             if zstack_repo == "false":
@@ -1387,6 +1394,8 @@ baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
 gpgcheck=0
 enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
         """
+                    host_post_info.post_label = "ansible.shell.deploy.repo"
+                    host_post_info.post_label_param = "163"
                     run_remote_command(command, host_post_info)
                 if 'zstack-mn' in zstack_repo:
                     generate_mn_repo_raw_command = """
@@ -1413,9 +1422,14 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                     generate_kvm_repo_command = generate_kvm_repo_template.render({
                         'yum_server':yum_server
                     })
+                    host_post_info.post_label = "ansible.shell.deploy.repo"
+                    host_post_info.post_label_param = "qemu-kvm-ev-mn"
                     run_remote_command(generate_kvm_repo_command, host_post_info)
                 # install libselinux-python and other command system libs from user defined repos
                 # enable alibase repo for yum clean avoid no repo to be clean
+                host_post_info.post_label = "ansible.shell.install.pkg"
+                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
+                                                  "autoconf,ntp,ntpdate"
                 command = (
                           "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                           "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
@@ -1429,6 +1443,8 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
         elif distro == "Debian" or distro == "Ubuntu":
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
                       % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            host_post_info.post_label = "ansible.shell.backup.file"
+            host_post_info.post_label_param = "/etc/apt/srouces.list"
             run_remote_command(command, host_post_info)
             update_repo_raw_command = """
 cat > /etc/apt/sources.list << EOF
@@ -1449,6 +1465,8 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
                     'zstack_repo' : 'aliyun',
                     'DISTRIB_CODENAME' : distro_release
                 })
+                host_post_info.post_label = "ansible.shell.deploy.repo"
+                host_post_info.post_label_param = "aliyun"
                 run_remote_command(update_repo_command, host_post_info)
             if '163' in zstack_repo:
                 update_repo_command_template = jinja2.Template(update_repo_raw_command)
@@ -1456,6 +1474,8 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
                     'zstack_repo' : '163',
                     'DISTRIB_CODENAME' : distro_release
                 })
+                host_post_info.post_label = "ansible.shell.deploy.repo"
+                host_post_info.post_label_param = "163"
                 run_remote_command(update_repo_command, host_post_info)
 
             # install dependency packages for Debian based OS
@@ -1465,6 +1485,8 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             apt_install_packages(install_pkg_list, host_post_info)
 
             # name: enable ntp service for Debian
+            host_post_info.post_label = "ansible.shell.enable.service"
+            host_post_info.post_label_param = "ntp"
             run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
 
         else:
@@ -1474,6 +1496,8 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
         pip_match = check_pip_version(pip_version, host_post_info)
         if pip_match is False:
             # make dir for copy pip
+            host_post_info.post_label = "ansible.shell.mkdir"
+            host_post_info.post_label_param = zstack_root
             run_remote_command("mkdir -p %s" % zstack_root, host_post_info)
             # copy pip 7.0.3
             copy_arg = CopyArg()
