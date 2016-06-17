@@ -891,6 +891,8 @@ is_install_general_libs_deb(){
     [ $? -ne 0 ] && fail "install system lib 2 failed"
 
     #set java 8 as default jre.
+    update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0 >>$ZSTACK_INSTALL_LOG 2>&1
+    update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0 >>$ZSTACK_INSTALL_LOG 2>&1
     update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
     update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac >>$ZSTACK_INSTALL_LOG 2>&1
     pass

@@ -4540,17 +4540,21 @@ class InstallManagementNodeCmd(Command):
 
     - name: install dependencies on RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
 
     - name: install dependencies on RedHat OS from system repos
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
+      shell: yum clean metadata; yum --nogpgcheck install -y java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
 
+    - name: set java 8 as default runtime
+      when: ansible_os_family == 'RedHat'
+      shell: update-alternatives --install /usr/bin/java java /usr/lib/jvm/jre-1.8.0/bin/java 0; update-alternatives --set java /usr/lib/jvm/jre-1.8.0/bin/java
+      
     - name: install openjdk on Ubuntu 14.04
       when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
       apt: pkg={{item}} update_cache=yes
       with_items:
-        - openjdk-7-jdk
+        - openjdk-8-jdk
 
     - name: install openjdk on Ubuntu 16.04
       when: ansible_os_family == 'Debian' and ansible_distribution_version == '16.04'
@@ -4558,6 +4562,10 @@ class InstallManagementNodeCmd(Command):
       with_items:
         - openjdk-8-jdk
 
+    - name: set java 8 as default runtime
+      when: ansible_os_family == 'RedHat'
+      shell: update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0; update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0; update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java; update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac
+      
     - name: install dependencies Debian OS
       when: ansible_os_family == 'Debian'
       apt: pkg={{item}} update_cache=yes
