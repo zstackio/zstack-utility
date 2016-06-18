@@ -733,7 +733,7 @@ def copy(copy_arg, host_post_info):
         else:
             change_status = "changed:" + str(result['contacted'][host]['changed'])
             details = "SUCC: copy %s to %s successfully, the change status is %s" % (src, dest, change_status)
-            host_post_info.post_label = "ansible.copy.change"
+            host_post_info.post_label = "ansible.copy.succ"
             host_post_info.post_label_param = [src, dest, change_status]
             handle_ansible_info(details, host_post_info, "INFO")
             # pass the copy result to outside
@@ -896,7 +896,7 @@ def file_dir_exist(name, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    host_post_info.post_label = "ansible.check.file.dir.exist"
+    host_post_info.post_label = "ansible.check.file.dir.exist.start"
     host_post_info.post_label_param = name
     handle_ansible_info("INFO: starting check file or dir %s exist ... " % name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
