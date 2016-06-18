@@ -4563,7 +4563,7 @@ class InstallManagementNodeCmd(Command):
         - openjdk-8-jdk
 
     - name: set java 8 as default runtime
-      when: ansible_os_family == 'RedHat'
+      when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
       shell: update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0; update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0; update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java; update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac
       
     - name: install dependencies Debian OS
