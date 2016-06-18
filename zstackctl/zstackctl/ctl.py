@@ -3781,7 +3781,7 @@ class RestoreMysqlCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--from-file',
+        parser.add_argument('--from-file', '-f',
                             help="The backup filename under /var/lib/zstack/mysql-backup/ ",
                             required=True)
         parser.add_argument('--mysql-root-password',
