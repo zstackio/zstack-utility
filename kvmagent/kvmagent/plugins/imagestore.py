@@ -1,6 +1,7 @@
 import os.path
 import traceback
 
+from os import symlink
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
@@ -36,7 +37,21 @@ class ImageStorePlugin(kvmagent.KvmAgent):
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
 
+    def _getImageJSONFile(primaryInstallPath):
+        idx = primaryInstallPath.rfind('.')
+        if idx == -1:
+            return primaryInstallPath + ".json"
+        return primaryInstallPath[:idx] + ".json"
+
     def _get_image_reference(self, primaryStorageInstallPath):
+        try:
+            with open(self._getImageJSONFile(primaryStorageInstallPath)) as f:
+                imf = jsonobject.loads(f.read())
+                return imf.Name, imf.ID
+        except IOError:
+            raise kvmagent.KvmError('unexpected primary storage install path %s' % primaryStorageInstallPath)
+
+    def _parse_image_reference(self, backupStorageInstallPath):
         if not primaryStorageInstallPath.startswith(self.ZSTORE_PROTOSTR):
             raise kvmagent.KvmError('unexpected primary storage install path %s' % primaryStorageInstallPath)
 
@@ -70,11 +85,16 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
 
         try:
-            name, imgid = self._get_image_reference(cmd.primaryStorageInstallPath)
+            name, imgid = self._parse_image_reference(cmd.backupStorageInstallPath)
             cmdstr = '%s pull %s:%s' % (self.ZSTORE_CLI_PATH, name, imageid)
             logger.debug('pulling %s:%s from image store' % (name, imageid))
             shell.call(cmdstr)
             logger.debug('%s:%s pulled to local cache' % (name, imageid))
+
+            # get the image JSON path, and generate a symbolic link
+            cmdstr = "%s mfpath %s:%s" % (self.ZSTORE_CLI_PATH, name, imageid)
+            mfpath = shell.call(cmdstr)
+            symlink(mfpath, self._getImageJSONFile(cmd.primaryStorageInstallPath))
         except Exception as e:
             content = traceback.format_exc()
             logger.warn(content)
