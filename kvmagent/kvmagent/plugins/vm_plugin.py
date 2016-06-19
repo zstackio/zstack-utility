@@ -48,6 +48,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.nics = []
         self.timeout = None
         self.dataIsoPaths = None
+        self.addons = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -534,7 +535,6 @@ class IsoFusionstor(object):
         if protocol == 'lichbd':
             iqn = lichbd.lichbd_get_iqn() 
             port = lichbd.lichbd_get_iscsiport()
-            lichbd.makesure_qemu_with_lichbd()
             lichbd.makesure_qemu_img_with_lichbd()
 
             shellcmd = shell.ShellCmd('lichbd mkpool %s -p iscsi' % path.split('/')[0])
@@ -553,7 +553,7 @@ class IsoFusionstor(object):
             path = '%s:%s.%s/0' % (iqn, pool, image)
             protocol = 'iscsi'
         elif protocol == 'sheepdog' or protocol == 'nbd':
-            lichbd.makesure_qemu_with_lichbd()
+            pass
         else:
             raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
 
@@ -577,10 +577,9 @@ class IdeFusionstor(object):
     def to_xmlobject(self):
         protocol = lichbd.get_protocol()
         if protocol == 'lichbd':
-            lichbd.makesure_qemu_with_lichbd()
             lichbd.makesure_qemu_img_with_lichbd()
         elif protocol == 'sheepdog' or protocol == 'nbd':
-            lichbd.makesure_qemu_with_lichbd()
+            pass
         else:
             raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
 
@@ -605,10 +604,9 @@ class VirtioFusionstor(object):
     def to_xmlobject(self):
         protocol = lichbd.get_protocol()
         if protocol == 'lichbd':
-            lichbd.makesure_qemu_with_lichbd()
             lichbd.makesure_qemu_img_with_lichbd()
         elif protocol == 'sheepdog' or protocol == 'nbd':
-            lichbd.makesure_qemu_with_lichbd()
+            pass
         else:
             raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
 
@@ -1494,7 +1492,7 @@ class Vm(object):
         return etree.tostring(interface)
 
     def _wait_vm_run_until_seconds(self, sec):
-        vm_pid = linux.find_process_by_cmdline([kvmagent.get_qemu_path(), self.uuid])
+        vm_pid = linux.find_process_by_cmdline(['kvm', self.uuid])
         if not vm_pid:
             raise Exception('cannot find pid for vm[uuid:%s]' % self.uuid)
 
@@ -1797,7 +1795,10 @@ class Vm(object):
         def make_devices():
             root = elements['root']
             devices = e(root, 'devices')
-            e(devices, 'emulator', kvmagent.get_qemu_path())
+            if cmd.addons is not None:
+                e(devices, 'emulator', cmd.addons['qemuPath'])
+            else:
+                e(devices, 'emulator', kvmagent.get_qemu_path())
             e(devices, 'input', None, {'type':'tablet', 'bus':'usb'})
             elements['devices'] = devices
 

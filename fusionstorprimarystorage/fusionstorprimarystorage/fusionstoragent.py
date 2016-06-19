@@ -313,6 +313,25 @@ class FusionstorAgent(object):
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
+        monHostnames = []
+        for monHostname in cmd.monHostnames:
+            monHostnames.append(monHostname.monHostname)
+
+        sshUsernames = []
+        for sshUsername in cmd.sshUsernames:
+            sshUsernames.append(sshUsername.sshUsername)
+
+        sshPasswords = []
+        for sshPassword in cmd.sshPasswords:
+            sshPasswords.append(sshPassword.sshPassword)
+
+        fusionstorIsReady = False
+        fusionstorIsReady = lichbd.lichbd_check_cluster_is_ready(monHostnames, sshUsernames, sshPasswords)
+
+        if fusionstorIsReady is not True:
+            lichbd.lichbd_create_cluster(monHostnames, sshPasswords)
+            lichbd.lichbd_add_disks(monHostnames)
+
         existing_pools = lichbd.lichbd_lspools()
         for pool in cmd.pools:
             if pool.predefined and pool.name not in existing_pools:

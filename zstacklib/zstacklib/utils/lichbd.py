@@ -4,6 +4,7 @@
 '''
 import os
 import errno
+import json
 import time
 import subprocess
 import zstacklib.utils.shell as shell
@@ -58,6 +59,88 @@ def raise_exp(shellcmd):
 
 def lichbd_config():
     pass
+
+def lichbd_check_cluster_is_ready(monHostnames=None, sshUsernames=None, sshPasswords=None):
+    fusionstorIsReady = False
+    try:
+        with open('/opt/fusionstack/etc/cluster.conf', 'r') as fd:
+            line = fd.readline().strip()
+            while line:
+                if line in monHostnames:
+                    fusionstorIsReady = True
+                    break
+                line = fd.readline().strip()
+    except Exception, e:
+        raise Exception('Please check the configure file(/opt/fusionstack/etc/cluster.conf).')
+
+    if fusionstorIsReady is not True:
+        for sshUsername in sshUsernames:
+            if sshUsername != 'root':
+                raise Exception('When you create a stor cluster, you must use the root identity.')
+
+        password = sshPasswords[0]
+        for sshPassword in sshPasswords:
+            if sshPassword != password:
+                raise Exception('When you create a stor cluster, the password of root user must be the same with all nodes.')
+
+    return fusionstorIsReady
+
+def lichbd_create_cluster(monHostnames, sshPasswords):
+    nodes = ''
+    for monHostname in monHostnames:
+        nodes = nodes + ' ' + monHostname
+
+    try:
+        shell.call('/opt/fusionstack/lich/bin/lich sshkey %s -p %s' % (nodes, sshPasswords[0]))
+    except Exception, e:
+        raise Exception('the stor cluster sshkey failed, you must create it manually, use commands: /opt/fusionstack/lich/bin/lich prep %s, /opt/fusionstack/lich/bin/lich create %s' % (nodes, nodes))
+
+    shell.call("echo '#hosts list for nohost mode' > /opt/fusionstack/etc/host.conf")
+    for monHostname in monHostnames:
+        hostname = shell.call('ssh %s hostname' % monHostname)
+        hostname = hostname.strip()
+        shell.call('echo %s %s >> /opt/fusionstack/etc/host.conf' % (monHostname, hostname))
+
+    try:
+        shell.call('/opt/fusionstack/lich/bin/lich prep %s -p %s' % (nodes, sshPasswords[0]))
+    except Exception, e:
+        raise Exception('the fusionstor cluster sshkey failed, you must create it manually, use commands: /opt/fusionstack/lich/bin/lich prep %s, /opt/fusionstack/lich/bin/lich create %s' % (nodes, nodes))
+
+    try:
+        shell.call('/opt/fusionstack/lich/bin/lich create %s' % nodes)
+    except Exception, e:
+        raise Exception('the fusionstor cluster sshkey failed, you must create it manually, use commands: /opt/fusionstack/lich/bin/lich prep %s, /opt/fusionstack/lich/bin/lich create %s' % (nodes, nodes))
+
+def lichbd_add_disks(monHostnames):
+    for monHostname in monHostnames:
+        ##  make raid
+        try:
+            disks = shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --disk_list --json' % monHostname)
+        except Exception, e:
+            raise Exception('the node add disk failed, you must add disks manually, use commands: lich.node --disk_list, lich.node --disk_add /dev/xxx')
+
+        disks = json.loads(disks).keys()
+        for disk in disks:
+            try:
+                if '/dev/' not in disk:
+                    shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --raid_add %s' % (monHostname, disk))
+            except Exception, e:
+                raise Exception('the node add disk failed, you must add disks manually, use commands: lich.node --disk_list, lich.node --raid_add iqn*')
+
+        ##  add disk
+        try:
+            disks = shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --disk_list --json' % monHostname)
+        except Exception, e:
+            raise Exception('the node add disk failed, you must add disks manually, use commands: lich.node --disk_list, lich.node --disk_add /dev/xxx')
+
+        disksInfo = json.loads(disks)
+        disks = disksInfo.keys()
+        for disk in disks:
+            try:
+                if '/dev/' in disk and disksInfo[disk]['flag'] != 'lich':
+                    shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --disk_add %s' % (monHostname, disk))
+            except Exception, e:
+                raise Exception('the node add disk failed, you must add disks manually, use commands: lich.node --disk_list, lich.node --disk_add /dev/xxx')
 
 def lichbd_get_iqn():
     shellcmd = call_try("""lich  configdump 2>/dev/null|grep iqn|awk -F":" '{print $2}'""")
@@ -322,6 +405,10 @@ def lichbd_snap_unprotect(snap_path):
     return shellcmd.stdout
 
 def lichbd_get_format(path):
+    o = shell.call('lich.node --stat 2>/dev/null')
+    if 'running' not in o:
+        raise shell.ShellError('the lichd process of this node is not running, Please check the lichd service')
+
     protocol = get_protocol()
     if protocol == 'lichbd':
         qemu_img = lichbd_get_qemu_img_path()
