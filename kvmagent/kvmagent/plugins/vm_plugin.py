@@ -1795,7 +1795,7 @@ class Vm(object):
         def make_devices():
             root = elements['root']
             devices = e(root, 'devices')
-            if cmd.addons is not None:
+            if cmd.addons and 'qemuPath' in cmd.addons:
                 e(devices, 'emulator', cmd.addons['qemuPath'])
             else:
                 e(devices, 'emulator', kvmagent.get_qemu_path())
