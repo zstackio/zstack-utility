@@ -312,6 +312,20 @@ class FusionstorAgent(object):
     @replyerror
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        fusionstorIsReady = False
+        fusionstorIsReady = lichbd.lichbd_check_cluster_is_ready(cmd.monHostnames, cmd.sshUsernames, cmd.sshPasswords)
+
+        if fusionstorIsReady is not True:
+            lichbd.lichbd_create_cluster(cmd.monHostnames, cmd.sshPasswords)
+            if cmd.fusionstorType == 'SS100-Storage':
+                lichbd.lichbd_add_disks(cmd.monHostnames)
+        else:
+            needAddHostnameToCluster = []
+            needAddHostnameToCluster = lichbd.lichbd_check_node_in_cluster(fusionstorIsReady, cmd.monHostnames)
+            for hostname in needAddHostnameToCluster:
+                lichbd.lichbd_add_node(hostname)
+            if cmd.fusionstorType == 'SS100-Storage':
+                lichbd.lichbd_add_disks(needAddHostnameToCluster)
 
         existing_pools = lichbd.lichbd_lspools()
         for pool in cmd.pools:
