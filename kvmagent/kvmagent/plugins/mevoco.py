@@ -41,6 +41,9 @@ class ConnectRsp(kvmagent.AgentResponse):
 class ResetGatewayRsp(kvmagent.AgentResponse):
     pass
 
+class DeleteNamespaceRsp(kvmagent.AgentResponse):
+    pass
+
 class DhcpEnv(object):
     def __init__(self):
         self.bridge_name = None
@@ -186,6 +189,7 @@ class Mevoco(kvmagent.KvmAgent):
     APPLY_USER_DATA = "/flatnetworkprovider/userdata/apply"
     RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
     BATCH_APPLY_USER_DATA = "/flatnetworkprovider/userdata/batchapply"
+    DHCP_DELETE_NAMESPACE_PATH = "/flatnetworkprovider/dhcp/deletenamespace"
 
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
 
@@ -205,9 +209,21 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.APPLY_USER_DATA, self.apply_userdata)
         http_server.register_async_uri(self.RELEASE_USER_DATA, self.release_userdata)
         http_server.register_async_uri(self.RESET_DEFAULT_GATEWAY_PATH, self.reset_default_gateway)
+        http_server.register_async_uri(self.DHCP_DELETE_NAMESPACE_PATH, self.delete_dhcp_namespace)
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def delete_dhcp_namespace(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        dns_pid = shell.call("ps aux | grep -w dnsmasq | grep -w %s | awk '{printf $2}'" % cmd.bridgeName)
+        dns_pid = dns_pid.strip(' \t\n\r')
+        if dns_pid:
+            shell.call("kill -9 %s" % dns_pid)
+
+        shell.call('ip netns | grep -w %s > /dev/null && ip netns del %s' % (cmd.bridgeName, cmd.bridgeName))
+        return jsonobject.dumps(DeleteNamespaceRsp())
 
     @kvmagent.replyerror
     def connect(self):

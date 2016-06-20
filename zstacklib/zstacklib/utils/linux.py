@@ -784,7 +784,7 @@ def get_pid_by_process_param(param):
     return int(output)
 
 def get_pid_by_process_name(name):
-    cmd = shell.ShellCmd('ps -ae | grep %s' % name)
+    cmd = shell.ShellCmd('ps -ae | grep -w %s' % name)
     output = cmd(False)
     if cmd.return_code != 0:
         return None
