@@ -120,6 +120,16 @@ def info(*msg):
         out = ''.join(msg)
     sys.stdout.write(out)
 
+def get_detail_version():
+    detailed_version_file = os.path.join(ctl.DEFAULT_ZSTACK_HOME, "VERSION")
+    if os.path.exists(detailed_version_file):
+        with open(detailed_version_file, 'r') as fd:
+            detailed_version = fd.read()
+            return detailed_version
+    else:
+        return None
+
+
 class ExceptionWrapper(object):
     def __init__(self, msg):
         self.msg = msg
@@ -858,11 +868,9 @@ class ShowStatusCmd(Command):
                 v = ret[0]
                 version = v['version']
 
-            detailed_version_file = os.path.join(ctl.DEFAULT_ZSTACK_HOME, "VERSION")
-            if os.path.exists(detailed_version_file):
-                with open(detailed_version_file, 'r') as fd:
-                    detailed_version = fd.read()
-                    info_list.append('version: %s (%s)' % (version, detailed_version))
+            detailed_version = get_detail_version()
+            if detailed_version is not None:
+                info_list.append('version: %s (%s)' % (version, detailed_version))
             else:
                 info_list.append('version: %s' % version)
 
@@ -3861,17 +3869,17 @@ class CollectLogCmd(Command):
             command = "mkdir -p %s " % collect_log_dir
             run_remote_command(command, host_post_info)
             for log in CollectLogCmd.host_log_list:
-                command = "if [ -f %s/%s ]; then tail -n 10000 %s/%s > %s/%s-collect 2>&1; fi || true" \
+                command = "if [ -f %s/%s ]; then tail -n 10000 %s/%s > %s/%s 2>&1; fi || true" \
                           % (CollectLogCmd.zstack_log_dir, log, CollectLogCmd.zstack_log_dir, log, collect_log_dir, log)
                 run_remote_command(command, host_post_info)
-            command = "cd %s && tar zcf collect-log.tar.gz collect-log" % (CollectLogCmd.zstack_log_dir)
+            command = "cd %s && tar zcf collect-log.tar.gz *" % collect_log_dir
             run_remote_command(command, host_post_info)
             fetch_arg = FetchArg()
-            fetch_arg.src =  "%s/collect-log.tar.gz " % CollectLogCmd.zstack_log_dir
+            fetch_arg.src =  "%s/collect-log.tar.gz " % collect_log_dir
             fetch_arg.dest = "%s/%s/" % (collect_dir, host_post_info.host)
             fetch_arg.args = "fail_on_missing=yes flat=yes"
             fetch(fetch_arg, host_post_info)
-            command = "rm -rf %s %s/collect-log.tar.gz " % (collect_log_dir, CollectLogCmd.zstack_log_dir)
+            command = "rm -rf %s " % collect_log_dir
             run_remote_command(command, host_post_info)
             (status, output) = commands.getstatusoutput("cd %s/%s/ && tar zxf collect-log.tar.gz" % (collect_dir, host_post_info.host))
             if status != 0:
@@ -3912,15 +3920,17 @@ class CollectLogCmd(Command):
             (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
                                                         % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
 
-    def generate_tar_ball(self, collect_dir, time_stamp):
-        (status, output) = commands.getstatusoutput("tar zcf collect-log-%s.tar.gz %s" % (time_stamp, collect_dir))
+    def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
+        (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
+                                                    % (run_command_dir, detail_version, time_stamp, detail_version, time_stamp))
         if status != 0:
             error("Generate tarball failed: %s " % output)
 
     def run(self, args):
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
-        collect_dir = run_command_dir + "/" + 'collect-log-' + time_stamp
+        detail_version = get_detail_version().replace(' ','_')
+        collect_dir = run_command_dir + "/" + 'collect-log-' + detail_version + '-' + time_stamp
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
         self.get_management_node_log(collect_dir)
@@ -3940,8 +3950,8 @@ class CollectLogCmd(Command):
             host_post_info.post_url = ""
             self.get_host_log(host_post_info, collect_dir)
 
-        self.generate_tar_ball(collect_dir, time_stamp)
-        info("The collect log generate at: %s/collect-log-%s.tar.gz" % (run_command_dir, time_stamp))
+        self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
+        info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
 
 
 class ChangeIpCmd(Command):
