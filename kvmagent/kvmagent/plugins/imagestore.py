@@ -61,22 +61,21 @@ class ImageStorePlugin(kvmagent.KvmAgent):
 
         return xs[0], xs[1]
 
+    def _build_install_path(self, name, imgid):
+        return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
+
     @kvmagent.replyerror
     def upload_to_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        try:
-            name, imgid = self._get_image_reference(cmd.primaryStorageInstallPath)
-            cmdstr = '%s push %s' % (self.ZSTORE_CLI_PATH, name)
-            logger.debug('pushing %s:%s to image store' % (name, imageid))
-            shell.call(cmdstr)
-            logger.debug('%s:%s pushed to image store' % (name, imageid))
-        except kvmagent.KvmError as e:
-            logger.warn(linux.get_exception_stacktrace())
-            rsp.error = str(e)
-            rsp.success = False
+        name, imgid = self._get_image_reference(cmd.primaryStorageInstallPath)
+        cmdstr = '%s push %s' % (self.ZSTORE_CLI_PATH, name)
+        logger.debug('pushing %s:%s to image store' % (name, imageid))
+        shell.call(cmdstr)
+        logger.debug('%s:%s pushed to image store' % (name, imageid))
 
+        rsp.backupStorageInstallPath = self._build_install_path(name, imgid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -84,23 +83,16 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        try:
-            name, imgid = self._parse_image_reference(cmd.backupStorageInstallPath)
-            cmdstr = '%s pull %s:%s' % (self.ZSTORE_CLI_PATH, name, imageid)
-            logger.debug('pulling %s:%s from image store' % (name, imageid))
-            shell.call(cmdstr)
-            logger.debug('%s:%s pulled to local cache' % (name, imageid))
+        name, imgid = self._parse_image_reference(cmd.backupStorageInstallPath)
+        cmdstr = '%s pull %s:%s' % (self.ZSTORE_CLI_PATH, name, imageid)
+        logger.debug('pulling %s:%s from image store' % (name, imageid))
+        shell.call(cmdstr)
+        logger.debug('%s:%s pulled to local cache' % (name, imageid))
 
-            # get the image JSON path, and generate a symbolic link
-            cmdstr = "%s mfpath %s:%s" % (self.ZSTORE_CLI_PATH, name, imageid)
-            mfpath = shell.call(cmdstr)
-            symlink(mfpath, self._getImageJSONFile(cmd.primaryStorageInstallPath))
-        except Exception as e:
-            content = traceback.format_exc()
-            logger.warn(content)
-            err = "unable to download %s/%s, because %s" % (cmd.hostname, cmd.backupStorageInstallPath, str(e))
-            rsp.error = err
-            rsp.success = False
+        # get the image JSON path, and generate a symbolic link
+        cmdstr = "%s mfpath %s:%s" % (self.ZSTORE_CLI_PATH, name, imageid)
+        mfpath = shell.call(cmdstr)
+        symlink(mfpath, self._getImageJSONFile(cmd.primaryStorageInstallPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
