@@ -3280,6 +3280,23 @@ class RabbitmqHA(InstallHACmd):
         if len(self.host_post_info_list) == 3:
             service_status("rabbitmq-server", "state=restarted enabled=yes", self.host3_post_info)
 
+class ResetRabbitCmd(Command):
+    def __init__(self):
+        super(ResetRabbitCmd, self).__init__()
+        self.name = "reset_rabbitmq"
+        self.description = "Reinstall RabbitMQ message broker on local machine based on current configuration in zstack.properties."
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        pass
+
+    def run(self, args):
+        rabbitmq_ip = ctl.read_property('CloudBus.serverIp.0')
+        rabbitmq_user = ctl.read_property('CloudBus.rabbitmqUsername')
+        rabbitmq_passwd = ctl.read_property('CloudBus.rabbitmqPassword')
+        shell("service rabbitmq-server stop; rpm -ev rabbitmq-server; rm -rf /var/lib/rabbitmq")
+        ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd))
+
 
 class InstallRabbitCmd(Command):
     def __init__(self):
@@ -5827,6 +5844,7 @@ def main():
     SetEnvironmentVariableCmd()
     RollbackManagementNodeCmd()
     RollbackDatabaseCmd()
+    ResetRabbitCmd()
     RestoreConfigCmd()
     RestartNodeCmd()
     RestoreCassandraCmd()
