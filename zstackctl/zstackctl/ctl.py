@@ -129,6 +129,20 @@ def get_detail_version():
     else:
         return None
 
+def get_zstack_version(db_hostname, db_port, db_user, db_password):
+    query = MySqlCommandLineQuery()
+    query.host = db_hostname
+    query.port = db_port
+    query.user = db_user
+    query.password = db_password
+    query.table = 'zstack'
+    query.sql = "select version from schema_version order by version desc"
+    ret = query.query()
+
+    v = ret[0]
+    version = v['version']
+    return version
+
 
 class ExceptionWrapper(object):
     def __init__(self, msg):
@@ -856,17 +870,7 @@ class ShowStatusCmd(Command):
             if 'schema_version' not in out:
                 version = '0.6'
             else:
-                query = MySqlCommandLineQuery()
-                query.host = db_hostname
-                query.port = db_port
-                query.user = db_user
-                query.password = db_password
-                query.table = 'zstack'
-                query.sql = "select version from schema_version order by version desc"
-                ret = query.query()
-
-                v = ret[0]
-                version = v['version']
+                version = get_zstack_version(db_hostname, db_port, db_user, db_password)
 
             detailed_version = get_detail_version()
             if detailed_version is not None:
@@ -3929,7 +3933,11 @@ class CollectLogCmd(Command):
     def run(self, args):
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
-        detail_version = get_detail_version().replace(' ','_')
+        if get_detail_version() is not None:
+            detail_version = get_detail_version().replace(' ','_')
+        else:
+            hostname, port, user, password = ctl.get_live_mysql_portal()
+            detail_version = get_zstack_version(hostname, port, user, password)
         collect_dir = run_command_dir + "/" + 'collect-log-' + detail_version + '-' + time_stamp
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
