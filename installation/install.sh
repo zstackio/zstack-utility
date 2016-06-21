@@ -734,6 +734,7 @@ iz_install_unzip(){
 #upgrade yum when using online installation
 is_upgrade_yum(){
     echo_subtitle "Upgrade yum"
+    yum upgrade yum 
     if [ ! -z $ZSTACK_YUM_REPOS ]; then
         yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
         echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
