@@ -772,6 +772,7 @@ is_install_general_libs_rh(){
             libffi-devel \
             openssl-devel \
             net-tools \
+            bash-completion \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
@@ -807,6 +808,7 @@ is_install_general_libs_rh(){
             libffi-devel \
             openssl-devel \
             net-tools \
+            bash-completion \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     fi
@@ -886,6 +888,7 @@ is_install_general_libs_deb(){
         bzip2 \
         libffi-dev \
         libssl-dev \
+        bash-completion \
         $mysql_pkg \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
