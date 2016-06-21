@@ -96,7 +96,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         folder_fs_type = shell.call("df -T %s|tail -1|awk '{print $2}'" % self.mount_point).strip()
         if folder_fs_type in none_shared_mount_fs_type:
-            raise KvmAgent.KvmError('%s filesystem is %s, which is not a shared mount point type.' % (self.mount_point, folder_fs_type))
+            raise kvmagent.KvmError('%s filesystem is %s, which is not a shared mount point type.' % (self.mount_point, folder_fs_type))
 
         rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
