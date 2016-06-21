@@ -2158,11 +2158,21 @@ if [ $UPGRADE = 'y' ]; then
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
     mkdir -p $upgrade_folder
-    zstack-ctl status 2>/dev/null|grep 'MN status: Running' >/dev/null 2>&1
+    zstack-ctl status 2>/dev/null|grep 'MN status' >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        CURRENT_STATUS='y'
+        zstack-ctl status 2>/dev/null |grep 'MN status'|grep Running >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            CURRENT_STATUS='y'
+        else
+            CURRENT_STATUS='n'
+        fi
     else
-        CURRENT_STATUS='n'
+        zstack-ctl status 2>/dev/null |grep Running >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            CURRENT_STATUS='y'
+        else
+            CURRENT_STATUS='n'
+        fi
     fi
     UI_CURRENT_STATUS='n'
     UI_INSTALLATION_STATUS='n'
