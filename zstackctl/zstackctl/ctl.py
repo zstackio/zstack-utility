@@ -143,7 +143,7 @@ def get_zstack_version(db_hostname, db_port, db_user, db_password):
     version = v['version']
     return version
 
-def get_default_gateway():
+def get_default_gateway_ip():
     '''This function will return default route gateway ip address'''
     with open("/proc/net/route") as gateway:
         try:
@@ -863,7 +863,7 @@ class ShowStatusCmd(Command):
             try:
                 db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
             except:
-                info_list.append('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                info('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
                 return
 
             if db_password:
@@ -875,7 +875,7 @@ class ShowStatusCmd(Command):
 
             cmd(False)
             if cmd.return_code != 0:
-                info_list.append('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                info('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
                 return
 
             out = cmd.stdout
@@ -886,15 +886,15 @@ class ShowStatusCmd(Command):
 
             detailed_version = get_detail_version()
             if detailed_version is not None:
-                info_list.append('version: %s (%s)' % (version, detailed_version))
+                info('version: %s (%s)' % (version, detailed_version))
             else:
-                info_list.append('version: %s' % version)
+                info('version: %s' % version)
 
         check_zstack_status()
-        show_version()
 
         info('\n'.join(info_list))
         ctl.internal_run('ui_status')
+        show_version()
 
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
@@ -1844,11 +1844,11 @@ class InstallHACmd(Command):
         ZstackSpinner(spinner_info)
         # check gw ip is available
         if args.gateway is None:
-            if get_default_gateway() is None:
+            if get_default_gateway_ip() is None:
                 error("Can't get the gateway IP address from system, please check your route table or pass specific " \
                       "gateway through \"--gateway\" argument")
             else:
-                gateway_ip = get_default_gateway()
+                gateway_ip = get_default_gateway_ip()
         else:
             gateway_ip = args.gateway
         (status, output) = commands.getstatusoutput('ping -c 1 %s' % gateway_ip)
@@ -5684,11 +5684,13 @@ class UiStatusCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    if get_default_gateway() is None:
+                    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|awk -F '/' '{print $1}'""")
+                    cmd(False)
+                    default_ip = cmd.stdout
+                    if not default_ip:
                         info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
                     else:
-                        gateway_ip = get_default_gateway()
-                        info('UI status: %s [PID:%s] http://%s:5000' % (colored('Running', 'green'), pid, gateway_ip))
+                        info('UI status: %s [PID:%s] http://%s:5000' % (colored('Running', 'green'), pid, default_ip.strip()))
                     return
 
         pid = find_process_by_cmdline('zstack_dashboard')
