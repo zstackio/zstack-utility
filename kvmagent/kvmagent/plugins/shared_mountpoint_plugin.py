@@ -88,10 +88,15 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def connect(self, req):
+        none_shared_mount_fs_type = ['xfs', 'ext2', 'ext3', 'ext4', 'vfat', 'tmpfs', 'btrfs']
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.mount_point = cmd.mountPoint
         if not os.path.isdir(self.mount_point):
-            raise kvmagent.KvmError('%s is not a directory, the mount point seems not setup')
+            raise kvmagent.KvmError('%s is not a directory, the mount point seems not setup' % self.mount_point)
+
+        folder_fs_type = shell.call("df -T %s|tail -1|awk '{print $2}'" % self.mount_point).strip()
+        if folder_fs_type in none_shared_mount_fs_type:
+            raise KvmAgent.KvmError('%s filesystem is %s, which is not a shared mount point type.' % (self.mount_point, folder_fs_type))
 
         rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
