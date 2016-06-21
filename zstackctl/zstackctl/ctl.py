@@ -143,6 +143,18 @@ def get_zstack_version(db_hostname, db_port, db_user, db_password):
     version = v['version']
     return version
 
+def get_default_gateway():
+    '''This function will return default route gateway ip address'''
+    with open("/proc/net/route") as gateway:
+        try:
+            for item in gateway:
+                fields = item.strip().split()
+                if fields[1] != '00000000' or not int(fields[3], 16) & 2:
+                    continue
+                if fields[7] == '00000000':
+                    return socket.inet_ntoa(struct.pack("=L", int(fields[2], 16)))
+        except ValueError:
+            return None
 
 class ExceptionWrapper(object):
     def __init__(self, msg):
@@ -823,15 +835,15 @@ class ShowStatusCmd(Command):
             cmd = create_check_mgmt_node_command()
 
             def write_status(status):
-                info_list.append('status: %s' % status)
+                info_list.append('MN status: %s' % status)
 
             if not cmd:
                 write_status('cannot detect status, no wget and curl installed')
                 return
 
             cmd(False)
+            pid = get_management_node_pid()
             if cmd.return_code != 0:
-                pid = get_management_node_pid()
                 if pid:
                     write_status('%s, the management node seems to become zombie as it stops responding APIs but the '
                                  'process(PID: %s) is still running. Please stop the node using zstack-ctl stop_node' %
@@ -843,7 +855,7 @@ class ShowStatusCmd(Command):
             if 'false' in cmd.stdout:
                 write_status('Starting, should be ready in a few seconds')
             elif 'true' in cmd.stdout:
-                write_status(colored('Running', 'green'))
+                write_status(colored('Running', 'green') + ' [PID:%s]' % pid)
             else:
                 write_status('Unknown')
 
@@ -882,6 +894,7 @@ class ShowStatusCmd(Command):
         show_version()
 
         info('\n'.join(info_list))
+        ctl.internal_run('ui_status')
 
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
@@ -1785,18 +1798,6 @@ class InstallHACmd(Command):
     def reset_dict_value(self, dict_name, value):
         return dict.fromkeys(dict_name, value)
 
-    def get_default_gateway(self):
-        '''This function will return default route gateway ip address'''
-        with open("/proc/net/route") as gateway:
-            try:
-                for item in gateway:
-                    fields = item.strip().split()
-                    if fields[1] != '00000000' or not int(fields[3], 16) & 2:
-                        continue
-                    return socket.inet_ntoa(struct.pack("=L", int(fields[2], 16)))
-            except ValueError:
-                return None
-
     def get_formatted_netmask(self, device_name):
         '''This function will return formatted netmask. eg. 172.20.12.16/24 will return 24'''
         netmask = socket.inet_ntoa(fcntl.ioctl(socket.socket(socket.AF_INET, socket.SOCK_DGRAM),
@@ -1843,11 +1844,11 @@ class InstallHACmd(Command):
         ZstackSpinner(spinner_info)
         # check gw ip is available
         if args.gateway is None:
-            if self.get_default_gateway() is None:
+            if get_default_gateway() is None:
                 error("Can't get the gateway IP address from system, please check your route table or pass specific " \
                       "gateway through \"--gateway\" argument")
             else:
-                gateway_ip = self.get_default_gateway()
+                gateway_ip = get_default_gateway()
         else:
             gateway_ip = args.gateway
         (status, output) = commands.getstatusoutput('ping -c 1 %s' % gateway_ip)
@@ -5683,14 +5684,18 @@ class UiStatusCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    info('%s: [PID:%s]' % (colored('Running', 'green'), pid))
+                    if get_default_gateway() is None:
+                        info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
+                    else:
+                        gateway_ip = get_default_gateway()
+                        info('UI status: %s [PID:%s] http://%s:5000' % (colored('Running', 'green'), pid, gateway_ip))
                     return
 
         pid = find_process_by_cmdline('zstack_dashboard')
         if pid:
-            info('%s: [PID: %s]' % (colored('Zombie', 'yellow'), pid))
+            info('UI status: %s [PID: %s]' % (colored('Zombie', 'yellow'), pid))
         else:
-            info('%s: [PID: %s]' % (colored('Stopped', 'red'), pid))
+            info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
 class InstallLicenseCmd(Command):
     def __init__(self):

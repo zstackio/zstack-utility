@@ -2177,7 +2177,7 @@ if [ $UPGRADE = 'y' ]; then
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
     mkdir -p $upgrade_folder
-    zstack-ctl status 2>/dev/null|grep 'Running' >/dev/null 2>&1
+    zstack-ctl status 2>/dev/null|grep 'MN status: Running' >/dev/null 2>&1
     if [ $? -eq 0 ]; then
         CURRENT_STATUS='y'
     else
