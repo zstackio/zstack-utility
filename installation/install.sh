@@ -731,27 +731,6 @@ iz_install_unzip(){
     pass
 }
 
-#upgrade yum when using online installation
-is_upgrade_yum(){
-    echo_subtitle "Upgrade yum"
-    yum upgrade yum 
-    if [ ! -z $ZSTACK_YUM_REPOS ]; then
-        yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
-        echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
-        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y yum \
-            >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        yum clean metadata >/dev/null 2>&1
-        echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
-        yum install -y yum  >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-
-    if [ $? -ne 0 ];then
-        fail "upgrade yum failed."
-    fi
-    pass 
-}
-
 is_install_general_libs_rh(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
     which mysql >/dev/null 2>&1
@@ -921,7 +900,6 @@ is_install_general_libs_deb(){
 
 is_install_system_libs(){
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
-        [ $ZSTACK_OFFLINE_INSTALL = 'n' ] && show_spinner is_upgrade_yum
         show_spinner is_install_general_libs_rh
     else
         show_spinner is_install_general_libs_deb
