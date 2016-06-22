@@ -1349,15 +1349,24 @@ class Vm(object):
         return not job_ended
 
     def _get_target_disk(self, device_id):
-        target_disk = None
+
+        def find(disk_name):
+            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                if disk.target.dev_ == disk_name:
+                    return disk
+
+            return None
+
         disk_name = 'vd%s' % self.DEVICE_LETTERS[device_id]
-        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-            if disk.target.dev_ == disk_name:
-                target_disk = disk
-                break
+        target_disk = find(disk_name)
+        if not target_disk:
+            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
+            disk_name = 'hd%s' % self.DEVICE_LETTERS[device_id]
+            target_disk = find(disk_name)
 
         if not target_disk:
-            raise kvmagent.KvmError('unable to find volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
+            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
+            raise kvmagent.KvmError('unable to find volume[device ID:%s] on vm[uuid:%s]' % (device_id, self.uuid))
 
         return target_disk, disk_name
 
