@@ -1,4 +1,3 @@
-import os.path
 import traceback
 
 from os import symlink
@@ -23,11 +22,13 @@ class ImageStorePlugin(kvmagent.KvmAgent):
     ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/zstcli"
     UPLOAD_BIT_PATH = "/imagestore/upload"
     DOWNLOAD_BIT_PATH = "/imagestore/download"
+    COMMIT_BIT_PATH = "/imagestore/commit"
 
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.DOWNLOAD_BIT_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.UPLOAD_BIT_PATH, self.upload_to_imagestore)
+        http_server.register_async_uri(self.COMMIT_BIT_PATH, self.commit_to_imagestore)
 
         self.path = None
 
@@ -37,7 +38,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
 
-    def _getImageJSONFile(primaryInstallPath):
+    def _get_image_json_file(primaryInstallPath):
         idx = primaryInstallPath.rfind('.')
         if idx == -1:
             return primaryInstallPath + ".json"
@@ -45,7 +46,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
 
     def _get_image_reference(self, primaryStorageInstallPath):
         try:
-            with open(self._getImageJSONFile(primaryStorageInstallPath)) as f:
+            with open(self._get_image_json_file(primaryStorageInstallPath)) as f:
                 imf = jsonobject.loads(f.read())
                 return imf.Name, imf.ID
         except IOError:
@@ -79,6 +80,20 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def commit_to_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        fpath, name = cmd.primaryStorageInstallPath, cmd.imageName
+
+        cmdstr = '%s add -file %s -name %s' % (self.ZSTORE_CLI_PATH, fpath, name)
+        logger.debug('adding %s to local image store' % filepath)
+        shell.call(cmdstr)
+        logger.debug('%s added to local image store' % filepath)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
@@ -92,7 +107,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         # get the image JSON path, and generate a symbolic link
         cmdstr = "%s mfpath %s:%s" % (self.ZSTORE_CLI_PATH, name, imageid)
         mfpath = shell.call(cmdstr)
-        symlink(mfpath, self._getImageJSONFile(cmd.primaryStorageInstallPath))
+        symlink(mfpath, self._get_image_json_file(cmd.primaryStorageInstallPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
