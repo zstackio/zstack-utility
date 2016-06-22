@@ -1698,9 +1698,9 @@ class Vm(object):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
 
         def do_pull(base, top):
-            self.domain.blockRebase(disk_name, base, 0)
-
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
+
+            self.domain.blockRebase(disk_name, base, 0)
 
             def wait_job(_):
                 logger.debug('merging snapshot chain is waiting for blockRebase job completion')
