@@ -1697,47 +1697,24 @@ class Vm(object):
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
 
-        def rebase_all_to_active_file():
-            self.domain.blockRebase(disk_name, None, 0, 0)
+        def do_pull(base, top):
+            self.domain.blockRebase(disk_name, base, 0)
+
+            logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
 
             def wait_job(_):
+                logger.debug('merging snapshot chain is waiting for blockRebase job completion')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_job, timeout=300):
-                raise kvmagent.KvmError('live full snapshot merge failed')
+            if not linux.wait_callback_success(wait_job, timeout=10800):
+                raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 3 hours')
 
-        def has_blockcommit_relative_version():
-            try:
-                ver = libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE
-                return True
-            except:
-                return False
-
-        def do_commit(base, top, flags=0):
-            self.domain.blockCommit(disk_name, base, top, 0, flags)
-
-            logger.debug('start block commit %s --> %s' % (top, base))
-            def wait_job(_):
-                logger.debug('merging snapshot chain is waiting for blockCommit job completion')
-                return not self._wait_for_block_job(disk_name, abort_on_error=True)
-
-            if not linux.wait_callback_success(wait_job, timeout=300):
-                raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 300s')
-
-            logger.debug('end block commit %s --> %s' % (top, base))
-
-        def commit_to_intermediate_file():
-            # libvirt blockCommit is from @top to @base; however, parameters @srcPath and @destPath in cmd indicate
-            # direction @base to @top. We reverse the direction here for using blockCommit
-            do_commit(cmd.srcPath, cmd.destPath, libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE | libvirt.VIR_DOMAIN_BLOCK_COMMIT_ACTIVE)
+            logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
 
         if cmd.fullRebase:
-            rebase_all_to_active_file()
+            do_pull(None, cmd.destPath)
         else:
-            if has_blockcommit_relative_version():
-                commit_to_intermediate_file()
-            else:
-                raise kvmagent.KvmError('libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE is not detected, cannot do live block commit')
+            do_pull(cmd.srcPath, cmd.destPath)
 
 
     @staticmethod
