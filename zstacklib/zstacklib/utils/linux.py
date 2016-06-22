@@ -484,8 +484,16 @@ def qcow2_size_and_actual_size(file_path):
 
     return virtual_size, actual_size
 
+def get_img_fmt(src):
+    fmt = shell.call("/usr/bin/qemu-img info %s | grep -w 'file format' | awk '{print $3}'" % src)
+    fmt = fmt.strip(' \t\r\n')
+    if fmt != 'raw' and fmt != 'qcow2':
+        raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
+    return fmt
+
 def qcow2_clone(src, dst):
-    shell.ShellCmd('/usr/bin/qemu-img create -b %s -f qcow2 %s' % (src, dst))()
+    fmt = get_img_fmt(src)
+    shell.ShellCmd('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s' % (fmt, src, dst))()
     shell.ShellCmd('chmod 666 %s' % dst)()
 
 def raw_clone(src, dst):
@@ -497,7 +505,8 @@ def qcow2_create(dst, size):
     shell.ShellCmd('chmod 666 %s' % dst)()
 
 def qcow2_create_with_backing_file(backing_file, dst):
-    shell.call('/usr/bin/qemu-img create -f qcow2 -b %s %s' % (backing_file, dst))
+    fmt = get_img_fmt(backing_file)
+    shell.call('/usr/bin/qemu-img create -F %s -f qcow2 -b %s %s' % (fmt, backing_file, dst))
     shell.call('chmod 666 %s' % dst)
 
 def raw_create(dst, size):
@@ -508,10 +517,12 @@ def qcow2_create_template(src, dst):
     shell.call('/usr/bin/qemu-img convert -f qcow2 -O qcow2 %s %s' % (src, dst))
 
 def qcow2_rebase(backing_file, target):
-    shell.call('/usr/bin/qemu-img rebase -f qcow2 -b %s %s' % (backing_file, target))
+    fmt = get_img_fmt(backing_file)
+    shell.call('/usr/bin/qemu-img rebase -F %s -f qcow2 -b %s %s' % (fmt, backing_file, target))
 
 def qcow2_rebase_no_check(backing_file, target):
-    shell.call('/usr/bin/qemu-img rebase -u -f qcow2 -b %s %s' % (backing_file, target))
+    fmt = get_img_fmt(backing_file)
+    shell.call('/usr/bin/qemu-img rebase -F %s -u -f qcow2 -b %s %s' % (fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
     cmd = shell.ShellCmd("set -o pipefail; qemu-img info %s | grep -w 'virtual size' | awk -F '(' '{print $2}' | awk '{print $1}'" % file_path)
