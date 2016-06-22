@@ -2960,10 +2960,10 @@ wsrep_sst_method=rsync
             f3.close()
 
         def cleanup_galera_config_file():
-            os.remove(self.galera_config_host1_file)
-            os.remove(self.galera_config_host2_file)
+            os.remove(galera_config_host1_file)
+            os.remove(galera_config_host2_file)
             if len(self.host_post_info_list) == 3:
-                os.remove(self.galera_config_host3_file)
+                os.remove(galera_config_host3_file)
         self.install_cleanup_routine(cleanup_galera_config_file)
 
         copy_arg = CopyArg()
@@ -2981,7 +2981,7 @@ wsrep_sst_method=rsync
             copy(copy_arg, self.host3_post_info)
 
         # restart mysql service to enable galera config
-        command = "service mysql stop || echo True"
+        command = "service mysql stop || true"
         #service_status("mysql", "state=stopped", self.host1_post_info)
         run_remote_command(command, self.host1_post_info)
         run_remote_command(command, self.host2_post_info)
@@ -2989,10 +2989,10 @@ wsrep_sst_method=rsync
             run_remote_command(command, self.host3_post_info)
         command = "service mysql bootstrap"
         run_remote_command(command, self.host1_post_info)
-        service_status("mysql","state=started enabled=yes", self.host2_post_info)
+        run_remote_command("service mysql start && systemctl enable mysql", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            service_status("mysql","state=started enabled=yes", self.host3_post_info)
-        service_status("mysql","state=restarted enabled=yes", self.host1_post_info)
+            run_remote_command("service mysql start && systemctl enable mysql", self.host3_post_info)
+        run_remote_command("service mysql restart && systemctl enable mysql", self.host1_post_info)
 
         init_install = run_remote_command("mysql -u root --password='' -e 'exit' ", self.host1_post_info, return_status=True)
         if init_install is True:
