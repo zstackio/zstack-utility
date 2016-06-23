@@ -1359,6 +1359,12 @@ class Vm(object):
 
         disk_name = 'vd%s' % self.DEVICE_LETTERS[device_id]
         target_disk = find(disk_name)
+
+        if not target_disk:
+            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
+            disk_name = 'sd%s' % self.DEVICE_LETTERS[device_id]
+            target_disk = find(disk_name)
+
         if not target_disk:
             logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
             disk_name = 'hd%s' % self.DEVICE_LETTERS[device_id]
