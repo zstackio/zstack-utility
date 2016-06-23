@@ -156,6 +156,11 @@ def get_default_gateway_ip():
         except ValueError:
             return None
 
+def get_default_ip():
+    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|awk -F '/' '{print $1}'""")
+    cmd(False)
+    return cmd.stdout.strip() 
+
 class ExceptionWrapper(object):
     def __init__(self, msg):
         self.msg = msg
@@ -5684,13 +5689,11 @@ class UiStatusCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|awk -F '/' '{print $1}'""")
-                    cmd(False)
-                    default_ip = cmd.stdout
+                    default_ip = get_default_ip()
                     if not default_ip:
                         info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
                     else:
-                        info('UI status: %s [PID:%s] http://%s:5000' % (colored('Running', 'green'), pid, default_ip.strip()))
+                        info('UI status: %s [PID:%s] http://%s:5000' % (colored('Running', 'green'), pid, default_ip))
                     return
 
         pid = find_process_by_cmdline('zstack_dashboard')
@@ -5760,7 +5763,12 @@ class StartUiCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    info('UI server is still running[PID:%s]' % pid)
+                    default_ip = get_default_ip()
+                    if not default_ip:
+                        info('UI server is still running[PID:%s]' % pid)
+                    else:
+                        info('UI server is still running[PID:%s], http://%s:5000' % (pid, default_ip))
+
                     return False
 
         pid = find_process_by_cmdline('zstack_dashboard')
@@ -5825,7 +5833,12 @@ class StartUiCmd(Command):
         if not pid:
             info('fail to start UI server on the local host. Use zstack-ctl start_ui to restart it. zstack UI log could be found in /var/log/zstack/zstack-dashboard.log')
             return False
-        info('successfully started UI server on the local host, PID[%s]' % pid)
+
+        default_ip = get_default_ip()
+        if not default_ip:
+            info('successfully started UI server on the local host, PID[%s]' % pid)
+        else:
+            info('successfully started UI server on the local host, PID[%s], http://%s:5000' % (pid, default_ip))
 
 def main():
     BootstrapCmd()
