@@ -42,22 +42,40 @@ def kill_vm():
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
     SETUP_SELF_FENCER_PATH = "/ha/selffencer/setup"
+    CANCEL_SELF_FENCER_PATH = "/ha/selffencer/cancel"
     CEPH_SELF_FENCER = "/ha/ceph/setupselffencer"
+    CANCEL_CEPH_SELF_FENCER = "/ha/ceph/cancelselffencer"
 
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
     RET_NOT_STABLE = "unstable"
 
+    def __init__(self):
+        self.run_ceph_fencer = False
+        self.run_filesystem_fencer = False
+
+    @kvmagent.replyerror
+    def cancel_ceph_self_fencer(self, req):
+        self.run_ceph_fencer = False
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def cancel_filesystem_self_fencer(self, req):
+        self.run_filesystem_fencer = False
+        return jsonobject.dumps(AgentRsp())
+
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        self.run_ceph_fencer = True
 
         @thread.AsyncThread
         def heartbeat_on_ceph():
             try:
                 failure = 0
 
-                while True:
+                while self.run_ceph_fencer:
                     time.sleep(cmd.interval)
 
                     mon_url = '\;'.join(cmd.monUrls)
@@ -90,6 +108,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         # reset the failure count
                         failure = 0
 
+                logger.debug('stop self-fencer on ceph primary storage')
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
@@ -102,12 +121,14 @@ class HaPlugin(kvmagent.KvmAgent):
     def setup_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
+        self.run_filesystem_fencer = True
+
         @thread.AsyncThread
         def heartbeat_file_fencer(heartbeat_file_path):
             try:
                 failure = 0
 
-                while True:
+                while self.run_filesystem_fencer:
                     time.sleep(cmd.interval)
 
                     touch = shell.ShellCmd('timeout %s touch %s; exit $?' % (cmd.storageCheckerTimeout, heartbeat_file_path))
@@ -123,10 +144,11 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         kill_vm()
+
+                logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
-
 
         gateway = cmd.storageGateway
         if not gateway:
@@ -137,7 +159,7 @@ class HaPlugin(kvmagent.KvmAgent):
             failure = 0
 
             try:
-                while True:
+                while self.run_filesystem_fencer:
                     time.sleep(cmd.interval)
 
                     ping = shell.ShellCmd("nmap -sP -PI %s | grep 'Host is up'" % gw)
@@ -153,6 +175,8 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
                                     'shutdown ourselves' % (gw, cmd.maxAttempts))
                         kill_vm()
+
+                logger.debug('stop gateway[%s] fencer for filesystem self-fencer' % gw)
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
@@ -213,6 +237,8 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.SCAN_HOST_PATH, self.scan_host)
         http_server.register_async_uri(self.SETUP_SELF_FENCER_PATH, self.setup_self_fencer)
         http_server.register_async_uri(self.CEPH_SELF_FENCER, self.setup_ceph_self_fencer)
+        http_server.register_async_uri(self.CANCEL_SELF_FENCER_PATH, self.cancel_filesystem_self_fencer)
+        http_server.register_async_uri(self.CANCEL_CEPH_SELF_FENCER, self.cancel_ceph_self_fencer)
 
     def stop(self):
         pass
