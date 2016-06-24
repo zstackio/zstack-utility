@@ -241,7 +241,7 @@ class Mevoco(kvmagent.KvmAgent):
     def delete_dhcp_namespace(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         shell.call("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % cmd.namespaceName)
-        shell.call('ip netns | grep -w %s > /dev/null && ip netns del %s' % (cmd.namespaceName, cmd.namespaceName))
+        shell.call("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (cmd.namespaceName, cmd.namespaceName))
         return jsonobject.dumps(DeleteNamespaceRsp())
 
     @kvmagent.replyerror
