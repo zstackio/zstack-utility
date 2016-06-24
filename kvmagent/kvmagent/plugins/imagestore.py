@@ -20,15 +20,18 @@ class ImageStorePlugin(kvmagent.KvmAgent):
 
     ZSTORE_PROTOSTR = "zstore://"
     ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/zstcli"
+
     UPLOAD_BIT_PATH = "/imagestore/upload"
     DOWNLOAD_BIT_PATH = "/imagestore/download"
     COMMIT_BIT_PATH = "/imagestore/commit"
+    CLIENT_INIT_PATH ="/imagestore/init"
 
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.DOWNLOAD_BIT_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.UPLOAD_BIT_PATH, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_BIT_PATH, self.commit_to_imagestore)
+        http_server.register_async_uri(self.CLIENT_INIT_PATH, self.init_client)
 
         self.path = None
 
@@ -64,6 +67,10 @@ class ImageStorePlugin(kvmagent.KvmAgent):
 
     def _build_install_path(self, name, imgid):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
+
+    @kvmagent.replyerror
+    def init_client(self, req):
+        raise kvmagent.KvmError("not implemented")
 
     @kvmagent.replyerror
     def upload_to_imagestore(self, req):
