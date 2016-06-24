@@ -161,6 +161,15 @@ def get_default_ip():
     cmd(False)
     return cmd.stdout.strip() 
 
+def get_yum_repo_from_property()
+    yum_repo = ctl.read_property('Ansible.var.zstack_repo')
+    # avoid http server didn't start when install package
+    if 'zstack-mn' in yum_repo:
+        yum_repo = yum_repo.replace("zstack-mn","zstack-local")
+    if 'qemu-kvm-ev-mn' in yum_repo:
+        yum_repo = yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
+    return yum_repo
+
 class ExceptionWrapper(object):
     def __init__(self, msg):
         self.msg = msg
@@ -1536,7 +1545,7 @@ class InstallDbCmd(Command):
 
     def run(self, args):
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.zstack_repo')
+            args.yum = get_yum_repo_from_property()
 
         script = ShellCmd("ip addr |grep 'inet '|grep -v '127.0.0.1'|awk '{print $2}'|awk -F '/' '{print $1}'")
         script(True)
@@ -1923,12 +1932,7 @@ class InstallHACmd(Command):
                 error("The host1, host2 and host3 should not be the same ip address!")
 
         # init variables
-        yum_repo = ctl.read_property('Ansible.var.zstack_repo')
-        # avoid http server didn't start when install package
-        if 'zstack-mn' in yum_repo:
-            yum_repo = yum_repo.replace("zstack-mn","zstack-local")
-        if 'qemu-kvm-ev-mn' in yum_repo:
-            yum_repo = yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
+        yum_repo = get_yum_repo_from_property()
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
@@ -3325,7 +3329,7 @@ class InstallRabbitCmd(Command):
             raise CtlError('--rabbit-username and --rabbit-password must be both set or not set')
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.zstack_repo')
+            args.yum = get_yum_repo_from_property()
 
         yaml = '''---
 - hosts: $host
@@ -4536,7 +4540,7 @@ class InstallManagementNodeCmd(Command):
             raise CtlError('%s is not an directory' % args.source_dir)
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.zstack_repo')
+            args.yum = get_yum_repo_from_property()
 
         apache_tomcat = None
         zstack = None
@@ -4961,7 +4965,7 @@ class InstallWebUiCmd(Command):
             return
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.zstack_repo')
+            args.yum = get_yum_repo_from_property()
 
         tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
         if not os.path.isdir(tools_path):
