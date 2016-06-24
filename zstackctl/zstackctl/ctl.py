@@ -163,6 +163,9 @@ def get_default_ip():
 
 def get_yum_repo_from_property():
     yum_repo = ctl.read_property('Ansible.var.zstack_repo')
+    if not yum_repo:
+        return yum_repo
+
     # avoid http server didn't start when install package
     if 'zstack-mn' in yum_repo:
         yum_repo = yum_repo.replace("zstack-mn","zstack-local")
