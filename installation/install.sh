@@ -2208,6 +2208,7 @@ check_system
 download_zstack
 
 if [ $UPGRADE = 'y' ]; then
+    PRE_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     #only upgrade zstack
     upgrade_zstack
 
@@ -2215,7 +2216,6 @@ if [ $UPGRADE = 'y' ]; then
     cleanup_function
 
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
-    PRE_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     echo ""
     echo_star_line
     echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
