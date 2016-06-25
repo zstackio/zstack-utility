@@ -1338,9 +1338,9 @@ class StartCmd(Command):
             if ctl.extra_arguments:
                 catalina_opts.extend(ctl.extra_arguments)
 
-            upgrade_start = ctl.get_env('UPGRADE_START')
-            if upgrade_start:
-                catalina_opts.append('-DupgradeStartOn=true')
+            upgrade_params = ctl.get_env('ZSTACK_UPGRADE_PARAMS')
+            if upgrade_params:
+                catalina_opts.extend(upgrade_params.split(' '))
 
             co = ctl.get_env('CATALINA_OPTS')
             if co:
@@ -1400,7 +1400,7 @@ class StartCmd(Command):
             shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception = False)
         info('successfully started management node')
 
-        ctl.delete_env('UPGRADE_START')
+        ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"

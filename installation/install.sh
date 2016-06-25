@@ -90,6 +90,16 @@ DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 LICENSE_FILE='zstack-license'
 
+#define extra upgrade params
+#1.0  1.1  1.2  1.3  1.4
+declare -a upgrade_params_arrays=(
+    '' 
+    '' 
+    '' 
+    '-DsyncImageActualSize=true' 
+    '-DtapResourcesForBilling=true'
+)
+
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
     /bin/rm -f $INSTALLATION_FAILURE
@@ -673,6 +683,16 @@ upgrade_zstack(){
             show_spinner sz_start_cassandra
             show_spinner sz_start_kairosdb
         fi
+
+        #set zstack upgrade params 
+        current_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
+        upgrade_params=''
+        while [ $current_version -gt $PRE_VERSION ]; do
+            PRE_VERSION=`expr $PRE_VERSION + 1`
+            upgrade_params="${upgrade_params} ${upgrade_params_arrays[$PRE_VERSION]}"
+        done
+        [ ! -z $upgrade_params ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
+
         #when using -k option, will not start zstack.
         if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
             show_spinner sz_start_zstack
@@ -2195,11 +2215,11 @@ if [ $UPGRADE = 'y' ]; then
     #only upgrade zstack
     upgrade_zstack
 
-    zstack-ctl setenv UPGRADE_START=true
     cd /; rm -rf $upgrade_zstack
     cleanup_function
 
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
+    PRE_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     echo ""
     echo_star_line
     echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
