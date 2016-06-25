@@ -1864,6 +1864,7 @@ get_zstack_repo(){
         if [ $? -eq 0 ]; then
             ZSTACK_YUM_REPOS='zstack-local'
             ZSTACK_OFFLINE_INSTALL='y'
+            ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
         fi
         echo $ZSTACK_YUM_REPOS |grep "ali" >/dev/null 2>&1
         if [ $? -eq 0 ]; then
@@ -2062,7 +2063,7 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     fi
 elif [ -z $YUM_ONLINE_REPO ]; then
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
-    ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_UPGRADE_REPOS
+    ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
 elif [ $UPGRADE != 'n' ]; then
     get_zstack_repo
 fi
