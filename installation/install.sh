@@ -691,7 +691,7 @@ upgrade_zstack(){
             PRE_VERSION=`expr $PRE_VERSION + 1`
             upgrade_params="${upgrade_params} ${upgrade_params_arrays[$PRE_VERSION]}"
         done
-        [ ! -z $upgrade_params ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
+        [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
 
         #when using -k option, will not start zstack.
         if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
