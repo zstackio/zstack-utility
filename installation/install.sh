@@ -2062,11 +2062,7 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     fi
 elif [ -z $YUM_ONLINE_REPO ]; then
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
-    if [ $UPGRADE = 'n' ]; then
-        ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
-    else
-        ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_UPGRADE_REPOS
-    fi
+    ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_UPGRADE_REPOS
 elif [ $UPGRADE != 'n' ]; then
     get_zstack_repo
 fi
