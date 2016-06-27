@@ -90,6 +90,16 @@ DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 LICENSE_FILE='zstack-license'
 
+#define extra upgrade params
+#1.0  1.1  1.2  1.3  1.4
+declare -a upgrade_params_arrays=(
+    '' 
+    '' 
+    '' 
+    '-DsyncImageActualSize=true' 
+    '-DtapResourcesForBilling=true'
+)
+
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
     /bin/rm -f $INSTALLATION_FAILURE
@@ -673,6 +683,16 @@ upgrade_zstack(){
             show_spinner sz_start_cassandra
             show_spinner sz_start_kairosdb
         fi
+
+        #set zstack upgrade params 
+        current_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
+        upgrade_params=''
+        while [ $current_version -gt $PRE_VERSION ]; do
+            PRE_VERSION=`expr $PRE_VERSION + 1`
+            upgrade_params="${upgrade_params} ${upgrade_params_arrays[$PRE_VERSION]}"
+        done
+        [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
+
         #when using -k option, will not start zstack.
         if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
             show_spinner sz_start_zstack
@@ -772,6 +792,7 @@ is_install_general_libs_rh(){
             libffi-devel \
             openssl-devel \
             net-tools \
+            bash-completion \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
@@ -807,6 +828,7 @@ is_install_general_libs_rh(){
             libffi-devel \
             openssl-devel \
             net-tools \
+            bash-completion \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     fi
@@ -816,12 +838,12 @@ is_install_general_libs_rh(){
         fail "install system libraries failed."
     fi
 
-    rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1
+    rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1 || java -version 2>&1 |grep 1.8 >/dev/null
     if [ $? -ne 0 ]; then
         fail "java-1.8.0-openjdk is not installed. Did you forget updating management node local repos to latest CentOS ZStack Community ISO? Please use following steps to update local repos:
         1. cd /opt
         2. wget http://www.mevoco.com/downloads/scripts/zstack-repo-upgrade.sh
-        3. download latest CentOS ZStack community ISO to /opt/ , e.g.  /opt/ZStack-Community-x86_64-DVD-1.3.0.iso
+        3. download latest CentOS ZStack community ISO to /opt/ , e.g.  /opt/ZStack-Community-x86_64-DVD-1.4.0.iso
         4. bash /opt/zstack-repo-upgrade.sh
         "
     else
@@ -886,11 +908,14 @@ is_install_general_libs_deb(){
         bzip2 \
         libffi-dev \
         libssl-dev \
+        bash-completion \
         $mysql_pkg \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
 
     #set java 8 as default jre.
+    update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0 >>$ZSTACK_INSTALL_LOG 2>&1
+    update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0 >>$ZSTACK_INSTALL_LOG 2>&1
     update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
     update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac >>$ZSTACK_INSTALL_LOG 2>&1
     pass
@@ -1839,6 +1864,7 @@ get_zstack_repo(){
         if [ $? -eq 0 ]; then
             ZSTACK_YUM_REPOS='zstack-local'
             ZSTACK_OFFLINE_INSTALL='y'
+            ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
         fi
         echo $ZSTACK_YUM_REPOS |grep "ali" >/dev/null 2>&1
         if [ $? -eq 0 ]; then
@@ -2037,11 +2063,7 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     fi
 elif [ -z $YUM_ONLINE_REPO ]; then
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
-    if [ $UPGRADE = 'n' ]; then
-        ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
-    else
-        ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_UPGRADE_REPOS
-    fi
+    ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
 elif [ $UPGRADE != 'n' ]; then
     get_zstack_repo
 fi
@@ -2153,11 +2175,21 @@ if [ $UPGRADE = 'y' ]; then
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
     mkdir -p $upgrade_folder
-    zstack-ctl status 2>/dev/null|grep 'Running' >/dev/null 2>&1
+    zstack-ctl status 2>/dev/null|grep 'MN status' >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        CURRENT_STATUS='y'
+        zstack-ctl status 2>/dev/null |grep 'MN status'|grep Running >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            CURRENT_STATUS='y'
+        else
+            CURRENT_STATUS='n'
+        fi
     else
-        CURRENT_STATUS='n'
+        zstack-ctl status 2>/dev/null |grep Running >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            CURRENT_STATUS='y'
+        else
+            CURRENT_STATUS='n'
+        fi
     fi
     UI_CURRENT_STATUS='n'
     UI_INSTALLATION_STATUS='n'
@@ -2177,10 +2209,10 @@ check_system
 download_zstack
 
 if [ $UPGRADE = 'y' ]; then
+    PRE_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     #only upgrade zstack
     upgrade_zstack
 
-    zstack-ctl setenv UPGRADE_START=true
     cd /; rm -rf $upgrade_zstack
     cleanup_function
 

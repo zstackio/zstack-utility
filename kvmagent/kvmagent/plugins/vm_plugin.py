@@ -48,6 +48,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.nics = []
         self.timeout = None
         self.dataIsoPaths = None
+        self.addons = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -534,7 +535,6 @@ class IsoFusionstor(object):
         if protocol == 'lichbd':
             iqn = lichbd.lichbd_get_iqn() 
             port = lichbd.lichbd_get_iscsiport()
-            lichbd.makesure_qemu_with_lichbd()
             lichbd.makesure_qemu_img_with_lichbd()
 
             shellcmd = shell.ShellCmd('lichbd mkpool %s -p iscsi' % path.split('/')[0])
@@ -553,7 +553,7 @@ class IsoFusionstor(object):
             path = '%s:%s.%s/0' % (iqn, pool, image)
             protocol = 'iscsi'
         elif protocol == 'sheepdog' or protocol == 'nbd':
-            lichbd.makesure_qemu_with_lichbd()
+            pass
         else:
             raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
 
@@ -577,10 +577,9 @@ class IdeFusionstor(object):
     def to_xmlobject(self):
         protocol = lichbd.get_protocol()
         if protocol == 'lichbd':
-            lichbd.makesure_qemu_with_lichbd()
             lichbd.makesure_qemu_img_with_lichbd()
         elif protocol == 'sheepdog' or protocol == 'nbd':
-            lichbd.makesure_qemu_with_lichbd()
+            pass
         else:
             raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
 
@@ -605,10 +604,9 @@ class VirtioFusionstor(object):
     def to_xmlobject(self):
         protocol = lichbd.get_protocol()
         if protocol == 'lichbd':
-            lichbd.makesure_qemu_with_lichbd()
             lichbd.makesure_qemu_img_with_lichbd()
         elif protocol == 'sheepdog' or protocol == 'nbd':
-            lichbd.makesure_qemu_with_lichbd()
+            pass
         else:
             raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
 
@@ -1100,15 +1098,17 @@ class Vm(object):
                 vc = VirtioCeph()
                 vc.volume = volume
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
-                volume_qos(vc)
-                return etree.tostring(vc.to_xmlobject())
+                xml_obj = vc.to_xmlobject()
+                volume_qos(xml_obj)
+                return etree.tostring(xml_obj)
 
             def blk_ceph():
                 ic = IdeCeph()
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
-                volume_qos(ic)
-                return etree.tostring(ic.to_xmlobject())
+                xml_obj = ic.to_xmlobject()
+                volume_qos(xml_obj)
+                return etree.tostring(xml_obj)
 
             if volume.useVirtio:
                 return virtoio_ceph()
@@ -1351,15 +1351,30 @@ class Vm(object):
         return not job_ended
 
     def _get_target_disk(self, device_id):
-        target_disk = None
+
+        def find(disk_name):
+            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                if disk.target.dev_ == disk_name:
+                    return disk
+
+            return None
+
         disk_name = 'vd%s' % self.DEVICE_LETTERS[device_id]
-        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-            if disk.target.dev_ == disk_name:
-                target_disk = disk
-                break
+        target_disk = find(disk_name)
 
         if not target_disk:
-            raise kvmagent.KvmError('unable to find volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
+            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
+            disk_name = 'sd%s' % self.DEVICE_LETTERS[device_id]
+            target_disk = find(disk_name)
+
+        if not target_disk:
+            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
+            disk_name = 'hd%s' % self.DEVICE_LETTERS[device_id]
+            target_disk = find(disk_name)
+
+        if not target_disk:
+            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
+            raise kvmagent.KvmError('unable to find volume[device ID:%s] on vm[uuid:%s]' % (device_id, self.uuid))
 
         return target_disk, disk_name
 
@@ -1494,7 +1509,7 @@ class Vm(object):
         return etree.tostring(interface)
 
     def _wait_vm_run_until_seconds(self, sec):
-        vm_pid = linux.find_process_by_cmdline([kvmagent.get_qemu_path(), self.uuid])
+        vm_pid = linux.find_process_by_cmdline(['kvm', self.uuid])
         if not vm_pid:
             raise Exception('cannot find pid for vm[uuid:%s]' % self.uuid)
 
@@ -1690,47 +1705,24 @@ class Vm(object):
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
 
-        def rebase_all_to_active_file():
-            self.domain.blockRebase(disk_name, None, 0, 0)
+        def do_pull(base, top):
+            logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
+
+            self.domain.blockRebase(disk_name, base, 0)
 
             def wait_job(_):
+                logger.debug('merging snapshot chain is waiting for blockRebase job completion')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_job, timeout=300):
-                raise kvmagent.KvmError('live full snapshot merge failed')
+            if not linux.wait_callback_success(wait_job, timeout=10800):
+                raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 3 hours')
 
-        def has_blockcommit_relative_version():
-            try:
-                ver = libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE
-                return True
-            except:
-                return False
-
-        def do_commit(base, top, flags=0):
-            self.domain.blockCommit(disk_name, base, top, 0, flags)
-
-            logger.debug('start block commit %s --> %s' % (top, base))
-            def wait_job(_):
-                logger.debug('merging snapshot chain is waiting for blockCommit job completion')
-                return not self._wait_for_block_job(disk_name, abort_on_error=True)
-
-            if not linux.wait_callback_success(wait_job, timeout=300):
-                raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 300s')
-
-            logger.debug('end block commit %s --> %s' % (top, base))
-
-        def commit_to_intermediate_file():
-            # libvirt blockCommit is from @top to @base; however, parameters @srcPath and @destPath in cmd indicate
-            # direction @base to @top. We reverse the direction here for using blockCommit
-            do_commit(cmd.srcPath, cmd.destPath, libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE | libvirt.VIR_DOMAIN_BLOCK_COMMIT_ACTIVE)
+            logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
 
         if cmd.fullRebase:
-            rebase_all_to_active_file()
+            do_pull(None, cmd.destPath)
         else:
-            if has_blockcommit_relative_version():
-                commit_to_intermediate_file()
-            else:
-                raise kvmagent.KvmError('libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE is not detected, cannot do live block commit')
+            do_pull(cmd.srcPath, cmd.destPath)
 
 
     @staticmethod
@@ -1797,7 +1789,10 @@ class Vm(object):
         def make_devices():
             root = elements['root']
             devices = e(root, 'devices')
-            e(devices, 'emulator', kvmagent.get_qemu_path())
+            if cmd.addons and cmd.addons['qemuPath']:
+                e(devices, 'emulator', cmd.addons['qemuPath'])
+            else:
+                e(devices, 'emulator', kvmagent.get_qemu_path())
             e(devices, 'input', None, {'type':'tablet', 'bus':'usb'})
             elements['devices'] = devices
 

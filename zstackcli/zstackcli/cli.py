@@ -53,7 +53,11 @@ query_param_keys = \
         ['conditions', 'count', 'limit', 'start', 'timeout', \
         'replyWithCount', 'sortBy', 'sortDirection', 'fields']
 
-NOT_QUERY_MYSQL_APIS = ['APIQueryResourcePriceMsg', 'QueryResourcePrice']
+NOT_QUERY_MYSQL_APIS = ['APIQueryResourcePriceMsg', \
+        'QueryResourcePrice', \
+        'APIQueryLogMsg', \
+        'QueryLog' \
+        ]
 
 def clean_password_in_cli_history():
     cmd_historys = open(CLI_HISTORY, 'r').readlines()

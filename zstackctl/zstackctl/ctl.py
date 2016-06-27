@@ -120,6 +120,59 @@ def info(*msg):
         out = ''.join(msg)
     sys.stdout.write(out)
 
+def get_detail_version():
+    detailed_version_file = os.path.join(ctl.DEFAULT_ZSTACK_HOME, "VERSION")
+    if os.path.exists(detailed_version_file):
+        with open(detailed_version_file, 'r') as fd:
+            detailed_version = fd.read()
+            return detailed_version
+    else:
+        return None
+
+def get_zstack_version(db_hostname, db_port, db_user, db_password):
+    query = MySqlCommandLineQuery()
+    query.host = db_hostname
+    query.port = db_port
+    query.user = db_user
+    query.password = db_password
+    query.table = 'zstack'
+    query.sql = "select version from schema_version order by version desc"
+    ret = query.query()
+
+    v = ret[0]
+    version = v['version']
+    return version
+
+def get_default_gateway_ip():
+    '''This function will return default route gateway ip address'''
+    with open("/proc/net/route") as gateway:
+        try:
+            for item in gateway:
+                fields = item.strip().split()
+                if fields[1] != '00000000' or not int(fields[3], 16) & 2:
+                    continue
+                if fields[7] == '00000000':
+                    return socket.inet_ntoa(struct.pack("=L", int(fields[2], 16)))
+        except ValueError:
+            return None
+
+def get_default_ip():
+    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|awk -F '/' '{print $1}'""")
+    cmd(False)
+    return cmd.stdout.strip() 
+
+def get_yum_repo_from_property():
+    yum_repo = ctl.read_property('Ansible.var.zstack_repo')
+    if not yum_repo:
+        return yum_repo
+
+    # avoid http server didn't start when install package
+    if 'zstack-mn' in yum_repo:
+        yum_repo = yum_repo.replace("zstack-mn","zstack-local")
+    if 'qemu-kvm-ev-mn' in yum_repo:
+        yum_repo = yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
+    return yum_repo
+
 class ExceptionWrapper(object):
     def __init__(self, msg):
         self.msg = msg
@@ -799,15 +852,15 @@ class ShowStatusCmd(Command):
             cmd = create_check_mgmt_node_command()
 
             def write_status(status):
-                info_list.append('status: %s' % status)
+                info_list.append('MN status: %s' % status)
 
             if not cmd:
                 write_status('cannot detect status, no wget and curl installed')
                 return
 
             cmd(False)
+            pid = get_management_node_pid()
             if cmd.return_code != 0:
-                pid = get_management_node_pid()
                 if pid:
                     write_status('%s, the management node seems to become zombie as it stops responding APIs but the '
                                  'process(PID: %s) is still running. Please stop the node using zstack-ctl stop_node' %
@@ -819,7 +872,7 @@ class ShowStatusCmd(Command):
             if 'false' in cmd.stdout:
                 write_status('Starting, should be ready in a few seconds')
             elif 'true' in cmd.stdout:
-                write_status(colored('Running', 'green'))
+                write_status(colored('Running', 'green') + ' [PID:%s]' % pid)
             else:
                 write_status('Unknown')
 
@@ -827,7 +880,7 @@ class ShowStatusCmd(Command):
             try:
                 db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
             except:
-                info_list.append('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                info('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
                 return
 
             if db_password:
@@ -839,37 +892,26 @@ class ShowStatusCmd(Command):
 
             cmd(False)
             if cmd.return_code != 0:
-                info_list.append('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                info('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
                 return
 
             out = cmd.stdout
             if 'schema_version' not in out:
                 version = '0.6'
             else:
-                query = MySqlCommandLineQuery()
-                query.host = db_hostname
-                query.port = db_port
-                query.user = db_user
-                query.password = db_password
-                query.table = 'zstack'
-                query.sql = "select version from schema_version order by version desc"
-                ret = query.query()
+                version = get_zstack_version(db_hostname, db_port, db_user, db_password)
 
-                v = ret[0]
-                version = v['version']
-
-            detailed_version_file = os.path.join(ctl.DEFAULT_ZSTACK_HOME, "VERSION")
-            if os.path.exists(detailed_version_file):
-                with open(detailed_version_file, 'r') as fd:
-                    detailed_version = fd.read()
-                    info_list.append('version: %s (%s)' % (version, detailed_version))
+            detailed_version = get_detail_version()
+            if detailed_version is not None:
+                info('version: %s (%s)' % (version, detailed_version))
             else:
-                info_list.append('version: %s' % version)
+                info('version: %s' % version)
 
         check_zstack_status()
-        show_version()
 
         info('\n'.join(info_list))
+        ctl.internal_run('ui_status')
+        show_version()
 
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
@@ -1296,9 +1338,9 @@ class StartCmd(Command):
             if ctl.extra_arguments:
                 catalina_opts.extend(ctl.extra_arguments)
 
-            upgrade_start = ctl.get_env('UPGRADE_START')
-            if upgrade_start:
-                catalina_opts.append('-DupgradeStartOn=true')
+            upgrade_params = ctl.get_env('ZSTACK_UPGRADE_PARAMS')
+            if upgrade_params:
+                catalina_opts.extend(upgrade_params.split(' '))
 
             co = ctl.get_env('CATALINA_OPTS')
             if co:
@@ -1358,7 +1400,7 @@ class StartCmd(Command):
             shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception = False)
         info('successfully started management node')
 
-        ctl.delete_env('UPGRADE_START')
+        ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
@@ -1506,7 +1548,7 @@ class InstallDbCmd(Command):
 
     def run(self, args):
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.zstack_repo')
+            args.yum = get_yum_repo_from_property()
 
         script = ShellCmd("ip addr |grep 'inet '|grep -v '127.0.0.1'|awk '{print $2}'|awk -F '/' '{print $1}'")
         script(True)
@@ -1773,18 +1815,6 @@ class InstallHACmd(Command):
     def reset_dict_value(self, dict_name, value):
         return dict.fromkeys(dict_name, value)
 
-    def get_default_gateway(self):
-        '''This function will return default route gateway ip address'''
-        with open("/proc/net/route") as gateway:
-            try:
-                for item in gateway:
-                    fields = item.strip().split()
-                    if fields[1] != '00000000' or not int(fields[3], 16) & 2:
-                        continue
-                    return socket.inet_ntoa(struct.pack("=L", int(fields[2], 16)))
-            except ValueError:
-                return None
-
     def get_formatted_netmask(self, device_name):
         '''This function will return formatted netmask. eg. 172.20.12.16/24 will return 24'''
         netmask = socket.inet_ntoa(fcntl.ioctl(socket.socket(socket.AF_INET, socket.SOCK_DGRAM),
@@ -1831,11 +1861,11 @@ class InstallHACmd(Command):
         ZstackSpinner(spinner_info)
         # check gw ip is available
         if args.gateway is None:
-            if self.get_default_gateway() is None:
+            if get_default_gateway_ip() is None:
                 error("Can't get the gateway IP address from system, please check your route table or pass specific " \
                       "gateway through \"--gateway\" argument")
             else:
-                gateway_ip = self.get_default_gateway()
+                gateway_ip = get_default_gateway_ip()
         else:
             gateway_ip = args.gateway
         (status, output) = commands.getstatusoutput('ping -c 1 %s' % gateway_ip)
@@ -1905,12 +1935,7 @@ class InstallHACmd(Command):
                 error("The host1, host2 and host3 should not be the same ip address!")
 
         # init variables
-        yum_repo = ctl.read_property('Ansible.var.zstack_repo')
-        # avoid http server didn't start when install package
-        if 'zstack-mn' in yum_repo:
-            yum_repo = yum_repo.replace("zstack-mn","zstack-local")
-        if 'qemu-kvm-ev-mn' in yum_repo:
-            yum_repo = yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
+        yum_repo = get_yum_repo_from_property()
         InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
@@ -2947,10 +2972,10 @@ wsrep_sst_method=rsync
             f3.close()
 
         def cleanup_galera_config_file():
-            os.remove(self.galera_config_host1_file)
-            os.remove(self.galera_config_host2_file)
+            os.remove(galera_config_host1_file)
+            os.remove(galera_config_host2_file)
             if len(self.host_post_info_list) == 3:
-                os.remove(self.galera_config_host3_file)
+                os.remove(galera_config_host3_file)
         self.install_cleanup_routine(cleanup_galera_config_file)
 
         copy_arg = CopyArg()
@@ -2968,7 +2993,7 @@ wsrep_sst_method=rsync
             copy(copy_arg, self.host3_post_info)
 
         # restart mysql service to enable galera config
-        command = "service mysql stop || echo True"
+        command = "service mysql stop || true"
         #service_status("mysql", "state=stopped", self.host1_post_info)
         run_remote_command(command, self.host1_post_info)
         run_remote_command(command, self.host2_post_info)
@@ -2976,10 +3001,10 @@ wsrep_sst_method=rsync
             run_remote_command(command, self.host3_post_info)
         command = "service mysql bootstrap"
         run_remote_command(command, self.host1_post_info)
-        service_status("mysql","state=started enabled=yes", self.host2_post_info)
+        run_remote_command("service mysql start && systemctl enable mysql", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            service_status("mysql","state=started enabled=yes", self.host3_post_info)
-        service_status("mysql","state=restarted enabled=yes", self.host1_post_info)
+            run_remote_command("service mysql start && systemctl enable mysql", self.host3_post_info)
+        run_remote_command("service mysql restart && systemctl enable mysql", self.host1_post_info)
 
         init_install = run_remote_command("mysql -u root --password='' -e 'exit' ", self.host1_post_info, return_status=True)
         if init_install is True:
@@ -3268,6 +3293,23 @@ class RabbitmqHA(InstallHACmd):
         if len(self.host_post_info_list) == 3:
             service_status("rabbitmq-server", "state=restarted enabled=yes", self.host3_post_info)
 
+class ResetRabbitCmd(Command):
+    def __init__(self):
+        super(ResetRabbitCmd, self).__init__()
+        self.name = "reset_rabbitmq"
+        self.description = "Reinstall RabbitMQ message broker on local machine based on current configuration in zstack.properties."
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        pass
+
+    def run(self, args):
+        rabbitmq_ip = ctl.read_property('CloudBus.serverIp.0')
+        rabbitmq_user = ctl.read_property('CloudBus.rabbitmqUsername')
+        rabbitmq_passwd = ctl.read_property('CloudBus.rabbitmqPassword')
+        shell("service rabbitmq-server stop; rpm -ev rabbitmq-server; rm -rf /var/lib/rabbitmq")
+        ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd))
+
 
 class InstallRabbitCmd(Command):
     def __init__(self):
@@ -3290,7 +3332,7 @@ class InstallRabbitCmd(Command):
             raise CtlError('--rabbit-username and --rabbit-password must be both set or not set')
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.zstack_repo')
+            args.yum = get_yum_repo_from_property()
 
         yaml = '''---
 - hosts: $host
@@ -3781,7 +3823,7 @@ class RestoreMysqlCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--from-file',
+        parser.add_argument('--from-file', '-f',
                             help="The backup filename under /var/lib/zstack/mysql-backup/ ",
                             required=True)
         parser.add_argument('--mysql-root-password',
@@ -3861,17 +3903,17 @@ class CollectLogCmd(Command):
             command = "mkdir -p %s " % collect_log_dir
             run_remote_command(command, host_post_info)
             for log in CollectLogCmd.host_log_list:
-                command = "if [ -f %s/%s ]; then tail -n 10000 %s/%s > %s/%s-collect 2>&1; fi || true" \
+                command = "if [ -f %s/%s ]; then tail -n 10000 %s/%s > %s/%s 2>&1; fi || true" \
                           % (CollectLogCmd.zstack_log_dir, log, CollectLogCmd.zstack_log_dir, log, collect_log_dir, log)
                 run_remote_command(command, host_post_info)
-            command = "cd %s && tar zcf collect-log.tar.gz collect-log" % (CollectLogCmd.zstack_log_dir)
+            command = "cd %s && tar zcf collect-log.tar.gz *" % collect_log_dir
             run_remote_command(command, host_post_info)
             fetch_arg = FetchArg()
-            fetch_arg.src =  "%s/collect-log.tar.gz " % CollectLogCmd.zstack_log_dir
+            fetch_arg.src =  "%s/collect-log.tar.gz " % collect_log_dir
             fetch_arg.dest = "%s/%s/" % (collect_dir, host_post_info.host)
             fetch_arg.args = "fail_on_missing=yes flat=yes"
             fetch(fetch_arg, host_post_info)
-            command = "rm -rf %s %s/collect-log.tar.gz " % (collect_log_dir, CollectLogCmd.zstack_log_dir)
+            command = "rm -rf %s " % collect_log_dir
             run_remote_command(command, host_post_info)
             (status, output) = commands.getstatusoutput("cd %s/%s/ && tar zxf collect-log.tar.gz" % (collect_dir, host_post_info.host))
             if status != 0:
@@ -3912,15 +3954,21 @@ class CollectLogCmd(Command):
             (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
                                                         % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
 
-    def generate_tar_ball(self, collect_dir, time_stamp):
-        (status, output) = commands.getstatusoutput("tar zcf collect-log-%s.tar.gz %s" % (time_stamp, collect_dir))
+    def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
+        (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
+                                                    % (run_command_dir, detail_version, time_stamp, detail_version, time_stamp))
         if status != 0:
             error("Generate tarball failed: %s " % output)
 
     def run(self, args):
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
-        collect_dir = run_command_dir + "/" + 'collect-log-' + time_stamp
+        if get_detail_version() is not None:
+            detail_version = get_detail_version().replace(' ','_')
+        else:
+            hostname, port, user, password = ctl.get_live_mysql_portal()
+            detail_version = get_zstack_version(hostname, port, user, password)
+        collect_dir = run_command_dir + "/" + 'collect-log-' + detail_version + '-' + time_stamp
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
         self.get_management_node_log(collect_dir)
@@ -3940,8 +3988,8 @@ class CollectLogCmd(Command):
             host_post_info.post_url = ""
             self.get_host_log(host_post_info, collect_dir)
 
-        self.generate_tar_ball(collect_dir, time_stamp)
-        info("The collect log generate at: %s/collect-log-%s.tar.gz" % (run_command_dir, time_stamp))
+        self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
+        info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
 
 
 class ChangeIpCmd(Command):
@@ -4208,6 +4256,14 @@ class KairosdbCmd(Command):
         if not os.path.exists(exe):
             raise CtlError('cannot find the variable[%s] in %s. Have you installed kairosdb?' %
                            (InstallKairosdbCmd.KAIROSDB_EXEC, SetEnvironmentVariableCmd.PATH))
+
+        exe_path = os.path.dirname(exe)
+        kairosdb_env = os.path.join(exe_path, 'kairosdb-env.sh')
+        if not os.path.exists(kairosdb_env):
+            with open(kairosdb_env, 'w') as fd:
+                fd.write('''JAVA_OPTS="$JAVA_OPTS -Xmx1G"  # Max heap size
+JAVA_OPTS="$JAVA_OPTS -Xms512M"  # Min heap size
+''')
 
         shell('bash %s start' % exe)
         info('successfully starts kairosdb')
@@ -4495,7 +4551,7 @@ class InstallManagementNodeCmd(Command):
             raise CtlError('%s is not an directory' % args.source_dir)
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.zstack_repo')
+            args.yum = get_yum_repo_from_property()
 
         apache_tomcat = None
         zstack = None
@@ -4540,17 +4596,21 @@ class InstallManagementNodeCmd(Command):
 
     - name: install dependencies on RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
 
     - name: install dependencies on RedHat OS from system repos
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y java-1.7.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
+      shell: yum clean metadata; yum --nogpgcheck install -y java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools
 
+    - name: set java 8 as default runtime
+      when: ansible_os_family == 'RedHat'
+      shell: update-alternatives --install /usr/bin/java java /usr/lib/jvm/jre-1.8.0/bin/java 0; update-alternatives --set java /usr/lib/jvm/jre-1.8.0/bin/java
+      
     - name: install openjdk on Ubuntu 14.04
       when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
       apt: pkg={{item}} update_cache=yes
       with_items:
-        - openjdk-7-jdk
+        - openjdk-8-jdk
 
     - name: install openjdk on Ubuntu 16.04
       when: ansible_os_family == 'Debian' and ansible_distribution_version == '16.04'
@@ -4558,6 +4618,10 @@ class InstallManagementNodeCmd(Command):
       with_items:
         - openjdk-8-jdk
 
+    - name: set java 8 as default runtime
+      when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
+      shell: update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0; update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0; update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java; update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac
+      
     - name: install dependencies Debian OS
       when: ansible_os_family == 'Debian'
       apt: pkg={{item}} update_cache=yes
@@ -4609,7 +4673,7 @@ class InstallManagementNodeCmd(Command):
       shell: "cd /tmp/; tar jxf $pypi_tar_path_dest"
 
     - name: install pip from local source
-      shell: "cd $pypi_path/simple/pip/; pip install --ignore-installed pip*.tar.gz"
+      shell: "easy_install -i file://$pypi_path/simple --upgrade pip"
 
     - name: install ansible from local source
       pip: name="ansible" extra_args="-i file://$pypi_path/simple --ignore-installed --trusted-host localhost"
@@ -4912,7 +4976,7 @@ class InstallWebUiCmd(Command):
             return
 
         if not args.yum:
-            args.yum = ctl.read_property('Ansible.var.zstack_repo')
+            args.yum = get_yum_repo_from_property()
 
         tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
         if not os.path.isdir(tools_path):
@@ -5640,14 +5704,18 @@ class UiStatusCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    info('%s: [PID:%s]' % (colored('Running', 'green'), pid))
+                    default_ip = get_default_ip()
+                    if not default_ip:
+                        info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
+                    else:
+                        info('UI status: %s [PID:%s] http://%s:5000' % (colored('Running', 'green'), pid, default_ip))
                     return
 
         pid = find_process_by_cmdline('zstack_dashboard')
         if pid:
-            info('%s: [PID: %s]' % (colored('Zombie', 'yellow'), pid))
+            info('UI status: %s [PID: %s]' % (colored('Zombie', 'yellow'), pid))
         else:
-            info('%s: [PID: %s]' % (colored('Stopped', 'red'), pid))
+            info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
 class InstallLicenseCmd(Command):
     def __init__(self):
@@ -5710,7 +5778,12 @@ class StartUiCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    info('UI server is still running[PID:%s]' % pid)
+                    default_ip = get_default_ip()
+                    if not default_ip:
+                        info('UI server is still running[PID:%s]' % pid)
+                    else:
+                        info('UI server is still running[PID:%s], http://%s:5000' % (pid, default_ip))
+
                     return False
 
         pid = find_process_by_cmdline('zstack_dashboard')
@@ -5775,7 +5848,12 @@ class StartUiCmd(Command):
         if not pid:
             info('fail to start UI server on the local host. Use zstack-ctl start_ui to restart it. zstack UI log could be found in /var/log/zstack/zstack-dashboard.log')
             return False
-        info('successfully started UI server on the local host, PID[%s]' % pid)
+
+        default_ip = get_default_ip()
+        if not default_ip:
+            info('successfully started UI server on the local host, PID[%s]' % pid)
+        else:
+            info('successfully started UI server on the local host, PID[%s], http://%s:5000' % (pid, default_ip))
 
 def main():
     BootstrapCmd()
@@ -5801,6 +5879,7 @@ def main():
     SetEnvironmentVariableCmd()
     RollbackManagementNodeCmd()
     RollbackDatabaseCmd()
+    ResetRabbitCmd()
     RestoreConfigCmd()
     RestartNodeCmd()
     RestoreCassandraCmd()

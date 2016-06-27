@@ -41,11 +41,15 @@ class ConnectRsp(kvmagent.AgentResponse):
 class ResetGatewayRsp(kvmagent.AgentResponse):
     pass
 
+class DeleteNamespaceRsp(kvmagent.AgentResponse):
+    pass
+
 class DhcpEnv(object):
     def __init__(self):
         self.bridge_name = None
         self.dhcp_server_ip = None
         self.dhcp_netmask = None
+        self.namespace_name = None
 
     # def _cleanup_old_ebtable_rules(self):
     #     scmd = shell.ShellCmd('ebtables -L| grep ":ZSTACK*"')
@@ -72,14 +76,32 @@ class DhcpEnv(object):
     #         shell.call('ebtables %s' % rule.replace('-A', '-D'))
     #         logger.debug('deleted a stable rule[%s]' % rule)
 
+    @lock.lock('prepare_dhcp_namespace')
     def prepare(self):
+        namespace_id = None
+
+        out = shell.call("ip netns list-id | grep -w %s | awk '{print $2}'" % self.namespace_name)
+        out = out.strip(' \t\n\r')
+        if not out:
+            ret = shell.call("ip netns list-id | tail -n 1 | awk '{print $2}'")
+            ret = ret.strip(' \t\n\r')
+            if not ret:
+                namespace_id = 0
+            else:
+                namespace_id = int(ret) + 1
+        else:
+            namespace_id = int(out)
+
+        logger.debug('use id[%s] for the namespace[%s]' % (namespace_id, self.namespace_name))
+
         cmd = '''\
 BR_NAME="{{bridge_name}}"
 DHCP_IP="{{dhcp_server_ip}}"
 DHCP_NETMASK="{{dhcp_netmask}}"
 BR_PHY_DEV="{{br_dev}}"
+NS_NAME="{{namespace_name}}"
+BR_NUM="{{namespace_id}}"
 
-BR_NUM=`ip link show $BR_NAME | grep $BR_NAME | cut -d":" -f1`
 OUTER_DEV="outer$BR_NUM"
 INNER_DEV="inner$BR_NUM"
 
@@ -87,15 +109,17 @@ exit_on_error() {
     [ $? -ne 0 ] && exit 1
 }
 
-ip netns exec $BR_NAME ip link show
+ip netns exec $NS_NAME ip link show
 if [ $? -ne 0 ]; then
-    ip netns add $BR_NAME
+    ip netns add $NS_NAME
+    exit_on_error
+    ip netns set $NS_NAME $BR_NUM
     exit_on_error
 fi
 
 # in case the namespace deleted and the orphan outer link leaves in the system,
 # deleting the orphan link and recreate it
-ip netns exec $BR_NAME ip link | grep -w $INNER_DEV > /dev/null
+ip netns exec $NS_NAME ip link | grep -w $INNER_DEV > /dev/null
 if [ $? -ne 0 ]; then
    ip link del $OUTER_DEV &> /dev/null
 fi
@@ -115,21 +139,21 @@ if [ $? -ne 0 ]; then
     exit_on_error
 fi
 
-ip netns exec $BR_NAME ip link | grep -w $INNER_DEV > /dev/null
+ip netns exec $NS_NAME ip link | grep -w $INNER_DEV > /dev/null
 if [ $? -ne 0 ]; then
-    ip link set $INNER_DEV netns $BR_NAME
+    ip link set $INNER_DEV netns $NS_NAME
     exit_on_error
 fi
 
-ip netns exec $BR_NAME ip addr show $INNER_DEV | grep -w $DHCP_IP > /dev/null
+ip netns exec $NS_NAME ip addr show $INNER_DEV | grep -w $DHCP_IP > /dev/null
 if [ $? -ne 0 ]; then
-    ip netns exec $BR_NAME ip addr flush dev $INNER_DEV
+    ip netns exec $NS_NAME ip addr flush dev $INNER_DEV
     exit_on_error
-    ip netns exec $BR_NAME ip addr add $DHCP_IP/$DHCP_NETMASK dev $INNER_DEV
+    ip netns exec $NS_NAME ip addr add $DHCP_IP/$DHCP_NETMASK dev $INNER_DEV
     exit_on_error
 fi
 
-ip netns exec $BR_NAME ip link set $INNER_DEV up
+ip netns exec $NS_NAME ip link set $INNER_DEV up
 exit_on_error
 
 CHAIN_NAME="ZSTACK-$DHCP_IP"
@@ -172,7 +196,9 @@ exit 0
             'bridge_name': self.bridge_name,
             'dhcp_server_ip': self.dhcp_server_ip,
             'dhcp_netmask': self.dhcp_netmask,
-            'br_dev': self.bridge_name.lstrip('br_')
+            'br_dev': self.bridge_name.lstrip('br_'),
+            'namespace_name': self.namespace_name,
+            'namespace_id': namespace_id
         })
 
         shell.call(cmd)
@@ -186,6 +212,7 @@ class Mevoco(kvmagent.KvmAgent):
     APPLY_USER_DATA = "/flatnetworkprovider/userdata/apply"
     RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
     BATCH_APPLY_USER_DATA = "/flatnetworkprovider/userdata/batchapply"
+    DHCP_DELETE_NAMESPACE_PATH = "/flatnetworkprovider/dhcp/deletenamespace"
 
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
 
@@ -205,27 +232,42 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.APPLY_USER_DATA, self.apply_userdata)
         http_server.register_async_uri(self.RELEASE_USER_DATA, self.release_userdata)
         http_server.register_async_uri(self.RESET_DEFAULT_GATEWAY_PATH, self.reset_default_gateway)
+        http_server.register_async_uri(self.DHCP_DELETE_NAMESPACE_PATH, self.delete_dhcp_namespace)
 
     def stop(self):
         pass
 
     @kvmagent.replyerror
-    def connect(self):
-        shell.call('etables -F')
+    def delete_dhcp_namespace(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        shell.call("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % cmd.namespaceName)
+        shell.call("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (cmd.namespaceName, cmd.namespaceName))
+        return jsonobject.dumps(DeleteNamespaceRsp())
+
+    @kvmagent.replyerror
+    def connect(self, req):
+        shell.call('ebtables -F')
+        shell.call('ebtables -t nat -F')
         return jsonobject.dumps(ConnectRsp())
 
+    @kvmagent.replyerror
     def batch_apply_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        if cmd.rebuild:
+            # kill all lighttped processes which will be restarted later
+            shell.call('pkill -9 lighttpd || true')
+
         for u in cmd.userdata:
             self._apply_userdata(u)
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @kvmagent.replyerror
     def apply_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self._apply_userdata(cmd.userdata)
         return jsonobject.dumps(ApplyUserdataRsp())
 
-    @kvmagent.replyerror
     @lock.lock('iptables')
     def _apply_userdata(self, to):
         set_vip_cmd = '''
@@ -260,7 +302,7 @@ exit 0
 '''
         tmpt = Template(set_vip_cmd)
         set_vip_cmd = tmpt.render({
-            'ns_name': to.bridgeName,
+            'ns_name': to.namespaceName,
             'dhcp_ip': to.dhcpServerIp,
         })
         shell.call(set_vip_cmd)
@@ -304,7 +346,7 @@ exit 0
         tmpt = Template(set_ebtables)
         set_ebtables = tmpt.render({
             'br_name': to.bridgeName,
-            'ns_name': to.bridgeName,
+            'ns_name': to.namespaceName,
         })
         shell.call(set_ebtables)
 
@@ -348,7 +390,7 @@ exit 0
         })
         shell.call(dnat_port_cmd)
 
-        conf_folder = os.path.join(self.USERDATA_ROOT, to.bridgeName)
+        conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         if not os.path.exists(conf_folder):
             shell.call('mkdir -p %s' % conf_folder)
 
@@ -419,7 +461,7 @@ mimetype.assign = (
 
         pid = linux.find_process_by_cmdline([conf_path])
         if not pid:
-            shell.call('ip netns exec %s lighttpd -f %s' % (to.bridgeName, conf_path))
+            shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
 
             def check(_):
                 pid = linux.find_process_by_cmdline([conf_path])
@@ -431,12 +473,12 @@ mimetype.assign = (
     @kvmagent.replyerror
     def release_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        html_folder = os.path.join(self.USERDATA_ROOT, cmd.bridgeName, 'html', cmd.vmIp)
+        html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName, 'html', cmd.vmIp)
         shell.call('rm -rf %s' % html_folder)
         return jsonobject.dumps(ReleaseUserdataRsp())
 
-    def _make_conf_path(self, bridge_name):
-        folder = os.path.join(self.DNSMASQ_CONF_FOLDER, bridge_name)
+    def _make_conf_path(self, namespace_name):
+        folder = os.path.join(self.DNSMASQ_CONF_FOLDER, namespace_name)
         if not os.path.exists(folder):
             shell.call('mkdir -p %s' % folder)
 
@@ -469,6 +511,7 @@ mimetype.assign = (
         p.bridge_name = cmd.bridgeName
         p.dhcp_server_ip = cmd.dhcpServerIp
         p.dhcp_netmask = cmd.dhcpNetmask
+        p.namespace_name = cmd.namespaceName
         p.prepare()
 
         return jsonobject.dumps(PrepareDhcpRsp())
@@ -478,23 +521,23 @@ mimetype.assign = (
     def reset_default_gateway(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        if cmd.bridgeNameOfGatewayToRemove and cmd.macOfGatewayToRemove and cmd.gatewayToRemove:
-            conf_file_path, _, _, option_path, _ = self._make_conf_path(cmd.bridgeNameOfGatewayToRemove)
+        if cmd.namespaceNameOfGatewayToRemove and cmd.macOfGatewayToRemove and cmd.gatewayToRemove:
+            conf_file_path, _, _, option_path, _ = self._make_conf_path(cmd.namespaceNameOfGatewayToRemove)
             mac_to_remove = cmd.macOfGatewayToRemove.replace(':', '')
 
             def is_line_to_delete(line):
                 return cmd.gatewayToRemove in line and mac_to_remove in line and 'router' in line
 
             linux.delete_lines_from_file(option_path, is_line_to_delete)
-            self._refresh_dnsmasq(cmd.bridgeNameOfGatewayToRemove, conf_file_path)
+            self._refresh_dnsmasq(cmd.namespaceNameOfGatewayToRemove, conf_file_path)
 
-        if cmd.bridgeNameOfGatewayToAdd and cmd.macOfGatewayToAdd and cmd.gatewayToAdd:
-            conf_file_path, _, _, option_path, _ = self._make_conf_path(cmd.bridgeNameOfGatewayToAdd)
+        if cmd.namespaceNameOfGatewayToAdd and cmd.macOfGatewayToAdd and cmd.gatewayToAdd:
+            conf_file_path, _, _, option_path, _ = self._make_conf_path(cmd.namespaceNameOfGatewayToAdd)
             option = 'tag:%s,option:router,%s\n' % (cmd.macOfGatewayToAdd.replace(':', ''), cmd.gatewayToAdd)
             with open(option_path, 'a+') as fd:
                 fd.write(option)
 
-            self._refresh_dnsmasq(cmd.bridgeNameOfGatewayToAdd, conf_file_path)
+            self._refresh_dnsmasq(cmd.namespaceNameOfGatewayToAdd, conf_file_path)
 
         return jsonobject.dumps(ResetGatewayRsp())
 
@@ -503,16 +546,18 @@ mimetype.assign = (
     def apply_dhcp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        bridge_dhcp = {}
+        namespace_dhcp = {}
         for d in cmd.dhcp:
-            lst = bridge_dhcp.get(d.bridgeName)
+            lst = namespace_dhcp.get(d.namespaceName)
             if not lst:
                 lst = []
-                bridge_dhcp[d.bridgeName] = lst
+                namespace_dhcp[d.namespaceName] = lst
             lst.append(d)
 
-        def apply(bridge_name, dhcp):
-            conf_file_path, dhcp_path, dns_path, option_path, log_path = self._make_conf_path(bridge_name)
+        def apply(dhcp):
+            bridge_name = dhcp[0].bridgeName
+            namespace_name = dhcp[0].namespaceName
+            conf_file_path, dhcp_path, dns_path, option_path, log_path = self._make_conf_path(namespace_name)
 
             conf_file = '''\
 domain-needed
@@ -533,8 +578,11 @@ dhcp-range={{g}},static
 {% endfor -%}
 '''
 
-            br_num = shell.call('ip link show %s | grep -w %s | cut -d":" -f1' % (bridge_name, bridge_name))
-            br_num = br_num.strip('\t\n\r ')
+            br_num = shell.call("ip netns list-id | grep -w %s | awk '{print $2}'" % namespace_name)
+            br_num = br_num.strip(' \t\r\n')
+            if not br_num:
+                raise Exception('cannot find the ID for the namespace[%s]' % namespace_name)
+
             tmpt = Template(conf_file)
             conf_file = tmpt.render({
                 'dns': dns_path,
@@ -629,12 +677,12 @@ tag:{{o.tag}},option:netmask,{{o.netmask}}
                 fd.write(hostname_conf)
 
             if restart_dnsmasq:
-                self._restart_dnsmasq(bridge_name, conf_file_path)
+                self._restart_dnsmasq(namespace_name, conf_file_path)
             else:
-                self._refresh_dnsmasq(bridge_name, conf_file_path)
+                self._refresh_dnsmasq(namespace_name, conf_file_path)
 
-        for k, v in bridge_dhcp.iteritems():
-            apply(k, v)
+        for k, v in namespace_dhcp.iteritems():
+            apply(v)
 
         rsp = ApplyDhcpRsp()
         return jsonobject.dumps(rsp)
@@ -700,24 +748,23 @@ sed -i '/^$/d' {{dns}}
     def release_dhcp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        bridge_dhcp = {}
+        namespace_dhcp = {}
         for d in cmd.dhcp:
-            lst = bridge_dhcp.get(d.bridgeName)
+            lst = namespace_dhcp.get(d.namespaceName)
             if not lst:
                 lst = []
-                bridge_dhcp[d.bridgeName] = lst
+                namespace_dhcp[d.namespaceName] = lst
             lst.append(d)
 
-        def release(bridge_name, dhcp):
-            conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(bridge_name)
-
+        def release(dhcp):
             for d in dhcp:
+                conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(d.namespaceName)
                 self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
                 #shell.call("(which dhcp_release &>/dev/null && dhcp_release %s %s %s) || true" % (bridge_name, d.ip, d.mac))
-                self._restart_dnsmasq(bridge_name, conf_file_path)
+                self._restart_dnsmasq(d.namespaceName, conf_file_path)
 
-        for k, v in bridge_dhcp.iteritems():
-            release(k, v)
+        for k, v in namespace_dhcp.iteritems():
+            release(v)
 
         rsp = ReleaseDhcpRsp()
         return jsonobject.dumps(rsp)

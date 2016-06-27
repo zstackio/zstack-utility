@@ -73,6 +73,8 @@ else:
     init_install = True
     # name: create root directories
     command = 'mkdir -p %s %s' % (kvm_root, virtenv_path)
+    host_post_info.post_label = "ansible.shell.mkdir"
+    host_post_info.post_label_param = "%s, %s" % (kvm_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
@@ -83,12 +85,18 @@ if distro == "RedHat" or distro == "CentOS":
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
                    "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                    "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+        host_post_info.post_label = "ansible.shell.install.pkg"
+        host_post_info.post_label_param = "openssh-clients,qemu-kvm-ev-2.3.0,bridge-utils,wget,qemu-img-ev-2.3.0," \
+                                          "libvirt-python,libvirt,nfs-utils,vconfig,libvirt-client,net-tools," \
+                                          "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils,rsync,nmap"
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
             command = ("pkg_list=`rpm -q iptables-services | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
                        "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
                        "--nogpgcheck install -y $pkg; done;") % zstack_repo
+            host_post_info.post_label = "ansible.shell.install.pkg"
+            host_post_info.post_label_param = "iptables-services"
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
@@ -114,6 +122,8 @@ if distro == "RedHat" or distro == "CentOS":
         copy(copy_arg, host_post_info)
         # name: Update iproute for RHEL6
         command = "rpm -q iproute-2.6.32-130.el6ost.netns.2.x86_64 || yum install --nogpgcheck -y %s" % iproute_local_pkg
+        host_post_info.post_label = "ansible.shell.install.pkg"
+        host_post_info.post_label_param = "iproute-2.6.32-130.el6ost.netns.2.x86_64"
         run_remote_command(command, host_post_info)
         # name: disable NetworkManager in RHEL6 and Centos6
         network_manager_installed = yum_check_package("NetworkManager", host_post_info)
@@ -123,6 +133,8 @@ if distro == "RedHat" or distro == "CentOS":
     else:
         # name: disable firewalld in RHEL7 and Centos7
         command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
+        host_post_info.post_label = "ansible.shell.disable.service"
+        host_post_info.post_label_param = "firewalld"
         run_remote_command(command, host_post_info)
         # name: disable NetworkManager in RHEL7 and Centos7
         service_status("NetworkManager", "state=stopped enabled=no", host_post_info, ignore_error=True)
@@ -151,6 +163,8 @@ if distro == "RedHat" or distro == "CentOS":
     copy(copy_arg, host_post_info)
     # name: Update dnsmasq for RHEL6 and RHEL7
     command = "rpm -q dnsmasq-2.68-1 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
+    host_post_info.post_label = "ansible.shell.install.pkg"
+    host_post_info.post_label_param = "dnsmasq-2.68-1"
     run_remote_command(command, host_post_info)
     # name: disable selinux on RedHat based OS
     set_selinux("state=permissive policy=targeted", host_post_info)
@@ -173,6 +187,8 @@ elif distro == "Debian" or distro == "Ubuntu":
     # name: enable bridge forward on UBUNTU
     command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
               "echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+    host_post_info.post_label = "ansible.shell.enable.module"
+    host_post_info.post_label_param = "br_netfilter"
     run_remote_command(command, host_post_info)
 
     if libvirt_bin_status != "changed:False":
@@ -185,6 +201,8 @@ else:
 # name: remove libvirt default bridge
 command = '(ifconfig virbr0 &> /dev/null && virsh net-destroy default > ' \
           '/dev/null && virsh net-undefine default > /dev/null) || true'
+host_post_info.post_label = "ansible.shell.virsh.destroy.bridge"
+host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
 
 # name: copy libvirtd conf
@@ -201,10 +219,14 @@ qemu_conf_status = copy(copy_arg, host_post_info)
 
 # name: delete A2 qemu hook
 command = "rm -f /etc/libvirt/hooks/qemu"
+host_post_info.post_label = "ansible.shell.remove.file"
+host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
 run_remote_command(command, host_post_info)
 
 # name: enable bridge forward
 command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+host_post_info.post_label = "ansible.shell.enable.service"
+host_post_info.post_label_param = "bridge forward"
 run_remote_command(command, host_post_info)
 
 
@@ -232,10 +254,14 @@ copy(copy_arg, host_post_info)
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
 if virtual_env_status is False:
     command = "rm -rf %s && rm -rf %s" % (virtenv_path, kvm_root)
+    host_post_info.post_label = "ansible.shell.remove.file"
+    host_post_info.post_label_param = "%s, %s" % (virtenv_path, kvm_root)
     run_remote_command(command, host_post_info)
     sys.exit(1)
 # name: make sure virtualenv has been setup
 command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
+host_post_info.post_label = "ansible.shell.check.virtualenv"
+host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
 
 # name: install zstacklib
@@ -270,6 +296,8 @@ if chroot_env == 'false':
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
     command = "service zstack-kvmagent restart"
+    host_post_info.post_label = "ansible.shell.restart.service"
+    host_post_info.post_label_param = "zstack-kvmagent"
     run_remote_command(command, host_post_info)
 
 
