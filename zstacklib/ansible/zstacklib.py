@@ -201,6 +201,14 @@ def post_msg(msg, post_url):
         data = json.dumps({"label": msg.label, "level": msg.level, "parameters": msg.parameters})
     else:
         data = json.dumps({"label": msg.label ,"level": msg.level})
+    # This output will capture by management log for debug
+    if msg.level == "ERROR":
+        error(msg.details)
+    elif msg.level == "WARNING":
+        logger.warn(msg.details)
+    else:
+        logger.info(msg.details)
+
     if post_url == "":
         logger.info("Warning: no post_url defined by user")
         return 0
@@ -215,14 +223,6 @@ def post_msg(msg, post_url):
             logger.warn("Post msg failed! Please check the post_url: %s and check the server status" % post_url)
     else:
         logger.warn("No label defined for message")
-    # This output will capture by management log for debug
-    if msg.level == "ERROR":
-        error(msg.details)
-    elif msg.level == "WARNING":
-        logger.warn(msg.details)
-    else:
-        logger.info(msg.details)
-
 
 def handle_ansible_start(ansible_start):
     msg = Msg()
