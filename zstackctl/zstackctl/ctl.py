@@ -4257,6 +4257,14 @@ class KairosdbCmd(Command):
             raise CtlError('cannot find the variable[%s] in %s. Have you installed kairosdb?' %
                            (InstallKairosdbCmd.KAIROSDB_EXEC, SetEnvironmentVariableCmd.PATH))
 
+        exe_path = os.path.dirname(exe)
+        kairosdb_env = os.path.join(exe_path, 'kairosdb-env.sh')
+        if not os.path.exists(kairosdb_env):
+            with open(kairosdb_env, 'w') as fd:
+                fd.write('''JAVA_OPTS="$JAVA_OPTS -Xmx1G"  # Max heap size
+JAVA_OPTS="$JAVA_OPTS -Xms512M"  # Min heap size
+''')
+
         shell('bash %s start' % exe)
         info('successfully starts kairosdb')
 
