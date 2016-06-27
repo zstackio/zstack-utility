@@ -48,20 +48,37 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-command = 'mkdir -p %s' % (imagestore_root)
+command = 'mkdir -p %s' % (imagestore_root + "/certs")
 run_remote_command(command, host_post_info)
+
+# name: copy necessary certificates
+copy_arg = CopyArg()
+dest_pkg = "%s/%s" % (imagestore_root, pkg_imagestorebackupstorage)
+copy_arg.src = "%s/%s" % (file_root, pkg_imagestorebackupstorage)
+copy_arg.dest = dest_pkg
+copy(copy_arg, host_post_info)
+
+local_cert_dir = "/usr/local/zstack/imagestore/bin/certs"
+
 # name: copy imagestore binary
 copy_arg = CopyArg()
-copy_arg.src = "%s/%s" % (file_root, pkg_imagestorebackupstorage)
-copy_arg.dest = "%s/%s" % (imagestore_root, pkg_sftpbackupstorage)
-imagestore_copy_result = copy(copy_arg, host_post_info)
+copy_arg.src = "%s/%s" % (local_cert_dir, "ca.pem")
+copy_arg.dest = "%s/%s/%s" % (imagestore_root, "certs", "ca.pem")
+copy_arg.args = "mode=644"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "%s/%s" % (local_cert_dir, "privkey.pem")
+copy_arg.dest = "%s/%s/%s" % (imagestore_root, "certs", "privkey.pem")
+copy_arg.args = "mode=400"
+copy(copy_arg, host_post_info)
 
 # name: install zstack-store
-command = "bash %s %s " % (pkg_imagestorebackupstorage, fs_rootpath)
+command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(command, host_post_info)
 
-# name: restart sftp
-command = "/usr/local/zstack/imagestore/bin/zstackstore restart"
+# name: restart image store server
+command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage restart"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
