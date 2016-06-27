@@ -838,7 +838,7 @@ is_install_general_libs_rh(){
         fail "install system libraries failed."
     fi
 
-    rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1
+    rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1 || java -version 2>&1 |grep 1.8 >/dev/null
     if [ $? -ne 0 ]; then
         fail "java-1.8.0-openjdk is not installed. Did you forget updating management node local repos to latest CentOS ZStack Community ISO? Please use following steps to update local repos:
         1. cd /opt
