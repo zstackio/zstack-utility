@@ -201,6 +201,20 @@ def post_msg(msg, post_url):
         data = json.dumps({"label": msg.label, "level": msg.level, "parameters": msg.parameters})
     else:
         data = json.dumps({"label": msg.label ,"level": msg.level})
+    if post_url != "":
+        if msg.label is not None:
+            try:
+                headers = {"content-type": "application/json"}
+                req = urllib2.Request(post_url, data, headers)
+                response = urllib2.urlopen(req)
+                response.close()
+            except URLError, e:
+                logger.debug(e.reason)
+                logger.warn("Post msg failed! Please check the post_url: %s and check the server status" % post_url)
+        else:
+            logger.warn("No label defined for message")
+    else:
+        logger.info("Warning: no post_url defined by user")
     # This output will capture by management log for debug
     if msg.level == "ERROR":
         error(msg.details)
@@ -209,20 +223,6 @@ def post_msg(msg, post_url):
     else:
         logger.info(msg.details)
 
-    if post_url == "":
-        logger.info("Warning: no post_url defined by user")
-        return 0
-    if msg.label is not None:
-        try:
-            headers = {"content-type": "application/json"}
-            req = urllib2.Request(post_url, data, headers)
-            response = urllib2.urlopen(req)
-            response.close()
-        except URLError, e:
-            logger.debug(e.reason)
-            logger.warn("Post msg failed! Please check the post_url: %s and check the server status" % post_url)
-    else:
-        logger.warn("No label defined for message")
 
 def handle_ansible_start(ansible_start):
     msg = Msg()
