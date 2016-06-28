@@ -36,7 +36,7 @@ def bash_roe(cmd, errorout=False, ret_code = 0):
             'stderr': e
         })
 
-    if r != ret_code:
+    if r != ret_code and errorout:
         raise Exception('failed to execute bash[%s], return code: %s, stdout: %s, stderr: %s' % (cmd, r, o, e))
 
     return r, o, e
