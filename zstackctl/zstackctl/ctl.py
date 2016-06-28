@@ -3654,8 +3654,8 @@ class RestoreCassandraCmd(Command):
             info("Restore %s.%s" % (keyspace, table))
             shell('cd %s; %s %s %s -e "%s"' % (tempfolder, cqlsh, cip, cport, cmd))
 
-        print "Restore cassandra keyspace %s successful from %s! 
-Depends on archived data, only apart of Cassandra data will be restored.
+        print "Restore cassandra keyspace %s successful from %s! \
+Depends on archived data, only apart of Cassandra data will be restored. \
 You can recover management node by: zstack-ctl start" % (keyspace, args.file)
         shell('rm -rf %s' % tempfolder)
 
