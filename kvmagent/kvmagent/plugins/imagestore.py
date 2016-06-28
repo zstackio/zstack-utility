@@ -19,7 +19,8 @@ class AgentResponse(object):
 class ImageStorePlugin(kvmagent.KvmAgent):
 
     ZSTORE_PROTOSTR = "zstore://"
-    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/zstcli"
+    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli -rootca /usr/local/zstack/imagestore/bin/certs/ca.pem"
+    ZSTORE_DEF_PORT = 8000
 
     UPLOAD_BIT_PATH = "/imagestore/upload"
     DOWNLOAD_BIT_PATH = "/imagestore/download"
@@ -56,12 +57,12 @@ class ImageStorePlugin(kvmagent.KvmAgent):
             raise kvmagent.KvmError('unexpected primary storage install path %s' % primaryStorageInstallPath)
 
     def _parse_image_reference(self, backupStorageInstallPath):
-        if not primaryStorageInstallPath.startswith(self.ZSTORE_PROTOSTR):
-            raise kvmagent.KvmError('unexpected primary storage install path %s' % primaryStorageInstallPath)
+        if not backupStorageInstallPath.startswith(self.ZSTORE_PROTOSTR):
+            raise kvmagent.KvmError('unexpected backup storage install path %s' % backupStorageInstallPath)
 
-        xs = primaryStorageInstallPath[len(self.ZSTORE_PROTOSTR):].split('/')
+        xs = backupStorageInstallPath[len(self.ZSTORE_PROTOSTR):].split('/')
         if len(xs) != 2:
-            raise kvmagent.KvmError('unexpected primary storage install path %s' % primaryStorageInstallPath)
+            raise kvmagent.KvmError('unexpected backup storage install path %s' % backupStorageInstallPath)
 
         return xs[0], xs[1]
 
@@ -77,8 +78,9 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
+        host = cmd.hostname
         name, imgid = self._get_image_reference(cmd.primaryStorageInstallPath)
-        cmdstr = '%s push %s' % (self.ZSTORE_CLI_PATH, name)
+        cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name)
         logger.debug('pushing %s:%s to image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pushed to image store' % (name, imageid))
@@ -105,8 +107,10 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
+        host = cmd.hostname
         name, imgid = self._parse_image_reference(cmd.backupStorageInstallPath)
-        cmdstr = '%s pull %s:%s' % (self.ZSTORE_CLI_PATH, name, imageid)
+
+        cmdstr = '%s -url %s:%s pull %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
