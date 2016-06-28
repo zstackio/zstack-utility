@@ -3654,7 +3654,9 @@ class RestoreCassandraCmd(Command):
             info("Restore %s.%s" % (keyspace, table))
             shell('cd %s; %s %s %s -e "%s"' % (tempfolder, cqlsh, cip, cport, cmd))
 
-        print "Restore cassandra keyspace %s successful from %s!" % (keyspace, args.file)
+        print "Restore cassandra keyspace %s successful from %s! 
+Depends on archived data, only apart of Cassandra data will be restored.
+You can recover management node by: zstack-ctl start" % (keyspace, args.file)
         shell('rm -rf %s' % tempfolder)
 
 class DumpCassandraCmd(Command):
@@ -3860,8 +3862,8 @@ class RestoreMysqlCmd(Command):
                 command = "gunzip < %s | mysql -uroot %s --host %s -P %s %s" \
                       % (db_backup_name, db_connect_password, db_hostname, db_port, database)
                 shell_no_pipe(command)
-        shell_no_pipe('zstack-ctl start_node')
-        info("Recover data successfully!")
+        #shell_no_pipe('zstack-ctl start_node')
+        info("Recover data successfully! You can start node by: zstack-ctl start")
 
 
 class CollectLogCmd(Command):
