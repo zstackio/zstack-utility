@@ -224,6 +224,16 @@ class Mevoco(kvmagent.KvmAgent):
         if ret != 0:
             bash_errorout('ebtables -t nat -N {{CHAIN_NAME}}')
 
+        # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
+        RULE = "-p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % MAC.replace(":0", ":")
+        ret = bash_r('ebtables -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
+        if ret != 0:
+            bash_errorout('ebtables -t nat -I {{CHAIN_NAME}} {{RULE}}')
+
+        ret = bash_r('ebtables -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        if ret != 0:
+            bash_errorout('ebtables -N {{CHAIN_NAME}}')
+
         ret = bash_r('ebtables -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}" > /dev/null')
         if ret != 0:
             bash_errorout('ebtables -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}')
@@ -236,11 +246,6 @@ class Mevoco(kvmagent.KvmAgent):
         if ret != 0:
             bash_errorout('ebtables -I {{CHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
 
-        # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
-        RULE = "-p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % MAC.replace(":0", ":")
-        ret = bash_r('ebtables -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
-        if ret != 0:
-            bash_errorout('ebtables -t nat -I {{CHAIN_NAME}} {{RULE}}')
 
         # DNAT port 80
         PORT = to.port
