@@ -7,6 +7,7 @@ from zstacklib.utils import daemon
 from zstacklib.utils import linux
 from zstacklib.utils import filedb
 from zstacklib.utils import lock
+from zstacklib.utils.bash import *
 import os.path
 import atexit
 import time
@@ -205,7 +206,9 @@ class ConsoleProxyAgent(object):
             shell.call("rm -f %s" % token_file)
             logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
 
-        shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null && iptables -D INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (cmd.proxyPort, cmd.proxyPort))
+        ret = bash_r("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null" % cmd.proxyPort)
+        if ret == 0:
+            bash_errorout("iptables -D INPUT -p tcp -m tcp --dport %s -j ACCEPT" % cmd.proxyPort)
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
