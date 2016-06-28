@@ -1,9 +1,11 @@
+import os.path
 import traceback
 
-from os import symlink
+from os import symlink, link, unlink, makedirs
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 
@@ -34,7 +36,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.COMMIT_BIT_PATH, self.commit_to_imagestore)
         http_server.register_async_uri(self.CLIENT_INIT_PATH, self.init_client)
 
-        self.path = None
+        self.path = "/var/lib/zstack/imagestore/localdata"
 
     def stop(self):
         pass
@@ -42,7 +44,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
 
-    def _get_image_json_file(primaryInstallPath):
+    def _get_image_json_file(self, primaryInstallPath):
         idx = primaryInstallPath.rfind('.')
         if idx == -1:
             return primaryInstallPath + ".json"
@@ -79,13 +81,13 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
 
         host = cmd.hostname
-        name, imgid = self._get_image_reference(cmd.primaryStorageInstallPath)
+        name, imageid = self._get_image_reference(cmd.primaryStorageInstallPath)
         cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name)
         logger.debug('pushing %s:%s to image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pushed to image store' % (name, imageid))
 
-        rsp.backupStorageInstallPath = self._build_install_path(name, imgid)
+        rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -108,7 +110,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
 
         host = cmd.hostname
-        name, imgid = self._parse_image_reference(cmd.backupStorageInstallPath)
+        name, imageid = self._parse_image_reference(cmd.backupStorageInstallPath)
 
         cmdstr = '%s -url %s:%s pull %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
@@ -117,8 +119,27 @@ class ImageStorePlugin(kvmagent.KvmAgent):
 
         # get the image JSON path, and generate a symbolic link
         cmdstr = "%s mfpath %s:%s" % (self.ZSTORE_CLI_PATH, name, imageid)
-        mfpath = shell.call(cmdstr)
-        symlink(mfpath, self._get_image_json_file(cmd.primaryStorageInstallPath))
+        mfpath = shell.call(cmdstr).rstrip()
+        dest = self._get_image_json_file(cmd.primaryStorageInstallPath)
+
+        try:
+            makedirs(os.path.dirname(dest))
+        except:
+            pass
+
+        try:
+            unlink(dest)
+        except:
+            pass
+
+        try:
+            unlink(cmd.primaryStorageInstallPath)
+        except:
+            pass
+
+        logger.debug('[imagestore] linking from %s to %s' % (mfpath, dest))
+        symlink(mfpath, dest)
+        link(mfpath.replace(".json", ".qcow2"), cmd.primaryStorageInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
