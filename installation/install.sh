@@ -537,21 +537,22 @@ ia_check_ip_hijack(){
 
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
+    req_pkgs='python python-devel python-setuptools gcc python2-crypto'
     if [ ! -z $ZSTACK_YUM_REPOS ];then
         if [ -z $DEBUG ];then
             yum clean metadata >/dev/null 2>&1
-            yum -y --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+            yum -y --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS install $req_pkgs>>$ZSTACK_INSTALL_LOG 2>&1
         else
             yum clean metadata >/dev/null 2>&1
-            yum -y --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS install python python-devel python-setuptools gcc
+            yum -y --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS install $req_pkgs
         fi
     else
         if [ -z $DEBUG ];then
             yum clean metadata >/dev/null 2>&1
-            yum -y install python python-devel python-setuptools gcc>>$ZSTACK_INSTALL_LOG 2>&1
+            yum -y install $req_pkgs>>$ZSTACK_INSTALL_LOG 2>&1
         else
             yum clean metadata >/dev/null 2>&1
-            yum -y install python python-devel python-setuptools gcc
+            yum -y install $req_pkgs
         fi
     fi
 
