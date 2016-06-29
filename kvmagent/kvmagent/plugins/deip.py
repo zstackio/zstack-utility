@@ -1,18 +1,12 @@
+from jinja2 import Template
+
 from kvmagent import kvmagent
-from kvmagent.plugins import vm_plugin
-from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.utils import jsonobject
+from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import sizeunit
-from zstacklib.utils import linux
-from zstacklib.utils import thread
-from zstacklib.utils import lock
-import os.path
-import re
-import threading
-import time
-from jinja2 import Template
+from zstacklib.utils.bash import *
 
 logger = log.get_logger(__name__)
 
@@ -63,77 +57,52 @@ class DEip(kvmagent.KvmAgent):
         self._delete_eips([cmd.eip])
         return jsonobject.dumps(AgentRsp())
 
+    @in_bash
+    def _delete_eip(self, eip):
+        dev_base_name = eip.nicName.replace('vnic', '', 1)
+        dev_base_name = dev_base_name.replace(".", "_")
+
+        NS_NAME = eip.publicBridgeName, eip.vip.replace(".", "_")
+        PUB_ODEV = "%s_eo" % dev_base_name
+        PRI_ODEV = "%s_o" % dev_base_name
+        NIC_NAME = eip.nicName
+        CHAIN_NAME = '%s-gw' % NIC_NAME
+
+        def delete_namespace():
+            if bash_r('ip netns | grep -w {{NS_NAME}} > /dev/null') == 0:
+                bash_errorout('ip netns delete {{NS_NAME}}')
+
+        def delete_outer_dev():
+            if bash_r('ip link | grep -w {{PUB_ODEV}} > /dev/null') == 0:
+                bash_errorout('ip link del {{PUB_ODEV}}')
+
+        def delete_arp_rules():
+            if bash_r('ebtables -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
+                RULE = bash_eval("-i {{NIC_NAME}} -j {{CHAIN_NAME}}")
+                if bash_r('ebtables -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                    bash_errorout('ebtables -t nat -D PREROUTING {{RULE}}')
+
+                bash_errorout('ebtables -t nat -F {{CHAIN_NAME}}')
+                bash_errorout('ebtables -t nat -X {{CHAIN_NAME}}')
+
+            BLOCK_CHAIN_NAME = bash_eval('{{PRI_ODEV}}-arp')
+
+            if bash_r('ebtables -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
+                RULE = bash_eval('-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}')
+                if bash_r('ebtables -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                    bash_errorout('ebtables -t nat -D POSTROUTING {{RULE}}')
+
+                bash_errorout('ebtables -t nat -F {{BLOCK_CHAIN_NAME}}')
+                bash_errorout('ebtables -t nat -X {{BLOCK_CHAIN_NAME}}')
+
+        delete_namespace()
+        delete_outer_dev()
+        delete_arp_rules()
+
     @lock.lock('eip')
     def _delete_eips(self, eips):
-        delete_eip_cmd = '''
-PUB_ODEV={{pub_odev}}
-NS_NAME="{{ns_name}}"
-NIC_NAME="{{nicName}}"
-PRI_ODEV={{pri_odev}}
-
-exit_on_error() {
-    if [ $? -ne 0 ]; then
-        echo "error on line $1"
-        exit 1
-    fi
-}
-
-delete_namespace() {
-    ip netns | grep -w $NS_NAME > /dev/null && ip netns delete $NS_NAME
-    exit_on_error $LINENO
-}
-
-delete_outer_dev() {
-    ip link | grep -w $PUB_ODEV > /dev/null && ip link del $PUB_ODEV
-    exit_on_error $LINENO
-}
-
-delete_arp_rule() {
-    CHAIN_NAME=$NIC_NAME-gw
-    ebtables -t nat -L $CHAIN_NAME >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        rule="-i $NIC_NAME -j $CHAIN_NAME"
-        ebtables -t nat -L PREROUTING | grep -- "$rule" > /dev/null && ebtables -t nat -D PREROUTING $rule
-        exit_on_error $LINENO
-
-        ebtables -t nat -F $CHAIN_NAME
-        exit_on_error $LINENO
-        ebtables -t nat -X $CHAIN_NAME
-        exit_on_error $LINENO
-    fi
-
-    BLOCK_CHAIN_NAME=$PRI_ODEV-arp
-    ebtables -t nat -L $BLOCK_CHAIN_NAME > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        rule="-p ARP -o $PRI_ODEV -j $BLOCK_CHAIN_NAME"
-        ebtables -t nat -L POSTROUTING | grep -- "$rule" > /dev/null && ebtables -t nat -D POSTROUTING $rule
-
-        ebtables -t nat -F $BLOCK_CHAIN_NAME
-        exit_on_error $LINENO
-        ebtables -t nat -X $BLOCK_CHAIN_NAME
-        exit_on_error $LINENO
-    fi
-}
-
-delete_namespace
-delete_outer_dev
-delete_arp_rule
-
-exit 0
-'''
         for eip in eips:
-            dev_base_name = eip.nicName.lstrip('vnic')
-            dev_base_name = dev_base_name.replace(".", "_")
-
-            ctx = {
-                "pub_odev": "%s_eo" % dev_base_name,
-                "pri_odev": "%s_o" % dev_base_name,
-                "ns_name": "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
-            }
-            ctx.update(eip.__dict__)
-            tmpt = Template(delete_eip_cmd)
-            cmd = tmpt.render(ctx)
-            shell.call(cmd)
+            self._delete_eip(eip)
 
     @lock.lock('eip')
     def _apply_eips(self, eips):

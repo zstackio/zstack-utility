@@ -8,8 +8,8 @@ import time
 
 logger = log.get_logger(__name__)
 
-# @return: return code, stdout, stderr
-def bash_roe(cmd, errorout=False, ret_code = 0):
+
+def __collect_locals_on_stack():
     frames = []
     frame = inspect.currentframe()
     while frame:
@@ -20,10 +20,24 @@ def bash_roe(cmd, errorout=False, ret_code = 0):
     for f in frames:
         ctx.update(f.f_locals)
 
+    return ctx
+
+
+def bash_eval(raw_str):
+    tmpt = Template(raw_str)
+    return tmpt.render(__collect_locals_on_stack())
+
+
+# @return: return code, stdout, stderr
+def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
+    ctx = __collect_locals_on_stack()
+
     tmpt = Template(cmd)
     cmd = tmpt.render(ctx)
 
     p = subprocess.Popen('/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    if pipe_fail:
+        cmd = 'set -o pipefail; %s' % cmd
     o, e = p.communicate(cmd)
     r = p.returncode
 
@@ -42,23 +56,23 @@ def bash_roe(cmd, errorout=False, ret_code = 0):
     return r, o, e
 
 # @return: return code, stdout
-def bash_ro(cmd):
-    ret, o, _ = bash_roe(cmd)
+def bash_ro(cmd, pipe_fail=False):
+    ret, o, _ = bash_roe(cmd, pipe_fail=pipe_fail)
     return ret, o
 
 # @return: stdout
-def bash_o(cmd):
-    _, o, _ = bash_roe(cmd)
+def bash_o(cmd, pipe_fail=False):
+    _, o, _ = bash_roe(cmd, pipe_fail=pipe_fail)
     return o
 
 # @return: return code
-def bash_r(cmd):
-    ret, _, _ = bash_roe(cmd)
+def bash_r(cmd, pipe_fail=False):
+    ret, _, _ = bash_roe(cmd, pipe_fail=pipe_fail)
     return ret
 
 # @return: stdout
-def bash_errorout(cmd, code=0):
-    _, o, _ = bash_roe(cmd, True, code)
+def bash_errorout(cmd, code=0, pipe_fail=False):
+    _, o, _ = bash_roe(cmd, errorout=True, ret_code=code, pipe_fail=pipe_fail)
     return o
 
 def in_bash(func):
