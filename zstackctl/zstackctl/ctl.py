@@ -3251,11 +3251,17 @@ class RabbitmqHA(InstallHACmd):
         if len(self.host_post_info_list) == 3:
             run_remote_command(command, self.host3_post_info)
         # clear erlang process for new deploy
-        command = "echo True || pkill -f .*erlang.*  > /dev/null 2>&1 && rm -rf /var/lib/rabbitmq/* && service rabbitmq-server stop "
+        command = "echo True || pkill -f .*erlang.*  > /dev/null 2>&1 && rm -rf /var/lib/rabbitmq/* "
         run_remote_command(command, self.host1_post_info)
         run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
             run_remote_command(command, self.host3_post_info)
+
+        # to stop rabbitmq-server for new installation
+        service_status("rabbitmq-server","state=stopped", self.host1_post_info, True)
+        service_status("rabbitmq-server", "state=stopped", self.host2_post_info, True)
+        if len(self.host_post_info_list) == 3:
+            service_status("rabbitmq-server", "state=stopped", self.host3_post_info, True)
 
         # to start rabbitmq-server
         service_status("rabbitmq-server","state=started enabled=yes", self.host1_post_info)
