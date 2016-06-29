@@ -713,7 +713,7 @@ cs_pre_check(){
     else
         zstack_properties=$ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES
     fi
-    sed -i 's/Ansible.var.yum_repo/Ansible.var.zstack_repo/' $zstack_properties >>$ZSTACK_INSTALL_LOG 2>&1
+    [ -f $zstack_properties ] && sed -i 's/Ansible.var.yum_repo/Ansible.var.zstack_repo/' $zstack_properties >>$ZSTACK_INSTALL_LOG 2>&1
     pass
 }
 
