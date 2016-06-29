@@ -16,6 +16,7 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 fs_rootpath = ""
 pkg_imagestorebackupstorage = ""
+client = ""
 remote_user = "root"
 remote_pass = None
 remote_port = None
@@ -48,6 +49,9 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
+command = "yum install -y qemu-img"
+run_remote_command(command, host_post_info)
+
 command = 'mkdir -p %s' % (imagestore_root + "/certs")
 run_remote_command(command, host_post_info)
 
@@ -78,8 +82,9 @@ command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(command, host_post_info)
 
 # name: restart image store server
-command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage restart"
-run_remote_command(command, host_post_info)
+if client != "true":
+    command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage restart"
+    run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy imagestore backupstore successful", host_post_info, "INFO")
