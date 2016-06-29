@@ -219,6 +219,7 @@ set_eip_rules() {
     eval $NS iptables-save | grep -w ":$FWD_NAME" > /dev/null || eval $NS iptables -N $FWD_NAME
     exit_on_error $LINENO
 
+    create_ip_table_rule_if_needed "-t filter" "-A FORWARD ! -d $VIP/32 -i $PUB_IDEV -j REJECT --reject-with icmp-port-unreachable"
     create_ip_table_rule_if_needed "-t filter" "-A FORWARD -i $PRI_IDEV -o $PUB_IDEV -j $FWD_NAME"
     create_ip_table_rule_if_needed "-t filter" "-A FORWARD -i $PUB_IDEV -o $PRI_IDEV -j $FWD_NAME"
     create_ip_table_rule_if_needed "-t filter" "-A $FWD_NAME -j ACCEPT"
