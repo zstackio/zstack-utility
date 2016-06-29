@@ -1332,7 +1332,7 @@ class StartCmd(Command):
             catalina_opts = [
                 '-Djava.net.preferIPv4Stack=true',
                 '-Dcom.sun.management.jmxremote=true',
-                '-Djava.security.egd=file:/dev/./urandom'
+                '-Djava.security.egd=file:/dev/./urandom',
             ]
 
             if ctl.extra_arguments:
@@ -1346,6 +1346,17 @@ class StartCmd(Command):
             if co:
                 info('use CATALINA_OPTS[%s] set in environment zstack environment variables; check out them by "zstack-ctl getenv"' % co)
                 catalina_opts.extend(co.split(' '))
+
+            def has_opt(prefix):
+                for opt in catalina_opts:
+                    if opt.startswith(prefix):
+                        return True
+                return False
+
+            if not has_opt('-Xms'):
+                catalina_opts.append('-Xms512M')
+            if not has_opt('-Xmx'):
+                catalina_opts.append('-Xmx4096M')
 
             with open(setenv_path, 'w') as fd:
                 fd.write('export CATALINA_OPTS=" %s"' % ' '.join(catalina_opts))
