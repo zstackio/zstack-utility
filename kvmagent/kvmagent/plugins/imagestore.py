@@ -98,9 +98,9 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         fpath, name = cmd.primaryStorageInstallPath, cmd.imageName
 
         cmdstr = '%s add -file %s -name %s' % (self.ZSTORE_CLI_PATH, fpath, name)
-        logger.debug('adding %s to local image store' % filepath)
+        logger.debug('adding %s to local image store' % fpath)
         shell.call(cmdstr)
-        logger.debug('%s added to local image store' % filepath)
+        logger.debug('%s added to local image store' % fpath)
 
         return jsonobject.dumps(rsp)
 
