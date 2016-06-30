@@ -8,8 +8,24 @@ import time
 
 logger = log.get_logger(__name__)
 
+class BashError(Exception):
+    '''bash error'''
 
 def __collect_locals_on_stack():
+    frames = []
+    frame = inspect.currentframe()
+    while frame:
+        frames.insert(0, frame)
+        frame = frame.f_back
+
+    ctx = {}
+    for f in frames:
+        ctx.update(f.f_locals)
+
+    return ctx
+
+# @return: return code, stdout, stderr
+def bash_roe(cmd, errorout=False, ret_code = 0):
     frames = []
     frame = inspect.currentframe()
     while frame:
@@ -51,7 +67,7 @@ def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
         })
 
     if r != ret_code and errorout:
-        raise Exception('failed to execute bash[%s], return code: %s, stdout: %s, stderr: %s' % (cmd, r, o, e))
+        raise BashError('failed to execute bash[%s], return code: %s, stdout: %s, stderr: %s' % (cmd, r, o, e))
 
     return r, o, e
 
