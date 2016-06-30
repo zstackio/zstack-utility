@@ -104,183 +104,141 @@ class DEip(kvmagent.KvmAgent):
         for eip in eips:
             self._delete_eip(eip)
 
+    @in_bash
+    def _apply_eip(self, eip):
+        dev_base_name = eip.nicName.replace('vnic', '', 1)
+        dev_base_name = dev_base_name.replace(".", "_")
+
+        PUB_BR = eip.publicBridgeName
+        PUB_ODEV= "%s_eo" % dev_base_name
+        PUB_IDEV= "%s_ei" % dev_base_name
+        PRI_ODEV= "%s_o" % dev_base_name
+        PRI_IDEV= "%s_i" % dev_base_name
+        PRI_BR= eip.vmBridgeName
+        VIP= eip.vip
+        VIP_NETMASK= eip.vipNetmask
+        VIP_GW= eip.vipGateway
+        NIC_NAME= eip.nicName
+        NIC_GATEWAY= eip.nicGateway
+        NIC_NETMASK= eip.nicNetmask
+        NIC_IP= eip.nicIp
+        NIC_MAC= eip.nicMac
+        NS_NAME= "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
+        EBTABLE_CHAIN_NAME= eip.vmBridgeName
+        PRI_BR_PHY_DEV= eip.vmBridgeName.replace('br_', '', 1)
+
+        NS = bash_eval("ip netns exec {{NS_NAME}}")
+
+        # in case the namespace deleted and the orphan outer link leaves in the system,
+        # deleting the orphan link and recreate it
+        def delete_orphan_outer_dev(inner_dev, outer_dev):
+            if bash_r('ip netns exec {{NS_NAME}} ip link | grep -w {{inner_dev}} > /dev/null') != 0:
+                # ignore error
+                bash_r('ip link del {{outer_dev}} &> /dev/null')
+
+        def create_dev_if_needed(outer_dev, inner_dev):
+            if bash_r('ip link | grep -w {{outer_dev}} > /dev/null ') != 0:
+                bash_errorout('ip link del {{inner_dev}} &> /dev/null')
+
+            bash_errorout('ip link set {{outer_dev}} up')
+
+        def add_dev_to_br_if_needed(bridge, device):
+            if bash_r('brctl show {{bridge}} | grep -w {{device}} > /dev/null') != 0:
+                bash_errorout('brctl addif {{bridge}} {{device}}')
+
+        def add_dev_namespace_if_needed(device, namespace):
+            if bash_r('eval {{NS}} ip link | grep -w {{device}} > /dev/null') != 0:
+                bash_errorout('ip link set {{device}} netns {{namespace}}')
+
+        def set_ip_to_idev_if_needed(device, ip, netmask):
+            if bash_r('eval {{NS}} ip addr show {{device}} | grep -w {{ip}} > /dev/null') != 0:
+                bash_errorout('eval {{NS}} ip addr flush dev {{device}}')
+                bash_errorout('eval {{NS}} ip addr flush dev {{device}}/{{netmask}}')
+
+            bash_errorout('eval {{NS}} ip link set {{device}} up')
+
+        def create_iptable_rule_if_needed(table, rule):
+            if bash_r('eval {{NS}} iptables-save | grep -- "{{rule}}" > /dev/null') != 0:
+                bash_errorout('eval {{NS}} iptables {{table}} -A {{rule}}')
+
+        def create_ebtable_rule_if_needed(table, chain, rule):
+            if bash_r('ebtables -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:
+                bash_errorout('ebtables -t {{table}} -A {{chain}} {{rule}}')
+
+        def set_eip_rules():
+            DNAT_NAME = bash_eval("DNAT-{{VIP}}")
+            if bash_r('eval {{NS}} iptables-save | grep -w ":{{DNAT_NAME}}" > /dev/null') != 0:
+                bash_errorout('eval {{NS}} iptables -t nat -N {{DNAT_NAME}}')
+
+            create_iptable_rule_if_needed("-t nat", 'PREROUTING -d {{VIP}}/32 -j {{DNAT_NAME}}')
+            create_iptable_rule_if_needed("-t nat", '{{DNAT_NAME}} -j DNAT --to-destination {{NIC_IP}}')
+
+            FWD_NAME = bash_eval("FWD-{{VIP}}")
+            if bash_r('eval {{NS}} iptables-save | grep -w ":{{FWD_NAME}}" > /dev/null') != 0:
+                bash_errorout('eval {{NS}} iptables -N {{FWD_NAME}}')
+
+            create_iptable_rule_if_needed("-t filter", "FORWARD ! -d {{NIC_IP}}/32 -i {{PUB_IDEV}} -j REJECT --reject-with icmp-port-unreachable")
+            create_iptable_rule_if_needed("-t filter", "FORWARD -i {{PRI_IDEV}} -o {{PUB_IDEV}} -j {{FWD_NAME}}")
+            create_iptable_rule_if_needed("-t filter", "-A FORWARD -i {{PUB_IDEV}} -o {{PRI_IDEV}} -j {{FWD_NAME}}")
+            create_iptable_rule_if_needed("-t filter", "-A {{FWD_NAME}} -j ACCEPT")
+
+            NAT_NAME = bash_eval("SNAT-{{VIP}}")
+            if bash_r('eval {{NS}} iptables-save | grep -w ":{{SNAT_NAME}}" > /dev/null ') != 0:
+                bash_errorout('eval {{NS}} iptables -t nat -N {{SNAT_NAME}}')
+
+            create_iptable_rule_if_needed("-t nat", "POSTROUTING -s {{NIC_IP}}/32 -j {{SNAT_NAME}}")
+            create_iptable_rule_if_needed("-t nat", "-A {{SNAT_NAME}} -j SNAT --to-source {{VIP}}")
+
+        def set_default_route_if_needed():
+            if bash_r('eval {{NS}} ip route | grep -w default > /dev/null') != 0:
+                bash_errorout('eval {{NS}} ip route add default via {{VIP_GW}}')
+
+        def set_gateway_arp_if_needed():
+            CHAIN_NAME = bash_eval("{{NIC_NAME}}-gw")
+
+            if bash_r('ebtables -t nat -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
+                bash_errorout('ebtables -t nat -N {{CHAIN_NAME}}')
+
+            create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}')
+            GATEWAY = bash_o("eval {{NS}} ip link | grep -w {{PRI_IDEV}} -A 1 | awk '/link\/ether/{print $2}'")
+            if not GATEWAY:
+                raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
+
+            create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY}}")
+
+            BLOCK_CHAIN_NAME=bash_eval('{{PRI_ODEV}}-arp')
+            if bash_r('ebtables -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
+                bash_errorout('ebtables -t nat -N {{BLOCK_CHAIN_NAME}}')
+
+            create_ebtable_rule_if_needed('nat', 'POSTROUTING', "p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}")
+            create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{PRI_ODEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
+
+        if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
+            bash_errorout('ip netns add {{NS_NAME}}')
+
+        delete_orphan_outer_dev(PUB_IDEV, PUB_ODEV)
+        delete_orphan_outer_dev(PRI_IDEV, PRI_ODEV)
+
+        create_dev_if_needed(PUB_ODEV, PUB_IDEV)
+        create_dev_if_needed(PRI_ODEV, PRI_IDEV)
+
+        add_dev_to_br_if_needed(PUB_BR, PUB_ODEV)
+        add_dev_to_br_if_needed(PRI_BR, PRI_ODEV)
+
+        add_dev_namespace_if_needed(PUB_IDEV, NS_NAME)
+        add_dev_namespace_if_needed(PRI_IDEV, NS_NAME)
+
+        set_ip_to_idev_if_needed(PUB_IDEV, VIP, VIP_NETMASK)
+        set_ip_to_idev_if_needed(PRI_IDEV, NIC_GATEWAY, NIC_NETMASK)
+
+        # ping VIP gateway
+        bash_r('eval {{NS}} arping -q -U -c 1 -I {{PUB_IDEV}} {{VIP_GW}} > /dev/null')
+
+        set_gateway_arp_if_needed()
+        set_eip_rules()
+        set_default_route_if_needed()
+
     @lock.lock('eip')
     def _apply_eips(self, eips):
-        create_eip_cmd = '''
-PUB_BR={{publicBridgeName}}
-PUB_ODEV={{pub_odev}}
-PUB_IDEV={{pub_idev}}
-PRI_ODEV={{pri_odev}}
-PRI_IDEV={{pri_idev}}
-PRI_BR="{{vmBridgeName}}"
-VIP="{{vip}}"
-VIP_NETMASK="{{vipNetmask}}"
-VIP_GW="{{vipGateway}}"
-NIC_NAME="{{nicName}}"
-NIC_GATEWAY="{{nicGateway}}"
-NIC_NETMASK="{{nicNetmask}}"
-NIC_IP={{nicIp}}
-NIC_MAC={{nicMac}}
-NS_NAME="{{ns_name}}"
-EBTABLE_CHAIN_NAME={{ebtable_chain_name}}
-PRI_BR_PHY_DEV={{pri_br_dev}}
-
-NS="ip netns exec $NS_NAME"
-
-exit_on_error() {
-    if [ $? -ne 0 ]; then
-        echo "error on line $1"
-        exit 1
-    fi
-}
-
-# in case the namespace deleted and the orphan outer link leaves in the system,
-# deleting the orphan link and recreate it
-delete_orphan_outer_dev() {
-    ip netns exec $1 ip link | grep -w $2 > /dev/null || ip link del $3 &> /dev/null
-}
-
-create_dev_if_needed() {
-    ip link | grep -w $1 > /dev/null || ip link add $1 type veth peer name $2
-    exit_on_error $LINENO
-
-    ip link set $1 up
-    exit_on_error $LINENO
-}
-
-add_dev_to_br_if_needed() {
-    brctl show $1 | grep -w $2 > /dev/null || brctl addif $1 $2
-    exit_on_error $LINENO
-}
-
-add_dev_to_namespace_if_needed() {
-    eval $NS ip link | grep -w $1 > /dev/null || ip link set $1 netns $2
-    exit_on_error $LINENO
-}
-
-set_ip_to_idev_if_needed() {
-    eval $NS ip addr show $1 | grep -w $2 > /dev/null
-    if [ $? -ne 0 ]; then
-        eval $NS ip addr flush dev $1
-        exit_on_error $LINENO
-        eval $NS ip addr add $2/$3 dev $1
-        exit_on_error $LINENO
-    fi
-
-    eval $NS ip link set $1 up
-    exit_on_error $LINENO
-}
-
-create_ip_table_rule_if_needed() {
-   eval $NS iptables-save | grep -- "$2" > /dev/null || eval $NS iptables $1 $2
-   exit_on_error $LINENO
-}
-
-set_eip_rules() {
-    DNAT_NAME="DNAT-$VIP"
-    eval $NS iptables-save | grep -w ":$DNAT_NAME" > /dev/null || eval $NS iptables -t nat -N $DNAT_NAME
-    exit_on_error $LINENO
-
-    create_ip_table_rule_if_needed "-t nat" "-A PREROUTING -d $VIP/32 -j $DNAT_NAME"
-    create_ip_table_rule_if_needed "-t nat" "-A $DNAT_NAME -j DNAT --to-destination $NIC_IP"
-
-    FWD_NAME="FWD-$VIP"
-    eval $NS iptables-save | grep -w ":$FWD_NAME" > /dev/null || eval $NS iptables -N $FWD_NAME
-    exit_on_error $LINENO
-
-    eval $NS iptables-save | grep -- "FORWARD ! -d $NIC_IP/32 -i $PUB_IDEV -j REJECT --reject-with icmp-port-unreachable" > /dev/null || eval $NS iptables -I FORWARD ! -d $NIC_IP/32 -i $PUB_IDEV -j REJECT --reject-with icmp-port-unreachable
-
-    create_ip_table_rule_if_needed "-t filter" "-A FORWARD -i $PRI_IDEV -o $PUB_IDEV -j $FWD_NAME"
-    create_ip_table_rule_if_needed "-t filter" "-A FORWARD -i $PUB_IDEV -o $PRI_IDEV -j $FWD_NAME"
-    create_ip_table_rule_if_needed "-t filter" "-A $FWD_NAME -j ACCEPT"
-
-    SNAT_NAME="SNAT-$VIP"
-    eval $NS iptables-save | grep -w ":$SNAT_NAME" > /dev/null || eval $NS iptables -t nat -N $SNAT_NAME
-    exit_on_error $LINENO
-
-    create_ip_table_rule_if_needed "-t nat" "-A POSTROUTING -s $NIC_IP/32 -j $SNAT_NAME"
-    create_ip_table_rule_if_needed "-t nat" "-A $SNAT_NAME -j SNAT --to-source $VIP"
-}
-
-set_default_route_if_needed() {
-    eval $NS ip route | grep -w default > /dev/null || eval $NS ip route add default via $VIP_GW
-    exit_on_error $LINENO
-}
-
-set_gateway_arp_if_needed() {
-    CHAIN_NAME=$NIC_NAME-gw
-
-    ebtables -t nat -L $CHAIN_NAME > /dev/null 2>&1 || ebtables -t nat -N $CHAIN_NAME
-    exit_on_error $LINENO
-
-    rule="-i $NIC_NAME -j $CHAIN_NAME"
-    ebtables -t nat -L PREROUTING | grep -- "$rule" >/dev/null 2>&1 || ebtables -t nat -I PREROUTING $rule
-    exit_on_error $LINENO
-
-    gateway=`eval $NS ip link | grep -w $PRI_IDEV -A 1 | awk '/link\/ether/{print $2}'`
-    rule="-p ARP --arp-op Request --arp-ip-dst $NIC_GATEWAY -j arpreply --arpreply-mac $gateway"
-    ebtables -t nat -L $CHAIN_NAME | grep -- "$rule" >/dev/null 2>&1 || ebtables -t nat -A $CHAIN_NAME $rule
-    exit_on_error $LINENO
-
-    BLOCK_CHAIN_NAME=$PRI_ODEV-arp
-    ebtables -t nat -L $BLOCK_CHAIN_NAME > /dev/null 2>&1 || ebtables -t nat -N $BLOCK_CHAIN_NAME
-    exit_on_error $LINENO
-
-    rule="-p ARP -o $PRI_ODEV -j $BLOCK_CHAIN_NAME"
-    ebtables -t nat -L POSTROUTING | grep -- "$rule" > /dev/null 2>&1 || ebtables -t nat -I POSTROUTING $rule
-    exit_on_error $LINENO
-
-    rule="-p ARP -o $PRI_ODEV --arp-op Request --arp-ip-dst $NIC_GATEWAY --arp-mac-src ! $NIC_MAC -j DROP"
-    ebtables -t nat -L $BLOCK_CHAIN_NAME | grep -- "$rule" > /dev/null 2>&1 || ebtables -t nat -A $BLOCK_CHAIN_NAME $rule
-    exit_on_error $LINENO
-}
-
-eval $NS ip link show > /dev/null || ip netns add $NS_NAME
-exit_on_error $LINENO
-
-delete_orphan_outer_dev $NS_NAME $PUB_IDEV $PUB_ODEV
-delete_orphan_outer_dev $NS_NAME $PRI_IDEV $PRI_ODEV
-
-create_dev_if_needed $PUB_ODEV $PUB_IDEV
-create_dev_if_needed $PRI_ODEV $PRI_IDEV
-
-add_dev_to_br_if_needed $PUB_BR $PUB_ODEV
-add_dev_to_br_if_needed $PRI_BR $PRI_ODEV
-
-add_dev_to_namespace_if_needed $PUB_IDEV $NS_NAME
-add_dev_to_namespace_if_needed $PRI_IDEV $NS_NAME
-
-set_ip_to_idev_if_needed $PUB_IDEV $VIP $VIP_NETMASK
-set_ip_to_idev_if_needed $PRI_IDEV $NIC_GATEWAY $NIC_NETMASK
-
-# ping VIP gateway
-eval $NS arping -q -U -c 1 -I $PUB_IDEV $VIP_GW > /dev/null
-
-set_gateway_arp_if_needed
-set_eip_rules
-set_default_route_if_needed
-
-exit 0
-'''
-
         for eip in eips:
-            dev_base_name = eip.nicName.lstrip('vnic')
-            dev_base_name = dev_base_name.replace(".", "_")
-
-            # ebtables will replace 00 to 0 in its output
-            eip.nicMac = eip.nicMac.replace('00', '0')
-
-            ctx = {
-                "pub_odev": "%s_eo" % dev_base_name,
-                "pub_idev": "%s_ei" % dev_base_name,
-                "pri_odev": "%s_o" % dev_base_name,
-                "pri_idev": "%s_i" % dev_base_name,
-                "pri_br_dev": eip.vmBridgeName.lstrip('br_'),
-                "ebtable_chain_name": eip.vmBridgeName,
-                "ns_name": "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
-            }
-
-            ctx.update(eip.__dict__)
-            tmpt = Template(create_eip_cmd)
-            cmd = tmpt.render(ctx)
-            shell.call(cmd)
+            self._delete_eip(eip)
