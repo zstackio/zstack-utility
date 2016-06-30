@@ -5,6 +5,7 @@ from jinja2 import Template
 from zstacklib.utils import log
 import inspect
 import time
+import re
 
 logger = log.get_logger(__name__)
 
@@ -24,17 +25,30 @@ def __collect_locals_on_stack():
 
     return ctx
 
-def bash_eval(raw_str):
-    tmpt = Template(raw_str)
-    return tmpt.render(__collect_locals_on_stack())
+def bash_eval(raw_str, ctx=None):
+    if not ctx:
+        ctx = __collect_locals_on_stack()
+
+    unresolved = re.findall('{{(.+?)}}', raw_str)
+    last = []
+    while unresolved:
+        tmpt = Template(raw_str)
+        raw_str = tmpt.render(ctx)
+
+        unresolved = re.findall('{{(.+?)}}', raw_str)
+        for u in unresolved:
+            if u in last:
+                raise Exception('unresolved symbol {{%s}}' % u)
+
+        last.extend(unresolved)
+
+    return raw_str
 
 # @return: return code, stdout, stderr
 def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
     ctx = __collect_locals_on_stack()
 
-    tmpt = Template(cmd)
-    cmd = tmpt.render(ctx)
-
+    cmd = bash_eval(cmd, ctx)
     p = subprocess.Popen('/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     if pipe_fail:
         cmd = 'set -o pipefail; %s' % cmd

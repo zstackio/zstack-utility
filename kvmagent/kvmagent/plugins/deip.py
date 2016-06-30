@@ -62,7 +62,7 @@ class DEip(kvmagent.KvmAgent):
         dev_base_name = eip.nicName.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
 
-        NS_NAME = eip.publicBridgeName, eip.vip.replace(".", "_")
+        NS_NAME = "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
         PUB_ODEV = "%s_eo" % dev_base_name
         PRI_ODEV = "%s_o" % dev_base_name
         NIC_NAME = eip.nicName
@@ -78,17 +78,17 @@ class DEip(kvmagent.KvmAgent):
 
         def delete_arp_rules():
             if bash_r('ebtables -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
-                RULE = bash_eval("-i {{NIC_NAME}} -j {{CHAIN_NAME}}")
+                RULE = "-i {{NIC_NAME}} -j {{CHAIN_NAME}}"
                 if bash_r('ebtables -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
                     bash_errorout('ebtables -t nat -D PREROUTING {{RULE}}')
 
                 bash_errorout('ebtables -t nat -F {{CHAIN_NAME}}')
                 bash_errorout('ebtables -t nat -X {{CHAIN_NAME}}')
 
-            BLOCK_CHAIN_NAME = bash_eval('{{PRI_ODEV}}-arp')
+            BLOCK_CHAIN_NAME = '{{PRI_ODEV}}-arp'
 
             if bash_r('ebtables -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
-                RULE = bash_eval('-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}')
+                RULE = '-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}'
                 if bash_r('ebtables -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
                     bash_errorout('ebtables -t nat -D POSTROUTING {{RULE}}')
 
@@ -127,7 +127,7 @@ class DEip(kvmagent.KvmAgent):
         EBTABLE_CHAIN_NAME= eip.vmBridgeName
         PRI_BR_PHY_DEV= eip.vmBridgeName.replace('br_', '', 1)
 
-        NS = bash_eval("ip netns exec {{NS_NAME}}")
+        NS = "ip netns exec {{NS_NAME}}"
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
@@ -138,7 +138,7 @@ class DEip(kvmagent.KvmAgent):
 
         def create_dev_if_needed(outer_dev, inner_dev):
             if bash_r('ip link | grep -w {{outer_dev}} > /dev/null ') != 0:
-                bash_errorout('ip link del {{inner_dev}} &> /dev/null')
+                bash_errorout('ip link add {{outer_dev}} type veth peer name {{inner_dev}}')
 
             bash_errorout('ip link set {{outer_dev}} up')
 
@@ -153,7 +153,7 @@ class DEip(kvmagent.KvmAgent):
         def set_ip_to_idev_if_needed(device, ip, netmask):
             if bash_r('eval {{NS}} ip addr show {{device}} | grep -w {{ip}} > /dev/null') != 0:
                 bash_errorout('eval {{NS}} ip addr flush dev {{device}}')
-                bash_errorout('eval {{NS}} ip addr flush dev {{device}}/{{netmask}}')
+                bash_errorout('eval {{NS}} ip addr add {{ip}}/{{netmask}} dev {{device}}')
 
             bash_errorout('eval {{NS}} ip link set {{device}} up')
 
@@ -166,14 +166,14 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout('ebtables -t {{table}} -A {{chain}} {{rule}}')
 
         def set_eip_rules():
-            DNAT_NAME = bash_eval("DNAT-{{VIP}}")
+            DNAT_NAME = "DNAT-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{DNAT_NAME}}" > /dev/null') != 0:
                 bash_errorout('eval {{NS}} iptables -t nat -N {{DNAT_NAME}}')
 
             create_iptable_rule_if_needed("-t nat", 'PREROUTING -d {{VIP}}/32 -j {{DNAT_NAME}}')
             create_iptable_rule_if_needed("-t nat", '{{DNAT_NAME}} -j DNAT --to-destination {{NIC_IP}}')
 
-            FWD_NAME = bash_eval("FWD-{{VIP}}")
+            FWD_NAME = "FWD-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{FWD_NAME}}" > /dev/null') != 0:
                 bash_errorout('eval {{NS}} iptables -N {{FWD_NAME}}')
 
@@ -182,7 +182,7 @@ class DEip(kvmagent.KvmAgent):
             create_iptable_rule_if_needed("-t filter", "-A FORWARD -i {{PUB_IDEV}} -o {{PRI_IDEV}} -j {{FWD_NAME}}")
             create_iptable_rule_if_needed("-t filter", "-A {{FWD_NAME}} -j ACCEPT")
 
-            NAT_NAME = bash_eval("SNAT-{{VIP}}")
+            NAT_NAME = "SNAT-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{SNAT_NAME}}" > /dev/null ') != 0:
                 bash_errorout('eval {{NS}} iptables -t nat -N {{SNAT_NAME}}')
 
@@ -194,7 +194,7 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout('eval {{NS}} ip route add default via {{VIP_GW}}')
 
         def set_gateway_arp_if_needed():
-            CHAIN_NAME = bash_eval("{{NIC_NAME}}-gw")
+            CHAIN_NAME = "{{NIC_NAME}}-gw"
 
             if bash_r('ebtables -t nat -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
                 bash_errorout('ebtables -t nat -N {{CHAIN_NAME}}')
@@ -206,11 +206,11 @@ class DEip(kvmagent.KvmAgent):
 
             create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY}}")
 
-            BLOCK_CHAIN_NAME=bash_eval('{{PRI_ODEV}}-arp')
+            BLOCK_CHAIN_NAME = '{{PRI_ODEV}}-arp'
             if bash_r('ebtables -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
                 bash_errorout('ebtables -t nat -N {{BLOCK_CHAIN_NAME}}')
 
-            create_ebtable_rule_if_needed('nat', 'POSTROUTING', "p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}")
+            create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}")
             create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{PRI_ODEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
 
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
@@ -241,4 +241,4 @@ class DEip(kvmagent.KvmAgent):
     @lock.lock('eip')
     def _apply_eips(self, eips):
         for eip in eips:
-            self._delete_eip(eip)
+            self._apply_eip(eip)
