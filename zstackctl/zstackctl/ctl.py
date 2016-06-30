@@ -4625,6 +4625,10 @@ class InstallManagementNodeCmd(Command):
       when: ansible_os_family == 'RedHat'
       shell: update-alternatives --install /usr/bin/java java /usr/lib/jvm/jre-1.8.0/bin/java 0; update-alternatives --set java /usr/lib/jvm/jre-1.8.0/bin/java
       
+    - name: add ppa source for openjdk-8 on Ubuntu 14.04
+      when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
+      shell: add-apt-repository ppa:openjdk-r/ppa -y; apt-get update
+
     - name: install openjdk on Ubuntu 14.04
       when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
       apt: pkg={{item}} update_cache=yes
