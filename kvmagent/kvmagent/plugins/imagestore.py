@@ -54,8 +54,8 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         try:
             with open(self._get_image_json_file(primaryStorageInstallPath)) as f:
                 imf = jsonobject.loads(f.read())
-                return imf.Name, imf.ID
-        except IOError:
+                return imf.name, imf.id
+        except:
             raise kvmagent.KvmError('unexpected primary storage install path %s' % primaryStorageInstallPath)
 
     def _parse_image_reference(self, backupStorageInstallPath):
