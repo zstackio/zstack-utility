@@ -267,7 +267,7 @@ class ConsoleProxyAgent(object):
             elif ret != 0 and "Cannot assign requested address" in err:
                 return None
             else:
-                bash_r("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport {{proxyPort}}' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport {{proxyPort}} -j ACCEPT" )
+                bash_errorout("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport {{PROXY_PORT}}' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport {{PROXY_PORT}} -j ACCEPT")
                 return proxyPort
 
         proxy_port = None
