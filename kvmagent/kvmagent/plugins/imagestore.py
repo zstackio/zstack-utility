@@ -36,7 +36,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.COMMIT_BIT_PATH, self.commit_to_imagestore)
         http_server.register_async_uri(self.CLIENT_INIT_PATH, self.init_client)
 
-        self.path = "/var/lib/zstack/imagestore/localdata"
+        self.path = None
 
     def stop(self):
         pass
@@ -73,7 +73,15 @@ class ImageStorePlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def init_client(self, req):
-        raise kvmagent.KvmError("not implemented")
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.path = cmd.path
+
+        if not os.path.exists(self.path):
+            os.makedirs(self.path, 0755)
+
+        rsp = AgentResponse()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def upload_to_imagestore(self, req):
@@ -122,20 +130,18 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         mfpath = shell.call(cmdstr).rstrip()
         dest = self._get_image_json_file(cmd.primaryStorageInstallPath)
 
-        try:
-            makedirs(os.path.dirname(dest))
-        except:
-            pass
+        # run these preparation tasks w/o throwing exceptions
+        ptasks = [
+            lambda: makedirs(os.path.dirname(dest)),
+            lambda: unlink(dest),
+            lambda: unlink(cmd.primaryStorageInstallPath)
+        ]
 
-        try:
-            unlink(dest)
-        except:
-            pass
-
-        try:
-            unlink(cmd.primaryStorageInstallPath)
-        except:
-            pass
+        for task in ptasks:
+            try:
+                task()
+            except:
+                pass
 
         logger.debug('[imagestore] linking from %s to %s' % (mfpath, dest))
         symlink(mfpath, dest)
