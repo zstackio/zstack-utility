@@ -224,6 +224,9 @@ class Mevoco(kvmagent.KvmAgent):
         if ret != 0:
             bash_errorout('ebtables -t nat -N {{CHAIN_NAME}}')
 
+        if bash_r('ebtables -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{CHAIN_NAME}}"') != 0:
+            bash_errorout('ebtables -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{CHAIN_NAME}}')
+
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         RULE = "-p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % MAC.replace(":0", ":")
         ret = bash_r('ebtables -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
