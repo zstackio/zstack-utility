@@ -24,25 +24,9 @@ def __collect_locals_on_stack():
 
     return ctx
 
-# @return: return code, stdout, stderr
-def bash_roe(cmd, errorout=False, ret_code = 0):
-    frames = []
-    frame = inspect.currentframe()
-    while frame:
-        frames.insert(0, frame)
-        frame = frame.f_back
-
-    ctx = {}
-    for f in frames:
-        ctx.update(f.f_locals)
-
-    return ctx
-
-
 def bash_eval(raw_str):
     tmpt = Template(raw_str)
     return tmpt.render(__collect_locals_on_stack())
-
 
 # @return: return code, stdout, stderr
 def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
