@@ -90,7 +90,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
 
         host = cmd.hostname
         name, imageid = self._get_image_reference(cmd.primaryStorageInstallPath)
-        cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name)
+        cmdstr = '%s -url %s:%s push %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
         logger.debug('pushing %s:%s to image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pushed to image store' % (name, imageid))
@@ -103,12 +103,24 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
+        # Add the image to registry
         fpath, name = cmd.primaryStorageInstallPath, cmd.imageName
+        cmdstr = '%s -json add -file %s -name %s' % (self.ZSTORE_CLI_PATH, fpath, name)
 
-        cmdstr = '%s add -file %s -name %s' % (self.ZSTORE_CLI_PATH, fpath, name)
         logger.debug('adding %s to local image store' % fpath)
         shell.call(cmdstr)
         logger.debug('%s added to local image store' % fpath)
+
+        # Push the image to image store server
+        host = cmd.hostname
+        name, imageid = self._get_image_reference(fpath)
+        cmdstr = '%s -url %s:%s push %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
+
+        logger.debug('pushing %s:%s to image store' % (name, imageid))
+        shell.call(cmdstr)
+        logger.debug('%s:%s pushed to image store' % (name, imageid))
+
+        rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
 
         return jsonobject.dumps(rsp)
 
