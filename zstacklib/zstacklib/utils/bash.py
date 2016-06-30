@@ -25,22 +25,22 @@ def __collect_locals_on_stack():
 
     return ctx
 
+
 def bash_eval(raw_str, ctx=None):
     if not ctx:
         ctx = __collect_locals_on_stack()
 
-    unresolved = re.findall('{{(.+?)}}', raw_str)
-    last = []
-    while unresolved:
-        tmpt = Template(raw_str)
-        raw_str = tmpt.render(ctx)
-
+    while True:
         unresolved = re.findall('{{(.+?)}}', raw_str)
+        if not unresolved:
+            break
+
         for u in unresolved:
-            if u in last:
+            if u not in ctx:
                 raise Exception('unresolved symbol {{%s}}' % u)
 
-        last.extend(unresolved)
+        tmpt = Template(raw_str)
+        raw_str = tmpt.render(ctx)
 
     return raw_str
 
