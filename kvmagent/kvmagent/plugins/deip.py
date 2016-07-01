@@ -179,15 +179,15 @@ class DEip(kvmagent.KvmAgent):
 
             create_iptable_rule_if_needed("-t filter", "FORWARD ! -d {{NIC_IP}}/32 -i {{PUB_IDEV}} -j REJECT --reject-with icmp-port-unreachable")
             create_iptable_rule_if_needed("-t filter", "FORWARD -i {{PRI_IDEV}} -o {{PUB_IDEV}} -j {{FWD_NAME}}")
-            create_iptable_rule_if_needed("-t filter", "-A FORWARD -i {{PUB_IDEV}} -o {{PRI_IDEV}} -j {{FWD_NAME}}")
-            create_iptable_rule_if_needed("-t filter", "-A {{FWD_NAME}} -j ACCEPT")
+            create_iptable_rule_if_needed("-t filter", "FORWARD -i {{PUB_IDEV}} -o {{PRI_IDEV}} -j {{FWD_NAME}}")
+            create_iptable_rule_if_needed("-t filter", "{{FWD_NAME}} -j ACCEPT")
 
-            NAT_NAME = "SNAT-{{VIP}}"
+            SNAT_NAME = "SNAT-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{SNAT_NAME}}" > /dev/null ') != 0:
                 bash_errorout('eval {{NS}} iptables -t nat -N {{SNAT_NAME}}')
 
             create_iptable_rule_if_needed("-t nat", "POSTROUTING -s {{NIC_IP}}/32 -j {{SNAT_NAME}}")
-            create_iptable_rule_if_needed("-t nat", "-A {{SNAT_NAME}} -j SNAT --to-source {{VIP}}")
+            create_iptable_rule_if_needed("-t nat", "{{SNAT_NAME}} -j SNAT --to-source {{VIP}}")
 
         def set_default_route_if_needed():
             if bash_r('eval {{NS}} ip route | grep -w default > /dev/null') != 0:
