@@ -49,7 +49,7 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-command = "yum install -y qemu-img"
+command = "test -x /usr/bin/qemu-img || yum install -y qemu-img"
 run_remote_command(command, host_post_info)
 
 command = 'mkdir -p %s' % (imagestore_root + "/certs")
