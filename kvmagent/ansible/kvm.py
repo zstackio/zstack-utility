@@ -295,7 +295,7 @@ if chroot_env == 'false':
             service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
-    command = "service zstack-kvmagent restart"
+    command = "service zstack-kvmagent stop && service zstack-kvmagent start"
     host_post_info.post_label = "ansible.shell.restart.service"
     host_post_info.post_label_param = "zstack-kvmagent"
     run_remote_command(command, host_post_info)
