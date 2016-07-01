@@ -111,15 +111,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         shell.call(cmdstr)
         logger.debug('%s added to local image store' % fpath)
 
-        # Push the image to image store server
-        host = cmd.hostname
         name, imageid = self._get_image_reference(fpath)
-        cmdstr = '%s -url %s:%s push %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
-
-        logger.debug('pushing %s:%s to image store' % (name, imageid))
-        shell.call(cmdstr)
-        logger.debug('%s:%s pushed to image store' % (name, imageid))
-
         rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
 
         return jsonobject.dumps(rsp)
