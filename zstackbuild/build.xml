@@ -180,9 +180,117 @@
         <echo message="[zstack_build_root] default path is /usr/local/zstack/root/, which is defined in build.properties. It should be the same parent folder for zstack-utility and zstack-woodpecker." />
     </target>
 
-    <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb, build-cephp, build-zstack-agent, build-fusionstorb, build-fusionstorp" />
+    <target name="do-build" depends="prepare, build-zstack-war" >
+        <parallel failonany="true">
+            <sequential>
+                <antcall target="build-zstacklib"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-kvmagent"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-sftpbackupstorage"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-virtualrouter"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-consoleproxy"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-appliancevm"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-ctl"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-cli"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-apibinding"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-dashboard"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-iscsi"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-cephb"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-cephp"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-zstack-agent"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-fusionstorb"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-fusionstorp"/>
+            </sequential>
+        </parallel>
+    </target>
 
-    <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, assemble-agent-server, assemble-agent-collectd, copy-pypi-source, assemble-fusionstorb, assemble-fusionstorp" >
+    <target name="pre-assemble" depends="unzip-war" >
+        <parallel failonany="true">
+            <sequential>
+                <antcall target="assemble-zstacklib"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-kvmagent"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-sftpbackupstorage"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-virtualrouter"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-consoleproxy"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-appliancevm"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-ctl"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-dashboard"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-cli"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-apibinding"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-iscsi"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-cephb"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-cephp"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-agent-server"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-agent-collectd"/>
+            </sequential>
+            <sequential>
+                <antcall target="copy-pypi-source"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-fusionstorb"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-fusionstorp"/>
+            </sequential>
+        </parallel>
+
         <makeDir dir="${libs.dir}" />
         <exec executable="cp" dir="${libs.dir}" failonerror="true">
             <arg value="-f" />
