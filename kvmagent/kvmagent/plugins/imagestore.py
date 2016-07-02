@@ -113,6 +113,7 @@ class ImageStorePlugin(kvmagent.KvmAgent):
 
         name, imageid = self._get_image_reference(fpath)
         rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(fpath)
 
         return jsonobject.dumps(rsp)
 
