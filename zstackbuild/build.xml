@@ -75,6 +75,7 @@
     <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
     <import file="${basedir}/projects/zstack-agent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-store.xml" optional="false" />
     <import file="${basedir}/projects/build-pypi-source.xml" optional="false" />
     <import file="${basedir}/projects/install-all-zstack-agents-to-local-virtualenv.xml" optional="false" />
 
@@ -147,6 +148,13 @@
             <arg value="HEAD^..HEAD" />
         </exec>
 
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/imagestore-git-commit">
+            <arg value="--git-dir=${imagestore.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
         <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/premium-git-commit">
             <arg value="--git-dir=${zstack.source}/premium/.git" />
             <arg value="log" />
@@ -180,9 +188,9 @@
         <echo message="[zstack_build_root] default path is /usr/local/zstack/root/, which is defined in build.properties. It should be the same parent folder for zstack-utility and zstack-woodpecker." />
     </target>
 
-    <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb, build-cephp, build-zstack-agent, build-fusionstorb, build-fusionstorp" />
+    <target name="do-build" depends="prepare, build-zstack-war, build-zstacklib, build-kvmagent, build-sftpbackupstorage, build-virtualrouter, build-consoleproxy, build-appliancevm, build-ctl, build-cli, build-apibinding, build-dashboard, build-iscsi, build-cephb, build-cephp, build-zstack-agent, build-fusionstorb, build-fusionstorp, build-zstack-store" />
 
-    <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, assemble-agent-server, assemble-agent-collectd, copy-pypi-source, assemble-fusionstorb, assemble-fusionstorp" >
+    <target name="pre-assemble" depends="unzip-war, assemble-zstacklib, assemble-kvmagent, assemble-sftpbackupstorage, assemble-virtualrouter, assemble-consoleproxy, assemble-appliancevm, assemble-ctl, assemble-dashboard, assemble-cli, assemble-apibinding, assemble-iscsi, assemble-cephb, assemble-cephp, assemble-agent-server, assemble-agent-collectd, copy-pypi-source, assemble-fusionstorb, assemble-fusionstorp, assemble-zstack-store" >
         <makeDir dir="${libs.dir}" />
         <exec executable="cp" dir="${libs.dir}" failonerror="true">
             <arg value="-f" />

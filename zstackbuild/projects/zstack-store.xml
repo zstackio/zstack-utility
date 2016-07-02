@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-store builder" basedir="../">
+    <property name="imagestore.bdir" location="${build.dir}/zstack-store" />
+    <property name="imagestorebackupstorage.ansible.dir" location="${ansible.dir}/imagestorebackupstorage/" />
+
+    <target name="build-zstack-store" if="build_war_flag">
+        <makeDir dir="${imagestore.bdir}" />
+
+        <checkProperty property="imagestore.source" />
+        <checkFile file="${imagestore.source}" />
+
+        <delete dir="${imagestore.source}/target" />
+
+        <exec executable="make" dir="${imagestore.source}" failonerror="true">
+            <arg value="clean" />
+        </exec>
+
+        <exec executable="make" dir="${imagestore.source}" failonerror="true">
+            <arg value="package" />
+        </exec>
+
+        <copy todir="${imagestore.bdir}/">
+            <fileset dir="${imagestore.source}/target/package">
+                <exclude name="**/*~" />
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-zstack-store" if="build_war_flag">
+        <makeDir dir="${imagestorebackupstorage.ansible.dir}" />
+
+        <copy todir="${imagestorebackupstorage.ansible.dir}">
+            <fileset dir="${imagestore.bdir}/zstore">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy todir="${imagestorebackupstorage.ansible.dir}">
+            <fileset dir="${imagestorebackupstorage.source}/ansible">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+</project>
