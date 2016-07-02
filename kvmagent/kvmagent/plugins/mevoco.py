@@ -206,12 +206,12 @@ class Mevoco(kvmagent.KvmAgent):
         # set VIP
         NS_NAME = to.namespaceName
         DHCP_IP = to.dhcpServerIp
+        INNER_DEV = bash_errorout("ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
+        if not INNER_DEV:
+            raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
+
         ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
         if ret != 0:
-            INNER_DEV = bash_errorout("ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
-            if not INNER_DEV:
-                raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
-
             bash_errorout('ip netns exec {{NS_NAME}} ip addr add 169.254.169.254 dev {{INNER_DEV}}')
 
         # set ebtables
