@@ -159,7 +159,7 @@ def get_default_gateway_ip():
 def get_default_ip():
     cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|awk -F '/' '{print $1}'""")
     cmd(False)
-    return cmd.stdout.strip() 
+    return cmd.stdout.strip()
 
 def get_yum_repo_from_property():
     yum_repo = ctl.read_property('Ansible.var.zstack_repo')
@@ -3922,9 +3922,18 @@ class CollectLogCmd(Command):
             command = "mkdir -p %s " % collect_log_dir
             run_remote_command(command, host_post_info)
             for log in CollectLogCmd.host_log_list:
-                command = "if [ -f %s/%s ]; then tail -n 10000 %s/%s > %s/%s 2>&1; fi || true" \
-                          % (CollectLogCmd.zstack_log_dir, log, CollectLogCmd.zstack_log_dir, log, collect_log_dir, log)
-                run_remote_command(command, host_post_info)
+                host_log = CollectLogCmd.zstack_log_dir + '/' + log
+                collect_log = collect_log_dir + '/' + log
+                if file_dir_exist("path=%s" % host_log, host_post_info):
+                    (status, output) = run_remote_command("file %s" % host_log, host_post_info,
+                                                          return_status=True, return_output=True)
+                    command = "tail -n 10000 %s > %s 2>&1" % (host_log, collect_log)
+                    run_remote_command(command, host_post_info)
+            command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % collect_log_dir
+            (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
+            if "The directory is empty" in output:
+                warn("The dir %s is empty on host: %s " % (collect_log_dir, host_post_info.host))
+                return 0
             command = "cd %s && tar zcf collect-log.tar.gz *" % collect_log_dir
             run_remote_command(command, host_post_info)
             fetch_arg = FetchArg()
@@ -4624,7 +4633,7 @@ class InstallManagementNodeCmd(Command):
     - name: set java 8 as default runtime
       when: ansible_os_family == 'RedHat'
       shell: update-alternatives --install /usr/bin/java java /usr/lib/jvm/jre-1.8.0/bin/java 0; update-alternatives --set java /usr/lib/jvm/jre-1.8.0/bin/java
-      
+
     - name: add ppa source for openjdk-8 on Ubuntu 14.04
       when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
       shell: add-apt-repository ppa:openjdk-r/ppa -y; apt-get update
@@ -4644,7 +4653,7 @@ class InstallManagementNodeCmd(Command):
     - name: set java 8 as default runtime
       when: ansible_os_family == 'Debian' and ansible_distribution_version == '14.04'
       shell: update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0; update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0; update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java; update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac
-      
+
     - name: install dependencies Debian OS
       when: ansible_os_family == 'Debian'
       apt: pkg={{item}} update_cache=yes

@@ -752,7 +752,8 @@ def check_host_reachable(host_post_info):
         error("Unknown error when check host %s is reachable" % host)
 
 @retry(times=3, sleep_time=3)
-def run_remote_command(command, host_post_info, return_status=False):
+def run_remote_command(command, host_post_info, return_status=False, return_output=False):
+    '''return status all the time except return_status is False, return output is set to True'''
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -781,7 +782,10 @@ def run_remote_command(command, host_post_info, return_status=False):
             if status == 0:
                 details = "SUCC: shell command: '%s' " % command
                 handle_ansible_info(details, host_post_info, "INFO")
-                return True
+                if return_output is False:
+                    return True
+                else:
+                    return (True, result['contacted'][host]['stdout'])
             else:
                 if return_status is False:
                     description = "ERROR: command %s failed!" % command
@@ -790,7 +794,10 @@ def run_remote_command(command, host_post_info, return_status=False):
                 else:
                     details = "ERROR: shell command %s failed " % command
                     handle_ansible_info(details, host_post_info, "WARNING")
-                    return False
+                    if return_output is False:
+                        return False
+                    else:
+                        return (False, result['contacted'][host]['stdout'])
 
 
 @retry(times=3, sleep_time=3)
