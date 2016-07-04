@@ -75,6 +75,7 @@
     <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
     <import file="${basedir}/projects/zstack-agent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-store.xml" optional="false" />
     <import file="${basedir}/projects/build-pypi-source.xml" optional="false" />
     <import file="${basedir}/projects/install-all-zstack-agents-to-local-virtualenv.xml" optional="false" />
 
@@ -142,6 +143,13 @@
 
         <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/agent-git-commit">
             <arg value="--git-dir=${agent.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/imagestore-git-commit">
+            <arg value="--git-dir=${imagestore.source}/.git" />
             <arg value="log" />
             <arg value="--name-status" />
             <arg value="HEAD^..HEAD" />
@@ -225,6 +233,9 @@
                 <antcall target="build-zstack-agent"/>
             </sequential>
             <sequential>
+                <antcall target="build-zstack-store"/>
+            </sequential>
+            <sequential>
                 <antcall target="build-fusionstorb"/>
             </sequential>
             <sequential>
@@ -279,6 +290,9 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-agent-collectd"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-store"/>
             </sequential>
             <sequential>
                 <antcall target="copy-pypi-source"/>
