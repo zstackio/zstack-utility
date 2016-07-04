@@ -20,6 +20,7 @@ client = ""
 remote_user = "root"
 remote_pass = None
 remote_port = None
+require_python_env = "false"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy image backupstorage to host')
@@ -49,8 +50,20 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-command = "test -x /usr/bin/qemu-img || yum install -y qemu-img"
-run_remote_command(command, host_post_info)
+# include zstacklib.py
+(distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
+zstacklib_args = ZstackLibArgs()
+zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
+zstacklib_args.distro_version = distro_version
+zstacklib_args.zstack_repo = zstack_repo
+zstacklib_args.yum_server = yum_server
+zstacklib_args.zstack_root = zstack_root
+zstacklib_args.host_post_info = host_post_info
+zstacklib_args.pip_url = pip_url
+zstacklib_args.trusted_host = trusted_host
+zstacklib_args.require_python_env = require_python_env
+zstacklib = ZstackLib(zstacklib_args)
 
 command = 'mkdir -p %s' % (imagestore_root + "/certs")
 run_remote_command(command, host_post_info)

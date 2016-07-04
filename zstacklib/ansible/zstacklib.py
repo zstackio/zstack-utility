@@ -49,6 +49,7 @@ class ZstackLibArgs(object):
         self.zstack_root = None
         self.host_post_info = None
         self.pip_url = None
+        self.require_python_env = "true"
 
 
 class Msg(object):
@@ -1292,6 +1293,7 @@ class ZstackLib(object):
         pip_version = "7.0.3"
         yum_server = args.yum_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
+        require_python_env = args.require_python_env
         if distro == "CentOS" or distro == "RedHat":
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
@@ -1354,8 +1356,11 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     # install epel-release
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
-                    yum_install_package(pkg, host_post_info)
+                if require_python_env == "true":
+                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                        yum_install_package(pkg, host_post_info)
+                else:
+                    yum_install_package("qemu-img", host_post_info)
             else:
                 # generate repo defined in zstack_repo
                 if '163' in zstack_repo:
@@ -1430,15 +1435,19 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 host_post_info.post_label = "ansible.shell.install.pkg"
                 host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
                                                   "autoconf,ntp,ntpdate"
-                command = (
-                          "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                          "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
-                          " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                          "-y $pkg; done;") % zstack_repo
-                run_remote_command(command, host_post_info)
-
-            # enable ntp service for RedHat
-            service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+                if require_python_env == "true":
+                    command = (
+                              "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
+                              "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
+                              " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
+                              "-y $pkg; done;") % zstack_repo
+                    run_remote_command(command, host_post_info)
+                    # enable ntp service for RedHat
+                    service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+                else:
+                    command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
+                              "-y qemu-img") % zstack_repo
+                    run_remote_command(command, host_post_info)
 
         elif distro == "Debian" or distro == "Ubuntu":
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
@@ -1481,34 +1490,38 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             # install dependency packages for Debian based OS
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
-            install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]
-            apt_install_packages(install_pkg_list, host_post_info)
+            if require_python_env == "true":
+                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]
+                apt_install_packages(install_pkg_list, host_post_info)
+                # name: enable ntp service for Debian
+                host_post_info.post_label = "ansible.shell.enable.service"
+                host_post_info.post_label_param = "ntp"
+                run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
+            else:
+                apt_install_packages("qemu-img", host_post_info)
 
-            # name: enable ntp service for Debian
-            host_post_info.post_label = "ansible.shell.enable.service"
-            host_post_info.post_label_param = "ntp"
-            run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
 
         else:
             error("ERROR: Unsupported distribution")
 
-        # check the pip 7.0.3 exist in system to avoid site-packages enable potential issue
-        pip_match = check_pip_version(pip_version, host_post_info)
-        if pip_match is False:
-            # make dir for copy pip
-            host_post_info.post_label = "ansible.shell.mkdir"
-            host_post_info.post_label_param = zstack_root
-            run_remote_command("mkdir -p %s" % zstack_root, host_post_info)
-            # copy pip 7.0.3
-            copy_arg = CopyArg()
-            copy_arg.src = "files/pip-7.0.3.tar.gz"
-            copy_arg.dest = "%s/pip-7.0.3.tar.gz" % zstack_root
-            copy(copy_arg, host_post_info)
-            # install pip 7.0.3
-            pip_install_arg = PipInstallArg()
-            pip_install_arg.extra_args = "\"--ignore-installed\""
-            pip_install_arg.name = "%s/pip-7.0.3.tar.gz" % zstack_root
-            pip_install_package(pip_install_arg, host_post_info)
+        if require_python_env == "true":
+            # check the pip 7.0.3 exist in system to avoid site-packages enable potential issue
+            pip_match = check_pip_version(pip_version, host_post_info)
+            if pip_match is False:
+                # make dir for copy pip
+                host_post_info.post_label = "ansible.shell.mkdir"
+                host_post_info.post_label_param = zstack_root
+                run_remote_command("mkdir -p %s" % zstack_root, host_post_info)
+                # copy pip 7.0.3
+                copy_arg = CopyArg()
+                copy_arg.src = "files/pip-7.0.3.tar.gz"
+                copy_arg.dest = "%s/pip-7.0.3.tar.gz" % zstack_root
+                copy(copy_arg, host_post_info)
+                # install pip 7.0.3
+                pip_install_arg = PipInstallArg()
+                pip_install_arg.extra_args = "\"--ignore-installed\""
+                pip_install_arg.name = "%s/pip-7.0.3.tar.gz" % zstack_root
+                pip_install_package(pip_install_arg, host_post_info)
 
 
 def main():
