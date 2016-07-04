@@ -64,6 +64,7 @@ class DEip(kvmagent.KvmAgent):
         return jsonobject.dumps(AgentRsp())
 
     @lock.lock('eip')
+    @lock.file_lock('iptables')
     def _delete_eips(self, eips):
         delete_eip_cmd = '''
 PUB_ODEV={{pub_odev}}
@@ -136,6 +137,7 @@ exit 0
             shell.call(cmd)
 
     @lock.lock('eip')
+    @lock.file_lock('iptables')
     def _apply_eips(self, eips):
         create_eip_cmd = '''
 PUB_BR={{publicBridgeName}}
