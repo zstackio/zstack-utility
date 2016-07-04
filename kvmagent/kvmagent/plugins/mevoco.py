@@ -54,6 +54,7 @@ class DhcpEnv(object):
         self.namespace_name = None
 
     @lock.lock('prepare_dhcp_namespace')
+    @lock.file_lock('iptables')
     @in_bash
     def prepare(self):
         NAMESPACE_ID = None
@@ -200,7 +201,7 @@ class Mevoco(kvmagent.KvmAgent):
         self._apply_userdata(cmd.userdata)
         return jsonobject.dumps(ApplyUserdataRsp())
 
-    @lock.lock('iptables')
+    @lock.file_lock('iptables')
     @in_bash
     def _apply_userdata(self, to):
         # set VIP

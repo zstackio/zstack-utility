@@ -58,6 +58,7 @@ class DEip(kvmagent.KvmAgent):
         return jsonobject.dumps(AgentRsp())
 
     @in_bash
+    @lock.file_lock('iptables')
     def _delete_eip(self, eip):
         dev_base_name = eip.nicName.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
@@ -105,6 +106,7 @@ class DEip(kvmagent.KvmAgent):
             self._delete_eip(eip)
 
     @in_bash
+    @lock.file_lock('iptables')
     def _apply_eip(self, eip):
         dev_base_name = eip.nicName.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
