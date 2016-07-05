@@ -295,6 +295,7 @@ def agent_install(install_arg, host_post_info):
 
 
 def yum_enable_repo(name, enablerepo, host_post_info):
+    '''install package from enablerepo'''
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -1300,6 +1301,7 @@ class ZstackLib(object):
         pip_version = "7.0.3"
         yum_server = args.yum_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
+        #require_python_env for deploy host which may not need python environment
         require_python_env = args.require_python_env
         if distro == "CentOS" or distro == "RedHat":
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
@@ -1346,10 +1348,11 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
             run_remote_command(command, host_post_info)
 
             if zstack_repo == "false":
-                # zstack_repo defined by user
+                # zstack_repo is empty, will use system repo
+                # libselinux-python depend by ansible copy/file/template module when selinux enabled on host
                 yum_install_package("libselinux-python", host_post_info)
                 # Enable extra repo for install centos-release-qemu-ev in kvm.py
-                if distro_version >= 7 :
+                if distro_version >= 7:
                     copy_arg = CopyArg()
                     copy_arg.src = "files/zstacklib/zstack-redhat.repo"
                     copy_arg.dest = "/etc/yum.repos.d/"
@@ -1362,14 +1365,12 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     copy(copy_arg, host_post_info)
                     # install epel-release
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
-                    set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
+                set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
                     for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                         yum_install_package(pkg, host_post_info)
-                else:
-                    yum_install_package("qemu-img", host_post_info)
             else:
-                # generate repo defined in zstack_repo
+                # user defined zstack_repo, will generate repo defined in zstack_repo
                 if '163' in zstack_repo:
                     # set 163 mirror yum repo
                     command = """
@@ -1452,8 +1453,10 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                     # enable ntp service for RedHat
                     service_status("ntpd", "state=restarted enabled=yes", host_post_info)
                 else:
-                    command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
-                              "-y qemu-img") % zstack_repo
+                    command = (
+                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python | "
+                                  "grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                                  "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
 
         elif distro == "Debian" or distro == "Ubuntu":
@@ -1504,8 +1507,6 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
                 host_post_info.post_label = "ansible.shell.enable.service"
                 host_post_info.post_label_param = "ntp"
                 run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
-            else:
-                apt_install_packages("qemu-img", host_post_info)
 
 
         else:

@@ -16,7 +16,7 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 fs_rootpath = ""
 pkg_imagestorebackupstorage = ""
-client = ""
+client = "false"
 remote_user = "root"
 remote_pass = None
 remote_port = None
@@ -64,6 +64,32 @@ zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
 zstacklib = ZstackLib(zstacklib_args)
+
+if distro == "CentOS" or distro == "RedHat":
+    if client == "true" :
+        if distro_version < 7:
+            error("Client only support distribution version newer than 7.0")
+        else:
+            if zstack_repo == 'false':
+                yum_install_package("qemu-img-2.3.0", host_post_info)
+            else:
+                command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
+                           "-y qemu-img-ev-2.3.0") % zstack_repo
+                run_remote_command(command, host_post_info)
+    else:
+        if zstack_repo == 'false':
+            yum_install_package("qemu-img", host_post_info)
+        else:
+            command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
+                       "-y qemu-img") % zstack_repo
+
+elif distro == "Debian" or distro == "Ubuntu":
+    if client == "true" and distro_version < 16:
+        error("Client only support distribution version newer than 16.04")
+    apt_install_packages("qemu-img", host_post_info)
+
+else:
+    error("ERROR: Unsupported distribution")
 
 command = 'mkdir -p %s' % (imagestore_root + "/certs")
 run_remote_command(command, host_post_info)
