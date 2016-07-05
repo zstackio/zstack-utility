@@ -537,7 +537,8 @@ ia_check_ip_hijack(){
 
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
-    req_pkgs='python python-devel python-setuptools gcc python2-crypto'
+    req_pkgs='python python-devel python-setuptools gcc'
+    [ ! -d /usr/lib64/python2.7/site-packages/pycrypto-2.6.1-py2.7.egg-info ] && req_pkgs=${req_pkgs}" python2-crypto"
     if [ ! -z $ZSTACK_YUM_REPOS ];then
         if [ -z $DEBUG ];then
             yum clean metadata >/dev/null 2>&1
