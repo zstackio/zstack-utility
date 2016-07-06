@@ -26,7 +26,7 @@ class AgentResponse(object):
 class AgentCommand(object):
     def __init__(self):
         pass
-    
+
 class EstablishProxyCmd(AgentCommand):
     def __init__(self):
         super(EstablishProxyCmd, self).__init__()
@@ -53,7 +53,7 @@ class CheckAvailabilityCmd(AgentCommand):
         self.scheme = None
         self.token = None
         self.proxyIdentity = None
-        
+
 class CheckAvailabilityRsp(AgentResponse):
     def __init__(self):
         super(CheckAvailabilityRsp, self).__init__()
@@ -83,7 +83,7 @@ class ConsoleProxyAgent(object):
     PORT = 7758
     http_server = http.HttpServer(PORT)
     http_server.logfile_path = log.get_logfile_path()
-    
+
     CHECK_AVAILABILITY_PATH = "/console/check"
     ESTABLISH_PROXY_PATH = "/console/establish"
     DELETE_PROXY_PATH = "/console/delete"
@@ -109,19 +109,19 @@ class ConsoleProxyAgent(object):
 
     def _make_token_file_name(self, cmd):
         target_ip_str = cmd.targetHostname.replace('.', '_')
-        
+
         return '%s-%s' % (target_ip_str, cmd.targetPort)
-    
+
     def _make_proxy_log_file_name(self, cmd):
         f = self._make_token_file_name(cmd)
         return '%s-%s' % (f, cmd.token)
-    
+
     def _get_pid_on_port(self, port):
         out = shell.call('netstat -anp | grep ":%s" | grep LISTEN' % port, exception=False)
         out = out.strip(' \n\t\r')
         if "" == out:
             return None
-        
+
         pid = out.split()[-1].split('/')[0]
         try:
             pid = int(pid)
@@ -129,35 +129,35 @@ class ConsoleProxyAgent(object):
         except:
             return None
 
-        
+
     def _check_proxy_availability(self, args):
         proxyPort = args['proxyPort']
         targetHostname = args['targetHostname']
         targetPort = args['targetPort']
         token = args['token']
-        
+
         pid = self._get_pid_on_port(proxyPort)
         if not pid:
             logger.debug('no websockify on proxy port[%s], availability false' % proxyPort)
             return False
-        
+
         with open(os.path.join('/proc', str(pid), 'cmdline'), 'r') as fd:
             process_cmdline = fd.read()
-            
+
         if 'websockify' not in process_cmdline:
             logger.debug('process[pid:%s] on proxy port[%s] is not websockify process, availability false' % (pid, proxyPort))
             return False
-        
+
         info_str = self.db.get(token)
         if not info_str:
             logger.debug('cannot find information for process[pid:%s] on proxy port[%s], availability false' % (pid, proxyPort))
             return False
-        
+
         info = jsonobject.loads(info_str)
         if token != info['token']:
             logger.debug('metadata[token] for process[pid:%s] on proxy port[%s] are changed[%s --> %s], availability false' % (pid, proxyPort, token, info['token']))
             return False
-            
+
         if targetPort != info['targetPort']:
             logger.debug('metadata[targetPort] for process[pid:%s] on proxy port[%s] are changed[%s --> %s], availability false' % (pid, proxyPort, targetPort, info['targetPort']))
             return False
@@ -165,7 +165,7 @@ class ConsoleProxyAgent(object):
         if targetHostname != info['targetHostname']:
             logger.debug('metadata[targetHostname] for process[pid:%s] on proxy port[%s] are changed[%s --> %s], availability false' % (pid, proxyPort, targetHostname, info['targetHostname']))
             return False
-        
+
         return True
 
     @replyerror
@@ -177,10 +177,10 @@ class ConsoleProxyAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         ret = self._check_proxy_availability({'proxyPort':cmd.proxyPort, 'targetHostname':cmd.targetHostname, 'targetPort':cmd.targetPort, 'token':cmd.token})
-        
+
         rsp = CheckAvailabilityRsp()
         rsp.available = ret
-        
+
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -205,7 +205,7 @@ class ConsoleProxyAgent(object):
             shell.call("rm -f %s" % token_file)
             logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
 
-        shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null && iptables -D INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (cmd.proxyPort, cmd.proxyPort))
+        shell.call("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null || iptables -D INPUT -p tcp -m tcp --dport %s -j ACCEPT" % (cmd.proxyPort, cmd.proxyPort))
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
@@ -215,7 +215,7 @@ class ConsoleProxyAgent(object):
     def establish_new_proxy(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = EstablishProxyRsp()
-        
+
         def check_parameters():
             if not cmd.targetHostname:
                 raise ConsoleProxyError('targetHostname cannot be null')
@@ -225,7 +225,7 @@ class ConsoleProxyAgent(object):
                 raise ConsoleProxyError('token cannot be null')
             if not cmd.proxyHostname:
                 raise ConsoleProxyError('proxyHostname cannot be null')
-        
+
         try:
             check_parameters()
         except ConsoleProxyError as e:
@@ -238,7 +238,7 @@ class ConsoleProxyAgent(object):
         token_file = os.path.join(self.TOKEN_FILE_DIR, self._make_token_file_name(cmd))
         with open(token_file, 'w') as fd:
             fd.write('%s: %s:%s' % (cmd.token, cmd.targetHostname, cmd.targetPort))
-        
+
         timeout = cmd.idleTimeout
         if not timeout:
             timeout = 600
@@ -281,18 +281,18 @@ class ConsoleProxyAgent(object):
                 }
         info_str = jsonobject.dumps(info)
         self.db.set(cmd.token, info_str)
-        
+
         rsp.proxyPort = proxy_port
-        
+
         logger.debug('successfully establish new proxy%s' % info_str)
 
         return jsonobject.dumps(rsp)
-        
+
 
 class ConsoleProxyDaemon(daemon.Daemon):
     def __init__(self, pidfile):
         super(ConsoleProxyDaemon, self).__init__(pidfile)
-    
+
     def run(self):
         self.agent = ConsoleProxyAgent()
         self.agent.http_server.start()
