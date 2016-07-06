@@ -1337,7 +1337,8 @@ baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
 failovermethod=priority
 gpgcheck=0
         """
-            ali_ev_repo = """[ali-qemu-ev]
+            ali_ev_repo = """enabled=0
+[ali-qemu-ev]
 name=CentOS-\$releasever - QEMU EV
 baseurl=http://mirrors.aliyun.com/centos/\$releasever/virt/\$basearch/kvm-common/
 gpgcheck=0
@@ -1408,7 +1409,8 @@ baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
 failovermethod=priority
 gpgcheck=0
         """
-                    netease_ev_repo = """[163-qemu-ev]
+                    netease_ev_repo = """enabled=0
+[163-qemu-ev]
 name=CentOS-\$releasever - QEMU EV
 baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
 gpgcheck=0

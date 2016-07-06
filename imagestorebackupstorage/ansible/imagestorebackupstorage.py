@@ -67,11 +67,12 @@ zstacklib = ZstackLib(zstacklib_args)
 
 if distro == "CentOS" or distro == "RedHat":
     if distro_version < 7:
-        qemu_pkg = "qemu-img"
+        qemu_pkg = "qemu-kvm"
     else:
-        qemu_pkg = "qemu-img-2.3.0"
+        qemu_pkg = "qemu-kvm-ev-2.3.0"
     if client == "true" :
         if distro_version < 7:
+            # change error to warning due to imagestore client will install after add kvm host
             Warning("Imagestore Client only support distribution version newer than 7.0")
         if zstack_repo == 'false':
             yum_install_package(qemu_pkg, host_post_info)
@@ -89,7 +90,7 @@ if distro == "CentOS" or distro == "RedHat":
 elif distro == "Debian" or distro == "Ubuntu":
     if client == "true" and distro_version < 16:
         Warning("Client only support distribution version newer than 16.04")
-    apt_install_packages("qemu-img", host_post_info)
+    apt_install_packages("qemu-kvm", host_post_info)
 
 else:
     error("ERROR: Unsupported distribution")
