@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
+import os.path
 from zstacklib import *
 from datetime import datetime
 
@@ -105,7 +106,8 @@ copy_arg.src = "%s/%s" % (file_root, pkg_imagestorebackupstorage)
 copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
 
-local_cert_dir = "/usr/local/zstack/imagestore/bin/certs"
+current_dir = os.path.dirname(os.path.realpath(__file__))
+local_cert_dir = os.path.join(os.path.dirname(current_dir), "imagestore", "bin", "certs")
 
 # name: copy imagestore binary
 copy_arg = CopyArg()
