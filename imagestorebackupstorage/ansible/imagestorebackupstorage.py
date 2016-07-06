@@ -99,17 +99,17 @@ else:
 command = 'mkdir -p %s' % (imagestore_root + "/certs")
 run_remote_command(command, host_post_info)
 
-# name: copy necessary certificates
+# name: copy imagestore binary
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, pkg_imagestorebackupstorage)
 copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
 
+# name: copy necessary certificates
 current_dir = os.path.dirname(os.path.realpath(__file__))
 local_cert_dir = os.path.join(os.path.dirname(current_dir), "imagestore", "bin", "certs")
 
-# name: copy imagestore binary
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (local_cert_dir, "ca.pem")
 copy_arg.dest = "%s/%s/%s" % (imagestore_root, "certs", "ca.pem")
