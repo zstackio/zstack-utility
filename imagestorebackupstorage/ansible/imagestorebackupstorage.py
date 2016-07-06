@@ -66,26 +66,29 @@ zstacklib_args.require_python_env = require_python_env
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro == "CentOS" or distro == "RedHat":
+    if distro_version < 7:
+        qemu_pkg = "qemu-img"
+    else:
+        qemu_pkg = "qemu-img-2.3.0"
     if client == "true" :
         if distro_version < 7:
-            error("Client only support distribution version newer than 7.0")
-        else:
-            if zstack_repo == 'false':
-                yum_install_package("qemu-img-2.3.0", host_post_info)
-            else:
-                command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
-                           "-y qemu-img-ev-2.3.0") % zstack_repo
-                run_remote_command(command, host_post_info)
-    else:
+            Warning("Imagestore Client only support distribution version newer than 7.0")
         if zstack_repo == 'false':
-            yum_install_package("qemu-img", host_post_info)
+            yum_install_package(qemu_pkg, host_post_info)
         else:
             command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
-                       "-y qemu-img") % zstack_repo
+                       "-y %s") % (zstack_repo, qemu_pkg)
+            run_remote_command(command, host_post_info)
+    else:
+        if zstack_repo == 'false':
+            yum_install_package(qemu_pkg, host_post_info)
+        else:
+            command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
+                       "-y %s") % (zstack_repo, qemu_pkg)
 
 elif distro == "Debian" or distro == "Ubuntu":
     if client == "true" and distro_version < 16:
-        error("Client only support distribution version newer than 16.04")
+        Warning("Client only support distribution version newer than 16.04")
     apt_install_packages("qemu-img", host_post_info)
 
 else:

@@ -80,15 +80,19 @@ else:
 if distro == "RedHat" or distro == "CentOS":
     # handle zstack_repo
     if zstack_repo != 'false':
+        if distro_version >= 7:
+            qemu_pkg = 'qemu-kvm-ev-2.3.0'
+        else:
+            qemu_pkg = 'qemu-kvm'
         # name: install kvm related packages on RedHat based OS from user defined repo
-        command = ("pkg_list=`rpm -q openssh-clients qemu-kvm-ev-2.3.0 bridge-utils wget qemu-img-ev-2.3.0 libvirt-python libvirt nfs-utils "
+        command = ("pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils "
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
                    "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
-        host_post_info.post_label_param = "openssh-clients,qemu-kvm-ev-2.3.0,bridge-utils,wget,qemu-img-ev-2.3.0," \
+        host_post_info.post_label_param = "openssh-clients,%s,bridge-utils,wget," \
                                           "libvirt-python,libvirt,nfs-utils,vconfig,libvirt-client,net-tools," \
-                                          "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils,rsync,nmap"
+                                          "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils,rsync,nmap" % qemu_pkg
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos

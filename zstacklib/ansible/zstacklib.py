@@ -188,7 +188,7 @@ def create_log(logger_dir):
         os.makedirs(logger_dir)
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=1 * 1024 * 1024,
+    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=10 * 1024 * 1024,
                                                    backupCount=10)
     handler.setFormatter(fmt)
     logger.addHandler(handler)
@@ -341,7 +341,7 @@ def yum_check_package(name, host_post_info):
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
-    runner_args.module_args = 'rpm -q %s ' % name,
+    runner_args.module_args = 'rpm -q %s' % name
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
@@ -503,7 +503,7 @@ def yum_remove_package(name, host_post_info):
             runner_args = ZstackRunnerArg()
             runner_args.host_post_info = host_post_info
             runner_args.module_name = 'yum'
-            runner_args.module_args = 'name=' + name + ' state=absent',
+            runner_args.module_args = 'name=' + name + ' state=absent'
             zstack_runner = ZstackRunner(runner_args)
             result = zstack_runner.run()
             logger.debug(result)
@@ -1310,7 +1310,7 @@ class ZstackLib(object):
             host_post_info.post_label_param = "systemd scope files"
             run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
             # set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
-            command = """
+            ali_base_repo = """
 echo -e "#aliyun base
 [alibase]
 name=CentOS-\$releasever - Base - mirrors.aliyun.com
@@ -1335,17 +1335,24 @@ gpgcheck=0
 name=Extra Packages for Enterprise Linux \$releasever - \$basearch - mirrors.aliyun.com
 baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
 failovermethod=priority
-enabled=0
 gpgcheck=0
-[ali-qemu-ev]
+        """
+            ali_ev_repo = """[ali-qemu-ev]
 name=CentOS-\$releasever - QEMU EV
 baseurl=http://mirrors.aliyun.com/centos/\$releasever/virt/\$basearch/kvm-common/
 gpgcheck=0
-enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-        """
+            """
             host_post_info.post_label = "ansible.shell.deploy.repo"
             host_post_info.post_label_param = "aliyun"
-            run_remote_command(command, host_post_info)
+            if distro_version >= 7:
+                ali_repo = ali_base_repo + ali_ev_repo
+            else:
+                ali_repo = ali_base_repo
+
+            ali_repo_tailer = """enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+            """
+            generate_ali_repo = ali_repo + ali_repo_tailer
+            run_remote_command(generate_ali_repo, host_post_info)
 
             if zstack_repo == "false":
                 # zstack_repo is empty, will use system repo
@@ -1373,7 +1380,7 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                 # user defined zstack_repo, will generate repo defined in zstack_repo
                 if '163' in zstack_repo:
                     # set 163 mirror yum repo
-                    command = """
+                    netease_base_repo = """
 echo -e "#163 base
 [163base]
 name=CentOS-\$releasever - Base - mirrors.163.com
@@ -1399,17 +1406,23 @@ gpgcheck=0
 name=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc
 baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
 failovermethod=priority
-enabled=0
 gpgcheck=0
-[163-qemu-ev]
+        """
+                    netease_ev_repo = """[163-qemu-ev]
 name=CentOS-\$releasever - QEMU EV
 baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
 gpgcheck=0
-enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
-        """
+                    """
                     host_post_info.post_label = "ansible.shell.deploy.repo"
                     host_post_info.post_label_param = "163"
-                    run_remote_command(command, host_post_info)
+                    if distro_version >= 7:
+                        netease_repo = netease_base_repo + netease_ev_repo
+                    else:
+                        netease_repo = netease_base_repo
+                    netease_repo_tailer = """enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
+                    """
+                    generate_netease_repo = netease_repo + netease_repo_tailer
+                    run_remote_command(generate_netease_repo, host_post_info)
                 if 'zstack-mn' in zstack_repo:
                     generate_mn_repo_raw_command = """
 echo -e "[zstack-mn]
@@ -1423,7 +1436,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                        'yum_server' : yum_server
                     })
                     run_remote_command(generate_mn_repo_command, host_post_info)
-                if 'qemu-kvm-ev-mn' in zstack_repo:
+                if 'qemu-kvm-ev-mn' in zstack_repo and distro_version >= 7:
                     generate_kvm_repo_raw_command = """
 echo -e "[qemu-kvm-ev-mn]
 name=qemu-kvm-ev-mn
