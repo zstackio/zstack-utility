@@ -1893,7 +1893,7 @@ Warning: This script will disable SELinux on RedHat series OS (CentOS/Redhat RHE
 Usage: $0 [options]
 
 Options:
-  -a    equal to -nHD
+  -a    equal to -nH
 
   -d    print detailed installation log to screen
         By default the installation log will be saved to $ZSTACK_INSTALL_LOG
