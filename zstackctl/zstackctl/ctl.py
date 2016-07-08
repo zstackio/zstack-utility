@@ -157,7 +157,7 @@ def get_default_gateway_ip():
             return None
 
 def get_default_ip():
-    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|awk -F '/' '{print $1}'""")
+    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|head -n 1|awk '{print $2}'|awk -F '/' '{print $1}'""")
     cmd(False)
     return cmd.stdout.strip() 
 
