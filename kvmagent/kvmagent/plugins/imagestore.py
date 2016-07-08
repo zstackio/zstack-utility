@@ -125,32 +125,10 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         host = cmd.hostname
         name, imageid = self._parse_image_reference(cmd.backupStorageInstallPath)
 
-        cmdstr = '%s -url %s:%s pull %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
+        cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cmd.primaryStorageInstallPath, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
-
-        # get the image JSON path, and generate a symbolic link
-        cmdstr = "%s mfpath %s:%s" % (self.ZSTORE_CLI_PATH, name, imageid)
-        mfpath = shell.call(cmdstr).rstrip()
-        dest = self._get_image_json_file(cmd.primaryStorageInstallPath)
-
-        # run these preparation tasks w/o throwing exceptions
-        ptasks = [
-            lambda: makedirs(os.path.dirname(dest)),
-            lambda: unlink(dest),
-            lambda: unlink(cmd.primaryStorageInstallPath)
-        ]
-
-        for task in ptasks:
-            try:
-                task()
-            except:
-                pass
-
-        logger.debug('[imagestore] linking from %s to %s' % (mfpath, dest))
-        symlink(mfpath, dest)
-        link(mfpath.replace(".json", ".qcow2"), cmd.primaryStorageInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
