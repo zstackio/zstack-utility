@@ -139,7 +139,7 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart fusionstorbagent
-command = "service zstack-fusionstor-backupstorage restart"
+command = "service zstack-fusionstor-backupstorage restart && chkconfig zstack-fusionstor-backupstorage on"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

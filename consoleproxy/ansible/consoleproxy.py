@@ -109,7 +109,7 @@ if copy_consoleproxy != "changed:False":
 
 # name: restart consoleproxy
 if chroot_env == 'false':
-    command = "service zstack-consoleproxy restart"
+    command = "service zstack-consoleproxy restart && chkconfig zstack-consoleproxy on"
     run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

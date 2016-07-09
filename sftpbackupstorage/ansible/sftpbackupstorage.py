@@ -142,7 +142,7 @@ if sftp_copy_result != "changed:False":
 
 # name: restart sftp
 if chroot_env == 'false':
-    command = "service zstack-sftpbackupstorage restart"
+    command = "service zstack-sftpbackupstorage restart && chkconfig zstack-sftpbackupstorage on"
     run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
