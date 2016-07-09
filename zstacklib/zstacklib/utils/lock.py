@@ -51,8 +51,9 @@ def file_lock(name):
     def wrap(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
-            with FileLock(name):
-                retval = f(*args, **kwargs)
+            with NamedLock(name):
+                with FileLock(name):
+                    retval = f(*args, **kwargs)
             return retval
         return inner
     return wrap
