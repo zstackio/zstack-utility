@@ -92,7 +92,7 @@ LICENSE_FILE='zstack-license'
 
 #define extra upgrade params
 #1.0  1.1  1.2  1.3  1.4
-declare -a upgrade_params_arrays=(
+declare -a upgrade_params_arrays_zstack1=(
     '' 
     '' 
     '' 
@@ -670,6 +670,18 @@ upgrade_zstack(){
         show_spinner sd_install_dashboard
     fi
 
+    #set zstack upgrade params 
+    current_major_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
+    current_minor_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
+    upgrade_params=''
+    if [ $current_major_version = $PRE_MAJOR_VERSION ]; then
+        while [ $current_minor_version -gt $PRE_MINOR_VERSION ]; do
+            PRE_MINOR_VERSION=`expr $PRE_MINOR_VERSION + 1`
+            upgrade_params="${upgrade_params} ${upgrade_params_arrays_zstack1[$PRE_MINOR_VERSION]}"
+        done
+    fi
+    [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
+
     #When using -i option, will not upgrade kariosdb and not start zstack
     # It means user will manually upgrade database. 
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -685,15 +697,6 @@ upgrade_zstack(){
             show_spinner sz_start_cassandra
             show_spinner sz_start_kairosdb
         fi
-
-        #set zstack upgrade params 
-        current_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
-        upgrade_params=''
-        while [ $current_version -gt $PRE_VERSION ]; do
-            PRE_VERSION=`expr $PRE_VERSION + 1`
-            upgrade_params="${upgrade_params} ${upgrade_params_arrays[$PRE_VERSION]}"
-        done
-        [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
 
         #when using -k option, will not start zstack.
         if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
@@ -2211,7 +2214,8 @@ check_system
 download_zstack
 
 if [ $UPGRADE = 'y' ]; then
-    PRE_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
+    PRE_MAJOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
+    PRE_MINOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     #only upgrade zstack
     upgrade_zstack
 
