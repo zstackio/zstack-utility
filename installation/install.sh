@@ -324,7 +324,7 @@ check_system(){
         grep 'CentOS release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
             OS=$CENTOS6
-            fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
+            fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         else
             grep 'CentOS Linux release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
@@ -342,7 +342,7 @@ check_system(){
                     if [ $? -eq 0 ]; then
                         OS=$RHEL7
                     else
-                        fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, we can only support $SUPPORTED_OS currently"
+                        fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
                     fi
                 fi
             fi
@@ -353,13 +353,13 @@ check_system(){
             grep '16.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
                 OS=$UBUNTU1604
-                fail2 "Host OS checking failure: your system is: $OS, we can only support $SUPPORTED_OS currently"
+                fail2 "Host OS checking failure: your system is: $OS, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
             else
                 OS=$UBUNTU1404
             fi
             . /etc/lsb-release
         else
-            fail2 "Host OS checking failure: your system is: `cat /etc/issue`, we can only support $SUPPORTED_OS currently"
+            fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
         fi
     fi
     
@@ -2057,7 +2057,7 @@ OPTIND=1
 
 if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     if [ "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_163" -a "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_ALIYUN" ]; then
-        fail2 "\n\tYou want to use yum mirror from '$ZSTACK_PKG_MIRROR' . But we only support yum mirrors for '$PKG_MIRROR_ALIYUN' or '$PKG_MIRROR_163'. Please fix it and rerun the installation.\n\n"
+        fail2 "\n\tYou want to use yum mirror from '$ZSTACK_PKG_MIRROR' . But $PRODUCT_NAME only supports yum mirrors for '$PKG_MIRROR_ALIYUN' or '$PKG_MIRROR_163'. Please fix it and rerun the installation.\n\n"
     fi
     if [ $ZSTACK_PKG_MIRROR = $PKG_MIRROR_163 ]; then
         ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
