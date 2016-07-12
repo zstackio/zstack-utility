@@ -4236,6 +4236,18 @@ class GetHostMonitoringDataAction(inventory.APIGetHostMonitoringDataMsg):
         self.out = evt
         return self.out
 
+class CreateVmCpuAlarmAction(inventory.APICreateVmCpuAlarmMsg):
+    def __init__(self):
+        super(CreateVmCpuAlarmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVmCpuAlarmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteLogAction(inventory.APIDeleteLogMsg):
     def __init__(self):
         super(DeleteLogAction, self).__init__()
@@ -4256,6 +4268,30 @@ class QueryLogAction(inventory.APIQueryLogMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryLogAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrometheusQueryPassThroughAction(inventory.APIPrometheusQueryPassThroughMsg):
+    def __init__(self):
+        super(PrometheusQueryPassThroughAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrometheusQueryPassThroughAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrometheusQueryVmMonitoringDataAction(inventory.APIPrometheusQueryVmMonitoringDataMsg):
+    def __init__(self):
+        super(PrometheusQueryVmMonitoringDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrometheusQueryVmMonitoringDataAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

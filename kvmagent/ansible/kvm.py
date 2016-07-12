@@ -37,6 +37,8 @@ iproute_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % file_root
 iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
 dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
 dnsmasq_local_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % kvm_root
+collectd_pkg = "%s/collectd_exporter" % file_root
+collectd_local_pkg = "%s/collectd_exporter" % kvm_root
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
@@ -118,6 +120,11 @@ if distro == "RedHat" or distro == "CentOS":
             for pkg in ['qemu-kvm', 'qemu-img']:
                 yum_install_package(pkg, host_post_info)
 
+    # copy prometheus collectd_exporter
+    copy_arg = CopyArg()
+    copy_arg.src = collectd_pkg
+    copy_arg.dest = collectd_local_pkg
+    copy(copy_arg, host_post_info)
 
     # handle distro version specific task
     if distro_version < 7:
