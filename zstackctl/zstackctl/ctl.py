@@ -157,7 +157,7 @@ def get_default_gateway_ip():
             return None
 
 def get_default_ip():
-    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|head -n 1|awk '{print $2}'|awk -F '/' '{print $1}'""")
+    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|awk -F '/' '{print $1}'""")
     cmd(False)
     return cmd.stdout.strip()
 
@@ -1782,6 +1782,7 @@ class InstallHACmd(Command):
     host_post_info_list = []
     current_dir = ""
     logger_dir = ""
+    bridge = ""
     spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
                       'Kairosdb':False, 'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
     def __init__(self):
@@ -1806,6 +1807,9 @@ class InstallHACmd(Command):
         parser.add_argument('--gateway',
                             help="The gateway IP address for HA setup",
                             default=None)
+        parser.add_argument('--bridge',
+                            help="The bridge device name, default is br_eth0",
+                            default="br_eth0")
         parser.add_argument('--mysql-root-password',
                             help="Password of MySQL root user", default="zstack123")
         parser.add_argument('--mysql-user-password',
@@ -1870,6 +1874,7 @@ class InstallHACmd(Command):
         spinner_info.name = 'check_init'
         InstallHACmd.spinner_status['check_init'] = True
         ZstackSpinner(spinner_info)
+        InstallHACmd.bridge = args.bridge
         # check gw ip is available
         if args.gateway is None:
             if get_default_gateway_ip() is None:
@@ -1929,12 +1934,12 @@ class InstallHACmd(Command):
 
         # check network configuration
         interface_list = os.listdir('/sys/class/net/')
-        if 'br_eth0' not in interface_list:
+        if InstallHACmd.bridge not in interface_list:
             error("Make sure you have already run the 'zs-network-setting' to setup the network environment")
 
         # check user start this command on host1
         if args.recovery_from_this_host is False:
-            local_ip = self.get_ip_by_interface("br_eth0")
+            local_ip = self.get_ip_by_interface(InstallHACmd.bridge)
             if args.host1 != local_ip:
                 error("Please run this command at host1 %s, or change your host1 ip to local host ip" % args.host1)
 
@@ -2062,7 +2067,7 @@ class InstallHACmd(Command):
 
         # check whether to recovery the HA cluster
         if args.recovery_from_this_host is True:
-            local_ip = self.get_ip_by_interface("br_eth0")
+            local_ip = self.get_ip_by_interface(InstallHACmd.bridge)
             spinner_info = SpinnerInfo()
             spinner_info.output = "Starting to recovery mysql from this host"
             spinner_info.name = "recovery_cluster"
@@ -2755,7 +2760,7 @@ vrrp_script Monitor_Haproxy {
 vrrp_instance VI_1 {
     # use the same state with host2, so no master node, recovery will not race to control the vip
    state BACKUP
-   interface br_eth0
+   interface {{ bridge }}
    virtual_router_id {{ vrouter_id }}
    priority {{ priority }}
    nopreempt
@@ -2768,7 +2773,7 @@ vrrp_instance VI_1 {
       Monitor_Haproxy
 }
    virtual_ipaddress {
-      {{ vip }}/{{ netmask }} label br_eth0:0
+      {{ vip }}/{{ netmask }} label {{ bridge }}:0
  }
 }
         '''
@@ -2780,19 +2785,21 @@ vrrp_instance VI_1 {
         second_slave_priority = 80
         keepalived_template = jinja2.Template(keepalived_raw_config)
         keepalived_host1_config = keepalived_template.render({
+            'bridge' : InstallHACmd.bridge,
             'vrouter_id': virtual_router_id,
             'priority': master_priority,
             'auth_passwd': auth_pass,
             'vip': self.vip,
-            'netmask': self.get_formatted_netmask('br_eth0')
+            'netmask': self.get_formatted_netmask(InstallHACmd.bridge)
         })
 
         keepalived_host2_config = keepalived_template.render({
+            'bridge' : InstallHACmd.bridge,
             'vrouter_id': virtual_router_id,
             'priority': slave_priority,
             'auth_passwd': auth_pass,
             'vip': self.vip,
-            'netmask': self.get_formatted_netmask('br_eth0')
+            'netmask': self.get_formatted_netmask(InstallHACmd.bridge)
         })
 
         if len(self.host_post_info_list) == 3:
@@ -2801,7 +2808,7 @@ vrrp_instance VI_1 {
                 'priority': second_slave_priority,
                 'auth_passwd': auth_pass,
                 'vip': self.vip,
-                'netmask': self.get_formatted_netmask('br_eth0')
+                'netmask': self.get_formatted_netmask(InstallHACmd.bridge)
             })
 
         host1_config, keepalived_host1_config_file = tempfile.mkstemp()
