@@ -2416,6 +2416,18 @@ class DeleteBackupStorageAction(inventory.APIDeleteBackupStorageMsg):
         self.out = evt
         return self.out
 
+class ExportImageFromBackupStorageAction(inventory.APIExportImageFromBackupStorageMsg):
+    def __init__(self):
+        super(ExportImageFromBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ExportImageFromBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeBackupStorageStateAction(inventory.APIChangeBackupStorageStateMsg):
     def __init__(self):
         super(ChangeBackupStorageStateAction, self).__init__()
@@ -2680,18 +2692,6 @@ class AddSimulatorHostAction(inventory.APIAddSimulatorHostMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AddSimulatorHostAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class ExportImageFromBackupStorageAction(inventory.APIExportImageFromBackupStorageMsg):
-    def __init__(self):
-        super(ExportImageFromBackupStorageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ExportImageFromBackupStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
