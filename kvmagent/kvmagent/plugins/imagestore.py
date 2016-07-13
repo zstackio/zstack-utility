@@ -104,8 +104,8 @@ class ImageStorePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
 
         # Add the image to registry
-        fpath, name = cmd.primaryStorageInstallPath, cmd.imageName
-        cmdstr = '%s -json add -file %s -name %s' % (self.ZSTORE_CLI_PATH, fpath, name)
+        fpath = cmd.primaryStorageInstallPath
+        cmdstr = '%s -json add -file %s' % (self.ZSTORE_CLI_PATH, fpath)
 
         logger.debug('adding %s to local image store' % fpath)
         shell.call(cmdstr)
