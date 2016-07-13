@@ -11,6 +11,7 @@ import zstacklib.utils.linux as linux
 import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils import plugin
 from zstacklib.utils.rollback import rollback, rollbackable
+from zstacklib.utils.bash import *
 import os
 import functools
 import traceback
@@ -100,6 +101,7 @@ class CephAgent(object):
     GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
     PING_PATH = "/ceph/primarystorage/ping"
     GET_FACTS = "/ceph/primarystorage/facts"
+    DELETE_IMAGE_CACHE = "/ceph/primarystorage/deleteimagecache"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -122,6 +124,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
+        self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -149,6 +152,24 @@ class CephAgent(object):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
         return long(o.size_)
+
+    @replyerror
+    @in_bash
+    def delete_image_cache(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        SP_PATH = self._normalize_install_path(cmd.snapshotPath)
+        IMAGE_PATH = self._normalize_install_path(cmd.imagePath)
+        o = bash_o('rbd children {{SP_PATH}}')
+        o = o.strip(' \t\r\n')
+        if o:
+            raise Exception('the image cache[%s] is still in used' % cmd.imagePath)
+
+        bash_errorout('rbd snap unprotect {{SP_PATH}}')
+        bash_errorout('rbd snap rm {{SP_PATH}}')
+        bash_errorout('rbd rm {{IMAGE_PATH}}')
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def get_facts(self, req):
@@ -321,7 +342,7 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     def _normalize_install_path(self, path):
-        return path.lstrip('ceph:').lstrip('//')
+        return path.replace('ceph://', '')
 
     def _parse_install_path(self, path):
         return self._normalize_install_path(path).split('/')
