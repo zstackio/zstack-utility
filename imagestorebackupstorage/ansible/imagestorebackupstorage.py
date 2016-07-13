@@ -127,9 +127,12 @@ copy(copy_arg, host_post_info)
 command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(command, host_post_info)
 
+# name: integrate zstack-store with init.d
+run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/")
+
 # name: restart image store server
 if client != "true":
-    command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage restart"
+    command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage restart && chkconfig zstack-imagestorebackupstorage on"
     run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
