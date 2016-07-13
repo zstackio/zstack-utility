@@ -2684,6 +2684,18 @@ class AddSimulatorHostAction(inventory.APIAddSimulatorHostMsg):
         self.out = evt
         return self.out
 
+class ExportImageFromBackupStorageAction(inventory.APIExportImageFromBackupStorageMsg):
+    def __init__(self):
+        super(ExportImageFromBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ExportImageFromBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QueryApplianceVmAction(inventory.APIQueryApplianceVmMsg):
     def __init__(self):
         super(QueryApplianceVmAction, self).__init__()
@@ -3740,18 +3752,6 @@ class QueryImageStoreBackupStorageAction(inventory.APIQueryImageStoreBackupStora
         self.out = reply.inventories
         return self.out
 
-class UpdateImageStoreBackupStorageAction(inventory.APIUpdateImageStoreBackupStorageMsg):
-    def __init__(self):
-        super(UpdateImageStoreBackupStorageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateImageStoreBackupStorageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class AddImageStoreBackupStorageAction(inventory.APIAddImageStoreBackupStorageMsg):
     def __init__(self):
         super(AddImageStoreBackupStorageAction, self).__init__()
@@ -3772,6 +3772,18 @@ class ReconnectImageStoreBackupStorageAction(inventory.APIReconnectImageStoreBac
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[ReconnectImageStoreBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateImageStoreBackupStorageAction(inventory.APIUpdateImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(UpdateImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateImageStoreBackupStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3848,54 +3860,6 @@ class DeleteVmInstanceHaLevelAction(inventory.APIDeleteVmInstanceHaLevelMsg):
         self.out = evt
         return self.out
 
-class DeleteResourcePriceAction(inventory.APIDeleteResourcePriceMsg):
-    def __init__(self):
-        super(DeleteResourcePriceAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteResourcePriceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
-    def __init__(self):
-        super(CalculateAccountSpendingAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CalculateAccountSpendingAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
-    def __init__(self):
-        super(CreateResourcePriceAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateResourcePriceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class QueryResourcePriceAction(inventory.APIQueryResourcePriceMsg):
-    def __init__(self):
-        super(QueryResourcePriceAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryResourcePriceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class ReloadLicenseAction(inventory.APIReloadLicenseMsg):
     def __init__(self):
         super(ReloadLicenseAction, self).__init__()
@@ -3928,6 +3892,54 @@ class GetLicenseInfoAction(inventory.APIGetLicenseInfoMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetLicenseInfoAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
+    def __init__(self):
+        super(CalculateAccountSpendingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CalculateAccountSpendingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class QueryResourcePriceAction(inventory.APIQueryResourcePriceMsg):
+    def __init__(self):
+        super(QueryResourcePriceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryResourcePriceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteResourcePriceAction(inventory.APIDeleteResourcePriceMsg):
+    def __init__(self):
+        super(DeleteResourcePriceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteResourcePriceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
+    def __init__(self):
+        super(CreateResourcePriceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateResourcePriceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
