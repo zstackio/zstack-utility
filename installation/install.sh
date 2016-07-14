@@ -2131,9 +2131,6 @@ if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
     fi
 fi
 
-#Set ZSTACK_HOME for zstack-ctl.
-export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
-
 if [ -f $PRODUCT_TITLE_FILE ]; then
     cat $PRODUCT_TITLE_FILE
 else
@@ -2176,6 +2173,7 @@ if [ $UPGRADE = 'y' ]; then
         echo -e "$(tput setaf 1)  Reason: $UPGRADE_LOCK exist. If no other upgrading operation, please manually remove $UPGRADE_LOCK.\n$(tput sgr0)"
         exit 1
     fi
+    ZSTACK_INSTALL_ROOT=`eval echo "~zstack"`
     touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
@@ -2206,6 +2204,9 @@ if [ $UPGRADE = 'y' ]; then
         fi
     fi
 fi
+
+#Set ZSTACK_HOME for zstack-ctl.
+export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
