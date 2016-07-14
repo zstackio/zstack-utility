@@ -6,6 +6,7 @@ import os.path
 import traceback
 
 from kvmagent import kvmagent
+from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -118,7 +119,6 @@ class GetVolumeSizeRsp(NfsResponse):
         self.size = None
         self.actualSize = None
 
-        
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -135,6 +135,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     CHECK_BITS_PATH = "/nfsprimarystorage/checkbits"
     UPLOAD_TO_SFTP_PATH = "/nfsprimarystorage/uploadtosftpbackupstorage"
     DOWNLOAD_FROM_SFTP_PATH = "/nfsprimarystorage/downloadfromsftpbackupstorage"
+    UPLOAD_TO_IMAGESTORE_PATH = "/nfsprimarystorage/imagestore/upload"
+    COMMIT_TO_IMAGESTORE_PATH = "/nfsprimarystorage/imagestore/commit"
+    DOWNLOAD_FROM_IMAGESTORE_PATH = "/nfsprimarystorage/imagestore/download"
     MERGE_SNAPSHOT_PATH = "/nfsprimarystorage/mergesnapshot"
     REBASE_MERGE_SNAPSHOT_PATH = "/nfsprimarystorage/rebaseandmergesnapshot"
     MOVE_BITS_PATH = "/nfsprimarystorage/movebits"
@@ -158,6 +161,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.UPLOAD_TO_SFTP_PATH, self.upload_to_sftp)
+        http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
+        http_server.register_async_uri(self.COMMIT_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
+        http_server.register_async_uri(self.DOWNLOAD_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.REBASE_MERGE_SNAPSHOT_PATH, self.rebase_and_merge_snapshot)
         http_server.register_async_uri(self.MOVE_BITS_PATH, self.move_bits)
@@ -167,6 +173,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.PING_PATH, self.ping)
         self.mount_path = {}
         self.image_cache = None
+        self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
@@ -308,6 +315,24 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def upload_to_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.upload_to_imagestore(cmd.hostname, cmd.primaryStorageInstallPath)
+
+    @kvmagent.replyerror
+    def commit_to_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.commit_to_imagestore(cmd.primaryStorageInstallPath)
+
+    @kvmagent.replyerror
+    def download_from_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.imagestore_client.download_from_imagestore(cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        rsp = kvmagent.AgentResponse()
+        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

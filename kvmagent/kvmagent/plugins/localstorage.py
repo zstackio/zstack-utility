@@ -4,6 +4,7 @@ import os.path
 import traceback
 
 from kvmagent import kvmagent
+from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -68,6 +69,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     DELETE_BITS_PATH = "/localstorage/delete";
     UPLOAD_BIT_PATH = "/localstorage/sftp/upload";
     DOWNLOAD_BIT_PATH = "/localstorage/sftp/download";
+    UPLOAD_TO_IMAGESTORE_PATH = "/localstorage/imagestore/upload"
+    COMMIT_TO_IMAGESTORE_PATH = "/localstorage/imagestore/commit"
+    DOWNLOAD_FROM_IMAGESTORE_PATH = "/localstorage/imagestore/download"
     REVERT_SNAPSHOT_PATH = "/localstorage/snapshot/revert";
     MERGE_SNAPSHOT_PATH = "/localstorage/snapshot/merge";
     MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase";
@@ -92,6 +96,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete)
         http_server.register_async_uri(self.DOWNLOAD_BIT_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.UPLOAD_BIT_PATH, self.upload_to_sftp)
+        http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
+        http_server.register_async_uri(self.COMMIT_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
+        http_server.register_async_uri(self.DOWNLOAD_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.REVERT_SNAPSHOT_PATH, self.revert_snapshot)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.MERGE_AND_REBASE_SNAPSHOT_PATH, self.merge_and_rebase_snapshot)
@@ -108,6 +115,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
 
         self.path = None
+        self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
@@ -386,6 +394,16 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def upload_to_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.upload_to_imagestore(cmd.hostname, cmd.primaryStorageInstallPath)
+
+    @kvmagent.replyerror
+    def commit_to_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.commit_to_imagestore(cmd.primaryStorageInstallPath)
+
+    @kvmagent.replyerror
     def download_from_sftp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
@@ -402,3 +420,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def download_from_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.imagestore_client.download_from_imagestore(cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        rsp = AgentResponse()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        return jsonobject.dumps(rsp)
