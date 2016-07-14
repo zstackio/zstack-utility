@@ -4846,7 +4846,7 @@ fi
 if [ $$? -eq 0 ]; then
     usermod -d $install_path zstack
 else
-    useradd -d $install_path -s /usr/sbin/nologin zstack && mkdir -p $install_path && chown -R zstack.zstack $install_path
+    useradd -d $install_path zstack && mkdir -p $install_path && chown -R zstack.zstack $install_path
 fi
 grep 'zstack' /etc/sudoers >/dev/null || echo 'zstack        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
 grep '^root' /etc/sudoers >/dev/null || echo 'root        ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
