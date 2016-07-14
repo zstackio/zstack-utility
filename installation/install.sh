@@ -502,7 +502,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     if [ $? -eq 0 ]; then
         usermod -d $ZSTACK_INSTALL_ROOT zstack >/dev/null 2>&1
     else
-        useradd -d $ZSTACK_INSTALL_ROOT zstack >/dev/null 2>&1
+        useradd -d $ZSTACK_INSTALL_ROOT -s /usr/sbin/nologin zstack >/dev/null 2>&1
     fi
     zstack_home=`eval echo ~zstack`
     if [ ! -d $zstack_home ];then
