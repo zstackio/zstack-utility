@@ -259,8 +259,9 @@ class ConsoleProxyAgent(object):
             LOG_FILE = log_file
             PROXY_HOST_NAME = cmd.proxyHostname
             PROXY_PORT = self.MN_PROXY_PORT
+            TOKEN_FILE_DIR = self.TOKEN_FILE_DIR 
             TIMEOUT = timeout
-            start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{self.TOKEN_FILE_DIR}} --idle-timeout={{TIMEOUT}} '''
+            start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{TOKEN_FILE_DIR}} --idle-timeout={{TIMEOUT}} '''
             ret,out,err = bash_roe(start_cmd)
             if ret != 0:
                 err = []
