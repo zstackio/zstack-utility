@@ -65,23 +65,25 @@ class HaPlugin(kvmagent.KvmAgent):
                     create = shell.ShellCmd('timeout %s qemu-img create -f raw rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s 1' %
                                                 (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
                     create(False)
+
+                    read_heart_beat_file = False
                     if create.return_code == 0:
                         failure = 0
                         continue
                     elif "File exists" in create.stderr:
-                        pass
+                        read_heart_beat_file = True
                     else:
-                        failure += 1
+                        # will cause failure count +1
                         logger.warn('cannot create heartbeat image; %s' % create.stderr)
-                        continue
 
-                    touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
-                                           (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
-                    touch(False)
+                    if read_heart_beat_file:
+                        touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
+                                               (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
+                        touch(False)
 
-                    if touch.return_code == 0:
-                        failure = 0
-                        continue
+                        if touch.return_code == 0:
+                            failure = 0
+                            continue
 
                     failure += 1
                     if failure == cmd.maxAttempts:
