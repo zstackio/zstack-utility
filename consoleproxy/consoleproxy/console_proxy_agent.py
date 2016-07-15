@@ -242,7 +242,7 @@ class ConsoleProxyAgent(object):
         out = shell.call("ps aux | grep websockify")
         alive = False
         for o in out.split('\n'):
-            if o.find(cmd.proxyHostname) != -1
+            if o.find(cmd.proxyHostname) != -1:
                 alive = True
                 break
                 
