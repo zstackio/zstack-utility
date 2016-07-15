@@ -82,6 +82,7 @@ class ConsoleProxyError(Exception):
 class ConsoleProxyAgent(object):
 
     PORT = 7758
+    MN_PROXY_PORT = 4900
     http_server = http.HttpServer(PORT)
     http_server.logfile_path = log.get_logfile_path()
 
@@ -110,12 +111,8 @@ class ConsoleProxyAgent(object):
 
     def _make_token_file_name(self, cmd):
         target_ip_str = cmd.targetHostname.replace('.', '_')
-
         return '%s-%s' % (target_ip_str, cmd.targetPort)
 
-    def _make_proxy_log_file_name(self, cmd):
-        f = self._make_token_file_name(cmd)
-        return '%s-%s' % (f, cmd.token)
 
     def _get_pid_on_port(self, port):
         out = shell.call('netstat -anp | grep ":%s" | grep LISTEN' % port, exception=False)
@@ -132,7 +129,7 @@ class ConsoleProxyAgent(object):
 
 
     def _check_proxy_availability(self, args):
-        proxyPort = args['proxyPort']
+        proxyPort = self.MN_PROXY_PORT
         targetHostname = args['targetHostname']
         targetPort = args['targetPort']
         token = args['token']
@@ -189,26 +186,9 @@ class ConsoleProxyAgent(object):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        out = shell.call("ps aux |  grep %s | grep -v grep | awk '{print $2}'" % cmd.token)
-        pids = []
-        for o in out.split('\n'):
-            o = o.strip(' \t\r\n')
-            if not o:
-                continue
-
-            pids.append(o)
-
-        for pid in pids:
-            shell.call("kill -9 %s" % pid)
-            log_file = self._make_proxy_log_file_name(cmd)
-            shell.call("rm -f %s" % log_file)
-            token_file = self._make_token_file_name(cmd)
-            shell.call("rm -f %s" % token_file)
-            logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
-
-        ret = bash_r("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s' > /dev/null" % cmd.proxyPort)
-        if ret == 0:
-            bash_errorout("iptables -D INPUT -p tcp -m tcp --dport %s -j ACCEPT" % cmd.proxyPort)
+        token_file = self._make_token_file_name(cmd)
+        shell.call("rm -f %s" % token_file)
+        logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
@@ -216,9 +196,11 @@ class ConsoleProxyAgent(object):
     @replyerror
     @lock.lock('console-proxy')
     def establish_new_proxy(self, req):
+        #check parameters, generate token file,set db,check process is alive,start process if not,
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = EstablishProxyRsp()
-
+        log_file = os.path.join(self.PROXY_LOG_DIR, cmd.proxyHostname)
+        ##
         def check_parameters():
             if not cmd.targetHostname:
                 raise ConsoleProxyError('targetHostname cannot be null')
@@ -238,52 +220,14 @@ class ConsoleProxyAgent(object):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
+        ##
         token_file = os.path.join(self.TOKEN_FILE_DIR, self._make_token_file_name(cmd))
         with open(token_file, 'w') as fd:
             fd.write('%s: %s:%s' % (cmd.token, cmd.targetHostname, cmd.targetPort))
-
-        timeout = cmd.idleTimeout
-        if not timeout:
-            timeout = 600
-
-        log_file = os.path.join(self.PROXY_LOG_DIR, self._make_proxy_log_file_name(cmd))
-        @in_bash
-        def start_proxy():
-            proxyPort = linux.get_free_port()
-            LOG_FILE = log_file
-            PROXY_HOST_NAME = cmd.proxyHostname
-            PROXY_PORT = proxyPort
-            TOKEN_FILE = token_file
-            TIMEOUT = timeout
-            start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{TOKEN_FILE}} --idle-timeout={{TIMEOUT}} '''
-            ret,out,err = bash_roe(start_cmd)
-            if ret != 0 and "Cannot assign requested address" not in err:
-                err = []
-                err.append('failed to execute bash command: %s' % start_cmd)
-                err.append('return code: %s' % ret)
-                err.append('stdout: %s' % out)
-                err.append('stderr: %s' % err)
-                raise ('\n'.join(err))
-            elif ret != 0 and "Cannot assign requested address" in err:
-                return None
-            else:
-                bash_errorout("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport {{PROXY_PORT}}' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport {{PROXY_PORT}} -j ACCEPT")
-                return proxyPort
-
-        proxy_port = None
-        for i in range(0, 3):
-            proxy_port = start_proxy()
-            if proxy_port:
-                break
-
-            time.sleep(3)
-
-        if not proxy_port:
-            raise Exception('cannot start console proxy process, not available free ports found')
-
+                
         info = {
                  'proxyHostname': cmd.proxyHostname,
-                 'proxyPort': cmd.proxyPort,
+                 'proxyPort': self.MN_PROXY_PORT,
                  'targetHostname': cmd.targetHostname,
                  'targetPort': cmd.targetPort,
                  'token': cmd.token,
@@ -292,11 +236,44 @@ class ConsoleProxyAgent(object):
                 }
         info_str = jsonobject.dumps(info)
         self.db.set(cmd.token, info_str)
+        rsp.proxyPort = self.MN_PROXY_PORT  
+        logger.debug('successfully add new proxy token file %s' % info_str)
+        ##if process exists,return
+        out = shell.call("ps aux | grep websockify")
+        alive = False
+        for o in out.split('\n'):
+            if o.find(cmd.proxyHostname) != -1
+                alive = True
+                break
+                
+        if alive:
+            return jsonobject.dumps(rsp)    
+        
+        ##start a new websockify process
+        timeout = cmd.idleTimeout
+        if not timeout:
+            timeout = 600
 
-        rsp.proxyPort = proxy_port
+        @in_bash
+        def start_proxy():
+            LOG_FILE = log_file
+            PROXY_HOST_NAME = cmd.proxyHostname
+            PROXY_PORT = self.MN_PROXY_PORT
+            TIMEOUT = timeout
+            start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{self.TOKEN_FILE_DIR}} --idle-timeout={{TIMEOUT}} '''
+            ret,out,err = bash_roe(start_cmd)
+            if ret != 0:
+                err = []
+                err.append('failed to execute bash command: %s' % start_cmd)
+                err.append('return code: %s' % ret)
+                err.append('stdout: %s' % out)
+                err.append('stderr: %s' % err)
+                raise ('\n'.join(err))
+            else:
+                bash_errorout("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport {{PROXY_PORT}}' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport {{PROXY_PORT}} -j ACCEPT")
 
+        start_proxy()
         logger.debug('successfully establish new proxy%s' % info_str)
-
         return jsonobject.dumps(rsp)
 
 
