@@ -22,8 +22,8 @@ class ImageStoreClient(object):
     def _get_image_json_file(self, primaryInstallPath):
         idx = primaryInstallPath.rfind('.')
         if idx == -1:
-            return primaryInstallPath + ".json"
-        return primaryInstallPath[:idx] + ".json"
+            return primaryInstallPath + ".imf"
+        return primaryInstallPath[:idx] + ".imf"
 
     def _get_image_reference(self, primaryStorageInstallPath):
         try:
@@ -48,13 +48,13 @@ class ImageStoreClient(object):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
     def upload_to_imagestore(self, host, primaryStorageInstallPath):
-        name, imageid = self._get_image_reference(primaryStorageInstallPath)
-        cmdstr = '%s -url %s:%s push %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
-        logger.debug('pushing %s:%s to image store' % (name, imageid))
+        cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath)
+        logger.debug('pushing %s to image store' % primaryStorageInstallPath)
         shell.call(cmdstr)
-        logger.debug('%s:%s pushed to image store' % (name, imageid))
+        logger.debug('%s pushed to image store' % primaryStorageInstallPath)
 
         rsp = kvmagent.AgentResponse()
+        name, imageid = self._get_image_reference(primaryStorageInstallPath)
         rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
         return jsonobject.dumps(rsp)
 
