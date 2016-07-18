@@ -30,7 +30,7 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/fusionstorb/" % zstack_root
-fusionstorb_root = "%s/fusionstorb" % zstack_root
+fusionstorb_root = "%s/fusionstorb/package" % zstack_root
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
@@ -67,6 +67,8 @@ else:
     # name: create root directories
     command = 'mkdir -p %s %s' % (fusionstorb_root, virtenv_path)
     run_remote_command(command, host_post_info)
+
+run_remote_command("rm -rf %s/*" % fusionstorb_root, host_post_info)
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)

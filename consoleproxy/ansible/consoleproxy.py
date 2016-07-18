@@ -30,13 +30,14 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 # update the variable from shell arguments
 virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
-consoleproxy_root = "%s/console" % zstack_root
+consoleproxy_root = "%s/console/package" % zstack_root
 host_post_info = HostPostInfo()
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 host_post_info.host = host
 host_post_info.host_inventory = args.i
+
 host_post_info.post_url = post_url
 host_post_info.transport = 'local'
 
@@ -62,6 +63,8 @@ else:
     # name: create root directories
     command = 'mkdir -p %s %s' % (consoleproxy_root, virtenv_path)
     run_remote_command(command, host_post_info)
+
+run_remote_command("rm -rf %s/*" % consoleproxy_root, host_post_info)
 
 # name: copy zstacklib
 copy_arg = CopyArg()
