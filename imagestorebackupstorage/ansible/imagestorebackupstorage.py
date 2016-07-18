@@ -97,10 +97,9 @@ elif distro == "Debian" or distro == "Ubuntu":
 else:
     error("ERROR: Unsupported distribution")
 
-command = 'mkdir -p %s' % (imagestore_root + "/certs")
-run_remote_command(command, host_post_info)
-
 run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
+command = 'mkdir -p %s ' % (imagestore_root + "/certs")
+run_remote_command(command, host_post_info)
 
 # name: copy imagestore binary
 copy_arg = CopyArg()
