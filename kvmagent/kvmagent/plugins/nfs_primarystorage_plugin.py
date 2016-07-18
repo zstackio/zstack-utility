@@ -118,7 +118,11 @@ class GetVolumeSizeRsp(NfsResponse):
         self.size = None
         self.actualSize = None
 
-        
+class GetVolumeBaseImagePathRsp(NfsResponse):
+    def __init__(self):
+        super(GetVolumeBaseImagePathRsp, self).__init__()
+        self.path = None
+
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -142,6 +146,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     REMOUNT_PATH = "/nfsprimarystorage/remount"
     GET_VOLUME_SIZE_PATH = "/nfsprimarystorage/getvolumesize"
     PING_PATH = "/nfsprimarystorage/ping"
+    GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
     
@@ -165,6 +170,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.REMOUNT_PATH, self.remount)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.PING_PATH, self.ping)
+        http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         self.mount_path = {}
         self.image_cache = None
 
@@ -182,6 +188,13 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     def _set_capacity_to_response(self, uuid, rsp):
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(uuid)
+
+    @kvmagent.replyerror
+    def get_volume_base_image_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVolumeBaseImagePathRsp()
+        rsp.path = linux.get_qcow2_base_image_path_recusively(cmd.installPath)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def ping(self, req):
