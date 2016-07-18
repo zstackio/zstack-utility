@@ -32,7 +32,7 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/kvm/" % zstack_root
-kvm_root = "%s/kvm" % zstack_root
+kvm_root = "%s/kvm/package" % zstack_root
 iproute_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % file_root
 iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
 dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
@@ -76,6 +76,8 @@ else:
     host_post_info.post_label = "ansible.shell.mkdir"
     host_post_info.post_label_param = "%s, %s" % (kvm_root, virtenv_path)
     run_remote_command(command, host_post_info)
+
+run_remote_command("rm -rf %s/*" % kvm_root, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
     # handle zstack_repo

@@ -35,7 +35,8 @@ argument_dict = eval(args.e)
 
 # update the variable from shell arguments
 locals().update(argument_dict)
-imagestore_root = "%s/imagestorebackupstorage" % zstack_root
+imagestore_root = "%s/imagestorebackupstorage/package" % zstack_root
+
 
 # create log
 logger_dir = "/var/log/zstack/"
@@ -98,6 +99,8 @@ else:
 
 command = 'mkdir -p %s' % (imagestore_root + "/certs")
 run_remote_command(command, host_post_info)
+
+run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
 
 # name: copy imagestore binary
 copy_arg = CopyArg()

@@ -30,7 +30,7 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/cephb/" % zstack_root
-cephb_root = "%s/cephb" % zstack_root
+cephb_root = "%s/cephb/package" % zstack_root
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
@@ -68,6 +68,7 @@ else:
     command = 'mkdir -p %s %s' % (cephb_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
+run_remote_command("rm -rf %s/*" % cephb_root, host_post_info)
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
 if virtual_env_status is False:

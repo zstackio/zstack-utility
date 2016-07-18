@@ -32,7 +32,7 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/iscsi/" % zstack_root
-iscsi_root = "%s/iscsi" % zstack_root
+iscsi_root = "%s/iscsi/package" % zstack_root
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
@@ -69,6 +69,8 @@ else:
     # name: create root directories
     command = 'mkdir -p %s %s' % (iscsi_root, virtenv_path)
     run_remote_command(command, host_post_info)
+
+run_remote_command("rm -rf %s/*" % iscsi_root, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
