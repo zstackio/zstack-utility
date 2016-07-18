@@ -82,7 +82,6 @@ class ConsoleProxyError(Exception):
 class ConsoleProxyAgent(object):
 
     PORT = 7758
-    MN_PROXY_PORT = 4900
     http_server = http.HttpServer(PORT)
     http_server.logfile_path = log.get_logfile_path()
 
@@ -129,7 +128,7 @@ class ConsoleProxyAgent(object):
 
 
     def _check_proxy_availability(self, args):
-        proxyPort = self.MN_PROXY_PORT
+        proxyPort = args['proxyPort']
         targetHostname = args['targetHostname']
         targetPort = args['targetPort']
         token = args['token']
@@ -227,7 +226,7 @@ class ConsoleProxyAgent(object):
                 
         info = {
                  'proxyHostname': cmd.proxyHostname,
-                 'proxyPort': self.MN_PROXY_PORT,
+                 'proxyPort': cmd.proxyPort,
                  'targetHostname': cmd.targetHostname,
                  'targetPort': cmd.targetPort,
                  'token': cmd.token,
@@ -236,7 +235,7 @@ class ConsoleProxyAgent(object):
                 }
         info_str = jsonobject.dumps(info)
         self.db.set(cmd.token, info_str)
-        rsp.proxyPort = self.MN_PROXY_PORT  
+        rsp.proxyPort = cmd.proxyPort
         logger.debug('successfully add new proxy token file %s' % info_str)
         ##if process exists,return
         out = shell.call("ps aux | grep websockify")
@@ -258,7 +257,7 @@ class ConsoleProxyAgent(object):
         def start_proxy():
             LOG_FILE = log_file
             PROXY_HOST_NAME = cmd.proxyHostname
-            PROXY_PORT = self.MN_PROXY_PORT
+            PROXY_PORT = cmd.proxyPort
             TOKEN_FILE_DIR = self.TOKEN_FILE_DIR 
             TIMEOUT = timeout
             start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{TOKEN_FILE_DIR}} --idle-timeout={{TIMEOUT}} '''
