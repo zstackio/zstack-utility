@@ -75,9 +75,9 @@ class ImageStoreClient(object):
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(primaryStorageInstallPath)
         return jsonobject.dumps(rsp)
 
-    def download_from_imagestore(self, host, backupStorageInstallPath, primaryStorageInstallPath):
+    def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath):
         name, imageid = self._parse_image_reference(backupStorageInstallPath)
-        cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath, name, imageid)
+        cmdstr = '%s -url %s:%s -cachedir %s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cachedir, primaryStorageInstallPath, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to local cache' % (name, imageid))

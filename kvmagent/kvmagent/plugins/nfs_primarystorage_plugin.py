@@ -330,7 +330,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        self.imagestore_client.download_from_imagestore(self.mount_path.get(cmd.uuid), cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = kvmagent.AgentResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)

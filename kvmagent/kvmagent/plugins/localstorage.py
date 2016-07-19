@@ -423,7 +423,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        self.imagestore_client.download_from_imagestore(self.path, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
