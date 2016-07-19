@@ -3019,9 +3019,9 @@ wsrep_sst_method=rsync
             run_remote_command(command, self.host3_post_info)
         command = "service mysql bootstrap"
         run_remote_command(command, self.host1_post_info)
-        run_remote_command("service mysql start && systemctl enable mysql", self.host2_post_info)
+        run_remote_command("service mysql start && chkconfig mysql on", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command("service mysql start && systemctl enable mysql", self.host3_post_info)
+            run_remote_command("service mysql start && chkconfig mysql on", self.host3_post_info)
         run_remote_command("service mysql restart && systemctl enable mysql", self.host1_post_info)
 
         init_install = run_remote_command("mysql -u root --password='' -e 'exit' ", self.host1_post_info, return_status=True)
