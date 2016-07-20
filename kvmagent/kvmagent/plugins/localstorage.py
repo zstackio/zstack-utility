@@ -350,6 +350,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(cmd.templatePathInCache):
             rsp.error = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
             rsp.success = False
+            logger.debug('error: %s: %s' % (rsp.error, cmd.templatePathInCache))
             return jsonobject.dumps(rsp)
 
         dirname = os.path.dirname(cmd.installUrl)
