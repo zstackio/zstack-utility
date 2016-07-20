@@ -2400,7 +2400,7 @@ class InstallHACmd(Command):
 
         # start Cassadra and KairosDB
         # backup old cassandra dir avoid changing keyspace error
-        command = "[ -d /var/lib/cassandra/ ] && mv /var/lib/cassandra/ /var/lib/cassandra-%s/ || echo '' " \
+        command = "[ -d /var/lib/cassandra/ ] && mv /var/lib/cassandra/ /var/lib/cassandra-%s/ || true " \
                        % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         run_remote_command(command, self.host1_post_info)
         command = 'zstack-ctl cassandra --start --wait-timeout 120'
@@ -2440,6 +2440,13 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
 
         # deploy cassandra_db
+        if args.drop is True:
+            command = "rm -rf /var/lib/cassandra/*"
+            run_remote_command(command, self.host1_post_info)
+            run_remote_command(command, self.host2_post_info)
+            if args.host3_info is not False:
+                run_remote_command(command, self.host3_post_info)
+
         command = 'zstack-ctl deploy_cassandra_db'
         run_remote_command(command, self.host1_post_info)
 
