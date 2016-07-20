@@ -3915,7 +3915,7 @@ class CollectLogCmd(Command):
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log']
-    collect_lines = 15000
+    collect_lines = 100000
 
     def __init__(self):
         super(CollectLogCmd, self).__init__()
