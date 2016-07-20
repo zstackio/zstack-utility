@@ -3915,6 +3915,7 @@ class CollectLogCmd(Command):
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log']
+    collect_lines = 15000
 
     def __init__(self):
         super(CollectLogCmd, self).__init__()
@@ -3952,7 +3953,7 @@ class CollectLogCmd(Command):
                 if file_dir_exist("path=%s" % host_log, host_post_info):
                     (status, output) = run_remote_command("file %s" % host_log, host_post_info,
                                                           return_status=True, return_output=True)
-                    command = "tail -n 10000 %s > %s 2>&1" % (host_log, collect_log)
+                    command = "tail -n %d %s > %s 2>&1" % (CollectLogCmd.collect_lines, host_log, collect_log)
                     run_remote_command(command, host_post_info)
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % collect_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
@@ -3998,14 +3999,14 @@ class CollectLogCmd(Command):
         info("Collecting log from this management node ...")
         if not os.path.exists(collect_dir + "/management-node"):
             os.makedirs(collect_dir + "/management-node")
-        (status, output) = commands.getstatusoutput("tail -n 10000 %s/../../logs/management-server.log > "
+        (status, output) = commands.getstatusoutput("tail -n %d %s/../../logs/management-server.log > "
                                                     "%s/management-node/management-server.log 2>&1 "
-                                                    % (ctl.zstack_home, collect_dir))
+                                                    % (CollectLogCmd.collect_lines, ctl.zstack_home, collect_dir))
         if status != 0:
             error("get management-server.log failed: %s" % output)
         for log in CollectLogCmd.mn_log_list:
-            (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
-                                                        % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
+            (status, output) = commands.getstatusoutput("tail -n %d %s/%s > %s/management-node/%s 2>&1 "
+                                % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, collect_dir, log))
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
