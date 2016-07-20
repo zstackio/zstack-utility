@@ -12,7 +12,7 @@ logger = log.get_logger(__name__)
 class ImageStoreClient(object):
 
     ZSTORE_PROTOSTR = "zstore://"
-    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli -rootca /var/lib/zstack/imagestorebackupstorage/certs/ca.pem"
+    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_DEF_PORT = 8000
 
     UPLOAD_BIT_PATH = "/imagestore/upload"
