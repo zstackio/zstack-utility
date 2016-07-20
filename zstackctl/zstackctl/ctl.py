@@ -2485,8 +2485,9 @@ class InstallHACmd(Command):
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
         ha_conf = open(InstallHACmd.conf_dir + "ha.yaml", 'w')
-        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'mevoco_info': {'mevoco_url':args.vip, 'default_user':
-            'admin','default_passwd':'password'}, 'cluster_info': {'cluster_url':args.host1, 'default_user':'zstack',
+        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'mevoco_info': {'mevoco_url':'http://' +
+            args.vip + ':8888', 'default_user': 'admin','default_passwd':'password'}, 'cluster_info': {'cluster_url' :
+            'http://'+ args.host1 + ':9132/zstack', 'default_user':'zstack',
                                                                    'default_passwd':'zstack123'}}
         yaml.dump(ha_info, ha_conf, default_flow_style=False)
 
