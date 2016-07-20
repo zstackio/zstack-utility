@@ -1782,6 +1782,7 @@ class InstallHACmd(Command):
     host_post_info_list = []
     current_dir = ""
     logger_dir = ""
+    conf_dir = ""
     bridge = ""
     spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
                       'Kairosdb':False, 'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
@@ -1965,6 +1966,11 @@ class InstallHACmd(Command):
         # create log
         InstallHACmd.logger_dir = "/var/log/zstack/"
         create_log(InstallHACmd.logger_dir)
+        # create config
+        InstallHACmd.conf_dir = "/var/lib/zstack/ha/"
+        if not os.path.exists(InstallHACmd.conf_dir):
+            os.makedirs(InstallHACmd.conf_dir)
+
         # create inventory file
         with  open('%s/conf/host' % InstallHACmd.current_dir ,'w') as f:
             f.writelines([args.host1+'\n', args.host2+'\n'])
@@ -2017,7 +2023,7 @@ class InstallHACmd(Command):
 
 
         # init all variables in map
-        self.local_map = {
+        local_map = {
             "mysql_connect_timeout" : 60000,
             "mysql_socket_timeout" : 60000
         }
@@ -2285,7 +2291,7 @@ class InstallHACmd(Command):
             run_remote_command(command, self.host1_post_info)
 
         command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306/{database}?connectTimeout=%d\&socketTimeout=%d"\
-                       % (args.vip, self.local_map['mysql_connect_timeout'], self.local_map['mysql_socket_timeout'])
+                       % (args.vip, local_map['mysql_connect_timeout'], local_map['mysql_socket_timeout'])
         run_remote_command(command, self.host1_post_info)
         command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
         run_remote_command(command, self.host1_post_info)
@@ -2478,7 +2484,11 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
-
+        ha_conf = open(InstallHACmd.conf_dir + "ha.yaml", 'w')
+        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'mevoco_info': {'mevoco_url':args.vip, 'default_user':
+            'admin','default_passwd':'password'}, 'cluster_info': {'cluster_url':args.host1, 'default_user':'zstack',
+                                                                   'default_passwd':'zstack123'}}
+        yaml.dump(ha_info, ha_conf, default_flow_style=False)
 
         print '''HA deploy finished!
 Mysql user 'root' password: %s
