@@ -1327,6 +1327,11 @@ EOF
 
 cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
+
+    [ -d /var/lib/zstack ] && chown zstack.zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        fail "failed to change owner for /var/lib/zstack"
+    fi
     if [ $UPGRADE = 'n' ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
         zstack-ctl configure CloudBus.rabbitmqUsername=zstack
         zstack-ctl configure CloudBus.rabbitmqPassword=zstack.password
