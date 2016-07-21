@@ -12,7 +12,7 @@ logger = log.get_logger(__name__)
 class ImageStoreClient(object):
 
     ZSTORE_PROTOSTR = "zstore://"
-    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli -rootca /var/lib/zstack/imagestorebackupstorage/certs/ca.pem"
+    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_DEF_PORT = 8000
 
     UPLOAD_BIT_PATH = "/imagestore/upload"
@@ -48,6 +48,10 @@ class ImageStoreClient(object):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
     def upload_to_imagestore(self, host, primaryStorageInstallPath):
+        imf = self._get_image_json_file(primaryStorageInstallPath)
+        if not os.path.isfile(imf):
+            self.commit_to_imagestore(primaryStorageInstallPath)
+
         cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath)
         logger.debug('pushing %s to image store' % primaryStorageInstallPath)
         shell.call(cmdstr)

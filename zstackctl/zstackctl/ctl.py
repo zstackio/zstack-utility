@@ -157,7 +157,7 @@ def get_default_gateway_ip():
             return None
 
 def get_default_ip():
-    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|awk -F '/' '{print $1}'""")
+    cmd = ShellCmd("""dev=`ip route|grep default|awk '{print $NF}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|head -n 1 |awk -F '/' '{print $1}'""")
     cmd(False)
     return cmd.stdout.strip()
 
@@ -1782,6 +1782,7 @@ class InstallHACmd(Command):
     host_post_info_list = []
     current_dir = ""
     logger_dir = ""
+    conf_dir = ""
     bridge = ""
     spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
                       'Kairosdb':False, 'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
@@ -1965,6 +1966,11 @@ class InstallHACmd(Command):
         # create log
         InstallHACmd.logger_dir = "/var/log/zstack/"
         create_log(InstallHACmd.logger_dir)
+        # create config
+        InstallHACmd.conf_dir = "/var/lib/zstack/ha/"
+        if not os.path.exists(InstallHACmd.conf_dir):
+            os.makedirs(InstallHACmd.conf_dir)
+
         # create inventory file
         with  open('%s/conf/host' % InstallHACmd.current_dir ,'w') as f:
             f.writelines([args.host1+'\n', args.host2+'\n'])
@@ -2017,7 +2023,7 @@ class InstallHACmd(Command):
 
 
         # init all variables in map
-        self.local_map = {
+        local_map = {
             "mysql_connect_timeout" : 60000,
             "mysql_socket_timeout" : 60000
         }
@@ -2285,7 +2291,7 @@ class InstallHACmd(Command):
             run_remote_command(command, self.host1_post_info)
 
         command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306/{database}?connectTimeout=%d\&socketTimeout=%d"\
-                       % (args.vip, self.local_map['mysql_connect_timeout'], self.local_map['mysql_socket_timeout'])
+                       % (args.vip, local_map['mysql_connect_timeout'], local_map['mysql_socket_timeout'])
         run_remote_command(command, self.host1_post_info)
         command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
         run_remote_command(command, self.host1_post_info)
@@ -2394,7 +2400,7 @@ class InstallHACmd(Command):
 
         # start Cassadra and KairosDB
         # backup old cassandra dir avoid changing keyspace error
-        command = "[ -d /var/lib/cassandra/ ] && mv /var/lib/cassandra/ /var/lib/cassandra-%s/ || echo '' " \
+        command = "[ -d /var/lib/cassandra/ ] && mv /var/lib/cassandra/ /var/lib/cassandra-%s/ || true " \
                        % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         run_remote_command(command, self.host1_post_info)
         command = 'zstack-ctl cassandra --start --wait-timeout 120'
@@ -2434,6 +2440,13 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
 
         # deploy cassandra_db
+        if args.drop is True:
+            command = "rm -rf /var/lib/cassandra/*"
+            run_remote_command(command, self.host1_post_info)
+            run_remote_command(command, self.host2_post_info)
+            if args.host3_info is not False:
+                run_remote_command(command, self.host3_post_info)
+
         command = 'zstack-ctl deploy_cassandra_db'
         run_remote_command(command, self.host1_post_info)
 
@@ -2478,7 +2491,12 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
-
+        ha_conf = open(InstallHACmd.conf_dir + "ha.yaml", 'w')
+        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'mevoco_info': {'mevoco_url':'http://' +
+            args.vip + ':8888', 'default_user': 'admin','default_passwd':'password'}, 'cluster_info': {'cluster_url' :
+            'http://'+ args.host1 + ':9132/zstack', 'default_user':'zstack',
+                                                                   'default_passwd':'zstack123'}}
+        yaml.dump(ha_info, ha_conf, default_flow_style=False)
 
         print '''HA deploy finished!
 Mysql user 'root' password: %s
@@ -3897,6 +3915,7 @@ class CollectLogCmd(Command):
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log']
+    collect_lines = 100000
 
     def __init__(self):
         super(CollectLogCmd, self).__init__()
@@ -3934,7 +3953,7 @@ class CollectLogCmd(Command):
                 if file_dir_exist("path=%s" % host_log, host_post_info):
                     (status, output) = run_remote_command("file %s" % host_log, host_post_info,
                                                           return_status=True, return_output=True)
-                    command = "tail -n 10000 %s > %s 2>&1" % (host_log, collect_log)
+                    command = "tail -n %d %s > %s 2>&1" % (CollectLogCmd.collect_lines, host_log, collect_log)
                     run_remote_command(command, host_post_info)
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % collect_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
@@ -3980,14 +3999,14 @@ class CollectLogCmd(Command):
         info("Collecting log from this management node ...")
         if not os.path.exists(collect_dir + "/management-node"):
             os.makedirs(collect_dir + "/management-node")
-        (status, output) = commands.getstatusoutput("tail -n 10000 %s/../../logs/management-server.log > "
+        (status, output) = commands.getstatusoutput("tail -n %d %s/../../logs/management-server.log > "
                                                     "%s/management-node/management-server.log 2>&1 "
-                                                    % (ctl.zstack_home, collect_dir))
+                                                    % (CollectLogCmd.collect_lines, ctl.zstack_home, collect_dir))
         if status != 0:
             error("get management-server.log failed: %s" % output)
         for log in CollectLogCmd.mn_log_list:
-            (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
-                                                        % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
+            (status, output) = commands.getstatusoutput("tail -n %d %s/%s > %s/management-node/%s 2>&1 "
+                                % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, collect_dir, log))
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
