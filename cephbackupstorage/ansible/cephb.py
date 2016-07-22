@@ -141,7 +141,10 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart cephbagent
-command = "service zstack-ceph-backupstorage restart && chkconfig zstack-ceph-backupstorage on"
+if distro == "RedHat" or distro == "CentOS":
+    command = "service zstack-ceph-backupstorage restart && chkconfig zstack-ceph-backupstorage on"
+elif distro == "Debian" or distro == "Ubuntu":
+    command = "service zstack-ceph-backupstorage restart && update-rc.d zstack-ceph-backupstorage enable"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
