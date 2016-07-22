@@ -89,6 +89,7 @@ CHANGE_HOSTS=''
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 LICENSE_FILE='zstack-license'
+LICENSE_FOLDER='/var/lib/zstack/license/'
 
 #define extra upgrade params
 #1.0  1.1  1.2  1.3  1.4
@@ -668,6 +669,12 @@ upgrade_zstack(){
     if [ $UI_INSTALLATION_STATUS = 'y' ]; then
         echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
         show_spinner sd_install_dashboard
+    fi
+
+    #check old license folder and copy old license files to new folder.
+    if [ -d $ZSTACK_OLD_LICENSE_FOLDER ] && [ ! -d $LICENSE_FOLDER ]; then
+        mv $ZSTACK_OLD_LICENSE_FOLDER  $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
+        chown -R zstack.zstack $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     #set zstack upgrade params 
@@ -2212,6 +2219,7 @@ fi
 
 #Set ZSTACK_HOME for zstack-ctl.
 export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
+ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license 
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
