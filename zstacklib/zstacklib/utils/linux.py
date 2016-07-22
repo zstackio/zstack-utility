@@ -488,6 +488,7 @@ def get_img_fmt(src):
     fmt = shell.call("/usr/bin/qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % src)
     fmt = fmt.strip(' \t\r\n')
     if fmt != 'raw' and fmt != 'qcow2':
+        logger.debug("/usr/bin/qemu-img info %s" % src)
         raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
     return fmt
 
