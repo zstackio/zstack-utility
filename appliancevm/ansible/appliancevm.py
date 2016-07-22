@@ -185,7 +185,10 @@ if copy_appliancevm != "changed:False":
 
 if chroot_env == 'false':
     # name: restart appliancevm
-    command = "service zstack-appliancevm restart && chkconfig zstack-appliancevm on"
+    if distro == "RedHat" or distro == "CentOS":
+        command = "service zstack-appliancevm restart && chkconfig zstack-appliancevm on"
+    elif distro == "Debian" or distro == "Ubuntu":
+        command = "service zstack-appliancevm restart && update-rc.d zstack-appliancevm enable"
     run_remote_command(command, host_post_info)
 else:
     if distro == "RedHat" or distro == "CentOS":
