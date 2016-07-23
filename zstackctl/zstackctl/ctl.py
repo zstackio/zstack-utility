@@ -129,6 +129,12 @@ def get_detail_version():
     else:
         return None
 
+def check_ip_port(host, port):
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    result = sock.connect_ex((host, int(port)))
+    return result == 0
+
 def get_zstack_version(db_hostname, db_port, db_user, db_password):
     query = MySqlCommandLineQuery()
     query.host = db_hostname
@@ -1247,12 +1253,6 @@ class StartCmd(Command):
             if '1.8' not in ver:
                 raise CtlError('ZStack requires Java8, your current version is %s\n'
                                'please run "update-alternatives --config java" to set Java to Java8')
-
-        def check_ip_port(host, port):
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            result = sock.connect_ex((host, int(port)))
-            return result == 0
 
         def check_8080():
             if shell_return('netstat -nap | grep :8080 | grep LISTEN > /dev/null') == 0:
@@ -5767,6 +5767,7 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
+        ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         pidfile = '/var/run/zstack/zstack-dashboard.pid'
         if os.path.exists(pidfile):
             with open(pidfile, 'r') as fd:
@@ -5775,6 +5776,12 @@ class UiStatusCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
+                    if os.path.exists(ha_info_file):
+                        with open(ha_info_file, 'r') as fd2:
+                            ha_conf = yaml.load(fd2)
+                            if check_ip_port(ha_conf['vip'], 8888):
+                                info('UI status: %s [PID:%s] http://%s:8888' % (colored('Running', 'green'), pid, ha_conf['vip']))
+                            return
                     default_ip = get_default_ip()
                     if not default_ip:
                         info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
