@@ -1399,13 +1399,6 @@ class Vm(object):
             xml = etree.tostring(snapshot)
             logger.debug('creating snapshot for vm[uuid:{0}] volume[id:{1}]:\n{2}'.format(self.uuid, device_id, xml))
             snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA
-            QUIESCE = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_QUIESCE
-
-            try:
-                self.domain.snapshotCreateXML(xml, snap_flags | QUIESCE)
-                return previous_install_path, install_path
-            except libvirt.libvirtError:
-                logger.debug('unable to create quiesced VM snapshot, attempting again with quiescing disabled')
 
             try:
                 self.domain.snapshotCreateXML(xml, snap_flags)
@@ -1423,7 +1416,7 @@ class Vm(object):
                 logger.debug('full snapshot is waiting for blockRebase job completion')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_job, timeout=300):
+            if not linux.wait_callback_success(wait_job, timeout=300, ignore_exception_in_callback=True):
                 raise kvmagent.KvmError('live full snapshot failed')
 
             return take_delta_snapshot()
