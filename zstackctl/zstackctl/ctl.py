@@ -1780,12 +1780,14 @@ fi
 class InstallHACmd(Command):
     '''This feature only support zstack offline image currently'''
     host_post_info_list = []
-    current_dir = ""
-    logger_dir = ""
-    conf_dir = ""
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    conf_dir = "/var/lib/zstack/ha/"
+    conf_file = conf_dir + "ha.yaml"
+    logger_dir = "/var/log/zstack/"
     bridge = ""
     spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
                       'Kairosdb':False, 'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
+    ha_config_content = None
     def __init__(self):
         super(InstallHACmd, self).__init__()
         self.name = "install_ha"
@@ -1804,7 +1806,7 @@ class InstallHACmd(Command):
                             default=False)
         parser.add_argument('--vip',
                             help="The virtual IP address for HA setup",
-                            required=True)
+                            default=None)
         parser.add_argument('--gateway',
                             help="The gateway IP address for HA setup",
                             default=None)
@@ -1878,6 +1880,13 @@ class InstallHACmd(Command):
         InstallHACmd.spinner_status['check_init'] = True
         ZstackSpinner(spinner_info)
         InstallHACmd.bridge = args.bridge
+        if os.path.exists(InstallHACmd.conf_file):
+            with open(InstallHACmd.conf_file, 'r') as f:
+                InstallHACmd.ha_config_content = yaml.load(f)
+
+        if args.vip is None and args.recovery_from_this_host is False:
+            error("Install HA must assign a vip")
+
         # check gw ip is available
         if args.gateway is None:
             if get_default_gateway_ip() is None:
@@ -1904,7 +1913,6 @@ class InstallHACmd(Command):
             host3_connect_info_list = self.check_host_info_format(host3_info)
             args.host3 = host3_connect_info_list[2]
             args.host3_password = host3_connect_info_list[1]
-
 
         # check root password is available
         if args.host1_password != args.host2_password:
@@ -1937,7 +1945,7 @@ class InstallHACmd(Command):
 
         # check network configuration
         interface_list = os.listdir('/sys/class/net/')
-        if InstallHACmd.bridge not in interface_list:
+        if InstallHACmd.bridge not in interface_list and args.recovery_from_this_host is False:
             error("Make sure you have already run the 'zs-network-setting' to setup the network environment")
 
         # check user start this command on host1
@@ -1955,7 +1963,6 @@ class InstallHACmd(Command):
 
         # init variables
         yum_repo = get_yum_repo_from_property()
-        InstallHACmd.current_dir = os.path.dirname(os.path.realpath(__file__))
         private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
         public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
         if os.path.isfile(public_key_name) is not True:
@@ -1966,10 +1973,8 @@ class InstallHACmd(Command):
         with open(public_key_name) as public_key_file:
             public_key = public_key_file.read()
         # create log
-        InstallHACmd.logger_dir = "/var/log/zstack/"
         create_log(InstallHACmd.logger_dir)
         # create config
-        InstallHACmd.conf_dir = "/var/lib/zstack/ha/"
         if not os.path.exists(InstallHACmd.conf_dir):
             os.makedirs(InstallHACmd.conf_dir)
 
@@ -2075,6 +2080,10 @@ class InstallHACmd(Command):
 
         # check whether to recovery the HA cluster
         if args.recovery_from_this_host is True:
+            if os.path.exists(InstallHACmd.conf_file) and InstallHACmd.ha_config_content is not None:
+                if "bridge_name" in InstallHACmd.ha_config_content:
+                    InstallHACmd.bridge = InstallHACmd.ha_config_content['bridge_name']
+
             local_ip = self.get_ip_by_interface(InstallHACmd.bridge)
             spinner_info = SpinnerInfo()
             spinner_info.output = "Starting to recovery mysql from this host"
@@ -2499,12 +2508,16 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
-        ha_conf = open(InstallHACmd.conf_dir + "ha.yaml", 'w')
-        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'mevoco_info': {'mevoco_url':'http://' +
-            args.vip + ':8888', 'default_user': 'admin','default_passwd':'password'}, 'cluster_info': {'cluster_url' :
-            'http://'+ args.host1 + ':9132/zstack', 'default_user':'zstack',
-                                                                   'default_passwd':'zstack123'}}
-        yaml.dump(ha_info, ha_conf, default_flow_style=False)
+        ha_conf_file = open(InstallHACmd.conf_file, 'w')
+        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'bridge_name':args.bridge,
+            'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.host1 +':9132/zstack'}
+        yaml.dump(ha_info, ha_conf_file, default_flow_style=False)
+        copy_arg = CopyArg()
+        copy_arg.src = InstallHACmd.conf_file
+        copy_arg.dest = InstallHACmd.conf_dir
+        copy(copy_arg,self.host2_post_info)
+        if len(self.host_post_info_list) == 3:
+            copy(copy_arg,self.host3_post_info)
 
         print '''HA deploy finished!
 Mysql user 'root' password: %s
