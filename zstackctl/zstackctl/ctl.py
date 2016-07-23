@@ -1821,6 +1821,8 @@ class InstallHACmd(Command):
                             default="zstack123")
         parser.add_argument('--drop', action='store_true', default=False,
                             help="Force delete mysql data for re-deploy HA")
+        parser.add_argument('--drop-cassandra', action='store_true', default=False,
+                            help="Force drop cassandra keyspace for re-deploy HA")
         parser.add_argument('--keep-db', action='store_true', default=False,
                             help='keep existing zstack database and not raise error')
         parser.add_argument('--recovery-from-this-host', action='store_true', default=False,
@@ -2440,12 +2442,16 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
 
         # deploy cassandra_db
-        if args.drop is True:
+        if args.drop_cassandra is True:
             command = "rm -rf /var/lib/cassandra/*"
             run_remote_command(command, self.host1_post_info)
             run_remote_command(command, self.host2_post_info)
             if args.host3_info is not False:
                 run_remote_command(command, self.host3_post_info)
+            #command = "/usr/local/zstack/apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e 'drop keyspace zstack_billing;'" % self.host1_post_info.host
+            #run_remote_command(command, self.host1_post_info)
+            #command = "/usr/local/zstack/apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e 'drop keyspace zstack_logging;'" % self.host1_post_info.host
+            #run_remote_command(command, self.host1_post_info)
 
         command = 'zstack-ctl deploy_cassandra_db'
         run_remote_command(command, self.host1_post_info)
@@ -3040,7 +3046,7 @@ wsrep_sst_method=rsync
         run_remote_command("service mysql start && chkconfig mysql on", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
             run_remote_command("service mysql start && chkconfig mysql on", self.host3_post_info)
-        run_remote_command("service mysql restart && systemctl enable mysql", self.host1_post_info)
+        run_remote_command("service mysql restart && chkconfig mysql on", self.host1_post_info)
 
         init_install = run_remote_command("mysql -u root --password='' -e 'exit' ", self.host1_post_info, return_status=True)
         if init_install is True:
@@ -4541,7 +4547,7 @@ class CassandraCmd(Command):
         if not exe:
             shell('kill %s' % pid)
         else:
-            shell('cd %s; bash nodetool flush; kill %s' % (os.path.dirname(exe), pid))
+            ShellCmd('cd %s; bash nodetool flush; kill %s' % (os.path.dirname(exe), pid), pipe=False)
 
         count = 30
         while count > 0:
