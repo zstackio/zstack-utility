@@ -155,10 +155,17 @@ class CephAgent(object):
 
     @replyerror
     @in_bash
+    @lock.lock('delete_image_cache')
     def delete_image_cache(self, req):
+        rsp = AgentResponse()
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         SP_PATH = self._normalize_install_path(cmd.snapshotPath)
         IMAGE_PATH = self._normalize_install_path(cmd.imagePath)
+
+        if bash_r('rbd info {{IMAGE_PATH}}') != 0:
+            return jsonobject.dumps(rsp)
+
         o = bash_o('rbd children {{SP_PATH}}')
         o = o.strip(' \t\r\n')
         if o:
@@ -167,7 +174,6 @@ class CephAgent(object):
         bash_errorout('rbd snap unprotect {{SP_PATH}}')
         bash_errorout('rbd snap rm {{SP_PATH}}')
         bash_errorout('rbd rm {{IMAGE_PATH}}')
-        rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
