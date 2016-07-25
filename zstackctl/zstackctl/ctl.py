@@ -1961,10 +1961,14 @@ class InstallHACmd(Command):
             if args.host2 == args.host3 or args.host1 == args.host3:
                 error("The host1, host2 and host3 should not be the same ip address!")
 
-        # init variables
+        # create log
+        create_log(InstallHACmd.logger_dir)
+        # create config
+        if not os.path.exists(InstallHACmd.conf_dir):
+            os.makedirs(InstallHACmd.conf_dir)
         yum_repo = get_yum_repo_from_property()
-        private_key_name = InstallHACmd.current_dir + "/conf/ha_key"
-        public_key_name = InstallHACmd.current_dir + "/conf/ha_key.pub"
+        private_key_name = InstallHACmd.conf_dir+ "ha_key"
+        public_key_name = InstallHACmd.conf_dir+ "ha_key.pub"
         if os.path.isfile(public_key_name) is not True:
             command = "echo -e  'y\n'|ssh-keygen -q -t rsa -N \"\" -f %s" % private_key_name
             (status, output) = commands.getstatusoutput(command)
@@ -1972,21 +1976,16 @@ class InstallHACmd(Command):
                 error("Generate private key %s failed! Generate manually or rerun the process!" % private_key_name)
         with open(public_key_name) as public_key_file:
             public_key = public_key_file.read()
-        # create log
-        create_log(InstallHACmd.logger_dir)
-        # create config
-        if not os.path.exists(InstallHACmd.conf_dir):
-            os.makedirs(InstallHACmd.conf_dir)
 
         # create inventory file
-        with  open('%s/conf/host' % InstallHACmd.current_dir ,'w') as f:
+        with  open('%s/host' % InstallHACmd.conf_dir,'w') as f:
             f.writelines([args.host1+'\n', args.host2+'\n'])
         if args.host3_info is not False:
-            with  open('%s/conf/host' % InstallHACmd.current_dir ,'w') as f:
+            with  open('%s/host' % InstallHACmd.conf_dir,'w') as f:
                 f.writelines([args.host1+'\n', args.host2+'\n', args.host3+'\n'])
 
         #host_inventory = '%s,%s' % (args.host1, args.host2)
-        host_inventory = InstallHACmd.current_dir + '/conf/host'
+        host_inventory = InstallHACmd.conf_dir + 'host'
 
         # init host1 parameter
         self.host1_post_info = HostPostInfo()
@@ -2075,8 +2074,11 @@ class InstallHACmd(Command):
         copy_arg.src = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
         copy_arg.dest = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
         copy(copy_arg,self.host2_post_info)
+        command = "chmod 600 %s" % copy_arg.src + "id_rsa"
+        run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
             copy(copy_arg,self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
 
         # check whether to recovery the HA cluster
         if args.recovery_from_this_host is True:
@@ -2168,16 +2170,16 @@ class InstallHACmd(Command):
                 InstallHACmd.spinner_status['mevoco'] = True
                 ZstackSpinner(spinner_info)
                 command = "zstack-ctl start"
-                (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s"
+                (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s"
                                                                      % (private_key_name, args.host1, command))
                 if status != 0:
                     error("Something wrong on host: %s\n %s" % (args.host1, output))
-                (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s"
+                (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s"
                                                                      % (private_key_name, args.host2, command))
                 if status != 0:
                     error("Something wrong on host: %s\n %s" % (args.host2, output))
                 if args.host3_info is not False:
-                    (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s"
+                    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s"
                                                                          % (private_key_name, args.host3, command))
                     if status != 0:
                         error("Something wrong on host: %s\n %s" % (args.host2, output))
@@ -2428,16 +2430,16 @@ class InstallHACmd(Command):
 
         # start Cassadra and KairosDB
         command = 'zstack-ctl cassandra --start --wait-timeout 120'
-        (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                              (private_key_name, args.host1, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host1, output))
-        (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                              (private_key_name, args.host2, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, output))
         if args.host3_info is not False:
-            (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+            (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                                  (private_key_name, args.host3, command))
             if status != 0:
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
@@ -2449,16 +2451,16 @@ class InstallHACmd(Command):
         InstallHACmd.spinner_status['Kairosdb'] = True
         ZstackSpinner(spinner_info)
         command = 'zstack-ctl kairosdb --start --wait-timeout 120'
-        (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                              (private_key_name, args.host1, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host1, output))
-        (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                              (private_key_name, args.host2, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, output))
         if args.host3_info is not False:
-            (status, output) = commands.getstatusoutput("ssh -i %s root@%s %s" %
+            (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                                  (private_key_name, args.host3, command))
             if status != 0:
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
@@ -2493,31 +2495,43 @@ class InstallHACmd(Command):
         if args.host3_info is not False:
             run_remote_command(command, self.host3_post_info)
         command = "zstack-ctl start"
-        (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                              (private_key_name, args.host1, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host1, output))
-        (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                              (private_key_name, args.host2, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, output))
         if args.host3_info is not False:
-            (status, output)= commands.getstatusoutput("ssh -i %s root@%s %s" %
+            (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                                  (private_key_name, args.host3, command))
             if status != 0:
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
         InstallHACmd.spinner_status['mevoco'] = False
         time.sleep(0.2)
+        host_list = "%s,%s" % (self.host1_post_info.host, self.host2_post_info.host)
+        if args.host3_info is not False:
+            host_list = "%s,%s,%s" % (self.host1_post_info.host, self.host2_post_info.host, self.host3_post_info)
         ha_conf_file = open(InstallHACmd.conf_file, 'w')
         ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'bridge_name':args.bridge,
-            'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.host1 +':9132/zstack'}
+                   'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.host1 +':9132/zstack', 'host_list':host_list}
         yaml.dump(ha_info, ha_conf_file, default_flow_style=False)
+
+        command = "mkdir -p %s" % InstallHACmd.conf_dir
+        run_remote_command(command, self.host2_post_info)
+        if len(self.host_post_info_list) == 3:
+            run_remote_command(command, self.host3_post_info)
+
         copy_arg = CopyArg()
-        copy_arg.src = InstallHACmd.conf_file
+        copy_arg.src = InstallHACmd.conf_dir
         copy_arg.dest = InstallHACmd.conf_dir
         copy(copy_arg,self.host2_post_info)
+        command = "chmod 600 %s" % InstallHACmd.conf_dir + "ha_key"
+        run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
             copy(copy_arg,self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
 
         print '''HA deploy finished!
 Mysql user 'root' password: %s
@@ -3962,39 +3976,41 @@ class CollectLogCmd(Command):
         host_vo = query.query()
         return host_vo
 
+    def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info):
+        command = "cd %s && tar zcf collect-log.tar.gz *" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+        fetch_arg = FetchArg()
+        fetch_arg.src =  "%s/collect-log.tar.gz " % tmp_log_dir
+        fetch_arg.dest = local_collect_dir
+        fetch_arg.args = "fail_on_missing=yes flat=yes"
+        fetch(fetch_arg, host_post_info)
+        command = "rm -rf %s " % tmp_log_dir
+        run_remote_command(command, host_post_info)
+        (status, output) = commands.getstatusoutput("cd %s && tar zxf collect-log.tar.gz" % local_collect_dir)
+        if status != 0:
+            warn("Uncompress %s/collect-log.tar.gz meet problem: %s" % (local_collect_dir, output))
+        else:
+            (status, output) = commands.getstatusoutput("rm -f %s/collect-log.tar.gz" % local_collect_dir)
+
     def get_host_log(self, host_post_info, collect_dir):
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from host: %s ..." % host_post_info.host)
-            collect_log_dir = "%s/collect-log/" % CollectLogCmd.zstack_log_dir
-            command = "mkdir -p %s " % collect_log_dir
+            tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
+            local_collect_dir = collect_dir + host_post_info.host + '/'
+            command = "mkdir -p %s " % tmp_log_dir
             run_remote_command(command, host_post_info)
             for log in CollectLogCmd.host_log_list:
                 host_log = CollectLogCmd.zstack_log_dir + '/' + log
-                collect_log = collect_log_dir + '/' + log
+                collect_log = tmp_log_dir + '/' + log
                 if file_dir_exist("path=%s" % host_log, host_post_info):
-                    (status, output) = run_remote_command("file %s" % host_log, host_post_info,
-                                                          return_status=True, return_output=True)
                     command = "tail -n %d %s > %s 2>&1" % (CollectLogCmd.collect_lines, host_log, collect_log)
                     run_remote_command(command, host_post_info)
-            command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % collect_log_dir
+            command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
-                warn("The dir %s is empty on host: %s " % (collect_log_dir, host_post_info.host))
+                warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
                 return 0
-            command = "cd %s && tar zcf collect-log.tar.gz *" % collect_log_dir
-            run_remote_command(command, host_post_info)
-            fetch_arg = FetchArg()
-            fetch_arg.src =  "%s/collect-log.tar.gz " % collect_log_dir
-            fetch_arg.dest = "%s/%s/" % (collect_dir, host_post_info.host)
-            fetch_arg.args = "fail_on_missing=yes flat=yes"
-            fetch(fetch_arg, host_post_info)
-            command = "rm -rf %s " % collect_log_dir
-            run_remote_command(command, host_post_info)
-            (status, output) = commands.getstatusoutput("cd %s/%s/ && tar zxf collect-log.tar.gz" % (collect_dir, host_post_info.host))
-            if status != 0:
-                warn("Uncompress %s/%s/collect-log.tar.gz meet problem: %s" % (collect_dir, host_post_info.host, output))
-            else:
-                (status, output) = commands.getstatusoutput("rm -f %s/%s/collect-log.tar.gz" % (collect_dir, host_post_info.host))
+            self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
@@ -4015,19 +4031,49 @@ class CollectLogCmd(Command):
         ssh_port = ssh_info['port']
         return (username, password, ssh_port)
 
+    def get_mn_list(self):
+        with open(InstallHACmd.conf_file, 'r') as fd:
+            ha_conf_content = yaml.load(fd.read())
+            mn_list = ha_conf_content['host_list'].split(',')
+        return mn_list
 
-    def get_management_node_log(self, collect_dir):
+    def get_management_node_log(self, collect_dir, host_post_info):
+        if check_host_reachable(host_post_info) is True:
+            mn_ip = host_post_info.host
+            info("Collecting log from management node %s ..." % mn_ip)
+            local_collect_dir = collect_dir + "/mn-%s/" % mn_ip + '/'
+            if not os.path.exists(local_collect_dir):
+                os.makedirs(local_collect_dir)
+
+            tmp_log_dir = "%s/../../logs/tmp-log/" % ctl.zstack_home
+            command = 'mkdir -p %s' % tmp_log_dir
+            run_remote_command(command, host_post_info)
+
+            command = "tail -n %d %s/../../logs/management-server.log > %s/management-server.log 2>&1 " % \
+                      (CollectLogCmd.collect_lines, ctl.zstack_home, tmp_log_dir)
+            run_remote_command(command, host_post_info)
+            for log in CollectLogCmd.mn_log_list:
+                if file_dir_exist("path=%s/%s" % (CollectLogCmd.zstack_log_dir, log), host_post_info):
+                    command = "tail -n %d %s/%s > %s/%s 2>&1 " \
+                              % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, tmp_log_dir, log)
+                    run_remote_command(command, host_post_info)
+
+            self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
+        else:
+            warn("Management %s is unreachable!" % host_post_info.host)
+
+    def get_local_mn_log(self, collect_dir):
         info("Collecting log from this management node ...")
         if not os.path.exists(collect_dir + "/management-node"):
             os.makedirs(collect_dir + "/management-node")
-        (status, output) = commands.getstatusoutput("tail -n %d %s/../../logs/management-server.log > "
+        (status, output) = commands.getstatusoutput("tail -n 10000 %s/../../logs/management-server.log > "
                                                     "%s/management-node/management-server.log 2>&1 "
-                                                    % (CollectLogCmd.collect_lines, ctl.zstack_home, collect_dir))
+                                                    % (ctl.zstack_home, collect_dir))
         if status != 0:
             error("get management-server.log failed: %s" % output)
         for log in CollectLogCmd.mn_log_list:
-            (status, output) = commands.getstatusoutput("tail -n %d %s/%s > %s/management-node/%s 2>&1 "
-                                % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, collect_dir, log))
+            (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
+                                                        % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
@@ -4043,14 +4089,38 @@ class CollectLogCmd(Command):
         else:
             hostname, port, user, password = ctl.get_live_mysql_portal()
             detail_version = get_zstack_version(hostname, port, user, password)
-        collect_dir = run_command_dir + "/" + 'collect-log-' + detail_version + '-' + time_stamp
+        # collect_dir used to store the collect-log
+        collect_dir = run_command_dir + "/" + 'collect-log-' + detail_version + '-' + time_stamp + '/'
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
-        self.get_management_node_log(collect_dir)
+        if os.path.exists(InstallHACmd.conf_file) is not True:
+            self.get_local_mn_log(collect_dir)
+        else:
+            # this only for HA due to db will lost mn info if mn offline
+            mn_list = self.get_mn_list()
+            for mn_ip in mn_list:
+                host_post_info = HostPostInfo()
+                host_post_info.remote_user = 'root'
+                # this will be changed in the future
+                host_post_info.remote_port = '22'
+                host_post_info.host = mn_ip
+                host_post_info.host_inventory = InstallHACmd.conf_dir + 'host'
+                host_post_info.post_url = ""
+                host_post_info.private_key = InstallHACmd.conf_dir + 'ha_key'
+                self.get_management_node_log(collect_dir, host_post_info)
+
+
         host_vo = self.get_host_list()
         for host in host_vo:
             host_post_info = HostPostInfo()
             host_ip = host['managementIp']
+            #update inventory
+            with open(ctl.zstack_home + "/../../../ansible/hosts") as f:
+                old_hosts = f.read()
+                if host_ip not in old_hosts:
+                    with open(ctl.zstack_home + "/../../../ansible/hosts","w") as f:
+                        new_hosts = host_ip + "\n" + old_hosts
+                        f.write(new_hosts)
             (host_user, host_password, host_port) = self.get_host_ssh_info(host_ip)
             if host_user != 'root' and host_password is not None:
                 host_post_info.become = True
