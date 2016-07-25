@@ -10,7 +10,6 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import shell
 from zstacklib.utils import daemon
-from zstacklib.utils.bash import *
 import functools
 import traceback
 import pprint
@@ -81,7 +80,6 @@ class DownloadResponse(AgentResponse):
         self.md5Sum = None
         self.size = None
         self.actualSize = None
-        self.format = None
 
 class WriteImageMetaDataResponse(AgentResponse):
     def __init__(self):
@@ -208,8 +206,7 @@ class SftpBackupStorageAgent(object):
         self._write_image_metadata(meta_data.installPath, meta_data)
         rsp = WriteImageMetaDataResponse()
         return jsonobject.dumps(rsp)
-
-    @in_bash
+    
     @replyerror
     def download_image(self, req):
         #TODO: report percentage to mgmt server
@@ -255,7 +252,6 @@ class SftpBackupStorageAgent(object):
             shell.call('yes | cp %s %s' % (src_path, install_path))
 
         size = os.path.getsize(install_path)
-        image_format =  bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
         (total, avail) = self.get_capacity()
@@ -264,7 +260,6 @@ class SftpBackupStorageAgent(object):
         rsp.size = linux.qcow2_virtualsize(install_path)
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
-        rsp.format = image_format
         return jsonobject.dumps(rsp)
     
     @replyerror
