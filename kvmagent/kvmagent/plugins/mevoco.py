@@ -210,8 +210,9 @@ class Mevoco(kvmagent.KvmAgent):
         pass
 
     @kvmagent.replyerror
-    def connect(self):
-        shell.call('etables -F')
+    def connect(self, req):
+        shell.call('ebtables -F')
+        shell.call('ebtables -t nat -F')
         return jsonobject.dumps(ConnectRsp())
 
     def batch_apply_userdata(self, req):
