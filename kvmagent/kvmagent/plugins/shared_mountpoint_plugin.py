@@ -2,6 +2,7 @@ import os.path
 import traceback
 
 from kvmagent import kvmagent
+from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -49,6 +50,9 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointpirmarystorage/createtemplatefromvolume"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointpirmarystorage/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointpirmarystorage/sftp/download"
+    UPLOAD_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointpirmarystorage/imagestore/upload"
+    COMMIT_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointpirmarystorage/imagestore/commit"
+    DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/sharedmountpointpirmarystorage/imagestore/download"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/volume/revertfromsnapshot"
     MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/merge"
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/offlinemerge"
@@ -64,6 +68,9 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
+        http_server.register_async_uri(self.UPLOAD_BITS_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
+        http_server.register_async_uri(self.COMMIT_BITS_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
+        http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
@@ -72,6 +79,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
 
         self.mount_point = None
+        self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
@@ -171,6 +179,24 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def upload_to_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.upload_to_imagestore(cmd.hostname, cmd.primaryStorageInstallPath)
+
+    @kvmagent.replyerror
+    def commit_to_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.commit_to_imagestore(cmd.primaryStorageInstallPath)
+
+    @kvmagent.replyerror
+    def download_from_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.imagestore_client.download_from_imagestore(self.mount_point, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        rsp = AgentRsp()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
