@@ -75,12 +75,11 @@ def parse_sub_arguments(cmd, positional_arguments):
     for line in output:
         if next_line:
             if line.startswith(arg_key):
-                line_list = line.split()
-                arg = line_list[0]
-                if arg.endswith(','):
-                    arg = arg[:-1]
-                    sub_args.append(line_list[1])
-                sub_args.append(arg)
+                line_list = line.strip().split(',')
+                for item in line_list:
+                    item = item.strip()
+                    if item.startswith('-'):
+                        sub_args.append(item.split()[0])
 
         if line.startswith(sa_key):
             next_line = True
@@ -112,6 +111,19 @@ _zstack-ctl()
 """ % (positional_argument, ' '.join(sub_args))
 
     string = string + """
+        -f)
+            _filedir
+            return 0
+            ;;
+        --license)
+            _filedir
+            return 0
+            ;;
+        --file)
+            _filedir
+            return 0
+            ;;
+
         *)
             ;;
     esac
