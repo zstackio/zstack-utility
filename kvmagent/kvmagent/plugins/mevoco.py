@@ -257,7 +257,7 @@ class Mevoco(kvmagent.KvmAgent):
         # delete old chains not matching our port
         OLD_CHAIN = bash_errorout("iptables-save | awk '/^:UD-PORT-/{print substr($1,2)}'").strip(' \n\r\t')
         if OLD_CHAIN and OLD_CHAIN != CHAIN_NAME:
-            ret = bash_r('iptables -t nat -L PREROUTING | grep {{OLD_CHAIN}}')
+            ret = bash_r('iptables-save -t nat | grep -- "-j {{OLD_CHAIN}}"')
             if ret == 0:
                 bash_r('iptables -t nat -D PREROUTING -j {{OLD_CHAIN}}')
 
