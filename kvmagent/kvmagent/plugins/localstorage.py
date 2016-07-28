@@ -64,6 +64,11 @@ class GetVolumeBaseImagePathRsp(AgentResponse):
         super(GetVolumeBaseImagePathRsp, self).__init__()
         self.path = None
 
+class GetQCOW2ReferenceRsp(AgentResponse):
+    def __init__(self):
+        super(GetQCOW2ReferenceRsp, self).__init__()
+        self.referencePaths = None
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
 
     INIT_PATH = "/localstorage/init";
@@ -88,6 +93,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
     GET_VOLUME_SIZE = "/localstorage/volume/getsize"
     GET_BASE_IMAGE_PATH = "/localstorage/volume/getbaseimagepath"
+    GET_QCOW2_REFERENCE = "/localstorage/getqcow2reference"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -113,11 +119,29 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
         http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
         http_server.register_async_uri(self.GET_BASE_IMAGE_PATH, self.get_volume_base_image_path)
+        http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
 
         self.path = None
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def get_qcow2_reference(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        out = shell.call('find %s -type f' % cmd.searchingDir)
+
+        rsp = GetQCOW2ReferenceRsp()
+        rsp.referencePaths = []
+        for f in out.split('\n'):
+            f = f.strip(' \t\r\n')
+            if not f: continue
+            backing_file = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % f)
+            backing_file = backing_file.strip(' \t\r\n')
+            if backing_file == cmd.path:
+                rsp.referencePaths.append(backing_file)
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def get_volume_size(self, req):
