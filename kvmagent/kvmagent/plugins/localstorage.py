@@ -139,7 +139,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             backing_file = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % f)
             backing_file = backing_file.strip(' \t\r\n')
             if backing_file == cmd.path:
-                rsp.referencePaths.append(backing_file)
+                rsp.referencePaths.append(f)
 
         return jsonobject.dumps(rsp)
 
