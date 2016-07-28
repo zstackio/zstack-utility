@@ -258,7 +258,7 @@ class SftpBackupStorageAgent(object):
         image_format =  bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path).strip('\n')
         if "raw" in image_format:
             if "ISO" in bash_o("file %s" % install_path):
-                image_format = "ISO"
+                image_format = "iso"
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
         (total, avail) = self.get_capacity()
