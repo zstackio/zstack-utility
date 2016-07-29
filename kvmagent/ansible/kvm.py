@@ -174,7 +174,7 @@ if distro == "RedHat" or distro == "CentOS":
     run_remote_command(command, host_post_info)
     # name: disable selinux on RedHat based OS
     set_selinux("state=disabled", host_post_info)
-    run_remote_command("setenforce 0", host_post_info)
+    run_remote_command("setenforce 0 || true", host_post_info)
     # name: copy sysconfig libvirtd conf in RedHat
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirtd" % file_root
