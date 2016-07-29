@@ -1607,6 +1607,11 @@ class InstallDbCmd(Command):
       register: install_result
 
     - name: open 3306 port
+      when: ansible_os_family == 'RedHat'
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && service iptables save)
+
+    - name: open 3306 port
+      when: ansible_os_family != 'RedHat'
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT
 
     - name: run post-install script
@@ -3438,13 +3443,28 @@ class InstallRabbitCmd(Command):
         - rabbitmq-server
 
     - name: open 5672 port
+      when: ansible_os_family != 'RedHat'
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT
 
     - name: open 5673 port
+      when: ansible_os_family != 'RedHat'
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5673 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5673 -j ACCEPT
 
     - name: open 15672 port
+      when: ansible_os_family != 'RedHat'
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT
+
+    - name: open 5672 port
+      when: ansible_os_family == 'RedHat'
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT && service iptables save)
+
+    - name: open 5673 port
+      when: ansible_os_family == 'RedHat'
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5673 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5673 -j ACCEPT && service iptables save)
+
+    - name: open 15672 port
+      when: ansible_os_family == 'RedHat'
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT && service iptables save)
 
     - name: install rabbitmq management plugin
       shell: rabbitmq-plugins enable rabbitmq_management
