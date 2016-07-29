@@ -3947,7 +3947,8 @@ class RestoreMysqlCmd(Command):
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack"
     host_log_list = ['zstack-sftpbackupstorage.log','zstack.log','zstack-kvmagent.log','ceph-backupstorage.log',
-                     'ceph-primarystorage.log', 'zstack-iscsi-filesystem-agent.log', 'zstack-store/zstack-store.log']
+                     'ceph-primarystorage.log', 'zstack-iscsi-filesystem-agent.log', 'zstack-store/zstack-store.log',
+                     'zstack-agent/collectd.log','zstack-agent/server.log']
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log']
@@ -4001,6 +4002,9 @@ class CollectLogCmd(Command):
             command = "mkdir -p %s " % tmp_log_dir
             run_remote_command(command, host_post_info)
             for log in CollectLogCmd.host_log_list:
+                if 'zstack-agent' in log:
+                    command = "mkdir -p %s" % tmp_log_dir + '/zstack-agent/'
+                    run_remote_command(command, host_post_info)
                 host_log = CollectLogCmd.zstack_log_dir + '/' + log
                 collect_log = tmp_log_dir + '/' + log
                 if file_dir_exist("path=%s" % host_log, host_post_info):
