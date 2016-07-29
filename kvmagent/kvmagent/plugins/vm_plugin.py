@@ -943,8 +943,8 @@ class Vm(object):
             def force_undefine():
                 try:
                     self.domain.undefine()
-                except libvirt.libvirtError as e:
-                    if 'cannot undefine transient domain' not in str(e):
+                except Exception as ex:
+                    if 'transient domain' not in str(ex):
                         raise
 
                     # the vm is in transient state, do our best to kill it
