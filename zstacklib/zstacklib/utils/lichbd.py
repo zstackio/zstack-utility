@@ -83,7 +83,7 @@ def lichbd_check_cluster_is_ready(monHostnames=None, sshUsernames=None, sshPassw
     for monHostname in monHostnames:
         nodes = nodes + ' ' + monHostname
 
-    shell.call('/opt/fusionstack/lich/bin/lich sshkey %s -p %s' % (nodes, sshPasswords[0]))
+    shell.call('/opt/fusionstack/lich/bin/lich sshkey %s -p "%s"' % (nodes, sshPasswords[0]))
 
     if os.path.exists('/opt/fusionstack/etc/cluster.conf'):
         fusionstorIsReady = True
@@ -140,7 +140,7 @@ def lichbd_create_cluster(monHostnames, sshPasswords):
     shell.call("sed -i 's/^\s*\([0-9]\{1,3\}\).*/                %s\/24;/g' /opt/fusionstack/etc/lich.conf" % net)
     shell.call("sed -i 's/^\s*\#nohosts on;/       nohosts on;/g' /opt/fusionstack/etc/lich.conf")
 
-    shell.call('/opt/fusionstack/lich/bin/lich prep %s -p %s' % (nodes, sshPasswords[0]))
+    shell.call('/opt/fusionstack/lich/bin/lich prep %s -p "%s"' % (nodes, sshPasswords[0]))
     shell.call('/opt/fusionstack/lich/bin/lich create %s' % nodes)
 
 def lichbd_add_node(monHostname):
