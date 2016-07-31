@@ -14,6 +14,7 @@ from zstacklib.utils import plugin
 from zstacklib.utils.rollback import rollback, rollbackable
 import os
 import os.path
+import errno
 import functools
 import traceback
 import pprint
@@ -195,13 +196,17 @@ class FusionstorAgent(object):
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PingRsp()
-        try:
-            lichbd.lichbd_create(cmd.testImagePath, '1M')
-            lichbd.lichbd_rm(cmd.testImagePath)
-        except Exception, e:
-            rsp.success = False
-            rsp.operationFailure = True
-            rsp.error = "%s" % (e)
+
+        if cmd.testImagePath:
+            pool = cmd.testImagePath.split('/')[0]
+            testImagePath = '%s/this-is-a-test-image-with-long-name' % pool
+            shellcmd = lichbd.lichbd_file_info(testImagePath)
+            if shellcmd.return_code == errno.ENOENT:
+                lichbd.lichbd_create_raw(testImagePath, '1b')
+            elif shellcmd.return_code == 0:
+                pass
+            else:
+                raise shell.ShellError("%s: %s" % (shellcmd.cmd, shellcmd.stderr))
 
         return jsonobject.dumps(rsp)
 

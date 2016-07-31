@@ -269,16 +269,11 @@ def lichbd_mv(dist, src):
         else:
             raise_exp(shellcmd)
 
-"""
-def lichbd_file_size(path):
+def lichbd_file_info(path):
     protocol = get_protocol()
-    shellcmd = call_try("lichbd info %s -p %s 2>/dev/null | grep Size | awk '{print $2}'" % (path, protocol))
-    if shellcmd.return_code != 0:
-        raise_exp(shellcmd)
+    shellcmd = call_try("lichbd info %s -p %s" % (path, protocol))
 
-    size = shellcmd.stdout.strip()
-    return long(size)
-"""
+    return shellcmd
 
 def lichbd_file_size(path):
     protocol = get_protocol()
