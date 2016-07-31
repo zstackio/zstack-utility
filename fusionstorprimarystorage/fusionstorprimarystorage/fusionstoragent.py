@@ -205,7 +205,7 @@ class FusionstorAgent(object):
         if (len(afters) > 0):
             afters.reverse()
             rsp.success = False
-            rsp.error = 'need del snapshots: %s, only can rollback to last one' % (afters)
+            rsp.error = 'If you want to rollback the current snapshot, please delete all the later snapshots manually.[%s]' % (afters)
         else:
             lichbd.lichbd_snap_rollback(spath)
             self._set_capacity_to_response(rsp)
@@ -317,15 +317,8 @@ class FusionstorAgent(object):
 
         if fusionstorIsReady is not True:
             lichbd.lichbd_create_cluster(cmd.monHostnames, cmd.sshPasswords)
-            if cmd.fusionstorType == 'SS100-Storage':
-                lichbd.lichbd_add_disks(cmd.monHostnames)
-        else:
-            needAddHostnameToCluster = []
-            needAddHostnameToCluster = lichbd.lichbd_check_node_in_cluster(fusionstorIsReady, cmd.monHostnames)
-            for hostname in needAddHostnameToCluster:
-                lichbd.lichbd_add_node(hostname)
-            if cmd.fusionstorType == 'SS100-Storage':
-                lichbd.lichbd_add_disks(needAddHostnameToCluster)
+            for monHostname in cmd.monHostnames:
+                lichbd.lichbd_add_disks(monHostname)
 
         existing_pools = lichbd.lichbd_lspools()
         for pool in cmd.pools:
