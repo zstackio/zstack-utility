@@ -268,7 +268,7 @@ class ConsoleProxyAgent(object):
                 err.append('return code: %s' % ret)
                 err.append('stdout: %s' % out)
                 err.append('stderr: %s' % err)
-                raise ('\n'.join(err))
+                raise ConsoleProxyError('\n'.join(err))
             else:
                 bash_errorout("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport {{PROXY_PORT}}' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport {{PROXY_PORT}} -j ACCEPT")
 
