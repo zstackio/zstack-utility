@@ -28,7 +28,7 @@ def main():
 
     try:
         iptc = iptables.from_iptables_save()
-        iptc.add_rule('-A INPUT -p tcp -m tcp --dport 7762 -j ACCEPT')
+        iptc.add_rule('-A INPUT -p tcp -m tcp --dport 7764 -j ACCEPT')
         iptc.iptable_restore()
 
         cmd = sys.argv[1]

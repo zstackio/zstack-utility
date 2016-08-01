@@ -83,7 +83,7 @@ def lichbd_check_cluster_is_ready(monHostnames=None, sshUsernames=None, sshPassw
     for monHostname in monHostnames:
         nodes = nodes + ' ' + monHostname
 
-    shell.call('/opt/fusionstack/lich/bin/lich sshkey %s -p %s' % (nodes, sshPasswords[0]))
+    shell.call('/opt/fusionstack/lich/bin/lich sshkey %s -p "%s"' % (nodes, sshPasswords[0]))
 
     if os.path.exists('/opt/fusionstack/etc/cluster.conf'):
         fusionstorIsReady = True
@@ -140,30 +140,15 @@ def lichbd_create_cluster(monHostnames, sshPasswords):
     shell.call("sed -i 's/^\s*\([0-9]\{1,3\}\).*/                %s\/24;/g' /opt/fusionstack/etc/lich.conf" % net)
     shell.call("sed -i 's/^\s*\#nohosts on;/       nohosts on;/g' /opt/fusionstack/etc/lich.conf")
 
-    shell.call('/opt/fusionstack/lich/bin/lich prep %s -p %s' % (nodes, sshPasswords[0]))
+    shell.call('/opt/fusionstack/lich/bin/lich prep %s -p "%s"' % (nodes, sshPasswords[0]))
     shell.call('/opt/fusionstack/lich/bin/lich create %s' % nodes)
 
 def lichbd_add_node(monHostname):
     disks = shell.call('/opt/fusionstack/lich/bin/lich addnode %s' % monHostname)
 
-def lichbd_add_disks(monHostnames):
-    for monHostname in monHostnames:
-        ##  make raid
-        disks = shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --disk_list --json' % monHostname)
-
-        disks = json.loads(disks).keys()
-        for disk in disks:
-            if '/dev/' not in disk:
-                shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --raid_add %s' % (monHostname, disk))
-
-        ##  add disk
-        disks = shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --disk_list --json' % monHostname)
-
-        disksInfo = json.loads(disks)
-        disks = disksInfo.keys()
-        for disk in disks:
-            if '/dev/' in disk and disksInfo[disk]['flag'] != 'lich' and disksInfo[disk]['dev_info']['fs'] == None and disksInfo[disk]['dev_info']['mount'] == None:
-                shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --disk_add %s' % (monHostname, disk))
+def lichbd_add_disks(monHostname):
+    shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --raid_add all' % monHostname)
+    shell.call('ssh %s /opt/fusionstack/lich/bin/lich.node --disk_add all' % monHostname)
 
 def lichbd_get_iqn():
     shellcmd = call_try("""lich  configdump 2>/dev/null|grep iqn|awk -F":" '{print $2}'""")
@@ -284,16 +269,11 @@ def lichbd_mv(dist, src):
         else:
             raise_exp(shellcmd)
 
-"""
-def lichbd_file_size(path):
+def lichbd_file_info(path):
     protocol = get_protocol()
-    shellcmd = call_try("lichbd info %s -p %s 2>/dev/null | grep Size | awk '{print $2}'" % (path, protocol))
-    if shellcmd.return_code != 0:
-        raise_exp(shellcmd)
+    shellcmd = call_try("lichbd info %s -p %s" % (path, protocol))
 
-    size = shellcmd.stdout.strip()
-    return long(size)
-"""
+    return shellcmd
 
 def lichbd_file_size(path):
     protocol = get_protocol()
@@ -339,13 +319,13 @@ def lichbd_get_used():
             used = long(l.split("used:")[-1])
             return used
 
-    raise shell.ShellError('\n'.join('lichbd_get_used'))
+    raise shell.ShellError('lichbd_get_used')
 
 def lichbd_get_capacity():
     try:
         o = lichbd_cluster_stat()
-    except Except, e:
-        raise shell.ShellError('\n'.join('lichbd_get_capacity'))
+    except Exception, e:
+        raise shell.ShellError('lichbd_get_capacity')
 
     total = 0
     used = 0
@@ -461,7 +441,7 @@ def get_system_qemu_path():
             # ubuntu
             _qemu_path = '/usr/bin/qemu-system-x86_64'
         else:
-            raise shell.ShellError('\n'.join('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-x86_64'))
+            raise shell.ShellError('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-x86_64')
 
     return _qemu_path
 
@@ -476,7 +456,7 @@ def get_system_qemu_img_path():
             # ubuntu
             _qemu_img_path = '/usr/local/bin/qemu-img'
         else:
-            raise shell.ShellError('\n'.join('Could not find qemu-img in /bin/qemu-img or /usr/bin/qemu-img or /usr/local/bin/qemu-img'))
+            raise shell.ShellError('Could not find qemu-img in /bin/qemu-img or /usr/bin/qemu-img or /usr/local/bin/qemu-img')
 
     return  _qemu_img_path
 
