@@ -142,9 +142,9 @@ copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart fusionstorpagent
 if distro == "RedHat" or distro == "CentOS":
-    command = "service zstack-fusionstor-primarystorage restart && chkconfig zstack-fusionstor-primarystorage on"
+    command = "service zstack-fusionstor-primarystorage stop && service zstack-fusionstor-primarystorage start && chkconfig zstack-fusionstor-primarystorage on"
 elif distro == "Debian" or distro == "Ubuntu":
-    command = "service zstack-fusionstor-primarystorage restart && update-rc.d zstack-fusionstor-primarystorage enable"
+    command = "service zstack-fusionstor-primarystorage stop &&  service zstack-fusionstor-primarystorage start && update-rc.d zstack-fusionstor-primarystorage enable"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

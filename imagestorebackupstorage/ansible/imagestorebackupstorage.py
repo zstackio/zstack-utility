@@ -134,9 +134,9 @@ if client != "true":
     # integrate zstack-store with init.d
     run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
     if distro == "CentOS" or distro == "RedHat":
-        command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage restart && chkconfig zstack-imagestorebackupstorage on"
+        command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage restart && update-rc.d zstack-imagestorebackupstorage enable"
+        command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && update-rc.d zstack-imagestorebackupstorage enable"
     run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

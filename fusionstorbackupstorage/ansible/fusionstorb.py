@@ -142,9 +142,9 @@ copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart fusionstorbagent
 if distro == "RedHat" or distro == "CentOS":
-    command = "service zstack-fusionstor-backupstorage restart && chkconfig zstack-fusionstor-backupstorage on"
+    command = "service zstack-fusionstor-backupstorage stop && service zstack-fusionstor-backupstorage start && chkconfig zstack-fusionstor-backupstorage on"
 elif distro == "Debian" or distro == "Ubuntu":
-    command = "service zstack-fusionstor-backupstorage restart && update-rc.d zstack-fusionstor-backupstorage enable"
+    command = "service zstack-fusionstor-backupstorage stop && service zstack-fusionstor-backupstorage start && update-rc.d zstack-fusionstor-backupstorage enable"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
