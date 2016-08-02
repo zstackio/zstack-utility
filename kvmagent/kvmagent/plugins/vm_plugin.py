@@ -2017,7 +2017,10 @@ class Vm(object):
 
         def make_vnc():
             devices = elements['devices']
-            vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes'})
+            if cmd.consolePassword == None:
+                vnc = e(devices, 'graphics', None,{'type': 'vnc', 'port': '5900', 'autoport': 'yes'})
+            else:
+                vnc = e(devices, 'graphics', None, {'type':'vnc', 'port':'5900', 'autoport':'yes','passwd':str(cmd.consolePassword)})
             e(vnc, "listen", None, {'type':'address', 'address':'0.0.0.0'})
 
         def make_spice():
