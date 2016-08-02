@@ -1817,7 +1817,7 @@ class InstallHACmd(Command):
                             default=None)
         parser.add_argument('--bridge',
                             help="The bridge device name, default is br_eth0",
-                            default="br_eth0")
+                            )
         parser.add_argument('--mysql-root-password',
                             help="Password of MySQL root user", default="zstack123")
         parser.add_argument('--mysql-user-password',
@@ -1884,7 +1884,10 @@ class InstallHACmd(Command):
         spinner_info.name = 'check_init'
         InstallHACmd.spinner_status['check_init'] = True
         ZstackSpinner(spinner_info)
-        InstallHACmd.bridge = args.bridge
+    	if args.bridge is None:
+            InstallHACmd.bridge = 'br_eth0'
+    	else:
+            InstallHACmd.bridge = args.bridge
         if os.path.exists(InstallHACmd.conf_file):
             with open(InstallHACmd.conf_file, 'r') as f:
                 InstallHACmd.ha_config_content = yaml.load(f)
@@ -2087,7 +2090,7 @@ class InstallHACmd(Command):
 
         # check whether to recovery the HA cluster
         if args.recovery_from_this_host is True:
-            if os.path.exists(InstallHACmd.conf_file) and InstallHACmd.ha_config_content is not None:
+            if os.path.exists(InstallHACmd.conf_file) and InstallHACmd.ha_config_content is not None and args.bridge is None:
                 if "bridge_name" in InstallHACmd.ha_config_content:
                     InstallHACmd.bridge = InstallHACmd.ha_config_content['bridge_name']
 
@@ -3072,8 +3075,9 @@ wsrep_sst_method=rsync
         # restart mysql service to enable galera config
         command = "service mysql stop || true"
         #service_status("mysql", "state=stopped", self.host1_post_info)
-        run_remote_command(command, self.host1_post_info)
         run_remote_command(command, self.host2_post_info)
+        #last stop node should be the first node to do bootstrap
+        run_remote_command(command, self.host1_post_info)
         if len(self.host_post_info_list) == 3:
             run_remote_command(command, self.host3_post_info)
         command = "service mysql bootstrap"
