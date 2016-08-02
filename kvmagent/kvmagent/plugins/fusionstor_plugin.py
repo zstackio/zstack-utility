@@ -91,8 +91,8 @@ class FusionstorPlugin(kvmagent.KvmAgent):
                         logger.warn('cannot create heartbeat image; %s' % create.stderr)
 
                     if read_heart_beat_file:
-                        touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
-                                               (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
+                        touch = shell.ShellCmd('timeout %s qemu-img info nbd:unix:/tmp/nbd-socket:exportname=%s' %
+                                               (cmd.storageCheckerTimeout, cmd.heartbeatImagePath))
                         touch(False)
 
                         if touch.return_code == 0:
