@@ -3872,18 +3872,6 @@ class GetL3NetworkDhcpIpAddressAction(inventory.APIGetL3NetworkDhcpIpAddressMsg)
         self.out = evt
         return self.out
 
-class CommitVolumeAsImageAction(inventory.APICommitVolumeAsImageMsg):
-    def __init__(self):
-        super(CommitVolumeAsImageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CommitVolumeAsImageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class QueryImageStoreBackupStorageAction(inventory.APIQueryImageStoreBackupStorageMsg):
     def __init__(self):
         super(QueryImageStoreBackupStorageAction, self).__init__()
@@ -4086,6 +4074,30 @@ class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateResourcePriceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CommitVolumeAsImageAction(inventory.APICommitVolumeAsImageMsg):
+    def __init__(self):
+        super(CommitVolumeAsImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CommitVolumeAsImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CloneVmInstanceAction(inventory.APICloneVmInstanceMsg):
+    def __init__(self):
+        super(CloneVmInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CloneVmInstanceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
