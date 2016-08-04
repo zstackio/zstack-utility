@@ -1957,7 +1957,7 @@ class InstallHACmd(Command):
             error("Make sure you have already run the 'zs-network-setting' to setup the network environment")
         if InstallHACmd.bridge.split('br_')[1] not in interface_list:
             error("bridge %s should add the interface %s, make sure you have setup the interface or specify the right"
-                  " bridge name" % (InstallHACmd.bridge, InstallHACmd.split('br_')[1]))
+                  " bridge name" % (InstallHACmd.bridge, InstallHACmd.bridge.split('br_')[1]))
 
 
         # check user start this command on host1
@@ -2526,8 +2526,8 @@ class InstallHACmd(Command):
         if args.host3_info is not False:
             host_list = "%s,%s,%s" % (self.host1_post_info.host, self.host2_post_info.host, self.host3_post_info)
         ha_conf_file = open(InstallHACmd.conf_file, 'w')
-        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'bridge_name':args.bridge,
-                   'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.host1 +':9132/zstack', 'host_list':host_list}
+        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'bridge_name':InstallHACmd.bridge,
+                   'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.vip +':9132/zstack', 'host_list':host_list}
         yaml.dump(ha_info, ha_conf_file, default_flow_style=False)
 
         command = "mkdir -p %s" % InstallHACmd.conf_dir
@@ -5897,6 +5897,8 @@ class UiStatusCmd(Command):
                             ha_conf = yaml.load(fd2)
                             if check_ip_port(ha_conf['vip'], 8888):
                                 info('UI status: %s [PID:%s] http://%s:8888' % (colored('Running', 'green'), pid, ha_conf['vip']))
+                            else:
+                                info('UI status: %s' % colored('Unknown', 'yellow'))
                             return
                     default_ip = get_default_ip()
                     if not default_ip:
