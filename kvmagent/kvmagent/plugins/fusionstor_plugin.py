@@ -38,7 +38,7 @@ def kill_vm():
         if not vm_uuid:
             continue
 
-        vm_pid = shell.call("ps aux | grep kvm | awk '/%s/{print $2}'" % vm_uuid)
+        vm_pid = shell.call("ps aux | grep '/opt/fusionstack/qemu/bin/qemu-system-x86_64' | grep -v 'grep' | awk '/%s/{print $2}'" % vm_uuid)
         vm_pid = vm_pid.strip(' \t\n\r')
         kill = shell.ShellCmd('kill -9 %s' % vm_pid)
         kill(False)
@@ -91,8 +91,8 @@ class FusionstorPlugin(kvmagent.KvmAgent):
                         logger.warn('cannot create heartbeat image; %s' % create.stderr)
 
                     if read_heart_beat_file:
-                        touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
-                                               (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
+                        touch = shell.ShellCmd('timeout %s qemu-img info nbd:unix:/tmp/nbd-socket:exportname=%s' %
+                                               (cmd.storageCheckerTimeout, cmd.heartbeatImagePath))
                         touch(False)
 
                         if touch.return_code == 0:
