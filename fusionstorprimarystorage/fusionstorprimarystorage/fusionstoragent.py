@@ -171,11 +171,20 @@ class FusionstorAgent(object):
             testImagePath = '%s/this-is-a-test-image-with-long-name' % pool
             shellcmd = lichbd.lichbd_file_info(testImagePath)
             if shellcmd.return_code == errno.ENOENT:
-                lichbd.lichbd_create_raw(testImagePath, '1b')
+                try:
+                    lichbd.lichbd_create_raw(testImagePath, '1b')
+                except Exception, e:
+                    rsp.success = False
+                    rsp.operationFailure = True
+                    rsp.error = str(e)
+                    logger.debug("%s" % rsp.error)
             elif shellcmd.return_code == 0:
                 pass
             else:
-                raise shell.ShellError("%s: %s" % (shellcmd.cmd, shellcmd.stderr))
+                rsp.success = False
+                rsp.operationFailure = True
+                rsp.error = "%s %s" % (shellcmd.cmd, shellcmd.stderr)
+                logger.debug("%s: %s" % (shellcmd.cmd, shellcmd.stderr))
 
         return jsonobject.dumps(rsp)
 
@@ -259,9 +268,15 @@ class FusionstorAgent(object):
     def delete_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-        lichbd.lichbd_snap_delete(spath)
         rsp = AgentResponse()
-        self._set_capacity_to_response(rsp)
+        try:
+            lichbd.lichbd_snap_delete(spath)
+            self._set_capacity_to_response(rsp)
+        except Exception, e:
+            logger.debug('%s' % str(e))
+            rsp.success = False
+            rsp.error = str(e)
+
         return jsonobject.dumps(rsp)
 
     @replyerror
