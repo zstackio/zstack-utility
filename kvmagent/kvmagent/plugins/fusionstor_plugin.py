@@ -38,7 +38,7 @@ def kill_vm():
         if not vm_uuid:
             continue
 
-        vm_pid = shell.call("ps aux | grep kvm | awk '/%s/{print $2}'" % vm_uuid)
+        vm_pid = shell.call("ps aux | grep '/opt/fusionstack/qemu/bin/qemu-system-x86_64' | grep -v 'grep' | awk '/%s/{print $2}'" % vm_uuid)
         vm_pid = vm_pid.strip(' \t\n\r')
         kill = shell.ShellCmd('kill -9 %s' % vm_pid)
         kill(False)
