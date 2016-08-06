@@ -789,6 +789,7 @@ is_install_general_libs_rh(){
             gcc \
             autoconf \
             iptables \
+            iptables-services \
             tar \
             gzip \
             unzip \
@@ -825,6 +826,7 @@ is_install_general_libs_rh(){
             gcc \
             autoconf \
             iptables \
+            iptables-services \
             tar \
             gzip \
             unzip \

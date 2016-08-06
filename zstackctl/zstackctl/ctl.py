@@ -1590,12 +1590,12 @@ class InstallDbCmd(Command):
 
     - name: install MySQL for RedHat 7 from local
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
     - name: install MySQL for RedHat 7 from local
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server
+      shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
     - name: install MySQL for Ubuntu
@@ -3438,11 +3438,11 @@ class InstallRabbitCmd(Command):
 
     - name: install RabbitMQ on RedHat OS from user defined yum repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y rabbitmq-server libselinux-python
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y rabbitmq-server libselinux-python iptables-services
 
     - name: install RabbitMQ on RedHat OS from online
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y rabbitmq-server libselinux-python
+      shell: yum clean metadata; yum --nogpgcheck install -y rabbitmq-server libselinux-python iptables-services
 
     - name: install RabbitMQ on Ubuntu OS
       when: ansible_os_family == 'Debian'
