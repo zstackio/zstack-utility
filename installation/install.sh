@@ -1017,6 +1017,12 @@ iz_unpack_zstack(){
         if [ $? -ne 0 ];then
            fail "failed to unpack ${PRODUCT_NAME} package: $all_in_one."
         fi
+        current_date=`date +%s`
+        zstack_build_time=`stat zstack.war|grep Modify|awk '{ print substr($0, index($0,$2)) }'`
+        zstack_build_date=`date --date="$zstack_build_time" +%s`
+        if [ $zstack_build_date -gt $current_date ]; then
+            fail "Your system time is earlier than ZStack build time: $zstack_build_time . Please fix it."
+        fi
     else
         all_in_one=$upgrade_folder/zstack_all_in_one.tgz
         mv $zstack_tmp_file $all_in_one
@@ -1025,6 +1031,12 @@ iz_unpack_zstack(){
         if [ $? -ne 0 ];then
             cd /; rm -rf $upgrade_folder 
             fail "failed to unpack ${PRODUCT_NAME} package: $all_in_one."
+        fi
+        current_date=`date +%s`
+        zstack_build_time=`stat zstack.war|grep Modify|awk '{ print substr($0, index($0,$2)) }'`
+        zstack_build_date=`date --date="$zstack_build_time" +%s`
+        if [ $zstack_build_date -gt $current_date ]; then
+            fail "Your system time is earlier than ZStack build time: $zstack_build_time . Please fix it."
         fi
     fi
     pass
