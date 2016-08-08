@@ -5925,6 +5925,18 @@ class APIGetL3NetworkDhcpIpAddressMsg(object):
         self.timeout = None
 
 
+<<<<<<< HEAD
+=======
+APIGETL3NETWORKDHCPIPADDRESSREPLY_FULL_NAME = 'org.zstack.network.service.flat.APIGetL3NetworkDhcpIpAddressReply'
+class APIGetL3NetworkDhcpIpAddressReply(object):
+    FULL_NAME='org.zstack.network.service.flat.APIGetL3NetworkDhcpIpAddressReply'
+    def __init__(self):
+        self.ip = None
+        self.success = None
+        self.error = None
+
+
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
 APICALCULATEACCOUNTSPENDINGMSG_FULL_NAME = 'org.zstack.billing.APICalculateAccountSpendingMsg'
 class APICalculateAccountSpendingMsg(object):
     FULL_NAME='org.zstack.billing.APICalculateAccountSpendingMsg'
@@ -6808,6 +6820,10 @@ api_names = [
     'APICreateVipMsg',
     'APIQueryVipReply',
     'APIGetL3NetworkDhcpIpAddressMsg',
+<<<<<<< HEAD
+=======
+    'APIGetL3NetworkDhcpIpAddressReply',
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
     'APICalculateAccountSpendingMsg',
     'APIDeleteResourcePriceMsg',
     'APICreateResourcePriceMsg',
@@ -7015,6 +7031,7 @@ class L3NetworkInventory(object):
         else:
             self.dnsDomain = None
 
+<<<<<<< HEAD
         if hasattr(inv, 'system'):
             self.system = inv.system
         else:
@@ -7043,6 +7060,194 @@ class L3NetworkInventory(object):
         if hasattr(inv, 'networkServices'):
             self.networkServices = inv.networkServices
         else:
+=======
+        if hasattr(inv, 'category'):
+            self.category = inv.category
+        else:
+            self.category = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'defaultValue'):
+            self.defaultValue = inv.defaultValue
+        else:
+            self.defaultValue = None
+
+        if hasattr(inv, 'value'):
+            self.value = inv.value
+        else:
+            self.value = None
+
+
+
+class SchedulerInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.schedulerName = None
+        self.schedulerType = None
+        self.schedulerInterval = None
+        self.repeatCount = None
+        self.cronScheduler = None
+        self.createDate = None
+        self.startDate = None
+        self.lastOpDate = None
+        self.jobClassName = None
+        self.jobData = None
+        self.status = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'schedulerName'):
+            self.schedulerName = inv.schedulerName
+        else:
+            self.schedulerName = None
+
+        if hasattr(inv, 'schedulerType'):
+            self.schedulerType = inv.schedulerType
+        else:
+            self.schedulerType = None
+
+        if hasattr(inv, 'schedulerInterval'):
+            self.schedulerInterval = inv.schedulerInterval
+        else:
+            self.schedulerInterval = None
+
+        if hasattr(inv, 'repeatCount'):
+            self.repeatCount = inv.repeatCount
+        else:
+            self.repeatCount = None
+
+        if hasattr(inv, 'cronScheduler'):
+            self.cronScheduler = inv.cronScheduler
+        else:
+            self.cronScheduler = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'startDate'):
+            self.startDate = inv.startDate
+        else:
+            self.startDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'jobClassName'):
+            self.jobClassName = inv.jobClassName
+        else:
+            self.jobClassName = None
+
+        if hasattr(inv, 'jobData'):
+            self.jobData = inv.jobData
+        else:
+            self.jobData = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+
+
+class L3NetworkInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.type = None
+        self.zoneUuid = None
+        self.l2NetworkUuid = None
+        self.state = None
+        self.dnsDomain = None
+        self.system = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.dns = None
+        self.ipRanges = None
+        self.networkServices = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'zoneUuid'):
+            self.zoneUuid = inv.zoneUuid
+        else:
+            self.zoneUuid = None
+
+        if hasattr(inv, 'l2NetworkUuid'):
+            self.l2NetworkUuid = inv.l2NetworkUuid
+        else:
+            self.l2NetworkUuid = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'dnsDomain'):
+            self.dnsDomain = inv.dnsDomain
+        else:
+            self.dnsDomain = None
+
+        if hasattr(inv, 'system'):
+            self.system = inv.system
+        else:
+            self.system = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'dns'):
+            self.dns = inv.dns
+        else:
+            self.dns = None
+
+        if hasattr(inv, 'ipRanges'):
+            self.ipRanges = inv.ipRanges
+        else:
+            self.ipRanges = None
+
+        if hasattr(inv, 'networkServices'):
+            self.networkServices = inv.networkServices
+        else:
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
             self.networkServices = None
 
 
@@ -7277,6 +7482,7 @@ class InstanceOfferingInventory(object):
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
             self.uuid = inv.uuid
+<<<<<<< HEAD
         else:
             self.uuid = None
 
@@ -7334,9 +7540,71 @@ class InstanceOfferingInventory(object):
             self.state = inv.state
         else:
             self.state = None
+=======
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'cpuNum'):
+            self.cpuNum = inv.cpuNum
+        else:
+            self.cpuNum = None
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+
+        if hasattr(inv, 'cpuSpeed'):
+            self.cpuSpeed = inv.cpuSpeed
+        else:
+            self.cpuSpeed = None
+
+        if hasattr(inv, 'memorySize'):
+            self.memorySize = inv.memorySize
+        else:
+            self.memorySize = None
+
+<<<<<<< HEAD
+=======
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'allocatorStrategy'):
+            self.allocatorStrategy = inv.allocatorStrategy
+        else:
+            self.allocatorStrategy = None
+
+        if hasattr(inv, 'sortKey'):
+            self.sortKey = inv.sortKey
+        else:
+            self.sortKey = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
 
 
 
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
 class ConsoleProxyInventory(object):
     def __init__(self):
         self.uuid = None
@@ -7603,6 +7871,7 @@ class UserGroupInventory(object):
         self.description = None
         self.createDate = None
         self.lastOpDate = None
+<<<<<<< HEAD
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -7649,6 +7918,29 @@ class PolicyInventory(object):
             self.statements = inv.statements
         else:
             self.statements = None
+=======
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountUuid'):
+            self.accountUuid = inv.accountUuid
+        else:
+            self.accountUuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
 
         if hasattr(inv, 'name'):
             self.name = inv.name
@@ -7660,6 +7952,40 @@ class PolicyInventory(object):
         else:
             self.uuid = None
 
+<<<<<<< HEAD
+        if hasattr(inv, 'accountUuid'):
+            self.accountUuid = inv.accountUuid
+        else:
+            self.accountUuid = None
+=======
+
+
+class PolicyInventory(object):
+    def __init__(self):
+        self.statements = None
+        self.name = None
+        self.uuid = None
+        self.accountUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'statements'):
+            self.statements = inv.statements
+        else:
+            self.statements = None
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+<<<<<<< HEAD
+=======
         if hasattr(inv, 'accountUuid'):
             self.accountUuid = inv.accountUuid
         else:
@@ -7667,6 +7993,7 @@ class PolicyInventory(object):
 
 
 
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
 class PrimaryStorageInventory(object):
     def __init__(self):
         self.uuid = None
@@ -8825,6 +9152,7 @@ class ImageStoreBackupStorageInventory(BackupStorageInventory):
 
 
 
+<<<<<<< HEAD
 L2_NO_VLAN_NETWORK_TYPE = 'L2NoVlanNetwork'
 L2_VLAN_NETWORK_TYPE = 'L2VlanNetwork'
 SIMULATOR_BACKUP_STORAGE_TYPE = 'SimulatorBackupStorage'
@@ -8849,6 +9177,8 @@ SFTP_BACKUP_STORAGE_TYPE = 'SftpBackupStorage'
 KVM_HYPERVISOR_TYPE = 'KVM'
 USER_VM_TYPE = 'UserVm'
 NFS_PRIMARY_STORAGE_TYPE = 'NFS'
+=======
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
 AND_EQ = 'AND_EQ'
 AND_NOT_EQ = 'AND_NOT_EQ'
 AND_GT = 'AND_GT'
@@ -8865,6 +9195,7 @@ OR_LT = 'OR_LT'
 OR_LTE = 'OR_LTE'
 OR_IN = 'OR_IN'
 OR_NOT_IN = 'OR_NOT_IN'
+<<<<<<< HEAD
 VR_PUBLIC_NIC_META = '1'
 VR_MANAGEMENT_NIC_META = '2'
 VR_MANAGEMENT_AND_PUBLIC_NIC_META = '3'
@@ -8872,6 +9203,9 @@ DEFAULT_PRIMARY_STORAGE_ALLOCATION_STRATEGY_TYPE = 'DefaultPrimaryStorageAllocat
 CEPH_BACKUP_STORAGE_TYPE = 'Ceph'
 CEPH_PRIMARY_STORAGE_TYPE = 'Ceph'
 SIMULATOR_PRIMARY_STORAGE_TYPE = 'SimulatorPrimaryStorage'
+=======
+IMAGE_STORE_BACKUP_STORAGE_TYPE = 'ImageStoreBackupStorage'
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
 CREATED = 'Created'
 STARTING = 'Starting'
 RUNNING = 'Running'
@@ -8884,12 +9218,51 @@ MIGRATING = 'Migrating'
 EXPUNGING = 'Expunging'
 ERROR = 'Error'
 UNKNOWN = 'Unknown'
+<<<<<<< HEAD
 IMAGE_STORE_BACKUP_STORAGE_TYPE = 'ImageStoreBackupStorage'
 L3_BASIC_NETWORK_TYPE = 'L3BasicNetwork'
 FIRST_AVAILABLE_IP_ALLOCATOR_STRATEGY = 'FirstAvailableIpAllocatorStrategy'
 RANDOM_IP_ALLOCATOR_STRATEGY = 'RandomIpAllocatorStrategy'
 ZSTACK_CLUSTER_TYPE = 'zstack'
 SIMULATOR_HYPERVISOR_TYPE = 'Simulator'
+=======
+LOCAL_STORAGE_TYPE = 'LocalStorage'
+SIMULATOR_HYPERVISOR_TYPE = 'Simulator'
+ZSTACK_IMAGE_TYPE = 'zstack'
+KVM_HYPERVISOR_TYPE = 'KVM'
+SYSTEMADMIN = 'SystemAdmin'
+NORMAL = 'Normal'
+SFTP_BACKUP_STORAGE_TYPE = 'SftpBackupStorage'
+TCP = 'TCP'
+UDP = 'UDP'
+ICMP = 'ICMP'
+FUSIONSTOR_BACKUP_STORAGE_TYPE = 'Fusionstor'
+FUSIONSTOR_PRIMARY_STORAGE_TYPE = 'Fusionstor'
+CEPH_BACKUP_STORAGE_TYPE = 'Ceph'
+CEPH_PRIMARY_STORAGE_TYPE = 'Ceph'
+INGRESS = 'Ingress'
+EGRESS = 'Egress'
+SIMULATOR_PRIMARY_STORAGE_TYPE = 'SimulatorPrimaryStorage'
+SIMULATOR_BACKUP_STORAGE_TYPE = 'SimulatorBackupStorage'
+NFS_PRIMARY_STORAGE_TYPE = 'NFS'
+VIRTUAL_ROUTER_PROVIDER_TYPE = 'VirtualRouter'
+VIRTUAL_ROUTER_VM_TYPE = 'VirtualRouter'
+VIRTUAL_ROUTER_OFFERING_TYPE = 'VirtualRouter'
+VR_PUBLIC_NIC_META = '1'
+VR_MANAGEMENT_NIC_META = '2'
+VR_MANAGEMENT_AND_PUBLIC_NIC_META = '3'
+DEFAULT_PRIMARY_STORAGE_ALLOCATION_STRATEGY_TYPE = 'DefaultPrimaryStorageAllocationStrategy'
+USER_VM_TYPE = 'UserVm'
+L3_BASIC_NETWORK_TYPE = 'L3BasicNetwork'
+FIRST_AVAILABLE_IP_ALLOCATOR_STRATEGY = 'FirstAvailableIpAllocatorStrategy'
+RANDOM_IP_ALLOCATOR_STRATEGY = 'RandomIpAllocatorStrategy'
+ZSTACK_CLUSTER_TYPE = 'zstack'
+INITIAL_SYSTEM_ADMIN_UUID = '36c27e8ff05c4780bf6d2fa65700f22e'
+INITIAL_SYSTEM_ADMIN_NAME = 'admin'
+INITIAL_SYSTEM_ADMIN_PASSWORD = 'b109f3bbbc244eb82441917ed06d618b9008dd09b3befd1b5e07394c706a8bb980b1d7785e5976ec049b46df5f1326af5a2ea6d103fd07c95385ffab0cacbc86'
+L2_NO_VLAN_NETWORK_TYPE = 'L2NoVlanNetwork'
+L2_VLAN_NETWORK_TYPE = 'L2VlanNetwork'
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
 
 class GlobalConfig_NFSPRIMARYSTORAGE(object):
     MOUNT_BASE = 'mount.base'
@@ -9211,10 +9584,24 @@ class GlobalConfig_MEVOCO(object):
         return 'mevoco'
 
 
+<<<<<<< HEAD
 class QueryObjectIpUseInventory(object):
      PRIMITIVE_FIELDS = ['use','usedIpUuid','lastOpDate','details','serviceId','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
+=======
+class QueryObjectL3NetworkDnsInventory(object):
+     PRIMITIVE_FIELDS = ['dns','lastOpDate','l3NetworkUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectPrimaryStorageClusterRefInventory(object):
+     PRIMITIVE_FIELDS = ['clusterUuid','lastOpDate','id','primaryStorageUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['cluster','primaryStorage']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+     QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
      }
 
 class QueryObjectL2VlanNetworkInventory(object):
@@ -9226,12 +9613,28 @@ class QueryObjectL2VlanNetworkInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
+<<<<<<< HEAD
 class QueryObjectConsoleProxyAgentInventory(object):
      PRIMITIVE_FIELDS = ['managementIp','lastOpDate','description','state','type','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
+=======
+class QueryObjectL2VlanNetworkInventory(object):
+     PRIMITIVE_FIELDS = ['vlan','physicalInterface','name','zoneUuid','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['l3Network','zone','cluster']
+     QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectLocalStorageResourceRefInventory(object):
+     PRIMITIVE_FIELDS = ['size','hostUuid','lastOpDate','primaryStorageUuid','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['volume','image','snapshot']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      QUERY_OBJECT_MAP = {
      }
 
+<<<<<<< HEAD
 class QueryObjectCephBackupStorageInventory(object):
      PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['mons','mons','image','volumeSnapshot','zone']
@@ -9265,9 +9668,41 @@ class QueryObjectFusionstorBackupStorageInventory(object):
         'image' : 'QueryObjectImageInventory',
         'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
         'mons' : 'QueryObjectFusionstorBackupStorageMonInventory',
-        'zone' : 'QueryObjectZoneInventory',
+=======
+class QueryObjectLoadBalancerInventory(object):
+     PRIMITIVE_FIELDS = ['vipUuid','name','description','state','uuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['listeners','listeners','vip']
+     QUERY_OBJECT_MAP = {
+        'listeners' : 'QueryObjectLoadBalancerListenerInventory',
+        'vip' : 'QueryObjectVipInventory',
      }
 
+class QueryObjectNetworkServiceProviderInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectNetworkServiceL3NetworkRefInventory(object):
+     PRIMITIVE_FIELDS = ['networkServiceType','networkServiceProviderUuid','l3NetworkUuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['l3Network','serviceProvider']
+     QUERY_OBJECT_MAP = {
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'serviceProvider' : 'QueryObjectNetworkServiceProviderInventory',
+     }
+
+class QueryObjectVirtualRouterOfferingInventory(object):
+     PRIMITIVE_FIELDS = ['cpuSpeed','allocatorStrategy','zoneUuid','description','type','managementNetworkUuid','uuid','cpuNum','isDefault','memorySize','sortKey','name','lastOpDate','publicNetworkUuid','state','imageUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['image','zone','managementL3Network','publicL3Network']
+     QUERY_OBJECT_MAP = {
+        'image' : 'QueryObjectImageInventory',
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+        'zone' : 'QueryObjectZoneInventory',
+        'managementL3Network' : 'QueryObjectL3NetworkInventory',
+        'publicL3Network' : 'QueryObjectL3NetworkInventory',
+     }
+
+<<<<<<< HEAD
 class QueryObjectVirtualRouterVipInventory(object):
      PRIMITIVE_FIELDS = ['virtualRouterVmUuid','uuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['vip','applianceVm']
@@ -9279,9 +9714,39 @@ class QueryObjectVirtualRouterVipInventory(object):
 class QueryObjectSimulatorHostInventory(object):
      PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','cpuCapacity','hypervisorType','totalMemoryCapacity','uuid','memoryCapacity','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
+=======
+class QueryObjectUserGroupInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','accountUuid','description','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['account','user','policy']
      QUERY_OBJECT_MAP = {
+        'user' : 'QueryObjectUserInventory',
+        'account' : 'QueryObjectAccountInventory',
+        'policy' : 'QueryObjectPolicyInventory',
      }
 
+class QueryObjectFusionstorPrimaryStorageInventory(object):
+     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','imageCachePoolName','zoneUuid','description','rootVolumePoolName','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','fsid','name','lastOpDate','state','dataVolumePoolName','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['mons','volume','volumeSnapshot','mons','zone','cluster']
+     QUERY_OBJECT_MAP = {
+        'volume' : 'QueryObjectVolumeInventory',
+        'cluster' : 'QueryObjectClusterInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'mons' : 'QueryObjectFusionstorPrimaryStorageMonInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectAccountInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['quota','user','group','policy']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+     QUERY_OBJECT_MAP = {
+        'quota' : 'QueryObjectQuotaInventory',
+        'user' : 'QueryObjectUserInventory',
+        'group' : 'QueryObjectUserGroupInventory',
+        'policy' : 'QueryObjectPolicyInventory',
+     }
+
+<<<<<<< HEAD
 class QueryObjectCephPrimaryStorageInventory(object):
      PRIMITIVE_FIELDS = ['availableCapacity','mountPath','imageCachePoolName','zoneUuid','description','rootVolumePoolName','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','fsid','name','lastOpDate','state','dataVolumePoolName','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['mons','volume','volumeSnapshot','mons','zone','cluster']
@@ -9322,16 +9787,62 @@ class QueryObjectImageStoreBackupStorageInventory(object):
 
 class QueryObjectCephBackupStorageMonInventory(object):
      PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','__userTag__','__systemTag__']
+=======
+class QueryObjectIpRangeInventory(object):
+     PRIMITIVE_FIELDS = ['endIp','startIp','netmask','name','lastOpDate','description','l3NetworkUuid','uuid','gateway','networkCidr','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['l3Network']
+     QUERY_OBJECT_MAP = {
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+     }
+
+class QueryObjectVolumeSnapshotInventory(object):
+     PRIMITIVE_FIELDS = ['primaryStorageInstallPath','volumeType','volumeUuid','treeUuid','format','description','type','uuid','parentUuid','size','name','lastOpDate','state','primaryStorageUuid','latest','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['backupStorageRefs','volume','backupStorageRef','tree','primaryStorage','localStorageHostRef','backupStorage']
+     QUERY_OBJECT_MAP = {
+        'volume' : 'QueryObjectVolumeInventory',
+        'backupStorageRefs' : 'QueryObjectVolumeSnapshotBackupStorageRefInventory',
+        'backupStorageRef' : 'QueryObjectVolumeSnapshotBackupStorageRefInventory',
+        'backupStorage' : 'QueryObjectBackupStorageInventory',
+        'tree' : 'QueryObjectVolumeSnapshotTreeInventory',
+        'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
+        'localStorageHostRef' : 'QueryObjectLocalStorageResourceRefInventory',
+     }
+
+class QueryObjectKVMHostInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','username','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['cluster','vmInstance','zone']
+     QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectHostCapacityInventory(object):
+     PRIMITIVE_FIELDS = ['totalMemory','totalCpu','availableMemory','availableCpu','uuid','totalPhysicalMemory','availablePhysicalMemory','cpuNum','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectSchedulerInventory(object):
+     PRIMITIVE_FIELDS = ['cronScheduler','schedulerInterval','jobData','jobClassName','lastOpDate','schedulerType','uuid','schedulerName','startDate','repeatCount','createDate','status','__userTag__','__systemTag__']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+<<<<<<< HEAD
 class QueryObjectSecurityGroupL3NetworkRefInventory(object):
      PRIMITIVE_FIELDS = ['securityGroupUuid','lastOpDate','l3NetworkUuid','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['l3Network','securityGroup']
      QUERY_OBJECT_MAP = {
         'l3Network' : 'QueryObjectL3NetworkInventory',
         'securityGroup' : 'QueryObjectSecurityGroupInventory',
+=======
+class QueryObjectNetworkServiceProviderL2NetworkRefInventory(object):
+     PRIMITIVE_FIELDS = ['l2NetworkUuid','networkServiceProviderUuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      }
 
 class QueryObjectSharedResourceInventory(object):
@@ -9340,6 +9851,7 @@ class QueryObjectSharedResourceInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+<<<<<<< HEAD
 class QueryObjectPrimaryStorageClusterRefInventory(object):
      PRIMITIVE_FIELDS = ['clusterUuid','lastOpDate','id','primaryStorageUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['cluster','primaryStorage']
@@ -9350,12 +9862,45 @@ class QueryObjectPrimaryStorageClusterRefInventory(object):
 
 class QueryObjectApplianceVmFirewallRuleInventory(object):
      PRIMITIVE_FIELDS = ['startPort','destIp','protocol','applianceVmUuid','sourceIp','lastOpDate','allowCidr','l3NetworkUuid','endPort','createDate','__userTag__','__systemTag__']
+=======
+class QueryObjectHostInventory(object):
+     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['cluster','vmInstance','zone']
+     QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectSystemTagInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','tag','type','uuid','inherent','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
 
+<<<<<<< HEAD
 class QueryObjectPrimaryStorageCapacityInventory(object):
      PRIMITIVE_FIELDS = ['availableCapacity','totalCapacity','lastOpDate','systemUsedCapacity','uuid','totalPhysicalCapacity','availablePhysicalCapacity','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectFusionstorBackupStorageMonInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','hostname','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','__userTag__','__systemTag__']
+=======
+class QueryObjectUserInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','accountUuid','description','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['account','group','policy']
+     QUERY_OBJECT_MAP = {
+        'account' : 'QueryObjectAccountInventory',
+        'group' : 'QueryObjectUserGroupInventory',
+        'policy' : 'QueryObjectPolicyInventory',
+     }
+
+class QueryObjectManagementNodeInventory(object):
+     PRIMITIVE_FIELDS = ['hostName','joinDate','heartBeat','uuid','__userTag__','__systemTag__']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -9366,18 +9911,7 @@ class QueryObjectFusionstorBackupStorageMonInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
-class QueryObjectVmNicInventory(object):
-     PRIMITIVE_FIELDS = ['ip','l3NetworkUuid','uuid','deviceId','mac','metaData','netmask','lastOpDate','gateway','vmInstanceUuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['portForwarding','vmInstance','l3Network','eip','securityGroup','loadBalancerListener']
-     QUERY_OBJECT_MAP = {
-        'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
-        'vmInstance' : 'QueryObjectVmInstanceInventory',
-        'l3Network' : 'QueryObjectL3NetworkInventory',
-        'securityGroup' : 'QueryObjectSecurityGroupInventory',
-        'eip' : 'QueryObjectEipInventory',
-        'loadBalancerListener' : 'QueryObjectLoadBalancerListenerInventory',
-     }
-
+<<<<<<< HEAD
 class QueryObjectVirtualRouterEipRefInventory(object):
      PRIMITIVE_FIELDS = ['eipUuid','virtualRouterVmUuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['eip','applianceVm']
@@ -9403,17 +9937,61 @@ class QueryObjectFusionstorPrimaryStorageMonInventory(object):
 class QueryObjectVirtualRouterLoadBalancerRefInventory(object):
      PRIMITIVE_FIELDS = ['loadBalancerUuid','lastOpDate','id','virtualRouterVmUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['virtualRouterVm','loadBalancer']
+=======
+class QueryObjectSecurityGroupInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['rules','vmNic','l3Network']
      QUERY_OBJECT_MAP = {
-        'virtualRouterVm' : 'QueryObjectVirtualRouterVmInventory',
-        'loadBalancer' : 'QueryObjectLoadBalancerInventory',
+        'vmNic' : 'QueryObjectVmNicInventory',
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'rules' : 'QueryObjectSecurityGroupRuleInventory',
+     }
+
+class QueryObjectSecurityGroupRuleInventory(object):
+     PRIMITIVE_FIELDS = ['startPort','protocol','securityGroupUuid','allowedCidr','lastOpDate','state','type','uuid','endPort','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['securityGroup']
+     QUERY_OBJECT_MAP = {
+        'securityGroup' : 'QueryObjectSecurityGroupInventory',
+     }
+
+class QueryObjectSharedResourceInventory(object):
+     PRIMITIVE_FIELDS = ['receiverAccountUuid','ownerAccountUuid','lastOpDate','toPublic','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectUserGroupPolicyRefInventory(object):
+     PRIMITIVE_FIELDS = ['policyUuid','groupUuid','lastOpDate','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['group','policy']
+     QUERY_OBJECT_MAP = {
+        'group' : 'QueryObjectUserGroupInventory',
+        'policy' : 'QueryObjectPolicyInventory',
      }
 
 class QueryObjectGlobalConfigInventory(object):
      PRIMITIVE_FIELDS = ['defaultValue','name','description','category','value','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      QUERY_OBJECT_MAP = {
+        'virtualRouterVm' : 'QueryObjectVirtualRouterVmInventory',
+        'loadBalancer' : 'QueryObjectLoadBalancerInventory',
      }
 
+<<<<<<< HEAD
+class QueryObjectGlobalConfigInventory(object):
+     PRIMITIVE_FIELDS = ['defaultValue','name','description','category','value','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+=======
+class QueryObjectUserPolicyRefInventory(object):
+     PRIMITIVE_FIELDS = ['policyUuid','userUuid','lastOpDate','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['user','policy']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+     QUERY_OBJECT_MAP = {
+        'user' : 'QueryObjectUserInventory',
+        'policy' : 'QueryObjectPolicyInventory',
+     }
+
+<<<<<<< HEAD
 class QueryObjectVolumeSnapshotInventory(object):
      PRIMITIVE_FIELDS = ['primaryStorageInstallPath','volumeType','volumeUuid','treeUuid','format','description','type','uuid','parentUuid','size','name','lastOpDate','state','primaryStorageUuid','latest','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['backupStorageRefs','volume','backupStorageRef','tree','primaryStorage','localStorageHostRef','backupStorage']
@@ -9445,6 +10023,55 @@ class QueryObjectSecurityGroupRuleInventory(object):
 class QueryObjectAccountInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['quota','user','group','policy']
+=======
+class QueryObjectApplianceVmInventory(object):
+     PRIMITIVE_FIELDS = ['cpuSpeed','zoneUuid','description','type','managementNetworkUuid','uuid','platform','defaultRouteL3NetworkUuid','applianceVmType','hostUuid','lastOpDate','instanceOfferingUuid','state','imageUuid','createDate','clusterUuid','allocatorStrategy','hypervisorType','cpuNum','defaultL3NetworkUuid','lastHostUuid','memorySize','rootVolumeUuid','name','status','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmNics','allVolumes','cluster','image','vmNics','virtualRouterOffering','allVolumes','zone','host','rootVolume','portForwarding','vip','eip']
+     QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'image' : 'QueryObjectImageInventory',
+        'vmNics' : 'QueryObjectVmNicInventory',
+        'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
+        'allVolumes' : 'QueryObjectVolumeInventory',
+        'virtualRouterOffering' : 'QueryObjectVirtualRouterOfferingInventory',
+        'zone' : 'QueryObjectZoneInventory',
+        'host' : 'QueryObjectHostInventory',
+        'rootVolume' : 'QueryObjectVolumeInventory',
+        'vip' : 'QueryObjectVipInventory',
+        'eip' : 'QueryObjectEipInventory',
+     }
+
+class QueryObjectLoadBalancerListenerInventory(object):
+     PRIMITIVE_FIELDS = ['instancePort','loadBalancerUuid','protocol','name','lastOpDate','description','uuid','loadBalancerPort','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmNicRefs','loadBalancer','vmNic']
+     QUERY_OBJECT_MAP = {
+        'vmNic' : 'QueryObjectVmNicInventory',
+        'loadBalancer' : 'QueryObjectLoadBalancerInventory',
+        'vmNicRefs' : 'QueryObjectLoadBalancerListenerVmNicRefInventory',
+     }
+
+class QueryObjectL2NetworkClusterRefInventory(object):
+     PRIMITIVE_FIELDS = ['clusterUuid','l2NetworkUuid','lastOpDate','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['cluster','l2Network']
+     QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'l2Network' : 'QueryObjectL2NetworkInventory',
+     }
+
+class QueryObjectPrimaryStorageInventory(object):
+     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','zoneUuid','description','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','name','lastOpDate','state','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['volume','volumeSnapshot','zone','cluster']
+     QUERY_OBJECT_MAP = {
+        'volume' : 'QueryObjectVolumeInventory',
+        'cluster' : 'QueryObjectClusterInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectApplianceVmFirewallRuleInventory(object):
+     PRIMITIVE_FIELDS = ['startPort','destIp','protocol','applianceVmUuid','sourceIp','lastOpDate','allowCidr','l3NetworkUuid','endPort','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      QUERY_OBJECT_MAP = {
         'quota' : 'QueryObjectQuotaInventory',
         'user' : 'QueryObjectUserInventory',
@@ -9452,6 +10079,7 @@ class QueryObjectAccountInventory(object):
         'policy' : 'QueryObjectPolicyInventory',
      }
 
+<<<<<<< HEAD
 class QueryObjectL3NetworkInventory(object):
      PRIMITIVE_FIELDS = ['zoneUuid','description','type','uuid','dnsDomain','system','l2NetworkUuid','name','lastOpDate','state','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
@@ -9481,6 +10109,30 @@ class QueryObjectZoneInventory(object):
         'host' : 'QueryObjectHostInventory',
         'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
         'l2Network' : 'QueryObjectL2NetworkInventory',
+=======
+class QueryObjectSecurityGroupL3NetworkRefInventory(object):
+     PRIMITIVE_FIELDS = ['securityGroupUuid','lastOpDate','l3NetworkUuid','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['l3Network','securityGroup']
+     QUERY_OBJECT_MAP = {
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'securityGroup' : 'QueryObjectSecurityGroupInventory',
+     }
+
+class QueryObjectInstanceOfferingInventory(object):
+     PRIMITIVE_FIELDS = ['memorySize','sortKey','cpuSpeed','allocatorStrategy','name','lastOpDate','description','state','type','uuid','cpuNum','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmInstance']
+     QUERY_OBJECT_MAP = {
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+     }
+
+class QueryObjectBackupStorageInventory(object):
+     PRIMITIVE_FIELDS = ['availableCapacity','totalCapacity','name','lastOpDate','description','state','type','uuid','url','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
+     QUERY_OBJECT_MAP = {
+        'image' : 'QueryObjectImageInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'zone' : 'QueryObjectZoneInventory',
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      }
 
 class QueryObjectVirtualRouterPortForwardingRuleRefInventory(object):
@@ -9492,22 +10144,66 @@ class QueryObjectVirtualRouterPortForwardingRuleRefInventory(object):
         'applianceVm' : 'QueryObjectApplianceVmInventory',
      }
 
+<<<<<<< HEAD
 class QueryObjectUserGroupInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','accountUuid','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['account','user','policy']
+=======
+class QueryObjectCephBackupStorageInventory(object):
+     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['mons','mons','image','volumeSnapshot','zone']
+     QUERY_OBJECT_MAP = {
+        'image' : 'QueryObjectImageInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'mons' : 'QueryObjectCephBackupStorageMonInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectImageStoreBackupStorageInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','hostname','totalCapacity','name','lastOpDate','state','username','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
+     QUERY_OBJECT_MAP = {
+        'image' : 'QueryObjectImageInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectUserTagInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','tag','type','uuid','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectPolicyInventory(object):
+     PRIMITIVE_FIELDS = ['name','accountUuid','uuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['account','user','group']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      QUERY_OBJECT_MAP = {
         'user' : 'QueryObjectUserInventory',
         'account' : 'QueryObjectAccountInventory',
-        'policy' : 'QueryObjectPolicyInventory',
+        'group' : 'QueryObjectUserGroupInventory',
      }
 
+<<<<<<< HEAD
 class QueryObjectFusionstorPrimaryStorageInventory(object):
+=======
+class QueryObjectPortForwardingRuleInventory(object):
+     PRIMITIVE_FIELDS = ['vipUuid','description','protocolType','privatePortStart','uuid','guestIp','vipPortStart','vipIp','vipPortEnd','vmNicUuid','name','allowedCidr','lastOpDate','privatePortEnd','state','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmNic','vip']
+     QUERY_OBJECT_MAP = {
+        'vmNic' : 'QueryObjectVmNicInventory',
+        'vip' : 'QueryObjectVipInventory',
+     }
+
+class QueryObjectCephPrimaryStorageInventory(object):
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      PRIMITIVE_FIELDS = ['availableCapacity','mountPath','imageCachePoolName','zoneUuid','description','rootVolumePoolName','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','fsid','name','lastOpDate','state','dataVolumePoolName','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['mons','volume','volumeSnapshot','mons','zone','cluster']
      QUERY_OBJECT_MAP = {
         'volume' : 'QueryObjectVolumeInventory',
         'cluster' : 'QueryObjectClusterInventory',
         'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+<<<<<<< HEAD
         'mons' : 'QueryObjectFusionstorPrimaryStorageMonInventory',
         'zone' : 'QueryObjectZoneInventory',
      }
@@ -9515,9 +10211,24 @@ class QueryObjectFusionstorPrimaryStorageInventory(object):
 class QueryObjectSchedulerInventory(object):
      PRIMITIVE_FIELDS = ['cronScheduler','schedulerInterval','jobData','jobClassName','lastOpDate','schedulerType','uuid','schedulerName','startDate','repeatCount','createDate','status','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
-     QUERY_OBJECT_MAP = {
+=======
+        'mons' : 'QueryObjectCephPrimaryStorageMonInventory',
+        'zone' : 'QueryObjectZoneInventory',
      }
 
+class QueryObjectClusterInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','zoneUuid','description','state','hypervisorType','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmInstance','zone','host','l2Network','primaryStorage']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+     QUERY_OBJECT_MAP = {
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'zone' : 'QueryObjectZoneInventory',
+        'host' : 'QueryObjectHostInventory',
+        'l2Network' : 'QueryObjectL2NetworkInventory',
+        'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
+     }
+
+<<<<<<< HEAD
 class QueryObjectVolumeInventory(object):
      PRIMITIVE_FIELDS = ['installPath','actualSize','format','description','type','uuid','deviceId','diskOfferingUuid','size','name','lastOpDate','state','primaryStorageUuid','vmInstanceUuid','rootImageUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','vmInstance','diskOffering','primaryStorage','localStorageHostRef','snapshot']
@@ -9553,6 +10264,73 @@ class QueryObjectL2NetworkInventory(object):
         'cluster' : 'QueryObjectClusterInventory',
         'l3Network' : 'QueryObjectL3NetworkInventory',
         'zone' : 'QueryObjectZoneInventory',
+=======
+class QueryObjectQuotaInventory(object):
+     PRIMITIVE_FIELDS = ['identityType','identityUuid','name','lastOpDate','value','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['account']
+     QUERY_OBJECT_MAP = {
+        'account' : 'QueryObjectAccountInventory',
+     }
+
+class QueryObjectVmNicSecurityGroupRefInventory(object):
+     PRIMITIVE_FIELDS = ['vmNicUuid','securityGroupUuid','lastOpDate','vmInstanceUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmNic','securityGroup']
+     QUERY_OBJECT_MAP = {
+        'vmNic' : 'QueryObjectVmNicInventory',
+        'securityGroup' : 'QueryObjectSecurityGroupInventory',
+     }
+
+class QueryObjectVolumeSnapshotTreeInventory(object):
+     PRIMITIVE_FIELDS = ['current','volumeUuid','lastOpDate','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['volume','snapshot']
+     QUERY_OBJECT_MAP = {
+        'volume' : 'QueryObjectVolumeInventory',
+        'snapshot' : 'QueryObjectVolumeSnapshotInventory',
+     }
+
+class QueryObjectFusionstorPrimaryStorageMonInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','hostname','monPort','lastOpDate','primaryStorageUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectConsoleProxyAgentInventory(object):
+     PRIMITIVE_FIELDS = ['managementIp','lastOpDate','description','state','type','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectVirtualRouterEipRefInventory(object):
+     PRIMITIVE_FIELDS = ['eipUuid','virtualRouterVmUuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['eip','applianceVm']
+     QUERY_OBJECT_MAP = {
+        'eip' : 'QueryObjectEipInventory',
+        'applianceVm' : 'QueryObjectApplianceVmInventory',
+     }
+
+class QueryObjectL3NetworkInventory(object):
+     PRIMITIVE_FIELDS = ['zoneUuid','description','type','uuid','dnsDomain','system','l2NetworkUuid','name','lastOpDate','state','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
+     QUERY_OBJECT_MAP = {
+        'ipRanges' : 'QueryObjectIpRangeInventory',
+        'vmNic' : 'QueryObjectVmNicInventory',
+        'zone' : 'QueryObjectZoneInventory',
+        'serviceProvider' : 'QueryObjectNetworkServiceProviderInventory',
+        'l2Network' : 'QueryObjectL2NetworkInventory',
+        'networkServices' : 'QueryObjectNetworkServiceL3NetworkRefInventory',
+     }
+
+class QueryObjectVolumeInventory(object):
+     PRIMITIVE_FIELDS = ['installPath','actualSize','format','description','type','uuid','deviceId','diskOfferingUuid','size','name','lastOpDate','state','primaryStorageUuid','vmInstanceUuid','rootImageUuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['image','vmInstance','diskOffering','primaryStorage','localStorageHostRef','snapshot']
+     QUERY_OBJECT_MAP = {
+        'image' : 'QueryObjectImageInventory',
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'diskOffering' : 'QueryObjectDiskOfferingInventory',
+        'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
+        'localStorageHostRef' : 'QueryObjectLocalStorageResourceRefInventory',
+        'snapshot' : 'QueryObjectVolumeSnapshotInventory',
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      }
 
 class QueryObjectSftpBackupStorageInventory(object):
@@ -9564,6 +10342,7 @@ class QueryObjectSftpBackupStorageInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
+<<<<<<< HEAD
 class QueryObjectImageInventory(object):
      PRIMITIVE_FIELDS = ['actualSize','format','description','mediaType','type','uuid','url','platform','guestOsType','system','size','md5Sum','name','lastOpDate','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['backupStorageRefs','volume','backupStorage']
@@ -9589,6 +10368,11 @@ class QueryObjectInstanceOfferingInventory(object):
 class QueryObjectVipInventory(object):
      PRIMITIVE_FIELDS = ['ip','useFor','description','l3NetworkUuid','uuid','netmask','name','serviceProvider','lastOpDate','peerL3NetworkUuid','state','gateway','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['portForwarding','loadBalancer','eip']
+=======
+class QueryObjectVirtualRouterVipInventory(object):
+     PRIMITIVE_FIELDS = ['virtualRouterVmUuid','uuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vip','applianceVm']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      QUERY_OBJECT_MAP = {
         'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
@@ -9612,6 +10396,7 @@ class QueryObjectApplianceVmInventory(object):
         'eip' : 'QueryObjectEipInventory',
      }
 
+<<<<<<< HEAD
 class QueryObjectVmInstanceInventory(object):
      PRIMITIVE_FIELDS = ['clusterUuid','cpuSpeed','allocatorStrategy','zoneUuid','description','hypervisorType','type','uuid','platform','cpuNum','defaultL3NetworkUuid','lastHostUuid','memorySize','rootVolumeUuid','hostUuid','name','lastOpDate','instanceOfferingUuid','state','imageUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['vmNics','allVolumes','cluster','image','vmNics','allVolumes','zone','host','instanceOffering','rootVolume']
@@ -9687,12 +10472,40 @@ class QueryObjectLocalStorageResourceRefInventory(object):
 class QueryObjectBackupStorageInventory(object):
      PRIMITIVE_FIELDS = ['availableCapacity','totalCapacity','name','lastOpDate','description','state','type','uuid','url','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
+=======
+class QueryObjectL2NetworkInventory(object):
+     PRIMITIVE_FIELDS = ['physicalInterface','name','zoneUuid','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['l3Network','zone','cluster']
      QUERY_OBJECT_MAP = {
-        'image' : 'QueryObjectImageInventory',
-        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'cluster' : 'QueryObjectClusterInventory',
+        'l3Network' : 'QueryObjectL3NetworkInventory',
         'zone' : 'QueryObjectZoneInventory',
      }
 
+class QueryObjectCephBackupStorageMonInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEipInventory(object):
+     PRIMITIVE_FIELDS = ['guestIp','vipIp','vmNicUuid','vipUuid','name','lastOpDate','description','state','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmNic','vip']
+     QUERY_OBJECT_MAP = {
+        'vmNic' : 'QueryObjectVmNicInventory',
+        'vip' : 'QueryObjectVipInventory',
+     }
+
+class QueryObjectVirtualRouterLoadBalancerRefInventory(object):
+     PRIMITIVE_FIELDS = ['loadBalancerUuid','lastOpDate','id','virtualRouterVmUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['virtualRouterVm','loadBalancer']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+     QUERY_OBJECT_MAP = {
+        'virtualRouterVm' : 'QueryObjectVirtualRouterVmInventory',
+        'loadBalancer' : 'QueryObjectLoadBalancerInventory',
+     }
+
+<<<<<<< HEAD
 class QueryObjectClusterInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','zoneUuid','description','state','hypervisorType','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['vmInstance','zone','host','l2Network','primaryStorage']
@@ -9731,6 +10544,19 @@ class QueryObjectLoadBalancerListenerInventory(object):
 
 class QueryObjectNetworkServiceProviderInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
+=======
+class QueryObjectVipInventory(object):
+     PRIMITIVE_FIELDS = ['ip','useFor','description','l3NetworkUuid','uuid','netmask','name','serviceProvider','lastOpDate','peerL3NetworkUuid','state','gateway','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['portForwarding','loadBalancer','eip']
+     QUERY_OBJECT_MAP = {
+        'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
+        'loadBalancer' : 'QueryObjectLoadBalancerInventory',
+        'eip' : 'QueryObjectEipInventory',
+     }
+
+class QueryObjectConsoleProxyInventory(object):
+     PRIMITIVE_FIELDS = ['agentType','scheme','proxyIdentity','uuid','targetPort','agentIp','token','proxyPort','proxyHostname','targetHostname','lastOpDate','vmInstanceUuid','status','createDate','__userTag__','__systemTag__']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -9781,12 +10607,13 @@ class QueryObjectNetworkServiceTypeInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
-class QueryObjectManagementNodeInventory(object):
-     PRIMITIVE_FIELDS = ['hostName','joinDate','heartBeat','uuid','__userTag__','__systemTag__']
+class QueryObjectIpUseInventory(object):
+     PRIMITIVE_FIELDS = ['use','usedIpUuid','lastOpDate','details','serviceId','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
 
+<<<<<<< HEAD
 class QueryObjectImageBackupStorageRefInventory(object):
      PRIMITIVE_FIELDS = ['installPath','lastOpDate','imageUuid','backupStorageUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','backupStorage']
@@ -9797,6 +10624,23 @@ class QueryObjectImageBackupStorageRefInventory(object):
 
 class QueryObjectUserTagInventory(object):
      PRIMITIVE_FIELDS = ['lastOpDate','tag','type','uuid','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
+=======
+class QueryObjectZoneInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['cluster','vmInstance','l3Network','host','primaryStorage','l2Network','backupStorage']
+     QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'backupStorage' : 'QueryObjectBackupStorageInventory',
+        'host' : 'QueryObjectHostInventory',
+        'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
+        'l2Network' : 'QueryObjectL2NetworkInventory',
+     }
+
+class QueryObjectSimulatorHostInventory(object):
+     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','cpuCapacity','hypervisorType','totalMemoryCapacity','uuid','memoryCapacity','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -9807,6 +10651,7 @@ class QueryObjectCephPrimaryStorageMonInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+<<<<<<< HEAD
 class QueryObjectPolicyInventory(object):
      PRIMITIVE_FIELDS = ['name','accountUuid','uuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['account','user','group']
@@ -9820,16 +10665,32 @@ class QueryObjectNetworkServiceProviderL2NetworkRefInventory(object):
      PRIMITIVE_FIELDS = ['l2NetworkUuid','networkServiceProviderUuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
-     }
-
-class QueryObjectL2NetworkClusterRefInventory(object):
-     PRIMITIVE_FIELDS = ['clusterUuid','l2NetworkUuid','lastOpDate','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['cluster','l2Network']
+=======
+class QueryObjectImageBackupStorageRefInventory(object):
+     PRIMITIVE_FIELDS = ['installPath','lastOpDate','imageUuid','backupStorageUuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['image','backupStorage']
      QUERY_OBJECT_MAP = {
-        'cluster' : 'QueryObjectClusterInventory',
-        'l2Network' : 'QueryObjectL2NetworkInventory',
+        'image' : 'QueryObjectImageInventory',
+        'backupStorage' : 'QueryObjectBackupStorageInventory',
      }
 
+class QueryObjectDiskOfferingInventory(object):
+     PRIMITIVE_FIELDS = ['diskSize','sortKey','allocatorStrategy','name','lastOpDate','description','state','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['volume']
+     QUERY_OBJECT_MAP = {
+        'volume' : 'QueryObjectVolumeInventory',
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
+     }
+
+class QueryObjectUserGroupUserRefInventory(object):
+     PRIMITIVE_FIELDS = ['groupUuid','userUuid','lastOpDate','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['user','group']
+     QUERY_OBJECT_MAP = {
+        'user' : 'QueryObjectUserInventory',
+        'group' : 'QueryObjectUserGroupInventory',
+     }
+
+<<<<<<< HEAD
 class QueryObjectDiskOfferingInventory(object):
      PRIMITIVE_FIELDS = ['diskSize','sortKey','allocatorStrategy','name','lastOpDate','description','state','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['volume']
@@ -9847,29 +10708,90 @@ class QueryObjectBackupStorageZoneRefInventory(object):
      PRIMITIVE_FIELDS = ['zoneUuid','lastOpDate','id','backupStorageUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['zone','backupStorage']
      QUERY_OBJECT_MAP = {
+=======
+class QueryObjectCephPrimaryStorageMonInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','sshUsername','monPort','lastOpDate','sshPassword','primaryStorageUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectVirtualRouterVmInventory(object):
+     PRIMITIVE_FIELDS = ['cpuSpeed','zoneUuid','description','type','managementNetworkUuid','uuid','platform','defaultRouteL3NetworkUuid','applianceVmType','hostUuid','lastOpDate','publicNetworkUuid','instanceOfferingUuid','state','imageUuid','createDate','clusterUuid','allocatorStrategy','hypervisorType','cpuNum','defaultL3NetworkUuid','lastHostUuid','memorySize','rootVolumeUuid','name','status','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmNics','allVolumes','cluster','image','vmNics','virtualRouterOffering','allVolumes','zone','host','rootVolume','portForwarding','loadBalancer','vip','eip']
+     QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'image' : 'QueryObjectImageInventory',
+        'vmNics' : 'QueryObjectVmNicInventory',
+        'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
+        'allVolumes' : 'QueryObjectVolumeInventory',
+        'virtualRouterOffering' : 'QueryObjectVirtualRouterOfferingInventory',
+        'zone' : 'QueryObjectZoneInventory',
+        'loadBalancer' : 'QueryObjectLoadBalancerInventory',
+        'host' : 'QueryObjectHostInventory',
+        'rootVolume' : 'QueryObjectVolumeInventory',
+        'vip' : 'QueryObjectVipInventory',
+        'eip' : 'QueryObjectEipInventory',
+     }
+
+class QueryObjectVmNicInventory(object):
+     PRIMITIVE_FIELDS = ['ip','l3NetworkUuid','uuid','deviceId','mac','metaData','netmask','lastOpDate','gateway','vmInstanceUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['portForwarding','vmInstance','l3Network','eip','securityGroup','loadBalancerListener']
+     QUERY_OBJECT_MAP = {
+        'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'securityGroup' : 'QueryObjectSecurityGroupInventory',
+        'eip' : 'QueryObjectEipInventory',
+        'loadBalancerListener' : 'QueryObjectLoadBalancerListenerInventory',
+     }
+
+class QueryObjectBackupStorageZoneRefInventory(object):
+     PRIMITIVE_FIELDS = ['zoneUuid','lastOpDate','id','backupStorageUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['zone','backupStorage']
+     QUERY_OBJECT_MAP = {
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
         'zone' : 'QueryObjectZoneInventory',
         'backupStorage' : 'QueryObjectBackupStorageInventory',
      }
 
+<<<<<<< HEAD
 class QueryObjectNetworkServiceL3NetworkRefInventory(object):
      PRIMITIVE_FIELDS = ['networkServiceType','networkServiceProviderUuid','l3NetworkUuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['l3Network','serviceProvider']
      QUERY_OBJECT_MAP = {
         'l3Network' : 'QueryObjectL3NetworkInventory',
         'serviceProvider' : 'QueryObjectNetworkServiceProviderInventory',
+=======
+class QueryObjectAccountResourceRefInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','accountUuid','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
      }
 
-class QueryObjectUserInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','accountUuid','description','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['account','group','policy']
+class QueryObjectPrimaryStorageCapacityInventory(object):
+     PRIMITIVE_FIELDS = ['availableCapacity','totalCapacity','lastOpDate','systemUsedCapacity','uuid','totalPhysicalCapacity','availablePhysicalCapacity','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
-        'account' : 'QueryObjectAccountInventory',
-        'group' : 'QueryObjectUserGroupInventory',
-        'policy' : 'QueryObjectPolicyInventory',
+     }
+
+class QueryObjectNetworkServiceTypeInventory(object):
+     PRIMITIVE_FIELDS = ['networkServiceProviderUuid','type','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectVolumeSnapshotBackupStorageRefInventory(object):
+     PRIMITIVE_FIELDS = ['installPath','volumeSnapshotUuid','backupStorageUuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['volumeSnapshot','backupStorage']
+     QUERY_OBJECT_MAP = {
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'backupStorage' : 'QueryObjectBackupStorageInventory',
      }
 
 
 queryMessageInventoryMap = {
+<<<<<<< HEAD
      'APIQueryL2VlanNetworkMsg' : QueryObjectL2VlanNetworkInventory,
      'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
      'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,
@@ -9919,4 +10841,55 @@ queryMessageInventoryMap = {
      'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
      'APIQueryNetworkServiceL3NetworkRefMsg' : QueryObjectNetworkServiceL3NetworkRefInventory,
      'APIQueryUserMsg' : QueryObjectUserInventory,
+=======
+     'APIQueryImageMsg' : QueryObjectImageInventory,
+     'APIQueryL2VlanNetworkMsg' : QueryObjectL2VlanNetworkInventory,
+     'APIQueryLocalStorageResourceRefMsg' : QueryObjectLocalStorageResourceRefInventory,
+     'APIQueryLoadBalancerMsg' : QueryObjectLoadBalancerInventory,
+     'APIQueryNetworkServiceProviderMsg' : QueryObjectNetworkServiceProviderInventory,
+     'APIQueryNetworkServiceL3NetworkRefMsg' : QueryObjectNetworkServiceL3NetworkRefInventory,
+     'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
+     'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,
+     'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
+     'APIQueryAccountMsg' : QueryObjectAccountInventory,
+     'APIQueryIpRangeMsg' : QueryObjectIpRangeInventory,
+     'APIQueryVolumeSnapshotMsg' : QueryObjectVolumeSnapshotInventory,
+     'APIQuerySchedulerMsg' : QueryObjectSchedulerInventory,
+     'APIQueryHostMsg' : QueryObjectHostInventory,
+     'APIQuerySystemTagMsg' : QueryObjectSystemTagInventory,
+     'APIQueryUserMsg' : QueryObjectUserInventory,
+     'APIQueryManagementNodeMsg' : QueryObjectManagementNodeInventory,
+     'APIQuerySecurityGroupRuleMsg' : QueryObjectSecurityGroupRuleInventory,
+     'APIQuerySecurityGroupMsg' : QueryObjectSecurityGroupInventory,
+     'APIQuerySharedResourceMsg' : QueryObjectSharedResourceInventory,
+     'APIQueryGlobalConfigMsg' : QueryObjectGlobalConfigInventory,
+     'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
+     'APIQueryLoadBalancerListenerMsg' : QueryObjectLoadBalancerListenerInventory,
+     'APIQueryPrimaryStorageMsg' : QueryObjectPrimaryStorageInventory,
+     'APIQueryInstanceOfferingMsg' : QueryObjectInstanceOfferingInventory,
+     'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
+     'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,
+     'APIQueryImageStoreBackupStorageMsg' : QueryObjectImageStoreBackupStorageInventory,
+     'APIQueryUserTagMsg' : QueryObjectUserTagInventory,
+     'APIQueryPolicyMsg' : QueryObjectPolicyInventory,
+     'APIQueryPortForwardingRuleMsg' : QueryObjectPortForwardingRuleInventory,
+     'APIQueryCephPrimaryStorageMsg' : QueryObjectCephPrimaryStorageInventory,
+     'APIQueryClusterMsg' : QueryObjectClusterInventory,
+     'APIQueryQuotaMsg' : QueryObjectQuotaInventory,
+     'APIQueryVolumeSnapshotTreeMsg' : QueryObjectVolumeSnapshotTreeInventory,
+     'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
+     'APIQueryL3NetworkMsg' : QueryObjectL3NetworkInventory,
+     'APIQueryVolumeMsg' : QueryObjectVolumeInventory,
+     'APIQuerySftpBackupStorageMsg' : QueryObjectSftpBackupStorageInventory,
+     'APIQueryL2NetworkMsg' : QueryObjectL2NetworkInventory,
+     'APIQueryEipMsg' : QueryObjectEipInventory,
+     'APIQueryVipMsg' : QueryObjectVipInventory,
+     'APIQueryVmInstanceMsg' : QueryObjectVmInstanceInventory,
+     'APIQueryZoneMsg' : QueryObjectZoneInventory,
+     'APIQueryFusionstorBackupStorageMsg' : QueryObjectFusionstorBackupStorageInventory,
+     'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
+     'APIQueryVirtualRouterVmMsg' : QueryObjectVirtualRouterVmInventory,
+     'APIQueryVmNicMsg' : QueryObjectVmNicInventory,
+     'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
+>>>>>>> 58af7d9... add zstack-cli python bindings for APIGetL3NetworkDhcpIPAddressMsg
 }
