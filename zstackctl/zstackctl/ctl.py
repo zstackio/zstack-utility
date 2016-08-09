@@ -2099,6 +2099,11 @@ class InstallHACmd(Command):
                     InstallHACmd.bridge = InstallHACmd.ha_config_content['bridge_name']
 
             local_ip = self.get_ip_by_interface(InstallHACmd.bridge)
+            if local_ip != args.host1 and local_ip != args.host2:
+                if args.host3_info is not False:
+                    error("Make sure you are running the command on host1 or host2 or host3")
+                else:
+                    error("Make sure you are running the command on host1 or host2")
             spinner_info = SpinnerInfo()
             spinner_info.output = "Starting to recovery mysql from this host"
             spinner_info.name = "recovery_cluster"
