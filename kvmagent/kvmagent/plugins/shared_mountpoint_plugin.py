@@ -44,21 +44,21 @@ class GetVolumeSizeRsp(AgentRsp):
 
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
-    CONNECT_PATH = "/sharedmountpointpirmarystorage/connect"
-    CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointpirmarystorage/createrootvolume"
-    DELETE_BITS_PATH = "/sharedmountpointpirmarystorage/bits/delete"
-    CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointpirmarystorage/createtemplatefromvolume"
-    UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointpirmarystorage/sftp/upload"
-    DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointpirmarystorage/sftp/download"
-    UPLOAD_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointpirmarystorage/imagestore/upload"
-    COMMIT_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointpirmarystorage/imagestore/commit"
-    DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/sharedmountpointpirmarystorage/imagestore/download"
-    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/volume/revertfromsnapshot"
-    MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/merge"
-    OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedmountpointpirmarystorage/snapshot/offlinemerge"
-    CREATE_EMPTY_VOLUME_PATH = "/sharedmountpointpirmarystorage/volume/createempty"
-    CHECK_BITS_PATH = "/sharedmountpointpirmarystorage/bits/check"
-    GET_VOLUME_SIZE_PATH = "/sharedmountpointpirmarystorage/volume/getsize"
+    CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
+    CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointprimarystorage/createrootvolume"
+    DELETE_BITS_PATH = "/sharedmountpointprimarystorage/bits/delete"
+    CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointprimarystorage/createtemplatefromvolume"
+    UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/upload"
+    DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/download"
+    UPLOAD_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointprimarystorage/imagestore/upload"
+    COMMIT_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointprimarystorage/imagestore/commit"
+    DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/sharedmountpointprimarystorage/imagestore/download"
+    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedmountpointprimarystorage/volume/revertfromsnapshot"
+    MERGE_SNAPSHOT_PATH = "/sharedmountpointprimarystorage/snapshot/merge"
+    OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedmountpointprimarystorage/snapshot/offlinemerge"
+    CREATE_EMPTY_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/createempty"
+    CHECK_BITS_PATH = "/sharedmountpointprimarystorage/bits/check"
+    GET_VOLUME_SIZE_PATH = "/sharedmountpointprimarystorage/volume/getsize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
