@@ -2101,7 +2101,8 @@ class InstallHACmd(Command):
             local_ip = self.get_ip_by_interface(InstallHACmd.bridge)
             if local_ip != args.host1 and local_ip != args.host2:
                 if args.host3_info is not False:
-                    error("Make sure you are running the command on host1 or host2 or host3")
+                    if local_ip != args.host3:
+                        error("Make sure you are running the command on host1 or host2 or host3")
                 else:
                     error("Make sure you are running the command on host1 or host2")
             spinner_info = SpinnerInfo()
