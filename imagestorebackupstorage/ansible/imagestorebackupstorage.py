@@ -88,6 +88,7 @@ if distro == "CentOS" or distro == "RedHat":
         else:
             command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
                        "-y %s") % (zstack_repo, qemu_pkg)
+            run_remote_command(command, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
     if client == "true" and distro_version < 16:
