@@ -93,6 +93,7 @@ class CephAgent(object):
     ECHO_PATH = "/ceph/primarystorage/echo"
     CREATE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/create"
     DELETE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/delete"
+    COMMIT_IMAGE_PATH = "/ceph/primarystorage/snapshot/commit"
     PROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/protect"
     ROLLBACK_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/rollback"
     UNPROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/unprotect"
@@ -111,6 +112,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DELETE_PATH, self.delete)
         self.http_server.register_async_uri(self.CREATE_VOLUME_PATH, self.create)
         self.http_server.register_async_uri(self.CLONE_PATH, self.clone)
+        self.http_server.register_async_uri(self.COMMIT_IMAGE_PATH, self.commit_image)
         self.http_server.register_async_uri(self.CREATE_SNAPSHOT_PATH, self.create_snapshot)
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
         self.http_server.register_async_uri(self.PROTECT_SNAPSHOT_PATH, self.protect_snapshot)
@@ -239,6 +241,20 @@ class CephAgent(object):
         rsp = CpRsp()
         rsp.size = self._get_file_size(dst_path)
         self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def commit_image(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        spath = self._normalize_install_path(cmd.snapshotPath)
+        dpath = self._normalize_install_path(cmd.dstPath)
+
+        shell.call('rbd snap protect %s' % spath, exception=not cmd.ignoreError)
+        shell.call('rbd clone %s %s' % (spath, dpath))
+
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        rsp.size = self._get_file_size(dpath)
         return jsonobject.dumps(rsp)
 
     @replyerror
