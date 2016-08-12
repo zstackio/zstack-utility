@@ -209,7 +209,33 @@ def expand_path(path):
     else:
         return os.path.abspath(path)
 
+def check_host_info_format(host_info):
+    '''check ha host info format'''
+    if '@' not in host_info:
+        error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
+    else:
+        # get user and password
+        if ':' not in host_info.split('@')[0]:
+            error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
+        else:
+            user = host_info.split('@')[0].split(':')[0]
+            password = host_info.split('@')[0].split(':')[1]
+            if user != "" and user != "root":
+                print "Only root user can be supported, please change user to root"
+            if user == "":
+                user = "root"
+        # get ip and port
+        if ':' not in host_info.split('@')[1]:
+            ip = host_info.split('@')[1]
+            port = '22'
+        else:
+            ip = host_info.split('@')[1].split(':')[0]
+            port = host_info.split('@')[1].split(':')[1]
+        return (user, password, ip, port)
+
+
 class SpinnerInfo(object):
+    spinner_status = []
     def __init__(self):
         self.output = ""
         self.name = ""
@@ -227,7 +253,7 @@ class ZstackSpinner(object):
 
     def run(self):
         time.sleep(.2)
-        while InstallHACmd.spinner_status[self.name]:
+        while SpinnerInfo.spinner_status[self.name]:
                 sys.stdout.write("\r %s: ... %s " % (self.output, next(self.spinner)))
                 sys.stdout.flush()
                 time.sleep(.1)
@@ -736,7 +762,7 @@ class Command(object):
     def run(self, args):
         raise CtlError('the command is not implemented')
 
-def create_check_mgmt_node_command(timeout=10):
+def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     USE_CURL = 0
     USE_WGET = 1
     NO_TOOL = 2
@@ -756,9 +782,9 @@ def create_check_mgmt_node_command(timeout=10):
 
     what_tool = use_tool()
     if what_tool == USE_CURL:
-        return ShellCmd('''curl --noproxy --connect-timeout 1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://127.0.0.1:8080/zstack/api''' % (timeout, timeout, timeout))
+        return ShellCmd('''curl --noproxy --connect-timeout 1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:8080/zstack/api''' % (timeout, timeout, timeout, mn_node))
     elif what_tool == USE_WGET:
-        return ShellCmd('''wget --no-proxy -O- --tries=%s --timeout=1  --header=Content-Type:application/json --post-data='{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://127.0.0.1:8080/zstack/api''' % timeout)
+        return ShellCmd('''wget --no-proxy -O- --tries=%s --timeout=1  --header=Content-Type:application/json --post-data='{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:8080/zstack/api''' % (timeout, mn_node))
     else:
         return None
 
@@ -1782,6 +1808,213 @@ fi
 
         ansible(yaml, args.host, args.debug, args.ssh_key)
 
+class UpgradeHACmd(Command):
+    '''This feature only support zstack offline image currently'''
+    host_post_info_list = []
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    conf_dir = "/var/lib/zstack/ha/"
+    conf_file = conf_dir + "ha.yaml"
+    logger_dir = "/var/log/zstack/"
+    bridge = ""
+    SpinnerInfo.spinner_status = {'upgrade_repo':False,'stop_mevoco':False, 'upgrade_mevoco':False,'upgrade_db':False,
+                      'backup_db':False, 'upgrade_cassandra_db':False, 'check_init':False, 'start_mevoco':False}
+    ha_config_content = None
+    def __init__(self):
+        super(UpgradeHACmd, self).__init__()
+        self.name = "upgrade_ha"
+        self.description =  "upgrade high availability environment for Mevoco."
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host1-info',
+                            help="The first host connect info follow below format: 'root:password@ip_address' ",
+                            required=True)
+        parser.add_argument('--host2-info',
+                            help="The second host connect info follow below format: 'root:password@ip_address' ",
+                            required=True)
+        parser.add_argument('--host3-info',
+                            help="The third host connect info follow below format: 'root:password@ip_address' ",
+                            default=False)
+        parser.add_argument('--mevoco-installer',
+                            help="The new mevoco installer package, should specify the absolute path",
+                            required=True)
+        parser.add_argument('--upgrade-repo-bash',
+                            help="The upgrade repo bash, default is '/opt/zstack-repo-upgrade.sh'",
+                            default="/opt/zstack-repo-upgrade.sh")
+
+    def reset_dict_value(self, dict_name, value):
+        return dict.fromkeys(dict_name, value)
+
+    def check_file_exist(self, mevoco_installer, upgrade_repo_bash, host_post_info):
+        if file_dir_exist("path=%s" % mevoco_installer, host_post_info) is False:
+            error("%s is not exist" % mevoco_installer)
+        if file_dir_exist("path=%s" % upgrade_repo_bash, host_post_info) is False:
+            command = "cd /opt/ && wget http://www.mevoco.com/downloads/scripts/zstack-repo-upgrade.sh"
+            run_remote_command(command, host_post_info)
+
+    def check_mn_running(self,host_post_info):
+        cmd = create_check_mgmt_node_command(timeout=10, mn_node=host_post_info.host)
+        cmd(False)
+        if cmd.return_code != 0:
+            error("Check management node %s status failed" % host_post_info.host)
+        else:
+            if 'false' in cmd.stdout:
+                error('The management node %s is starting, please wait a few seconds to upgrade' % host_post_info.host)
+            elif  'true' in cmd.stdout:
+                return 0
+            else:
+                error('The management node %s status is: Unknown, please start the management node before upgrade' % host_post_info.host)
+
+
+    def upgrade_repo(self, upgrade_repo_bash, host_post_info):
+        repo_dir = os.path.dirname(os.path.abspath(upgrade_repo_bash))
+        command = "cd %s && bash zstack-repo-upgrade.sh" % repo_dir
+        run_remote_command(command, host_post_info)
+
+    def stop_mevoco(self, host_post_info):
+        command = "zstack-ctl stop_node && zstack-ctl stop_ui"
+        run_remote_command(command, host_post_info)
+
+
+    def upgrade_mevoco(self, mevoco_installer, host_post_info):
+        mevoco_dir = os.path.dirname(mevoco_installer)
+        mevoco_bin = os.path.basename(mevoco_installer)
+        command = "cd %s && rm -rf /tmp/zstack_upgrade.lock && bash %s -u -i " % (mevoco_dir,mevoco_bin)
+        run_remote_command(command, host_post_info)
+
+
+    def run(self, args):
+        # create log
+        create_log(UpgradeHACmd.logger_dir)
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Checking system and init environment"
+        spinner_info.name = 'check_init'
+        SpinnerInfo.spinner_status['check_init'] = True
+        ZstackSpinner(spinner_info)
+        host_inventory = UpgradeHACmd.conf_dir + 'host'
+        yum_repo = get_yum_repo_from_property()
+        private_key_name = UpgradeHACmd.conf_dir+ "ha_key"
+
+        # check input host info
+        host1_info = args.host1_info
+        host1_connect_info_list = check_host_info_format(host1_info)
+        host1_ip = host1_connect_info_list[2]
+        host1_password = host1_connect_info_list[1]
+        host1_user = host1_connect_info_list[0]
+
+        host2_info = args.host2_info
+        host2_connect_info_list = check_host_info_format(host2_info)
+        host2_ip = host2_connect_info_list[2]
+        host2_password = host2_connect_info_list[1]
+        host2_user = host2_connect_info_list[0]
+
+        if args.host3_info is not False:
+            host3_info = args.host3_info
+            host3_connect_info_list = check_host_info_format(host3_info)
+            host3_ip = host3_connect_info_list[2]
+            host2_password = host3_connect_info_list[1]
+            host2_user = host3_connect_info_list[0]
+
+        # init host1 parameter
+        self.host1_post_info = HostPostInfo()
+        self.host1_post_info.host = host1_ip
+        self.host1_post_info.host_inventory = host_inventory
+        self.host1_post_info.private_key = private_key_name
+        self.host1_post_info.yum_repo = yum_repo
+        self.host1_post_info.post_url = ""
+
+        # init host2 parameter
+        self.host2_post_info = HostPostInfo()
+        self.host2_post_info.host = host2_ip
+        self.host2_post_info.host_inventory = host_inventory
+        self.host2_post_info.private_key = private_key_name
+        self.host2_post_info.yum_repo = yum_repo
+        self.host2_post_info.post_url = ""
+
+        if args.host3_info is not False:
+            # init host3 parameter
+            self.host3_post_info = HostPostInfo()
+            self.host3_post_info.host = host3_ip
+            self.host3_post_info.host_inventory = host_inventory
+            self.host3_post_info.private_key = private_key_name
+            self.host3_post_info.yum_repo = yum_repo
+            self.host3_post_info.post_url = ""
+
+        UpgradeHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info]
+        if args.host3_info is not False:
+            UpgradeHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info, self.host3_post_info]
+
+        for host in UpgradeHACmd.host_post_info_list:
+            self.check_mn_running(host)
+
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to upgrade repo"
+        spinner_info.name = "upgrade_repo"
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['upgrade_repo'] = True
+        ZstackSpinner(spinner_info)
+        for host in UpgradeHACmd.host_post_info_list:
+            # to do check mn all running
+            self.check_file_exist(args.mevoco_installer, args.upgrade_repo_bash, host)
+            self.upgrade_repo(args.upgrade_repo_bash, host)
+
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Stopping mevoco"
+        spinner_info.name = "stop_mevoco"
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['stop_mevoco'] = True
+        ZstackSpinner(spinner_info)
+        for host_post_info in UpgradeHACmd.host_post_info_list:
+            self.stop_mevoco(host_post_info)
+
+        # backup db before upgrade
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to backup database"
+        spinner_info.name = "backup_db"
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['backup_db'] = True
+        ZstackSpinner(spinner_info)
+        (status, output) =  commands.getstatusoutput("zstack-ctl dump_mysql >> /dev/null 2>&1")
+
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to upgrade mevoco"
+        spinner_info.name = "upgrade_mevoco"
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['upgrade_mevoco'] = True
+        ZstackSpinner(spinner_info)
+        for host_post_info in UpgradeHACmd.host_post_info_list:
+            self.upgrade_mevoco(args.mevoco_installer, host_post_info)
+
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to upgrade database"
+        spinner_info.name = "upgrade_db"
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['upgrade_db'] = True
+        ZstackSpinner(spinner_info)
+        (status, output) =  commands.getstatusoutput("zstack-ctl upgrade_db")
+        if status != 0:
+            error("Upgrade mysql failed: %s" % output)
+        (status, output) =  commands.getstatusoutput("zstack-ctl deploy_cassandra_db")
+        if status != 0:
+            error("Upgrade Cassandra failed: %s" % output)
+
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting mevoco"
+        spinner_info.name = "start_mevoco"
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['start_mevoco'] = True
+        ZstackSpinner(spinner_info)
+        for host_post_info in UpgradeHACmd.host_post_info_list:
+            command = "zstack-ctl start_node && zstack-ctl start_ui"
+            run_remote_command(command,host_post_info)
+
+        SpinnerInfo.spinner_status['start_mevoco'] = False
+        time.sleep(.2)
+
+        info("Upgrade HA successfully!")
+
+
+
 class InstallHACmd(Command):
     '''This feature only support zstack offline image currently'''
     host_post_info_list = []
@@ -1790,7 +2023,7 @@ class InstallHACmd(Command):
     conf_file = conf_dir + "ha.yaml"
     logger_dir = "/var/log/zstack/"
     bridge = ""
-    spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
+    SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
                       'Kairosdb':False, 'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
     ha_config_content = None
     def __init__(self):
@@ -1855,34 +2088,11 @@ class InstallHACmd(Command):
                 struct.pack('256s', device_name[:15])
             )[20:24])
 
-    def check_host_info_format(self, host_info):
-        if '@' not in host_info:
-            error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
-        else:
-            # get user and password
-            if ':' not in host_info.split('@')[0]:
-                error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
-            else:
-                user = host_info.split('@')[0].split(':')[0]
-                password = host_info.split('@')[0].split(':')[1]
-                if user != "" and user != "root":
-                   print "Only root user can be supported, please change user to root"
-                if user == "":
-                    user = "root"
-            # get ip and port
-            if ':' not in host_info.split('@')[1]:
-                ip = host_info.split('@')[1]
-                port = '22'
-            else:
-                ip = host_info.split('@')[1].split(':')[0]
-                port = host_info.split('@')[1].split(':')[1]
-            return (user, password, ip, port)
-
     def run(self, args):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Checking system and init environment"
         spinner_info.name = 'check_init'
-        InstallHACmd.spinner_status['check_init'] = True
+        SpinnerInfo.spinner_status['check_init'] = True
         ZstackSpinner(spinner_info)
         if args.bridge is None:
             InstallHACmd.bridge = 'br_eth0'
@@ -1909,16 +2119,16 @@ class InstallHACmd(Command):
             error("The gateway %s unreachable!" % gateway_ip)
         # check input host info
         host1_info = args.host1_info
-        host1_connect_info_list = self.check_host_info_format(host1_info)
+        host1_connect_info_list = check_host_info_format(host1_info)
         args.host1 = host1_connect_info_list[2]
         args.host1_password = host1_connect_info_list[1]
         host2_info = args.host2_info
-        host2_connect_info_list = self.check_host_info_format(host2_info)
+        host2_connect_info_list = check_host_info_format(host2_info)
         args.host2 = host2_connect_info_list[2]
         args.host2_password = host2_connect_info_list[1]
         if args.host3_info is not False:
             host3_info = args.host3_info
-            host3_connect_info_list = self.check_host_info_format(host3_info)
+            host3_connect_info_list = check_host_info_format(host3_info)
             args.host3 = host3_connect_info_list[2]
             args.host3_password = host3_connect_info_list[1]
 
@@ -2108,8 +2318,8 @@ class InstallHACmd(Command):
             spinner_info = SpinnerInfo()
             spinner_info.output = "Starting to recovery mysql from this host"
             spinner_info.name = "recovery_cluster"
-            InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
-            InstallHACmd.spinner_status['recovery_cluster'] = True
+            SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+            SpinnerInfo.spinner_status['recovery_cluster'] = True
             ZstackSpinner(spinner_info)
             # kill mysql process to make sure mysql bootstrap can work
             service_status("mysql", "state=stopped", self.host1_post_info)
@@ -2184,8 +2394,8 @@ class InstallHACmd(Command):
                 # start mevoco
                 spinner_info.output = "Starting Mevoco"
                 spinner_info.name = "mevoco"
-                InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
-                InstallHACmd.spinner_status['mevoco'] = True
+                SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+                SpinnerInfo.spinner_status['mevoco'] = True
                 ZstackSpinner(spinner_info)
                 command = "zstack-ctl start"
                 (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s"
@@ -2201,7 +2411,7 @@ class InstallHACmd(Command):
                                                                          % (private_key_name, args.host3, command))
                     if status != 0:
                         error("Something wrong on host: %s\n %s" % (args.host2, output))
-                InstallHACmd.spinner_status['mevoco'] = False
+                SpinnerInfo.spinner_status['mevoco'] = False
                 time.sleep(.2)
             info("The cluster has been recovery!")
             sys.exit(0)
@@ -2279,8 +2489,8 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Mysql HA"
         spinner_info.name = 'mysql'
-        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
-        InstallHACmd.spinner_status['mysql'] = True
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['mysql'] = True
         ZstackSpinner(spinner_info)
         MysqlHA()()
 
@@ -2288,8 +2498,8 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output ="Starting to deploy Rabbitmq HA"
         spinner_info.name = 'rabbitmq'
-        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
-        InstallHACmd.spinner_status['rabbitmq'] = True
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['rabbitmq'] = True
         ZstackSpinner(spinner_info)
         RabbitmqHA()()
 
@@ -2297,8 +2507,8 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Haproxy and Keepalived"
         spinner_info.name = 'haproxy_keepalived'
-        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
-        InstallHACmd.spinner_status['haproxy_keepalived'] = True
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['haproxy_keepalived'] = True
         ZstackSpinner(spinner_info)
         HaproxyKeepalived()()
 
@@ -2331,8 +2541,8 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Cassandra HA"
         spinner_info.name = "Cassandra"
-        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
-        InstallHACmd.spinner_status['Cassandra'] = True
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['Cassandra'] = True
         ZstackSpinner(spinner_info)
         update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
                     "regexp='seeds:' line='  - seeds: \"%s,%s\"'" % (args.host1, args.host2), self.host1_post_info)
@@ -2465,8 +2675,8 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Kairosdb HA"
         spinner_info.name = "Kairosdb"
-        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
-        InstallHACmd.spinner_status['Kairosdb'] = True
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['Kairosdb'] = True
         ZstackSpinner(spinner_info)
         command = 'zstack-ctl kairosdb --start --wait-timeout 120'
         (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
@@ -2498,8 +2708,8 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting Mevoco"
         spinner_info.name = "mevoco"
-        InstallHACmd.spinner_status = self.reset_dict_value(InstallHACmd.spinner_status,False)
-        InstallHACmd.spinner_status['mevoco'] = True
+        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['mevoco'] = True
         ZstackSpinner(spinner_info)
         # Add zstack-ctl start to rc.local for auto recovery when system reboot
         command = "service iptables save"
@@ -2526,7 +2736,7 @@ class InstallHACmd(Command):
                                                                  (private_key_name, args.host3, command))
             if status != 0:
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
-        InstallHACmd.spinner_status['mevoco'] = False
+        SpinnerInfo.spinner_status['mevoco'] = False
         time.sleep(0.2)
         host_list = "%s,%s" % (self.host1_post_info.host, self.host2_post_info.host)
         if args.host3_info is not False:
@@ -6100,6 +6310,7 @@ def main():
     UpgradeDbCmd()
     UpgradeCtlCmd()
     RestoreMysqlCmd()
+    UpgradeHACmd()
 
     try:
         ctl.run()
