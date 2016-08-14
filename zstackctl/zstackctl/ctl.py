@@ -1846,6 +1846,8 @@ class UpgradeHACmd(Command):
         return dict.fromkeys(dict_name, value)
 
     def check_file_exist(self, mevoco_installer, upgrade_repo_bash, host_post_info):
+        if os.path.isabs(mevoco_installer) is False:
+            error("Make sure you pass file name with absolute path to --mevoco-installer")
         if file_dir_exist("path=%s" % mevoco_installer, host_post_info) is False:
             error("%s is not exist" % mevoco_installer)
         if file_dir_exist("path=%s" % upgrade_repo_bash, host_post_info) is False:
@@ -1856,7 +1858,7 @@ class UpgradeHACmd(Command):
         cmd = create_check_mgmt_node_command(timeout=10, mn_node=host_post_info.host)
         cmd(False)
         if cmd.return_code != 0:
-            error("Check management node %s status failed" % host_post_info.host)
+            error("Check management node %s status failed, make sure the status is running before upgrade" % host_post_info.host)
         else:
             if 'false' in cmd.stdout:
                 error('The management node %s is starting, please wait a few seconds to upgrade' % host_post_info.host)
