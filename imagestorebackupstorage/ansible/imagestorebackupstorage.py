@@ -93,7 +93,7 @@ if distro == "CentOS" or distro == "RedHat":
 elif distro == "Debian" or distro == "Ubuntu":
     if client == "true" and distro_version < 16:
         Warning("Client only support distribution version newer than 16.04")
-    apt_install_packages("qemu-kvm", host_post_info)
+    apt_install_packages(["qemu-kvm"], host_post_info)
 
 else:
     error("ERROR: Unsupported distribution")
