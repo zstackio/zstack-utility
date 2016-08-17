@@ -1826,19 +1826,19 @@ class UpgradeHACmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host1-info',
+        parser.add_argument('--host1-info','-h1',
                             help="The first host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host2-info',
+        parser.add_argument('--host2-info','-h2',
                             help="The second host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host3-info',
+        parser.add_argument('--host3-info','-h3',
                             help="The third host connect info follow below format: 'root:password@ip_address' ",
                             default=False)
-        parser.add_argument('--mevoco-installer',
+        parser.add_argument('--mevoco-installer','-bin',
                             help="The new mevoco installer package, should specify the absolute path",
                             required=True)
-        parser.add_argument('--upgrade-repo-bash',
+        parser.add_argument('--upgrade-repo-bash','-repo',
                             help="The upgrade repo bash, default is '/opt/zstack-repo-upgrade.sh'",
                             default="/opt/zstack-repo-upgrade.sh")
 
