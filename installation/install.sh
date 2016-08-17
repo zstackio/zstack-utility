@@ -2090,6 +2090,12 @@ do
 done
 OPTIND=1
 
+if [ $ZSTACK_OFFLINE_INSTALL = 'y' ]; then
+    if [ ! -d /opt/zstack-dvd/ ]; then
+        fail2 "Did not find /opt/zstack-dvd folder, please do not use -o option"
+    fi
+fi
+
 if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     if [ "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_163" -a "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_ALIYUN" ]; then
         fail2 "\n\tYou want to use yum mirror from '$ZSTACK_PKG_MIRROR' . But $PRODUCT_NAME only supports yum mirrors for '$PKG_MIRROR_ALIYUN' or '$PKG_MIRROR_163'. Please fix it and rerun the installation.\n\n"
