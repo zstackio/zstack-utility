@@ -6111,6 +6111,7 @@ class UiStatusCmd(Command):
 
         ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         pidfile = '/var/run/zstack/zstack-dashboard.pid'
+        portfile = '/var/run/zstack/zstack-dashboard.port'
         if os.path.exists(pidfile):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
@@ -6130,7 +6131,13 @@ class UiStatusCmd(Command):
                     if not default_ip:
                         info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
                     else:
-                        info('UI status: %s [PID:%s] http://%s:5000' % (colored('Running', 'green'), pid, default_ip))
+                        if os.path.exists(portfile):
+                            with open(portfile, 'r') as fd2:
+                                port = fd2.readline()
+                                port = port.strip(' \t\n\r')
+                        else:
+                            port = 5000
+                        info('UI status: %s [PID:%s] http://%s:%s' % (colored('Running', 'green'), pid, default_ip, port))
                     return
 
         pid = find_process_by_cmdline('zstack_dashboard')
@@ -6186,13 +6193,14 @@ class StartUiCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
+        parser.add_argument('--port', help="UI server port. [DEFAULT] 5000", default='5000')
 
     def _remote_start(self, host, params):
         cmd = '/etc/init.d/zstack-dashboard start --rabbitmq %s' % params
         ssh_run_no_pipe(host, cmd)
         info('successfully start the UI server on the remote host[%s]' % host)
 
-    def _check_status(self):
+    def _check_status(self, port):
         if os.path.exists(self.PID_FILE):
             with open(self.PID_FILE, 'r') as fd:
                 pid = fd.readline()
@@ -6204,7 +6212,7 @@ class StartUiCmd(Command):
                     if not default_ip:
                         info('UI server is still running[PID:%s]' % pid)
                     else:
-                        info('UI server is still running[PID:%s], http://%s:5000' % (pid, default_ip))
+                        info('UI server is still running[PID:%s], http://%s:%s' % (pid, default_ip, port))
 
                     return False
 
@@ -6247,12 +6255,12 @@ class StartUiCmd(Command):
         if not os.path.exists(virtualenv):
             raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (virtualenv, args.host))
 
-        if not self._check_status():
+        if not self._check_status(args.port):
             return
 
-        shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5000 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT')
+        shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT' % args.port)
 
-        scmd = '. %s/bin/activate\nnohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, param)
+        scmd = '. %s/bin/activate\nZSTACK_DASHBOARD_PORT=%s nohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, args.port, param)
         script(scmd, no_pipe=True)
 
         @loop_until_timeout(5, 0.5)
@@ -6275,7 +6283,11 @@ class StartUiCmd(Command):
         if not default_ip:
             info('successfully started UI server on the local host, PID[%s]' % pid)
         else:
-            info('successfully started UI server on the local host, PID[%s], http://%s:5000' % (pid, default_ip))
+            info('successfully started UI server on the local host, PID[%s], http://%s:%s' % (pid, default_ip, args.port))
+
+        os.system('mkdir -p /var/run/zstack/')
+        with open('/var/run/zstack/zstack-dashboard.port', 'w') as fd:
+            fd.write(args.port)
 
 def main():
     BootstrapCmd()
