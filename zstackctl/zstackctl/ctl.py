@@ -4261,7 +4261,15 @@ class CollectLogCmd(Command):
             if "The directory is empty" in output:
                 warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
                 return 0
+            #collect uptime and last reboot log and dmesg
+            host_info_log = tmp_log_dir + "host_info"
+            print host_info_log
+            command = "uptime > %s && last reboot >> %s" % (host_info_log, host_info_log)
+            run_remote_command(command, host_post_info)
+            command = "cp /var/log/dmesg* %s" % tmp_log_dir
+            run_remote_command(command, host_post_info)
             self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
+
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
