@@ -205,6 +205,22 @@ elif distro == "Debian" or distro == "Ubuntu":
 else:
     error("unsupported OS!")
 
+#add kvm module and tun module
+modprobe_arg = ModprobeArg()
+modprobe_arg.name = 'kvm_intel'
+modprobe_arg.state = 'present'
+modprobe(modprobe_arg, host_post_info)
+
+modprobe_arg = ModprobeArg()
+modprobe_arg.name = 'tun'
+modprobe_arg.state = 'present'
+modprobe(modprobe_arg, host_post_info)
+
+modprobe_arg = ModprobeArg()
+modprobe_arg.name = 'kvm'
+modprobe_arg.state = 'present'
+modprobe(modprobe_arg, host_post_info)
+
 # name: remove libvirt default bridge
 command = '(ifconfig virbr0 &> /dev/null && virsh net-destroy default > ' \
           '/dev/null && virsh net-undefine default > /dev/null) || true'
