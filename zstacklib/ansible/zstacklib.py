@@ -119,7 +119,7 @@ class UnarchiveArg(object):
         self.dest = None
         self.args = None
 
-class ModprobeArg(object):
+class ModProbeArg(object):
     def __init__(self):
         self.name = None
         self.state = None
@@ -1016,6 +1016,37 @@ def get_remote_host_info(host_post_info):
             logger.warning("get_remote_host_info on host %s failed!" % host)
             raise Exception(result)
 
+@retry(times=3, sleep_time=3)
+def get_remote_host_cpu(host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    host_post_info.post_label = "ansible.get.host.info"
+    host_post_info.post_label_param = host
+    handle_ansible_info("INFO: starting get remote host %s info ... " % host, host_post_info, "INFO")
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'setup'
+    runner_args.module_args = 'filter=ansible_processor'
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+    else:
+        if 'ansible_facts' in result['contacted'][host]:
+            cpu_list = result['contacted'][host]['ansible_facts']['ansible_processor']
+            host_post_info.post_label = "ansible.get.host.cpu.succ"
+            handle_ansible_info("SUCC: Get remote host %s cpu successful" % host, host_post_info, "INFO")
+            return ' '.join(str(e) for e in cpu_list)
+        else:
+            host_post_info.post_label = "ansible.get.host.cpu.false"
+
 def set_ini_file(file, section, option, value, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1294,7 +1325,7 @@ def unarchive(unarchive_arg, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
-def modprobe( modprobe_arg, host_post_info):
+def modprobe(modprobe_arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     name = modprobe_arg.name

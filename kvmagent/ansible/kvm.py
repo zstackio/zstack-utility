@@ -206,17 +206,22 @@ else:
     error("unsupported OS!")
 
 #add kvm module and tun module
-modprobe_arg = ModprobeArg()
-modprobe_arg.name = 'kvm_intel'
+modprobe_arg = ModProbeArg()
+if 'Intel' in get_remote_host_cpu(host_post_info):
+    modprobe_arg.name = 'kvm_intel'
+elif 'Amd' in get_remote_host_cpu(host_post_info):
+    modprobe_arg.name = 'kvm_amd'
+else:
+    error("Unknown CPU type")
 modprobe_arg.state = 'present'
 modprobe(modprobe_arg, host_post_info)
 
-modprobe_arg = ModprobeArg()
+modprobe_arg = ModProbeArg()
 modprobe_arg.name = 'tun'
 modprobe_arg.state = 'present'
 modprobe(modprobe_arg, host_post_info)
 
-modprobe_arg = ModprobeArg()
+modprobe_arg = ModProbeArg()
 modprobe_arg.name = 'kvm'
 modprobe_arg.state = 'present'
 modprobe(modprobe_arg, host_post_info)
