@@ -119,6 +119,12 @@ class UnarchiveArg(object):
         self.dest = None
         self.args = None
 
+class ModprobeArg(object):
+    def __init__(self):
+        self.name = None
+        self.state = None
+        self.params = None
+
 
 class ZstackRunnerArg(object):
     def  __init__(self):
@@ -250,6 +256,7 @@ def handle_ansible_failed(description, result, host_post_info):
         msg.details = "[ HOST: %s ] " % host_post_info.host + description + "error: " + result['contacted'][host]['stderr']
     elif 'msg' in result['contacted'][host]:
         msg.details = "[ HOST: %s ] " % host_post_info.host + description + "error: " + result['contacted'][host]['msg']
+
     msg.level = "ERROR"
     post_msg(msg, post_url)
 
@@ -1286,6 +1293,47 @@ def unarchive(unarchive_arg, host_post_info):
             host_post_info.post_label = "ansible.unarchive.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
+
+def modprobe( modprobe_arg, host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    name = modprobe_arg.name
+    state = modprobe_arg.state
+    params = modprobe_arg.params
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    host_post_info.post_label = "ansible.modeprobe"
+    host_post_info.post_label_param = [name, state]
+    handle_ansible_info("INFO: starting change kernel module %s to %s ... " % (name, state), host_post_info, "INFO")
+    if params != None:
+        modprobe_args = 'name=' + name + ' state=' + state +  ' params=' + params
+    else:
+        modprobe_args = 'name=' + name + ' state=' + state
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'modprobe'
+    runner_args.module_args = modprobe_args
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
+    logger.debug(result)
+    result = zstack_runner.run()
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+    else:
+        if result['contacted'][host]['failed'] is False:
+            details = "SUCC: change kernel moddule %s to %s successfully" % (name, state)
+            host_post_info.post_label = "ansible.modprobe.succ"
+            handle_ansible_info(details, host_post_info, "INFO")
+            return True
+        else:
+            description = "ERROR: change kernel module %s status to %s failed" % (name, state)
+            host_post_info.post_label = "ansible.modprobe.fail"
+            handle_ansible_failed(description, result, host_post_info)
+
 
 
 class ZstackLib(object):
