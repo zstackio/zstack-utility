@@ -1698,6 +1698,7 @@ class Vm(object):
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
 
+        @linux.retry(times=3, sleep_time=1)
         def do_pull(base, top):
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
 
