@@ -191,18 +191,22 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     @replyerror
+    @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PingRsp()
-        create_img = shell.ShellCmd('rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
-        create_img(False)
-        if create_img.return_code != 0:
+        r, o, e = bash_roe('timeout 60 rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
+        if r != 0:
             rsp.success = False
             rsp.operationFailure = True
-            rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
+            if r == 124:
+                # timeout happened
+                rsp.error = 'failed to create temporary file on ceph, timeout after 60s, %s %s' % (e, o)
+            else:
+                rsp.error = "%s %s" % (e, o)
         else:
-            rm_img = shell.ShellCmd('rbd rm %s' % cmd.testImagePath)
-            rm_img(False)
+            bash_r('rbd rm %s' % cmd.testImagePath)
+
         return jsonobject.dumps(rsp)
 
     @replyerror
