@@ -1813,8 +1813,10 @@ class UpgradeHACmd(Command):
     host_post_info_list = []
     current_dir = os.path.dirname(os.path.realpath(__file__))
     conf_dir = "/var/lib/zstack/ha/"
+    private_key_name = conf_dir + "ha_key"
     conf_file = conf_dir + "ha.yaml"
     logger_dir = "/var/log/zstack/"
+    community_iso = "/opt/ZStack-Community-x86_64-DVD-1.4.0.iso"
     bridge = ""
     SpinnerInfo.spinner_status = {'upgrade_repo':False,'stop_mevoco':False, 'upgrade_mevoco':False,'upgrade_db':False,
                       'backup_db':False, 'upgrade_cassandra_db':False, 'check_init':False, 'start_mevoco':False}
@@ -1841,18 +1843,24 @@ class UpgradeHACmd(Command):
         parser.add_argument('--upgrade-repo-bash','-repo',
                             help="The upgrade repo bash, default is '/opt/zstack-repo-upgrade.sh'",
                             default="/opt/zstack-repo-upgrade.sh")
+        parser.add_argument('--iso',
+                            help="The zstack community iso file",
+                            required=False)
 
     def reset_dict_value(self, dict_name, value):
         return dict.fromkeys(dict_name, value)
 
-    def check_file_exist(self, mevoco_installer, upgrade_repo_bash, host_post_info):
+    def check_file_exist(self, mevoco_installer, upgrade_repo_bash, community_iso, host_post_info):
         if os.path.isabs(mevoco_installer) is False:
             error("Make sure you pass file name with absolute path to --mevoco-installer")
         if file_dir_exist("path=%s" % mevoco_installer, host_post_info) is False:
-            error("%s is not exist" % mevoco_installer)
+            error("%s is not exist on host %s" % (mevoco_installer,host_post_info.host))
         if file_dir_exist("path=%s" % upgrade_repo_bash, host_post_info) is False:
             command = "cd /opt/ && wget http://www.mevoco.com/downloads/scripts/zstack-repo-upgrade.sh"
             run_remote_command(command, host_post_info)
+        if file_dir_exist("path=%s" % community_iso, host_post_info) is False:
+            error("%s is not exist on host %s" % (community_iso, host_post_info.host))
+
 
     def check_mn_running(self,host_post_info):
         cmd = create_check_mgmt_node_command(timeout=10, mn_node=host_post_info.host)
@@ -1875,14 +1883,29 @@ class UpgradeHACmd(Command):
 
     def stop_mevoco(self, host_post_info):
         command = "zstack-ctl stop_node && zstack-ctl stop_ui"
-        run_remote_command(command, host_post_info)
-
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+                                                   (UpgradeHACmd.private_key_name, host_post_info.host, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
+        logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
 
     def upgrade_mevoco(self, mevoco_installer, host_post_info):
         mevoco_dir = os.path.dirname(mevoco_installer)
         mevoco_bin = os.path.basename(mevoco_installer)
-        command = "cd %s && rm -rf /tmp/zstack_upgrade.lock && bash %s -u -i " % (mevoco_dir,mevoco_bin)
-        run_remote_command(command, host_post_info)
+        command = "rm -rf /tmp/zstack_upgrade.lock && cd %s && bash %s -u -i " % (mevoco_dir, mevoco_bin)
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+                                                   (UpgradeHACmd.private_key_name, host_post_info.host, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
+        logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
+
+    def start_mevoco(self, host_post_info):
+        command = "zstack-ctl start_node && zstack-ctl start_ui"
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+                                                   (UpgradeHACmd.private_key_name, host_post_info.host, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
+        logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
 
 
     def run(self, args):
@@ -1896,6 +1919,11 @@ class UpgradeHACmd(Command):
         host_inventory = UpgradeHACmd.conf_dir + 'host'
         yum_repo = get_yum_repo_from_property()
         private_key_name = UpgradeHACmd.conf_dir+ "ha_key"
+
+        if args.iso is None:
+            community_iso = UpgradeHACmd.community_iso
+        else:
+            community_iso = args.iso
 
         # check input host info
         host1_info = args.host1_info
@@ -1914,14 +1942,15 @@ class UpgradeHACmd(Command):
             host3_info = args.host3_info
             host3_connect_info_list = check_host_info_format(host3_info)
             host3_ip = host3_connect_info_list[2]
-            host2_password = host3_connect_info_list[1]
-            host2_user = host3_connect_info_list[0]
+            host3_password = host3_connect_info_list[1]
+            host3_user = host3_connect_info_list[0]
 
         # init host1 parameter
         self.host1_post_info = HostPostInfo()
         self.host1_post_info.host = host1_ip
         self.host1_post_info.host_inventory = host_inventory
         self.host1_post_info.private_key = private_key_name
+        self.host1_post_info.remote_pass = host1_password
         self.host1_post_info.yum_repo = yum_repo
         self.host1_post_info.post_url = ""
 
@@ -1930,6 +1959,7 @@ class UpgradeHACmd(Command):
         self.host2_post_info.host = host2_ip
         self.host2_post_info.host_inventory = host_inventory
         self.host2_post_info.private_key = private_key_name
+        self.host2_post_info.remote_pass = host2_password
         self.host2_post_info.yum_repo = yum_repo
         self.host2_post_info.post_url = ""
 
@@ -1939,6 +1969,7 @@ class UpgradeHACmd(Command):
             self.host3_post_info.host = host3_ip
             self.host3_post_info.host_inventory = host_inventory
             self.host3_post_info.private_key = private_key_name
+            self.host3_post_info.remote_pass = host3_password
             self.host3_post_info.yum_repo = yum_repo
             self.host3_post_info.post_url = ""
 
@@ -1957,7 +1988,7 @@ class UpgradeHACmd(Command):
         ZstackSpinner(spinner_info)
         for host in UpgradeHACmd.host_post_info_list:
             # to do check mn all running
-            self.check_file_exist(args.mevoco_installer, args.upgrade_repo_bash, host)
+            self.check_file_exist(args.mevoco_installer, args.upgrade_repo_bash, community_iso, host)
             self.upgrade_repo(args.upgrade_repo_bash, host)
 
         spinner_info = SpinnerInfo()
@@ -1996,9 +2027,13 @@ class UpgradeHACmd(Command):
         (status, output) =  commands.getstatusoutput("zstack-ctl upgrade_db")
         if status != 0:
             error("Upgrade mysql failed: %s" % output)
+        else:
+            logger.debug("SUCC: shell command: 'zstack-ctl upgrade_db' successfully" )
         (status, output) =  commands.getstatusoutput("zstack-ctl deploy_cassandra_db")
         if status != 0:
             error("Upgrade Cassandra failed: %s" % output)
+        else:
+            logger.debug("SUCC: shell command: 'zstack-ctl deploy_cassandra_db' successfully")
 
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting mevoco"
@@ -2007,8 +2042,7 @@ class UpgradeHACmd(Command):
         SpinnerInfo.spinner_status['start_mevoco'] = True
         ZstackSpinner(spinner_info)
         for host_post_info in UpgradeHACmd.host_post_info_list:
-            command = "zstack-ctl start_node && zstack-ctl start_ui"
-            run_remote_command(command,host_post_info)
+            self.start_mevoco(host_post_info)
 
         SpinnerInfo.spinner_status['start_mevoco'] = False
         time.sleep(.2)
