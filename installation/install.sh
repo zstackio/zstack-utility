@@ -1206,6 +1206,15 @@ iz_install_zstack(){
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
     ln -s $CATALINA_ZSTACK_PATH/VERSION $ZSTACK_INSTALL_ROOT/VERSION  
+    #create symbolic link for /opt/zstack-dvd for hosts doing offline 
+    # installation
+    rm -f $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
+    ln -s /opt/zstack-dvd $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        fail "failed to create symbolic link for $ZSTACK_HOME/static/zstack-dvd . 
+        The contents in the folder: `ls $ZSTACK_HOME/static/zstack-dvd` . 
+        If this folder existed. Please move it to other place and rerun the installation."
+    fi
     pass
 }
 
@@ -1374,15 +1383,6 @@ cs_config_zstack_properties(){
     fi
     if [ $? -ne 0 ];then
         fail "failed to add yum repo to $ZSTACK_PROPERTIES"
-    fi
-    #create symbolic link for /opt/zstack-dvd for hosts doing offline 
-    # installation
-    rm -f $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
-    ln -s /opt/zstack-dvd $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-        fail "failed to create symbolic link for $ZSTACK_HOME/static/zstack-dvd . 
-        The contents in the folder: `ls $ZSTACK_HOME/static/zstack-dvd` . 
-        If this folder existed. Please move it to other place and rerun the installation."
     fi
     pass
 }

@@ -5616,6 +5616,9 @@ class UpgradeManagementNodeCmd(Command):
 
                 shell('cp %s %s' % (new_war.path, webapp_dir))
                 ShellCmd('unzip %s -d zstack' % os.path.basename(new_war.path), workdir=webapp_dir)()
+                #create local repo folder for possible zstack local yum repo
+                zstack_dvd_repo = '%s/zstack/static/zstack-dvd' % webapp_dir
+                shell('rm -f %s; ln -s /opt/zstack-dvd %s' % (zstack_dvd_repo, zstack_dvd_repo))
 
             def restore_config():
                 info('restoring the zstack.properties ...')
