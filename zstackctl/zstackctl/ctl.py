@@ -4483,9 +4483,10 @@ class ChangeIpCmd(Command):
         # Update /etc/hosts
         if os.path.isfile(zstack_conf_file):
             old_ip = ctl.read_property('management.server.ip')
-            if not ip_check.match(old_ip):
-                info("The ip address[%s] read from [%s] seems not a valid ip" % (old_ip, zstack_conf_file))
-                return 1
+            if old_ip != None:
+	        if not ip_check.match(old_ip):
+		    info("The ip address[%s] read from [%s] seems not a valid ip" % (old_ip, zstack_conf_file))
+		    return 1
 
             # read from env other than /etc/hostname in case of impact of DHCP SERVER
             old_hostname = shell("hostname").replace("\n","")
@@ -4493,12 +4494,17 @@ class ChangeIpCmd(Command):
             if old_hostname != "localhost" and old_hostname != "localhost.localdomain":
                new_hostname = old_hostname
 
-            shell('sed -i "/^%s .*$/d" /etc/hosts' % old_ip)
+            if old_ip != None: 
+                shell('sed -i "/^%s .*$/d" /etc/hosts' % old_ip)
+
             shell('echo "%s %s" >> /etc/hosts' % (args.ip, new_hostname))
             shell('hostnamectl set-hostname %s' % new_hostname)
             shell('export HOSTNAME=%s' % new_hostname)
 
-            info("Update /etc/hosts, old_ip:%s, new_ip:%s" % (old_ip, args.ip))
+            if old_ip != None:
+                info("Update /etc/hosts, old_ip:%s, new_ip:%s" % (old_ip, args.ip))
+            else:
+               info("Update /etc/hosts, new_ip:%s" % args.ip) 
 
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
