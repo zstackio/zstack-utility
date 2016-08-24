@@ -1828,19 +1828,19 @@ class UpgradeHACmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host1-info','-h1',
+        parser.add_argument('--host1-info',
                             help="The first host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host2-info','-h2',
+        parser.add_argument('--host2-info',
                             help="The second host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host3-info','-h3',
+        parser.add_argument('--host3-info',
                             help="The third host connect info follow below format: 'root:password@ip_address' ",
                             default=False)
-        parser.add_argument('--mevoco-installer','-bin',
+        parser.add_argument('--mevoco-installer',
                             help="The new mevoco installer package, should specify the absolute path",
                             required=True)
-        parser.add_argument('--upgrade-repo-bash','-repo',
+        parser.add_argument('--upgrade-repo-bash',
                             help="The upgrade repo bash, default is '/opt/zstack-repo-upgrade.sh'",
                             default="/opt/zstack-repo-upgrade.sh")
         parser.add_argument('--iso',
@@ -4295,15 +4295,7 @@ class CollectLogCmd(Command):
             if "The directory is empty" in output:
                 warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
                 return 0
-            #collect uptime and last reboot log and dmesg
-            host_info_log = tmp_log_dir + "host_info"
-            print host_info_log
-            command = "uptime > %s && last reboot >> %s" % (host_info_log, host_info_log)
-            run_remote_command(command, host_post_info)
-            command = "cp /var/log/dmesg* %s" % tmp_log_dir
-            run_remote_command(command, host_post_info)
             self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
-
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
@@ -4480,31 +4472,7 @@ class ChangeIpCmd(Command):
                 info("The ip address you input: %s seems not a valid ip" % input_ip)
                 return 1
 
-        # Update /etc/hosts
-        if os.path.isfile(zstack_conf_file):
-            old_ip = ctl.read_property('management.server.ip')
-            if not ip_check.match(old_ip):
-                info("The ip address[%s] read from [%s] seems not a valid ip" % (old_ip, zstack_conf_file))
-                return 1
-
-            # read from env other than /etc/hostname in case of impact of DHCP SERVER
-            old_hostname = shell("hostname").replace("\n","")
-            new_hostname = args.ip.replace(".","-")
-            if old_hostname != "localhost" and old_hostname != "localhost.localdomain":
-               new_hostname = old_hostname
-
-            shell('sed -i "/^%s .*$/d" /etc/hosts' % old_ip)
-            shell('echo "%s %s" >> /etc/hosts' % (args.ip, new_hostname))
-            shell('hostnamectl set-hostname %s' % new_hostname)
-            shell('export HOSTNAME=%s' % new_hostname)
-
-            info("Update /etc/hosts, old_ip:%s, new_ip:%s" % (old_ip, args.ip))
-
-        else:
-            info("Didn't find %s, skip update new ip" % zstack_conf_file  )
-            return 1
-
-       # Update zstack config file
+        # Update zstack config file
         if os.path.isfile(zstack_conf_file):
             shell("yes | cp %s %s.bak" % (zstack_conf_file, zstack_conf_file))
             ctl.write_properties([
@@ -4564,10 +4532,7 @@ class ChangeIpCmd(Command):
                     info("Update cassandra rpc address: %s in %s" % (cassandra_rpc_address, zstack_conf_file))
         else:
             info("Didn't find %s, skip update cassandra ip" % cassandra_conf_file)
-       
-        # Reset RabbitMQ
-        shell("zstack-ctl reset_rabbitmq")
-        info("Reset RabbitMQ")
+
 
 class InstallCassandraCmd(Command):
     CASSANDRA_EXEC = 'CASSANDRA_EXEC'
@@ -5651,6 +5616,9 @@ class UpgradeManagementNodeCmd(Command):
 
                 shell('cp %s %s' % (new_war.path, webapp_dir))
                 ShellCmd('unzip %s -d zstack' % os.path.basename(new_war.path), workdir=webapp_dir)()
+                #create local repo folder for possible zstack local yum repo
+                zstack_dvd_repo = '%s/zstack/static/zstack-dvd' % webapp_dir
+                shell('rm -f %s; ln -s /opt/zstack-dvd %s' % (zstack_dvd_repo, zstack_dvd_repo))
 
             def restore_config():
                 info('restoring the zstack.properties ...')
