@@ -4471,6 +4471,29 @@ class ChangeIpCmd(Command):
             if not ip_check.match(input_ip):
                 info("The ip address you input: %s seems not a valid ip" % input_ip)
                 return 1
+        # Update /etc/hosts
+        if os.path.isfile(zstack_conf_file):
+            old_ip = ctl.read_property('management.server.ip')
+            if not ip_check.match(old_ip):
+                info("The ip address[%s] read from [%s] seems not a valid ip" % (old_ip, zstack_conf_file))
+                return 1
+
+            # read from env other than /etc/hostname in case of impact of DHCP SERVER
+            old_hostname = shell("hostname").replace("\n","")
+            new_hostname = args.ip.replace(".","-")
+            if old_hostname != "localhost" and old_hostname != "localhost.localdomain":
+               new_hostname = old_hostname
+
+            shell('sed -i "/^%s .*$/d" /etc/hosts' % old_ip)
+            shell('echo "%s %s" >> /etc/hosts' % (args.ip, new_hostname))
+            shell('hostnamectl set-hostname %s' % new_hostname)
+            shell('export HOSTNAME=%s' % new_hostname)
+
+            info("Update /etc/hosts, old_ip:%s, new_ip:%s" % (old_ip, args.ip))
+
+        else:
+            info("Didn't find %s, skip update new ip" % zstack_conf_file  )
+            return 1
 
         # Update zstack config file
         if os.path.isfile(zstack_conf_file):
@@ -4533,6 +4556,9 @@ class ChangeIpCmd(Command):
         else:
             info("Didn't find %s, skip update cassandra ip" % cassandra_conf_file)
 
+        # Reset RabbitMQ
+        shell("zstack-ctl reset_rabbitmq")
+        info("Reset RabbitMQ")
 
 class InstallCassandraCmd(Command):
     CASSANDRA_EXEC = 'CASSANDRA_EXEC'
