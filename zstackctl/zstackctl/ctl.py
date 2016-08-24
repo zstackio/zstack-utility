@@ -2361,18 +2361,18 @@ class InstallHACmd(Command):
             service_status("mysql", "state=stopped", self.host1_post_info)
             mysqld_status = run_remote_command("netstat -ltnp | grep :4567[[:space:]]", self.host1_post_info, return_status=True)
             if mysqld_status is True:
-                run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host1_post_info)
+                run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill -9", self.host1_post_info)
 
             service_status("mysql", "state=stopped", self.host2_post_info)
             mysqld_status = run_remote_command("netstat -ltnp | grep :4567[[:space:]] ", self.host2_post_info, return_status=True)
             if mysqld_status is True:
-                run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host2_post_info)
+                run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill -9", self.host2_post_info)
 
             if args.host3_info is not False:
                 service_status("mysql", "state=stopped", self.host3_post_info)
                 mysqld_status = run_remote_command("netstat -ltnp | grep :4567[[:space:]]", self.host3_post_info, return_status=True)
                 if mysqld_status is True:
-                    run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill", self.host3_post_info)
+                    run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill -9", self.host3_post_info)
 
             command = "service mysql bootstrap"
             (status, output) = commands.getstatusoutput(command)
