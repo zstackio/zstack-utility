@@ -252,10 +252,8 @@ class CephAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
         dpath = self._normalize_install_path(cmd.dstPath)
-        pool_name, image_name = self._parse_install_path(cmd.dstPath)
 
         shell.call('rbd snap protect %s' % spath, exception=not cmd.ignoreError)
-        shell.call('ceph osd pool create %s 100 || true' % pool_name)
         shell.call('rbd clone %s %s' % (spath, dpath))
 
         rsp = AgentResponse()
