@@ -1821,6 +1821,7 @@ class UpgradeHACmd(Command):
     SpinnerInfo.spinner_status = {'upgrade_repo':False,'stop_mevoco':False, 'upgrade_mevoco':False,'upgrade_db':False,
                       'backup_db':False, 'upgrade_cassandra_db':False, 'check_init':False, 'start_mevoco':False}
     ha_config_content = None
+
     def __init__(self):
         super(UpgradeHACmd, self).__init__()
         self.name = "upgrade_ha"
@@ -1828,39 +1829,59 @@ class UpgradeHACmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host1-info','-h1',
+        parser.add_argument('--host1-info','--h1',
                             help="The first host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host2-info','-h2',
+        parser.add_argument('--host2-info','--h2',
                             help="The second host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host3-info','-h3',
+        parser.add_argument('--host3-info','--h3',
                             help="The third host connect info follow below format: 'root:password@ip_address' ",
                             default=False)
-        parser.add_argument('--mevoco-installer','-bin',
-                            help="The new mevoco installer package, should specify the absolute path",
+        parser.add_argument('--mevoco-installer','--mevoco',
+                            help="The new mevoco installer package, get it from http://www.mevoco.com/download/",
                             required=True)
-        parser.add_argument('--upgrade-repo-bash','-repo',
-                            help="The upgrade repo bash, default is '/opt/zstack-repo-upgrade.sh'",
-                            default="/opt/zstack-repo-upgrade.sh")
         parser.add_argument('--iso',
-                            help="The zstack community iso file",
-                            required=False)
+                            help="get it from http://www.mevoco.com/mevoco-offline-install-from-custom-iso/",
+                            required=True)
 
     def reset_dict_value(self, dict_name, value):
         return dict.fromkeys(dict_name, value)
 
-    def check_file_exist(self, mevoco_installer, upgrade_repo_bash, community_iso, host_post_info):
-        if os.path.isabs(mevoco_installer) is False:
-            error("Make sure you pass file name with absolute path to --mevoco-installer")
-        if file_dir_exist("path=%s" % mevoco_installer, host_post_info) is False:
-            error("%s is not exist on host %s" % (mevoco_installer,host_post_info.host))
-        if file_dir_exist("path=%s" % upgrade_repo_bash, host_post_info) is False:
-            command = "cd /opt/ && wget http://www.mevoco.com/downloads/scripts/zstack-repo-upgrade.sh"
-            run_remote_command(command, host_post_info)
-        if file_dir_exist("path=%s" % community_iso, host_post_info) is False:
-            error("%s is not exist on host %s" % (community_iso, host_post_info.host))
+    def upgrade_repo(self, iso, tmp_iso, host_post_info):
+        command = (
+                  "yum clean --enablerepo=zstack-local metadata &&  pkg_list=`rsync | grep \"not installed\" | awk"
+                  " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=zstack-local install "
+                  "-y $pkg; done;")
+        run_remote_command(command, host_post_info)
+        command = "mkdir -p %s" %  tmp_iso
+        run_remote_command(command, host_post_info)
+        command = "mount -o loop %s %s" % (iso, tmp_iso)
+        run_remote_command(command, host_post_info)
+        command = "rsync -au --delete %s /opt/zstack-dvd/" %  tmp_iso
+        run_remote_command(command, host_post_info)
+        command = "umount %s" % tmp_iso
+        run_remote_command(command, host_post_info)
+        command = "rm -rf %s" % tmp_iso
+        run_remote_command(command, host_post_info)
 
+    def check_file_exist(self, file, host_post_info_list):
+        if os.path.isabs(file) is False:
+            error("Make sure you pass file name with absolute path")
+        else:
+            if os.path.isfile(file) is False:
+                error("Didn't find file %s" % file)
+            else:
+                for host_post_info in host_post_info_list:
+                    if file_dir_exist("path=%s" % file, host_post_info) is False:
+                        copy_arg = CopyArg()
+                        copy_arg.src = file
+                        copy_arg.dest = file
+                        copy(copy_arg, host_post_info)
+
+    # do not enable due to lot of customer version
+    def check_file_md5sum(self):
+        pass
 
     def check_mn_running(self,host_post_info):
         cmd = create_check_mgmt_node_command(timeout=10, mn_node=host_post_info.host)
@@ -1875,11 +1896,6 @@ class UpgradeHACmd(Command):
             else:
                 error('The management node %s status is: Unknown, please start the management node before upgrade' % host_post_info.host)
 
-
-    def upgrade_repo(self, upgrade_repo_bash, host_post_info):
-        repo_dir = os.path.dirname(os.path.abspath(upgrade_repo_bash))
-        command = "cd %s && bash zstack-repo-upgrade.sh" % repo_dir
-        run_remote_command(command, host_post_info)
 
     def stop_mevoco(self, host_post_info):
         command = "zstack-ctl stop_node && zstack-ctl stop_ui"
@@ -1978,7 +1994,11 @@ class UpgradeHACmd(Command):
             UpgradeHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info, self.host3_post_info]
 
         for host in UpgradeHACmd.host_post_info_list:
+            # to do check mn all running
             self.check_mn_running(host)
+
+        for file in [args.mevoco_installer, args.iso]:
+            self.check_file_exist(file, UpgradeHACmd.host_post_info_list)
 
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to upgrade repo"
@@ -1986,10 +2006,10 @@ class UpgradeHACmd(Command):
         SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['upgrade_repo'] = True
         ZstackSpinner(spinner_info)
-        for host in UpgradeHACmd.host_post_info_list:
-            # to do check mn all running
-            self.check_file_exist(args.mevoco_installer, args.upgrade_repo_bash, community_iso, host)
-            self.upgrade_repo(args.upgrade_repo_bash, host)
+        rand_int = random.randint(65535, 100000)
+        tmp_iso =  "/tmp/%d/iso/" % rand_int
+        for host_post_info in UpgradeHACmd.host_post_info_list:
+            self.upgrade_repo(args.iso, tmp_iso, host_post_info)
 
         spinner_info = SpinnerInfo()
         spinner_info.output = "Stopping mevoco"
@@ -2069,13 +2089,13 @@ class InstallHACmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host1-info',
+        parser.add_argument('--host1-info','--h1',
                             help="The first host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host2-info',
+        parser.add_argument('--host2-info','--h2',
                             help="The second host connect info follow below format: 'root:password@ip_address' ",
                             required=True)
-        parser.add_argument('--host3-info',
+        parser.add_argument('--host3-info','--h3',
                             help="The third host connect info follow below format: 'root:password@ip_address' ",
                             default=False)
         parser.add_argument('--vip',
@@ -2087,11 +2107,11 @@ class InstallHACmd(Command):
         parser.add_argument('--bridge',
                             help="The bridge device name, default is br_eth0",
                             )
-        parser.add_argument('--mysql-root-password',
+        parser.add_argument('--mysql-root-password','--root-pass',
                             help="Password of MySQL root user", default="zstack123")
-        parser.add_argument('--mysql-user-password',
+        parser.add_argument('--mysql-user-password','--user-pass',
                             help="Password of MySQL user zstack", default="zstack123")
-        parser.add_argument('--rabbit-password',
+        parser.add_argument('--rabbit-password','--rabbit-pass',
                             help="RabbitMQ password; if set, the password will be created on RabbitMQ for username "
                                  "specified by --rabbit-username. [DEFAULT] rabbitmq default password",
                             default="zstack123")
@@ -2101,7 +2121,8 @@ class InstallHACmd(Command):
                             help="Force drop cassandra keyspace for re-deploy HA")
         parser.add_argument('--keep-db', action='store_true', default=False,
                             help='keep existing zstack database and not raise error')
-        parser.add_argument('--recovery-from-this-host', action='store_true', default=False,
+        parser.add_argument('--recovery-from-this-host','--recover',
+                            action='store_true', default=False,
                             help="This argument for admin to recovery mysql from the last shutdown mysql server")
         parser.add_argument('--perfect-mode', action='store_true', default=False,
                             help="This mode will re-connect mysql faster")
@@ -4494,7 +4515,7 @@ class ChangeIpCmd(Command):
             if old_hostname != "localhost" and old_hostname != "localhost.localdomain":
                new_hostname = old_hostname
 
-            if old_ip != None: 
+            if old_ip != None:
                 shell('sed -i "/^%s .*$/d" /etc/hosts' % old_ip)
 
             shell('echo "%s %s" >> /etc/hosts' % (args.ip, new_hostname))
@@ -4504,7 +4525,7 @@ class ChangeIpCmd(Command):
             if old_ip != None:
                 info("Update /etc/hosts, old_ip:%s, new_ip:%s" % (old_ip, args.ip))
             else:
-               info("Update /etc/hosts, new_ip:%s" % args.ip) 
+               info("Update /etc/hosts, new_ip:%s" % args.ip)
 
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
@@ -4570,7 +4591,7 @@ class ChangeIpCmd(Command):
                     info("Update cassandra rpc address: %s in %s" % (cassandra_rpc_address, zstack_conf_file))
         else:
             info("Didn't find %s, skip update cassandra ip" % cassandra_conf_file)
-       
+
         # Reset RabbitMQ
         shell("zstack-ctl reset_rabbitmq")
         info("Reset RabbitMQ")
