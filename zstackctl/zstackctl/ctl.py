@@ -2473,6 +2473,30 @@ class InstallHACmd(Command):
             info("The cluster has been recovery!")
             sys.exit(0)
 
+        # generate ha config
+        host_list = "%s,%s" % (self.host1_post_info.host, self.host2_post_info.host)
+        if args.host3_info is not False:
+            host_list = "%s,%s,%s" % (self.host1_post_info.host, self.host2_post_info.host, self.host3_post_info)
+        ha_conf_file = open(InstallHACmd.conf_file, 'w')
+        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'bridge_name':InstallHACmd.bridge,
+                   'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.vip +':9132/zstack', 'host_list':host_list}
+        yaml.dump(ha_info, ha_conf_file, default_flow_style=False)
+
+        command = "mkdir -p %s" % InstallHACmd.conf_dir
+        run_remote_command(command, self.host2_post_info)
+        if len(self.host_post_info_list) == 3:
+            run_remote_command(command, self.host3_post_info)
+
+        copy_arg = CopyArg()
+        copy_arg.src = InstallHACmd.conf_dir
+        copy_arg.dest = InstallHACmd.conf_dir
+        copy(copy_arg,self.host2_post_info)
+        command = "chmod 600 %s" % InstallHACmd.conf_dir + "ha_key"
+        run_remote_command(command, self.host2_post_info)
+        if len(self.host_post_info_list) == 3:
+            copy(copy_arg,self.host3_post_info)
+            run_remote_command(command, self.host3_post_info)
+
         # get iptables from system config
         service_status("iptables","state=restarted",self.host1_post_info)
         service_status("iptables","state=restarted",self.host2_post_info)
@@ -2795,28 +2819,6 @@ class InstallHACmd(Command):
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
         SpinnerInfo.spinner_status['mevoco'] = False
         time.sleep(0.2)
-        host_list = "%s,%s" % (self.host1_post_info.host, self.host2_post_info.host)
-        if args.host3_info is not False:
-            host_list = "%s,%s,%s" % (self.host1_post_info.host, self.host2_post_info.host, self.host3_post_info)
-        ha_conf_file = open(InstallHACmd.conf_file, 'w')
-        ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'bridge_name':InstallHACmd.bridge,
-                   'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.vip +':9132/zstack', 'host_list':host_list}
-        yaml.dump(ha_info, ha_conf_file, default_flow_style=False)
-
-        command = "mkdir -p %s" % InstallHACmd.conf_dir
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
-
-        copy_arg = CopyArg()
-        copy_arg.src = InstallHACmd.conf_dir
-        copy_arg.dest = InstallHACmd.conf_dir
-        copy(copy_arg,self.host2_post_info)
-        command = "chmod 600 %s" % InstallHACmd.conf_dir + "ha_key"
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            copy(copy_arg,self.host3_post_info)
-            run_remote_command(command, self.host3_post_info)
 
         print '''HA deploy finished!
 Mysql user 'root' password: %s
