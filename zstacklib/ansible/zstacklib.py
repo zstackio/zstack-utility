@@ -1334,7 +1334,7 @@ def modprobe(modprobe_arg, host_post_info):
     params = modprobe_arg.params
     host = host_post_info.host
     post_url = host_post_info.post_url
-    host_post_info.post_label = "ansible.modeprobe"
+    host_post_info.post_label = "ansible.modprobe"
     host_post_info.post_label_param = [name, state]
     handle_ansible_info("INFO: starting change kernel module %s to %s ... " % (name, state), host_post_info, "INFO")
     if params != None:
