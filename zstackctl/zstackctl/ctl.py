@@ -2409,11 +2409,13 @@ class InstallHACmd(Command):
                     service_status("mysql","state=started", self.host2_post_info)
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
+                    service_status("rabbitmq-server","state=started", self.host2_post_info)
                     if args.host3_info is not False:
                         #run_remote_command(command, self.host3_post_info)
                         service_status("mysql","state=started", self.host3_post_info)
                         service_status("haproxy","state=started", self.host3_post_info)
                         service_status("keepalived","state=started", self.host3_post_info)
+                        service_status("rabbitmq-server","state=started", self.host3_post_info)
                     #command = "service mysql restart"
                     #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=restarted", self.host1_post_info)
@@ -2421,15 +2423,18 @@ class InstallHACmd(Command):
                 elif local_ip == self.host2_post_info.host:
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
+                    service_status("rabbitmq-server","state=started", self.host2_post_info)
                     #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=started", self.host1_post_info)
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
+                    service_status("rabbitmq-server","state=started", self.host1_post_info)
                     if args.host3_info is not False:
                         #run_remote_command(command, self.host3_post_info)
                         service_status("mysql","state=started", self.host3_post_info)
                         service_status("haproxy","state=started", self.host3_post_info)
                         service_status("keepalived","state=started", self.host3_post_info)
+                        service_status("rabbitmq-server","state=started", self.host3_post_info)
                     #command = "service mysql restart"
                     #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=restarted", self.host2_post_info)
@@ -2437,13 +2442,16 @@ class InstallHACmd(Command):
                     # localhost must be host3
                     service_status("haproxy","state=started", self.host3_post_info)
                     service_status("keepalived","state=started", self.host3_post_info)
+                    service_status("rabbitmq-server","state=started", self.host3_post_info)
                     #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=started", self.host1_post_info)
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
+                    service_status("rabbitmq-server","state=started", self.host1_post_info)
                     service_status("mysql","state=started", self.host2_post_info)
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
+                    service_status("rabbitmq-server","state=started", self.host2_post_info)
                     #command = "service mysql restart"
                     #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=restarted", self.host3_post_info)
