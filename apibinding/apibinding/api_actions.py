@@ -2632,6 +2632,18 @@ class AddImageAction(inventory.APIAddImageMsg):
         self.out = evt
         return self.out
 
+class GetCandidateBackupStorageForCreatingImageAction(inventory.APIGetCandidateBackupStorageForCreatingImageMsg):
+    def __init__(self):
+        super(GetCandidateBackupStorageForCreatingImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetCandidateBackupStorageForCreatingImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SyncImageSizeAction(inventory.APISyncImageSizeMsg):
     def __init__(self):
         super(SyncImageSizeAction, self).__init__()
