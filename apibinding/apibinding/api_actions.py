@@ -52,6 +52,68 @@ class QueryGlobalConfigAction(inventory.APIQueryGlobalConfigMsg):
         self.out = reply.inventories
         return self.out
 
+class UpdateSchedulerAction(inventory.APIUpdateSchedulerMsg):
+    def __init__(self):
+        super(UpdateSchedulerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateSchedulerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class QuerySchedulerAction(inventory.APIQuerySchedulerMsg):
+    def __init__(self):
+        super(QuerySchedulerAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySchedulerAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class ResumeSchedulerAction(inventory.APIResumeSchedulerMsg):
+    def __init__(self):
+        super(ResumeSchedulerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ResumeSchedulerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PauseSchedulerAction(inventory.APIPauseSchedulerMsg):
+    def __init__(self):
+        super(PauseSchedulerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PauseSchedulerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteSchedulerAction(inventory.APIDeleteSchedulerMsg):
+    def __init__(self):
+        super(DeleteSchedulerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteSchedulerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QueryKeystoreAction(inventory.APIQueryKeystoreMsg):
     def __init__(self):
         super(QueryKeystoreAction, self).__init__()
@@ -86,44 +148,6 @@ class CreateKeystoreAction(inventory.APICreateKeystoreMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateKeystoreAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UpdateSchedulerAction(inventory.APIUpdateSchedulerMsg):
-    def __init__(self):
-        super(UpdateSchedulerAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateSchedulerAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class QuerySchedulerAction(inventory.APIQuerySchedulerMsg):
-    def __init__(self):
-        super(QuerySchedulerAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QuerySchedulerAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class DeleteSchedulerAction(inventory.APIDeleteSchedulerMsg):
-    def __init__(self):
-        super(DeleteSchedulerAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteSchedulerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2666,6 +2690,18 @@ class AddImageAction(inventory.APIAddImageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AddImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetCandidateBackupStorageForCreatingImageAction(inventory.APIGetCandidateBackupStorageForCreatingImageMsg):
+    def __init__(self):
+        super(GetCandidateBackupStorageForCreatingImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetCandidateBackupStorageForCreatingImageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
