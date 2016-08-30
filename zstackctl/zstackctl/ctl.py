@@ -2405,6 +2405,7 @@ class InstallHACmd(Command):
                     # make sure vip will be on this host, so start haproxy firstly
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
+                    service_status("rabbitmq-server","state=started", self.host1_post_info)
                     #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=started", self.host2_post_info)
                     service_status("haproxy","state=started", self.host2_post_info)
