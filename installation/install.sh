@@ -68,6 +68,7 @@ MYSQL_USER_PASSWORD='zstack.password'
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
 UPGRADE_MONITOR=''
+ONLY_UPGRADE_CTL=''
 ZSTACK_START_TIMEOUT=300
 ZSTACK_PKG_MIRROR=''
 PKG_MIRROR_163='163'
@@ -657,6 +658,10 @@ upgrade_zstack(){
         fi
     fi
 
+    show_spinner uz_upgrade_zstack_ctl
+    if [ 'y' = $ONLY_UPGRADE_CTL ]; then
+        return
+    fi
     #rerun install system libs, upgrade might need new libs
     is_install_system_libs
     show_spinner uz_stop_zstack
@@ -1055,8 +1060,8 @@ uz_stop_zstack(){
     pass
 }
 
-uz_upgrade_zstack(){
-    echo_subtitle "Upgrade ${PRODUCT_NAME}"
+uz_upgrade_zstack_ctl(){
+    echo_subtitle "Upgrade zstack-ctl"
     cd $upgrade_folder
     unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
@@ -1073,6 +1078,12 @@ uz_upgrade_zstack(){
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade zstack-ctl"
     fi
+    pass
+}
+
+uz_upgrade_zstack(){
+    echo_subtitle "Upgrade ${PRODUCT_NAME}"
+    cd $upgrade_folder
 
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -1933,6 +1944,8 @@ Usage: $0 [options]
 Options:
   -a    equal to -nH
 
+  -c    Only upgrade zstack-ctl tool.
+
   -d    print detailed installation log to screen
         By default the installation log will be saved to $ZSTACK_INSTALL_LOG
 
@@ -2059,10 +2072,11 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:adDFhiklmMNoquz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:acdDFhiklmMNoquz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
+        c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
         d ) DEBUG='y';;
         D ) NEED_DROP_DB='y';;
         H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
@@ -2262,7 +2276,7 @@ if [ $UPGRADE = 'y' ]; then
     #only upgrade zstack
     upgrade_zstack
 
-    cd /; rm -rf $upgrade_zstack
+    cd /; rm -rf $upgrade_folder
     cleanup_function
 
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
