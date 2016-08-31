@@ -110,7 +110,7 @@ class ConsoleProxyAgent(object):
 
     def _make_token_file_name(self, cmd):
         target_ip_str = cmd.targetHostname.replace('.', '_')
-        return '%s-%s' % (target_ip_str, cmd.token)
+        return '%s' % cmd.token
 
 
     def _get_pid_on_port(self, port):
