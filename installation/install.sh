@@ -2163,23 +2163,25 @@ fi
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
 #If user didn't assign mysql root password, then check original zstack mysql password status
-if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
-    which mysql >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        #check if mysql server is running
-        ps -aef|grep mysqld |grep -v grep >/dev/null 2>&1
+if [ 'y' != $UPGRADE ]; then
+    if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
+        which mysql >/dev/null 2>&1
         if [ $? -eq 0 ]; then
-            mysql -u root --password='' -e 'exit' >/dev/null 2>&1
-            if [ $? -ne 0 ]; then
-                mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
+            #check if mysql server is running
+            ps -aef|grep mysqld |grep -v grep >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                mysql -u root --password='' -e 'exit' >/dev/null 2>&1
                 if [ $? -ne 0 ]; then
-                    if [ -z $QUIET_INSTALLATION ]; then
-                        fail2 "\nCannot not login mysql!
+                    mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
+                    if [ $? -ne 0 ]; then
+                        if [ -z $QUIET_INSTALLATION ]; then
+                            fail2 "\nCannot not login mysql!
  If you have mysql root password, please add option '-P MYSQL_ROOT_PASSWORD'.
  If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again.\n"
+                        fi
+                    else
+                        MYSQL_ROOT_PASSWORD=$MYSQL_NEW_ROOT_PASSWORD
                     fi
-                else
-                    MYSQL_ROOT_PASSWORD=$MYSQL_NEW_ROOT_PASSWORD
                 fi
             fi
         fi
@@ -2278,6 +2280,14 @@ if [ $UPGRADE = 'y' ]; then
 
     cd /; rm -rf $upgrade_folder
     cleanup_function
+
+    if [ 'y' = $ONLY_UPGRADE_CTL ]; then
+        echo_star_line
+        echo -e "$(tput setaf 2)zstack-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
+        echo ""
+        echo_star_line
+        exit 0
+    fi
 
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
     echo ""
