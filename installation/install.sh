@@ -659,7 +659,7 @@ upgrade_zstack(){
     fi
 
     show_spinner uz_upgrade_zstack_ctl
-    if [ 'y' = $ONLY_UPGRADE_CTL ]; then
+    if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
     fi
     #rerun install system libs, upgrade might need new libs
@@ -2281,7 +2281,7 @@ if [ $UPGRADE = 'y' ]; then
     cd /; rm -rf $upgrade_folder
     cleanup_function
 
-    if [ 'y' = $ONLY_UPGRADE_CTL ]; then
+    if [ ! -z $ONLY_UPGRADE_CTL ]; then
         echo_star_line
         echo -e "$(tput setaf 2)zstack-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
         echo ""
