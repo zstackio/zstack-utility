@@ -1024,7 +1024,7 @@ def get_remote_host_cpu(host_post_info):
     post_url = host_post_info.post_url
     host_post_info.post_label = "ansible.get.host.info"
     host_post_info.post_label_param = host
-    handle_ansible_info("INFO: starting get remote host %s info ... " % host, host_post_info, "INFO")
+    handle_ansible_info("INFO: starting get remote host %s cpu info ... " % host, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'setup'
