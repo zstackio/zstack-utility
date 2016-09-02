@@ -207,23 +207,22 @@ else:
 
 #add kvm module and tun module
 modprobe_arg = ModProbeArg()
+modprobe_arg.name = 'kvm'
+modprobe_arg.state = 'present'
+modprobe(modprobe_arg, host_post_info)
+
+modprobe_arg = ModProbeArg()
 if 'intel' in get_remote_host_cpu(host_post_info).lower():
     modprobe_arg.name = 'kvm_intel'
 elif 'amd' in get_remote_host_cpu(host_post_info).lower():
     modprobe_arg.name = 'kvm_amd'
 else:
-    error("Unknown CPU type detected when modprobe kvm")
-
+    handle_ansible_info("Unknown CPU type detected when modprobe kvm", host_post_info, "WARNING")
 modprobe_arg.state = 'present'
 modprobe(modprobe_arg, host_post_info)
 
 modprobe_arg = ModProbeArg()
 modprobe_arg.name = 'tun'
-modprobe_arg.state = 'present'
-modprobe(modprobe_arg, host_post_info)
-
-modprobe_arg = ModProbeArg()
-modprobe_arg.name = 'kvm'
 modprobe_arg.state = 'present'
 modprobe(modprobe_arg, host_post_info)
 
