@@ -101,7 +101,7 @@ if distro == "RedHat" or distro == "CentOS":
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
-            command = ("pkg_list=`rpm -q iptables-services | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
+            command = ("pkg_list=`rpm -q iptables-services collectd-virt | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
                        "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
                        "--nogpgcheck install -y $pkg; done;") % zstack_repo
             host_post_info.post_label = "ansible.shell.install.pkg"
@@ -111,11 +111,11 @@ if distro == "RedHat" or distro == "CentOS":
         # name: install kvm related packages on RedHat based OS from online
         for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'dnsmasq', 'iproute', 'sshpass',
-                    'rsync', 'nmap']:
+                    'rsync', 'nmap' ]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from online
-            for pkg in ['qemu-kvm-ev-2.3.0', 'qemu-img-ev-2.3.0', 'iptables-services']:
+            for pkg in ['qemu-kvm-ev-2.3.0', 'qemu-img-ev-2.3.0', 'iptables-services', 'collectd-virt']:
                 yum_install_package(pkg, host_post_info)
         else:
             for pkg in ['qemu-kvm', 'qemu-img']:
@@ -192,7 +192,7 @@ if distro == "RedHat" or distro == "CentOS":
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install kvm related packages on Debian based OS
     install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin','vlan',
-                        'nfs-common', 'open-iscsi', 'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap']
+                        'nfs-common', 'open-iscsi', 'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
     apt_install_packages(install_pkg_list, host_post_info)
     # name: copy default libvirtd conf in Debian
     copy_arg = CopyArg()
