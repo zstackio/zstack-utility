@@ -2890,6 +2890,18 @@ class UpdateZoneAction(inventory.APIUpdateZoneMsg):
         self.out = evt
         return self.out
 
+class GetZoneAction(inventory.APIGetZoneMsg):
+    def __init__(self):
+        super(GetZoneAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetZoneAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteZoneAction(inventory.APIDeleteZoneMsg):
     def __init__(self):
         super(DeleteZoneAction, self).__init__()
