@@ -838,7 +838,12 @@ class Vm(object):
         return self.state == state
 
     def get_cpu_num(self):
-        return int(self.domain_xmlobject.vcpu.get('current'))
+        cpuNum = self.domain_xmlobject.vcpu.get('current')
+        if cpuNum:
+            return int(cpuNum)
+        else:
+            logger.warn("Didn't get vm cpu number")
+            return 0
 
     def get_cpu_speed(self):
         cputune = self.domain_xmlobject.get_child_node('cputune')
