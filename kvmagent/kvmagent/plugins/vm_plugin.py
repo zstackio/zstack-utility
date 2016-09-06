@@ -1785,7 +1785,7 @@ class Vm(object):
 
         def make_cpu():
             root = elements['root']
-            e(root, 'vcpu', '128', {'placement':'static', 'current':str(cmd.cpuNum)})
+            e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
             tune = e(root, 'cputune')
             e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
             #enable nested virtualization
@@ -1798,15 +1798,16 @@ class Vm(object):
             else:
                 cpu = e(root, 'cpu')
 
-            #e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
-                e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(32), 'threads': '1'})
-                numa = e(cpu, 'numa')
-                e(numa, 'cell', attrib={'id': '0', 'cpus':'0-127', 'memory': str(1048576), 'unit':'KiB'})
+            e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                #e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(32), 'threads': '1'})
+               # numa = e(cpu, 'numa')
+                #e(numa, 'cell', attrib={'id': '0', 'cpus':'0-127', 'memory': str(1048576), 'unit':'KiB'})
 
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
-            e(root, 'maxMemory',str(104857600),{'slots':str(32), 'unit':'KiB'})
+            #e(root, 'maxMemory',str(104857600),{'slots':str(32), 'unit':'KiB'})
+            e(root,'memory',str(mem),{'unit':'k'})
             e(root, 'currentMemory', str(mem), {'unit':'k'})
 
         def make_os():
