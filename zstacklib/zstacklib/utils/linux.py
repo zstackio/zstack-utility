@@ -322,7 +322,12 @@ def mkdir(path, mode):
     elif os.path.exists(path):
         raise LinuxError('%s exists but it is not a directory' % path)
 
-    os.makedirs(path, mode)
+    #This fix for race condition when two processes make the dir at the same time
+    try:
+        os.makedirs(path, mode)
+    except OSError:
+        if not os.path.isdir(path):
+            raise LinuxError('%s exists but it is not a directory' % path)
 
 def write_to_temp_file(content):
     (tmp_fd, tmp_path) = tempfile.mkstemp()
