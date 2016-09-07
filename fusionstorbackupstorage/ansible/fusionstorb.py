@@ -3,6 +3,10 @@
 import argparse
 from zstacklib import *
 
+# create log
+logger_dir = "/var/log/zstack/"
+create_log(logger_dir)
+banner("Starting to deploy fusion store backup storage agent")
 start_time = datetime.now()
 # set default value
 file_root = "files/fusionstorb"
@@ -31,9 +35,6 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/fusionstorb/" % zstack_root
 fusionstorb_root = "%s/fusionstorb/package" % zstack_root
-# create log
-logger_dir = "/var/log/zstack/"
-create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host

@@ -3,6 +3,10 @@
 import argparse
 from zstacklib import *
 
+# create log
+logger_dir = "/var/log/zstack/"
+create_log(logger_dir)
+banner("Starting to deploy console proxy agent")
 start_time = datetime.now()
 # set default value
 file_root = "files/consoleproxy"
@@ -32,9 +36,6 @@ locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
 consoleproxy_root = "%s/console/package" % zstack_root
 host_post_info = HostPostInfo()
-# create log
-logger_dir = "/var/log/zstack/"
-create_log(logger_dir)
 host_post_info.host = host
 host_post_info.host_inventory = args.i
 

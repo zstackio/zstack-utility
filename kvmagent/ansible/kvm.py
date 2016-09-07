@@ -3,6 +3,11 @@
 import argparse
 from zstacklib import *
 
+
+# create log
+logger_dir = "/var/log/zstack/"
+create_log(logger_dir)
+banner("Starting to deploy kvm agent")
 start_time = datetime.now()
 # set default value
 file_root = "files/kvm"
@@ -19,6 +24,7 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+enabled_nested_flag = False
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
@@ -40,9 +46,6 @@ dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
 dnsmasq_local_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % kvm_root
 collectd_pkg = "%s/collectd_exporter" % file_root
 collectd_local_pkg = "%s/collectd_exporter" % workplace
-# create log
-logger_dir = "/var/log/zstack/"
-create_log(logger_dir)
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -213,6 +216,15 @@ elif distro == "Debian" or distro == "Ubuntu":
 else:
     error("unsupported OS!")
 
+# enable nested kvm
+command = "cat /sys/module/kvm_intel/parameters/nested"
+(status, stdout) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
+if "Y" in stdout:
+    enabled_nested_flag = True
+else:
+    command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_intel nested=1' >  /etc/modprobe.d/kvm-nested.conf"
+    run_remote_command(command, host_post_info)
+
 #add kvm module and tun module
 modprobe_arg = ModProbeArg()
 modprobe_arg.name = 'kvm'
@@ -221,8 +233,15 @@ modprobe(modprobe_arg, host_post_info)
 
 modprobe_arg = ModProbeArg()
 if 'intel' in get_remote_host_cpu(host_post_info).lower():
+    # reload kvm_intel for enable nested kvm
+    if enabled_nested_flag is False:
+        command = "modprobe -r kvm_intel"
+        run_remote_command(command, host_post_info, return_status=True)
     modprobe_arg.name = 'kvm_intel'
 elif 'amd' in get_remote_host_cpu(host_post_info).lower():
+    if enabled_nested_flag is False:
+        command = "modprobe -r kvm_amd"
+        run_remote_command(command, host_post_info, return_status=True)
     modprobe_arg.name = 'kvm_amd'
 else:
     handle_ansible_info("Unknown CPU type detected when modprobe kvm", host_post_info, "WARNING")

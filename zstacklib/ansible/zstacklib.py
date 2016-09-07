@@ -168,6 +168,11 @@ class ZstackRunner(object):
         result = runner.run()
         return  result
 
+def banner(text, ch='=', length=78):
+    spaced_text = ' %s ' % text
+    banner = spaced_text.center(length, ch)
+    logger.info(banner)
+
 def error(msg):
     logger.error(msg)
     sys.stderr.write('ERROR: %s\n' % msg)
