@@ -168,10 +168,16 @@ class ZstackRunner(object):
         result = runner.run()
         return  result
 
-def banner(text, ch='=', length=78):
+def banner(text, ch='*', length=78):
+    star_text = "**"
     spaced_text = ' %s ' % text
+    for i in range(1, len(text)):
+        star_text = star_text + "*"
     banner = spaced_text.center(length, ch)
+    banner_star = star_text.center(length,ch)
+    logger.info(banner_star)
     logger.info(banner)
+    logger.info(banner_star)
 
 def error(msg):
     logger.error(msg)
