@@ -319,15 +319,21 @@ def md5sum(file_path):
 def mkdir(path, mode):
     if os.path.isdir(path):
         return
-    elif os.path.exists(path):
-        raise LinuxError('%s exists but it is not a directory' % path)
+
+    if os.path.isfile(path):
+        try:
+           os.system("mv -f %s %s-bak" % (path, path))
+        except OSError:
+           logger.warn('mv -f %s %s-bak failed ' % (path,path))
 
     #This fix for race condition when two processes make the dir at the same time
     try:
-        os.makedirs(path, mode)
+        if mode is None:
+            os.system("mkdir -p %s" % path)
+        else:
+            os.system("mkdir -p %s -m %s" % (path, mode))
     except OSError:
-        if not os.path.isdir(path):
-            raise LinuxError('%s exists but it is not a directory' % path)
+        logger.warn('mkdir %s failed ' % path)
 
 def write_to_temp_file(content):
     (tmp_fd, tmp_path) = tempfile.mkstemp()
