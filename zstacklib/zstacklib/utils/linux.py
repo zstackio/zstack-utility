@@ -323,17 +323,15 @@ def mkdir(path, mode):
     if os.path.isfile(path):
         try:
            os.system("mv -f %s %s-bak" % (path, path))
-        except OSError:
-           logger.warn('mv -f %s %s-bak failed ' % (path,path))
+        except OSError as e:
+           logger.warn('mv -f %s %s-bak failed: %s' % (path, path, e))
 
     #This fix for race condition when two processes make the dir at the same time
     try:
-        if mode is None:
-            os.system("mkdir -p %s" % path)
-        else:
-            os.system("mkdir -p %s -m %s" % (path, mode))
-    except OSError:
-        logger.warn('mkdir %s failed ' % path)
+        os.makedirs(path, mode)
+    except OSError as e:
+        logger.warn("mkdir for path %s failed: %s " % (path, e))
+
 
 def write_to_temp_file(content):
     (tmp_fd, tmp_path) = tempfile.mkstemp()
