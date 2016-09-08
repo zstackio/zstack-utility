@@ -4330,9 +4330,9 @@ class AddLdapServerAction(inventory.APIAddLdapServerMsg):
         self.out = evt
         return self.out
 
-class LoginByLdapAction(inventory.APILoginByLdapMsg):
+class LogInByLdapAction(inventory.APILogInByLdapMsg):
     def __init__(self):
-        super(LoginByLdapAction, self).__init__()
+        super(LogInByLdapAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
@@ -4372,6 +4372,30 @@ class UnbindLdapAccountAction(inventory.APIUnbindLdapAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UnbindLdapAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class TestAddLdapServerConnectionAction(inventory.APITestAddLdapServerConnectionMsg):
+    def __init__(self):
+        super(TestAddLdapServerConnectionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[TestAddLdapServerConnectionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateLdapServerAction(inventory.APIUpdateLdapServerMsg):
+    def __init__(self):
+        super(UpdateLdapServerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateLdapServerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
