@@ -2221,7 +2221,8 @@ class InstallHACmd(Command):
         # check network configuration
         interface_list = os.listdir('/sys/class/net/')
         if InstallHACmd.bridge not in interface_list and args.recovery_from_this_host is False:
-            error("Make sure you have already run the 'zs-network-setting' to setup the network environment")
+            error("Make sure you have already run the 'zs-network-setting' to setup the network environment, or set the"
+                  " bridge name with --bridge, default bridge name is br_eth0 ")
         if InstallHACmd.bridge.split('br_')[1] not in interface_list:
             error("bridge %s should add the interface %s, make sure you have setup the interface or specify the right"
                   " bridge name" % (InstallHACmd.bridge, InstallHACmd.bridge.split('br_')[1]))
