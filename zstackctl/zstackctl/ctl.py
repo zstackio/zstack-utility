@@ -210,7 +210,7 @@ def expand_path(path):
         return os.path.abspath(path)
 
 def check_host_info_format(host_info):
-    '''check ha host info format'''
+    '''check install ha and install multi mn node info format'''
     if '@' not in host_info:
         error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
     else:
@@ -314,6 +314,9 @@ exit $$ret
 
 def ansible(yaml, host='localhost', debug=False, ssh_key=None):
     Ansible(yaml, host, debug, ssh_key or 'none')()
+
+def reset_dict_value(dict_name, value):
+    return dict.fromkeys(dict_name, value)
 
 def check_zstack_user():
     try:
@@ -2003,7 +2006,7 @@ class UpgradeHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to upgrade repo"
         spinner_info.name = "upgrade_repo"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['upgrade_repo'] = True
         ZstackSpinner(spinner_info)
         rand_int = random.randint(65535, 100000)
@@ -2014,7 +2017,7 @@ class UpgradeHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Stopping mevoco"
         spinner_info.name = "stop_mevoco"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['stop_mevoco'] = True
         ZstackSpinner(spinner_info)
         for host_post_info in UpgradeHACmd.host_post_info_list:
@@ -2024,7 +2027,7 @@ class UpgradeHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to backup database"
         spinner_info.name = "backup_db"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['backup_db'] = True
         ZstackSpinner(spinner_info)
         (status, output) =  commands.getstatusoutput("zstack-ctl dump_mysql >> /dev/null 2>&1")
@@ -2032,7 +2035,7 @@ class UpgradeHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to upgrade mevoco"
         spinner_info.name = "upgrade_mevoco"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['upgrade_mevoco'] = True
         ZstackSpinner(spinner_info)
         for host_post_info in UpgradeHACmd.host_post_info_list:
@@ -2041,7 +2044,7 @@ class UpgradeHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to upgrade database"
         spinner_info.name = "upgrade_db"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['upgrade_db'] = True
         ZstackSpinner(spinner_info)
         (status, output) =  commands.getstatusoutput("zstack-ctl upgrade_db")
@@ -2058,7 +2061,7 @@ class UpgradeHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting mevoco"
         spinner_info.name = "start_mevoco"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['start_mevoco'] = True
         ZstackSpinner(spinner_info)
         for host_post_info in UpgradeHACmd.host_post_info_list:
@@ -2069,6 +2072,72 @@ class UpgradeHACmd(Command):
 
         info("Upgrade HA successfully!")
 
+
+class AddManagementNodeCmd(Command):
+    SpinnerInfo.spinner_status = {'check_init':False,'add_key':False,'deploy':False}
+    def __init__(self):
+        super(AddManagementNodeCmd, self).__init__()
+        self.name = "add_multi_management"
+        self.description =  "add multi management node."
+        ctl.register_command(self)
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host-list','--hosts',nargs='+',
+                            help="All hosts connect info follow below format: 'root:passwd1@host1_ip root:passwd2@host2_ip ...' ",
+                            required=True)
+        parser.add_argument('--ssh-key',
+                            help="the path of private key for SSH login $host; if provided, Ansible will use the "
+                                 "specified key as private key to SSH login the $host",
+                            default=None)
+
+    def check_host_connection(self, host_info):
+        command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+                 'StrictHostKeyChecking=no  root@%s echo ""' % (host_info.remote_pass, host_info.host)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("The host: '%s' password '%s' incorrect! please check it!" % (host_info.host, host_info.remote_pass))
+
+    def add_public_key_to_host(self, key_path, host_info):
+        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+                 ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("Copy public key '%s' to host: '%s' failed:\n %s" % (key_path, host_info.host,  output))
+
+    def deploy_mn_on_host(self, host_info, key):
+        command = 'zstack-ctl install_management_node --host=%s --ssh-key="%s"' % (host_info.host, key)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("deploy mn on host %s failed:\n %s" % (host_info.host, output))
+
+    def run(self, args):
+        if args.ssh_key is None:
+            args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
+            private_key = args.ssh_key.split('.')[0]
+        for host in args.host_list:
+            host_info = HostPostInfo()
+            spinner_info = SpinnerInfo()
+            spinner_info.output = "Checking system and init environment"
+            spinner_info.name = 'check_init'
+            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+            SpinnerInfo.spinner_status['check_init'] = True
+            ZstackSpinner(spinner_info)
+            (host_info.remote_user, host_info.remote_pass, host_info.host, host_info.remote_port) = check_host_info_format(host)
+            self.check_host_connection(host_info)
+            spinner_info = SpinnerInfo()
+            spinner_info.output = "Add public key to host %s" % host_info.host
+            spinner_info.name = 'add_key'
+            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+            SpinnerInfo.spinner_status['add_key'] = True
+            ZstackSpinner(spinner_info)
+            self.add_public_key_to_host(args.ssh_key, host_info)
+            spinner_info = SpinnerInfo()
+            spinner_info.output = "Deploy management node to host %s" % host_info.host
+            spinner_info.name = 'deploy'
+            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+            SpinnerInfo.spinner_status['deploy'] = True
+            ZstackSpinner(spinner_info)
+            self.deploy_mn_on_host(host_info, private_key)
+        info(colored("\nAll management nodes add successfully",'yellow'))
 
 
 class InstallHACmd(Command):
@@ -2127,8 +2196,6 @@ class InstallHACmd(Command):
         parser.add_argument('--perfect-mode', action='store_true', default=False,
                             help="This mode will re-connect mysql faster")
 
-    def reset_dict_value(self, dict_name, value):
-        return dict.fromkeys(dict_name, value)
 
     def get_formatted_netmask(self, device_name):
         '''This function will return formatted netmask. eg. 172.20.12.16/24 will return 24'''
@@ -2376,7 +2443,7 @@ class InstallHACmd(Command):
             spinner_info = SpinnerInfo()
             spinner_info.output = "Starting to recovery mysql from this host"
             spinner_info.name = "recovery_cluster"
-            SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
             SpinnerInfo.spinner_status['recovery_cluster'] = True
             ZstackSpinner(spinner_info)
             # kill mysql process to make sure mysql bootstrap can work
@@ -2461,7 +2528,7 @@ class InstallHACmd(Command):
                 # start mevoco
                 spinner_info.output = "Starting Mevoco"
                 spinner_info.name = "mevoco"
-                SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+                SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
                 SpinnerInfo.spinner_status['mevoco'] = True
                 ZstackSpinner(spinner_info)
                 command = "zstack-ctl start"
@@ -2580,7 +2647,7 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Mysql HA"
         spinner_info.name = 'mysql'
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['mysql'] = True
         ZstackSpinner(spinner_info)
         MysqlHA()()
@@ -2589,7 +2656,7 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output ="Starting to deploy Rabbitmq HA"
         spinner_info.name = 'rabbitmq'
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['rabbitmq'] = True
         ZstackSpinner(spinner_info)
         RabbitmqHA()()
@@ -2598,7 +2665,7 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Haproxy and Keepalived"
         spinner_info.name = 'haproxy_keepalived'
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['haproxy_keepalived'] = True
         ZstackSpinner(spinner_info)
         HaproxyKeepalived()()
@@ -2632,7 +2699,7 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Cassandra HA"
         spinner_info.name = "Cassandra"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['Cassandra'] = True
         ZstackSpinner(spinner_info)
         update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
@@ -2766,7 +2833,7 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Kairosdb HA"
         spinner_info.name = "Kairosdb"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['Kairosdb'] = True
         ZstackSpinner(spinner_info)
         command = 'zstack-ctl kairosdb --start --wait-timeout 120'
@@ -2799,7 +2866,7 @@ class InstallHACmd(Command):
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting Mevoco"
         spinner_info.name = "mevoco"
-        SpinnerInfo.spinner_status = self.reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['mevoco'] = True
         ZstackSpinner(spinner_info)
         # Add zstack-ctl start to rc.local for auto recovery when system reboot
@@ -6393,6 +6460,7 @@ class StartUiCmd(Command):
             fd.write(args.port)
 
 def main():
+    AddManagementNodeCmd()
     BootstrapCmd()
     CassandraCmd()
     ChangeIpCmd()
@@ -6420,6 +6488,7 @@ def main():
     RestoreConfigCmd()
     RestartNodeCmd()
     RestoreCassandraCmd()
+    RestoreMysqlCmd()
     ShowStatusCmd()
     StartCmd()
     StopCmd()
@@ -6434,7 +6503,6 @@ def main():
     UpgradeManagementNodeCmd()
     UpgradeDbCmd()
     UpgradeCtlCmd()
-    RestoreMysqlCmd()
     UpgradeHACmd()
 
     try:
