@@ -2074,7 +2074,7 @@ class UpgradeHACmd(Command):
 
 
 class AddManagementNodeCmd(Command):
-    SpinnerInfo.spinner_status = {'check_init':False,'add_key':False,'deploy':False}
+    SpinnerInfo.spinner_status = {'check_init':False,'add_key':False,'deploy':False,'config':False,'start':False}
     def __init__(self):
         super(AddManagementNodeCmd, self).__init__()
         self.name = "add_multi_management"
@@ -2109,21 +2109,43 @@ class AddManagementNodeCmd(Command):
         if status != 0:
             error("deploy mn on host %s failed:\n %s" % (host_info.host, output))
 
+    def config_mn_on_host(self, key, host_info):
+        command = "scp -i %s %s root@%s:%s" % (key, ctl.properties_file_path, host_info.host, ctl.properties_file_path)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("copy config to host %s failed:\n %s" % (host_info.host, output))
+        command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl configure " \
+                  "management.server.ip=%s && zstack-ctl save_config" % (key, host_info.host, host_info.host)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("config management server %s failed:\n %s" % (host_info.host, output))
+
+    def start_mn_on_host(self, host_info, key):
+        command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl " \
+                  "start_node" % (key, host_info.host)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("start node on host %s failed:\n %s" % (host_info.host, output))
+
+
     def run(self, args):
+        host_info_list = []
         if args.ssh_key is None:
             args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
-            private_key = args.ssh_key.split('.')[0]
+        private_key = args.ssh_key.split('.')[0]
+
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Checking system and init environment"
+        spinner_info.name = 'check_init'
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+        SpinnerInfo.spinner_status['check_init'] = True
+        ZstackSpinner(spinner_info)
         for host in args.host_list:
             host_info = HostPostInfo()
-            spinner_info = SpinnerInfo()
-            spinner_info.output = "Checking system and init environment"
-            spinner_info.name = 'check_init'
-            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-            SpinnerInfo.spinner_status['check_init'] = True
-            ZstackSpinner(spinner_info)
             (host_info.remote_user, host_info.remote_pass, host_info.host, host_info.remote_port) = check_host_info_format(host)
             self.check_host_connection(host_info)
-        for host in args.host_list:
+            host_info_list.append(host_info)
+        for host_info in host_info_list:
             spinner_info = SpinnerInfo()
             spinner_info.output = "Add public key to host %s" % host_info.host
             spinner_info.name = 'add_key'
@@ -2131,6 +2153,7 @@ class AddManagementNodeCmd(Command):
             SpinnerInfo.spinner_status['add_key'] = True
             ZstackSpinner(spinner_info)
             self.add_public_key_to_host(args.ssh_key, host_info)
+
             spinner_info = SpinnerInfo()
             spinner_info.output = "Deploy management node to host %s" % host_info.host
             spinner_info.name = 'deploy'
@@ -2138,6 +2161,23 @@ class AddManagementNodeCmd(Command):
             SpinnerInfo.spinner_status['deploy'] = True
             ZstackSpinner(spinner_info)
             self.deploy_mn_on_host(host_info, private_key)
+
+            spinner_info = SpinnerInfo()
+            spinner_info.output = "Config management node on host %s" % host_info.host
+            spinner_info.name = 'config'
+            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+            SpinnerInfo.spinner_status['config'] = True
+            ZstackSpinner(spinner_info)
+            self.config_mn_on_host(private_key, host_info)
+
+            spinner_info = SpinnerInfo()
+            spinner_info.output = "Start management node on host %s" % host_info.host
+            spinner_info.name = 'start'
+            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+            SpinnerInfo.spinner_status['start'] = True
+            ZstackSpinner(spinner_info)
+            self.start_mn_on_host(host_info,private_key)
+
         info(colored("\nAll management nodes add successfully",'yellow'))
 
 
