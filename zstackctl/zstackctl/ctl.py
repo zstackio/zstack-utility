@@ -2123,6 +2123,7 @@ class AddManagementNodeCmd(Command):
             ZstackSpinner(spinner_info)
             (host_info.remote_user, host_info.remote_pass, host_info.host, host_info.remote_port) = check_host_info_format(host)
             self.check_host_connection(host_info)
+        for host in args.host_list:
             spinner_info = SpinnerInfo()
             spinner_info.output = "Add public key to host %s" % host_info.host
             spinner_info.name = 'add_key'
