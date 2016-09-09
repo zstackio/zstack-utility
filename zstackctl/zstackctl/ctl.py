@@ -2074,7 +2074,7 @@ class UpgradeHACmd(Command):
 
 
 class AddManagementNodeCmd(Command):
-    SpinnerInfo.spinner_status = {'check_init':False,'add_key':False,'deploy':False,'config':False,'start':False}
+    SpinnerInfo.spinner_status = {'check_init':False,'add_key':False,'deploy':False,'config':False,'start':False,'install_ui':False}
     def __init__(self):
         super(AddManagementNodeCmd, self).__init__()
         self.name = "add_multi_management"
@@ -2109,6 +2109,12 @@ class AddManagementNodeCmd(Command):
         if status != 0:
             error("deploy mn on host %s failed:\n %s" % (host_info.host, output))
 
+    def install_ui_on_host(self, key, host_info):
+        command = 'zstack-ctl install_ui --host=%s --ssh-key=%s' % (host_info.host, key)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("deploy ui on host %s failed:\n %s" % (host_info.host, output))
+
     def config_mn_on_host(self, key, host_info):
         command = "scp -i %s %s root@%s:%s" % (key, ctl.properties_file_path, host_info.host, ctl.properties_file_path)
         (status, output) = commands.getstatusoutput(command)
@@ -2122,7 +2128,7 @@ class AddManagementNodeCmd(Command):
 
     def start_mn_on_host(self, host_info, key):
         command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl " \
-                  "start_node" % (key, host_info.host)
+                  "start_node && zstack-ctl start_ui" % (key, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
             error("start node on host %s failed:\n %s" % (host_info.host, output))
@@ -2169,6 +2175,14 @@ class AddManagementNodeCmd(Command):
             SpinnerInfo.spinner_status['config'] = True
             ZstackSpinner(spinner_info)
             self.config_mn_on_host(private_key, host_info)
+
+            spinner_info = SpinnerInfo()
+            spinner_info.output = "Install UI on host %s" % host_info.host
+            spinner_info.name = 'install_ui'
+            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+            SpinnerInfo.spinner_status['install_ui'] = True
+            ZstackSpinner(spinner_info)
+            self.install_ui_on_host(private_key, host_info)
 
             spinner_info = SpinnerInfo()
             spinner_info.output = "Start management node on host %s" % host_info.host
