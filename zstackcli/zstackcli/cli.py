@@ -464,7 +464,7 @@ Parse command parameters error:
             (name, event) = self.api.async_call_wait_for_complete(msg, fail_soon=True)
             end_time = time.time()
 
-            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME]:
+            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME]:
                 self.session_uuid = event.inventory.uuid
                 open(SESSION_FILE, 'w').write(self.session_uuid)
 
