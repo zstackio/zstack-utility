@@ -838,7 +838,8 @@ class Vm(object):
         return self.state == state
 
     def get_cpu_num(self):
-        cpuNum = self.domain_xmlobject.vcpu.get('current')
+        cpuNum = self.domain_xmlobject.vcpu.current_
+        logger.debug("luchukun***** currentcpuNum : %s" % (cpuNum))
         if cpuNum:
             return int(cpuNum)
         else:
@@ -853,7 +854,7 @@ class Vm(object):
             return 512
 
     def get_memory(self):
-        return long(self.domain_xmlobject.memory.text_) * 1024
+        return long(self.domain_xmlobject.currentMemory.text_) * 1024
 
     def get_name(self):
         return self.domain_xmlobject.description.text_
@@ -1630,7 +1631,7 @@ class Vm(object):
             err = str(ex)
             logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, err))
             raise kvmagent.KvmError(err)
-        return self.get_memory()
+        return
 
     def hotplug_cpu(self, cpu_num):
 
@@ -1641,7 +1642,7 @@ class Vm(object):
             err = str(ex)
             logger.warn('unable to set cpus in vm[uuid:%s], %s' %(self.uuid, err))
             raise kvmagent.KvmError(err)
-        return self.get_cpu_num()
+        return
 
     @linux.retry(times=3, sleep_time=5)
     def _attach_nic(self, cmd):
@@ -1785,7 +1786,8 @@ class Vm(object):
 
         def make_cpu():
             root = elements['root']
-            e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
+            e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+            #e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
             tune = e(root, 'cputune')
             e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
             #enable nested virtualization
@@ -1798,16 +1800,17 @@ class Vm(object):
             else:
                 cpu = e(root, 'cpu')
 
-            e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
-                #e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(32), 'threads': '1'})
-               # numa = e(cpu, 'numa')
-                #e(numa, 'cell', attrib={'id': '0', 'cpus':'0-127', 'memory': str(1048576), 'unit':'KiB'})
+            #e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+            mem = cmd.memory / 1024
+            e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(32), 'threads': '1'})
+            numa = e(cpu, 'numa')
+            e(numa, 'cell', attrib={'id': '0', 'cpus':'0-127', 'memory': str(mem), 'unit':'KiB'})
 
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
-            #e(root, 'maxMemory',str(104857600),{'slots':str(32), 'unit':'KiB'})
-            e(root,'memory',str(mem),{'unit':'k'})
+            e(root, 'maxMemory',str(104857600),{'slots':str(16), 'unit':'KiB'})
+            #e(root,'memory',str(mem),{'unit':'k'})
             e(root, 'currentMemory', str(mem), {'unit':'k'})
 
         def make_os():
@@ -2311,9 +2314,12 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(cmd.vmUuid)
             cpu_num = cmd.cpuNum
             memory_size = cmd.memorySize
-            rsp.memorySize = vm.hotplug_mem(memory_size)
-            rsp.cpuNum = vm.hotplug_cpu(cpu_num)
-            logger.debug('successfully add cpu and memory on vm[uuid:%s]' % (cmd.uuid))
+            vm.hotplug_mem(memory_size)
+            vm.hotplug_cpu(cpu_num)
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            rsp.cpuNum = vm.get_cpu_num()
+            rsp.memorySize = vm.get_memory()
+            logger.debug('successfully add cpu and memory on vm[uuid:%s]' % (cmd.vmUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
