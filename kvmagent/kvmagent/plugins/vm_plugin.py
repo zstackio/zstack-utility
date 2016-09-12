@@ -838,8 +838,7 @@ class Vm(object):
         return self.state == state
 
     def get_cpu_num(self):
-        cpuNum = self.domain_xmlobject.vcpu.current_
-        logger.debug("luchukun***** currentcpuNum : %s" % (cpuNum))
+        cpuNum = self.domain_xmlobject.vcpu.current__
         if cpuNum:
             return int(cpuNum)
         else:
