@@ -233,6 +233,14 @@ def check_host_info_format(host_info):
             port = host_info.split('@')[1].split(':')[1]
         return (user, password, ip, port)
 
+def check_host_password(password, ip):
+    command ='timeout 30 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+             'StrictHostKeyChecking=no  root@%s echo ""' % (password, ip)
+    (status, output) = commands.getstatusoutput(command)
+    if status != 0:
+        error("Test connect to host: '%s' with password '%s' failed!" % (ip, password))
+
+
 
 class SpinnerInfo(object):
     spinner_status = []
@@ -2089,15 +2097,8 @@ class AddManagementNodeCmd(Command):
                                  "specified key as private key to SSH login the $host",
                             default=None)
 
-    def check_host_connection(self, host_info):
-        command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-                 'StrictHostKeyChecking=no  root@%s echo ""' % (host_info.remote_pass, host_info.host)
-        (status, output) = commands.getstatusoutput(command)
-        if status != 0:
-            error("The host: '%s' password '%s' incorrect! please check it!" % (host_info.host, host_info.remote_pass))
-
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+        command ='timeout 30 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
                  ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
@@ -2149,7 +2150,7 @@ class AddManagementNodeCmd(Command):
         for host in args.host_list:
             host_info = HostPostInfo()
             (host_info.remote_user, host_info.remote_pass, host_info.host, host_info.remote_port) = check_host_info_format(host)
-            self.check_host_connection(host_info)
+            check_host_password(host_info.remote_pass, host_info.host)
             host_info_list.append(host_info)
         for host_info in host_info_list:
             spinner_info = SpinnerInfo()
@@ -2317,22 +2318,10 @@ class InstallHACmd(Command):
         elif args.host3_info is not False:
             if not args.host1_password == args.host2_password == args.host3_password:
                 error("All hosts root password must be the same. Please check your host password!")
-        command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-                      'StrictHostKeyChecking=no  root@%s echo ""' % (args.host1_password, args.host1)
-        (status, output) = commands.getstatusoutput(command)
-        if status != 0:
-            error("The host: '%s' password '%s' incorrect! please check it!" % (args.host1, args.host1_password))
-        command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-                      'StrictHostKeyChecking=no  root@%s echo ""' % (args.host2_password, args.host2)
-        (status, output) = commands.getstatusoutput(command)
-        if status != 0:
-            error("The host: '%s' password '%s' incorrect! please check it!" % (args.host2, args.host2_password))
+        check_host_password(args.host1_password, args.host1)
+        check_host_password(args.host2_password, args.host2)
         if args.host3_info is not False:
-            command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-                          'StrictHostKeyChecking=no  root@%s echo ""' % (args.host3_password, args.host3)
-            (status, output) = commands.getstatusoutput(command)
-            if status != 0:
-                error("The host: '%s' password '%s' incorrect! please check it!" % (args.host3, args.host3_password))
+            check_host_password(args.host3_password, args.host3)
 
         # check image type
         zstack_local_repo = os.path.isfile("/etc/yum.repos.d/zstack-local.repo")
