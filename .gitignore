@@ -41,3 +41,5 @@ centos6_repo
 centos7_repo
 zstackbuild/scripts/setup.sh
 *.orig
+.pydevproject
+.project
