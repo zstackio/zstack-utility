@@ -234,11 +234,12 @@ def check_host_info_format(host_info):
         return (user, password, ip, port)
 
 def check_host_password(password, ip):
-    command ='timeout 30 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+    command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
              'StrictHostKeyChecking=no  root@%s echo ""' % (password, ip)
     (status, output) = commands.getstatusoutput(command)
     if status != 0:
-        error("Test connect to host: '%s' with password '%s' failed!" % (ip, password))
+        error("Connect to host: '%s' with password '%s' failed! Please check password firstly and make sure you have "
+              "disabled UseDNS in '/etc/ssh/sshd_config' on %s" % (ip, password, ip))
 
 
 
