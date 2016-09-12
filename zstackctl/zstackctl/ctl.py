@@ -2099,7 +2099,7 @@ class AddManagementNodeCmd(Command):
                             default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 30 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
                  ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
@@ -2950,7 +2950,7 @@ Mevoco is running, visit %s in Chrome or Firefox with default user/password : %s
 You can check the cluster status at %s with user/passwd : %s
        ''' % (args.mysql_root_password, args.mysql_user_password, args.rabbit_password,
               colored('http://%s:8888' % args.vip, 'blue'), colored('admin/password', 'yellow'),
-              colored('http://%s:9132/zstack' % args.host1, 'blue'), colored('zstack/zstack123', 'yellow'))
+              colored('http://%s:9132/zstack' % args.vip, 'blue'), colored('zstack/zstack123', 'yellow'))
 
 class HaproxyKeepalived(InstallHACmd):
     def __init__(self):
