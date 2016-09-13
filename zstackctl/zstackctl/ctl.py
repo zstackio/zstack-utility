@@ -2942,6 +2942,14 @@ class InstallHACmd(Command):
         SpinnerInfo.spinner_status['mevoco'] = False
         time.sleep(0.2)
 
+        #sync imagestore key
+        copy_arg = CopyArg()
+        copy_arg.src = ctl.zstack_home + "/../../../imagestore/bin/certs/"
+        copy_arg.dest = ctl.zstack_home + "/../../../imagestore/bin/certs/"
+        copy(copy_arg, self.host2_post_info)
+        if args.host3_info is not False:
+            copy(copy_arg, self.host2_post_info)
+
         print '''HA deploy finished!
 Mysql user 'root' password: %s
 Mysql user 'zstack' password: %s
