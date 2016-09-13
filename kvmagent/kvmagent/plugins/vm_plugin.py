@@ -2370,15 +2370,17 @@ class VmPlugin(kvmagent.KvmAgent):
     def _stop_vm(self, cmd):
         try:
             vm = get_vm_by_uuid(cmd.uuid)
-            force = cmd.force
+            type = cmd.type
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
             logger.debug('however, the stop operation is still considered as success')
             return
-        if str(force) == False :
-            vm.stop(timeout=cmd.timeout / 2)
+        if str(type) == "cold" :
+            vm.stop(graceful=False)
+
         else:
-            vm.stop(timeout=cmd.timeout / 2,graceful=False)
+            vm.stop(timeout=cmd.timeout / 2)
+
 
     @kvmagent.replyerror
     def stop_vm(self, req):
