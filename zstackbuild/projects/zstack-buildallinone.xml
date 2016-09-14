@@ -6,7 +6,6 @@
         <copy file="${war.file}" todir="${allinone.dir}" />
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
         <copy file="${cassandra.pkg}" todir="${allinone.dir}" />
-        <copy file="${kairosdb.pkg}" todir="${allinone.dir}" />
         <tar destfile="${allinone.file}" basedir="${allinone.dir}" compression="gzip" />
         <echo message="successfully build zstack all in one package at ${allinone.file}" />
     </target>
@@ -14,8 +13,6 @@
     <target name="copy-monitor-packages" if="build_war_flag">
         <echo message="copy apache-cassandra to ${allinone.dir}" />
         <copy file="${cassandra.pkg}" todir="${allinone.dir}" />
-        <echo message="copy kairosdb to ${allinone.dir}" />
-        <copy file="${kairosdb.pkg}" todir="${allinone.dir}" />
     </target>
 
     <target name="copy-license-file" if="license.file">
