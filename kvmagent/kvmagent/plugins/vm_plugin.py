@@ -2704,7 +2704,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
                 if vm_op_judger.remove_expected_event(evstr) == 0:
                     self._remove_operation(vm_uuid)
-                    logger.debug('events happened of the vm[uuid:%s] meet the expectation, delete the the operation judger' % vm_uuid)
+                    logger.debug('events happened of the vm[uuid:%s] meet the expectation, delete the operation judger' % vm_uuid)
 
                 return
 
@@ -2744,7 +2744,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm_uuid = dom.name()
             boot_dev = domain_xmlobject.os.get_child_node_as_list('boot')[0]
             if boot_dev.dev_ != 'cdrom':
-                logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (vm_uuid, boot_dev))
+                logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (vm_uuid, boot_dev.dev_))
                 return
 
             logger.debug('the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will'
