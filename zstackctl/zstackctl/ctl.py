@@ -2186,7 +2186,7 @@ class InstallHACmd(Command):
     logger_dir = "/var/log/zstack/"
     bridge = ""
     SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
-                      'Kairosdb':False, 'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
+                      'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
     ha_config_content = None
     def __init__(self):
         super(InstallHACmd, self).__init__()
@@ -2766,10 +2766,6 @@ class InstallHACmd(Command):
                         "regexp='^Cassandra\.contactPoints' line='Cassandra.contactPoints=%s,%s,%s'"
                         % (args.host1, args.host2, args.host3), self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='^Kairosdb.ip' line='Kairosdb.ip=%s'" % args.vip, self.host1_post_info)
-        update_file("%s" % ctl.properties_file_path,
-                    "regexp='^Kairosdb.port' line='Kairosdb.port=58080'", self.host1_post_info)
-        update_file("%s" % ctl.properties_file_path,
                     "regexp='management\.server\.ip' line='management.server.ip = %s'" %
                     args.host1, self.host1_post_info)
         copy_arg = CopyArg()
@@ -2803,7 +2799,7 @@ class InstallHACmd(Command):
                 #command = "/usr/local/zstack/apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e 'drop keyspace zstack_logging;'" % self.host1_post_info.host
                 #run_remote_command(command, self.host1_post_info)
 
-        # start Cassadra and KairosDB
+        # start Cassadra 
         command = 'zstack-ctl cassandra --start --wait-timeout 120'
         (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
                                                              (private_key_name, args.host1, command))
@@ -2819,11 +2815,9 @@ class InstallHACmd(Command):
             if status != 0:
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
 
-        spinner_info = SpinnerInfo()
-        spinner_info.output = "Starting to deploy Kairosdb HA"
-        spinner_info.name = "Kairosdb"
+        spinner_info.output = "Deploy Cassandra DB"
+        spinner_info.name = "Cassandra.DB"
         SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-        SpinnerInfo.spinner_status['Kairosdb'] = True
         ZstackSpinner(spinner_info)
 
         # deploy cassandra_db
@@ -6201,9 +6195,7 @@ def main():
     InstallRabbitCmd()
     InstallManagementNodeCmd()
     InstallCassandraCmd()
-    InstallKairosdbCmd()
     InstallLicenseCmd()
-    KairosdbCmd()
     ShowConfiguration()
     SetEnvironmentVariableCmd()
     RollbackManagementNodeCmd()
