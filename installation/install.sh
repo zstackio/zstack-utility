@@ -700,14 +700,14 @@ upgrade_zstack(){
         if [ ! -z $UPGRADE_MONITOR ] ; then
             show_spinner iz_install_cassandra
             show_spinner sz_start_cassandra
-            show_spinner iz_install_kairosdb
-            show_spinner sz_start_kairosdb
+            #show_spinner iz_install_kairosdb
+            #show_spinner sz_start_kairosdb
         elif [ ! -z $INSTALL_MONITOR ] ; then
             #when monitor libs are ready, we need to try to start then, 
             # although we didn't stop them when upgrading.
             # Upgrade zstack need to run deploy cassandra db in start cassandra task. 
             show_spinner sz_start_cassandra
-            show_spinner sz_start_kairosdb
+            #show_spinner sz_start_kairosdb
         fi
 
         #when using -k option, will not start zstack.
@@ -1130,7 +1130,7 @@ uz_upgrade_zstack(){
     #This will help fix some issue when upgrading. 
     if [ -f $upgrade_folder/apache-cassandra* ]; then
         /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-        /bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
+        #/bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     
     #Do not upgrade db, when using -i
@@ -1294,7 +1294,7 @@ install_zstack(){
     #Do not deploy cassandra when only install zstack by option -i.
     # This is for HA deployment. 
     [ -z $ONLY_INSTALL_ZSTACK ] && show_spinner sz_start_cassandra
-    show_spinner iz_install_kairosdb
+    #show_spinner iz_install_kairosdb
 }
 
 install_db_msgbus(){
@@ -2332,7 +2332,7 @@ fi
 unpack_zstack_into_tomcat
 
 #doesn't need use to send -m option to install monitor.
-[ -f "$ZSTACK_INSTALL_ROOT/kairosdb-1.1.1-1.tar.gz" ] && INSTALL_MONITOR='y'
+[ -f "$ZSTACK_INSTALL_ROOT/apache-cassandra-2.2.3-bin.tar.gz" ] && INSTALL_MONITOR='y'
 
 #Do not config NFS or HTTP when installing ZStack product
 [ ! -z $INSTALL_MONITOR ] && NEED_NFS='' && NEED_HTTP=''
@@ -2381,9 +2381,9 @@ if [ ! -z $NEED_SET_MN_IP ];then
     zstack-ctl configure management.server.ip=${MANAGEMENT_IP}
 fi
 
-if [ ! -z $INSTALL_MONITOR ]; then
-    start_monitor
-fi
+#if [ ! -z $INSTALL_MONITOR ]; then
+#    start_monitor
+#fi
 
 #Start ${PRODUCT_NAME} 
 if [ -z $NOT_START_ZSTACK ]; then
