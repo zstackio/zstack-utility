@@ -1158,7 +1158,7 @@ class StopAllCmd(Command):
     def __init__(self):
         super(StopAllCmd, self).__init__()
         self.name = 'stop'
-        self.description = 'stop all ZStack related services including cassandra, kairosdb, zstack management node, web UI' \
+        self.description = 'stop all ZStack related services including cassandra, zstack management node, web UI' \
                            ' if those services are installed'
         ctl.register_command(self)
 
@@ -1171,15 +1171,6 @@ class StopAllCmd(Command):
 
             info(colored('Stopping cassandra, it may take a few minutes...', 'blue'))
             ctl.internal_run('cassandra', '--stop')
-
-        def stop_kairosdb():
-            exe = ctl.get_env(InstallKairosdbCmd.KAIROSDB_EXEC)
-            if not exe or not os.path.exists(exe):
-                info('skip stopping kairosdb, it is not installed')
-                return
-
-            info(colored('Stopping kairosdb, it may take a few minutes...', 'blue'))
-            ctl.internal_run('kairosdb', '--stop')
 
         def stop_mgmt_node():
             info(colored('Stopping ZStack management node, it may take a few minutes...', 'blue'))
@@ -1196,7 +1187,6 @@ class StopAllCmd(Command):
 
         stop_ui()
         stop_mgmt_node()
-        stop_kairosdb()
         stop_cassandra()
 
 class StartAllCmd(Command):
@@ -1204,7 +1194,7 @@ class StartAllCmd(Command):
     def __init__(self):
         super(StartAllCmd, self).__init__()
         self.name = 'start'
-        self.description = 'start all ZStack related services including cassandra, kairosdb, zstack management node, web UI' \
+        self.description = 'start all ZStack related services including cassandra, zstack management node, web UI' \
                            ' if those services are installed'
         ctl.register_command(self)
 
@@ -1220,15 +1210,6 @@ class StartAllCmd(Command):
 
             info(colored('Starting cassandra, it may take a few minutes...', 'blue'))
             ctl.internal_run('cassandra', '--start --wait-timeout 120')
-
-        def start_kairosdb():
-            exe = ctl.get_env(InstallKairosdbCmd.KAIROSDB_EXEC)
-            if not exe or not os.path.exists(exe):
-                info('skip starting kairosdb, it is not installed')
-                return
-
-            info(colored('Starting kairosdb, it may take a few minutes...', 'blue'))
-            ctl.internal_run('kairosdb', '--start --wait-timeout 120')
 
         def start_mgmt_node():
             info(colored('Starting ZStack management node, it may take a few minutes...', 'blue'))
@@ -1247,7 +1228,6 @@ class StartAllCmd(Command):
             ctl.internal_run('start_ui')
 
         start_cassandra()
-        start_kairosdb()
         start_mgmt_node()
         start_ui()
 
@@ -2759,45 +2739,9 @@ class InstallHACmd(Command):
             update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
                         "regexp='seeds:' line='  - seeds: \"%s,%s,%s\"'" % (args.host1, args.host2, args.host3), self.host3_post_info)
 
-        # kaiosdb HA only need to change the config file, so unnecessary to wrap the process in a class
-        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                    "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
-                    "%s:9160,%s:9160'" % (args.host1, args.host2), self.host1_post_info)
-        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                    "regexp='kairosdb\.datastore\.cassandra\.replication_factor' line='kairosdb.datastore.cassandra."
-                    "replication_factor = 3'", self.host1_post_info)
-        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                    "regexp='kairosdb\.datastore\.cassandra\.write_consistency_level' line='kairosdb.datastore."
-                    "cassandra.write_consistency_level = ONE'", self.host1_post_info)
         # set cron task to sync data
         cron("sync_kairosdb_data","minute='0' hour='3' job='%s/apache-cassandra-2.2.3/javadoc/org/"
                                   "apache/cassandra/tools/nodetool repair 2>&1'" % ctl.USER_ZSTACK_HOME_DIR, self.host1_post_info)
-
-        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                    "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
-                    "%s:9160,%s:9160'" % (args.host1, args.host2), self.host2_post_info)
-        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                    "regexp='kairosdb\.datastore\.cassandra\.replication_factor' line='kairosdb.datastore.cassandra."
-                    "replication_factor = 3'", self.host2_post_info)
-        update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                    "regexp='kairosdb\.datastore\.cassandra\.write_consistency_level' line='kairosdb.datastore."
-                    "cassandra.write_consistency_level = ONE'", self.host2_post_info)
-        if args.host3_info is not False:
-            update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                        "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
-                        "%s:9160,%s:9160,%s:9160'" % (args.host1, args.host2, args.host3), self.host1_post_info)
-            update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                        "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
-                        "%s:9160,%s:9160,%s:9160'" % (args.host1, args.host2, args.host3), self.host2_post_info)
-            update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                        "regexp='kairosdb\.datastore\.cassandra\.host_list' line='kairosdb.datastore.cassandra.host_list="
-                        "%s:9160,%s:9160,%s:9160'" % (args.host1, args.host2, args.host3), self.host3_post_info)
-            update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                        "regexp='kairosdb\.datastore\.cassandra\.replication_factor' line='kairosdb.datastore.cassandra."
-                        "replication_factor = 3",self.host3_post_info)
-            update_file("%s/kairosdb/conf/kairosdb.properties" % ctl.USER_ZSTACK_HOME_DIR,
-                        "regexp='kairosdb\.datastore\.cassandra\.write_consistency_level' line='kairosdb.datastore."
-                        "cassandra.write_consistency_level = ONE'", self.host3_post_info)
 
         # copy zstack-1 property to zstack-2 and update the management.server.ip
         # update zstack-1 firstly
@@ -2881,20 +2825,6 @@ class InstallHACmd(Command):
         SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['Kairosdb'] = True
         ZstackSpinner(spinner_info)
-        command = 'zstack-ctl kairosdb --start --wait-timeout 120'
-        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
-                                                             (private_key_name, args.host1, command))
-        if status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host1, output))
-        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
-                                                             (private_key_name, args.host2, command))
-        if status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host2, output))
-        if args.host3_info is not False:
-            (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
-                                                                 (private_key_name, args.host3, command))
-            if status != 0:
-                error("Something wrong on host: %s\n %s" % (args.host3, output))
 
         # deploy cassandra_db
         command = 'zstack-ctl deploy_cassandra_db'
@@ -3081,13 +3011,6 @@ listen  proxy-ui 0.0.0.0:8888
     server zstack-1 {{ host1 }}:5000 weight 10 check inter 3s rise 2 fall 2
     server zstack-2 {{ host2 }}:5000 weight 10 check inter 3s rise 2 fall 2
     option  tcpka
-
-listen  proxy-kairosdb 0.0.0.0:58080
-    mode tcp
-    balance source
-    server zstack-1 {{ host1 }}:18080 weight 10 check inter 3s rise 2 fall 2
-    server zstack-2 {{ host2 }}:18080 backup weight 10 check inter 3s rise 2 fall 2
-    option tcpka
         '''
         if len(self.host_post_info_list) == 3:
             haproxy_raw_conf = '''
@@ -3164,14 +3087,6 @@ listen  proxy-ui 0.0.0.0:8888
     server zstack-2 {{ host2 }}:5000 weight 10 check inter 3s rise 2 fall 2
     server zstack-3 {{ host3 }}:5000 weight 10 check inter 3s rise 2 fall 2
     option  tcpka
-
-listen  proxy-kairosdb 0.0.0.0:58080
-    mode tcp
-    balance source
-    server zstack-1 {{ host1 }}:18080 weight 10 check inter 3s rise 2 fall 2
-    server zstack-2 {{ host2 }}:18080 backup weight 10 check inter 3s rise 2 fall 2
-    server zstack-3 {{ host3 }}:18080 backup weight 10 check inter 3s rise 2 fall 2
-    option tcpka
         '''
 
         haproxy_conf_template = jinja2.Template(haproxy_raw_conf)
@@ -3986,107 +3901,6 @@ fi
             ctl.write_property('CloudBus.rabbitmqPassword', args.rabbit_password)
             info('updated CloudBus.rabbitmqPassword=%s in %s' % (args.rabbit_password, ctl.properties_file_path))
 
-class InstallKairosdbCmd(Command):
-    PACKAGE_NAME = "kairosdb-1.1.1-1.tar.gz"
-    KAIROSDB_EXEC = 'KAIROSDB_EXEC'
-    KAIROSDB_CONF = 'KAIROSDB_CONF'
-    KAIROSDB_LOG = 'KAIROSDB_LOG'
-
-    def __init__(self):
-        super(InstallKairosdbCmd, self).__init__()
-        self.name = "install_kairosdb"
-        self.description = (
-            "install kairosdb"
-        )
-        ctl.register_command(self)
-
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--file', help='path to the %s' % self.PACKAGE_NAME, required=False)
-        parser.add_argument('--listen-address', help='the IP kairosdb listens to, which cannot be 0.0.0.0', required=True)
-        parser.add_argument('--cassandra-rpc-address', help='the RPC address of cassandra, which must be in the format of'
-                                                            '\nIP:port, for example, 192.168.0.199:9160. If omitted, the'
-                                                            '\naddress will be retrieved from local cassandra YAML config,'
-                                                            '\nor an error will be raised if the YAML config cannot be found', required=False)
-        parser.add_argument('--listen-port', help='the port kairosdb listens to, default to 18080', default=18080, required=False)
-        parser.add_argument('--update-zstack-config', action='store_true', default=True, help='update kairosdb config to zstack.properties', required=False)
-
-    def run(self, args):
-        if not args.file:
-            args.file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, self.PACKAGE_NAME)
-
-        if not os.path.exists(args.file):
-            raise CtlError('cannot find %s, you may need to specify the option[--file]' % args.file)
-
-        if not args.file.endswith(self.PACKAGE_NAME):
-            raise CtlError('at this version, zstack only supports %s' % self.PACKAGE_NAME)
-
-        shell('su - zstack -c "tar xzf %s -C %s"' % (args.file, ctl.USER_ZSTACK_HOME_DIR))
-        kairosdb_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "kairosdb")
-        info("successfully installed %s to %s" % (args.file, os.path.join(ctl.USER_ZSTACK_HOME_DIR, kairosdb_dir)))
-
-        if args.listen_address == '0.0.0.0':
-            raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
-
-        original_conf_path = os.path.join(kairosdb_dir, "conf/kairosdb.properties")
-        shell("yes | cp %s %s.bak" % (original_conf_path, original_conf_path))
-
-        all_configs = []
-        if ctl.extra_arguments:
-            configs = [l.split('=', 1) for l in ctl.extra_arguments]
-            for l in configs:
-                if len(l) != 2:
-                    raise CtlError('invalid config[%s]. The config must be in the format of key=value without spaces around the =' % l)
-                all_configs.append(l)
-
-        if args.cassandra_rpc_address and ':' not in args.cassandra_rpc_address:
-            raise CtlError('invalid --cassandra-rpc-address[%s]. It must be in the format of IP:port' % args.cassandra_rpc_address)
-        elif not args.cassandra_rpc_address:
-            cassandra_conf = ctl.get_env(InstallCassandraCmd.CASSANDRA_CONF)
-            if not cassandra_conf:
-                raise CtlError('cannot find cassandra conf[%s] in %s, have you installed cassandra? or'
-                               ' you can use --cassandra-rpc-address to set the address explicitly' % (InstallCassandraCmd.CASSANDRA_CONF, SetEnvironmentVariableCmd.PATH))
-
-            with open(cassandra_conf, 'r') as fd:
-                with on_error('cannot YAML load %s, it seems corrupted' % InstallCassandraCmd.CASSANDRA_CONF):
-                    c_conf = yaml.load(fd.read())
-
-            addr = c_conf['rpc_address']
-            if not addr:
-                raise CtlError('rpc_address is not set in %s. Please fix it otherwise kairosdb cannot boot later' % InstallCassandraCmd.CASSANDRA_CONF)
-
-            port = c_conf['rpc_port']
-            if not port:
-                raise CtlError('rpc_port is not set in %s. Please fix it otherwise kairosdb cannot boot later' % InstallCassandraCmd.CASSANDRA_CONF)
-
-            args.cassandra_rpc_address = '%s:%s' % (addr, port)
-
-        all_configs.extend([
-          ('kairosdb.service.datastore', 'org.kairosdb.datastore.cassandra.CassandraModule'),
-          ('kairosdb.jetty.address', args.listen_address),
-          ('kairosdb.jetty.port', args.listen_port),
-          ('kairosdb.datastore.cassandra.host_list', args.cassandra_rpc_address)
-        ])
-        prop = PropertyFile(original_conf_path)
-        prop.write_properties(all_configs)
-
-        if args.update_zstack_config:
-            ctl.write_properties([
-              ('Kairosdb.ip', args.listen_address),
-              ('Kairosdb.port', args.listen_port),
-            ])
-            info('successfully wrote kairosdb properties to %s' % ctl.properties_file_path)
-
-        ctl.put_envs([
-            (self.KAIROSDB_EXEC, os.path.normpath('%s/bin/kairosdb.sh' % kairosdb_dir)),
-            (self.KAIROSDB_CONF, original_conf_path),
-            (self.KAIROSDB_LOG, os.path.join(kairosdb_dir, 'log')),
-        ])
-
-        log_conf = os.path.normpath('%s/conf/logging/logback.xml' % kairosdb_dir)
-        shell('''sed -i 's/<root level="DEBUG">/<root level="INFO">/g' %s''' % log_conf)
-
-        info('successfully installed kairosdb, the config file is written to %s' % original_conf_path)
-
 class RestoreCassandraCmd(Command):
     def __init__(self):
         super(RestoreCassandraCmd, self).__init__()
@@ -4588,15 +4402,14 @@ class ChangeIpCmd(Command):
         super(ChangeIpCmd, self).__init__()
         self.name = "change_ip"
         self.description = (
-            "update new management ip address to zstack property file, kairosdb and cassandra config file"
+            "update new management ip address to zstack property file and cassandra config file"
         )
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--ip', help='The new IP address of management node.'
                                          'This operation will update the new ip address to '
-                                         'zstack, kairosdb and cassandra config file' , required=True)
-        parser.add_argument('--kairosdb_ip', help='The new IP address of kairosdb, default will use value from --ip', required=False)
+                                         'zstack and cassandra config file' , required=True)
         parser.add_argument('--cassandra_rpc_address', help='The new IP address of cassandra_rpc_address, default will use value from --ip', required=False)
         parser.add_argument('--cassandra_listen_address', help='The new IP address of cassandra_listen_address, default will use value from --ip', required=False)
         parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
@@ -4605,10 +4418,6 @@ class ChangeIpCmd(Command):
     def run(self, args):
         if args.ip == '0.0.0.0':
             raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
-        if args.kairosdb_ip is not None:
-            kairosdb_ip = args.kairosdb_ip
-        else:
-            kairosdb_ip = args.ip
         if args.cassandra_rpc_address is not None:
             cassandra_rpc_address = args.cassandra_rpc_address
         else:
@@ -4628,7 +4437,7 @@ class ChangeIpCmd(Command):
 
         zstack_conf_file = ctl.properties_file_path
         ip_check = re.compile('^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
-        for input_ip in [kairosdb_ip, cassandra_rpc_address, cassandra_listen_address, cloudbus_server_ip, mysql_ip]:
+        for input_ip in [cassandra_rpc_address, cassandra_listen_address, cloudbus_server_ip, mysql_ip]:
             if not ip_check.match(input_ip):
                 info("The ip address you input: %s seems not a valid ip" % input_ip)
                 return 1
@@ -4684,26 +4493,6 @@ class ChangeIpCmd(Command):
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
-
-        # Update kairosdb config file
-        kairosdb_conf_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "kairosdb/conf/kairosdb.properties")
-        if os.path.isfile(kairosdb_conf_file):
-            shell("yes | cp %s %s.bak" % (kairosdb_conf_file, kairosdb_conf_file))
-            new_kairosdb_config = []
-            new_kairosdb_config.extend([
-              ('kairosdb.jetty.address', kairosdb_ip),
-              ('kairosdb.datastore.cassandra.host_list', kairosdb_ip)
-            ])
-            prop = PropertyFile(kairosdb_conf_file)
-            prop.write_properties(new_kairosdb_config)
-            info("Update new ip address %s in %s " % (kairosdb_ip, kairosdb_conf_file))
-            ctl.write_properties([
-              ('Kairosdb.ip', kairosdb_ip),
-            ])
-            info("Update kairosdb ip %s in %s " % (kairosdb_ip, zstack_conf_file))
-        else:
-            info("Didn't find %s, skip update kairosdb ip" % kairosdb_conf_file)
-
 
         # Update cassandra config file
         cassandra_conf_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3/conf/cassandra.yaml")
@@ -4845,124 +4634,6 @@ class InstallCassandraCmd(Command):
         shell('yes | cp %s %s' % (cassandra_service_file, os.path.join(cassandra_dir, 'conf/cassandra-env.sh')))
 
         info("set Cassandra.contactPoints = %s in zstack.properties" % rpc_address)
-
-class KairosdbCmd(Command):
-    NAME = 'kairosdb'
-
-    def __init__(self):
-        super(KairosdbCmd, self).__init__()
-        self.name = self.NAME
-        self.description = (
-            'control kairosdb life cycle'
-        )
-        ctl.register_command(self)
-
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--start', help='start kairosdb', action="store_true", required=False)
-        parser.add_argument('--stop', help='stop kairosdb', action="store_true", required=False)
-        parser.add_argument('--status', help='show kairosdb status', action="store_true", required=False)
-        parser.add_argument('--wait-timeout', type=int, help='wait timeout(in seconds) until kairosdb web port is available. This is normally used'
-                                                           ' with --start option to make sure cassandra successfully starts.',
-                            default=-1, required=False)
-
-    def _status(self, args):
-        return find_process_by_cmdline('org.kairosdb.core.Main')
-
-    def start(self, args):
-        shell("iptables-save | grep -- '-A INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT' > /dev/null || (iptables -w -I INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT || iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 18080 -j ACCEPT)")
-
-        pid = self._status(args)
-        if pid:
-            info('kairosdb[PID:%s] is already running' % pid)
-            return
-
-        exe = ctl.get_env(InstallKairosdbCmd.KAIROSDB_EXEC)
-        if not os.path.exists(exe):
-            raise CtlError('cannot find the variable[%s] in %s. Have you installed kairosdb?' %
-                           (InstallKairosdbCmd.KAIROSDB_EXEC, SetEnvironmentVariableCmd.PATH))
-
-        exe_path = os.path.dirname(exe)
-        kairosdb_env = os.path.join(exe_path, 'kairosdb-env.sh')
-        if not os.path.exists(kairosdb_env):
-            with open(kairosdb_env, 'w') as fd:
-                fd.write('''JAVA_OPTS="$JAVA_OPTS -Xmx1G"  # Max heap size
-JAVA_OPTS="$JAVA_OPTS -Xms512M"  # Min heap size
-''')
-
-        shell('bash %s start' % exe)
-        info('successfully starts kairosdb')
-
-        if args.wait_timeout < 0:
-            return
-
-        info('waiting for kairosdb to listen on web port until %s seconds timeout' % args.wait_timeout)
-        conf = ctl.get_env(InstallKairosdbCmd.KAIROSDB_CONF)
-        if not conf:
-            warn('cannot find the variable[%s] in %s, ignore --wait-timeout' %
-                (InstallKairosdbCmd.KAIROSDB_CONF, SetEnvironmentVariableCmd.PATH))
-            return
-
-        if not os.path.exists(conf):
-            warn('cannot find kairosdb conf at %s, ignore --wait-timeout' % conf)
-            return
-
-        prop = PropertyFile(conf)
-        port = prop.read_property('kairosdb.jetty.port')
-        if not port:
-            raise CtlError('kairosdb.jetty.port is not set in %s' % InstallKairosdbCmd.KAIROSDB_CONF)
-
-        timeout = args.wait_timeout
-        while args.wait_timeout > 0:
-            ret = shell_return('netstat -nap | grep %s > /dev/null' % port)
-            if ret == 0:
-                info('kairosdb is listening on the web port[%s] now' % port)
-                return
-            time.sleep(1)
-            args.wait_timeout -= 1
-
-        raise CtlError("kairosdb is not listening on the web port[%s] after %s seconds, it may not successfully start,"
-                        "please check the log file in %s" % (port, timeout, ctl.get_env(InstallKairosdbCmd.KAIROSDB_LOG)))
-
-    def stop(self, args):
-        pid = self._status(args)
-        if not pid:
-            info('kairosdb is already stopped')
-            return
-
-        exe = ctl.get_env(InstallKairosdbCmd.KAIROSDB_EXEC)
-        if not os.path.exists(exe):
-            shell('kill %s' % pid)
-        else:
-            shell('bash %s stop' % exe)
-
-        count = 30
-        while count > 0:
-            pid = self._status(args)
-            if not pid:
-                info('successfully stopped kairosdb')
-                return
-            time.sleep(1)
-            count -= 1
-
-        info('kairosdb is still running after %s seconds, kill -9 it' % count)
-        shell('kill -9 %s' % pid)
-
-    def status(self, args):
-        pid = self._status(args)
-        if pid:
-            info('kairosdb[PID:%s] is running' % pid)
-        else:
-            info('kairosdb is stopped')
-
-    def run(self, args):
-        if args.start:
-            self.start(args)
-        elif args.stop:
-            self.stop(args)
-        elif args.status:
-            self.status(args)
-        else:
-            self.status(args)
 
 class DeployCassandraDbCmd(Command):
 

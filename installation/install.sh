@@ -700,14 +700,11 @@ upgrade_zstack(){
         if [ ! -z $UPGRADE_MONITOR ] ; then
             show_spinner iz_install_cassandra
             show_spinner sz_start_cassandra
-            #show_spinner iz_install_kairosdb
-            #show_spinner sz_start_kairosdb
         elif [ ! -z $INSTALL_MONITOR ] ; then
             #when monitor libs are ready, we need to try to start then, 
             # although we didn't stop them when upgrading.
             # Upgrade zstack need to run deploy cassandra db in start cassandra task. 
             show_spinner sz_start_cassandra
-            #show_spinner sz_start_kairosdb
         fi
 
         #when using -k option, will not start zstack.
@@ -1126,11 +1123,10 @@ uz_upgrade_zstack(){
         fail "failed to upgrade local management node"
     fi
 
-    #Will install cassandra and kairosdb, no matter it is installed or not.
+    #Will install cassandra, no matter it is installed or not.
     #This will help fix some issue when upgrading. 
     if [ -f $upgrade_folder/apache-cassandra* ]; then
         /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-        #/bin/cp -f $upgrade_folder/kairosdb*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     
     #Do not upgrade db, when using -i
@@ -1265,16 +1261,6 @@ iz_install_cassandra(){
     pass
 }
 
-iz_install_kairosdb(){
-    echo_subtitle "Install Kairosdb"
-    zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl install_kairosdb --listen-address $MANAGEMENT_IP  >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-       fail "failed to install Kairosdb"
-    fi
-    pass
-}
-
 install_zstack(){
     echo_title "Install ${PRODUCT_NAME} Tools"
     echo ""
@@ -1294,7 +1280,6 @@ install_zstack(){
     #Do not deploy cassandra when only install zstack by option -i.
     # This is for HA deployment. 
     [ -z $ONLY_INSTALL_ZSTACK ] && show_spinner sz_start_cassandra
-    #show_spinner iz_install_kairosdb
 }
 
 install_db_msgbus(){
@@ -1675,22 +1660,6 @@ sz_start_cassandra(){
        fail "failed to deploy Cassandra db"
     fi
     pass
-}
-
-sz_start_kairosdb(){
-    echo_subtitle "Start Kairosdb"
-    #zstack-ctl kairosdb --stop >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl kairosdb --start --wait-timeout=60 >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-       fail "failed to start Kairosdb"
-    fi
-    pass
-}
-
-start_monitor(){
-    echo_title "Start Monitor"
-    echo ""
-    show_spinner sz_start_kairosdb
 }
 
 start_zstack(){
@@ -2380,10 +2349,6 @@ install_db_msgbus
 if [ ! -z $NEED_SET_MN_IP ];then
     zstack-ctl configure management.server.ip=${MANAGEMENT_IP}
 fi
-
-#if [ ! -z $INSTALL_MONITOR ]; then
-#    start_monitor
-#fi
 
 #Start ${PRODUCT_NAME} 
 if [ -z $NOT_START_ZSTACK ]; then
