@@ -65,6 +65,7 @@ class GetFactsRsp(AgentResponse):
     def __init__(self):
         super(GetFactsRsp, self).__init__()
         self.fsid = None
+        self.monAddr = None
 
 def replyerror(func):
     @functools.wraps(func)
@@ -180,13 +181,26 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     @replyerror
+    @in_bash
     def get_facts(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        o = shell.call('ceph mon_status')
+        o = bash_o('ceph mon_status')
         mon_status = jsonobject.loads(o)
         fsid = mon_status.monmap.fsid_
 
         rsp = GetFactsRsp()
+
+        facts = bash_o('ceph -s -f json')
+        mon_facts = jsonobject.loads(facts)
+        for mon in mon_facts.monmap.mons:
+            ADDR = mon.addr.split(':')[0]
+            if bash_r('ip route | grep -w {{ADDR}} > /dev/null') == 0:
+                rsp.monAddr = ADDR
+                break
+
+        if not rsp.monAddr:
+            raise Exception('cannot find mon address of the mon server[%s]' % cmd.monUuid)
+
         rsp.fsid = fsid
         return jsonobject.dumps(rsp)
 
