@@ -31,11 +31,6 @@ class ScanRsp(object):
         super(ScanRsp, self).__init__()
         self.result = None
 
-class FusionstorPingRsp(AgentRsp):
-    def __init__(self):
-        super(FusionstorPingRsp, self).__init__()
-        self.rsp = None
-
 def kill_vm():
     vm_uuid_list = shell.call("virsh list | grep running | awk '{print $2}'")
     for vm_uuid in vm_uuid_list.split('\n'):
@@ -58,7 +53,6 @@ class FusionstorPlugin(kvmagent.KvmAgent):
     classdocs
     '''
     KVM_FUSIONSTOR_QUERY_PATH = "/fusionstor/query"
-    KVM_FUSIONSTOR_PING_PATH = "/fusionstor/ping"
 
     SCAN_HOST_PATH = "/ha/scanhost"
     SETUP_SELF_FENCER_PATH = "/ha/selffencer/setup"
@@ -245,28 +239,11 @@ class FusionstorPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
-    @kvmagent.replyerror
-    def fusionstor_ping(self, req):
-        rsp = FusionstorPingRsp()
-        node_stat = shell.ShellCmd('lich.node --stat')
-        node_stat(False)
-        if node_stat.return_code != 0:
-            rsp.success = False
-            rsp.error = 'the lichd process of this node is abnormal, Please check the lichd service'
-        elif node_stat.return_code == 0 and 'running' not in node_stat.stdout:
-            rsp.success = False
-            rsp.error = 'the lichd process of this node is abnormal, Please check the lichd service'
-        else:
-            pass
-
-        return jsonobject.dumps(rsp)
-
     def start(self):
         self.host_uuid = None
         
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.KVM_FUSIONSTOR_QUERY_PATH, self.fusionstor_query)
-        http_server.register_async_uri(self.KVM_FUSIONSTOR_PING_PATH, self.fusionstor_ping)
         http_server.register_async_uri(self.SCAN_HOST_PATH, self.scan_host)
         http_server.register_async_uri(self.SETUP_SELF_FENCER_PATH, self.setup_self_fencer)
         http_server.register_async_uri(self.FUSIONSTOR_SELF_FENCER, self.setup_fusionstor_self_fencer)
