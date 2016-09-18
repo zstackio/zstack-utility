@@ -4140,10 +4140,10 @@ class ChangeIpCmd(Command):
         # Update /etc/hosts
         if os.path.isfile(zstack_conf_file):
             old_ip = ctl.read_property('management.server.ip')
-            if old_ip != None:
-	        if not ip_check.match(old_ip):
-		    info("The ip address[%s] read from [%s] seems not a valid ip" % (old_ip, zstack_conf_file))
-		    return 1
+            if old_ip is not None:
+                if not ip_check.match(old_ip):
+                    info("The ip address[%s] read from [%s] seems not a valid ip" % (old_ip, zstack_conf_file))
+                    return 1
 
             # read from env other than /etc/hostname in case of impact of DHCP SERVER
             old_hostname = shell("hostname").replace("\n","")
