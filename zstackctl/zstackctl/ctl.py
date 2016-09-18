@@ -1158,20 +1158,11 @@ class StopAllCmd(Command):
     def __init__(self):
         super(StopAllCmd, self).__init__()
         self.name = 'stop'
-        self.description = 'stop all ZStack related services including cassandra, zstack management node, web UI' \
+        self.description = 'stop all ZStack related services including zstack management node, web UI' \
                            ' if those services are installed'
         ctl.register_command(self)
 
     def run(self, args):
-        def stop_cassandra():
-            exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
-            if not exe or not os.path.exists(exe):
-                info('skip stopping cassandra, it is not installed')
-                return
-
-            info(colored('Stopping cassandra, it may take a few minutes...', 'blue'))
-            ctl.internal_run('cassandra', '--stop')
-
         def stop_mgmt_node():
             info(colored('Stopping ZStack management node, it may take a few minutes...', 'blue'))
             ctl.internal_run('stop_node')
@@ -1187,14 +1178,13 @@ class StopAllCmd(Command):
 
         stop_ui()
         stop_mgmt_node()
-        stop_cassandra()
 
 class StartAllCmd(Command):
 
     def __init__(self):
         super(StartAllCmd, self).__init__()
         self.name = 'start'
-        self.description = 'start all ZStack related services including cassandra, zstack management node, web UI' \
+        self.description = 'start all ZStack related services including zstack management node, web UI' \
                            ' if those services are installed'
         ctl.register_command(self)
 
@@ -1202,15 +1192,6 @@ class StartAllCmd(Command):
         parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=True)
 
     def run(self, args):
-        def start_cassandra():
-            exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
-            if not exe or not os.path.exists(exe):
-                info('skip starting cassandra, it is not installed')
-                return
-
-            info(colored('Starting cassandra, it may take a few minutes...', 'blue'))
-            ctl.internal_run('cassandra', '--start --wait-timeout 120')
-
         def start_mgmt_node():
             info(colored('Starting ZStack management node, it may take a few minutes...', 'blue'))
             if args.daemon:
@@ -1227,7 +1208,6 @@ class StartAllCmd(Command):
             info(colored('Starting ZStack web UI, it may take a few minutes...', 'blue'))
             ctl.internal_run('start_ui')
 
-        start_cassandra()
         start_mgmt_node()
         start_ui()
 
@@ -3895,188 +3875,6 @@ fi
             ctl.write_property('CloudBus.rabbitmqPassword', args.rabbit_password)
             info('updated CloudBus.rabbitmqPassword=%s in %s' % (args.rabbit_password, ctl.properties_file_path))
 
-class RestoreCassandraCmd(Command):
-    def __init__(self):
-        super(RestoreCassandraCmd, self).__init__()
-        self.name = "restore_cassandra"
-        self.description = (
-            "Restore Cassandra database Keyspace from backuped tar ball.\n This will clean up all Cassandra keyspace and deploy Cassandra again with backed up csv files."
-        )
-        self.hide = True
-        ctl.register_command(self)
-
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--file',
-                            '-f',
-                            help="The backed up canssandra keyspace tar ball, which will be used to restore.",
-                            required = True)
-
-    def _status(self):
-        return find_process_by_cmdline('org.apache.cassandra.service.CassandraDaemon')
-
-    def run(self, args):
-        if not os.path.exists(args.file):
-            raise CtlError("Not find file: %s to restore cassandra" % args.file)
-
-        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
-        if not exe:
-            raise CtlError('cannot find the variable[%s] in %s. Have you installed cassandra?' %
-                           (InstallCassandraCmd.CASSANDRA_EXEC, SetEnvironmentVariableCmd.PATH))
-
-        cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
-        if not os.path.isfile(cqlsh):
-            raise CtlError('cannot find the cqlsh at %s, is cassandra installed?' % cqlsh)
-
-        cips = ctl.read_property('Cassandra.contactPoints')
-        if not cips:
-            raise CtlError('cannot find Cassandra IP address in zstack.properties, have you installed Cassandra?'
-                           'If you have installed Cassandra, please configure Cassandra.contactPoints in the zstack.properties')
-
-        if isinstance(cips, list):
-            cip = cips[0]
-        else:
-            cip = cips.split(',')[0]
-
-        cport = ctl.read_property('Cassandra.port')
-        if not cport:
-            cport = 9042
-        else:
-            cport = int(cport)
-
-        ctl.internal_run('stop')
-        shell("rm -rf /var/lib/cassandra")
-
-        ctl.internal_run('cassandra', '--start --wait-timeout 120')
-
-        ret = shell_return('%s %s %s -e "DESC KEYSPACES"' % (cqlsh, cip, cport))
-        if ret != 0:
-            raise CtlError('Cassandra seems not running. Not able to reover Cassandra this time.')
-
-        ctl.internal_run('deploy_cassandra_db')
-
-        tempfolder = "/tmp/zstack_tmp_cassandra_restore_folder"
-        shell('rm -rf %s; mkdir %s' % (tempfolder, tempfolder))
-        shell('cd %s ; tar zxf %s' % (tempfolder, args.file))
-
-        backup_files = os.listdir(tempfolder)
-        for backup_file in backup_files:
-            if backup_file.endswith('csv'):
-                file_name = backup_file.split('.')
-                keyspace = file_name[0]
-                table = file_name[1]
-
-            with open('%s/%s' % (tempfolder, backup_file), 'r') as fd:
-                if not fd.read().strip():
-                    continue
-
-            cmd = "COPY %s.%s FROM '%s' with DELIMITER='\t'" % (keyspace, table, backup_file)
-            info("Restore %s.%s" % (keyspace, table))
-            shell('cd %s; %s %s %s -e "%s"' % (tempfolder, cqlsh, cip, cport, cmd))
-
-        print "Restore cassandra keyspace %s successful from %s! \
-Depends on archived data, only apart of Cassandra data will be restored. \
-You can recover management node by: zstack-ctl start" % (keyspace, args.file)
-        shell('rm -rf %s' % tempfolder)
-
-class DumpCassandraCmd(Command):
-    def __init__(self):
-        super(DumpCassandraCmd, self).__init__()
-        self.name = "dump_cassandra"
-        self.description = (
-            "Dump cassandra database for backup"
-        )
-        ctl.register_command(self)
-
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--file-name',
-                            help="The filename you want to save the database, default is 'zstack-backup-cassandra-db'",
-                            default="zstack-backup-cassandra-db")
-        parser.add_argument('--keep-amount',type=int,
-                            help="The amount of backup files you want to keep, older backup files will be deleted, default number is 60",
-                            default=60)
-        parser.add_argument('--keyspace',type=str,
-                            help="The keyspace to be backuped, the default keyspace is zstack_billing",
-                            default='zstack_billing')
-
-    def run(self, args):
-        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
-        if not exe:
-            raise CtlError('cannot find the variable[%s] in %s. Have you installed cassandra?' %
-                           (InstallCassandraCmd.CASSANDRA_EXEC, SetEnvironmentVariableCmd.PATH))
-
-        cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
-        if not os.path.isfile(cqlsh):
-            raise CtlError('cannot find the cqlsh at %s, is cassandra installed?' % cqlsh)
-
-        cips = ctl.read_property('Cassandra.contactPoints')
-        if not cips:
-            raise CtlError('cannot find Cassandra IP address in zstack.properties, have you installed Cassandra?'
-                           'If you have installed Cassandra, please configure Cassandra.contactPoints in the zstack.properties')
-
-        if isinstance(cips, list):
-            cip = cips[0]
-        else:
-            cip = cips.split(',')[0]
-
-        cport = ctl.read_property('Cassandra.port')
-        if not cport:
-            cport = 9042
-        else:
-            cport = int(cport)
-
-        shell('cd %s; bash nodetool flush' % os.path.dirname(cqlsh))
-
-        ret = shell_return('%s %s %s -e "DESC KEYSPACES"' % (cqlsh, cip, cport))
-        if ret != 0:
-            raise CtlError('Cassandra seems not running, please start it using "zstack-ctl cassandra --start"')
-
-        ret = shell_return('%s %s %s -e "USE %s"' % (cqlsh, cip, cport, args.keyspace))
-        if ret != 0:
-            raise CtlError('KEYSPACE: [%s] is not existed. Please run `zstack-ctl deploy_cassandra_db` firstly.' % args.keyspace)
-
-        tables = shell('%s %s %s -e "USE %s; DESC TABLES;"' % (cqlsh, cip, cport, args.keyspace)).strip().split()
-
-        tempfolder = "/tmp/zstack_tmp_cassandra_save_folder"
-        shell('rm -rf %s; mkdir %s' % (tempfolder, tempfolder))
-
-        begin_string = 'CREATE TABLE'
-        end_string = 'PRIMARY KEY'
-        for table in tables:
-            lines = shell('%s %s %s -e "USE %s; DESC TABLE %s"' % (cqlsh, cip, cport, args.keyspace, table)).strip().split('\n')
-            columes = []
-            for line in lines:
-                line = line.strip()
-                if line.startswith(begin_string):
-                    continue
-                if line.startswith(end_string):
-                    break
-
-                columes.append(line.split()[0])
-
-            table_sav_file = '%s.%s.csv' % (args.keyspace, table)
-            cmd = "COPY %s (%s) to '%s' with DELIMITER='\t'" % (table, ','.join(columes), table_sav_file)
-            try:
-                shell('cd %s; %s %s %s -e "USE %s; %s"' % (tempfolder, cqlsh, cip, cport, args.keyspace, cmd))
-            except Exception as e:
-                raise CtlError('Backup KEYSPACE: [%s] TABLE: [%s] failed by command: \n %s. \n\nReason is: \n%s' % (args.keyspace, table, cmd, e))
-
-        backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        db_backup_dir = "/var/lib/zstack/cassandra-backup/"
-        if os.path.exists(db_backup_dir) is False:
-            os.mkdir(db_backup_dir)
-        db_backup_name = db_backup_dir + args.file_name + "-" + args.keyspace + "-" + backup_timestamp + '.tgz'
-        shell('cd %s; tar zcf %s *.csv' % (tempfolder, db_backup_name))
-
-        print "Backup cassandra %s successful!\nYou can check the file at %s" % (args.keyspace, db_backup_name)
-        shell('rm -rf %s' % tempfolder)
-        # remove old file
-        if len(os.listdir(db_backup_dir)) > args.keep_amount:
-            backup_files_list = [s for s in os.listdir(db_backup_dir) if os.path.isfile(os.path.join(db_backup_dir, s))]
-            backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(db_backup_dir, s)))
-            for expired_file in backup_files_list:
-                if expired_file not in backup_files_list[-args.keep_amount:]:
-                    os.remove(db_backup_dir + expired_file)
-
 class DumpMysqlCmd(Command):
     def __init__(self):
         super(DumpMysqlCmd, self).__init__()
@@ -4510,305 +4308,6 @@ class ChangeIpCmd(Command):
         # Reset RabbitMQ
         shell("zstack-ctl reset_rabbitmq")
         info("Reset RabbitMQ")
-
-class InstallCassandraCmd(Command):
-    CASSANDRA_EXEC = 'CASSANDRA_EXEC'
-    CASSANDRA_CONF = 'CASSANDRA_CONF'
-    CASSANDRA_LOG = 'CASSANDRA_LOG'
-
-    def __init__(self):
-        super(InstallCassandraCmd, self).__init__()
-        self.name = "install_cassandra"
-        self.description = (
-            "install cassandra nosql database."
-            "\nNOTE: you can pass an extra JSON string that will be converted to the cassandra YAML config. The string must"
-            "\nbe quoted by a single quote('), and the content must be the valid JSON format, for example:"
-            "\n\nzstack-ctl  install_cassandra --file /tmp/apache-cassandra-2.2.3-bin.tar.gz '{\"rpc_address\":\"192.168.0.199\", \"listen_address\":\"192.168.0.199\"}'"
-        )
-        ctl.register_command(self)
-
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--file', help='path to the apache-cassandra-2.2.3-bin.tar.gz', required=False)
-        parser.add_argument('--drop', help='drop old cassandar database in /var/lib/cassandra', default=False, action='store_true', required=False)
-        parser.add_argument('--user-zstack', help='do all operations with user zstack', default=True, action='store_true', required=False)
-        parser.add_argument('--listen-address', help='the IP used for both rpc_address and listen_address.'
-                                                     'This option is overridden if rpc_address or listen_address'
-                                                     ' is specified in the JSON body', required=False)
-
-    def run(self, args):
-        if not args.file:
-            args.file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3-bin.tar.gz")
-
-        if not os.path.exists(args.file):
-            raise CtlError('cannot find %s, you may need to specify the option[--file]' % args.file)
-
-        if not args.file.endswith("apache-cassandra-2.2.3-bin.tar.gz"):
-            raise CtlError('at this version, zstack only support apache-cassandra-2.2.3-bin.tar.gz')
-
-        if args.drop:
-            shell('rm -rf /var/lib/cassandra')
-
-        shell('su - zstack -c "tar xzf %s -C %s"' % (args.file, ctl.USER_ZSTACK_HOME_DIR))
-        cassandra_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3")
-        info("successfully installed %s to %s" % (args.file, os.path.join(ctl.USER_ZSTACK_HOME_DIR, cassandra_dir)))
-
-        yaml_conf = os.path.join(cassandra_dir, "conf/cassandra.yaml")
-        shell('yes | cp %s %s.bak' % (yaml_conf, yaml_conf))
-
-        if ctl.extra_arguments:
-            extra = ' '.join(ctl.extra_arguments)
-            with on_error("%s is not a valid JSON string" % extra):
-                conf = simplejson.loads(extra)
-        else:
-            conf = {}
-
-        if args.listen_address:
-            if 'rpc_address' not in conf:
-                conf['rpc_address'] = args.listen_address
-            if 'listen_address' not in conf:
-                conf['listen_address'] = args.listen_address
-
-        if 'commitlog_directory' not in conf:
-            conf['commitlog_directory'] = ['/var/lib/cassandra/commitlog']
-        if 'data_file_directories' not in conf:
-            conf['data_file_directories'] = ['/var/lib/cassandra/data']
-        if 'commitlog_directory' not in conf:
-            conf['saved_caches_directory'] = ['/var/lib/cassandra/saved_caches']
-        conf['start_rpc'] = True
-
-        if args.user_zstack:
-            with use_user_zstack():
-                with open(yaml_conf, 'r') as fd:
-                    c_conf = yaml.load(fd.read())
-        else:
-            with open(yaml_conf, 'r') as fd:
-                c_conf = yaml.load(fd.read())
-
-        for k, v in conf.items():
-            c_conf[k] = v
-
-        listen_address = c_conf['listen_address']
-        rpc_address = c_conf['rpc_address']
-        if listen_address != rpc_address:
-            raise CtlError('listen_address[%s] and rpc_address[%s] do not match' % (listen_address, rpc_address))
-
-        seed_provider = c_conf['seed_provider']
-        with on_error("cannot find parameter[seeds] in %s" % yaml_conf):
-            # check if the parameter is in the YAML conf
-            _ = seed_provider[0]['parameters'][0]['seeds']
-
-        seed_provider[0]['parameters'][0]['seeds'] = listen_address
-        info("change parameter['seeds'] to listen_address[%s], otherwise cassandra may fail to get seeds" % listen_address)
-
-        if args.user_zstack:
-            with use_user_zstack():
-                with open(yaml_conf, 'w') as fd:
-                    fd.write(yaml.dump(c_conf, default_flow_style=False))
-        else:
-            with open(yaml_conf, 'w') as fd:
-                fd.write(yaml.dump(c_conf, default_flow_style=False))
-
-
-        ctl.put_envs([
-          (self.CASSANDRA_EXEC, os.path.join(cassandra_dir, 'bin/cassandra')),
-          (self.CASSANDRA_CONF, yaml_conf),
-          (self.CASSANDRA_LOG, os.path.join(cassandra_dir, 'logs/system.log')),
-        ])
-        info('configs are written into %s' % yaml_conf)
-
-        ctl.write_properties([
-            ('Cassandra.contactPoints', rpc_address)
-        ])
-
-        # fix cassandra a bug of judging Java version
-        cassandra_service_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'conf/cassandra-env.sh')
-        if not os.path.exists(cassandra_service_file):
-            raise Exception('cannot find %s' % cassandra_service_file)
-
-        shell('yes | cp %s %s' % (cassandra_service_file, os.path.join(cassandra_dir, 'conf/cassandra-env.sh')))
-
-        info("set Cassandra.contactPoints = %s in zstack.properties" % rpc_address)
-
-class DeployCassandraDbCmd(Command):
-
-    def __init__(self):
-        super(DeployCassandraDbCmd, self).__init__()
-        self.name = "deploy_cassandra_db"
-        self.description = "deploy or upgrade Cassandra database"
-        ctl.register_command(self)
-
-    def run(self, args):
-        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
-        if not exe:
-            raise CtlError('cannot find the variable[%s] in %s. Have you installed cassandra?' %
-                           (InstallCassandraCmd.CASSANDRA_EXEC, SetEnvironmentVariableCmd.PATH))
-
-        cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
-        if not os.path.isfile(cqlsh):
-            raise CtlError('cannot find the cqlsh at %s, cassandra corrupted!???' % cqlsh)
-
-        cips = ctl.read_property('Cassandra.contactPoints')
-        if not cips:
-            raise CtlError('cannot find Cassandra IP address in zstack.properties, have you installed Cassandra?'
-                           'If you have installed Cassandra, please configure Cassandra.contactPoints in the zstack.properties')
-
-        if isinstance(cips, list):
-            cip = cips[0]
-        else:
-            cip = cips.split(',')[0]
-
-        cport = ctl.read_property('Cassandra.port')
-        if not cport:
-            cport = 9042
-        else:
-            cport = int(cport)
-
-        ret = shell_return('%s %s %s -e "DESC KEYSPACES"' % (cqlsh, cip, cport))
-        if ret != 0:
-            raise CtlError('Cassandra seems not running, please start it using "zstack-ctl cassandra --start"')
-
-        root_home = os.path.expanduser('~root')
-        cassandra_setting_folder = os.path.join(root_home, '.cassandra')
-        if not os.path.exists(cassandra_setting_folder):
-            shell('mkdir -p %s' % cassandra_setting_folder)
-
-        cqlrc = os.path.join(cassandra_setting_folder, 'cqlshrc')
-        if not os.path.exists(cqlrc):
-            with open(cqlrc, 'w') as fd:
-                fd.write('''[connection]
-client_timeout = 1800
-''')
-
-        deployer_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/deploy_cassandra_db.py')
-        if not os.path.isfile(deployer_path):
-            raise CtlError('cannot find %s, your ZStack setup seems corrupted' % deployer_path)
-
-        schema_folder = os.path.join(ctl.zstack_home, 'WEB-INF/classes/mevoco/cassandra/db/')
-        if not os.path.isdir(schema_folder):
-            raise CtlError('cannot find %s, you do not have any Cassandra database to deploy' % schema_folder)
-
-        shell_no_pipe('python %s -v --schema-folder %s --cqlsh %s --ip %s --port %s' % (deployer_path, schema_folder,
-                                                                                     cqlsh, cip, cport))
-
-class CassandraCmd(Command):
-    def __init__(self):
-        super(CassandraCmd, self).__init__()
-        self.name = "cassandra"
-        self.description = (
-            "control cassandra's life cycle"
-        )
-        ctl.register_command(self)
-
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--start', help='start cassandra', action="store_true", required=False)
-        parser.add_argument('--stop', help='stop cassandra', action="store_true", required=False)
-        parser.add_argument('--status', help='show cassandra status', action="store_true", required=False)
-        parser.add_argument('--wait-timeout', type=int, help='wait timeout(in seconds) until cassandra RPC port is available. This is normally used'
-                                           ' with --start option to make sure cassandra successfully starts.',
-                            default=-1, required=False)
-
-    def start(self, args):
-        shell("iptables-save | grep -- '-A INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT' > /dev/null || (iptables -w -I INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT || iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 9042 -j ACCEPT)")
-
-        pid = self._status(args)
-        if pid:
-            info('cassandra[PID:%s] is already running' % pid)
-            return
-
-        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
-        if not exe:
-            raise CtlError('cannot find the variable[%s] in %s. Have you installed cassandra?' %
-                           (InstallCassandraCmd.CASSANDRA_EXEC, SetEnvironmentVariableCmd.PATH))
-
-        # cd to the /bin folder to start cassandra, otherwise the command line
-        # will be too long to be truncated by the linux /proc/[pid]/cmdline, which
-        # leads _status() not working
-        shell('cd %s && MAX_HEAP_SIZE=1024M HEAP_NEWSIZE=256M bash %s' % (os.path.dirname(exe), os.path.basename(exe)))
-        info('successfully starts cassandra')
-
-        if args.wait_timeout <= 0:
-            return
-
-        info('waiting for cassandra to listen on the RPC port until timeout after %s seconds' % args.wait_timeout)
-        conf = ctl.get_env(InstallCassandraCmd.CASSANDRA_CONF)
-        if not conf:
-            warn('cannot find the variable[%s] in %s, ignore --wait-timeout' %
-                (InstallCassandraCmd.CASSANDRA_CONF, SetEnvironmentVariableCmd.PATH))
-            return
-
-        if not os.path.exists(conf):
-            warn('cannot find cassandra conf at %s, ignore --wait-timeout' % conf)
-            return
-
-        timeout = args.wait_timeout
-        with open(conf, 'r') as fd:
-            m = yaml.load(fd.read())
-            ip = m['listen_address']
-            port = m['native_transport_port']
-            if not ip:
-                warn('cannot find parameter[listen_address] in %s, ignore --wait-timeout' % conf)
-                return
-
-            if not port:
-                warn('cannot find parameter[native_transport_port] in %s, ignore --wait-timeout' % conf)
-                return
-
-            cqlsh = os.path.join(os.path.dirname(exe), 'cqlsh')
-            while args.wait_timeout > 0:
-                ret = shell_return('%s %s %s -e "describe keyspaces" > /dev/null' % (cqlsh, ip, port))
-                if ret == 0:
-                    info('cassandra is listening on RPC port[%s] now' % port)
-                    return
-
-                time.sleep(1)
-                args.wait_timeout -= 1
-
-            raise CtlError("cannot execute cassandra shell[%s] after %s seconds, it may not successfully start,"
-                           "please check the log file in %s" % (cqlsh, timeout, ctl.get_env(InstallCassandraCmd.CASSANDRA_LOG)))
-
-    def stop(self, args):
-        pid = self._status(args)
-        if not pid:
-            info('cassandra is already stopped')
-            return
-
-        exe = ctl.get_env(InstallCassandraCmd.CASSANDRA_EXEC)
-        if not exe:
-            shell('kill %s' % pid)
-        else:
-            ShellCmd('cd %s; bash nodetool flush; kill %s' % (os.path.dirname(exe), pid), pipe=False)
-
-        count = 30
-        while count > 0:
-            pid = self._status(args)
-            if not pid:
-                info('successfully stopped cassandra')
-                return
-            time.sleep(1)
-            count -= 1
-
-        info('cassandra is still running after %s seconds, kill -9 it' % count)
-        shell('kill -9 %s' % pid)
-
-    def _status(self, args):
-        return find_process_by_cmdline('org.apache.cassandra.service.CassandraDaemon')
-
-    def status(self, args):
-        pid = self._status(args)
-        if not pid:
-            info('cassandra is stopped')
-        else:
-            info('cassandra[PID:%s] is running' % pid)
-
-    def run(self, args):
-        if args.start:
-            self.start(args)
-        elif args.stop:
-            self.stop(args)
-        elif args.status:
-            self.status(args)
-        else:
-            self.status(args)
 
 class InstallManagementNodeCmd(Command):
     def __init__(self):
@@ -6180,21 +5679,17 @@ class StartUiCmd(Command):
 def main():
     AddManagementNodeCmd()
     BootstrapCmd()
-    CassandraCmd()
     ChangeIpCmd()
     CollectLogCmd()
     ConfigureCmd()
     DumpMysqlCmd()
-    DumpCassandraCmd()
     DeployDBCmd()
-    DeployCassandraDbCmd()
     GetEnvironmentVariableCmd()
     InstallWebUiCmd()
     InstallHACmd()
     InstallDbCmd()
     InstallRabbitCmd()
     InstallManagementNodeCmd()
-    InstallCassandraCmd()
     InstallLicenseCmd()
     ShowConfiguration()
     SetEnvironmentVariableCmd()
@@ -6203,7 +5698,6 @@ def main():
     ResetRabbitCmd()
     RestoreConfigCmd()
     RestartNodeCmd()
-    RestoreCassandraCmd()
     RestoreMysqlCmd()
     ShowStatusCmd()
     StartCmd()
