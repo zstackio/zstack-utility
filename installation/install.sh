@@ -649,14 +649,6 @@ unpack_zstack_into_tomcat(){
 upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
-    if [ -f $upgrade_folder/apache-cassandra* ]; then
-        INSTALL_MONITOR='y'
-        #if there isn't cassandra installed, will install cassandra
-        cassandra_log_folder=`zstack-ctl getenv |grep 'CASSANDRA_LOG'|awk -F'=' '{print $2}' 2>/dev/null`
-        if [ -z $cassandra_log_folder ] || [ ! -d `dirname $cassandra_log_folder` ]; then
-            UPGRADE_MONITOR='y'
-        fi
-    fi
 
     show_spinner uz_upgrade_zstack_ctl
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
@@ -695,18 +687,7 @@ upgrade_zstack(){
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
 
     #When using -i option, will not upgrade kariosdb and not start zstack
-    # It means user will manually upgrade database. 
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
-        if [ ! -z $UPGRADE_MONITOR ] ; then
-            show_spinner iz_install_cassandra
-            show_spinner sz_start_cassandra
-        elif [ ! -z $INSTALL_MONITOR ] ; then
-            #when monitor libs are ready, we need to try to start then, 
-            # although we didn't stop them when upgrading.
-            # Upgrade zstack need to run deploy cassandra db in start cassandra task. 
-            show_spinner sz_start_cassandra
-        fi
-
         #when using -k option, will not start zstack.
         if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
             show_spinner sz_start_zstack
@@ -1123,12 +1104,6 @@ uz_upgrade_zstack(){
         fail "failed to upgrade local management node"
     fi
 
-    #Will install cassandra, no matter it is installed or not.
-    #This will help fix some issue when upgrading. 
-    if [ -f $upgrade_folder/apache-cassandra* ]; then
-        /bin/cp -f $upgrade_folder/apache-cassandra*.gz $ZSTACK_INSTALL_ROOT  >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-    
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ] ; then
         cd /; rm -rf $upgrade_folder
@@ -1247,20 +1222,6 @@ iz_install_zstackctl(){
     pass
 }
 
-iz_install_cassandra(){
-    echo_subtitle "Install Cassandra"
-    zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ -z $NEED_DROP_DB ]; then
-        zstack-ctl install_cassandra "{\"rpc_address\":\"$MANAGEMENT_IP\", \"listen_address\":\"$MANAGEMENT_IP\"}" >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        zstack-ctl install_cassandra --drop "{\"rpc_address\":\"$MANAGEMENT_IP\", \"listen_address\":\"$MANAGEMENT_IP\"}" >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-    if [ $? -ne 0 ];then
-       fail "failed to install Cassandra"
-    fi
-    pass
-}
-
 install_zstack(){
     echo_title "Install ${PRODUCT_NAME} Tools"
     echo ""
@@ -1274,12 +1235,6 @@ install_zstack(){
     if [ -f $LICENSE_FILE ]; then
         zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-
-    [ -z $INSTALL_MONITOR ] && return
-    show_spinner iz_install_cassandra
-    #Do not deploy cassandra when only install zstack by option -i.
-    # This is for HA deployment. 
-    [ -z $ONLY_INSTALL_ZSTACK ] && show_spinner sz_start_cassandra
 }
 
 install_db_msgbus(){
@@ -1346,17 +1301,9 @@ EOF
 EOF
     fi
 
-    #will save cassandra key keyspace(zstack_billing) when install mevoco.
-    if [ ! -z $INSTALL_MONITOR ]; then
-        crontab -l 2>/dev/null |grep 'zstack-ctl dump_cassandra' >/dev/null
-        if [ $? -ne 0 ]; then
-            crontab <<EOF
-`crontab -l 2>/dev/null`
-32 0,12 * * * zstack-ctl dump_cassandra --keep-amount 14
+    crontab <<EOF
+`crontab -l 2>/dev/null`|sed '/zstack-ctl dump_cassandra/d'
 EOF
-        fi
-    fi
-
     pass
 }
 
@@ -1646,20 +1593,6 @@ EOF
 check_zstack_server(){
     curl --noproxy -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:8080/zstack/api >>$ZSTACK_INSTALL_LOG 2>&1
     return $?
-}
-
-sz_start_cassandra(){
-    echo_subtitle "Start Cassandra"
-    #zstack-ctl cassandra --stop >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl cassandra --start --wait-timeout=180 >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-       fail "failed to start Cassandra"
-    fi
-    zstack-ctl deploy_cassandra_db  >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-       fail "failed to deploy Cassandra db"
-    fi
-    pass
 }
 
 start_zstack(){
@@ -2299,9 +2232,6 @@ fi
 
 #Install unzip and unpack zstack war into apache tomcat
 unpack_zstack_into_tomcat
-
-#doesn't need use to send -m option to install monitor.
-[ -f "$ZSTACK_INSTALL_ROOT/apache-cassandra-2.2.3-bin.tar.gz" ] && INSTALL_MONITOR='y'
 
 #Do not config NFS or HTTP when installing ZStack product
 [ ! -z $INSTALL_MONITOR ] && NEED_NFS='' && NEED_HTTP=''

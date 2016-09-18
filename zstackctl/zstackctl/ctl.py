@@ -1791,7 +1791,7 @@ class UpgradeHACmd(Command):
     community_iso = "/opt/ZStack-Community-x86_64-DVD-1.4.0.iso"
     bridge = ""
     SpinnerInfo.spinner_status = {'upgrade_repo':False,'stop_mevoco':False, 'upgrade_mevoco':False,'upgrade_db':False,
-                      'backup_db':False, 'upgrade_cassandra_db':False, 'check_init':False, 'start_mevoco':False}
+                      'backup_db':False, 'check_init':False, 'start_mevoco':False}
     ha_config_content = None
 
     def __init__(self):
@@ -2021,11 +2021,6 @@ class UpgradeHACmd(Command):
             error("Upgrade mysql failed: %s" % output)
         else:
             logger.debug("SUCC: shell command: 'zstack-ctl upgrade_db' successfully" )
-        (status, output) =  commands.getstatusoutput("zstack-ctl deploy_cassandra_db")
-        if status != 0:
-            error("Upgrade Cassandra failed: %s" % output)
-        else:
-            logger.debug("SUCC: shell command: 'zstack-ctl deploy_cassandra_db' successfully")
 
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting mevoco"
@@ -2165,7 +2160,7 @@ class InstallHACmd(Command):
     conf_file = conf_dir + "ha.yaml"
     logger_dir = "/var/log/zstack/"
     bridge = ""
-    SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,'Cassandra':False,
+    SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,
                       'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
     ha_config_content = None
     def __init__(self):
@@ -2203,8 +2198,6 @@ class InstallHACmd(Command):
                             default="zstack123")
         parser.add_argument('--drop', action='store_true', default=False,
                             help="Force delete mysql data for re-deploy HA")
-        parser.add_argument('--drop-cassandra', action='store_true', default=False,
-                            help="Force drop cassandra keyspace for re-deploy HA")
         parser.add_argument('--keep-db', action='store_true', default=False,
                             help='keep existing zstack database and not raise error')
         parser.add_argument('--recovery-from-this-host','--recover',
@@ -2700,29 +2693,6 @@ class InstallHACmd(Command):
         command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
         run_remote_command(command, self.host1_post_info)
 
-        # cassandra HA only need to change the config file, so unnecessary to wrap the process in a class
-        spinner_info = SpinnerInfo()
-        spinner_info.output = "Starting to deploy Cassandra HA"
-        spinner_info.name = "Cassandra"
-        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-        SpinnerInfo.spinner_status['Cassandra'] = True
-        ZstackSpinner(spinner_info)
-        update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
-                    "regexp='seeds:' line='  - seeds: \"%s,%s\"'" % (args.host1, args.host2), self.host1_post_info)
-        update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
-                    "regexp='seeds:' line='  - seeds: \"%s,%s\"'" % (args.host1, args.host2), self.host2_post_info)
-        if args.host3_info is not False:
-            update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
-                        "regexp='seeds:' line='  - seeds: \"%s,%s,%s\"'" % (args.host1, args.host2, args.host3), self.host1_post_info)
-            update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
-                        "regexp='seeds:' line='  - seeds: \"%s,%s,%s\"'" % (args.host1, args.host2, args.host3), self.host2_post_info)
-            update_file("%s/apache-cassandra-2.2.3/conf/cassandra.yaml" % ctl.USER_ZSTACK_HOME_DIR,
-                        "regexp='seeds:' line='  - seeds: \"%s,%s,%s\"'" % (args.host1, args.host2, args.host3), self.host3_post_info)
-
-        # set cron task to sync data
-        cron("sync_kairosdb_data","minute='0' hour='3' job='%s/apache-cassandra-2.2.3/javadoc/org/"
-                                  "apache/cassandra/tools/nodetool repair 2>&1'" % ctl.USER_ZSTACK_HOME_DIR, self.host1_post_info)
-
         # copy zstack-1 property to zstack-2 and update the management.server.ip
         # update zstack-1 firstly
         update_file("%s" % ctl.properties_file_path,
@@ -2739,13 +2709,6 @@ class InstallHACmd(Command):
                     "regexp='^CloudBus\.rabbitmqHeartbeatTimeout' line='CloudBus.rabbitmqHeartbeatTimeout=10'",
                     self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
-                    "regexp='^Cassandra\.contactPoints' line='Cassandra.contactPoints=%s,%s'"
-                    % (args.host1, args.host2), self.host1_post_info)
-        if args.host3_info is not False:
-            update_file("%s" % ctl.properties_file_path,
-                        "regexp='^Cassandra\.contactPoints' line='Cassandra.contactPoints=%s,%s,%s'"
-                        % (args.host1, args.host2, args.host3), self.host1_post_info)
-        update_file("%s" % ctl.properties_file_path,
                     "regexp='management\.server\.ip' line='management.server.ip = %s'" %
                     args.host1, self.host1_post_info)
         copy_arg = CopyArg()
@@ -2760,56 +2723,6 @@ class InstallHACmd(Command):
             update_file("%s" % ctl.properties_file_path,
                         "regexp='management\.server\.ip' line='management.server.ip = %s'"
                         % args.host3, self.host3_post_info)
-
-        if args.drop_cassandra is True:
-            command = "zstack-ctl cassandra --stop"
-            run_remote_command(command, self.host1_post_info)
-            run_remote_command(command, self.host2_post_info)
-            if args.host3_info is not False:
-                run_remote_command(command, self.host3_post_info)
-            # backup old cassandra dir avoid changing keyspace error
-            command = "[ -d /var/lib/cassandra/ ] && mv /var/lib/cassandra/ /var/lib/cassandra-%s/ || true " \
-                      % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            run_remote_command(command, self.host1_post_info)
-            run_remote_command(command, self.host2_post_info)
-            if args.host3_info is not False:
-                run_remote_command(command, self.host3_post_info)
-                #command = "/usr/local/zstack/apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e 'drop keyspace zstack_billing;'" % self.host1_post_info.host
-                #run_remote_command(command, self.host1_post_info)
-                #command = "/usr/local/zstack/apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e 'drop keyspace zstack_logging;'" % self.host1_post_info.host
-                #run_remote_command(command, self.host1_post_info)
-
-        # start Cassadra 
-        command = 'zstack-ctl cassandra --start --wait-timeout 120'
-        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
-                                                             (private_key_name, args.host1, command))
-        if status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host1, output))
-        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
-                                                             (private_key_name, args.host2, command))
-        if status != 0:
-            error("Something wrong on host: %s\n %s" % (args.host2, output))
-        if args.host3_info is not False:
-            (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
-                                                                 (private_key_name, args.host3, command))
-            if status != 0:
-                error("Something wrong on host: %s\n %s" % (args.host3, output))
-
-        spinner_info.output = "Deploy Cassandra DB"
-        spinner_info.name = "Cassandra.DB"
-        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-        ZstackSpinner(spinner_info)
-
-        # deploy cassandra_db
-        command = 'zstack-ctl deploy_cassandra_db'
-        run_remote_command(command, self.host1_post_info)
-
-        # change Cassadra duplication number
-        #self.update_cassadra = "ALTER KEYSPACE kairosdb WITH REPLICATION = { 'class' : " \
-        #                       "'SimpleStrategy','replication_factor' : 3 };CONSISTENCY ONE;"
-        #command = "%s/../../../apache-cassandra-2.2.3/bin/cqlsh %s 9042 -e \"%s\"" % \
-        #               (os.environ['ZSTACK_HOME'], args.host1, self.update_cassadra)
-        #run_remote_command(command, self.host1_post_info)
 
         #finally, start zstack-1 and zstack-2
         spinner_info = SpinnerInfo()
@@ -4194,30 +4107,20 @@ class ChangeIpCmd(Command):
         super(ChangeIpCmd, self).__init__()
         self.name = "change_ip"
         self.description = (
-            "update new management ip address to zstack property file and cassandra config file"
+            "update new management ip address to zstack property file"
         )
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--ip', help='The new IP address of management node.'
                                          'This operation will update the new ip address to '
-                                         'zstack and cassandra config file' , required=True)
-        parser.add_argument('--cassandra_rpc_address', help='The new IP address of cassandra_rpc_address, default will use value from --ip', required=False)
-        parser.add_argument('--cassandra_listen_address', help='The new IP address of cassandra_listen_address, default will use value from --ip', required=False)
+                                         'zstack config file' , required=True)
         parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
         parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
 
     def run(self, args):
         if args.ip == '0.0.0.0':
             raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
-        if args.cassandra_rpc_address is not None:
-            cassandra_rpc_address = args.cassandra_rpc_address
-        else:
-            cassandra_rpc_address = args.ip
-        if args.cassandra_listen_address is not None:
-            cassandra_listen_address = args.cassandra_listen_address
-        else:
-            cassandra_listen_address = args.ip
         if args.cloudbus_server_ip is not None:
             cloudbus_server_ip = args.cloudbus_server_ip
         else:
@@ -4229,7 +4132,7 @@ class ChangeIpCmd(Command):
 
         zstack_conf_file = ctl.properties_file_path
         ip_check = re.compile('^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
-        for input_ip in [cassandra_rpc_address, cassandra_listen_address, cloudbus_server_ip, mysql_ip]:
+        for input_ip in [cloudbus_server_ip, mysql_ip]:
             if not ip_check.match(input_ip):
                 info("The ip address you input: %s seems not a valid ip" % input_ip)
                 return 1
@@ -4285,25 +4188,6 @@ class ChangeIpCmd(Command):
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
-
-        # Update cassandra config file
-        cassandra_conf_file = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "apache-cassandra-2.2.3/conf/cassandra.yaml")
-        if os.path.isfile(cassandra_conf_file):
-            shell('yes | cp %s %s.bak' % (cassandra_conf_file, cassandra_conf_file))
-            with open(cassandra_conf_file, 'r') as fd:
-                c_conf = yaml.load(fd.read())
-                c_conf['listen_address'] = cassandra_listen_address
-                c_conf['rpc_address'] = cassandra_rpc_address
-                with open(cassandra_conf_file, 'w') as fd:
-                    fd.write(yaml.dump(c_conf, default_flow_style=False))
-                    info('Update cassandra listen address: %s rpc_address: %s in %s' \
-                         % (cassandra_listen_address, cassandra_rpc_address, cassandra_conf_file))
-                    ctl.write_properties([
-                        ('Cassandra.contactPoints', cassandra_rpc_address)
-                    ])
-                    info("Update cassandra rpc address: %s in %s" % (cassandra_rpc_address, zstack_conf_file))
-        else:
-            info("Didn't find %s, skip update cassandra ip" % cassandra_conf_file)
 
         # Reset RabbitMQ
         shell("zstack-ctl reset_rabbitmq")
