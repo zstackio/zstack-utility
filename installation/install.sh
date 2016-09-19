@@ -702,6 +702,17 @@ upgrade_zstack(){
 
 cs_pre_check(){
     echo_subtitle "Pre-Checking"
+    if [ -f $PRODUCT_TITLE_FILE ]; then
+        #check cpu number
+        current_cpu=`cat /proc/cpuinfo |grep processor|wc -l`
+        if [ $current_cpu -lt 4 ]; then
+            fail "Your system only has $current_cpu CPUs. $PRODUCT_NAME needs at least 4 CPUs."
+        fi
+        current_memory=`free -m|grep Mem|awk '{print $2}'`
+        if [ $current_memory -lt 6144 ]; then
+            fail "Your system only has $current_memory MB memory. $PRODUCT_NAME needs at least 6GB memory."
+        fi
+    fi
     #change zstack.properties config
     if [ $UPGRADE != 'n' ]; then
         zstack_properties=`zstack-ctl status 2>/dev/null|grep zstack.properties|awk '{print $2}'`
@@ -840,7 +851,7 @@ is_install_general_libs_rh(){
         fail "java-1.8.0-openjdk is not installed. Did you forget updating management node local repos to latest CentOS ZStack Community ISO? Please use following steps to update local repos:
         1. cd /opt
         2. wget http://www.mevoco.com/downloads/scripts/zstack-repo-upgrade.sh
-        3. download latest CentOS ZStack community ISO to /opt/ , e.g.  /opt/ZStack-Community-x86_64-DVD-1.4.0.iso
+        3. download latest CentOS ZStack community ISO to /opt/ , e.g.  http://download.zstack.org/ISO/ZStack-Community-x86_64-DVD-160827.iso
         4. bash /opt/zstack-repo-upgrade.sh
         "
     else
