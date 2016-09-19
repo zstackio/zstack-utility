@@ -14,7 +14,7 @@
         <copy file="${license.file}" tofile="${target.license.file}" />
     </target>
 
-    <target name="build-centos-offline" depends="copy-monitor-packages, copy-license-file">
+    <target name="build-centos-offline" depends="copy-license-file">
         <copy file="${war.file}" todir="${allinone.dir}" />
         <echo message="copy apache-tomcat to ${allinone.file}" />
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
