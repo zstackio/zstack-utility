@@ -2050,7 +2050,7 @@ class AddManagementNodeCmd(Command):
                             required=True)
         parser.add_argument('--ssh-key',
                             help="the path of private key for SSH login $host; if provided, Ansible will use the "
-                                 "specified key as private key to SSH login the $host",
+                                 "specified key as private key to SSH login the $host, default will use zstack private key",
                             default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
@@ -2292,6 +2292,9 @@ class InstallHACmd(Command):
             error("bridge %s should add the interface %s, make sure you have setup the interface or specify the right"
                   " bridge name" % (InstallHACmd.bridge, InstallHACmd.bridge.split('br_')[1]))
 
+        # check keepalived label should not longer than 15 characters
+        if len(InstallHACmd.bridge) >= 13:
+            error("bridge name length cannot be longer than 13 characters")
 
         # check user start this command on host1
         if args.recovery_from_this_host is False:
