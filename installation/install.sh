@@ -2289,6 +2289,7 @@ install_db_msgbus
 
 if [ ! -z $NEED_SET_MN_IP ];then
     zstack-ctl configure management.server.ip=${MANAGEMENT_IP}
+    zstack-ctl configure consoleProxyOverriddenIp=${MANAGEMENT_IP}
 fi
 
 #Start ${PRODUCT_NAME} 
