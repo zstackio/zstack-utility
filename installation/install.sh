@@ -1313,7 +1313,7 @@ EOF
     fi
 
     crontab <<EOF
-`crontab -l 2>/dev/null`|sed '/zstack-ctl dump_cassandra/d'
+`crontab -l 2>/dev/null|sed '/zstack-ctl dump_cassandra/d'`
 EOF
     pass
 }
