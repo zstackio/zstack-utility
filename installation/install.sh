@@ -705,12 +705,12 @@ cs_pre_check(){
     if [ -f $PRODUCT_TITLE_FILE ]; then
         #check cpu number
         current_cpu=`cat /proc/cpuinfo |grep processor|wc -l`
-        if [ $current_cpu -lt 4 ]; then
-            fail "Your system only has $current_cpu CPUs. $PRODUCT_NAME needs at least 4 CPUs."
+        if [ $current_cpu -lt 2 ]; then
+            fail "Your system only has $current_cpu CPUs. $PRODUCT_NAME needs at least 2 CPUs."
         fi
         current_memory=`free -m|grep Mem|awk '{print $2}'`
-        if [ $current_memory -lt 5800 ]; then
-            fail "Your system only has $current_memory MB memory. $PRODUCT_NAME needs at least 6GB memory."
+        if [ $current_memory -lt 3500 ]; then
+            fail "Your system only has $current_memory MB memory. $PRODUCT_NAME needs at least 4GB memory."
         fi
     fi
     #change zstack.properties config
