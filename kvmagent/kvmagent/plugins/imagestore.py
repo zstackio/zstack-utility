@@ -65,6 +65,9 @@ class ImageStoreClient(object):
     def commit_to_imagestore(self, primaryStorageInstallPath):
         fpath = primaryStorageInstallPath
 
+        # Synchronize cached writes for 'fpath'
+        shell.call('/bin/sync ' + fpath)
+
         # Add the image to registry
         cmdstr = '%s -json add -file %s' % (self.ZSTORE_CLI_PATH, fpath)
 
