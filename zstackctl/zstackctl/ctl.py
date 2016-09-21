@@ -3312,7 +3312,12 @@ wsrep_sst_method=rsync
                           "flush privileges;'" % (self.host1_post_info.mysql_userpassword, self.host1_post_info.mysql_userpassword,
                                                  self.host1_post_info.mysql_userpassword,self.host1_post_info.mysql_password,
                                                  self.host1_post_info.mysql_password, self.host1_post_info.mysql_password)
-            run_remote_command(command, self.host1_post_info)
+            (status, output) = run_remote_command(command, self.host1_post_info, True, True)
+            if status is False:
+                time.sleep(5)
+                (status, output) = run_remote_command(command, self.host1_post_info, True, True)
+                if status is False:
+                    error("Failed to set mysql 'zstack' and 'root' password, the reason is %s" % output)
 
         # config mysqlchk_status.sh on zstack-1 and zstack-2
         mysqlchk_raw_script = '''#!/bin/sh
