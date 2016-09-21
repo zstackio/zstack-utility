@@ -2494,6 +2494,18 @@ class SetVmStaticIpAction(inventory.APISetVmStaticIpMsg):
         self.out = evt
         return self.out
 
+class GetCandidateIsoForAttachingVmAction(inventory.APIGetCandidateIsoForAttachingVmMsg):
+    def __init__(self):
+        super(GetCandidateIsoForAttachingVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetCandidateIsoForAttachingVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class MigrateVmAction(inventory.APIMigrateVmMsg):
     def __init__(self):
         super(MigrateVmAction, self).__init__()
