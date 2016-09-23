@@ -3951,6 +3951,15 @@ class CollectLogCmd(Command):
         else:
             (status, output) = commands.getstatusoutput("rm -f %s/collect-log.tar.gz" % local_collect_dir)
 
+    def get_system_log(self, host_post_info, local_collect_dir, tmp_log_dir):
+        # collect uptime and last reboot log and dmesg
+        host_info_log = tmp_log_dir + "host_info"
+        command = "uptime > %s && last reboot >> %s" % (host_info_log, host_info_log)
+        run_remote_command(command, host_post_info)
+        command = "cp /var/log/dmesg* /var/log/messages %s" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+        self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
+
     def get_host_log(self, host_post_info, collect_dir):
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from host: %s ..." % host_post_info.host)
@@ -3972,15 +3981,7 @@ class CollectLogCmd(Command):
             if "The directory is empty" in output:
                 warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
                 return 0
-            #collect uptime and last reboot log and dmesg
-            host_info_log = tmp_log_dir + "host_info"
-            print host_info_log
-            command = "uptime > %s && last reboot >> %s" % (host_info_log, host_info_log)
-            run_remote_command(command, host_post_info)
-            command = "cp /var/log/dmesg* %s" % tmp_log_dir
-            run_remote_command(command, host_post_info)
-            self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
-
+            self.get_system_log(host_post_info, local_collect_dir, tmp_log_dir)
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
@@ -4028,22 +4029,30 @@ class CollectLogCmd(Command):
                               % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, tmp_log_dir, log)
                     run_remote_command(command, host_post_info)
 
+            self.get_system_log(host_post_info,local_collect_dir,tmp_log_dir)
+
             self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
             warn("Management %s is unreachable!" % host_post_info.host)
 
     def get_local_mn_log(self, collect_dir):
         info("Collecting log from this management node ...")
-        if not os.path.exists(collect_dir + "/management-node"):
-            os.makedirs(collect_dir + "/management-node")
+        mn_log_dir = collect_dir + 'management-node-%s' % get_default_ip()
+        if not os.path.exists(mn_log_dir):
+            os.makedirs(mn_log_dir)
         (status, output) = commands.getstatusoutput("tail -n 10000 %s/../../logs/management-server.log > "
-                                                    "%s/management-node/management-server.log 2>&1 "
-                                                    % (ctl.zstack_home, collect_dir))
+                                                    "%s/management-server.log 2>&1 "
+                                                    % (ctl.zstack_home, mn_log_dir))
         if status != 0:
             error("get management-server.log failed: %s" % output)
         for log in CollectLogCmd.mn_log_list:
-            (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/management-node/%s 2>&1 "
-                                                        % (CollectLogCmd.zstack_log_dir, log, collect_dir, log))
+            (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/%s 2>&1 "
+                                                        % (CollectLogCmd.zstack_log_dir, log, mn_log_dir, log))
+
+        command = "uptime > %s/host_info && last reboot >> %s/host_info" % (mn_log_dir, mn_log_dir)
+        commands.getstatusoutput(command)
+        command = "cp /var/log/dmesg* /var/log/messages %s/" % mn_log_dir
+        commands.getstatusoutput(command)
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
