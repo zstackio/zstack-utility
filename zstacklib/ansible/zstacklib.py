@@ -1560,10 +1560,12 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                     service_status("ntpd", "state=restarted enabled=yes", host_post_info)
                 else:
                     command = (
-                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python | "
+                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python ntp ntpdate | "
                                   "grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
+                    # enable ntp service for RedHat
+                    service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
         elif distro == "Debian" or distro == "Ubuntu":
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
