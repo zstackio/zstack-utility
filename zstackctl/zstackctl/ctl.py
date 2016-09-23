@@ -4040,14 +4040,14 @@ class CollectLogCmd(Command):
         mn_log_dir = collect_dir + 'management-node-%s' % get_default_ip()
         if not os.path.exists(mn_log_dir):
             os.makedirs(mn_log_dir)
-        (status, output) = commands.getstatusoutput("tail -n 10000 %s/../../logs/management-server.log > "
+        (status, output) = commands.getstatusoutput("tail -n %d %s/../../logs/management-server.log > "
                                                     "%s/management-server.log 2>&1 "
-                                                    % (ctl.zstack_home, mn_log_dir))
+                                                    % (CollectLogCmd.collect_lines, ctl.zstack_home, mn_log_dir))
         if status != 0:
             error("get management-server.log failed: %s" % output)
         for log in CollectLogCmd.mn_log_list:
-            (status, output) = commands.getstatusoutput("tail -n 10000 %s/%s > %s/%s 2>&1 "
-                                                        % (CollectLogCmd.zstack_log_dir, log, mn_log_dir, log))
+            (status, output) = commands.getstatusoutput("tail -n %d %s/%s > %s/%s 2>&1 "
+                                                        % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, mn_log_dir, log))
 
         command = "uptime > %s/host_info && last reboot >> %s/host_info" % (mn_log_dir, mn_log_dir)
         commands.getstatusoutput(command)
