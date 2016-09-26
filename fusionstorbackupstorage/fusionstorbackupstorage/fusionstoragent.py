@@ -121,7 +121,7 @@ class FusionstorAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         rsp = GetFactsRsp()
-        rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
+        rsp.fsid = lichbd.lichbd_get_fsid()
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -136,7 +136,7 @@ class FusionstorAgent(object):
                 lichbd.lichbd_mkpool(pool.name)
 
         rsp = InitRsp()
-        rsp.fsid = "96a91e6d-892a-41f4-8fd2-4a18c9002425"
+        rsp.fsid = lichbd.lichbd_get_fsid()
         self._set_capacity_to_response(rsp)
 
         return jsonobject.dumps(rsp)
