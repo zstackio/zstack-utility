@@ -61,6 +61,11 @@ def raise_exp(shellcmd):
 def lichbd_config():
     pass
 
+def lichbd_get_fsid():
+    fsid = None
+    fsid = shell.call("cat /opt/fusionstack/etc/lich.conf | grep uuid | awk '{print $2}' | awk -F ';' '{print $1}'").strip()
+    return fsid
+
 def lichbd_check_cluster_is_ready(monHostnames=None, sshUsernames=None, sshPasswords=None):
     fusionstorIsReady = False
 

@@ -31,7 +31,7 @@ class ScanRsp(object):
         super(ScanRsp, self).__init__()
         self.result = None
 
-def kill_vm():
+def kill_vm(maxAttempts):
     vm_uuid_list = shell.call("virsh list | grep running | awk '{print $2}'")
     for vm_uuid in vm_uuid_list.split('\n'):
         vm_uuid = vm_uuid.strip(' \t\n\r')
@@ -44,7 +44,7 @@ def kill_vm():
         kill(False)
         if kill.return_code == 0:
             logger.warn('kill the vm[uuid:%s, pid:%s] because we lost connection to the fusionstor storage.'
-                        'failed to read the heartbeat file[%s] %s times' % (vm_uuid, vm_pid, cmd.heartbeatImagePath, cmd.maxAttempts))
+                        'failed to read the heartbeat file %s times' % (vm_uuid, vm_pid, maxAttempts))
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
@@ -101,7 +101,7 @@ class FusionstorPlugin(kvmagent.KvmAgent):
 
                     failure += 1
                     if failure == cmd.maxAttempts:
-                        kill_vm()
+                        kill_vm(cmd.maxAttempts)
 
                         # reset the failure count
                         failure = 0
@@ -138,7 +138,7 @@ class FusionstorPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
-                        kill_vm()
+                        kill_vm(cmd.maxAttempts)
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
@@ -168,7 +168,7 @@ class FusionstorPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
                                     'shutdown ourselves' % (gw, cmd.maxAttempts))
-                        kill_vm()
+                        kill_vm(cmd.maxAttempts)
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
