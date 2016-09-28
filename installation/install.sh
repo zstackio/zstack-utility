@@ -800,6 +800,7 @@ is_install_general_libs_rh(){
             openssl-devel \
             net-tools \
             bash-completion \
+            dmidecode \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
@@ -837,6 +838,7 @@ is_install_general_libs_rh(){
             openssl-devel \
             net-tools \
             bash-completion \
+            dmidecode \
             $mysql_pkg \
             >>$ZSTACK_INSTALL_LOG 2>&1
     fi
