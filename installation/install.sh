@@ -1598,6 +1598,8 @@ EOF
     fi
     [ $? -ne 0 ] && fail "failed to setup HTTP Server"
     iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
+    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8080 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8080 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
+    service iptables save >> $ZSTACK_INSTALL_LOG 2>&1
     pass
 }
 
