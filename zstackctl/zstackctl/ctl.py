@@ -1856,7 +1856,7 @@ class UpgradeHACmd(Command):
         pass
 
     def check_mn_running(self,host_post_info):
-        cmd = create_check_mgmt_node_command(timeout=10, mn_node=host_post_info.host)
+        cmd = create_check_mgmt_node_command(timeout=4, mn_node=host_post_info.host)
         cmd(False)
         if cmd.return_code != 0:
             error("Check management node %s status failed, make sure the status is running before upgrade" % host_post_info.host)
