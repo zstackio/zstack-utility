@@ -3905,7 +3905,7 @@ class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack"
     host_log_list = ['zstack-sftpbackupstorage.log','zstack.log','zstack-kvmagent.log','ceph-backupstorage.log',
                      'ceph-primarystorage.log', 'zstack-iscsi-filesystem-agent.log', 'zstack-store/zstack-store.log',
-                     'zstack-agent/collectd.log','zstack-agent/server.log']
+                     'zstack-agent/collectd.log','zstack-agent/server.log','fusionstor-backupstorage.log','fusionstor-primarystorage.log']
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log']
