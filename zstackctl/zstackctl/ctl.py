@@ -3958,7 +3958,6 @@ class CollectLogCmd(Command):
         run_remote_command(command, host_post_info)
         command = "cp /var/log/dmesg* /var/log/messages %s" % tmp_log_dir
         run_remote_command(command, host_post_info)
-        self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
 
     def get_host_log(self, host_post_info, collect_dir):
         if check_host_reachable(host_post_info) is True:
@@ -3974,7 +3973,7 @@ class CollectLogCmd(Command):
                 host_log = CollectLogCmd.zstack_log_dir + '/' + log
                 collect_log = tmp_log_dir + '/' + log
                 if file_dir_exist("path=%s" % host_log, host_post_info):
-                    command = "tail -n %d %s > %s 2>&1" % (CollectLogCmd.collect_lines, host_log, collect_log)
+                    command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, host_log, collect_log)
                     run_remote_command(command, host_post_info)
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
@@ -4020,12 +4019,19 @@ class CollectLogCmd(Command):
             command = 'mkdir -p %s' % tmp_log_dir
             run_remote_command(command, host_post_info)
 
-            command = "tail -n %d %s/../../logs/management-server.log > %s/management-server.log 2>&1 " % \
-                      (CollectLogCmd.collect_lines, ctl.zstack_home, tmp_log_dir)
-            run_remote_command(command, host_post_info)
+            #command = "tail -n %d %s/../../logs/management-server.log > %s/management-server.log " % \
+            #          (CollectLogCmd.collect_lines, ctl.zstack_home, tmp_log_dir)
+            #(status, output) = run_remote_command(command, host_post_info, True, True)
+            #if status is not True:
+            command = "mn_log=`find %s/../../logs/management-serve* -maxdepth 1 -type f -printf" \
+                          " '%%T+\\t%%p\\n' | sort -r | awk '{print $2; exit}'`; /bin/cp -rf $mn_log %s" % (ctl.zstack_home, tmp_log_dir)
+            (status, output) = run_remote_command(command, host_post_info, True, True)
+            if status is not True:
+                warn("get management-server log failed: %s" % output)
+
             for log in CollectLogCmd.mn_log_list:
                 if file_dir_exist("path=%s/%s" % (CollectLogCmd.zstack_log_dir, log), host_post_info):
-                    command = "tail -n %d %s/%s > %s/%s 2>&1 " \
+                    command = "tail -n %d %s/%s > %s/%s " \
                               % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, tmp_log_dir, log)
                     run_remote_command(command, host_post_info)
 
@@ -4033,21 +4039,25 @@ class CollectLogCmd(Command):
 
             self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
-            warn("Management %s is unreachable!" % host_post_info.host)
+            warn("Management node %s is unreachable!" % host_post_info.host)
 
     def get_local_mn_log(self, collect_dir):
         info("Collecting log from this management node ...")
         mn_log_dir = collect_dir + 'management-node-%s' % get_default_ip()
         if not os.path.exists(mn_log_dir):
             os.makedirs(mn_log_dir)
-        (status, output) = commands.getstatusoutput("tail -n %d %s/../../logs/management-server.log > "
-                                                    "%s/management-server.log 2>&1 "
-                                                    % (CollectLogCmd.collect_lines, ctl.zstack_home, mn_log_dir))
-        if status != 0:
-            error("get management-server.log failed: %s" % output)
+        command = "mn_log=`find %s/../..//logs/management-serve* -maxdepth 1 -type f -printf '%%T+\\t%%p\\n' | sort -r | " \
+                  "awk '{print $2; exit}'`; /bin/cp -rf $mn_log %s/" % (ctl.zstack_home, mn_log_dir)
+        (status, output) = commands.getstatusoutput(command)
+        if status !=0:
+            warn("get management-server log failed: %s" % output)
+
         for log in CollectLogCmd.mn_log_list:
-            (status, output) = commands.getstatusoutput("tail -n %d %s/%s > %s/%s 2>&1 "
-                                                        % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, mn_log_dir, log))
+            if os.path.exists(CollectLogCmd.zstack_log_dir + log):
+                command = ( "tail -n %d %s/%s > %s/%s " % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, mn_log_dir, log))
+                (status, output) = commands.getstatusoutput(command)
+                if status != 0:
+                    warn("get %s failed: %s" % (log, output))
 
         command = "uptime > %s/host_info && last reboot >> %s/host_info" % (mn_log_dir, mn_log_dir)
         commands.getstatusoutput(command)
