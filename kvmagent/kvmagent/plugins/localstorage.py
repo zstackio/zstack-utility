@@ -10,6 +10,7 @@ from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import linux
+from zstacklib.utils.bash import *
 import zstacklib.utils.uuidhelper as uuidhelper
 
 logger = log.get_logger(__name__)
@@ -210,11 +211,16 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return linux.get_disk_capacity_by_df(self.path)
 
     @kvmagent.replyerror
+    @in_bash
     def copy_bits_to_remote(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for path in cmd.paths:
-            shell.call('rsync -a --relative %s --rsh="/usr/bin/sshpass -p %s ssh -o StrictHostKeyChecking=no -l %s" %s:/' %
-                       (path, cmd.dstPassword, cmd.dstUsername, cmd.dstIp))
+            PATH = path
+            PASSWORD = cmd.dstPassword
+            USER = cmd.dstUsername
+            IP = cmd.dstIp
+            bash_errorout('rsync -a --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -l {{USER}}" {{IP}}:/')
+            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
 
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
