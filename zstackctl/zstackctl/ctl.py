@@ -3984,6 +3984,7 @@ class CollectLogCmd(Command):
                 warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
                 return 0
             self.get_system_log(host_post_info, local_collect_dir, tmp_log_dir)
+            self.compress_and_fetch_log(local_collect_dir,tmp_log_dir,host_post_info)
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
@@ -4022,10 +4023,6 @@ class CollectLogCmd(Command):
             command = 'mkdir -p %s' % tmp_log_dir
             run_remote_command(command, host_post_info)
 
-            #command = "tail -n %d %s/../../logs/management-server.log > %s/management-server.log " % \
-            #          (CollectLogCmd.collect_lines, ctl.zstack_home, tmp_log_dir)
-            #(status, output) = run_remote_command(command, host_post_info, True, True)
-            #if status is not True:
             command = "mn_log=`find %s/../../logs/management-serve* -maxdepth 1 -type f -printf" \
                           " '%%T+\\t%%p\\n' | sort -r | awk '{print $2; exit}'`; /bin/cp -rf $mn_log %s" % (ctl.zstack_home, tmp_log_dir)
             (status, output) = run_remote_command(command, host_post_info, True, True)
