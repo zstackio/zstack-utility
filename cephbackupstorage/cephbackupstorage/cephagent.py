@@ -48,7 +48,7 @@ class GetImageSizeRsp(AgentResponse):
 class PingRsp(AgentResponse):
     def __init__(self):
         super(PingRsp, self).__init__()
-        self.operationFailure = False
+        self.failure = None
 
 class GetFactsRsp(AgentResponse):
     def __init__(self):
@@ -244,15 +244,34 @@ class CephAgent(object):
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PingRsp()
+
+        facts = bash_o('ceph -s -f json')
+        mon_facts = jsonobject.loads(facts)
+        found = False
+        for mon in mon_facts.monmap.mons:
+            if cmd.monAddr in mon.addr:
+                found = True
+                break
+
+        if not found:
+            rsp.success = False
+            rsp.failure = "MonAddrChanged"
+            rsp.error = 'The mon addr is changed on the mon server[uuid:%s], not %s anymore.' \
+                        'Reconnect the ceph primary storage' \
+                        ' may solve this issue' % (cmd.monUuid, cmd.monAddr)
+            return jsonobject.dumps(rsp)
+
+
         create_img = shell.ShellCmd('rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
         create_img(False)
         if create_img.return_code != 0:
             rsp.success = False
-            rsp.operationFailure = True
+            rsp.failure = 'UnableToCreateFile'
             rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
         else:
             rm_img = shell.ShellCmd('rbd rm %s' % cmd.testImagePath)
             rm_img(False)
+
         return jsonobject.dumps(rsp)
 
     @replyerror
