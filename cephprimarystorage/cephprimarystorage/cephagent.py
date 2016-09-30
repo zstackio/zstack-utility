@@ -59,7 +59,7 @@ class GetVolumeSizeRsp(AgentResponse):
 class PingRsp(AgentResponse):
     def __init__(self):
         super(PingRsp, self).__init__()
-        self.operationFailure = False
+        self.failure = None
 
 class GetFactsRsp(AgentResponse):
     def __init__(self):
@@ -208,11 +208,29 @@ class CephAgent(object):
     @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        facts = bash_o('ceph -s -f json')
+        mon_facts = jsonobject.loads(facts)
+        found = False
+        for mon in mon_facts.monmap.mons:
+            if cmd.monAddr in mon.addr:
+                found = True
+                break
+
         rsp = PingRsp()
+
+        if not found:
+            rsp.success = False
+            rsp.failure = "MonAddrChanged"
+            rsp.error = 'The mon addr is changed on the mon server[uuid:%s], not %s anymore.' \
+                        'Reconnect the ceph primary storage' \
+                        ' may solve this issue' % (cmd.monUuid, cmd.monAddr)
+            return jsonobject.dumps(rsp)
+
         r, o, e = bash_roe('timeout 60 rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
         if r != 0:
             rsp.success = False
-            rsp.operationFailure = True
+            rsp.failure = "UnableToCreateFile"
             if r == 124:
                 # timeout happened
                 rsp.error = 'failed to create temporary file on ceph, timeout after 60s, %s %s' % (e, o)
