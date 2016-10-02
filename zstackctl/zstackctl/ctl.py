@@ -29,6 +29,7 @@ import fcntl
 import commands
 import threading
 import itertools
+import platform
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -4746,7 +4747,10 @@ class InstallWebUiCmd(Command):
 
     - name: install Python pip for Ubuntu
       when: ansible_os_family == 'Debian'
-      apt: pkg=python-pip update_cache=yes
+      apt: pkg={{item}} update_cache=yes
+      with_items:
+        - python-pip
+        - iptables-persistent
 
     - name: install pip from local source
       shell: "cd $pypi_path/simple/pip/; pip install --ignore-installed pip*.tar.gz"
@@ -5560,7 +5564,13 @@ class StartUiCmd(Command):
         if not self._check_status(args.port):
             return
 
-        shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.port)
+        distro = platform.dist()[0]
+        if distro == 'centos':
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.port)
+        elif distro == 'Ubuntu':
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.port)
+        else:
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.port)
 
         scmd = '. %s/bin/activate\nZSTACK_DASHBOARD_PORT=%s nohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, args.port, param)
         script(scmd, no_pipe=True)
