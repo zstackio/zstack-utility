@@ -1602,6 +1602,7 @@ class InstallDbCmd(Command):
       with_items:
         - mariadb-client
         - mariadb-server
+        - iptables-persistent
       register: install_result
 
     - name: open 3306 port
@@ -1610,7 +1611,7 @@ class InstallDbCmd(Command):
 
     - name: open 3306 port
       when: ansible_os_family != 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && service iptables save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && /etc/init.d/iptables-persistent save)
 
     - name: run post-install script
       script: $post_install_script
@@ -3659,6 +3660,12 @@ class InstallRabbitCmd(Command):
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y rabbitmq-server libselinux-python iptables-services
 
+    - name: install iptables-persistent for Ubuntu
+      when: ansible_os_family == 'Debian'
+      apt: pkg={{item}} update_cache=yes
+      with_items:
+        - iptables-persistent
+
     - name: install RabbitMQ on Ubuntu OS
       when: ansible_os_family == 'Debian'
       apt: pkg={{item}} update_cache=yes
@@ -3667,23 +3674,23 @@ class InstallRabbitCmd(Command):
 
     - name: open 5672 port
       when: ansible_os_family != 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT && service iptables save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT
 
     - name: open 5673 port
       when: ansible_os_family != 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5673 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5673 -j ACCEPT && service iptables save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5673 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5673 -j ACCEPT
 
     - name: open 15672 port
       when: ansible_os_family != 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT && service iptables save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT && /etc/init.d/iptables-persistent save)
 
     - name: open 5672 port
       when: ansible_os_family == 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT && service iptables save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT
 
     - name: open 5673 port
       when: ansible_os_family == 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5673 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5673 -j ACCEPT && service iptables save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5673 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5673 -j ACCEPT
 
     - name: open 15672 port
       when: ansible_os_family == 'RedHat'
