@@ -253,6 +253,13 @@ modprobe_arg.name = 'tun'
 modprobe_arg.state = 'present'
 modprobe(modprobe_arg, host_post_info)
 
+#set max performance 
+if distro == "RedHat" or distro == "CentOS":
+    command = "tuned-adm profile virtual-host; echo virtual-host > /etc/tuned/active_profile"
+    host_post_info.post_label = "ansible.shell.set.tuned.profile"
+    host_post_info.post_label_param = "set profile as virtual-host"
+    run_remote_command(command, host_post_info)
+
 # name: remove libvirt default bridge
 command = '(ifconfig virbr0 &> /dev/null && virsh net-destroy default > ' \
           '/dev/null && virsh net-undefine default > /dev/null) || true'
