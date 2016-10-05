@@ -3710,7 +3710,11 @@ class InstallRabbitCmd(Command):
 
     - name: open 15672 port
       when: ansible_os_family != 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT && /etc/init.d/iptables-persistent save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT
+
+    - name: save iptables
+      when: ansible_os_family != 'RedHat'
+      shell: /etc/init.d/iptables-persistent save
 
     - name: open 5672 port
       when: ansible_os_family == 'RedHat'
@@ -3722,7 +3726,11 @@ class InstallRabbitCmd(Command):
 
     - name: open 15672 port
       when: ansible_os_family == 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT && service iptables save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT
+
+    - name: save iptables
+      when: ansible_os_family == 'RedHat'
+      shell: service iptables save
 
     - name: install rabbitmq management plugin
       shell: rabbitmq-plugins enable rabbitmq_management
