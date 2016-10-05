@@ -679,6 +679,8 @@ def find_route_interface_ip_by_destination_ip(ip_addr):
         return route.split('src')[1].strip().split()[0]
 
 def create_bridge(bridge_name, interface, move_route=True):
+    if is_bridge(interface):
+        raise Exception('interface %s is bridge' % interface)
     br_name = find_bridge_having_physical_interface(interface)
     if br_name and br_name != bridge_name:
         raise Exception('failed to create bridge[{0}], physical interface[{1}] has been occupied by bridge[{2}]'.format(bridge_name, interface, br_name))
