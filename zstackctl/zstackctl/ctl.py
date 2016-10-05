@@ -2041,6 +2041,8 @@ class UpgradeHACmd(Command):
 
 class AddManagementNodeCmd(Command):
     SpinnerInfo.spinner_status = {'check_init':False,'add_key':False,'deploy':False,'config':False,'start':False,'install_ui':False}
+    install_pkgs = ['openssl']
+    logger_dir = '/var/log/zstack/'
     def __init__(self):
         super(AddManagementNodeCmd, self).__init__()
         self.name = "add_multi_management"
@@ -2050,6 +2052,7 @@ class AddManagementNodeCmd(Command):
         parser.add_argument('--host-list','--hosts',nargs='+',
                             help="All hosts connect info follow below format: 'root:passwd1@host1_ip root:passwd2@host2_ip ...' ",
                             required=True)
+        parser.add_argument('--force-reinstall','-f',action="store_true", default=False)
         parser.add_argument('--ssh-key',
                             help="the path of private key for SSH login $host; if provided, Ansible will use the "
                                  "specified key as private key to SSH login the $host",
@@ -2062,8 +2065,11 @@ class AddManagementNodeCmd(Command):
         if status != 0:
             error("Copy public key '%s' to host: '%s' failed:\n %s" % (key_path, host_info.host,  output))
 
-    def deploy_mn_on_host(self, host_info, key):
-        command = 'zstack-ctl install_management_node --host=%s --ssh-key="%s"' % (host_info.host, key)
+    def deploy_mn_on_host(self,args, host_info, key):
+        if args.force_reinstall is True:
+            command = 'zstack-ctl install_management_node --host=%s --ssh-key="%s" --force-reinstall' % (host_info.host, key)
+        else:
+            command = 'zstack-ctl install_management_node --host=%s --ssh-key="%s"' % (host_info.host, key)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
             error("deploy mn on host %s failed:\n %s" % (host_info.host, output))
@@ -2087,13 +2093,26 @@ class AddManagementNodeCmd(Command):
 
     def start_mn_on_host(self, host_info, key):
         command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl " \
-                  "start_node && zstack-ctl start_ui" % (key, host_info.host)
+                  "start_node " % (key, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
             error("start node on host %s failed:\n %s" % (host_info.host, output))
+        command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl " \
+                  "start_ui" % (key, host_info.host)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("start ui on host %s failed:\n %s" % (host_info.host, output))
 
+    def install_packages(self, pkg_list, host_info):
+        distro = platform.dist()[0]
+        if distro == "centos":
+            for pkg in pkg_list:
+                yum_install_package(pkg, host_info)
+        elif distro == "Ubuntu":
+            apt_install_packages(pkg_list, host_info)
 
     def run(self, args):
+        create_log(AddManagementNodeCmd.logger_dir)
         host_info_list = []
         if args.ssh_key is None:
             args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
@@ -2105,10 +2124,18 @@ class AddManagementNodeCmd(Command):
         SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['check_init'] = True
         ZstackSpinner(spinner_info)
+
         for host in args.host_list:
+            inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
             host_info = HostPostInfo()
+            host_info.private_key = private_key
+            host_info.host_inventory =  inventory_file
             (host_info.remote_user, host_info.remote_pass, host_info.host, host_info.remote_port) = check_host_info_format(host)
             check_host_password(host_info.remote_pass, host_info.host)
+            command = "cat %s | grep %s || echo %s >> %s" % (inventory_file, host_info.host, host_info.host, inventory_file)
+            (status, output) = commands.getstatusoutput(command)
+            if status != 0 :
+                error(output)
             host_info_list.append(host_info)
         for host_info in host_info_list:
             spinner_info = SpinnerInfo()
@@ -2125,7 +2152,8 @@ class AddManagementNodeCmd(Command):
             SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
             SpinnerInfo.spinner_status['deploy'] = True
             ZstackSpinner(spinner_info)
-            self.deploy_mn_on_host(host_info, private_key)
+            self.deploy_mn_on_host(args, host_info, private_key)
+            self.install_packages(AddManagementNodeCmd.install_pkgs, host_info)
 
             spinner_info = SpinnerInfo()
             spinner_info.output = "Config management node on host %s" % host_info.host
@@ -2151,7 +2179,9 @@ class AddManagementNodeCmd(Command):
             ZstackSpinner(spinner_info)
             self.start_mn_on_host(host_info,private_key)
 
-        info(colored("\nAll management nodes add successfully",'yellow'))
+        SpinnerInfo.spinner_status['start'] = False
+        time.sleep(0.2)
+        info(colored("\nAll management nodes add successfully",'blue'))
 
 
 class InstallHACmd(Command):
