@@ -3965,9 +3965,14 @@ class CollectLogCmd(Command):
         )
         ctl.register_command(self)
 
-    #def install_argparse_arguments(self, parser):
-        #parser.add_argument('--simple-log', help='collect simple log on all hosts and management node ', default=False)
-        #parser.add_argument('--host', help='collect full log on this host and management node ', default=False)
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--db', help='collect database for diagnose ', action="store_true", default=False)
+        parser.add_argument('--mn-only', help='only collect management log', action="store_true", default=False)
+        parser.add_argument('--host', help='only collect management log and specific host log')
+
+    def get_db(self, collect_dir):
+        command = "cp `zstack-ctl dump_mysql | awk '{ print $10 }'` %s" % collect_dir
+        shell(command, False)
 
     def get_host_list(self):
         db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
@@ -4141,29 +4146,36 @@ class CollectLogCmd(Command):
                 host_post_info.private_key = InstallHACmd.conf_dir + 'ha_key'
                 self.get_management_node_log(collect_dir, host_post_info)
 
-
-        host_vo = self.get_host_list()
-        for host in host_vo:
-            host_post_info = HostPostInfo()
-            host_ip = host['managementIp']
-            #update inventory
-            with open(ctl.zstack_home + "/../../../ansible/hosts") as f:
-                old_hosts = f.read()
-                if host_ip not in old_hosts:
-                    with open(ctl.zstack_home + "/../../../ansible/hosts","w") as f:
-                        new_hosts = host_ip + "\n" + old_hosts
-                        f.write(new_hosts)
-            (host_user, host_password, host_port) = self.get_host_ssh_info(host_ip)
-            if host_user != 'root' and host_password is not None:
-                host_post_info.become = True
-                host_post_info.remote_user = host_user
-                host_post_info.remote_pass = host_password
-            host_post_info.remote_port = host_port
-            host_post_info.host = host_ip
-            host_post_info.host_inventory = ctl.zstack_home + "/../../../ansible/hosts"
-            host_post_info.private_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
-            host_post_info.post_url = ""
-            self.get_host_log(host_post_info, collect_dir)
+        if args.db is True:
+            self.get_db(collect_dir)
+        if args.mn_only is not True:
+            host_vo = self.get_host_list()
+            for host in host_vo:
+                host_post_info = HostPostInfo()
+                if args.host is not None:
+                    host_ip = args.host
+                else:
+                    host_ip = host['managementIp']
+                #update inventory
+                with open(ctl.zstack_home + "/../../../ansible/hosts") as f:
+                    old_hosts = f.read()
+                    if host_ip not in old_hosts:
+                        with open(ctl.zstack_home + "/../../../ansible/hosts","w") as f:
+                            new_hosts = host_ip + "\n" + old_hosts
+                            f.write(new_hosts)
+                (host_user, host_password, host_port) = self.get_host_ssh_info(host_ip)
+                if host_user != 'root' and host_password is not None:
+                    host_post_info.become = True
+                    host_post_info.remote_user = host_user
+                    host_post_info.remote_pass = host_password
+                host_post_info.remote_port = host_port
+                host_post_info.host = host_ip
+                host_post_info.host_inventory = ctl.zstack_home + "/../../../ansible/hosts"
+                host_post_info.private_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
+                host_post_info.post_url = ""
+                self.get_host_log(host_post_info, collect_dir)
+                if args.host is True:
+                    break
 
         self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
         info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
