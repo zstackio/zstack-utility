@@ -228,8 +228,8 @@ def handle_ansible_start(ansible_start):
     error = Error()
     error.code = "ansible.1000"
     error.description = "ERROR: Can't start ansible process"
-    error.details = "Can't start ansible process to host: %s Detail: %s  \n" % (ansible_start.host,
-                                                                                ansible_start.result)
+    error.details = "Can't start ansible process to host: %s Detail: %s, check authentication and inventory file then" \
+                    " try again  \n" % (ansible_start.host, ansible_start.result)
     msg.type = "error"
     msg.data = error
     post_msg(msg, ansible_start.post_url)
