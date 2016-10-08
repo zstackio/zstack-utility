@@ -1909,11 +1909,11 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
 
-            def filebased_volume(dev_letter):
+            def filebased_volume(dev_letter, virtio):
                 disk = etree.Element('disk', {'type':'file', 'device':'disk', 'snapshot':'external'})
                 e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':v.cacheMode})
                 e(disk, 'source', None, {'file':v.installPath})
-                if use_virtio:
+                if virtio:
                     e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
                 else:
                     e(disk, 'target', None, {'dev':'sd%s' % dev_letter, 'bus':'ide'})
@@ -2018,7 +2018,7 @@ class Vm(object):
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.deviceType == 'file':
-                    vol = filebased_volume(dev_letter)
+                    vol = filebased_volume(dev_letter, v.useVirtio)
                 elif v.deviceType == 'iscsi':
                     vol = iscsibased_volume(dev_letter, v.useVirtio)
                 elif v.deviceType == 'ceph':
