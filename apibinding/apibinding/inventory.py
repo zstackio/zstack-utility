@@ -1465,6 +1465,18 @@ class APIChangeInstanceOfferingStateMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+APICHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVMPasswordMsg'
+class APIChangeVmPasswordMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIChangeVMPasswordMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.vmAccountName = NotNoneField()
+        self.vmAccountPassword = NotNoneField()
+        self.session = None
+        self.timeout = None
 
 APIDELETEINSTANCEOFFERINGMSG_FULL_NAME = 'org.zstack.header.configuration.APIDeleteInstanceOfferingMsg'
 class APIDeleteInstanceOfferingMsg(object):
@@ -7636,6 +7648,7 @@ api_names = [
     'APISearchDnsReply',
     'APIGenerateApiTypeScriptDefinitionMsg',
     'APIChangeInstanceOfferingStateMsg',
+    'APIChangeVmPasswordMsg',
     'APIDeleteInstanceOfferingMsg',
     'APIQueryDiskOfferingMsg',
     'APIGetGlobalPropertyMsg',
