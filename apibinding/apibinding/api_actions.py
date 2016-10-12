@@ -358,6 +358,18 @@ class ChangeInstanceOfferingAction(inventory.APIChangeInstanceOfferingMsg):
         self.out = evt
         return self.out
 
+class ChangeVmPasswordAction(inventory.APIChangeVmPasswordMsg):
+    def __init__(self):
+        super(ChangeVmPasswordAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeVmPasswordAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateStartVmInstanceSchedulerAction(inventory.APICreateStartVmInstanceSchedulerMsg):
     def __init__(self):
         super(CreateStartVmInstanceSchedulerAction, self).__init__()
