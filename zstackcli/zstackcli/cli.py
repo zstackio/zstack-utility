@@ -433,6 +433,8 @@ Parse command parameters error:
             session.uuid = self.session_uuid
             msg.session = session
 
+        if line.startswith('#'):
+            return
 
         (apiname, all_params) = build_params()
         if apiname in self.cli_cmd:
