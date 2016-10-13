@@ -96,6 +96,7 @@ LoadPlugin virt
 	Connection "qemu:///system"
 	RefreshInterval {{INTERVAL}}
 	HostnameFormat name
+    PluginInstanceFormat name
 </Plugin>
 
 <Plugin network>
