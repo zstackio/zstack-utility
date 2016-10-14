@@ -5522,7 +5522,8 @@ class InstallLicenseCmd(Command):
                 raise CtlError('cannot find the private key file at %s' % args.prikey)
 
         license_folder = '/var/lib/zstack/license'
-        shell('''su - zstack -c "mkdir -p %s"''' % license_folder)
+        shell('''mkdir -p %s''' % license_folder)
+        shell('''chown zstack:zstack %s''' % license_folder)
         shell('''yes | cp %s %s/license.txt''' % (lpath, license_folder))
         shell('''chown zstack:zstack %s/license.txt''' % license_folder)
         info("successfully installed the license file to %s/license.txt" % license_folder)
