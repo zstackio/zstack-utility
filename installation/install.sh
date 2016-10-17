@@ -802,6 +802,7 @@ is_install_general_libs_rh(){
             bash-completion \
             dmidecode \
             $mysql_pkg \
+            python-backports-ssl_match_hostname \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
         yum clean metadata >/dev/null 2>&1
@@ -840,6 +841,7 @@ is_install_general_libs_rh(){
             bash-completion \
             dmidecode \
             $mysql_pkg \
+            python-backports-ssl_match_hostname \
             >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
