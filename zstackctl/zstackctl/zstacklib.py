@@ -112,6 +112,11 @@ class CopyArg(object):
         self.dest = None
         self.args = None
 
+class SyncArg(object):
+    def __init__(self):
+        self.src = None
+        self.dest = None
+        self.args = None
 
 class FetchArg(object):
     def __init__(self):
@@ -692,6 +697,45 @@ def copy(copy_arg, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             # pass the copy result to outside
             return change_status
+
+def sync(sync_arg, host_post_info):
+    '''The copy module recursively copy facility does not scale to lots (>hundreds) of files.
+    so we add sync module which will use ansible synchronize module, which is a wrapper around rsync.'''
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    src = sync_arg.src
+    dest = sync_arg.dest
+    args = sync_arg.args
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: Starting sync %s to %s ... " % (src, dest), host_post_info, "INFO")
+    if args is not None:
+        copy_args = 'src=' + src + ' dest=' + dest + ' ' + args
+    else:
+        copy_args = 'src=' + src + ' dest=' + dest
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'synchronize'
+    runner_args.module_args = sync_arg
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: sync %s to %s failed!" % (src, dest)
+            handle_ansible_failed(description, result, host_post_info)
+        else:
+            change_status = "changed:" + str(result['contacted'][host]['changed'])
+            details = "SUCC: sync %s to %s, the change status is %s" % (src, dest, change_status)
+            handle_ansible_info(details, host_post_info, "INFO")
+            return change_status
+
 
 def fetch(fetch_arg, host_post_info):
     start_time = datetime.now()

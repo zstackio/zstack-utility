@@ -2557,6 +2557,13 @@ class InstallHACmd(Command):
                     #command = "service mysql restart"
                     #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=restarted", self.host3_post_info)
+                # sync prometheus data
+                sync_arg = SyncArg()
+                sync_arg.src = '/var/lib/zstack/prometheus/'
+                sync_arg.dest = '/var/lib/zstack/prometheus/'
+                sync(sync_arg, self.host2_post_info)
+                if args.host3_info is not False:
+                    sync(sync_arg, self.host3_post_info)
 
                 # start mevoco
                 spinner_info.output = "Starting Mevoco"
