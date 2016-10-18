@@ -3956,12 +3956,13 @@ class RestoreMysqlCmd(Command):
         #shell_no_pipe('zstack-ctl start_node')
         info("Recover data successfully! You can start node by: zstack-ctl start")
 
-
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack"
-    host_log_list = ['zstack-sftpbackupstorage.log','zstack.log','zstack-kvmagent.log','ceph-backupstorage.log',
-                     'ceph-primarystorage.log', 'zstack-iscsi-filesystem-agent.log', 'zstack-store/zstack-store.log',
-                     'zstack-agent/collectd.log','zstack-agent/server.log','fusionstor-backupstorage.log','fusionstor-primarystorage.log']
+    host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
+                     'zstack-store/zstack-store.log','zstack-agent/collectd.log','zstack-agent/server.log']
+    bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstack-store.log',
+                   'fusionstor-backupstorage.log']
+    ps_log_list = ['ceph-primarystorage.log','fusionstor-primarystorage.log']
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log']
@@ -3984,7 +3985,7 @@ class CollectLogCmd(Command):
         command = "cp `zstack-ctl dump_mysql | awk '{ print $10 }'` %s" % collect_dir
         shell(command, False)
 
-    def get_host_list(self):
+    def get_host_list(self, table_name):
         db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
         query = MySqlCommandLineQuery()
         query.host = db_hostname
@@ -3992,7 +3993,7 @@ class CollectLogCmd(Command):
         query.user = db_user
         query.password = db_password
         query.table = 'zstack'
-        query.sql = "select * from HostVO"
+        query.sql = "select * from %s" % table_name
         host_vo = query.query()
         return host_vo
 
@@ -4009,10 +4010,10 @@ class CollectLogCmd(Command):
         (status, output) = commands.getstatusoutput("cd %s && tar zxf collect-log.tar.gz" % local_collect_dir)
         if status != 0:
             warn("Uncompress %s/collect-log.tar.gz meet problem: %s" % (local_collect_dir, output))
-        else:
-            (status, output) = commands.getstatusoutput("rm -f %s/collect-log.tar.gz" % local_collect_dir)
 
-    def get_system_log(self, host_post_info, local_collect_dir, tmp_log_dir):
+        (status, output) = commands.getstatusoutput("rm -f %s/collect-log.tar.gz" % local_collect_dir)
+
+    def get_system_log(self, host_post_info, tmp_log_dir):
         # collect uptime and last reboot log and dmesg
         host_info_log = tmp_log_dir + "host_info"
         command = "uptime > %s && last reboot >> %s" % (host_info_log, host_info_log)
@@ -4025,6 +4026,8 @@ class CollectLogCmd(Command):
             info("Collecting log from host: %s ..." % host_post_info.host)
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
             local_collect_dir = collect_dir + host_post_info.host + '/'
+            if not os.path.exists(local_collect_dir):
+                os.makedirs(local_collect_dir)
             command = "mkdir -p %s " % tmp_log_dir
             run_remote_command(command, host_post_info)
             for log in CollectLogCmd.host_log_list:
@@ -4041,12 +4044,37 @@ class CollectLogCmd(Command):
             if "The directory is empty" in output:
                 warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
                 return 0
-            self.get_system_log(host_post_info, local_collect_dir, tmp_log_dir)
+            self.get_system_log(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir,host_post_info)
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
-    def get_host_ssh_info(self, host_ip):
+    def get_storage_log(self, host_post_info, collect_dir, storage_type):
+        if check_host_reachable(host_post_info) is True:
+            info("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
+            tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
+            local_collect_dir = collect_dir + host_post_info.host + '-' + storage_type + '/'
+            if not os.path.exists(local_collect_dir):
+                os.makedirs(local_collect_dir)
+            command = "rm -rf %s && mkdir -p %s " % (tmp_log_dir, tmp_log_dir)
+            run_remote_command(command, host_post_info)
+            for log in CollectLogCmd.bs_log_list:
+                bs_log = CollectLogCmd.zstack_log_dir + '/' + log
+                collect_log = tmp_log_dir + '/' + log
+                if file_dir_exist("path=%s" % bs_log, host_post_info):
+                    command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, bs_log, collect_log)
+                    run_remote_command(command, host_post_info)
+            command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
+            (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
+            if "The directory is empty" in output:
+                warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
+                return 0
+            self.get_system_log(host_post_info, tmp_log_dir)
+            self.compress_and_fetch_log(local_collect_dir,tmp_log_dir, host_post_info)
+        else:
+            warn("%s storage %s is unreachable!" % (storage_type, host_post_info.host))
+
+    def get_host_ssh_info(self, host_ip, type):
         db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
         query = MySqlCommandLineQuery()
         query.host = db_hostname
@@ -4054,14 +4082,60 @@ class CollectLogCmd(Command):
         query.user = db_user
         query.password = db_password
         query.table = 'zstack'
-        query.sql = "select * from HostVO where managementIp='%s'" % host_ip
-        host_uuid = query.query()[0]['uuid']
-        query.sql = "select * from KVMHostVO where uuid='%s'" % host_uuid
-        ssh_info = query.query()[0]
-        username = ssh_info['username']
-        password = ssh_info['password']
-        ssh_port = ssh_info['port']
-        return (username, password, ssh_port)
+        if type == 'host':
+            query.sql = "select * from HostVO where managementIp='%s'" % host_ip
+            host_uuid = query.query()[0]['uuid']
+            query.sql = "select * from KVMHostVO where uuid='%s'" % host_uuid
+            ssh_info = query.query()[0]
+            username = ssh_info['username']
+            password = ssh_info['password']
+            ssh_port = ssh_info['port']
+            return (username, password, ssh_port)
+        elif type == "sftp_bs":
+            query.sql = "select * from SftpBackupStorageVO where hostname='%s'" % host_ip
+            ssh_info = query.query()[0]
+            username = ssh_info['username']
+            password = ssh_info['password']
+            ssh_port = ssh_info['sshPort']
+            return (username, password, ssh_port)
+        elif type == "ceph_bs":
+            query.sql = "select * from CephBackupStorageMonVO where hostname='%s'" % host_ip
+            ssh_info = query.query()[0]
+            username = ssh_info['sshUsername']
+            password = ssh_info['sshPassword']
+            ssh_port = ssh_info['sshPort']
+            return (username, password, ssh_port)
+        elif type == "fusionStor_bs":
+            query.sql = "select * from FusionstorPrimaryStorageMonVO where hostname='%s'" % host_ip
+            ssh_info = query.query()[0]
+            username = ssh_info['sshUsername']
+            password = ssh_info['sshPassword']
+            ssh_port = ssh_info['sshPort']
+            return (username, password, ssh_port)
+        elif type == "imageStore_bs":
+            query.sql = "select * from ImageStoreBackupStorageVO where hostname='%s'" % host_ip
+            ssh_info = query.query()[0]
+            username = ssh_info['username']
+            password = ssh_info['password']
+            ssh_port = ssh_info['sshPort']
+            return (username, password, ssh_port)
+        elif type == "ceph_ps":
+            query.sql = "select * from CephPrimaryStorageMonVO where hostname='%s'" % host_ip
+            ssh_info = query.query()[0]
+            username = ssh_info['sshUsername']
+            password = ssh_info['sshPassword']
+            ssh_port = ssh_info['sshPort']
+            return (username, password, ssh_port)
+        elif type == "fusionStor_ps":
+            query.sql = "select * from FusionstorPrimaryStorageMonVO where hostname='%s'" % host_ip
+            ssh_info = query.query()[0]
+            username = ssh_info['sshUsername']
+            password = ssh_info['sshPassword']
+            ssh_port = ssh_info['sshPort']
+            return (username, password, ssh_port)
+        else:
+            warn("unknown target type: %s" % type)
+
 
     def get_mn_list(self):
         with open(InstallHACmd.conf_file, 'r') as fd:
@@ -4078,7 +4152,7 @@ class CollectLogCmd(Command):
                 os.makedirs(local_collect_dir)
 
             tmp_log_dir = "%s/../../logs/tmp-log/" % ctl.zstack_home
-            command = 'mkdir -p %s' % tmp_log_dir
+            command = 'rm -rf %s && mkdir -p %s' % (tmp_log_dir, tmp_log_dir)
             run_remote_command(command, host_post_info)
 
             command = "mn_log=`find %s/../../logs/management-serve* -maxdepth 1 -type f -printf" \
@@ -4128,9 +4202,31 @@ class CollectLogCmd(Command):
         if status != 0:
             error("Generate tarball failed: %s " % output)
 
+    def generate_host_post_info(self, host_ip, type):
+        host_post_info = HostPostInfo()
+        # update inventory
+        with open(ctl.zstack_home + "/../../../ansible/hosts") as f:
+            old_hosts = f.read()
+            if host_ip not in old_hosts:
+                with open(ctl.zstack_home + "/../../../ansible/hosts", "w") as f:
+                    new_hosts = host_ip + "\n" + old_hosts
+                    f.write(new_hosts)
+        (host_user, host_password, host_port) = self.get_host_ssh_info(host_ip, type)
+        if host_user != 'root' and host_password is not None:
+            host_post_info.become = True
+            host_post_info.remote_user = host_user
+            host_post_info.remote_pass = host_password
+        host_post_info.remote_port = host_port
+        host_post_info.host = host_ip
+        host_post_info.host_inventory = ctl.zstack_home + "/../../../ansible/hosts"
+        host_post_info.private_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
+        host_post_info.post_url = ""
+        return host_post_info
+
     def run(self, args):
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
+        host_list = []
         if get_detail_version() is not None:
             detail_version = get_detail_version().replace(' ','_')
         else:
@@ -4159,33 +4255,48 @@ class CollectLogCmd(Command):
         if args.db is True:
             self.get_db(collect_dir)
         if args.mn_only is not True:
-            host_vo = self.get_host_list()
+            host_vo = self.get_host_list("HostVO")
+            #collect host log
             for host in host_vo:
-                host_post_info = HostPostInfo()
                 if args.host is not None:
                     host_ip = args.host
                 else:
                     host_ip = host['managementIp']
-                #update inventory
-                with open(ctl.zstack_home + "/../../../ansible/hosts") as f:
-                    old_hosts = f.read()
-                    if host_ip not in old_hosts:
-                        with open(ctl.zstack_home + "/../../../ansible/hosts","w") as f:
-                            new_hosts = host_ip + "\n" + old_hosts
-                            f.write(new_hosts)
-                (host_user, host_password, host_port) = self.get_host_ssh_info(host_ip)
-                if host_user != 'root' and host_password is not None:
-                    host_post_info.become = True
-                    host_post_info.remote_user = host_user
-                    host_post_info.remote_pass = host_password
-                host_post_info.remote_port = host_port
-                host_post_info.host = host_ip
-                host_post_info.host_inventory = ctl.zstack_home + "/../../../ansible/hosts"
-                host_post_info.private_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
-                host_post_info.post_url = ""
-                self.get_host_log(host_post_info, collect_dir)
+                self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir)
                 if args.host is True:
                     break
+            #collect bs log
+            sftp_bs_vo = self.get_host_list("SftpBackupStorageVO")
+            for bs in sftp_bs_vo:
+                bs_ip = bs['hostname']
+                self.get_storage_log(self.generate_host_post_info(bs_ip, "sftp_bs"), collect_dir, "sftp_bs")
+
+            ceph_bs_vo = self.get_host_list("CephBackupStorageMonVO")
+            for bs in ceph_bs_vo:
+                bs_ip = bs['hostname']
+                self.get_storage_log(self.generate_host_post_info(bs_ip, "ceph_bs"), collect_dir, "ceph_bs")
+
+            fusionStor_bs_vo = self.get_host_list("FusionstorBackupStorageMonVO")
+            for bs in fusionStor_bs_vo:
+                bs_ip = bs['hostname']
+                self.get_storage_log(self.generate_host_post_info(bs_ip, "fusionStor_bs"), collect_dir, "fusionStor_bs")
+
+            imageStore_bs_vo = self.get_host_list("ImageStoreBackupStorageVO")
+            for bs in imageStore_bs_vo:
+                bs_ip = bs['hostname']
+                self.get_storage_log(self.generate_host_post_info(bs_ip, "imageStore_bs"), collect_dir, "imagestore_bs")
+
+            #collect ps log
+            ceph_ps_vo = self.get_host_list("CephPrimaryStorageMonVO")
+            for ps in ceph_ps_vo:
+                ps_ip = ps['hostname']
+                self.get_storage_log(self.generate_host_post_info(ps_ip,"ceph_ps"), collect_dir, "ceph_ps")
+
+            fusionStor_ps_vo = self.get_host_list("FusionstorPrimaryStorageMonVO")
+            for ps in fusionStor_ps_vo:
+                ps_ip = ps['hostname']
+                self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
+
 
         self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
         info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
