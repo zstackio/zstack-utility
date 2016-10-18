@@ -2246,11 +2246,12 @@ unpack_zstack_into_tomcat
 #Do not config NFS or HTTP when installing ZStack product
 [ ! -z $INSTALL_MONITOR ] && NEED_NFS='' && NEED_HTTP=''
 
-#Install Ansible 
-install_ansible
 
 #Install ${PRODUCT_NAME} required system libs through ansible
 install_system_libs
+
+#Install Ansible
+install_ansible
 
 if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo ""
