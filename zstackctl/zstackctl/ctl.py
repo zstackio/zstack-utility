@@ -3636,6 +3636,7 @@ class ResetRabbitCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
+        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         pass
 
     def run(self, args):
@@ -3643,7 +3644,7 @@ class ResetRabbitCmd(Command):
         rabbitmq_user = ctl.read_property('CloudBus.rabbitmqUsername')
         rabbitmq_passwd = ctl.read_property('CloudBus.rabbitmqPassword')
         shell("service rabbitmq-server stop; rpm -ev rabbitmq-server; rm -rf /var/lib/rabbitmq")
-        ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd))
+        ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s --yum=args.yum" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd))
 
 
 class InstallRabbitCmd(Command):
@@ -4196,6 +4197,7 @@ class ChangeIpCmd(Command):
                                          'zstack config file' , required=True)
         parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
         parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
+        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
 
     def run(self, args):
         if args.ip == '0.0.0.0':
@@ -4269,7 +4271,7 @@ class ChangeIpCmd(Command):
             return 1
 
         # Reset RabbitMQ
-        shell("zstack-ctl reset_rabbitmq")
+        shell("zstack-ctl reset_rabbitmq --yum=args.yum")
         info("Reset RabbitMQ")
 
 class InstallManagementNodeCmd(Command):
