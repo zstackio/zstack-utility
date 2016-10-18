@@ -3959,8 +3959,8 @@ class RestoreMysqlCmd(Command):
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack"
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
-                     'zstack-store/zstack-store.log','zstack-agent/collectd.log','zstack-agent/server.log']
-    bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstack-store.log',
+                     'zstack-agent/collectd.log','zstack-agent/server.log']
+    bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
                    'fusionstor-backupstorage.log']
     ps_log_list = ['ceph-primarystorage.log','fusionstor-primarystorage.log']
     # management-server.log is not in the same dir, will collect separately
@@ -4042,7 +4042,9 @@ class CollectLogCmd(Command):
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
-                warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
+                warn("Didn't find log on host: %s " % (host_post_info.host))
+                command = 'rm -rf %s' % tmp_log_dir
+                run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir,host_post_info)
@@ -4050,6 +4052,7 @@ class CollectLogCmd(Command):
             warn("Host %s is unreachable!" % host_post_info.host)
 
     def get_storage_log(self, host_post_info, collect_dir, storage_type):
+        collect_log_list = []
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
@@ -4058,16 +4061,27 @@ class CollectLogCmd(Command):
                 os.makedirs(local_collect_dir)
             command = "rm -rf %s && mkdir -p %s " % (tmp_log_dir, tmp_log_dir)
             run_remote_command(command, host_post_info)
-            for log in CollectLogCmd.bs_log_list:
-                bs_log = CollectLogCmd.zstack_log_dir + '/' + log
+            if '_ps' in storage_type:
+                collect_log_list = CollectLogCmd.ps_log_list
+            elif '_bs' in storage_type:
+                collect_log_list = CollectLogCmd.bs_log_list
+            else:
+                error("unknown storage type: %s" % storage_type)
+            for log in collect_log_list:
+                if 'zstack-store' in log:
+                    command = "mkdir -p %s" % tmp_log_dir + '/zstack-store/'
+                    run_remote_command(command, host_post_info)
+                storage_agent_log = CollectLogCmd.zstack_log_dir + '/' + log
                 collect_log = tmp_log_dir + '/' + log
-                if file_dir_exist("path=%s" % bs_log, host_post_info):
-                    command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, bs_log, collect_log)
+                if file_dir_exist("path=%s" % storage_agent_log, host_post_info):
+                    command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, storage_agent_log, collect_log)
                     run_remote_command(command, host_post_info)
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
-                warn("The dir %s is empty on host: %s " % (tmp_log_dir, host_post_info.host))
+                warn("Didn't find log on storage host: %s " % host_post_info.host)
+                command = 'rm -rf %s' % tmp_log_dir
+                run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir, host_post_info)
@@ -4167,7 +4181,7 @@ class CollectLogCmd(Command):
                               % (CollectLogCmd.collect_lines, CollectLogCmd.zstack_log_dir, log, tmp_log_dir, log)
                     run_remote_command(command, host_post_info)
 
-            self.get_system_log(host_post_info,local_collect_dir,tmp_log_dir)
+            self.get_system_log(host_post_info, tmp_log_dir)
 
             self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
@@ -4226,7 +4240,8 @@ class CollectLogCmd(Command):
     def run(self, args):
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
-        host_list = []
+        # create log
+        create_log(InstallHACmd.logger_dir)
         if get_detail_version() is not None:
             detail_version = get_detail_version().replace(' ','_')
         else:
@@ -4263,7 +4278,7 @@ class CollectLogCmd(Command):
                 else:
                     host_ip = host['managementIp']
                 self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir)
-                if args.host is True:
+                if args.host is not None:
                     break
             #collect bs log
             sftp_bs_vo = self.get_host_list("SftpBackupStorageVO")
@@ -4296,7 +4311,6 @@ class CollectLogCmd(Command):
             for ps in fusionStor_ps_vo:
                 ps_ip = ps['hostname']
                 self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
-
 
         self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
         info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
