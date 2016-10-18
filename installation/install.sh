@@ -736,7 +736,6 @@ install_ansible(){
         #fi
         show_spinner ia_install_python_gcc_db
     fi
-    show_spinner ia_install_pip
     show_spinner ia_install_ansible
 }
 
@@ -946,6 +945,7 @@ install_system_libs(){
     echo ""
     is_install_system_libs
     #mysql and rabbitmq will be installed by zstack-ctl later
+    show_spinner ia_install_pip
     show_spinner is_install_virtualenv
     #enable ntpd
     show_spinner is_enable_ntpd
