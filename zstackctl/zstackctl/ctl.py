@@ -3644,7 +3644,10 @@ class ResetRabbitCmd(Command):
         rabbitmq_user = ctl.read_property('CloudBus.rabbitmqUsername')
         rabbitmq_passwd = ctl.read_property('CloudBus.rabbitmqPassword')
         shell("service rabbitmq-server stop; rpm -ev rabbitmq-server; rm -rf /var/lib/rabbitmq")
-        ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s --yum=args.yum" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd))
+        if args.yum is not None:
+            ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s --yum=%s" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd, args.yum))
+        else:
+            ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd))
 
 
 class InstallRabbitCmd(Command):
@@ -4271,7 +4274,10 @@ class ChangeIpCmd(Command):
             return 1
 
         # Reset RabbitMQ
-        shell("zstack-ctl reset_rabbitmq --yum=args.yum")
+        if args.yum is not None:
+            shell("zstack-ctl reset_rabbitmq --yum=%s" % args.yum)
+        else:
+            shell("zstack-ctl reset_rabbitmq")
         info("Reset RabbitMQ")
 
 class InstallManagementNodeCmd(Command):
