@@ -539,7 +539,7 @@ ia_check_ip_hijack(){
 
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
-    req_pkgs='python python-devel python-setuptools gcc'
+    req_pkgs='python python-devel gcc'
     [ ! -d /usr/lib64/python2.7/site-packages/pycrypto-2.6.1-py2.7.egg-info ] && req_pkgs=${req_pkgs}" python2-crypto"
     if [ ! -z $ZSTACK_YUM_REPOS ];then
         if [ -z $DEBUG ];then
@@ -598,9 +598,9 @@ ia_install_ansible(){
 ia_install_python_gcc_db(){
     echo_subtitle "Install Python GCC."
     if [ ! -z $DEBUG ]; then
-        apt-get -y install python python-dev python-setuptools gcc 
+        apt-get -y install python python-dev gcc
     else
-        apt-get -y install python python-dev python-setuptools gcc >>$ZSTACK_INSTALL_LOG 2>&1
+        apt-get -y install python python-dev gcc >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "Install python and gcc fail."
     pass
@@ -802,6 +802,7 @@ is_install_general_libs_rh(){
             dmidecode \
             $mysql_pkg \
             python-backports-ssl_match_hostname \
+            python-setuptools \
             >>$ZSTACK_INSTALL_LOG 2>&1
     else
         yum clean metadata >/dev/null 2>&1
@@ -841,6 +842,7 @@ is_install_general_libs_rh(){
             dmidecode \
             $mysql_pkg \
             python-backports-ssl_match_hostname \
+            python-setuptools \
             >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
