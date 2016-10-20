@@ -623,6 +623,8 @@ def pip_install_package(pip_install_arg, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
+            command = "pip uninstall -y %s" % name
+            run_remote_command(command, host_post_info)
             description = "ERROR: pip install package %s failed!" % name
             handle_ansible_failed(description, result, host_post_info)
             return False
@@ -1292,7 +1294,7 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     # install epel-release
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "python-backports-ssl_match_hostname"]:
                     yum_install_package(pkg, host_post_info)
             else:
                 # generate repo defined in zstack_repo
@@ -1363,7 +1365,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 # enable alibase repo for yum clean avoid no repo to be clean
                 command = (
                           "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                          "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
+                          "python-setuptools python-pip gcc autoconf ntp ntpdate python-backports-ssl_match_hostname | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                           "-y $pkg; done;") % zstack_repo
                 run_remote_command(command, host_post_info)

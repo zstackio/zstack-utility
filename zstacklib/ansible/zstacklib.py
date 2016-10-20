@@ -673,12 +673,14 @@ def pip_install_package(pip_install_arg, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
+            command = "pip uninstall -y %s" % name
+            run_remote_command(command, host_post_info)
             description = "ERROR: pip install package %s failed" % name
             host_post_info.post_label = "ansible.pip.install.pkg.fail"
             handle_ansible_failed(description, result, host_post_info)
             return False
         else:
-            details = "SUCC: pip install pacakge %s successfully " % name
+            details = "SUCC: pip install package %s successfully " % name
             host_post_info.post_label = "ansible.pip.install.pkg.succ"
             handle_ansible_info(details, host_post_info, "INFO")
             return True
@@ -1504,7 +1506,8 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate",
+                                "python-backports-ssl_match_hostname"]:
                         yum_install_package(pkg, host_post_info)
             else:
                 # user defined zstack_repo, will generate repo defined in zstack_repo
@@ -1586,11 +1589,12 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 # enable alibase repo for yum clean avoid no repo to be clean
                 host_post_info.post_label = "ansible.shell.install.pkg"
                 host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
-                                                  "autoconf,ntp,ntpdate"
+                                                  "autoconf,ntp,ntpdate,python-backports-ssl_match_hostname "
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
+                              "python-setuptools python-pip gcc autoconf ntp ntpdate python-backports-ssl_match_hostname | "
+                              "grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
@@ -1598,9 +1602,9 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                     service_status("ntpd", "state=restarted enabled=yes", host_post_info)
                 else:
                     command = (
-                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python ntp ntpdate | "
-                                  "grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                                  "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python ntp "
+                                  "ntpdate python-backports-ssl_match_hostname | grep \"not installed\" | awk '{ print $2 }'` "
+                                  "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
                     # enable ntp service for RedHat
                     service_status("ntpd", "state=restarted enabled=yes", host_post_info)
