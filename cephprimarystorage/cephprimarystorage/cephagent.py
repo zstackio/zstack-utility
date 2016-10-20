@@ -134,16 +134,16 @@ class CephAgent(object):
         o = shell.call('ceph df -f json')
         df = jsonobject.loads(o)
 
-        if df.stats.total_bytes__:
+        if df.stats.total_bytes__ is not None:
             total = long(df.stats.total_bytes_)
-        elif df.stats.total_space__:
+        elif df.stats.total_space__ is not None:
             total = long(df.stats.total_space__) * 1024
         else:
             raise Exception('unknown ceph df output: %s' % o)
 
-        if df.stats.total_avail_bytes__:
+        if df.stats.total_avail_bytes__ is not None:
             avail = long(df.stats.total_avail_bytes_)
-        elif df.stats.total_avail__:
+        elif df.stats.total_avail__ is not None:
             avail = long(df.stats.total_avail_) * 1024
         else:
             raise Exception('unknown ceph df output: %s' % o)
