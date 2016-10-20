@@ -1235,6 +1235,7 @@ class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
         distro_release = args.distro_release
+        distro_version = args.distro_version
         zstack_repo = args.zstack_repo
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
@@ -1294,8 +1295,11 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     # install epel-release
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "python-backports-ssl_match_hostname"]:
+                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                     yum_install_package(pkg, host_post_info)
+                    if distro_version >=7:
+                        # to avoid install some pkgs on virtual router which release is Centos 6.x
+                        yum_install_package("python-backports-ssl_match_hostname", host_post_info)
             else:
                 # generate repo defined in zstack_repo
                 if '163' in zstack_repo:
@@ -1365,10 +1369,18 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 # enable alibase repo for yum clean avoid no repo to be clean
                 command = (
                           "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                          "python-setuptools python-pip gcc autoconf ntp ntpdate python-backports-ssl_match_hostname | grep \"not installed\" | awk"
+                          "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                           "-y $pkg; done;") % zstack_repo
                 run_remote_command(command, host_post_info)
+                if distro_version >= 7:
+                    # to avoid install some pkgs on virtual router which release is Centos 6.x
+                    command = (
+                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname | "
+                                  "grep \"not installed\" | awk"
+                                  " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
+                                  "-y $pkg; done;") % zstack_repo
+                    run_remote_command(command, host_post_info)
 
             # enable ntp service for RedHat
             service_status("ntpd", "state=restarted enabled=yes", host_post_info)
