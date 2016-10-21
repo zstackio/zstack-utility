@@ -902,6 +902,7 @@ is_install_general_libs_deb(){
         vlan \
         python-dev \
         gcc \
+        python-setuptools \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 1 failed"
 
