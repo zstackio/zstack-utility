@@ -1409,6 +1409,12 @@ class Vm(object):
             e(d, 'source', None, attrib={'file': install_path})
             e(d, 'driver', None, attrib={'type': 'qcow2'})
 
+            # QEMU 2.3 default create snapshots on all devices
+            # but we only need for one
+            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                if disk.target.dev_ != disk_name:
+                    e(disks, 'disk', None, attrib={'name': disk.target.dev_, 'snapshot': 'no'})
+
             xml = etree.tostring(snapshot)
             logger.debug('creating snapshot for vm[uuid:{0}] volume[id:{1}]:\n{2}'.format(self.uuid, device_id, xml))
             snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA
