@@ -1841,6 +1841,7 @@ class Vm(object):
             e(os, 'type', 'hvm', attrib={'machine':'pc'})
             for boot_dev in cmd.bootDev:
                 e(os, 'boot', None, {'dev': boot_dev})
+            e(os,'bootmenu',attrib={'enable':'yes'})
 
 
         def make_features():
