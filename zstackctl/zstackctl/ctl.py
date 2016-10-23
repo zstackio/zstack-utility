@@ -122,7 +122,7 @@ def info(*msg):
     sys.stdout.write(out)
 
 def get_detail_version():
-    detailed_version_file = os.path.join(ctl.DEFAULT_ZSTACK_HOME, "VERSION")
+    detailed_version_file = os.path.join(ctl.zstack_home, "VERSION")
     if os.path.exists(detailed_version_file):
         with open(detailed_version_file, 'r') as fd:
             detailed_version = fd.read()
