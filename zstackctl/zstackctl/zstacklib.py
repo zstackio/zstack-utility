@@ -712,13 +712,13 @@ def sync(sync_arg, host_post_info):
     post_url = host_post_info.post_url
     handle_ansible_info("INFO: Starting sync %s to %s ... " % (src, dest), host_post_info, "INFO")
     if args is not None:
-        copy_args = 'src=' + src + ' dest=' + dest + ' ' + args
+        sync_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
-        copy_args = 'src=' + src + ' dest=' + dest
+        sync_args = 'src=' + src + ' dest=' + dest
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'synchronize'
-    runner_args.module_args = sync_arg
+    runner_args.module_args = sync_args
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
