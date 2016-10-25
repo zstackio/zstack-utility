@@ -635,6 +635,7 @@ class APICreateVmInstanceMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+        self.rootPassword = None
 
 
 APISETVMSTATICIPMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmStaticIpMsg'
