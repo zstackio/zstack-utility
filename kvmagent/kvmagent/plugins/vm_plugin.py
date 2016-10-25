@@ -1759,7 +1759,7 @@ class Vm(object):
             # running state: virsh set-user-password guest-uuid user password
             shell.call('virsh set-user-password %s %s %s' % (self.uuid, \
                 cmd.accountPerference.userAccount, cmd.accountPerference.accountPassword))
-        else
+        else:
             raise kvmagent.KvmError("no state checked, vm may be removed.") 
 
     def merge_snapshot(self, cmd):
