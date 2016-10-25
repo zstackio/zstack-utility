@@ -93,16 +93,16 @@ if distro == "RedHat" or distro == "CentOS":
         else:
             qemu_pkg = 'qemu-kvm'
         # name: install kvm related packages on RedHat based OS from user defined repo
-        command = ("pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils "
+        command = ("pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils sed awk"
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
-                   "libguestfs-winsupport libguestfs-tools "
+                   "libguestfs-winsupport libguestfs-tools python-crypto "
                    "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                    "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
-        host_post_info.post_label_param = "openssh-clients,%s,bridge-utils,wget," \
+        host_post_info.post_label_param = "openssh-clients,%s,bridge-utils,wget,sed,awk," \
                                           "libvirt-python,libvirt,nfs-utils,vconfig,libvirt-client,net-tools," \
                                           "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils," \
-                                          "libguestfs-winsupport,libguestfs-tools,rsync,nmap" % qemu_pkg
+                                          "libguestfs-winsupport,libguestfs-tools,rsync,nmap,python-crypto" % qemu_pkg
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
@@ -114,9 +114,9 @@ if distro == "RedHat" or distro == "CentOS":
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
-        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
+        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'sed', 'awk', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'dnsmasq', 'iproute', 'sshpass',
-                    'libguestfs-winsupport', 'libguestfs-tools', 'rsync', 'nmap' ]:
+                    'libguestfs-winsupport', 'libguestfs-tools', 'python-crypto', 'rsync', 'nmap' ]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from online
@@ -196,8 +196,9 @@ if distro == "RedHat" or distro == "CentOS":
 
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install kvm related packages on Debian based OS
-    install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin','vlan', 'libguestfs',
-                        'nfs-common', 'open-iscsi', 'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
+    install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin',
+                        'vlan', 'libguestfs', 'python-crypto', 'sed', 'awk', 'nfs-common', 'open-iscsi',  
+                        'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
     apt_install_packages(install_pkg_list, host_post_info)
     # name: copy default libvirtd conf in Debian
     copy_arg = CopyArg()

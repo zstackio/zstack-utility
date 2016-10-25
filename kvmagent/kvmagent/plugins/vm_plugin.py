@@ -169,7 +169,7 @@ class CheckVmStateRsp(kvmagent.AgentResponse):
 class ChangeVmPasswordRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(ChangeVmPasswordRsp, self).__init__()
-        self.accountPreference = None
+        self.accountPerference = None
 
 class ReconnectMeCmd(object):
     def __init__(self):
@@ -1742,10 +1742,25 @@ class Vm(object):
         # to work around libvirt bug
         self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
 
-    def change_vm_password(self, account, password):
+    def change_vm_password(self, cmd):
         uuid = self.uuid
-        # virsh set-user-password guest-uuid user password
-        shell.call('virsh set-user-password %s %s %s' % (self.uuid, account, password))
+        # check the vm state first, then choose the method in different way
+        state = get_all_vm_states().get(uuid)
+        if not state:
+            raise kvmagent.KvmError("no state checked, vm may be removed.")
+
+        if state == Vm.VM_STATE_SHUTDOWN:
+            # shutdown state: inject password with locale scripts
+            if not cmd.qcowFile:
+                raise kvmagent.KvmError("vm is stopped, cmd must contain qcowFile parameter!")
+            shell.call('/usr/local/zstack/imagestore/qemu-ga/generate-password.sh %s %s' \
+                % (cmd.accountPerference.accountPassword, cmd.qcowFile))
+        elif state == Vm.VM_STATE_RUNNING:
+            # running state: virsh set-user-password guest-uuid user password
+            shell.call('virsh set-user-password %s %s %s' % (self.uuid, \
+                cmd.accountPerference.userAccount, cmd.accountPerference.accountPassword))
+        else
+            raise kvmagent.KvmError("no state checked, vm may be removed.") 
 
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
@@ -2322,9 +2337,9 @@ class VmPlugin(kvmagent.KvmAgent):
     def change_vm_password(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ChangeVmPasswordRsp()
-        vm = get_vm_by_uuid(cmd.accountPreference.vmUuid)
-        vm.change_vm_password(cmd.accountPreference.userAccount, cmd.accountPreference.accountPassword)
-        rsp.accountPreference = cmd.accountPreference
+        vm = get_vm_by_uuid(cmd.accountPerference.vmUuid)
+        vm.change_vm_password(cmd)
+        rsp.accountPerference = cmd.accountPerference
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
