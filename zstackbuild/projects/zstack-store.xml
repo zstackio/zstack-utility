@@ -36,7 +36,7 @@
                 <include name="**/*" />
             </fileset>
             <fileset dir="${imagestore.bdir}/qemu-ga">
-                <include name="**/**" />
+                <include name="**/*" />
             </fileset>
         </copy>
 
