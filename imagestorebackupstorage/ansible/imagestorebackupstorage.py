@@ -21,6 +21,7 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 fs_rootpath = ""
 pkg_imagestorebackupstorage = ""
+pkg_qemuga = ""
 client = "false"
 remote_user = "root"
 remote_pass = None
@@ -40,7 +41,7 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 imagestore_root = "%s/imagestorebackupstorage/package" % zstack_root
-
+qemuga_root = "%s/imagestorebackupstorage/package" % zstack_root
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -103,6 +104,13 @@ run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
 command = 'mkdir -p %s ' % (imagestore_root + "/certs")
 run_remote_command(command, host_post_info)
 
+# name: copy qemu-ga binary
+copy_arg = CopyArg()
+dest_qga_pkg = "%s/%s" % (qemuga_root, pkg_qemuga)
+copy_arg.src = "%s/%s" % (file_root, pkg_qemuga)
+copy_arg.dest = dest_qga_pkg
+copy(copy_arg, host_post_info)
+
 # name: copy imagestore binary
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, pkg_imagestorebackupstorage)
@@ -130,6 +138,11 @@ copy(copy_arg, host_post_info)
 # name: install zstack-store
 command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(command, host_post_info)
+# name: install qemu-ga
+command = "bash %s %s " % (dest_qga_pkg, pkg_qemuga)
+Warning("################ %s" % command)
+handle_ansible_info("################"+command, host_post_info, "INFO")
+#run_remote_command(command, host_post_info)
 
 # name: restart image store server
 if client != "true":
