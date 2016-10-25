@@ -166,7 +166,7 @@ class Cli(object):
         def prepare_words():
             currtext = readline.get_line_buffer()
             apiname = currtext.split()[0]
-            if apiname in self.words_db:
+            if apiname in self.words_db and (len(currtext.split()) > 1 or currtext.endswith(' ')):
                 self.is_cmd = False
                 self.words = ['%s=' % field for field in self.api_class_params['API%sMsg' % apiname]]
                 if apiname.startswith('Query') and not apiname in NOT_QUERY_MYSQL_APIS:
@@ -184,57 +184,57 @@ class Cli(object):
 
         prepare_words()
 
-        if not self.curr_pattern or pattern.lower() != self.curr_pattern.lower():
+        #if not self.curr_pattern or pattern.lower() != self.curr_pattern.lower():
             #self.matching_words = [w for w in self.words if w.lower().startswith(pattern.lower())]
-            if self.is_cmd:
-                self.matching_words = ['%s ' % w for w in self.words if pattern.lower() in w.lower()]
-            else:
-                #need to auto complete expanded fields.
-                if '.' in pattern:
-                    currtext = readline.get_line_buffer()
-                    fields_objects = pattern.split('.')
-                    head_field = fields_objects[0]
-                    fields_num = len(fields_objects)
-                    apiname = currtext.split()[0]
-                    new_api_name = 'API%sMsg' % apiname
-                    if inventory.queryMessageInventoryMap.has_key(new_api_name):
-                        api_obj_name = inventory.queryMessageInventoryMap[new_api_name].__name__
-                        query_ext_fields = eval('inventory.%s().EXPANDED_FIELDS' % api_obj_name)
-                        if head_field in query_ext_fields:
-                            current_obj_name = eval('inventory.%s().QUERY_OBJECT_MAP["%s"]' % (api_obj_name, head_field))
+        if self.is_cmd:
+            self.matching_words = ['%s ' % w for w in self.words if pattern.lower() in w.lower()]
+        else:
+            #need to auto complete expanded fields.
+            if '.' in pattern:
+                currtext = readline.get_line_buffer()
+                fields_objects = pattern.split('.')
+                head_field = fields_objects[0]
+                fields_num = len(fields_objects)
+                apiname = currtext.split()[0]
+                new_api_name = 'API%sMsg' % apiname
+                if inventory.queryMessageInventoryMap.has_key(new_api_name):
+                    api_obj_name = inventory.queryMessageInventoryMap[new_api_name].__name__
+                    query_ext_fields = eval('inventory.%s().EXPANDED_FIELDS' % api_obj_name)
+                    if head_field in query_ext_fields:
+                        current_obj_name = eval('inventory.%s().QUERY_OBJECT_MAP["%s"]' % (api_obj_name, head_field))
 
-                            for i in range(0, fields_num):
-                                if i == fields_num - 2:
-                                    break
-                                next_field = fields_objects[i + 1]
-                                query_ext_fields = eval('inventory.%s().EXPANDED_FIELDS' % current_obj_name)
-                                if next_field in query_ext_fields:
-                                    current_obj_name = eval('inventory.%s().QUERY_OBJECT_MAP["%s"]' % (current_obj_name, next_field))
-                                else:
-                                    current_obj_name = None
-                        else:
-                            current_obj_name = None
+                        for i in range(0, fields_num):
+                            if i == fields_num - 2:
+                                break
+                            next_field = fields_objects[i + 1]
+                            query_ext_fields = eval('inventory.%s().EXPANDED_FIELDS' % current_obj_name)
+                            if next_field in query_ext_fields:
+                                current_obj_name = eval('inventory.%s().QUERY_OBJECT_MAP["%s"]' % (current_obj_name, next_field))
+                            else:
+                                current_obj_name = None
                     else:
                         current_obj_name = None
+                else:
+                    current_obj_name = None
 
-                    if current_obj_name:
-                        self.words = []
-                        pattern_prefix = '.'.join(fields_objects[:-1])
-                        prepare_query_words(current_obj_name, '%s.' % pattern_prefix)
-
-                currtext = readline.get_line_buffer()
-                last_field = currtext.split()[-1]
-                if not currtext.endswith(' ') and last_field.startswith('fields='):
-                    apiname = currtext.split()[0]
-                    new_api_name = 'API%sMsg' % apiname
-                    api_map_name = inventory.queryMessageInventoryMap[new_api_name].__name__
+                if current_obj_name:
                     self.words = []
-                    fields = last_field.split('=')[1]
-                    prepare_fields_words(new_api_name, fields.split(','))
+                    pattern_prefix = '.'.join(fields_objects[:-1])
+                    prepare_query_words(current_obj_name, '%s.' % pattern_prefix)
 
-                self.matching_words = [w for w in self.words if pattern.lower() in w.lower()]
+            currtext = readline.get_line_buffer()
+            last_field = currtext.split()[-1]
+            if not currtext.endswith(' ') and last_field.startswith('fields='):
+                apiname = currtext.split()[0]
+                new_api_name = 'API%sMsg' % apiname
+                api_map_name = inventory.queryMessageInventoryMap[new_api_name].__name__
+                self.words = []
+                fields = last_field.split('=')[1]
+                prepare_fields_words(new_api_name, fields.split(','))
 
-            self.curr_pattern = pattern
+            self.matching_words = [w for w in self.words if pattern.lower() in w.lower()]
+
+        self.curr_pattern = pattern
 
         try:
             return self.matching_words[index]
