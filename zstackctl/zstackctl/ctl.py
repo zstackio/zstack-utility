@@ -3070,7 +3070,7 @@ global_defs {
 vrrp_script Monitor_Haproxy {
  script "/usr/local/bin/keepalived-kill.sh"
  interval 2
- weight 2
+ weight 5
 }
 vrrp_instance VI_1 {
     # use the same state with host2, so no master node, recovery will not race to control the vip
@@ -3095,9 +3095,9 @@ vrrp_instance VI_1 {
 
         virtual_router_id = random.randint(1, 255)
         auth_pass = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(15))
-        master_priority = 100
-        slave_priority = 90
-        second_slave_priority = 80
+        master_priority = 92
+        slave_priority = 91
+        second_slave_priority = 90
         keepalived_template = jinja2.Template(keepalived_raw_config)
         keepalived_host1_config = keepalived_template.render({
             'bridge' : InstallHACmd.bridge,
