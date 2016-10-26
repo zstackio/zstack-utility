@@ -180,6 +180,19 @@ def get_yum_repo_from_property():
         yum_repo = yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
     return yum_repo
 
+
+def get_host_list(table_name):
+    db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+    query = MySqlCommandLineQuery()
+    query.host = db_hostname
+    query.port = db_port
+    query.user = db_user
+    query.password = db_password
+    query.table = 'zstack'
+    query.sql = "select * from %s" % table_name
+    host_vo = query.query()
+    return host_vo
+
 class ExceptionWrapper(object):
     def __init__(self, msg):
         self.msg = msg
@@ -1790,6 +1803,7 @@ class UpgradeHACmd(Command):
     private_key_name = conf_dir + "ha_key"
     conf_file = conf_dir + "ha.yaml"
     logger_dir = "/var/log/zstack/"
+    logger_file = "ha.log"
     community_iso = "/opt/ZStack-Community-x86_64-DVD-1.4.0.iso"
     bridge = ""
     SpinnerInfo.spinner_status = {'upgrade_repo':False,'stop_mevoco':False, 'upgrade_mevoco':False,'upgrade_db':False,
@@ -1900,7 +1914,7 @@ class UpgradeHACmd(Command):
 
     def run(self, args):
         # create log
-        create_log(UpgradeHACmd.logger_dir)
+        create_log(UpgradeHACmd.logger_dir, UpgradeHACmd.logger_file)
         spinner_info = SpinnerInfo()
         spinner_info.output = "Checking system and init environment"
         spinner_info.name = 'check_init'
@@ -1980,8 +1994,8 @@ class UpgradeHACmd(Command):
         SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
         SpinnerInfo.spinner_status['upgrade_repo'] = True
         ZstackSpinner(spinner_info)
-        rand_int = random.randint(65535, 100000)
-        tmp_iso =  "/tmp/%d/iso/" % rand_int
+        rand_dir_name = uuid.uuid4()
+        tmp_iso =  "/tmp/%s/iso/" % rand_dir_name
         for host_post_info in UpgradeHACmd.host_post_info_list:
             self.upgrade_repo(args.iso, tmp_iso, host_post_info)
 
@@ -2043,6 +2057,7 @@ class AddManagementNodeCmd(Command):
     SpinnerInfo.spinner_status = {'check_init':False,'add_key':False,'deploy':False,'config':False,'start':False,'install_ui':False}
     install_pkgs = ['openssl']
     logger_dir = '/var/log/zstack/'
+    logger_file = 'zstack-ctl.log'
     def __init__(self):
         super(AddManagementNodeCmd, self).__init__()
         self.name = "add_multi_management"
@@ -2112,7 +2127,7 @@ class AddManagementNodeCmd(Command):
             apt_install_packages(pkg_list, host_info)
 
     def run(self, args):
-        create_log(AddManagementNodeCmd.logger_dir)
+        create_log(AddManagementNodeCmd.logger_dir, AddManagementNodeCmd.logger_file)
         host_info_list = []
         if args.ssh_key is None:
             args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
@@ -2191,6 +2206,7 @@ class InstallHACmd(Command):
     conf_dir = "/var/lib/zstack/ha/"
     conf_file = conf_dir + "ha.yaml"
     logger_dir = "/var/log/zstack/"
+    logger_file = "ha.log"
     bridge = ""
     SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,
                       'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
@@ -2342,7 +2358,7 @@ class InstallHACmd(Command):
                 error("The host1, host2 and host3 should not be the same ip address!")
 
         # create log
-        create_log(InstallHACmd.logger_dir)
+        create_log(InstallHACmd.logger_dir, InstallHACmd.logger_file)
         # create config
         if not os.path.exists(InstallHACmd.conf_dir):
             os.makedirs(InstallHACmd.conf_dir)
@@ -3971,6 +3987,8 @@ class CollectLogCmd(Command):
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log']
     collect_lines = 100000
+    logger_dir = '/var/log/zstack/'
+    logger_file = 'zstack-ctl.log'
 
     def __init__(self):
         super(CollectLogCmd, self).__init__()
@@ -3989,17 +4007,7 @@ class CollectLogCmd(Command):
         command = "cp `zstack-ctl dump_mysql | awk '{ print $10 }'` %s" % collect_dir
         shell(command, False)
 
-    def get_host_list(self, table_name):
-        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
-        query = MySqlCommandLineQuery()
-        query.host = db_hostname
-        query.port = db_port
-        query.user = db_user
-        query.password = db_password
-        query.table = 'zstack'
-        query.sql = "select * from %s" % table_name
-        host_vo = query.query()
-        return host_vo
+
 
     def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info):
         command = "cd %s && tar zcf collect-log.tar.gz *" % tmp_log_dir
@@ -4245,7 +4253,7 @@ class CollectLogCmd(Command):
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
         # create log
-        create_log(InstallHACmd.logger_dir)
+        create_log(CollectLogCmd.logger_dir, CollectLogCmd.logger_file)
         if get_detail_version() is not None:
             detail_version = get_detail_version().replace(' ','_')
         else:
@@ -4274,7 +4282,7 @@ class CollectLogCmd(Command):
         if args.db is True:
             self.get_db(collect_dir)
         if args.mn_only is not True:
-            host_vo = self.get_host_list("HostVO")
+            host_vo = get_host_list("HostVO")
             #collect host log
             for host in host_vo:
                 if args.host is not None:
@@ -4285,33 +4293,33 @@ class CollectLogCmd(Command):
                 if args.host is not None:
                     break
             #collect bs log
-            sftp_bs_vo = self.get_host_list("SftpBackupStorageVO")
+            sftp_bs_vo = get_host_list("SftpBackupStorageVO")
             for bs in sftp_bs_vo:
                 bs_ip = bs['hostname']
                 self.get_storage_log(self.generate_host_post_info(bs_ip, "sftp_bs"), collect_dir, "sftp_bs")
 
-            ceph_bs_vo = self.get_host_list("CephBackupStorageMonVO")
+            ceph_bs_vo = get_host_list("CephBackupStorageMonVO")
             for bs in ceph_bs_vo:
                 bs_ip = bs['hostname']
                 self.get_storage_log(self.generate_host_post_info(bs_ip, "ceph_bs"), collect_dir, "ceph_bs")
 
-            fusionStor_bs_vo = self.get_host_list("FusionstorBackupStorageMonVO")
+            fusionStor_bs_vo = get_host_list("FusionstorBackupStorageMonVO")
             for bs in fusionStor_bs_vo:
                 bs_ip = bs['hostname']
                 self.get_storage_log(self.generate_host_post_info(bs_ip, "fusionStor_bs"), collect_dir, "fusionStor_bs")
 
-            imageStore_bs_vo = self.get_host_list("ImageStoreBackupStorageVO")
+            imageStore_bs_vo = get_host_list("ImageStoreBackupStorageVO")
             for bs in imageStore_bs_vo:
                 bs_ip = bs['hostname']
                 self.get_storage_log(self.generate_host_post_info(bs_ip, "imageStore_bs"), collect_dir, "imagestore_bs")
 
             #collect ps log
-            ceph_ps_vo = self.get_host_list("CephPrimaryStorageMonVO")
+            ceph_ps_vo = get_host_list("CephPrimaryStorageMonVO")
             for ps in ceph_ps_vo:
                 ps_ip = ps['hostname']
                 self.get_storage_log(self.generate_host_post_info(ps_ip,"ceph_ps"), collect_dir, "ceph_ps")
 
-            fusionStor_ps_vo = self.get_host_list("FusionstorPrimaryStorageMonVO")
+            fusionStor_ps_vo = get_host_list("FusionstorPrimaryStorageMonVO")
             for ps in fusionStor_ps_vo:
                 ps_ip = ps['hostname']
                 self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
@@ -5203,6 +5211,77 @@ fi
         else:
             local_upgrade()
 
+class UpgradeMultiManagementNodeCmd(Command):
+    logger_dir = '/var/log/zstack'
+    logger_file = 'zstack-ctl.log'
+    SpinnerInfo.spinner_status = {'upgrade':False, 'stop':False, 'start':False}
+    def __init__(self):
+        super(UpgradeMultiManagementNodeCmd, self).__init__()
+        self.name = "upgrade_multi_management_node"
+        self.description = 'upgrade the management cluster'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--installer-bin','--bin',
+                            help="The new version installer package with absolute path",
+                            required=True)
+
+    def run(self, args):
+        if os.path.isfile(args.installer_bin) is not True:
+            error("Didn't find install package %s" % args.installer_bin)
+        create_log(UpgradeMultiManagementNodeCmd.logger_dir, UpgradeMultiManagementNodeCmd.logger_file)
+        mn_vo = get_host_list("ManagementNodeVO")
+        local_mn_ip = get_default_ip()
+        for mn in mn_vo:
+            mn_ip = mn['hostName']
+            if mn_ip == local_mn_ip:
+                spinner_info = SpinnerInfo()
+                spinner_info.output = "Upgrade management node on localhost"
+                spinner_info.name = 'upgrade'
+                SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                SpinnerInfo.spinner_status['upgrade'] = True
+                ZstackSpinner(spinner_info)
+                shell("bash %s -u" % args.installer_bin)
+            else:
+                ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
+                private_key = ssh_key.split('.')[0]
+                inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
+                host_info = HostPostInfo()
+                host_info.host = mn_ip
+                host_info.private_key = private_key
+                host_info.host_inventory =  inventory_file
+                host_reachable = check_host_reachable(host_info, True)
+                if host_reachable is True:
+                    spinner_info = SpinnerInfo()
+                    spinner_info.output = "Stop management node on host %s" % mn_ip
+                    spinner_info.name = 'stop'
+                    SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                    SpinnerInfo.spinner_status['stop'] = True
+                    ZstackSpinner(spinner_info)
+                    command = "zstack-ctl stop"
+                    run_remote_command(command, host_info)
+
+                    spinner_info.output = "Upgrade management node on host %s" % mn_ip
+                    spinner_info.name = 'upgrade'
+                    SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                    SpinnerInfo.spinner_status['upgrade'] = True
+                    ZstackSpinner(spinner_info)
+                    war_file = ctl.zstack_home + "/../apache-tomcat-7.0.35/webapps/zstack.war"
+                    print war_file
+                    shell("zstack-ctl upgrade_management_node --host %s --war-file %s" % (mn_ip, war_file))
+
+                    spinner_info = SpinnerInfo()
+                    spinner_info.output = "Start management node on host %s" % mn_ip
+                    spinner_info.name = 'start'
+                    SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                    SpinnerInfo.spinner_status['start'] = True
+                    ZstackSpinner(spinner_info)
+                    command = "zstack-ctl start"
+                    run_remote_command(command, host_info)
+                else:
+                    warn(colored("Management node %s is unreachable\n" % mn_ip))
+        time.sleep(0.2)
+        info(colored("\nAll managements upgrade successfully!",'blue'))
 
 class UpgradeDbCmd(Command):
     def __init__(self):
@@ -5827,6 +5906,7 @@ def main():
     UiStatusCmd()
     UnsetEnvironmentVariableCmd()
     UpgradeManagementNodeCmd()
+    UpgradeMultiManagementNodeCmd()
     UpgradeDbCmd()
     UpgradeCtlCmd()
     UpgradeHACmd()

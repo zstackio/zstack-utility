@@ -13,6 +13,7 @@ from logging.handlers import TimedRotatingFileHandler
 import time
 import functools
 import jinja2
+from termcolor import colored
 import commands
 
 # set global default value
@@ -177,6 +178,9 @@ def error(msg):
     sys.stderr.write('ERROR: %s\n' % msg)
     sys.exit(1)
 
+def warn(msg):
+    sys.stdout.write(colored('WARNING: %s\n' % msg, 'yellow'))
+
 def retry(times=3, sleep_time=3):
     def wrap(f):
         @functools.wraps(f)
@@ -193,12 +197,12 @@ def retry(times=3, sleep_time=3):
     return wrap
 
 
-def create_log(logger_dir):
+def create_log(logger_dir, logger_file):
     if not os.path.exists(logger_dir):
         os.makedirs(logger_dir)
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler = logging.handlers.RotatingFileHandler(logger_dir + "/ha.log", maxBytes=10 * 1024 * 1024,
+    handler = logging.handlers.RotatingFileHandler(logger_dir + '/' + logger_file, maxBytes=10 * 1024 * 1024,
                                                    backupCount=10)
     handler.setFormatter(fmt)
     logger.addHandler(handler)
@@ -778,7 +782,7 @@ def fetch(fetch_arg, host_post_info):
             # pass the fetch result to outside
             return change_status
 
-def check_host_reachable(host_post_info):
+def check_host_reachable(host_post_info, warning=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -791,11 +795,16 @@ def check_host_reachable(host_post_info):
     result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
+        warn("host %s unreachable" % host_post_info.host)
         return False
     elif result['contacted'][host]['ping'] == 'pong':
         return True
     else:
-        error("Unknown error when check host %s is reachable" % host)
+        if warning is False:
+            error("Unknown error when check host %s is reachable" % host)
+        else:
+            warn("Unknown error when check host %s is reachable" % host)
+        return False
 
 @retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
