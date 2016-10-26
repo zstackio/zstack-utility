@@ -1466,9 +1466,9 @@ class APIChangeInstanceOfferingStateMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
-APICHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVMPasswordMsg'
+APICHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVmPasswordMsg'
 class APIChangeVmPasswordMsg(object):
-    FULL_NAME='org.zstack.header.vm.APIChangeVMPasswordMsg'
+    FULL_NAME='org.zstack.header.vm.APIChangeVmPasswordMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()

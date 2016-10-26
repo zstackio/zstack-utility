@@ -140,9 +140,8 @@ command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(command, host_post_info)
 # name: install qemu-ga
 command = "bash %s %s " % (dest_qga_pkg, pkg_qemuga)
-Warning("################ %s" % command)
+run_remote_command(command, host_post_info)
 handle_ansible_info("################"+command, host_post_info, "INFO")
-#run_remote_command(command, host_post_info)
 
 # name: restart image store server
 if client != "true":

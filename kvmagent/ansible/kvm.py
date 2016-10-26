@@ -347,6 +347,21 @@ if copy_kvmagent != "changed:False":
     agent_install_arg.virtualenv_site_packages = "yes"
     agent_install(agent_install_arg, host_post_info)
 
+# name: copy qemu-ga binary
+copy_arg = CopyArg()
+qemuga_root = "%s/imagestorebackupstorage/package/" % zstack_root
+pkg_qemuga = "zstack-qemu-ga.bin"
+dest_qga_pkg = "%s" % (qemuga_root)
+
+copy_arg.src = "%s/%s" % ("files/imagestorebackupstorage/", pkg_qemuga)
+copy_arg.dest = qemuga_root
+if os.path.isdir(qemuga_root) == False:
+    os.makedirs(qemuga_root)
+copy(copy_arg, host_post_info)
+# name: install qemu-ga
+command = "bash %s/%s " % (dest_qga_pkg, pkg_qemuga)
+run_remote_command(command, host_post_info)
+
 # handlers
 if chroot_env == 'false':
     if distro == "RedHat" or distro == "CentOS":
