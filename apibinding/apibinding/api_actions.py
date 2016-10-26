@@ -4489,3 +4489,15 @@ class QueryLdapServerAction(inventory.APIQueryLdapServerMsg):
         self.reply = reply
         self.out = reply.inventories
         return self.out
+
+class HotFix1169KvmSnapshotChainAction(inventory.APIHotFix1169KvmSnapshotChainMsg):
+    def __init__(self):
+        super(HotFix1169KvmSnapshotChainAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[HotFix1169KvmSnapshotChainAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out

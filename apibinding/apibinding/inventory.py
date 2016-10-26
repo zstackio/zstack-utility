@@ -7500,6 +7500,17 @@ class APIQueryLdapServerReply(object):
         self.success = None
         self.error = None
 
+APIHOTFIX1169KVMSNAPSHOTCHAINMSG_FULL_NAME = 'org.zstack.hotfix.APIHotFix1169KvmSnapshotChainMsg'
+class APIHotFix1169KvmSnapshotChainMsg(object):
+    FULL_NAME='org.zstack.hotfix.APIHotFix1169KvmSnapshotChainMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
 
 api_names = [
     'APISilentMsg',
@@ -8052,6 +8063,7 @@ api_names = [
     'APIQueryLdapServerMsg',
     'APILogInByLdapReply',
     'APIQueryLdapServerReply',
+    'APIHotFix1169KvmSnapshotChainMsg',
 ]
 
 class GlobalConfigInventory(object):
