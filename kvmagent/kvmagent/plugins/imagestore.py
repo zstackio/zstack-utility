@@ -22,8 +22,8 @@ class ImageStoreClient(object):
     def _get_image_json_file(self, primaryInstallPath):
         idx = primaryInstallPath.rfind('.')
         if idx == -1:
-            return primaryInstallPath + ".imf"
-        return primaryInstallPath[:idx] + ".imf"
+            return primaryInstallPath + ".imf2"
+        return primaryInstallPath[:idx] + ".imf2"
 
     def _get_image_reference(self, primaryStorageInstallPath):
         try:
