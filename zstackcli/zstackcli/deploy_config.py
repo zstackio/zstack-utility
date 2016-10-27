@@ -86,8 +86,8 @@ def add_backup_storage(deployConfig, session_uuid):
             wait_for_thread_queue()
             thread.start()
 
-    if xmlobject.has_element(deployConfig, 'backupStorages.fusionstorBackupStorage'):
-        for bs in xmlobject.safe_list(deployConfig.backupStorages.fusionstorBackupStorage):
+    if xmlobject.has_element(deployConfig, 'backupStorages.fusionStorBackupStorage'):
+        for bs in xmlobject.safe_list(deployConfig.backupStorages.fusionStorBackupStorage):
             action = api_actions.AddFusionstorBackupStorageAction()
             action.sessionUuid = session_uuid
             action.name = bs.name_
@@ -95,6 +95,24 @@ def add_backup_storage(deployConfig, session_uuid):
             action.monUrls = bs.monUrls_.split(';')
             if bs.poolName__:
                 action.poolName = bs.poolName_
+            action.timeout = AddKVMHostTimeOut #for some platform slowly salt execution
+            action.type = inventory.FUSIONSTOR_BACKUP_STORAGE_TYPE
+            thread = threading.Thread(target = _thread_for_action, args = (action, ))
+            wait_for_thread_queue()
+            thread.start()
+
+    if xmlobject.has_element(deployConfig, 'backupStorages.imageStoreBackupStorage'):
+        for bs in xmlobject.safe_list(deployConfig.backupStorages.imageStoreBackupStorage):
+            action = api_actions.AddImageStoreBackupStorageAction()
+            action.sessionUuid = session_uuid
+            action.name = bs.name_
+            action.description = bs.description__
+            action.url = bs.url_
+            action.username = bs.username_
+            action.password = bs.password_
+            action.hostname = bs.hostname_
+            if hasattr(bs, 'sshPort_'):
+                action.port = bs.sshPort_
             action.timeout = AddKVMHostTimeOut #for some platform slowly salt execution
             action.type = inventory.FUSIONSTOR_BACKUP_STORAGE_TYPE
             thread = threading.Thread(target = _thread_for_action, args = (action, ))
