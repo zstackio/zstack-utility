@@ -176,12 +176,20 @@ def get_backup_storage(xml_root, session_uuid = None):
 
     for bs in bs_storages:
         if bs.type == inventory.SFTP_BACKUP_STORAGE_TYPE:
-       	    json_to_xml = JsonToXml(bs, 'sftpBackupStorage', xml_item, \
-                   'attachedZoneUuids availableCapacity totalCapacity')
+            json_to_xml = JsonToXml(bs, 'sftpBackupStorage', xml_item, \
+                'attachedZoneUuids availableCapacity totalCapacity')
             json_to_xml.generate_xml()
         elif bs.type == inventory.CEPH_BACKUP_STORAGE_TYPE:
-       	    json_to_xml = JsonToXml(bs, 'cephBackupStorage', xml_item, \
-                   'attachedZoneUuids availableCapacity totalCapacity')
+            json_to_xml = JsonToXml(bs, 'cephBackupStorage', xml_item, \
+                'attachedZoneUuids availableCapacity totalCapacity')
+            json_to_xml.generate_mon_xml()
+        elif bs.type == inventory.IMAGE_STORE_BACKUP_STORAGE_TYPE:
+            json_to_xml = JsonToXml(bs, 'imageStoreBackupStorage', xml_item, \
+                'attachedZoneUuids availableCapacity totalCapacity')
+            json_to_xml.generate_mon_xml()
+        elif bs.type == inventory.FUSIONSTOR_BACKUP_STORAGE_TYPE:
+            json_to_xml = JsonToXml(bs, 'fusionStorBackupStorage', xml_item, \
+                'attachedZoneUuids availableCapacity totalCapacity')
             json_to_xml.generate_mon_xml()
 
     cond = res_ops.gen_query_conditions('type', '=', 'SimulatorBackupStorage')
@@ -233,6 +241,26 @@ def get_image(xml_root, session_uuid = None):
 
     return xml_item
 
+def get_vm(xml_root, session_uuid = None):
+    cond = []
+    vms = res_ops.safely_get_resource(res_ops.VM_INSTANCE, cond, \
+            session_uuid)
+
+    if vms:
+        xml_item = etree.SubElement(xml_root, "vms")
+    else:
+        return None
+
+    vms = res_ops.safely_get_resource(res_ops.VM_INSTANCE,\
+            cond, session_uuid)
+
+    for vm in vms:
+        json_to_xml = JsonToXml(vm, 'vm', xml_item, \
+             'allocatorStrategy')
+        json_to_xml.generate_xml()
+
+    return xml_item
+
 def get_zone(xml_root, session_uuid = None):
     def _get_primary_storage(pss_xml, zone):
         cond = res_ops.gen_query_conditions('zoneUuid', '=', zone.uuid)
@@ -240,16 +268,16 @@ def get_zone(xml_root, session_uuid = None):
                 session_uuid)
         for ps in pss:
             if ps.type == inventory.NFS_PRIMARY_STORAGE_TYPE:
-       	        json_to_xml = JsonToXml(ps, 'nfsPrimaryStorage', pss_xml, \
-                        'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
+                json_to_xml = JsonToXml(ps, 'nfsPrimaryStorage', pss_xml, \
+                    'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
                 json_to_xml.generate_xml()
             elif ps.type == inventory.CEPH_PRIMARY_STORAGE_TYPE:
-       	        json_to_xml = JsonToXml(ps, 'cephPrimaryStorage', pss_xml, \
-                        'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
+                json_to_xml = JsonToXml(ps, 'cephPrimaryStorage', pss_xml, \
+                    'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
                 json_to_xml.generate_mon_xml()
             elif ps.type == inventory.LOCAL_STORAGE_TYPE:
-       	        json_to_xml = JsonToXml(ps, 'localPrimaryStorage', pss_xml, \
-                        'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
+                json_to_xml = JsonToXml(ps, 'localPrimaryStorage', pss_xml, \
+                    'availableCapacity mountPath totalCapacity type zoneUuid totalPhysicalCapacity')
                 json_to_xml.generate_xml()
 
         cond = res_ops.gen_query_conditions('zoneUuid', '=', zone.uuid)
@@ -300,7 +328,7 @@ def get_zone(xml_root, session_uuid = None):
         #basic
         cond = res_ops.gen_query_conditions('l2NetworkUuid', '=', l2.uuid)
         cond = res_ops.gen_query_conditions('type', '=', 'L3BasicNetwork', cond)
-        l3s = res_ops.safely_get_resource(res_ops.L3_NETWORK, cond, 
+        l3s = res_ops.safely_get_resource(res_ops.L3_NETWORK, cond, \
                 session_uuid)
         if not l3s:
             return None
@@ -448,6 +476,7 @@ def dump_zstack(save_to_file = None, admin_passwd = None):
         get_backup_storage(xml_root, session_uuid)
         get_image(xml_root, session_uuid)
         get_zone(xml_root, session_uuid)
+        get_vm(xml_root, session_uuid)
     except Exception as e:
         try:
             account_operations.logout(session_uuid)

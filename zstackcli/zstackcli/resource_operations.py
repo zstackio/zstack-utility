@@ -356,7 +356,7 @@ def query_resource_count(resource, conditions = [], session_uuid=None):
     return action.reply.total
 
 def query_resource_with_num(resource, conditions = [], session_uuid=None, \
-        start=0, limit=1000):
+        fields=[], start=0, limit=1000):
     '''
     Query matched resource and return required numbers. 
     '''
@@ -364,6 +364,7 @@ def query_resource_with_num(resource, conditions = [], session_uuid=None, \
     action.conditions = conditions
     action.start = start
     action.limit = limit
+    action.fields = fields
     ret = account_operations.execute_action_with_session(action, session_uuid)
     return ret
 
@@ -409,7 +410,7 @@ def safely_get_resource(res_name, cond = [], session_uuid = None, \
         curr_count = 0 
         while curr_count <= res_count:
             curr_list = query_resource_with_num(res_name, cond, \
-                    session_uuid, fields, start=current_count, limit = limit)
+                    session_uuid, fields, start=curr_count, limit = limit)
             res_list.extend(curr_list)
             curr_count += limit
 
