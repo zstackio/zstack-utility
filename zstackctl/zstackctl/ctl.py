@@ -687,8 +687,9 @@ class Ctl(object):
                 for n in new_nodes:
                     for o in nodes:
                         if o['hostname'] == n['hostname'] and o['heartBeat'] != n['heartBeat']:
-                            raise CtlError("node[%s] is still Running! Its heart-beat changed from %s to %s in last 10s. Please make sure you really stop it" %
-                                           (n['hostname'], o['heartBeat'], n['heartBeat']))
+                            raise CtlError("node[%s] is still Running! Its heart-beat changed from %s to %s in last 10s. \
+Please make sure you really stop management node in [%s]!!!" % \
+                                    (n['hostname'], o['heartBeat'], n['heartBeat'], n['hostname']))
 
         if force:
             bypass_check()
