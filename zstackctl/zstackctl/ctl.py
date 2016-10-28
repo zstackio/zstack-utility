@@ -193,6 +193,12 @@ def get_host_list(table_name):
     host_vo = query.query()
     return host_vo
 
+def get_ha_mn_list():
+    with open(InstallHACmd.conf_file, 'r') as fd:
+        ha_conf_content = yaml.load(fd.read())
+        mn_list = ha_conf_content['host_list'].split(',')
+    return mn_list
+
 class ExceptionWrapper(object):
     def __init__(self, msg):
         self.msg = msg
@@ -1817,24 +1823,12 @@ class UpgradeHACmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host1-info','--h1',
-                            help="The first host connect info follow below format: 'root:password@ip_address' ",
-                            required=True)
-        parser.add_argument('--host2-info','--h2',
-                            help="The second host connect info follow below format: 'root:password@ip_address' ",
-                            required=True)
-        parser.add_argument('--host3-info','--h3',
-                            help="The third host connect info follow below format: 'root:password@ip_address' ",
-                            default=False)
         parser.add_argument('--mevoco-installer','--mevoco',
                             help="The new mevoco installer package, get it from http://www.mevoco.com/download/",
                             required=True)
         parser.add_argument('--iso',
                             help="get it from http://www.mevoco.com/mevoco-offline-install-from-custom-iso/",
                             required=True)
-
-    def reset_dict_value(self, dict_name, value):
-        return dict.fromkeys(dict_name, value)
 
     def upgrade_repo(self, iso, tmp_iso, host_post_info):
         command = (
@@ -1929,32 +1923,17 @@ class UpgradeHACmd(Command):
         else:
             community_iso = args.iso
 
-        # check input host info
-        host1_info = args.host1_info
-        host1_connect_info_list = check_host_info_format(host1_info)
-        host1_ip = host1_connect_info_list[2]
-        host1_password = host1_connect_info_list[1]
-        host1_user = host1_connect_info_list[0]
-
-        host2_info = args.host2_info
-        host2_connect_info_list = check_host_info_format(host2_info)
-        host2_ip = host2_connect_info_list[2]
-        host2_password = host2_connect_info_list[1]
-        host2_user = host2_connect_info_list[0]
-
-        if args.host3_info is not False:
-            host3_info = args.host3_info
-            host3_connect_info_list = check_host_info_format(host3_info)
-            host3_ip = host3_connect_info_list[2]
-            host3_password = host3_connect_info_list[1]
-            host3_user = host3_connect_info_list[0]
+        mn_list = get_ha_mn_list()
+        host1_ip = mn_list[0]
+        host2_ip = mn_list[1]
+        if len(mn_list) > 2:
+            host3_ip = mn_list[2]
 
         # init host1 parameter
         self.host1_post_info = HostPostInfo()
         self.host1_post_info.host = host1_ip
         self.host1_post_info.host_inventory = host_inventory
         self.host1_post_info.private_key = private_key_name
-        self.host1_post_info.remote_pass = host1_password
         self.host1_post_info.yum_repo = yum_repo
         self.host1_post_info.post_url = ""
 
@@ -1963,29 +1942,27 @@ class UpgradeHACmd(Command):
         self.host2_post_info.host = host2_ip
         self.host2_post_info.host_inventory = host_inventory
         self.host2_post_info.private_key = private_key_name
-        self.host2_post_info.remote_pass = host2_password
         self.host2_post_info.yum_repo = yum_repo
         self.host2_post_info.post_url = ""
 
-        if args.host3_info is not False:
+        if len(mn_list) > 2:
             # init host3 parameter
             self.host3_post_info = HostPostInfo()
             self.host3_post_info.host = host3_ip
             self.host3_post_info.host_inventory = host_inventory
             self.host3_post_info.private_key = private_key_name
-            self.host3_post_info.remote_pass = host3_password
             self.host3_post_info.yum_repo = yum_repo
             self.host3_post_info.post_url = ""
 
         UpgradeHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info]
-        if args.host3_info is not False:
+        if len(mn_list) > 2:
             UpgradeHACmd.host_post_info_list = [self.host1_post_info, self.host2_post_info, self.host3_post_info]
 
         for host in UpgradeHACmd.host_post_info_list:
             # to do check mn all running
             self.check_mn_running(host)
 
-        for file in [args.mevoco_installer, args.iso]:
+        for file in [args.mevoco_installer, community_iso]:
             self.check_file_exist(file, UpgradeHACmd.host_post_info_list)
 
         spinner_info = SpinnerInfo()
@@ -1997,7 +1974,7 @@ class UpgradeHACmd(Command):
         rand_dir_name = uuid.uuid4()
         tmp_iso =  "/tmp/%s/iso/" % rand_dir_name
         for host_post_info in UpgradeHACmd.host_post_info_list:
-            self.upgrade_repo(args.iso, tmp_iso, host_post_info)
+            self.upgrade_repo(community_iso, tmp_iso, host_post_info)
 
         spinner_info = SpinnerInfo()
         spinner_info.output = "Stopping mevoco"
@@ -2050,7 +2027,7 @@ class UpgradeHACmd(Command):
         SpinnerInfo.spinner_status['start_mevoco'] = False
         time.sleep(.2)
 
-        info("Upgrade HA successfully!")
+        info(colored("\nUpgrade HA successfully!","blue"))
 
 
 class AddManagementNodeCmd(Command):
@@ -4163,11 +4140,6 @@ class CollectLogCmd(Command):
             warn("unknown target type: %s" % type)
 
 
-    def get_mn_list(self):
-        with open(InstallHACmd.conf_file, 'r') as fd:
-            ha_conf_content = yaml.load(fd.read())
-            mn_list = ha_conf_content['host_list'].split(',')
-        return mn_list
 
     def get_management_node_log(self, collect_dir, host_post_info):
         if check_host_reachable(host_post_info) is True:
@@ -4267,7 +4239,7 @@ class CollectLogCmd(Command):
             self.get_local_mn_log(collect_dir)
         else:
             # this only for HA due to db will lost mn info if mn offline
-            mn_list = self.get_mn_list()
+            mn_list = get_ha_mn_list()
             for mn_ip in mn_list:
                 host_post_info = HostPostInfo()
                 host_post_info.remote_user = 'root'
@@ -5280,6 +5252,8 @@ class UpgradeMultiManagementNodeCmd(Command):
                     run_remote_command(command, host_info)
                 else:
                     warn(colored("Management node %s is unreachable\n" % mn_ip))
+
+        SpinnerInfo.spinner_status['start'] = False
         time.sleep(0.2)
         info(colored("\nAll managements upgrade successfully!",'blue'))
 

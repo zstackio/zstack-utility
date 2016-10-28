@@ -13,7 +13,6 @@ from logging.handlers import TimedRotatingFileHandler
 import time
 import functools
 import jinja2
-from termcolor import colored
 import commands
 
 # set global default value
@@ -179,7 +178,7 @@ def error(msg):
     sys.exit(1)
 
 def warn(msg):
-    sys.stdout.write(colored('WARNING: %s\n' % msg, 'yellow'))
+    sys.stdout.write('WARNING: %s\n' % msg, 'yellow')
 
 def retry(times=3, sleep_time=3):
     def wrap(f):
