@@ -4248,6 +4248,20 @@ class AddVCenterAction(inventory.APIAddVCenterMsg):
         self.out = evt
         return self.out
 
+class QueryVCenterAction(inventory.APIQueryVCenterMsg):
+    def __init__(self):
+        super(QueryVCenterAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVCenterAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class PrometheusQueryLabelValuesAction(inventory.APIPrometheusQueryLabelValuesMsg):
     def __init__(self):
         super(PrometheusQueryLabelValuesAction, self).__init__()
