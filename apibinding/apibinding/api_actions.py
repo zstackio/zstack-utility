@@ -4248,6 +4248,18 @@ class AddVCenterAction(inventory.APIAddVCenterMsg):
         self.out = evt
         return self.out
 
+class DeleteVCenterAction(inventory.APIDeleteVCenterMsg):
+    def __init__(self):
+        super(DeleteVCenterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVCenterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QueryVCenterAction(inventory.APIQueryVCenterMsg):
     def __init__(self):
         super(QueryVCenterAction, self).__init__()
