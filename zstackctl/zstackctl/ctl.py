@@ -702,9 +702,8 @@ class Ctl(object):
                 for n in new_nodes:
                     for o in nodes:
                         if o['hostname'] == n['hostname'] and o['heartBeat'] != n['heartBeat']:
-                            raise CtlError("node[%s] is still Running! Its heart-beat changed from %s to %s in last 10s. \
-Please make sure you really stop management node in [%s]!!!" % \
-                                    (n['hostname'], o['heartBeat'], n['heartBeat'], n['hostname']))
+                            raise CtlError("node[%s] is still Running! Its heart-beat changed from %s to %s in last 10s. Please make sure you really stop it" %
+                                           (n['hostname'], o['heartBeat'], n['heartBeat']))
 
         if force:
             bypass_check()
@@ -2204,10 +2203,6 @@ class RecoverHACmd(Command):
         self.description =  "Recover high availability environment for Mevoco."
         ctl.register_command(self)
 
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--bridge',
-                            help="The bridge device name, default is br_eth0",
-                            )
 
     def stop_mysql_service(self, host_post_info):
         command = "service mysql stop"
@@ -2255,7 +2250,7 @@ class RecoverHACmd(Command):
         ZstackSpinner(spinner_info)
         host3_exist = False
         if os.path.isfile(RecoverHACmd.conf_file) is not True:
-            error("Didn't find HA config file %s, you can use traditional zstack-ctl install_ha to recover your cluster" % RecoverHACmd.conf_file)
+            error("Didn't find HA config file %s, please use traditional 'zstack-ctl install_ha' to recover your cluster" % RecoverHACmd.conf_file)
 
         if os.path.exists(RecoverHACmd.conf_file):
             with open(RecoverHACmd.conf_file, 'r') as f:
@@ -2272,9 +2267,11 @@ class RecoverHACmd(Command):
             host3_exist = True
             host3_ip = host_list[2]
 
-        if os.path.exists(RecoverHACmd.conf_file) and RecoverHACmd.ha_config_content is not None and args.bridge is None:
+        if os.path.exists(RecoverHACmd.conf_file) and RecoverHACmd.ha_config_content is not None :
             if "bridge_name" in RecoverHACmd.ha_config_content:
                 RecoverHACmd.bridge = RecoverHACmd.ha_config_content['bridge_name']
+            else:
+                error("Didn't find 'bridge_name' in config file %s" % RecoverHACmd.conf_file)
 
         local_ip = get_ip_by_interface(RecoverHACmd.bridge)
         host_post_info_list = []
