@@ -2196,8 +2196,7 @@ class RecoverHACmd(Command):
     logger_dir = "/var/log/zstack/"
     logger_file = "ha.log"
     bridge = ""
-    SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,
-                      'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
+    SpinnerInfo.spinner_status = {'cluster':False, 'mysql':False,'mevoco':False, 'check_init':False, 'cluster':False}
     ha_config_content = None
     def __init__(self):
         super(RecoverHACmd, self).__init__()
@@ -2211,41 +2210,52 @@ class RecoverHACmd(Command):
                             )
 
     def stop_mysql_service(self, host_post_info):
-        print "stop mysql"
-        service_status("mysql", "state=stopped", host_post_info)
+        command = "service mysql stop"
+        run_remote_command(command, host_post_info)
         mysqld_status = run_remote_command("netstat -ltnp | grep :4567[[:space:]]", host_post_info,
                                            return_status=True)
         if mysqld_status is True:
             run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill -9", host_post_info)
 
-    def bootstrap_mysql(self, host_post_info):
-        print "bootstrap mysql"
+    def reboot_cluster_service(self, host_post_info):
+        service_status("haproxy", "state=started", host_post_info)
+        service_status("keepalived", "state=started", host_post_info)
+        service_status("rabbitmq-server", "state=started", host_post_info)
+
+    def recover_mysql(self, host_post_info, host_post_info_list):
+        for host_info in host_post_info_list:
+            self.stop_mysql_service(host_info)
         command = "service mysql bootstrap"
+        status, output = run_remote_command(command,host_post_info,True,True)
+        if status is False:
+            return False
+        for host_info in host_post_info_list:
+            if host_info.host != host_post_info.host:
+                command = "service mysql start"
+                status, output = run_remote_command(command,host_info,True,True)
+                if status is False:
+                    return False
+        command = "service mysql restart"
         status, output = run_remote_command(command,host_post_info,True,True)
         return status
 
-    def reboot_local_service(self, host_post_info):
-        print "reboot cluster service"
-        service_status("haproxy", "state=started", host_post_info)
-        service_status("keepalived", "state=started", host_post_info)
-        service_status("rabbitmq-server", "state=started", host_post_info)
-
-    def reboot_remote_service(self, host_post_info):
-        print "reboot remote mn cluster service"
-        service_status("mysql", "state=started", host_post_info)
-        service_status("haproxy", "state=started", host_post_info)
-        service_status("keepalived", "state=started", host_post_info)
-        service_status("rabbitmq-server", "state=started", host_post_info)
-
-    def reboot_local_mysql(self, host_post_info):
-        print "reboot local mysql"
-        service_status("mysql","state=restarted", host_post_info)
+    def sync_prometheus(self, host_post_info):
+        # sync prometheus data
+        sync_arg = SyncArg()
+        sync_arg.src = '/var/lib/zstack/prometheus/'
+        sync_arg.dest = '/var/lib/zstack/prometheus/'
+        sync(sync_arg, host_post_info)
 
     def run(self, args):
         create_log(UpgradeHACmd.logger_dir, UpgradeHACmd.logger_file)
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Checking system and init environment"
+        spinner_info.name = 'check_init'
+        SpinnerInfo.spinner_status['check_init'] = True
+        ZstackSpinner(spinner_info)
         host3_exist = False
         if os.path.isfile(RecoverHACmd.conf_file) is not True:
-            error("Didn't find HA config file %s" % RecoverHACmd.conf_file)
+            error("Didn't find HA config file %s, you can use traditional zstack-ctl install_ha to recover your cluster" % RecoverHACmd.conf_file)
 
         if os.path.exists(RecoverHACmd.conf_file):
             with open(RecoverHACmd.conf_file, 'r') as f:
@@ -2266,7 +2276,7 @@ class RecoverHACmd(Command):
             if "bridge_name" in RecoverHACmd.ha_config_content:
                 RecoverHACmd.bridge = RecoverHACmd.ha_config_content['bridge_name']
 
-        #local_ip = get_ip_by_interface(InstallHACmd.bridge)
+        local_ip = get_ip_by_interface(RecoverHACmd.bridge)
         host_post_info_list = []
 
         # init host1 parameter
@@ -2289,26 +2299,53 @@ class RecoverHACmd(Command):
             host3_post_info.private_key = RecoverHACmd.private_key
             host_post_info_list.append(host3_post_info)
 
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to recovery mysql"
+        spinner_info.name = "mysql"
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status, False)
+        SpinnerInfo.spinner_status['mysql'] = True
+        ZstackSpinner(spinner_info)
+        mysql_recover_status = False
         for host_post_info in host_post_info_list:
-            self.stop_mysql_service(host_post_info)
-
-        for host_post_info in host_post_info_list:
-            status = self.bootstrap_mysql(host_post_info)
-            if status == 0:
-                self.reboot_local_service(host_post_info)
-                for remote_host in host_post_info_list:
-                    if remote_host.host != host_post_info.host:
-                        self.reboot_remote_service(remote_host)
-                self.reboot_local_mysql(host_post_info)
+            recover_status = self.recover_mysql(host_post_info, host_post_info_list)
+            if recover_status is True:
+                mysql_recover_status = True
                 break
-            else:
-                continue
+        if mysql_recover_status is False:
+            error("Recover mysql failed! Please check log /var/log/zstack/ha.log")
 
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to recovery cluster"
+        spinner_info.name = "cluster"
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status, False)
+        SpinnerInfo.spinner_status['cluster'] = True
+        ZstackSpinner(spinner_info)
         for host_post_info in host_post_info_list:
-            print "start mevoco"
+            self.reboot_cluster_service(host_post_info)
+
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting to sync monitor data"
+        spinner_info.name = "prometheus"
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status, False)
+        SpinnerInfo.spinner_status['prometheus'] = True
+        ZstackSpinner(spinner_info)
+        for host_post_info in host_post_info_list:
+            if host_post_info.host != local_ip:
+                self.sync_prometheus(host_post_info)
+
+        spinner_info = SpinnerInfo()
+        spinner_info.output = "Starting Mevoco"
+        spinner_info.name = "mevoco"
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status, False)
+        SpinnerInfo.spinner_status['mevoco'] = True
+        ZstackSpinner(spinner_info)
+        for host_post_info in host_post_info_list:
             start_remote_mn(host_post_info)
 
-        info(colored("The cluster has been recovery successfully!", "blue"))
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status, False)
+        time.sleep(.3)
+        info(colored("The cluster has been recovered successfully!", "blue"))
+
 
 class InstallHACmd(Command):
     '''This feature only support zstack offline image currently'''
@@ -2707,7 +2744,7 @@ class InstallHACmd(Command):
                         error("Something wrong on host: %s\n %s" % (args.host2, output))
                 SpinnerInfo.spinner_status['mevoco'] = False
                 time.sleep(.2)
-            info("The cluster has been recovery!")
+            info("The cluster has been recovered!")
             sys.exit(0)
 
         # generate ha config
@@ -5384,9 +5421,9 @@ class UpgradeMultiManagementNodeCmd(Command):
                 SpinnerInfo.spinner_status['upgrade_local'] = True
                 ZstackSpinner(spinner_info)
                 if args.force is True:
-                    shell("bash %s -u -F" % args.installer_bin)
+                    shell("rm -rf /tmp/zstack_upgrade.lock && bash %s -u -F" % args.installer_bin)
                 else:
-                    shell("bash %s -u" % args.installer_bin)
+                    shell("rm -rf /tmp/zstack_upgrade.lock && bash %s -u" % args.installer_bin)
 
             else:
                 spinner_info = SpinnerInfo()
