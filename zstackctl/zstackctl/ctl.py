@@ -272,7 +272,7 @@ def get_ip_by_interface(device_name):
 
 def start_remote_mn( host_post_info):
     command = "zstack-ctl start_node && zstack-ctl start_ui"
-    (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+    (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
                                                 (UpgradeHACmd.private_key_name, host_post_info.host, command))
     if status != 0:
         error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
@@ -1897,7 +1897,8 @@ class UpgradeHACmd(Command):
 
     def stop_mevoco(self, host_post_info):
         command = "zstack-ctl stop_node && zstack-ctl stop_ui"
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+        logger.debug("[ HOST: %s ] INFO: starting run shell command: '%s' " % (host_post_info.host, command))
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
                                                    (UpgradeHACmd.private_key_name, host_post_info.host, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
@@ -1907,13 +1908,12 @@ class UpgradeHACmd(Command):
         mevoco_dir = os.path.dirname(mevoco_installer)
         mevoco_bin = os.path.basename(mevoco_installer)
         command = "rm -rf /tmp/zstack_upgrade.lock && cd %s && bash %s -u -i " % (mevoco_dir, mevoco_bin)
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+        logger.debug("[ HOST: %s ] INFO: starting run shell command: '%s' " % (host_post_info.host, command))
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
                                                    (UpgradeHACmd.private_key_name, host_post_info.host, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
         logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
-
-
 
 
     def run(self, args):
@@ -2692,16 +2692,16 @@ class InstallHACmd(Command):
                 SpinnerInfo.spinner_status['mevoco'] = True
                 ZstackSpinner(spinner_info)
                 command = "zstack-ctl start"
-                (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s"
+                (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'"
                                                                      % (private_key_name, args.host1, command))
                 if status != 0:
                     error("Something wrong on host: %s\n %s" % (args.host1, output))
-                (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s"
+                (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'"
                                                                      % (private_key_name, args.host2, command))
                 if status != 0:
                     error("Something wrong on host: %s\n %s" % (args.host2, output))
                 if args.host3_info is not False:
-                    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s"
+                    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'"
                                                                          % (private_key_name, args.host3, command))
                     if status != 0:
                         error("Something wrong on host: %s\n %s" % (args.host2, output))
@@ -2905,16 +2905,16 @@ class InstallHACmd(Command):
         if args.host3_info is not False:
             run_remote_command(command, self.host3_post_info)
         command = "zstack-ctl start"
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
                                                              (private_key_name, args.host1, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host1, output))
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
                                                              (private_key_name, args.host2, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, output))
         if args.host3_info is not False:
-            (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+            (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
                                                                  (private_key_name, args.host3, command))
             if status != 0:
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
@@ -5323,7 +5323,7 @@ class UpgradeMultiManagementNodeCmd(Command):
     def start_mn(self, host_post_info):
         command = "zstack-ctl start_node && zstack-ctl start_ui"
         #Ansible finish command will lead mn stop, so use ssh native connection to start mn
-        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
                                                     (host_post_info.private_key, host_post_info.host, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
