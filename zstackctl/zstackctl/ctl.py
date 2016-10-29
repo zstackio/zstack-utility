@@ -193,8 +193,8 @@ def get_host_list(table_name):
     host_vo = query.query()
     return host_vo
 
-def get_ha_mn_list():
-    with open(InstallHACmd.conf_file, 'r') as fd:
+def get_ha_mn_list(conf_file):
+    with open(conf_file, 'r') as fd:
         ha_conf_content = yaml.load(fd.read())
         mn_list = ha_conf_content['host_list'].split(',')
     return mn_list
@@ -261,7 +261,22 @@ def check_host_password(password, ip):
         error("Connect to host: '%s' with password '%s' failed! Please check password firstly and make sure you have "
               "disabled UseDNS in '/etc/ssh/sshd_config' on %s" % (ip, password, ip))
 
+def get_ip_by_interface(device_name):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(fcntl.ioctl(
+        s.fileno(),
+        0x8915,
+        struct.pack('256s', device_name[:15])
+    )[20:24])
 
+
+def start_remote_mn( host_post_info):
+    command = "zstack-ctl start_node && zstack-ctl start_ui"
+    (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+                                                (UpgradeHACmd.private_key_name, host_post_info.host, command))
+    if status != 0:
+        error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
+    logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
 
 class SpinnerInfo(object):
     spinner_status = []
@@ -1898,13 +1913,7 @@ class UpgradeHACmd(Command):
             error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
         logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
 
-    def start_mevoco(self, host_post_info):
-        command = "zstack-ctl start_node && zstack-ctl start_ui"
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
-                                                   (UpgradeHACmd.private_key_name, host_post_info.host, command))
-        if status != 0:
-            error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
-        logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
+
 
 
     def run(self, args):
@@ -1924,7 +1933,7 @@ class UpgradeHACmd(Command):
         else:
             community_iso = args.iso
 
-        mn_list = get_ha_mn_list()
+        mn_list = get_ha_mn_list(UpgradeHACmd.conf_file)
         host1_ip = mn_list[0]
         host2_ip = mn_list[1]
         if len(mn_list) > 2:
@@ -2023,7 +2032,7 @@ class UpgradeHACmd(Command):
         SpinnerInfo.spinner_status['start_mevoco'] = True
         ZstackSpinner(spinner_info)
         for host_post_info in UpgradeHACmd.host_post_info_list:
-            self.start_mevoco(host_post_info)
+            start_remote_mn(host_post_info)
 
         SpinnerInfo.spinner_status['start_mevoco'] = False
         time.sleep(.2)
@@ -2176,6 +2185,130 @@ class AddManagementNodeCmd(Command):
         time.sleep(0.2)
         info(colored("\nAll management nodes add successfully",'blue'))
 
+class RecoverHACmd(Command):
+    '''This feature only support zstack offline image currently'''
+    host_post_info_list = []
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    conf_dir = "/var/lib/zstack/ha/"
+    conf_file = conf_dir + "ha.yaml"
+    host_inventory = conf_dir + 'host'
+    private_key = conf_dir + 'ha_key'
+    logger_dir = "/var/log/zstack/"
+    logger_file = "ha.log"
+    bridge = ""
+    SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,
+                      'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
+    ha_config_content = None
+    def __init__(self):
+        super(RecoverHACmd, self).__init__()
+        self.name = "recover_ha"
+        self.description =  "Recover high availability environment for Mevoco."
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--bridge',
+                            help="The bridge device name, default is br_eth0",
+                            )
+
+    def stop_mysql_service(self, host_post_info):
+        print "stop mysql"
+        service_status("mysql", "state=stopped", host_post_info)
+        mysqld_status = run_remote_command("netstat -ltnp | grep :4567[[:space:]]", host_post_info,
+                                           return_status=True)
+        if mysqld_status is True:
+            run_remote_command("lsof -i tcp:4567 | awk 'NR!=1 {print $2}' | xargs kill -9", host_post_info)
+
+    def bootstrap_mysql(self, host_post_info):
+        print "bootstrap mysql"
+        command = "service mysql bootstrap"
+        status, output = run_remote_command(command,host_post_info,True,True)
+        return status
+
+    def reboot_local_service(self, host_post_info):
+        print "reboot cluster service"
+        service_status("haproxy", "state=started", host_post_info)
+        service_status("keepalived", "state=started", host_post_info)
+        service_status("rabbitmq-server", "state=started", host_post_info)
+
+    def reboot_remote_service(self, host_post_info):
+        print "reboot remote mn cluster service"
+        service_status("mysql", "state=started", host_post_info)
+        service_status("haproxy", "state=started", host_post_info)
+        service_status("keepalived", "state=started", host_post_info)
+        service_status("rabbitmq-server", "state=started", host_post_info)
+
+    def reboot_local_mysql(self, host_post_info):
+        print "reboot local mysql"
+        service_status("mysql","state=restarted", host_post_info)
+
+    def run(self, args):
+        create_log(UpgradeHACmd.logger_dir, UpgradeHACmd.logger_file)
+        host3_exist = False
+        if os.path.isfile(RecoverHACmd.conf_file) is not True:
+            error("Didn't find HA config file %s" % RecoverHACmd.conf_file)
+
+        if os.path.exists(RecoverHACmd.conf_file):
+            with open(RecoverHACmd.conf_file, 'r') as f:
+                RecoverHACmd.ha_config_content = yaml.load(f)
+
+        if RecoverHACmd.ha_config_content['host_list'] is None:
+            error("Didn't find host_list in config file %s" % RecoverHACmd.conf_file)
+
+        host_list = RecoverHACmd.ha_config_content['host_list'].split(',')
+        if len(host_list) == 2:
+            host1_ip = host_list[0]
+            host2_ip = host_list[1]
+        if len(host_list) == 3:
+            host3_exist = True
+            host3_ip = host_list[2]
+
+        if os.path.exists(RecoverHACmd.conf_file) and RecoverHACmd.ha_config_content is not None and args.bridge is None:
+            if "bridge_name" in RecoverHACmd.ha_config_content:
+                RecoverHACmd.bridge = RecoverHACmd.ha_config_content['bridge_name']
+
+        #local_ip = get_ip_by_interface(InstallHACmd.bridge)
+        host_post_info_list = []
+
+        # init host1 parameter
+        host1_post_info = HostPostInfo()
+        host1_post_info.host = host1_ip
+        host1_post_info.host_inventory = RecoverHACmd.host_inventory
+        host1_post_info.private_key = RecoverHACmd.private_key
+        host_post_info_list.append(host1_post_info)
+
+        host2_post_info = HostPostInfo()
+        host2_post_info.host = host2_ip
+        host2_post_info.host_inventory = RecoverHACmd.host_inventory
+        host2_post_info.private_key = RecoverHACmd.private_key
+        host_post_info_list.append(host2_post_info)
+
+        if host3_exist is True:
+            host3_post_info = HostPostInfo()
+            host3_post_info.host = host3_ip
+            host3_post_info.host_inventory = RecoverHACmd.host_inventory
+            host3_post_info.private_key = RecoverHACmd.private_key
+            host_post_info_list.append(host3_post_info)
+
+        for host_post_info in host_post_info_list:
+            self.stop_mysql_service(host_post_info)
+
+        for host_post_info in host_post_info_list:
+            status = self.bootstrap_mysql(host_post_info)
+            if status == 0:
+                self.reboot_local_service(host_post_info)
+                for remote_host in host_post_info_list:
+                    if remote_host.host != host_post_info.host:
+                        self.reboot_remote_service(remote_host)
+                self.reboot_local_mysql(host_post_info)
+                break
+            else:
+                continue
+
+        for host_post_info in host_post_info_list:
+            print "start mevoco"
+            start_remote_mn(host_post_info)
+
+        info(colored("The cluster has been recovery successfully!", "blue"))
 
 class InstallHACmd(Command):
     '''This feature only support zstack offline image currently'''
@@ -2240,13 +2373,6 @@ class InstallHACmd(Command):
         formatted_netmask = sum([bin(int(x)).count('1') for x in netmask.split('.')])
         return formatted_netmask
 
-    def get_ip_by_interface(self, device_name):
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            return socket.inet_ntoa(fcntl.ioctl(
-                s.fileno(),
-                0x8915,
-                struct.pack('256s', device_name[:15])
-            )[20:24])
 
     def run(self, args):
         spinner_info = SpinnerInfo()
@@ -2324,7 +2450,7 @@ class InstallHACmd(Command):
 
         # check user start this command on host1
         if args.recovery_from_this_host is False:
-            local_ip = self.get_ip_by_interface(InstallHACmd.bridge)
+            local_ip = get_ip_by_interface(InstallHACmd.bridge)
             if args.host1 != local_ip:
                 error("Please run this command at host1 %s, or change your host1 ip to local host ip" % args.host1)
 
@@ -2460,13 +2586,13 @@ class InstallHACmd(Command):
                 if "bridge_name" in InstallHACmd.ha_config_content:
                     InstallHACmd.bridge = InstallHACmd.ha_config_content['bridge_name']
 
-            local_ip = self.get_ip_by_interface(InstallHACmd.bridge)
+            local_ip = get_ip_by_interface(InstallHACmd.bridge)
             if local_ip != args.host1 and local_ip != args.host2:
                 if args.host3_info is not False:
                     if local_ip != args.host3:
-                        error("Make sure you are running the command on host1 or host2 or host3")
+                        error("Make sure you are running the 'zs-network-setting' command on host1 or host2 or host3")
                 else:
-                    error("Make sure you are running the command on host1 or host2")
+                    error("Make sure you are running the 'zs-network-setting' command on host1 or host2")
             spinner_info = SpinnerInfo()
             spinner_info.output = "Starting to recovery mysql from this host"
             spinner_info.name = "recovery_cluster"
@@ -4240,7 +4366,7 @@ class CollectLogCmd(Command):
             self.get_local_mn_log(collect_dir)
         else:
             # this only for HA due to db will lost mn info if mn offline
-            mn_list = get_ha_mn_list()
+            mn_list = get_ha_mn_list(InstallHACmd.conf_file)
             for mn_ip in mn_list:
                 host_post_info = HostPostInfo()
                 host_post_info.remote_user = 'root'
@@ -5187,17 +5313,29 @@ fi
 class UpgradeMultiManagementNodeCmd(Command):
     logger_dir = '/var/log/zstack'
     logger_file = 'zstack-ctl.log'
-    SpinnerInfo.spinner_status = {'upgrade':False, 'stop':False, 'start':False}
+    SpinnerInfo.spinner_status = {'upgrade_local':False ,'upgrade':False, 'stop':False, 'start':False}
     def __init__(self):
         super(UpgradeMultiManagementNodeCmd, self).__init__()
         self.name = "upgrade_multi_management_node"
         self.description = 'upgrade the management cluster'
         ctl.register_command(self)
 
+    def start_mn(self, host_post_info):
+        command = "zstack-ctl start_node && zstack-ctl start_ui"
+        #Ansible finish command will lead mn stop, so use ssh native connection to start mn
+        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s %s" %
+                                                    (host_post_info.private_key, host_post_info.host, command))
+        if status != 0:
+            error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
+        logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
+
     def install_argparse_arguments(self, parser):
         parser.add_argument('--installer-bin','--bin',
                             help="The new version installer package with absolute path",
                             required=True)
+        parser.add_argument('--force', '-F',
+                            help="Force upgrade when database upgrading dry-run failed",
+                            action='store_true', default=False)
 
     def run(self, args):
         if os.path.isfile(args.installer_bin) is not True:
@@ -5205,17 +5343,18 @@ class UpgradeMultiManagementNodeCmd(Command):
         create_log(UpgradeMultiManagementNodeCmd.logger_dir, UpgradeMultiManagementNodeCmd.logger_file)
         mn_vo = get_host_list("ManagementNodeVO")
         local_mn_ip = get_default_ip()
+        mn_ip_list = []
+        cmd = create_check_mgmt_node_command()
+        cmd(False)
+        if 'true' not in cmd.stdout:
+            error("Local management node status is not Running")
         for mn in mn_vo:
-            mn_ip = mn['hostName']
-            if mn_ip == local_mn_ip:
-                spinner_info = SpinnerInfo()
-                spinner_info.output = "Upgrade management node on localhost"
-                spinner_info.name = 'upgrade'
-                SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-                SpinnerInfo.spinner_status['upgrade'] = True
-                ZstackSpinner(spinner_info)
-                shell("bash %s -u" % args.installer_bin)
-            else:
+            mn_ip_list.append(mn['hostName'])
+        mn_ip_list.insert(0, mn_ip_list.pop(mn_ip_list.index(local_mn_ip)))
+        all_mn_ip = ' '.join(mn_ip_list)
+        info(" Will upgrade all 'Running' management nodes: %s" % colored(all_mn_ip,'green'))
+        for mn_ip in mn_ip_list:
+            if mn_ip != local_mn_ip:
                 ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
                 private_key = ssh_key.split('.')[0]
                 inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
@@ -5231,32 +5370,48 @@ class UpgradeMultiManagementNodeCmd(Command):
                     SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
                     SpinnerInfo.spinner_status['stop'] = True
                     ZstackSpinner(spinner_info)
-                    command = "zstack-ctl stop"
-                    run_remote_command(command, host_info)
-
-                    spinner_info.output = "Upgrade management node on host %s" % mn_ip
-                    spinner_info.name = 'upgrade'
-                    SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-                    SpinnerInfo.spinner_status['upgrade'] = True
-                    ZstackSpinner(spinner_info)
-                    war_file = ctl.zstack_home + "/../apache-tomcat-7.0.35/webapps/zstack.war"
-                    print war_file
-                    shell("zstack-ctl upgrade_management_node --host %s --war-file %s" % (mn_ip, war_file))
-
-                    spinner_info = SpinnerInfo()
-                    spinner_info.output = "Start management node on host %s" % mn_ip
-                    spinner_info.name = 'start'
-                    SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-                    SpinnerInfo.spinner_status['start'] = True
-                    ZstackSpinner(spinner_info)
-                    command = "zstack-ctl start"
+                    command = "zstack-ctl stop_node"
                     run_remote_command(command, host_info)
                 else:
                     warn(colored("Management node %s is unreachable\n" % mn_ip))
 
-        SpinnerInfo.spinner_status['start'] = False
-        time.sleep(0.2)
-        info(colored("\nAll managements upgrade successfully!",'blue'))
+        for mn_ip in mn_ip_list:
+            if mn_ip == local_mn_ip:
+                spinner_info = SpinnerInfo()
+                spinner_info.output = "Upgrade management node on localhost(%s)" % local_mn_ip
+                spinner_info.name = 'upgrade_local'
+                SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                SpinnerInfo.spinner_status['upgrade_local'] = True
+                ZstackSpinner(spinner_info)
+                if args.force is True:
+                    shell("bash %s -u -F" % args.installer_bin)
+                else:
+                    shell("bash %s -u" % args.installer_bin)
+
+            else:
+                spinner_info = SpinnerInfo()
+                spinner_info.output = "Upgrade management node on host %s" % mn_ip
+                spinner_info.name = 'upgrade'
+                SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                SpinnerInfo.spinner_status['upgrade'] = True
+                ZstackSpinner(spinner_info)
+                war_file = ctl.zstack_home + "/../../../apache-tomcat-7.0.35/webapps/zstack.war"
+                ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
+                status,output = commands.getstatusoutput("zstack-ctl upgrade_management_node --host %s --ssh-key %s --war-file %s" % (mn_ip, ssh_key, war_file))
+                if status != 0:
+                    error(output)
+
+                spinner_info = SpinnerInfo()
+                spinner_info.output = "Start management node on host %s" % mn_ip
+                spinner_info.name = 'start'
+                SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                SpinnerInfo.spinner_status['start'] = True
+                ZstackSpinner(spinner_info)
+                self.start_mn(host_info)
+
+        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status, False)
+        time.sleep(0.3)
+        info(colored("All management nodes upgrade successfully!",'blue'))
 
 class UpgradeDbCmd(Command):
     def __init__(self):
@@ -5869,6 +6024,7 @@ def main():
     RestoreConfigCmd()
     RestartNodeCmd()
     RestoreMysqlCmd()
+    RecoverHACmd()
     ShowStatusCmd()
     StartCmd()
     StopCmd()
