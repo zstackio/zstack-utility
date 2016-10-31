@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-vyos builder" basedir="../">
+    <property name="vyos.bdir" location="${build.dir}/zvr" />
+    <property name="vyos.ansible.dir" location="${ansible.dir}/zvr/" />
+
+    <target name="build-zstack-vyos">
+        <makeDir dir="${vyos.bdir}" />
+
+        <checkProperty property="vyos.source" />
+        <checkFile file="${vyos.source}" />
+
+        <delete dir="${vyos.source}/target" />
+
+        <exec executable="make" dir="${vyos.source}" failonerror="true">
+            <arg value="clean" />
+        </exec>
+
+        <exec executable="make" dir="${vyos.source}" failonerror="true">
+            <arg value="package" />
+        </exec>
+
+        <copy todir="${vyos.bdir}/">
+            <fileset dir="${vyos.source}/target/">
+                <include name="zvr.bin" />
+                <include name="zvrboot.bin" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-zstack-vyos">
+        <copy todir="${vyos.ansible.dir}">
+            <fileset dir="${vyos.bdir}">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>
