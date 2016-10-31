@@ -2357,7 +2357,10 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
         rsp.accountPerference = cmd.accountPerference
         rsp.qcowFile = cmd.qcowFile
-        logger.debug('rsp.accountPerference: %s' % rsp.accountPerference)
+        logger.debug("test start......")
+        logger.debug('rsp.accountPerference.userAccount: %s', % rsp.accountPerference.userAccount)
+        logger.debug('rsp.accountPerference.accountPassword: %s', % rsp.accountPerference.accountPassword)
+        logger.debug('rsp.error: %s', % rsp.error)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
