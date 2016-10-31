@@ -1474,8 +1474,8 @@ class APIChangeVmPasswordMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         #valid values: [enable, disable]
-        self.vmAccountName = NotNoneField()
-        self.vmAccountPassword = NotNoneField()
+        self.account = NotNoneField()
+        self.password = NotNoneField()
         self.session = None
         self.timeout = None
 
