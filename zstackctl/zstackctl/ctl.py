@@ -5387,11 +5387,11 @@ class UpgradeMultiManagementNodeCmd(Command):
         mn_ip_list.insert(0, mn_ip_list.pop(mn_ip_list.index(local_mn_ip)))
         all_mn_ip = ' '.join(mn_ip_list)
         info(" Will upgrade all 'Running' management nodes: %s" % colored(all_mn_ip,'green'))
+        ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
+        private_key = ssh_key.split('.')[0]
+        inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
         for mn_ip in mn_ip_list:
             if mn_ip != local_mn_ip:
-                ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
-                private_key = ssh_key.split('.')[0]
-                inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
                 host_info = HostPostInfo()
                 host_info.host = mn_ip
                 host_info.private_key = private_key
@@ -5410,6 +5410,10 @@ class UpgradeMultiManagementNodeCmd(Command):
                     warn(colored("Management node %s is unreachable\n" % mn_ip))
 
         for mn_ip in mn_ip_list:
+            host_info = HostPostInfo()
+            host_info.host = mn_ip
+            host_info.private_key = private_key
+            host_info.host_inventory =  inventory_file
             if mn_ip == local_mn_ip:
                 spinner_info = SpinnerInfo()
                 spinner_info.output = "Upgrade management node on localhost(%s)" % local_mn_ip
