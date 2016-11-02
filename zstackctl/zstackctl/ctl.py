@@ -1009,6 +1009,64 @@ class DeployDBCmd(Command):
         )
         ctl.register_command(self)
 
+    def update_db_config(self):
+        update_db_config_script = '''
+echo "modify my.cnf"
+if [ -f /etc/mysql/mariadb.conf.d/50-server.cnf ]; then
+    #ubuntu 16.04
+    mysql_conf=/etc/mysql/mariadb.conf.d/50-server.cnf
+elif [ -f /etc/mysql/my.cnf ]; then
+    # Ubuntu 14.04
+    mysql_conf=/etc/mysql/my.cnf
+elif [ -f /etc/my.cnf ]; then
+    # centos
+    mysql_conf=/etc/my.cnf
+fi
+
+sed -i 's/^bind-address/#bind-address/' $mysql_conf
+sed -i 's/^skip-networking/#skip-networking/' $mysql_conf
+sed -i 's/^bind-address/#bind-address/' $mysql_conf
+
+grep 'binlog_format=' $mysql_conf
+if [ $? -ne 0 ]; then
+    echo "binlog_format=mixed"
+    sed -i '/\[mysqld\]/a binlog_format=mixed\' $mysql_conf
+fi
+
+grep 'expire_logs=' $mysql_conf
+if [ $? -ne 0 ]; then
+    echo "expire_logs=30"
+    sed -i '/\[mysqld\]/a expire_logs=30\' $mysql_conf
+fi
+
+grep 'max_binlog_size=' $mysql_conf
+if [ $? -ne 0 ]; then
+    echo "max_binlog_size=500m"
+    sed -i '/\[mysqld\]/a max_binlog_size=500m\' $mysql_conf
+fi
+
+grep 'log-bin=' $mysql_conf
+if [ $? -ne 0 ]; then
+    echo "log-bin=mysql-binlog"
+    sed -i '/\[mysqld\]/a log-bin=mysql-binlog\' $mysql_conf
+fi
+
+grep '^character-set-server' $mysql_conf
+if [ $? -ne 0 ]; then
+    echo "binlog_format=mixed"
+    sed -i '/\[mysqld\]/a character-set-server=utf8\' $mysql_conf
+fi
+grep '^skip-name-resolve' $mysql_conf
+if [ $? -ne 0 ]; then
+    sed -i '/\[mysqld\]/a skip-name-resolve\' $mysql_conf
+fi
+'''
+        fd, update_db_config_script_path = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write(update_db_config_script)
+        info('update_db_config_script_path is: %s' % update_db_config_script_path)
+        ShellCmd('bash %s' % update_db_config_script_path)()
+        os.remove(update_db_config_script_path)
+
     def install_argparse_arguments(self, parser):
         parser.add_argument('--root-password', help='root user password of MySQL. [DEFAULT] empty password')
         parser.add_argument('--zstack-password', help='password of user "zstack". [DEFAULT] empty password')
@@ -1034,6 +1092,7 @@ class DeployDBCmd(Command):
         else:
             check_existing_db = 'mysql --user=root --host=%s --port=%s -e "use zstack"' % (args.host, args.port)
 
+        self.update_db_config()
         cmd = ShellCmd(check_existing_db)
         cmd(False)
         if not args.root_password:
@@ -1072,7 +1131,7 @@ class DeployDBCmd(Command):
             ctl.write_properties(properties)
 
         info('Successfully deployed ZStack database and updated corresponding DB information in %s' % property_file_path)
-
+    
 class TailLogCmd(Command):
     def __init__(self):
         super(TailLogCmd, self).__init__()
@@ -1766,6 +1825,7 @@ exit 1
         self.install_cleanup_routine(cleanup_pre_install_script)
 
         post_install_script = '''
+echo "modify my.cnf"
 if [ -f /etc/mysql/mariadb.conf.d/50-server.cnf ]; then
     #ubuntu 16.04
     mysql_conf=/etc/mysql/mariadb.conf.d/50-server.cnf
@@ -1780,8 +1840,34 @@ fi
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
 sed -i 's/^skip-networking/#skip-networking/' $mysql_conf
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
+
+grep 'binlog_format=' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "binlog_format=mixed"
+    sed -i '/\[mysqld\]/a binlog_format=mixed\' $mysql_conf
+fi
+
+grep 'expire_logs=' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "expire_logs=30"
+    sed -i '/\[mysqld\]/a expire_logs=30\' $mysql_conf
+fi
+
+grep 'max_binlog_size=' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "max_binlog_size=500m"
+    sed -i '/\[mysqld\]/a max_binlog_size=500m\' $mysql_conf
+fi
+
+grep 'log-bin=' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "log-bin=mysql-binlog"
+    sed -i '/\[mysqld\]/a log-bin=mysql-binlog\' $mysql_conf
+fi
+
 grep '^character-set-server' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
+    echo "binlog_format=mixed"
     sed -i '/\[mysqld\]/a character-set-server=utf8\' $mysql_conf
 fi
 grep '^skip-name-resolve' $mysql_conf >/dev/null 2>&1
