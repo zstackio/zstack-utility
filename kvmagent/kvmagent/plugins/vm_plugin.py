@@ -1066,14 +1066,18 @@ class Vm(object):
                 e(iotune, 'total_iops_sec', str(qos.totalIops))
 
         def filebased_volume():
-            disk = etree.Element('disk', attrib={'type':'file', 'device':'disk'})
-            e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':volume.cacheMode})
-            e(disk, 'source', None, {'file':volume.installPath})
+            disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': volume.cacheMode})
+            e(disk, 'source', None, {'file': volume.installPath})
 
             if volume.useVirtio:
-                e(disk, 'target', None, {'dev':'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'virtio'})
+                e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
             else:
-                e(disk, 'target', None, {'dev':'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'ide'})
+                if volume.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    e(disk, 'wwn', volume.wwn)
+                else:
+                    e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
 
             volume_qos(disk)
             return etree.tostring(disk)
@@ -2138,8 +2142,11 @@ class Vm(object):
 
         def make_sec_label():
             root = elements['root']
-            e(root, 'seclabel', None, {'type':'none'})
+            e(root, 'seclabel', None, {'type': 'none'})
 
+        def make_controllers():
+            devices = elements['devices']
+            e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
         make_root()
         make_meta()
@@ -2156,6 +2163,7 @@ class Vm(object):
         make_balloon_memory()
         make_console()
         make_sec_label()
+        make_controllers()
 
         root = elements['root']
         xml = etree.tostring(root)
@@ -2634,7 +2642,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_REBOOT_VM_PATH, self.reboot_vm)
         http_server.register_async_uri(self.KVM_DESTROY_VM_PATH, self.destroy_vm)
         http_server.register_async_uri(self.KVM_GET_CONSOLE_PORT_PATH, self.get_console_port)
-        http_server.register_async_uri(self.KVM_CHANGE_CPUMEM_PATH,self.change_cpumem)
+        http_server.register_async_uri(self.KVM_CHANGE_CPUMEM_PATH, self.change_cpumem)
         http_server.register_async_uri(self.KVM_VM_SYNC_PATH, self.vm_sync)
         http_server.register_async_uri(self.KVM_ATTACH_VOLUME, self.attach_data_volume)
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)
