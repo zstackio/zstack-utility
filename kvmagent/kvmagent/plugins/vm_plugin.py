@@ -1230,10 +1230,13 @@ class Vm(object):
             if volume.deviceType == 'iscsi':
                 fmt = 'sd%s'
             elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
-                if volume.useVirtio:
-                    fmt = 'vd%s'
+                if volume.useVirtioSCSI:
+                    fmt = 'sd%s'
                 else:
-                    fmt = 'hd%s'
+                    if volume.useVirtio:
+                        fmt = 'vd%s'
+                    else:
+                        fmt = 'hd%s'
             else:
                 raise Exception('unsupported deviceType[%s]' % volume.deviceType)
 
