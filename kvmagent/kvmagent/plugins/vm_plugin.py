@@ -1073,6 +1073,7 @@ class Vm(object):
             if volume.useVirtioSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
+                e(disk, 'shareable')
             else:
                 if volume.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
@@ -1925,8 +1926,9 @@ class Vm(object):
                 if v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', v.wwn)
+                    e(disk, 'shareable')
                     return disk
-                
+
                 if v.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
                 else:
