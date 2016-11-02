@@ -533,6 +533,23 @@ class VirtioCeph(object):
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
         return disk
 
+class VirtioSCSICeph(object):
+    def __init__(self):
+        self.volume = None
+        self.dev_letter = None
+
+    def to_xmlobject(self):
+        disk = etree.Element('disk', {'type':'network', 'device':'disk'})
+        source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
+        auth = e(disk, 'auth', attrib={'username': 'zstack'})
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid': self.volume.secretUuid})
+        for minfo in self.volume.monInfo:
+            e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
+        e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus':'scsi'})
+        e(disk, 'wwn', self.volume.wwn)
+        e(disk, 'shareable')
+        return disk
+
 class IsoFusionstor(object):
     def __init__(self):
         self.iso = None
@@ -1128,10 +1145,21 @@ class Vm(object):
                 volume_qos(xml_obj)
                 return etree.tostring(xml_obj)
 
-            if volume.useVirtio:
-                return virtoio_ceph()
+            def virtio_scsi_ceph():
+                sc = VirtioSCSICeph()
+                sc.volume = volume
+                sc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                xml_obj = sc.to_xmlobject()
+                volume_qos(xml_obj)
+                return etree.tostring(xml_obj)
+
+            if volume.useVirtioSCSI:
+                return virtio_scsi_ceph()
             else:
-                return blk_ceph()
+                if volume.useVirtio:
+                    return virtoio_ceph()
+                else:
+                    return blk_ceph()
 
         def fusionstor_volume():
             def virtoio_fusionstor():
