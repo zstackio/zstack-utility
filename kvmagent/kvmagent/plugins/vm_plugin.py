@@ -1070,12 +1070,12 @@ class Vm(object):
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': volume.cacheMode})
             e(disk, 'source', None, {'file': volume.installPath})
 
-            if volume.useVirtio:
-                e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+            if volume.useVirtioSCSI:
+                e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                e(disk, 'wwn', volume.wwn)
             else:
-                if volume.useVirtioSCSI:
-                    e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
-                    e(disk, 'wwn', volume.wwn)
+                if volume.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
                 else:
                     e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
 
@@ -1787,6 +1787,7 @@ class Vm(object):
         instanceoffering_onliechange = cmd.instanceOfferingOnlineChange
 
         elements = {}
+
         def make_root():
             root = etree.Element('domain')
             root.set('type', 'kvm')
@@ -1832,8 +1833,6 @@ class Vm(object):
                     cpu = e(root, 'cpu')
                 e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
-
-
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
@@ -1852,7 +1851,6 @@ class Vm(object):
             for boot_dev in cmd.bootDev:
                 e(os, 'boot', None, {'dev': boot_dev})
             e(os,'bootmenu',attrib={'enable':'yes'})
-
 
         def make_features():
             root = elements['root']
@@ -1920,14 +1918,19 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
 
-            def filebased_volume(dev_letter, virtio):
-                disk = etree.Element('disk', {'type':'file', 'device':'disk', 'snapshot':'external'})
-                e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':v.cacheMode})
-                e(disk, 'source', None, {'file':v.installPath})
-                if virtio:
-                    e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
+            def filebased_volume(dev_letter, v):
+                disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': v.cacheMode})
+                e(disk, 'source', None, {'file': v.installPath})
+                if v.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                    e(disk, 'wwn', v.wwn)
+                    return disk
+                
+                if v.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
                 else:
-                    e(disk, 'target', None, {'dev':'sd%s' % dev_letter, 'bus':'ide'})
+                    e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'ide'})
                 return disk
 
             def iscsibased_volume(dev_letter, virtio):
@@ -2029,7 +2032,7 @@ class Vm(object):
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.deviceType == 'file':
-                    vol = filebased_volume(dev_letter, v.useVirtio)
+                    vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
                     vol = iscsibased_volume(dev_letter, v.useVirtio)
                 elif v.deviceType == 'ceph':
@@ -2173,6 +2176,7 @@ class Vm(object):
         vm.domain_xml = xml
         vm.domain_xmlobject = xmlobject.loads(xml)
         return vm
+
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
