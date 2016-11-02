@@ -93,14 +93,16 @@ if distro == "RedHat" or distro == "CentOS":
         else:
             qemu_pkg = 'qemu-kvm'
         # name: install kvm related packages on RedHat based OS from user defined repo
-        command = ("pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils "
+        command = ("pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils sed awk"
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
+                   "libguestfs-winsupport libguestfs-tools python-crypto "
                    "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                    "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
-        host_post_info.post_label_param = "openssh-clients,%s,bridge-utils,wget," \
+        host_post_info.post_label_param = "openssh-clients,%s,bridge-utils,wget,sed,awk," \
                                           "libvirt-python,libvirt,nfs-utils,vconfig,libvirt-client,net-tools," \
-                                          "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils,rsync,nmap" % qemu_pkg
+                                          "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils," \
+                                          "libguestfs-winsupport,libguestfs-tools,rsync,nmap,python-crypto" % qemu_pkg
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
@@ -112,9 +114,9 @@ if distro == "RedHat" or distro == "CentOS":
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
-        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
+        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'sed', 'awk', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'dnsmasq', 'iproute', 'sshpass',
-                    'rsync', 'nmap' ]:
+                    'libguestfs-winsupport', 'libguestfs-tools', 'python-crypto', 'rsync', 'nmap' ]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from online
@@ -194,8 +196,9 @@ if distro == "RedHat" or distro == "CentOS":
 
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install kvm related packages on Debian based OS
-    install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin','vlan',
-                        'nfs-common', 'open-iscsi', 'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
+    install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin',
+                        'vlan', 'libguestfs', 'python-crypto', 'sed', 'awk', 'nfs-common', 'open-iscsi',  
+                        'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
     apt_install_packages(install_pkg_list, host_post_info)
     # name: copy default libvirtd conf in Debian
     copy_arg = CopyArg()
@@ -343,6 +346,21 @@ if copy_kvmagent != "changed:False":
     agent_install_arg.pkg_name = pkg_kvmagent
     agent_install_arg.virtualenv_site_packages = "yes"
     agent_install(agent_install_arg, host_post_info)
+
+# name: copy qemu-ga binary
+copy_arg = CopyArg()
+qemuga_root = "%s/imagestorebackupstorage/package/" % zstack_root
+pkg_qemuga = "zstack-qemu-ga.bin"
+dest_qga_pkg = "%s" % (qemuga_root)
+
+copy_arg.src = "%s/%s" % ("files/imagestorebackupstorage/", pkg_qemuga)
+copy_arg.dest = qemuga_root
+if os.path.isdir(qemuga_root) == False:
+    os.makedirs(qemuga_root)
+copy(copy_arg, host_post_info)
+# name: install qemu-ga
+command = "bash %s/%s " % (dest_qga_pkg, pkg_qemuga)
+run_remote_command(command, host_post_info)
 
 # handlers
 if chroot_env == 'false':
