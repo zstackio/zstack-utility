@@ -551,6 +551,23 @@ class VirtioCeph(object):
         e(disk, 'target', None, {'dev':'vd%s' % self.dev_letter, 'bus':'virtio'})
         return disk
 
+class VirtioSCSICeph(object):
+    def __init__(self):
+        self.volume = None
+        self.dev_letter = None
+
+    def to_xmlobject(self):
+        disk = etree.Element('disk', {'type':'network', 'device':'disk'})
+        source = e(disk, 'source', None, {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol':'rbd'})
+        auth = e(disk, 'auth', attrib={'username': 'zstack'})
+        e(auth, 'secret', attrib={'type':'ceph', 'uuid': self.volume.secretUuid})
+        for minfo in self.volume.monInfo:
+            e(source, 'host', None, {'name': minfo.hostname, 'port':str(minfo.port)})
+        e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus':'scsi'})
+        e(disk, 'wwn', self.volume.wwn)
+        e(disk, 'shareable')
+        return disk
+
 class IsoFusionstor(object):
     def __init__(self):
         self.iso = None
@@ -1083,14 +1100,19 @@ class Vm(object):
                 e(iotune, 'total_iops_sec', str(qos.totalIops))
 
         def filebased_volume():
-            disk = etree.Element('disk', attrib={'type':'file', 'device':'disk'})
-            e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':volume.cacheMode})
-            e(disk, 'source', None, {'file':volume.installPath})
+            disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': volume.cacheMode})
+            e(disk, 'source', None, {'file': volume.installPath})
 
-            if volume.useVirtio:
-                e(disk, 'target', None, {'dev':'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'virtio'})
+            if volume.useVirtioSCSI:
+                e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                e(disk, 'wwn', volume.wwn)
+                e(disk, 'shareable')
             else:
-                e(disk, 'target', None, {'dev':'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus':'ide'})
+                if volume.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+                else:
+                    e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
 
             volume_qos(disk)
             return etree.tostring(disk)
@@ -1140,10 +1162,21 @@ class Vm(object):
                 volume_qos(xml_obj)
                 return etree.tostring(xml_obj)
 
-            if volume.useVirtio:
-                return virtoio_ceph()
+            def virtio_scsi_ceph():
+                sc = VirtioSCSICeph()
+                sc.volume = volume
+                sc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                xml_obj = sc.to_xmlobject()
+                volume_qos(xml_obj)
+                return etree.tostring(xml_obj)
+
+            if volume.useVirtioSCSI:
+                return virtio_scsi_ceph()
             else:
-                return blk_ceph()
+                if volume.useVirtio:
+                    return virtoio_ceph()
+                else:
+                    return blk_ceph()
 
         def fusionstor_volume():
             def virtoio_fusionstor():
@@ -1242,10 +1275,13 @@ class Vm(object):
             if volume.deviceType == 'iscsi':
                 fmt = 'sd%s'
             elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
-                if volume.useVirtio:
-                    fmt = 'vd%s'
+                if volume.useVirtioSCSI:
+                    fmt = 'sd%s'
                 else:
-                    fmt = 'hd%s'
+                    if volume.useVirtio:
+                        fmt = 'vd%s'
+                    else:
+                        fmt = 'hd%s'
             else:
                 raise Exception('unsupported deviceType[%s]' % volume.deviceType)
 
@@ -1811,6 +1847,7 @@ class Vm(object):
         instanceoffering_onliechange = cmd.instanceOfferingOnlineChange
 
         elements = {}
+
         def make_root():
             root = etree.Element('domain')
             root.set('type', 'kvm')
@@ -1856,8 +1893,6 @@ class Vm(object):
                     cpu = e(root, 'cpu')
                 e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
-
-
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
@@ -1876,7 +1911,6 @@ class Vm(object):
             for boot_dev in cmd.bootDev:
                 e(os, 'boot', None, {'dev': boot_dev})
             e(os,'bootmenu',attrib={'enable':'yes'})
-
 
         def make_features():
             root = elements['root']
@@ -1944,14 +1978,20 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
 
-            def filebased_volume(dev_letter, virtio):
-                disk = etree.Element('disk', {'type':'file', 'device':'disk', 'snapshot':'external'})
-                e(disk, 'driver', None, {'name':'qemu', 'type':'qcow2', 'cache':v.cacheMode})
-                e(disk, 'source', None, {'file':v.installPath})
-                if virtio:
-                    e(disk, 'target', None, {'dev':'vd%s' % dev_letter, 'bus':'virtio'})
+            def filebased_volume(dev_letter, v):
+                disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': v.cacheMode})
+                e(disk, 'source', None, {'file': v.installPath})
+                if v.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                    e(disk, 'wwn', v.wwn)
+                    e(disk, 'shareable')
+                    return disk
+
+                if v.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
                 else:
-                    e(disk, 'target', None, {'dev':'sd%s' % dev_letter, 'bus':'ide'})
+                    e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'ide'})
                 return disk
 
             def iscsibased_volume(dev_letter, virtio):
@@ -2053,7 +2093,7 @@ class Vm(object):
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.deviceType == 'file':
-                    vol = filebased_volume(dev_letter, v.useVirtio)
+                    vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
                     vol = iscsibased_volume(dev_letter, v.useVirtio)
                 elif v.deviceType == 'ceph':
@@ -2166,8 +2206,11 @@ class Vm(object):
 
         def make_sec_label():
             root = elements['root']
-            e(root, 'seclabel', None, {'type':'none'})
+            e(root, 'seclabel', None, {'type': 'none'})
 
+        def make_controllers():
+            devices = elements['devices']
+            e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
         make_root()
         make_meta()
@@ -2184,6 +2227,7 @@ class Vm(object):
         make_balloon_memory()
         make_console()
         make_sec_label()
+        make_controllers()
 
         root = elements['root']
         xml = etree.tostring(root)
@@ -2193,6 +2237,7 @@ class Vm(object):
         vm.domain_xml = xml
         vm.domain_xmlobject = xmlobject.loads(xml)
         return vm
+
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
@@ -2707,7 +2752,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_REBOOT_VM_PATH, self.reboot_vm)
         http_server.register_async_uri(self.KVM_DESTROY_VM_PATH, self.destroy_vm)
         http_server.register_async_uri(self.KVM_GET_CONSOLE_PORT_PATH, self.get_console_port)
-        http_server.register_async_uri(self.KVM_CHANGE_CPUMEM_PATH,self.change_cpumem)
+        http_server.register_async_uri(self.KVM_CHANGE_CPUMEM_PATH, self.change_cpumem)
         http_server.register_async_uri(self.KVM_VM_SYNC_PATH, self.vm_sync)
         http_server.register_async_uri(self.KVM_ATTACH_VOLUME, self.attach_data_volume)
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)

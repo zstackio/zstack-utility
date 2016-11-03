@@ -178,7 +178,8 @@ def error(msg):
     sys.exit(1)
 
 def warn(msg):
-    sys.stdout.write('WARNING: %s\n' % msg, 'yellow')
+    logger.warn(msg)
+    sys.stdout.write('WARNING: %s\n' % msg)
 
 def retry(times=3, sleep_time=3):
     def wrap(f):
@@ -794,7 +795,6 @@ def check_host_reachable(host_post_info, warning=False):
     result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
-        warn("host %s unreachable" % host_post_info.host)
         return False
     elif result['contacted'][host]['ping'] == 'pong':
         return True

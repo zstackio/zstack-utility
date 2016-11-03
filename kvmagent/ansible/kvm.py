@@ -349,11 +349,11 @@ if copy_kvmagent != "changed:False":
 
 # name: copy qemu-ga binary
 copy_arg = CopyArg()
-qemuga_root = "%s/imagestorebackupstorage/package/" % zstack_root
+qemuga_root = "%s/" % kvm_root
 pkg_qemuga = "zstack-qemu-ga.bin"
 dest_qga_pkg = "%s" % (qemuga_root)
 
-copy_arg.src = "%s/%s" % ("files/imagestorebackupstorage/", pkg_qemuga)
+copy_arg.src = "%s/%s" % ("files/kvm", pkg_qemuga)
 copy_arg.dest = qemuga_root
 if os.path.isdir(qemuga_root) == False:
     os.makedirs(qemuga_root)
