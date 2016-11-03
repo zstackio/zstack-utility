@@ -472,6 +472,17 @@ class APICheckIpAvailabilityReply(object):
         self.error = None
 
 
+APICHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVmPasswordMsg'
+class APIChangeVmPasswordMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIChangeVmPasswordMsg'
+    def __init__(self):
+        self.uuid = NotNoneField()
+        self.account = NotNoneField()
+        self.password = NotNoneField()
+        self.session = None
+        self.timeout = None
+
+
 APIQUERYIPRANGEREPLY_FULL_NAME = 'org.zstack.header.network.l3.APIQueryIpRangeReply'
 class APIQueryIpRangeReply(object):
     FULL_NAME='org.zstack.header.network.l3.APIQueryIpRangeReply'
@@ -3963,6 +3974,7 @@ class APICreateVmInstanceMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+        self.rootPassword = None
 
 
 APIGETVMHOSTNAMEREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmHostnameReply'
