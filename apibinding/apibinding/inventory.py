@@ -1326,6 +1326,18 @@ class APICheckIpAvailabilityMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+APICHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVmPasswordMsg'
+class APIChangeVmPasswordMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIChangeVmPasswordMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.account = NotNoneField()
+        self.password = NotNoneField()
+        self.session = None
+        self.timeout = None
 
 APIGETFREEIPREPLY_FULL_NAME = 'org.zstack.header.network.l3.APIGetFreeIpReply'
 class APIGetFreeIpReply(object):
@@ -3420,6 +3432,7 @@ class APICreateVmInstanceMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+        self.rootPassword = None
 
 
 APIQUERYVMNICMSG_FULL_NAME = 'org.zstack.header.vm.APIQueryVmNicMsg'
@@ -7802,6 +7815,7 @@ api_names = [
     'APISearchDnsReply',
     'APIListInstanceOfferingReply',
     'APIChangeInstanceOfferingStateMsg',
+    'APIChangeVmPasswordMsg',
     'APIDeleteInstanceOfferingMsg',
     'APIUpdateInstanceOfferingMsg',
     'APIGenerateSqlIndexMsg',

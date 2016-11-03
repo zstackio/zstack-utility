@@ -24,6 +24,7 @@ import traceback
 import Queue
 import sys
 import time
+import copy
 
 logger = log.get_logger(__name__)
 
@@ -165,6 +166,23 @@ class CheckVmStateRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckVmStateRsp, self).__init__()
         self.states = {}
+
+class ChangeVmPasswordRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ChangeVmPasswordRsp, self).__init__()
+        self.accountPerference = None
+
+class AccountPerference(object):
+    def __init__(self):
+        self.userAccount = None
+        self.accountPassword = None
+        self.vmUuid = None
+
+class SetRootPasswordRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetRootPasswordRsp, self).__init__()
+        self.accountPerference = AccountPerference()
+        self.qcowFile = None
 
 class ReconnectMeCmd(object):
     def __init__(self):
@@ -841,7 +859,6 @@ class Vm(object):
         self.domain_xmlobject = None
         self.domain_xml = None
         self.domain = None
-
         self.state = None
 
     def wait_for_state_change(self, state):
@@ -1773,6 +1790,17 @@ class Vm(object):
         # to work around libvirt bug
         self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
 
+    def change_vm_password(self, cmd):
+        uuid = self.uuid
+        # check the vm state first, then choose the method in different way
+        state = get_all_vm_states().get(uuid)
+        if state == Vm.VM_STATE_RUNNING:
+            # running state: exec virsh set-user-password to connect the qemu-ga
+            shell.call('virsh set-user-password %s %s %s' % (self.uuid, \
+                cmd.accountPerference.userAccount, cmd.accountPerference.accountPassword))
+        else:
+            raise kvmagent.KvmError("vm may not be running, cannot connect to qemu-ga") 
+
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
 
@@ -2232,6 +2260,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
+    KVM_VM_CHANGE_PASSWORD_PATH = "/vm/changepasswd"
+    KVM_VM_SET_ROOT_PASSWORD_PATH = "/vm/setrootpasswd"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
 
@@ -2350,6 +2380,49 @@ class VmPlugin(kvmagent.KvmAgent):
             if not s:
                 s = Vm.VM_STATE_SHUTDOWN
             rsp.states[uuid] = s
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def change_stopped_vm_password(self, cmd):
+        if not cmd.qcowFile:
+                raise kvmagent.KvmError("vm is stopped or created, cmd must contain qcowFile parameter!")
+        # shutdown state: inject password with locale scripts
+        shell.call('/usr/local/zstack/imagestore/qemu-ga/generate-passwd.sh %s %s %s' \
+            % (cmd.accountPerference.userAccount, cmd.accountPerference.accountPassword, cmd.qcowFile))
+
+    @kvmagent.replyerror
+    def set_root_password(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        # inject the root password
+        rsp = SetRootPasswordRsp()
+        try:
+            self.change_stopped_vm_password(cmd)
+        except Exception as e:
+            rsp.error = str(e)
+            rsp.success = False
+        rsp.accountPerference = cmd.accountPerference
+        rsp.qcowFile = cmd.qcowFile
+        logger.debug("test start......")
+        logger.debug('rsp.accountPerference.userAccount: %s' % rsp.accountPerference.userAccount)
+        logger.debug('rsp.accountPerference.accountPassword: %s' % rsp.accountPerference.accountPassword)
+        logger.debug('rsp.error: %s' % rsp.error)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def change_vm_password(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ChangeVmPasswordRsp()
+        vm = get_vm_by_uuid(cmd.accountPerference.vmUuid, False)
+        logger.debug('get vm %s from vmUuid: %s' % (vm, cmd.accountPerference.vmUuid))
+        try:
+            if not vm:
+               raise kvmagent.KvmError('vm is not in running state.')
+            else:
+                vm.change_vm_password(cmd)
+        except kvmagent.KvmError as e:
+            rsp.error = str(e)
+            rsp.success = False
+        rsp.accountPerference = cmd.accountPerference
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2694,6 +2767,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
+        http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
+        http_server.register_async_uri(self.KVM_VM_SET_ROOT_PASSWORD_PATH, self.set_root_password)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
 
@@ -2820,7 +2895,6 @@ class VmPlugin(kvmagent.KvmAgent):
             event = LibvirtEventManager.event_to_string(event)
             if event not in (LibvirtEventManager.EVENT_STARTED, LibvirtEventManager.EVENT_STOPPED):
                 return
-
             domain_xml = dom.XMLDesc(0)
             domain_xmlobject = xmlobject.loads(domain_xml)
             vm_uuid = dom.name()
