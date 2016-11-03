@@ -185,7 +185,8 @@ def error(msg):
     sys.exit(1)
 
 def warn(msg):
-    sys.stdout.write('WARNING: %s\n' % msg, 'yellow')
+    logger.warn(msg)
+    sys.stdout.write('WARNING: %s\n' % msg)
 
 def retry(times=3, sleep_time=3):
     def wrap(f):
