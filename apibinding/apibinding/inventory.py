@@ -7292,6 +7292,23 @@ class APIAddMonToFusionstorBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEFUSIONSTORBACKUPSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+class APIUpdateFusionstorBackupStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYFUSIONSTORBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.fusionstor.backup.APIQueryFusionstorBackupStorageMsg'
 class APIQueryFusionstorBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.fusionstor.backup.APIQueryFusionstorBackupStorageMsg'
@@ -7358,6 +7375,23 @@ class APIAddMonToFusionstorPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEFUSIONSTORPRIMARYSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+class APIUpdateFusionstorPrimaryStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8150,6 +8184,8 @@ api_names = [
     'APIUpdateBackupStorageMsg',
     'APIUpdateCephBackupStorageMonMsg',
     'APIUpdateCephPrimaryStorageMonMsg',
+    'APIUpdateFusionstorBackupStorageMonMsg',
+    'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIUpdateClusterMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEipMsg',
