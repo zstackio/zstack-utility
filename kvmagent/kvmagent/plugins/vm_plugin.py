@@ -2382,13 +2382,15 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.states[uuid] = s
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    def change_stopped_vm_password(self, cmd):
+    def _change_stopped_vm_password(self, cmd):
         if not cmd.qcowFile:
                 raise kvmagent.KvmError("vm is stopped or created, cmd must contain qcowFile parameter!")
         # shutdown state: inject password with locale scripts
-        shell.call('/usr/local/zstack/imagestore/qemu-ga/generate-passwd.sh %s %s %s' \
-            % (cmd.accountPerference.userAccount, cmd.accountPerference.accountPassword, cmd.qcowFile))
+        zstack_home = os.path.expanduser('~zstack')
+        logger.debug('zstack_home: %s' % zstack_home)
+        passwd_script_path = os.path.join(zstack_home,"imagestore","qemu-ga","generate-passwd.sh")
+        shell.call('%s %s %s %s' % (passwd_script_path, cmd.accountPerference.userAccount, \
+                cmd.accountPerference.accountPassword, cmd.qcowFile))
 
     @kvmagent.replyerror
     def set_root_password(self, req):
@@ -2396,8 +2398,9 @@ class VmPlugin(kvmagent.KvmAgent):
         # inject the root password
         rsp = SetRootPasswordRsp()
         try:
-            self.change_stopped_vm_password(cmd)
+            self._change_stopped_vm_password(cmd)
         except Exception as e:
+            logger.warn("catch exception while change stopped vm")
             rsp.error = str(e)
             rsp.success = False
         rsp.accountPerference = cmd.accountPerference
