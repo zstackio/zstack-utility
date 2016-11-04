@@ -2833,7 +2833,7 @@ class InstallHACmd(Command):
         # generate ha config
         host_list = "%s,%s" % (self.host1_post_info.host, self.host2_post_info.host)
         if args.host3_info is not False:
-            host_list = "%s,%s,%s" % (self.host1_post_info.host, self.host2_post_info.host, self.host3_post_info)
+            host_list = "%s,%s,%s" % (self.host1_post_info.host, self.host2_post_info.host, self.host3_post_info.host)
         ha_conf_file = open(InstallHACmd.conf_file, 'w')
         ha_info = {'vip':args.vip, 'gateway':self.host1_post_info.gateway_ip, 'bridge_name':InstallHACmd.bridge,
                    'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.vip +':9132/zstack', 'host_list':host_list}
