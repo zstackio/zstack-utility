@@ -1190,18 +1190,6 @@ class ChangeInstanceOfferingStateAction(inventory.APIChangeInstanceOfferingState
         self.out = evt
         return self.out
 
-class ChangeVmPasswordAction(inventory.APIChangeVmPasswordMsg):
-    def __init__(self):
-        super(ChangeVmPasswordAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ChangeVmPasswordAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class GetGlobalPropertyAction(inventory.APIGetGlobalPropertyMsg):
     def __init__(self):
         super(GetGlobalPropertyAction, self).__init__()
@@ -4366,6 +4354,18 @@ class CommitVolumeAsImageAction(inventory.APICommitVolumeAsImageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CommitVolumeAsImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ChangeVmPasswordAction(inventory.APIChangeVmPasswordMsg):
+    def __init__(self):
+        super(ChangeVmPasswordAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeVmPasswordAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
