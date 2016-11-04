@@ -11586,7 +11586,8 @@ class QueryObjectZoneInventory(object):
      }
 
 
-#QueryMessageInventoryMapqueryMessageInventoryMap = {
+#QueryMessageInventoryMap
+queryMessageInventoryMap = {
      'APIQueryAccountMsg' : QueryObjectAccountInventory,
      'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
      'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
