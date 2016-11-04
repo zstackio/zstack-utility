@@ -1,8 +1,8 @@
 #!/bin/sh
 VIRTUAL_ENV=/var/lib/zstack/virtualenv/zstackcli
-if [ ! -d $VIRTUAL_ENV ]; then
+if [ ! -d ${VIRTUAL_ENV} ]; then
     echo "Need to install zstackcli before using it"
     exit 1
 fi
-. $VIRTUAL_ENV/bin/activate
+. ${VIRTUAL_ENV}/bin/activate
 python -c "from zstackcli import cli; cli.main()" $@

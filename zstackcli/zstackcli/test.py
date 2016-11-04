@@ -8,9 +8,10 @@ from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
 
+
 class Test(object):
     palette = {}
-    
+
     def main(self):
         lst = []
         walker = urwid.SimpleListWalker(lst)
@@ -22,10 +23,11 @@ class Test(object):
         self.frame.set_focus_valign('top')
         self.loop = urwid.MainLoop(self.frame, self.palette, unhandled_input=self.unhandled_input)
         self.loop.run()
-    
+
     def unhandled_input(self, k):
         if k in ['q', 'Q']:
             raise urwid.ExitMainLoop()
+
 
 if __name__ == '__main__':
     Test().main()

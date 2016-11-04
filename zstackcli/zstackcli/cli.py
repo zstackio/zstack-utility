@@ -3,6 +3,7 @@
 @author: Frank
 '''
 import os
+
 try:
     if os.environ['TERM'].startswith('xterm'):
         os.environ['TERM'] = 'vt100'
@@ -11,6 +12,7 @@ except:
 
 import readline
 import sys
+
 reload(sys)
 sys.setdefaultencoding('utf8')
 import shlex
@@ -22,7 +24,8 @@ import time
 import urllib3
 
 import zstacklib.utils.log as log
-#comment out next line to print detail zstack cli http command to screen.
+
+# comment out next line to print detail zstack cli http command to screen.
 log.configure_log('/var/log/zstack/zstack-cli', log_to_console=False)
 
 import apibinding.inventory as inventory
@@ -33,7 +36,6 @@ import zstackcli.parse_config as parse_config
 import zstackcli.deploy_config as deploy_config
 import zstackcli.read_config as read_config
 
-
 cld = termcolor.colored
 cprint = termcolor.cprint
 
@@ -43,20 +45,21 @@ CLI_LIB_FOLDER = os.path.expanduser('~/.zstack/cli')
 CLI_HISTORY = '%s/command_history' % CLI_LIB_FOLDER
 CLI_RESULT_HISTORY_FOLDER = '%s/result_history' % CLI_LIB_FOLDER
 CLI_RESULT_HISTORY_KEY = '%s/result_key' % CLI_RESULT_HISTORY_FOLDER
-CLI_RESSULT_FILE = '%s/result' % CLI_RESULT_HISTORY_FOLDER
+CLI_RESULT_FILE = '%s/result' % CLI_RESULT_HISTORY_FOLDER
 SESSION_FILE = '%s/session' % CLI_LIB_FOLDER
 CLI_MAX_CMD_HISTORY = 1000
 CLI_MAX_RESULT_HISTORY = 1000
 prompt = '>>>'
 
 query_param_keys = \
-        ['conditions', 'count', 'limit', 'start', 'timeout', \
-        'replyWithCount', 'sortBy', 'sortDirection', 'fields']
+    ['conditions', 'count', 'limit', 'start', 'timeout',
+     'replyWithCount', 'sortBy', 'sortDirection', 'fields']
 
 NOT_QUERY_MYSQL_APIS = [
-        'APIQueryLogMsg',
-        'QueryLog'
-        ]
+    'APIQueryLogMsg',
+    'QueryLog'
+]
+
 
 def clean_password_in_cli_history():
     cmd_historys = open(CLI_HISTORY, 'r').readlines()
@@ -75,8 +78,10 @@ def clean_password_in_cli_history():
             new_cmd_historys.append(cmd)
     open(CLI_HISTORY, 'w').write('\n'.join(new_cmd_historys))
 
+
 class CliError(Exception):
     '''Cli Error'''
+
 
 class Cli(object):
     '''
@@ -115,6 +120,7 @@ class Cli(object):
         pattern is current input. index is current matched number of list.
         complete will be kept calling, until it return None.
         '''
+
         def prepare_primitive_fields_words(apiname, separator='=', prefix=''):
             if not prefix:
                 api_map_name = inventory.queryMessageInventoryMap[apiname].__name__
@@ -184,12 +190,12 @@ class Cli(object):
 
         prepare_words()
 
-        #if not self.curr_pattern or pattern.lower() != self.curr_pattern.lower():
-            #self.matching_words = [w for w in self.words if w.lower().startswith(pattern.lower())]
+        # if not self.curr_pattern or pattern.lower() != self.curr_pattern.lower():
+        # self.matching_words = [w for w in self.words if w.lower().startswith(pattern.lower())]
         if self.is_cmd:
             self.matching_words = ['%s ' % w for w in self.words if pattern.lower() in w.lower()]
         else:
-            #need to auto complete expanded fields.
+            # need to auto complete expanded fields.
             if '.' in pattern:
                 currtext = readline.get_line_buffer()
                 fields_objects = pattern.split('.')
@@ -209,7 +215,8 @@ class Cli(object):
                             next_field = fields_objects[i + 1]
                             query_ext_fields = eval('inventory.%s().EXPANDED_FIELDS' % current_obj_name)
                             if next_field in query_ext_fields:
-                                current_obj_name = eval('inventory.%s().QUERY_OBJECT_MAP["%s"]' % (current_obj_name, next_field))
+                                current_obj_name = eval(
+                                    'inventory.%s().QUERY_OBJECT_MAP["%s"]' % (current_obj_name, next_field))
                             else:
                                 current_obj_name = None
                     else:
@@ -243,7 +250,8 @@ class Cli(object):
 
     def do_command(self, line):
         def check_session(apiname):
-            if not self.session_uuid and apiname not in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME]:
+            if not self.session_uuid and apiname not in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME,
+                                                         self.LOGIN_BY_LDAP_MESSAGE_NAME]:
                 self.print_error('''Please login before running any API message
 example: %sLogInByAccount accountName=admin password=your_super_secure_admin_password''' % prompt)
                 return False
@@ -282,7 +290,7 @@ Parse command parameters error:
             if apiname not in inventory.api_names:
                 raise CliError('"%s" is not an API message' % apiname)
 
-            #'=' will be used for more meanings than 'equal' in Query API
+            # '=' will be used for more meanings than 'equal' in Query API
             if apiname.startswith('APIQuery') and not apiname in NOT_QUERY_MYSQL_APIS:
                 return apiname, pairs[1:]
 
@@ -294,7 +302,8 @@ Parse command parameters error:
 
                 if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
                     all_params[params[0]] = eval(params[1])
-                elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg', 'APIMonitoringPassThroughMsg'] and params[0] == 'query':
+                elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg',
+                                 'APIMonitoringPassThroughMsg'] and params[0] == 'query':
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and params[0] == 'networkServices':
                     all_params[params[0]] = eval_string(params[0], params[1])
@@ -338,59 +347,59 @@ Parse command parameters error:
 
             for param in params:
                 if eq in param:
-                    key,value = param.split(eq, 1)
+                    key, value = param.split(eq, 1)
                     if not key in query_param_keys:
                         if key.endswith(nt):
                             if value != null:
-                                conditions.append({'name':key[:-1], \
-                                        'op':'!=', 'value': value})
+                                conditions.append({'name': key[:-1],
+                                                   'op': '!=', 'value': value})
                             else:
-                                conditions.append({'name':key[:-1], \
-                                        'op':'is not null', 'value': ''})
+                                conditions.append({'name': key[:-1],
+                                                   'op': 'is not null', 'value': ''})
 
                         elif key.endswith(gt):
-                            conditions.append({'name':key[:-1], \
-                                    'op':'>=', 'value': value})
+                            conditions.append({'name': key[:-1],
+                                               'op': '>=', 'value': value})
 
                         elif key.endswith(lt):
-                            conditions.append({'name':key[:-1], \
-                                    'op':'<=', 'value': value})
+                            conditions.append({'name': key[:-1],
+                                               'op': '<=', 'value': value})
 
                         elif key.endswith('%s%s' % (nt, qs)):
-                            conditions.append({'name':key[:-2], \
-                                    'op':'not in', 'value': value})
+                            conditions.append({'name': key[:-2],
+                                               'op': 'not in', 'value': value})
 
                         elif key.endswith(qs):
-                            conditions.append({'name':key[:-1], \
-                                    'op':'in', 'value': value})
+                            conditions.append({'name': key[:-1],
+                                               'op': 'in', 'value': value})
 
                         elif key.endswith('%s%s' % (nt, lk)):
-                            #will help to add pattern %, if user not input
+                            # will help to add pattern %, if user not input
                             if not perc in value and not underscore in value:
                                 value = '%s%s%s' % (perc, value, perc)
-                            conditions.append({'name':key[:-2], \
-                                    'op':'not like', 'value': value})
+                            conditions.append({'name': key[:-2],
+                                               'op': 'not like', 'value': value})
 
                         elif key.endswith(lk):
-                            #will help to add pattern %, if user not input
+                            # will help to add pattern %, if user not input
                             if not perc in value and not underscore in value:
                                 value = '%s%s%s' % (perc, value, perc)
-                            conditions.append({'name':key[:-1], \
-                                    'op':'like', 'value': value})
+                            conditions.append({'name': key[:-1],
+                                               'op': 'like', 'value': value})
 
                         else:
                             if value != null:
-                                conditions.append({'name':key, \
-                                        'op':eq, 'value': value})
+                                conditions.append({'name': key,
+                                                   'op': eq, 'value': value})
                             else:
-                                conditions.append({'name':key, \
-                                        'op':'is null', 'value': ''})
+                                conditions.append({'name': key,
+                                                   'op': 'is null', 'value': ''})
 
                     elif key == 'conditions':
                         conditions.extend(eval(value))
 
                     elif key == 'fields':
-                        #remove the last ','
+                        # remove the last ','
                         if value.endswith(','):
                             value = value[:-1]
                         new_params[key] = value.split(',')
@@ -402,14 +411,14 @@ Parse command parameters error:
                             new_params[key] = value
 
                 elif gt in param:
-                    key,value = param.split(gt, 1)
-                    conditions.append({'name':key, \
-                            'op':gt, 'value': value})
+                    key, value = param.split(gt, 1)
+                    conditions.append({'name': key,
+                                       'op': gt, 'value': value})
 
                 elif lt in param:
-                    key,value = param.split(lt, 1)
-                    conditions.append({'name':key, \
-                            'op':lt, 'value': value})
+                    key, value = param.split(lt, 1)
+                    conditions.append({'name': key,
+                                       'op': lt, 'value': value})
 
             new_params['conditions'] = conditions
             return new_params
@@ -419,7 +428,7 @@ Parse command parameters error:
             if creator:
                 return creator(apiname, params)
 
-            if apiname.startswith('APIQuery')  and not apiname in NOT_QUERY_MYSQL_APIS:
+            if apiname.startswith('APIQuery') and not apiname in NOT_QUERY_MYSQL_APIS:
                 params = generate_query_params(apiname, params)
 
             msg = eval('inventory.%s()' % apiname)
@@ -438,7 +447,7 @@ Parse command parameters error:
 
         (apiname, all_params) = build_params()
         if apiname in self.cli_cmd:
-            #self.write_more(apiname, None)
+            # self.write_more(apiname, None)
             self.cli_cmd_func[apiname](all_params)
             return
 
@@ -448,7 +457,8 @@ Parse command parameters error:
         msg = create_msg(apiname, all_params)
         set_session_to_api(msg)
         try:
-            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.CREATE_ACCOUNT_NAME, self.CREATE_USER_NAME]:
+            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.CREATE_ACCOUNT_NAME,
+                           self.CREATE_USER_NAME]:
                 if not msg.password:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
@@ -471,7 +481,7 @@ Parse command parameters error:
 
             result = jsonobject.dumps(event, True)
             print '%s\n' % result
-            #print 'Time costing: %fs' % (end_time - start_time)
+            # print 'Time costing: %fs' % (end_time - start_time)
             self.write_more(line, result)
         except urllib3.exceptions.MaxRetryError as urlerr:
             self.print_error('Is %s reachable? Please make sure the management node is running.' % self.api.api_url)
@@ -482,7 +492,7 @@ Parse command parameters error:
             self.write_more(line, str(e), False)
             raise e
 
-    def main(self, cmd = None):
+    def main(self, cmd=None):
         if not cmd:
             self.usage()
 
@@ -502,13 +512,13 @@ Parse command parameters error:
                     line = raw_input(prompt)
                     if line:
                         self.do_command(line)
-            except CliError as clierr:
-                self.print_error(str(clierr))
+            except CliError as cli_err:
+                self.print_error(str(cli_err))
                 exit_code = 1
-            except (EOFError):
+            except EOFError:
                 print ''
                 sys.exit(1)
-            except (KeyboardInterrupt):
+            except KeyboardInterrupt:
                 print ''
             except Exception as e:
                 exit_code = 3
@@ -543,7 +553,7 @@ Parse command parameters error:
         short_api_name.sort()
         return short_api_name
 
-    def completer_print(self, substitution, matches, longest_match_length) :
+    def completer_print(self, substitution, matches, longest_match_length):
         def print_match(columes, new_matches, max_match_length):
             cur_col = 1
 
@@ -601,7 +611,7 @@ Parse command parameters error:
             except:
                 term_width = 80
 
-            columes = term_width/max_match_length
+            columes = term_width / max_match_length
             if columes == 0:
                 columes = 1
 
@@ -611,7 +621,7 @@ Parse command parameters error:
                 print_match(columes, matches_dot, max_match_length)
                 print '\n'
             if matches_eq_cond:
-                #cprint('[Primitive Query Conditions:]', attrs=['bold'], end='\n')
+                # cprint('[Primitive Query Conditions:]', attrs=['bold'], end='\n')
                 print_match(columes, matches_eq_cond, max_match_length)
                 print '\n'
             if matches_eq_param:
@@ -627,7 +637,7 @@ Parse command parameters error:
         print_bold()
         print ''
         cprint('%s%s' % (prompt, readline.get_line_buffer()), end='')
-        #readline.redisplay()
+        # readline.redisplay()
 
     def write_more(self, cmd, result, success=True):
         if self.hd.get(self.start_key):
@@ -656,11 +666,11 @@ Parse command parameters error:
 
         self.hd.set(self.start_key, start_value)
         self.hd.set(self.last_key, last_value)
-        #filedb might leave more than 1 same key item.
+        # filedb might leave more than 1 same key item.
         while self.hd.get(str(start_value)):
             self.hd.rem(str(start_value))
 
-        result_file = '%s%d' % (CLI_RESSULT_FILE, start_value)
+        result_file = '%s%d' % (CLI_RESULT_FILE, start_value)
         open(result_file, 'w').write(result)
         if not self.no_secure and 'password=' in cmd:
             cmds = cmd.split()
@@ -683,7 +693,10 @@ Parse command parameters error:
         '''
         start_value = self.hd.get(self.start_key)
         last_value = self.hd.get(self.last_key)
-        more_usage_list = [text_doc.bold('Usage:'), text_doc.bold('\t%smore NUM\t #show the No. NUM Command result' % prompt), text_doc.bold('\t%smore\t\t #show all available NUM and Command. The failure command will be marked with "!" before it.' % prompt)]
+        more_usage_list = [text_doc.bold('Usage:'),
+                           text_doc.bold('\t%smore NUM\t #show the No. NUM Command result' % prompt), text_doc.bold(
+                '\t%smore\t\t #show all available NUM and Command.'
+                ' The failure command will be marked with "!" before it.' % prompt)]
 
         more_usage = '\n'.join(more_usage_list)
 
@@ -703,15 +716,15 @@ Parse command parameters error:
                 if key <= 0:
                     key += CLI_MAX_RESULT_HISTORY
 
-                #print key
+                # print key
                 result_list = self.hd.get(str(key))
 
-                result_file = '%s%d' % (CLI_RESSULT_FILE, key)
+                result_file = '%s%d' % (CLI_RESULT_FILE, key)
                 result = open(result_file, 'r').read()
 
                 if result_list:
                     output = 'Command: \n\t%s\nResult:\n%s' % \
-                            (result_list[0], result)
+                             (result_list[0], result)
                     if need_print:
                         pydoc.pager(output)
 
@@ -737,8 +750,7 @@ Parse command parameters error:
                     if len(cmd_result) <= 2 or cmd_result[2]:
                         more_list.append('[%s]\t %s' % (str(i + 1), cmd))
                     else:
-                        more_list.append('[%s]  %s\t %s' % (str(i + 1), \
-                                explamation, cmd))
+                        more_list.append('[%s]  %s\t %s' % (str(i + 1), explamation, cmd))
             else:
                 for i in range(start_value):
                     cmd_result = self.hd.get(str(start_value - i))
@@ -747,11 +759,9 @@ Parse command parameters error:
                     if len(cmd_result_list) > 1:
                         cmd = cmd + ' ' + ' '.join(cmd_result_list[1:])
                     if len(cmd_result) <= 2 or cmd_result[2]:
-                        more_list.append('[%s]\t %s' % (str(i + 1), \
-                                cmd))
+                        more_list.append('[%s]\t %s' % (str(i + 1), cmd))
                     else:
-                        more_list.append('[%s]  %s\t %s' % (str(i + 1), \
-                                explamation, cmd))
+                        more_list.append('[%s]  %s\t %s' % (str(i + 1), explamation, cmd))
 
             more_result = '\n'.join(more_list)
             header = text_doc.bold('[NUM]\tCOMMAND')
@@ -962,12 +972,12 @@ Parse command parameters error:
 
         self.start_key = 'start_key'
         self.last_key = 'last_key'
-        self.cli_cmd_func = {'help': self.show_help, \
-                'history':  self.show_help, \
-                'more':     self.show_more, \
-                'quit':     sys.exit, \
-                'exit':     sys.exit, \
-                'save':     self.save_json_to_file}
+        self.cli_cmd_func = {'help': self.show_help,
+                             'history': self.show_help,
+                             'more': self.show_more,
+                             'quit': sys.exit,
+                             'exit': sys.exit,
+                             'save': self.save_json_to_file}
         self.cli_cmd = self.cli_cmd_func.keys()
 
         self.raw_words_db = self._parse_api_name(inventory.api_names)
@@ -989,64 +999,65 @@ Parse command parameters error:
         self.no_secure = options.no_secure
         self.api = api.Api(host=self.hostname, port=self.port)
 
+
 def main():
     parser = optparse.OptionParser()
 
     parser.add_option(
-            "-H",
-            "--host",
-            dest="host",
-            default='localhost',
-            action='store',
-            help="[Optional] IP address or DNS name of a ZStack management node. Default value: localhost")
+        "-H",
+        "--host",
+        dest="host",
+        default='localhost',
+        action='store',
+        help="[Optional] IP address or DNS name of a ZStack management node. Default value: localhost")
 
     parser.add_option(
-            "-p",
-            "--port",
-            dest="port",
-            default='8080',
-            action='store',
-            help="[Optional] Port that the ZStack management node is listening on. Default value: 8080")
+        "-p",
+        "--port",
+        dest="port",
+        default='8080',
+        action='store',
+        help="[Optional] Port that the ZStack management node is listening on. Default value: 8080")
 
     parser.add_option(
-            "-d",
-            "--deploy",
-            dest="deploy_config_file",
-            default=None,
-            action='store',
-            help="[Optional] deploy a cloud from a XML file.")
+        "-d",
+        "--deploy",
+        dest="deploy_config_file",
+        default=None,
+        action='store',
+        help="[Optional] deploy a cloud from a XML file.")
 
     parser.add_option(
-            "-t",
-            "--tempate",
-            dest="deploy_config_template_file",
-            default=None,
-            action='store',
-            help="[Optional] variable template file for XML file spcified in option '-d'")
+        "-t",
+        "--template",
+        dest="deploy_config_template_file",
+        default=None,
+        action='store',
+        help="[Optional] variable template file for XML file specified in option '-d'")
 
     parser.add_option(
-            "-D",
-            "--dump",
-            dest="zstack_config_dump_file",
-            default=None,
-            action='store',
-            help="[Optional] dump a cloud to a XML file")
+        "-D",
+        "--dump",
+        dest="zstack_config_dump_file",
+        default=None,
+        action='store',
+        help="[Optional] dump a cloud to a XML file")
 
     parser.add_option(
-            "-P",
-            "--password",
-            dest="admin_password",
-            default='password',
-            action='store',
-            help="[Optional] admin account password for dumping and recovering cloud environment. It can only be used when set -D or -d option. Default is 'password'.")
+        "-P",
+        "--password",
+        dest="admin_password",
+        default='password',
+        action='store',
+        help="[Optional] admin account password for dumping and recovering cloud environment. It can only be used when set -D or -d option. Default is 'password'.")
 
     parser.add_option(
-            "-s",
-            "--no-secure",
-            dest="no_secure",
-            default=False,
-            action='store_true',
-            help="[Optional] if setting -s, will save password information in command history. ")
+        "-s",
+        "--no-secure",
+        dest="no_secure",
+        default=False,
+        action='store_true',
+        help="[Optional] if setting -s, will save password information in command history. ")
 
     (options, args) = parser.parse_args()
     cmd = ' '.join(args)
@@ -1056,12 +1067,11 @@ def main():
 
     if options.zstack_config_dump_file:
         admin_passwd = hashlib.sha512(options.admin_password).hexdigest()
-        read_config.dump_zstack(options.zstack_config_dump_file, \
-                admin_passwd)
+        read_config.dump_zstack(options.zstack_config_dump_file,
+                                admin_passwd)
     elif options.deploy_config_file:
-        #deploy ZStack pre-configed environment.
-        xml_config = parse_config.DeployConfig(options.deploy_config_file, \
-                options.deploy_config_template_file)
+        # deploy ZStack pre-configed environment.
+        xml_config = parse_config.DeployConfig(options.deploy_config_file, options.deploy_config_template_file)
         deploy_xml_obj = xml_config.get_deploy_config()
         admin_passwd = hashlib.sha512(options.admin_password).hexdigest()
         try:
@@ -1069,8 +1079,7 @@ def main():
         except:
             deploy_config.deploy_initial_database(deploy_xml_obj, admin_passwd)
         else:
-            deploy_config.deploy_initial_database(deploy_xml_obj.deployerConfig\
-                    , admin_passwd)
+            deploy_config.deploy_initial_database(deploy_xml_obj.deployerConfig, admin_passwd)
 
         print('Successfully deployed a cloud from: %s' % options.deploy_config_file)
 
@@ -1078,6 +1087,6 @@ def main():
         cli = Cli(options)
         cli.main(cmd)
 
+
 if __name__ == '__main__':
     main()
-

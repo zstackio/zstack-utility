@@ -16,7 +16,6 @@ import string
 
 
 class Completer(object):
-
     COMMANDS = ['file', 'cmd']
     RE_SPACE = re.compile('.*\s+$', re.M)
 
@@ -37,7 +36,7 @@ class Completer(object):
         dirname, rest = os.path.split(path)
         tmp = dirname if dirname else '.'
         res = [os.path.join(dirname, p)
-                for p in self._listdir(tmp) if p.startswith(rest)]
+               for p in self._listdir(tmp) if p.startswith(rest)]
         # more than one match, or single match which does not exist (typo)
         if len(res) > 1 or not os.path.exists(path):
             return res
@@ -75,8 +74,10 @@ class Completer(object):
         results = [c + ' ' for c in self.COMMANDS if c.startswith(cmd)] + [None]
         return results[state]
 
+
 class CliError(Exception):
     '''Cli Error'''
+
 
 class Cli(object):
     def __init__(self, options):
@@ -84,12 +85,12 @@ class Cli(object):
         self.agent_ip = options.ip
         self.agent_port = options.port
         self.cip = options.cip
-        
+
         self.http_server = http.HttpServer(port=10086)
         self.http_server.register_sync_uri('/result', self.callback)
         self.http_server.start_in_thread()
         print ""
-        
+
         comp = Completer()
         readline.set_completer_delims(' \t\n;')
         readline.set_completer(comp.complete)
@@ -108,10 +109,10 @@ class Cli(object):
             if not os.path.exists(file_path):
                 self.print_error('cannot find file %s' % file_path)
                 return
-            
+
             with open(file_path, 'r') as fd:
                 text = fd.read()
-                
+
                 path, json_str = text.split('>>', 1)
                 path = path.strip(' \t\n\r')
                 json_str = json_str.strip(' \t\n\r')
@@ -121,15 +122,15 @@ class Cli(object):
                 for token in tokens[2:]:
                     k, v = token.split('=', 1)
                     args[k] = v
-            
+
             tmp = string.Template(json_str)
             json_str = tmp.substitute(args)
             url = 'http://%s:%s/%s/' % (self.agent_ip, self.agent_port, path)
             callback_url = 'http://%s:%s/%s/' % (self.cip, 10086, 'result')
-            rsp = http.json_post(url, json_str, headers={http.TASK_UUID:uuidhelper.uuid(), http.CALLBACK_URI:callback_url})
+            rsp = http.json_post(url, json_str,
+                                 headers={http.TASK_UUID: uuidhelper.uuid(), http.CALLBACK_URI: callback_url})
             print rsp
-            
-        
+
         def from_text(tokens):
             pass
 
@@ -140,7 +141,7 @@ class Cli(object):
         elif cmd == 'call':
             from_text(tokens)
         else:
-            self.print_error('unkonwn command: %s. only "file" or "call" allowed' % cmd)
+            self.print_error('unknown command: %s. only "file" or "call" allowed' % cmd)
 
     def run(self):
         while True:
@@ -148,8 +149,8 @@ class Cli(object):
                 line = raw_input('>>>')
                 if line:
                     self.do_command(line)
-            except CliError as clierr:
-                self.print_error(str(clierr))
+            except CliError as cli_err:
+                self.print_error(str(cli_err))
             except (EOFError, KeyboardInterrupt):
                 print ''
                 self.http_server.stop()
@@ -157,6 +158,7 @@ class Cli(object):
             except:
                 content = traceback.format_exc()
                 self.print_error(content)
+
 
 def main():
     parser = optparse.OptionParser()
@@ -169,6 +171,7 @@ def main():
         parser.error('--port must be specified')
 
     Cli(options).run()
+
 
 if __name__ == "__main__":
     main()
