@@ -9,11 +9,13 @@ import string
 
 import zstacklib.utils.xmlobject as xmlobject
 
+
 class TemplateError(Exception):
     '''zstack template parser exception'''
 
+
 class DeployConfig(object):
-    def __init__(self, deploy_config_path, deploy_tmpt_path = None):
+    def __init__(self, deploy_config_path, deploy_tmpt_path=None):
         self.deploy_config_path = os.path.abspath(deploy_config_path)
         if deploy_tmpt_path:
             self.deploy_tmpt_path = os.path.abspath(deploy_tmpt_path)
@@ -55,11 +57,13 @@ class DeployConfig(object):
         if self.deploy_config_template_path:
             set_env_var_from_config_template(self.deploy_config_template_path)
 
+
 def _template_to_dict(template_file_path):
     def _parse(path, ret, done):
         if path in done:
             done.append(path)
-            err = "recursive import detected, {0} is cyclically referenced, resovling path is: {1}".format(path, " --> ".join(done))
+            err = "recursive import detected," \
+                  " {0} is cyclically referenced, resolving path is: {1}".format(path, " --> ".join(done))
             raise Exception(err)
 
         done.append(path)
@@ -124,24 +128,29 @@ def _template_to_dict(template_file_path):
 
                 ret[key] = val
             except KeyError as e:
-                err = "undefined variable: {0}\ncan not parse variable: {1}, it's most likely a wrong variable was defined in its value body. Note, a vairable is defined as 'ABC = xxx' and referenced as 'CBD = $ABC'.".format(str(e), key)
+                err = "undefined variable: {0}\ncan not parse variable: {1}," \
+                      " it's most likely a wrong variable was defined in its value body." \
+                      " Note, a variable is defined as 'ABC = xxx' and referenced as 'CBD = $ABC'.".format(str(e), key)
                 raise Exception(err)
 
     return ret
 
+
 def build_deploy_xmlobject_from_configure(xml_cfg_path, template_file_path=None):
     with open(xml_cfg_path, 'r') as fd:
-        xmlstr = fd.read()    
-    
+        xmlstr = fd.read()
+
     if template_file_path:
         d = _template_to_dict(template_file_path)
         tmpt = string.Template(xmlstr)
         try:
             xmlstr = tmpt.substitute(d)
         except KeyError as key:
-            test_fail("Did not find value defination in [template:] '%s' for [KEY:] '%s' from [config:] '%s' " % (template_file_path, key, xml_cfg_path))
-    
+            test_fail("Did not find value definition in [template:] '%s' for [KEY:] '%s' from [config:] '%s' " % (
+                template_file_path, key, xml_cfg_path))
+
     return xmlobject.loads(xmlstr)
+
 
 def set_env_var_from_config_template(template_file_path):
     if os.path.exists(template_file_path):

@@ -13,11 +13,11 @@ import apibinding.api_actions as api_actions
 import apibinding.inventory as inventory
 import account_operations
 
-#Define default get resource method. default is using searchAPI, it can also be ListAPI.
+# Define default get resource method. default is using searchAPI, it can also be ListAPI.
 SEARCH_RESOURCE_METHOD = 'search'
 LIST_RESOURCE_METHOD = 'list'
 GET_RESOURCE_METHOD_BY_GET = 'get'
-#GET_RESOURCE_METHOD = SEARCH_RESOURCE_METHOD
+# GET_RESOURCE_METHOD = SEARCH_RESOURCE_METHOD
 GET_RESOURCE_METHOD = LIST_RESOURCE_METHOD
 
 BACKUP_STORAGE = 'BackupStorage'
@@ -55,23 +55,26 @@ USER_TAG = 'UserTag'
 VOLUME_SNAPSHOT_TREE = 'VolumeSnapshotTree'
 VOLUME_SNAPSHOT = 'VolumeSnapshot'
 
+
 def find_item_by_uuid(inventories, uuid):
     for item in inventories:
         if item.uuid == uuid:
-            #test_util.test_logger("Item found by UUID: %s" % uuid)
+            # test_util.test_logger("Item found by UUID: %s" % uuid)
             return [item]
-    #test_util.test_logger("Not found item with UUID: %s" % uuid)
+    # test_util.test_logger("Not found item with UUID: %s" % uuid)
     return None
+
 
 def find_item_by_name(inventories, name):
     for item in inventories:
         if item.name == name:
-            #test_util.test_logger("Item found by name: %s" % name)
+            # test_util.test_logger("Item found by name: %s" % name)
             return [item]
-    #test_util.test_logger("Not found item with name: %s" % name)
+    # test_util.test_logger("Not found item with name: %s" % name)
     return None
 
-#Using List API
+
+# Using List API
 def list_resource(resource, session_uuid=None, uuid=None, name=None):
     '''
         Return: list by list API.
@@ -133,11 +136,12 @@ def list_resource(resource, session_uuid=None, uuid=None, name=None):
 
     return ret
 
-#Using Search API
+
+# Using Search API
 def search_resource(resource, session_uuid, uuid=None, name=None):
     '''
         Return: list by search
-        This API was depricated. 
+        This API was deprecated.
     '''
     if resource == BACKUP_STORAGE:
         action = api_actions.SearchBackupStorageAction()
@@ -175,9 +179,9 @@ def search_resource(resource, session_uuid, uuid=None, name=None):
         action = api_actions.SearchAccountAction()
     elif resource == PRIMARY_STORAGE:
         action = api_actions.SearchPrimaryStorageAction()
-    #elif resource == SECURITY_GROUP:
+    # elif resource == SECURITY_GROUP:
     #    action = api_actions.SearchSecurityGroupAction()
-    #elif resource == VM_SECURITY_GROUP:
+    # elif resource == VM_SECURITY_GROUP:
     #    action = api_actions.SearchVmNicInSecurityGroupAction()
 
     action.sessionUuid = session_uuid
@@ -197,10 +201,11 @@ def search_resource(resource, session_uuid, uuid=None, name=None):
         t.val = name
         action.nameOpValueTriples.append(t)
 
-    # the time delay is because of elastic search iventory will delay 0.5s after original data was created in database.
+    # the time delay is because of elastic search inventory will delay 0.5s after original data was created in database.
     time.sleep(0.3)
     ret = action.run()
     return ret
+
 
 def get_resource_by_get(resource, session_uuid, uuid):
     '''
@@ -244,9 +249,9 @@ def get_resource_by_get(resource, session_uuid, uuid):
         action = api_actions.GetPrimaryStorageAction()
     elif resource == VR_OFFERING:
         action = api_actions.GetVirtualRouterOfferingAction()
-    #elif resource == SECURITY_GROUP:
+    # elif resource == SECURITY_GROUP:
     #    action = api_actions.GetSecurityGroupAction()
-    #elif resource == VM_SECURITY_GROUP:
+    # elif resource == VM_SECURITY_GROUP:
     #    action = api_actions.GetVmNicInSecurityGroupAction()
 
     action.uuid = uuid
@@ -255,10 +260,12 @@ def get_resource_by_get(resource, session_uuid, uuid):
 
     return ret
 
+
 def gen_query_conditions(name, op, value, conditions=[]):
     new_conditions = [{'name': name, 'op': op, 'value': value}]
     new_conditions.extend(conditions)
     return new_conditions
+
 
 def _gen_query_action(resource):
     if resource == BACKUP_STORAGE:
@@ -330,7 +337,8 @@ def _gen_query_action(resource):
 
     return action
 
-def query_resource(resource, conditions = [], session_uuid=None, count='false'):
+
+def query_resource(resource, conditions=[], session_uuid=None, count='false'):
     '''
     Call Query API and return all matched resource.
 
@@ -344,19 +352,21 @@ def query_resource(resource, conditions = [], session_uuid=None, count='false'):
     ret = account_operations.execute_action_with_session(action, session_uuid)
     return ret
 
-def query_resource_count(resource, conditions = [], session_uuid=None):
+
+def query_resource_count(resource, conditions=[], session_uuid=None):
     '''
     Call Query API to return the matched resource count
     When count=true, it will only return the number of matched resource
     '''
     action = _gen_query_action(resource)
     action.conditions = conditions
-    action.count='true'
+    action.count = 'true'
     account_operations.execute_action_with_session(action, session_uuid)
     return action.reply.total
 
-def query_resource_with_num(resource, conditions = [], session_uuid=None, \
-        fields=[], start=0, limit=1000):
+
+def query_resource_with_num(resource, conditions=[], session_uuid=None,
+                            fields=[], start=0, limit=1000):
     '''
     Query matched resource and return required numbers. 
     '''
@@ -368,8 +378,9 @@ def query_resource_with_num(resource, conditions = [], session_uuid=None, \
     ret = account_operations.execute_action_with_session(action, session_uuid)
     return ret
 
-def query_resource_fields(resource, conditions = [], session_uuid=None, \
-        fields=[], start=0, limit=1000):
+
+def query_resource_fields(resource, conditions=[], session_uuid=None,
+                          fields=[], start=0, limit=1000):
     '''
     Query matched resource by returning required fields and required numbers. 
     '''
@@ -381,6 +392,7 @@ def query_resource_fields(resource, conditions = [], session_uuid=None, \
     ret = account_operations.execute_action_with_session(action, session_uuid)
     return ret
 
+
 def get_resource(resource, session_uuid=None, uuid=None, name=None):
     if uuid:
         cond = gen_query_conditions('uuid', '=', uuid)
@@ -391,28 +403,27 @@ def get_resource(resource, session_uuid=None, uuid=None, name=None):
 
     return query_resource(resource, cond, session_uuid)
 
-    #if GET_RESOURCE_METHOD == LIST_RESOURCE_METHOD:
+    # if GET_RESOURCE_METHOD == LIST_RESOURCE_METHOD:
     #    return list_resource(resource, session_uuid, uuid=uuid, name=name)
-    #elif GET_RESOURCE_METHOD == GET_RESOURCE_METHOD_BY_GET:
+    # elif GET_RESOURCE_METHOD == GET_RESOURCE_METHOD_BY_GET:
     #    if not uuid:
     #        raise Exception('Get_Resource function error, uuid can not be None')
     #    return get_resource_by_get(resource, session_uuid, uuid=uuid)
-    #else:
+    # else:
     #    return search_resource(resource, session_uuid, uuid=uuid, name=name)
 
-def safely_get_resource(res_name, cond = [], session_uuid = None, \
-        fields = None, limit = 100):
+
+def safely_get_resource(res_name, cond=[], session_uuid=None,
+                        fields=None, limit=100):
     res_count = query_resource_count(res_name, cond, session_uuid)
     res_list = []
     if res_count <= limit:
         res_list = query_resource_fields(res_name, cond, session_uuid, fields)
     else:
-        curr_count = 0 
+        curr_count = 0
         while curr_count <= res_count:
-            curr_list = query_resource_with_num(res_name, cond, \
-                    session_uuid, fields, start=curr_count, limit = limit)
+            curr_list = query_resource_with_num(res_name, cond, session_uuid, fields, start=curr_count, limit=limit)
             res_list.extend(curr_list)
             curr_count += limit
 
     return res_list
-
