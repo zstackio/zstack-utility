@@ -443,6 +443,12 @@ Parse command parameters error:
             session.uuid = self.session_uuid
             msg.session = session
 
+        def clear_session():
+            self.session_uuid = None
+            self.account_name = None
+            self.user_name = None
+            open(SESSION_FILE, 'w').close()
+
         if line.startswith('#'):
             return
 
@@ -478,6 +484,9 @@ Parse command parameters error:
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME]:
                 self.session_uuid = event.inventory.uuid
+                self.account_name = None
+                self.user_name = None
+
                 session_file_writer = open(SESSION_FILE, 'w')
                 session_file_writer.write(self.session_uuid)
                 account_name_field = 'accountName'
@@ -496,9 +505,7 @@ Parse command parameters error:
                     session_file_writer.write("\n" + self.user_name)
 
             if apiname == self.LOGOUT_MESSAGE_NAME:
-                self.account_name = None
-                self.user_name = None
-                open(SESSION_FILE, 'w').close()
+                clear_session()
 
             result = jsonobject.dumps(event, True)
             print '%s\n' % result
@@ -511,6 +518,8 @@ Parse command parameters error:
         except Exception as e:
             self.print_error(str(e))
             self.write_more(line, str(e), False)
+            if 'Session expired' in str(e):
+                clear_session()
             raise e
 
     def main(self, cmd=None):
