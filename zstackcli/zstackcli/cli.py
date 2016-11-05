@@ -529,7 +529,7 @@ Parse command parameters error:
                 if cmd:
                     self.do_command(cmd)
                 else:
-                    line = raw_input(prompt)
+                    line = raw_input(self.get_prompt_with_account_info())
                     if line:
                         self.do_command(line)
             except CliError as cli_err:
@@ -572,6 +572,17 @@ Parse command parameters error:
 
         short_api_name.sort()
         return short_api_name
+
+    def get_prompt_with_account_info(self):
+        prompt_with_account_info = ''
+        if self.account_name:
+            prompt_with_account_info = self.account_name
+            if self.user_name:
+                prompt_with_account_info = prompt_with_account_info + ':' + self.user_name
+        else:
+            prompt_with_account_info = '-'
+        prompt_with_account_info = prompt_with_account_info + ' ' + prompt
+        return prompt_with_account_info
 
     def completer_print(self, substitution, matches, longest_match_length):
         def print_match(columes, new_matches, max_match_length):
@@ -656,15 +667,7 @@ Parse command parameters error:
         print ''
         print_bold()
         print ''
-        prompt_with_account_info = ''
-        if self.account_name:
-            prompt_with_account_info = self.account_name
-            if self.user_name:
-                prompt_with_account_info = prompt_with_account_info + ':' + self.user_name
-        else:
-            prompt_with_account_info = '-'
-        prompt_with_account_info = prompt_with_account_info + ' ' + prompt
-        cprint('%s%s' % (prompt_with_account_info, readline.get_line_buffer()), end='')
+        cprint('%s%s' % (self.get_prompt_with_account_info(), readline.get_line_buffer()), end='')
 
         # readline.redisplay()
 
