@@ -2,7 +2,7 @@
 @author: Frank
 '''
 from kvmagent import kvmagent
-
+from kvmagent.plugins import generate_passwd
 from zstacklib.utils import jsonobject
 from zstacklib.utils import xmlobject
 from zstacklib.utils import http
@@ -2386,11 +2386,17 @@ class VmPlugin(kvmagent.KvmAgent):
         if not cmd.qcowFile:
                 raise kvmagent.KvmError("vm is stopped or created, cmd must contain qcowFile parameter!")
         # shutdown state: inject password with locale scripts
-        zstack_home = os.path.expanduser('~zstack')
-        logger.debug('zstack_home: %s' % zstack_home)
-        passwd_script_path = os.path.join(zstack_home,"imagestore","qemu-ga","generate-passwd.sh")
-        shell.call('%s %s %s %s' % (passwd_script_path, cmd.accountPerference.userAccount, \
-                cmd.accountPerference.accountPassword, cmd.qcowFile))
+#        zstack_home = os.path.expanduser('~zstack')
+#        logger.debug('zstack_home: %s' % zstack_home)
+#        passwd_script_path = os.path.join(zstack_home,"imagestore","qemu-ga","generate-passwd.sh")
+#        shell.call('%s %s %s %s' % (passwd_script_path, cmd.accountPerference.userAccount, \
+#                cmd.accountPerference.accountPassword, cmd.qcowFile))
+        chp = generate_passwd.ChangePasswd()
+        chp.password=cmd.accountPerference.accountPassword
+        chp.account=cmd.accountPerference.userAccount
+        chp.image=cmd.qcowFile
+        if not chp.generate_passwd():
+            raise kvmagent.KvmError('inject passwd failed.')
 
     @kvmagent.replyerror
     def set_root_password(self, req):
