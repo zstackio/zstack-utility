@@ -2,7 +2,7 @@
 @author: Frank
 '''
 from kvmagent import kvmagent
-
+from kvmagent.plugins import generate_passwd
 from zstacklib.utils import jsonobject
 from zstacklib.utils import xmlobject
 from zstacklib.utils import http
@@ -2382,19 +2382,21 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.states[uuid] = s
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    def change_stopped_vm_password(self, cmd):
+    def _change_stopped_vm_password(self, cmd):
         if not cmd.qcowFile:
                 raise kvmagent.KvmError("vm is stopped or created, cmd must contain qcowFile parameter!")
-        # shutdown state: inject password with locale scripts
-        zstack_home = os.path.expanduser('~zstack')
-        logger.debug('zstack_home: %s' % zstack_home)
-        passwd_script_path = os.path.join(zstack_home,"imagestore","qemu-ga","generate-passwd.sh")
-        try:
-            shell.call('%s %s %s %s' % (passwd_script_path, cmd.accountPerference.userAccount, \
-                cmd.accountPerference.accountPassword, cmd.qcowFile))
-        except shell.ShellError as e:
-                    raise
+        # shutdown state: inject password with locale scriptss
+#        zstack_home = os.path.expanduser('~zstack')
+#        logger.debug('zstack_home: %s' % zstack_home)
+#        passwd_script_path = os.path.join(zstack_home,"imagestore","qemu-ga","generate-passwd.sh")
+#        shell.call('%s %s %s %s' % (passwd_script_path, cmd.accountPerference.userAccount, \
+#                cmd.accountPerference.accountPassword, cmd.qcowFile))
+        chp = generate_passwd.ChangePasswd()
+        chp.password=cmd.accountPerference.accountPassword
+        chp.account=cmd.accountPerference.userAccount
+        chp.image=cmd.qcowFile
+        if not chp.generate_passwd():
+            raise kvmagent.KvmError('inject passwd failed.')
 
     @kvmagent.replyerror
     def set_root_password(self, req):
@@ -2402,12 +2404,9 @@ class VmPlugin(kvmagent.KvmAgent):
         # inject the root password
         rsp = SetRootPasswordRsp()
         try:
-            self.change_stopped_vm_password(cmd)
-        except shell.ShellError as e:
-            rsp.error = str(e)
-            rsp.success = False
+            self._change_stopped_vm_password(cmd)
         except Exception as e:
-            logger.warn("shell failed!")
+            logger.warn("catch exception while change stopped vm")
             rsp.error = str(e)
             rsp.success = False
         rsp.accountPerference = cmd.accountPerference
