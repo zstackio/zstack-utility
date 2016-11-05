@@ -85,6 +85,8 @@ else:
 
 run_remote_command("rm -rf %s/*" % kvm_root, host_post_info)
 
+run_remote_command("localedef -v -c -i en_US -f UTF-8 en_US.UTF-8", host_post_info)
+
 if distro == "RedHat" or distro == "CentOS":
     # handle zstack_repo
     if zstack_repo != 'false':
