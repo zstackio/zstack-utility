@@ -2,7 +2,7 @@
 
 <project name="zstack-kvmagent builder" basedir="../">
     <property name="kvmagent.bdir" location="${build.dir}/kvmagent" />
-    <property name="imagestore.bdir" location="${build.dir}/zstack-store" />
+    <!--<property name="imagestore.bdir" location="${build.dir}/zstack-store" />-->
     <property name="kvmagent.ansible.dir" location="${ansible.dir}/kvm/" />
 
     <target name="build-kvmagent" >
@@ -47,9 +47,9 @@
             <fileset dir="${kvmagent.bdir}/ansible">
                 <include name="**/*" />
             </fileset>
-            <fileset dir="${imagestore.bdir}/qemu-ga">
-                <include name="**/*" />
-            </fileset>
+            <!--<fileset dir="${imagestore.bdir}/qemu-ga">-->
+                <!--<include name="**/*" />-->
+            <!--</fileset>-->
             <fileset dir="${kvmagent.bdir}/dist">
                 <include name="**/*" />
             </fileset>
