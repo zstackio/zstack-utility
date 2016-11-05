@@ -2454,9 +2454,9 @@ class VmPlugin(kvmagent.KvmAgent):
 #        shell.call('%s %s %s %s' % (passwd_script_path, cmd.accountPerference.userAccount, \
 #                cmd.accountPerference.accountPassword, cmd.qcowFile))
         chp = generate_passwd.ChangePasswd()
-        chp.password=cmd.accountPerference.accountPassword
-        chp.account=cmd.accountPerference.userAccount
-        chp.image=cmd.qcowFile
+        chp.password = cmd.accountPerference.accountPassword
+        chp.account = cmd.accountPerference.userAccount
+        chp.image = cmd.qcowFile
         if not chp.generate_passwd():
             raise kvmagent.KvmError('inject passwd failed.')
 

@@ -16,17 +16,17 @@ class ChangePasswd(object):
         shell.call('rm -f shadow config grub.cfg grub')
     def __del__(self):
         shell.call('rm -f shadow config grub.cfg grub')
-    def _check_file(self, path, file):
-        if not os.path.exists(file):
-            logger.warn("file: %s%s is not exist..." % (path, file))
+    def _check_file(self, path, file_str):
+        if not os.path.exists(file_str):
+            logger.warn("file: %s%s is not exist..." % (path, file_str))
             return False
         return True
     def _replace_shadow(self):
-        crypt_passwd=crypt.crypt(self.password, crypt.mksalt(crypt.METHOD_SHA512))
-        replace_cmd="egrep \"^%s:\" shadow|awk -v passwd=%s -F \":\" \'{$2=passwd;OFS=\":\";print}\'" % (self.account, crypt_passwd)
-        replace_passwd=shell.call(replace_cmd)
-        logger.debug("crypt_passwd is: %s, replace_cmd is: %s" % (crypt_passwd, replace_passwd))
-        sed_cmd="sed -i \"s!^%s:.*\\$!%s!\" shadow" % (self.account, replace_passwd)
+        crypt_passwd = crypt.crypt(self.password, crypt.mksalt(crypt.METHOD_SHA512))
+        replace_cmd = "egrep \"^%s:\" shadow|awk -v passwd='%s' -F \":\" \'{$2=passwd;OFS=\":\";print}\'" % (self.account, crypt_passwd)
+        replace_passwd = shell.call(replace_cmd).strip('\n')
+        logger.debug("crypt_passwd is: %s, replace_passwd is: %s" % (crypt_passwd, replace_passwd.replace('$', '\$')))
+        sed_cmd = "sed -i \"s!^%s:.*\\$!%s!\" shadow" % (self.account, replace_passwd.replace('$', '\$'))
         shell.call(sed_cmd)
         shell.call("virt-copy-in -a %s shadow /etc/" % self.image)
     def _close_selinux(self):
@@ -51,8 +51,8 @@ class ChangePasswd(object):
         if not self._check_file("", self.image):
             return False
         return True
-    def _is_CentOS(self):
-        OSVersion=shell.call('virt-inspector -a %s |grep CentOS' % self.image)
+    def _is_centos(self):
+        OSVersion = shell.call('virt-inspector -a %s |grep CentOS' % self.image)
         if not OSVersion:
             logger.debug("not CentOS, dont need to close selinux")
             return False
@@ -61,7 +61,7 @@ class ChangePasswd(object):
     def generate_passwd(self):
         if not self._check_parameters():
             return False
-        version = self._is_CentOS()
+        version = self._is_centos()
         if version:
             try:
                 shell.call("virt-copy-out -a %s /etc/shadow /etc/selinux/config /boot/grub.cfg /etc/default/grub ." % self.image)
