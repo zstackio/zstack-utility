@@ -4771,6 +4771,18 @@ class APIRecoverVmInstanceMsg(object):
         self.userTags = OptionalList()
 
 
+APIRESUMEVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APIResumeVmInstanceMsg'
+class APIResumeVmInstanceMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIResumeVmInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APISEARCHVMINSTANCEREPLY_FULL_NAME = 'org.zstack.header.vm.APISearchVmInstanceReply'
 class APISearchVmInstanceReply(object):
     FULL_NAME='org.zstack.header.vm.APISearchVmInstanceReply'
@@ -4873,6 +4885,18 @@ class APIStopVmInstanceMsg(object):
         self.uuid = NotNoneField()
         #valid values: [grace, cold]
         self.type = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISUSPENDVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APISuspendVmInstanceMsg'
+class APISuspendVmInstanceMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISuspendVmInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8102,6 +8126,7 @@ api_names = [
     'APIReply',
     'APIRequestConsoleAccessMsg',
     'APIResetRootVolumeFromImageMsg',
+    'APIResumeVmInstanceMsg',
     'APIRevertVolumeFromSnapshotMsg',
     'APIRevokeResourceSharingMsg',
     'APIScanBackupStorageMsg',
@@ -8140,6 +8165,7 @@ api_names = [
     'APISilentMsg',
     'APIStartVmInstanceMsg',
     'APIStopVmInstanceMsg',
+    'APISuspendVmInstanceMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncVolumeSizeMsg',
@@ -10530,6 +10556,9 @@ DESTROYING = 'Destroying'
 DESTROYED = 'Destroyed'
 MIGRATING = 'Migrating'
 EXPUNGING = 'Expunging'
+SUSPENDING = 'Suspending'
+SUSPENDED = 'Suspended'
+RESUMING = 'Resuming'
 ERROR = 'Error'
 UNKNOWN = 'Unknown'
 

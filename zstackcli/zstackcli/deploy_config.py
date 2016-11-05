@@ -1,8 +1,8 @@
-'''
+"""
 Deploy ZStack environment from template xml file.
 
 @author: Youyk
-'''
+"""
 import sys
 import traceback
 import threading
@@ -26,7 +26,7 @@ DEPLOY_THREAD_LIMIT = 500
 
 
 class DeployError(Exception):
-    '''zstack deploy exception'''
+    """zstack deploy exception"""
 
 
 def deploy_logger(msg):
@@ -34,13 +34,13 @@ def deploy_logger(msg):
 
 
 def get_first_item_from_list(list_obj, list_obj_name, list_obj_value, action_name):
-    '''
+    """
     Judge if list is empty. If not, return the 1st item.
     list_obj: the list for judgment and return;
     list_obj_name: the list item type name;
     list_obj_value: the list item's value when do previous query;
     action_name: which action is calling this function
-    '''
+    """
     if not isinstance(list_obj, list):
         raise DeployError("The first parameter is not a [list] type")
 
@@ -49,8 +49,9 @@ def get_first_item_from_list(list_obj, list_obj_name, list_obj_value, action_nam
 
     if len(list_obj) > 1:
         raise DeployError(
-            "Find more than 1 [%s] resource with name: [%s], when adding %s. Please check your deploy.xml and make sure resource do NOT have duplicated name " % (
-            list_obj_name, list_obj_value, action_name))
+            "Find more than 1 [%s] resource with name: [%s], when adding %s."
+            " Please check your deploy.xml and make sure resource do NOT have duplicated name " % (
+                list_obj_name, list_obj_value, action_name))
 
     return list_obj[0]
 
@@ -200,9 +201,9 @@ def add_zone(deployConfig, session_uuid, zone_name=None):
 
 # Add L2 network
 def add_l2_network(deployConfig, session_uuid, l2_name=None, zone_name=None):
-    '''
+    """
     If providing name, it will only add L2 network with the same name.
-    '''
+    """
     if not xmlobject.has_element(deployConfig, "zones.zone"):
         return
 
@@ -212,7 +213,7 @@ def add_l2_network(deployConfig, session_uuid, l2_name=None, zone_name=None):
                 return
             l2Network = zone.l2Networks.l2VlanNetwork
         else:
-            if not xmlobject.has_element(zone, \
+            if not xmlobject.has_element(zone,
                                          "l2Networks.l2NoVlanNetwork"):
                 return
             l2Network = zone.l2Networks.l2NoVlanNetwork
@@ -247,21 +248,21 @@ def add_l2_network(deployConfig, session_uuid, l2_name=None, zone_name=None):
                         l2_dup = int(l2.duplication__)
 
                     for j in range(l2_dup):
-                        l2Name = generate_dup_name( \
-                            generate_dup_name( \
-                                generate_dup_name( \
-                                    l2.name_, zone_ref, 'z') \
-                                , cluster_ref, 'c') \
+                        l2Name = generate_dup_name(
+                            generate_dup_name(
+                                generate_dup_name(
+                                    l2.name_, zone_ref, 'z')
+                                , cluster_ref, 'c')
                             , j, 'n')
 
                         if not l2.description__:
                             l2.description_ = 'l2'
 
-                        l2Des = generate_dup_name( \
-                            generate_dup_name( \
-                                generate_dup_name( \
-                                    l2.description_, zone_ref, 'z') \
-                                , cluster_ref, 'c') \
+                        l2Des = generate_dup_name(
+                            generate_dup_name(
+                                generate_dup_name(
+                                    l2.description_, zone_ref, 'z')
+                                , cluster_ref, 'c')
                             , j, 'n')
 
                         if is_vlan:
@@ -284,8 +285,8 @@ def add_l2_network(deployConfig, session_uuid, l2_name=None, zone_name=None):
                         if l2.uuid__:
                             action.resourceUuid = l2.uuid__
 
-                        thread = threading.Thread( \
-                            target=_thread_for_action, \
+                        thread = threading.Thread(
+                            target=_thread_for_action,
                             args=(action,))
                         wait_for_thread_queue()
                         thread.start()
@@ -301,7 +302,7 @@ def add_l2_network(deployConfig, session_uuid, l2_name=None, zone_name=None):
 
 
 # Add Primary Storage
-def add_primary_storage(deployConfig, session_uuid, ps_name=None, \
+def add_primary_storage(deployConfig, session_uuid, ps_name=None,
                         zone_name=None):
     if not xmlobject.has_element(deployConfig, 'zones.zone'):
         deploy_logger('Not find zones.zone in config, skip primary storage deployment')
@@ -333,7 +334,7 @@ def add_primary_storage(deployConfig, session_uuid, ps_name=None, \
 
     def _deploy_primary_storage(zone):
         if xmlobject.has_element(zone, 'primaryStorages.nfsPrimaryStorage'):
-            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid, \
+            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid,
                                          name=zone.name_)
             zinv = get_first_item_from_list(zinvs, 'Zone', zone.name_, 'primary storage')
 
@@ -355,7 +356,7 @@ def add_primary_storage(deployConfig, session_uuid, ps_name=None, \
                 thread.start()
 
         if xmlobject.has_element(zone, 'primaryStorages.localPrimaryStorage'):
-            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid, \
+            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid,
                                          name=zone.name_)
             zinv = get_first_item_from_list(zinvs, 'Zone', zone.name_, 'primary storage')
 
@@ -375,7 +376,7 @@ def add_primary_storage(deployConfig, session_uuid, ps_name=None, \
                 thread.start()
 
         if xmlobject.has_element(zone, 'primaryStorages.cephPrimaryStorage'):
-            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid, \
+            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid,
                                          name=zone.name_)
             zinv = get_first_item_from_list(zinvs, 'Zone', zone.name_, 'primary storage')
 
@@ -401,7 +402,7 @@ def add_primary_storage(deployConfig, session_uuid, ps_name=None, \
                 thread.start()
 
         if xmlobject.has_element(zone, 'primaryStorages.fusionstorPrimaryStorage'):
-            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid, \
+            zinvs = res_ops.get_resource(res_ops.ZONE, session_uuid,
                                          name=zone.name_)
             zinv = get_first_item_from_list(zinvs, 'Zone', zone.name_, 'primary storage')
 
@@ -457,7 +458,7 @@ def add_primary_storage(deployConfig, session_uuid, ps_name=None, \
 
 
 # Add Cluster
-def add_cluster(deployConfig, session_uuid, cluster_name=None, \
+def add_cluster(deployConfig, session_uuid, cluster_name=None,
                 zone_name=None):
     if not xmlobject.has_element(deployConfig, "zones.zone"):
         return
@@ -486,12 +487,12 @@ def add_cluster(deployConfig, session_uuid, cluster_name=None, \
 
         if cluster.allL2NetworkRef__ == 'true':
             # find all L2 network in zone and attach to cluster
-            cond = res_ops.gen_query_conditions('zoneUuid', '=', \
+            cond = res_ops.gen_query_conditions('zoneUuid', '=',
                                                 action.zoneUuid)
-            l2_count = res_ops.query_resource_count(res_ops.L2_NETWORK, \
+            l2_count = res_ops.query_resource_count(res_ops.L2_NETWORK,
                                                     cond, session_uuid)
-            l2invs = res_ops.query_resource_fields(res_ops.L2_NETWORK, \
-                                                   [{'name': 'zoneUuid', 'op': '=', 'value': action.zoneUuid}], \
+            l2invs = res_ops.query_resource_fields(res_ops.L2_NETWORK,
+                                                   [{'name': 'zoneUuid', 'op': '=', 'value': action.zoneUuid}],
                                                    session_uuid, ['uuid'], 0, l2_count)
         else:
             l2invs = []
@@ -499,12 +500,12 @@ def add_cluster(deployConfig, session_uuid, cluster_name=None, \
                 for l2ref in xmlobject.safe_list(cluster.l2NetworkRef):
                     l2_name = generate_dup_name(generate_dup_name(l2ref.text_, zone_ref, 'z'), cluster_ref, 'c')
 
-                    cond = res_ops.gen_query_conditions('zoneUuid', '=', \
+                    cond = res_ops.gen_query_conditions('zoneUuid', '=',
                                                         action.zoneUuid)
-                    cond = res_ops.gen_query_conditions('name', '=', l2_name, \
+                    cond = res_ops.gen_query_conditions('name', '=', l2_name,
                                                         cond)
 
-                    l2inv = res_ops.query_resource_fields(res_ops.L2_NETWORK, \
+                    l2inv = res_ops.query_resource_fields(res_ops.L2_NETWORK,
                                                           cond, session_uuid, ['uuid'])
                     if not l2inv:
                         raise DeployError("Can't find l2 network [%s] in database." % l2_name)
@@ -567,13 +568,13 @@ def add_cluster(deployConfig, session_uuid, cluster_name=None, \
 
 
 # Add Host
-def add_host(deployConfig, session_uuid, host_ip=None, zone_name=None, \
+def add_host(deployConfig, session_uuid, host_ip=None, zone_name=None,
              cluster_name=None):
-    '''
-    Base on an xml deploy config object to add hosts. 
+    """
+    Base on an xml deploy config object to add hosts.
     If providing giving zone_name, cluster_name or host_ip, this function will
-    only add related hosts. 
-    '''
+    only add related hosts.
+    """
     if not xmlobject.has_element(deployConfig, "zones.zone"):
         return
 
@@ -667,7 +668,7 @@ def add_host(deployConfig, session_uuid, host_ip=None, zone_name=None, \
 
 
 # Add L3 network
-def add_l3_network(deployConfig, session_uuid, l3_name=None, l2_name=None, \
+def add_l3_network(deployConfig, session_uuid, l3_name=None, l2_name=None,
                    zone_name=None):
     '''
     add_l3_network will add L3 network and also add related DNS, IpRange and 
@@ -695,13 +696,13 @@ def add_l3_network(deployConfig, session_uuid, l3_name=None, l2_name=None, \
                 l3Name = generate_dup_name(
                     generate_dup_name(generate_dup_name(l3.name_, zone_ref, 'z'), cluster_ref, 'c'), l2_num, 'n')
 
-                l2invs = res_ops.get_resource(res_ops.L2_NETWORK, \
-                                              session_uuid, \
+                l2invs = res_ops.get_resource(res_ops.L2_NETWORK,
+                                              session_uuid,
                                               name=l2Name)
-                l2inv = get_first_item_from_list(l2invs, \
+                l2inv = get_first_item_from_list(l2invs,
                                                  'L2 Network', l2Name, 'L3 Network')
 
-                thread = threading.Thread(target=_do_l3_deploy, \
+                thread = threading.Thread(target=_do_l3_deploy,
                                           args=(l3, l2inv.uuid, l3Name, session_uuid,))
                 wait_for_thread_queue()
                 thread.start()
@@ -758,7 +759,7 @@ def add_l3_network(deployConfig, session_uuid, l3_name=None, l2_name=None, \
             providers[pinv.name] = pinv.uuid
 
         if xmlobject.has_element(l3, 'networkService'):
-            do_add_network_service(l3.networkService, l3_inv.uuid, \
+            do_add_network_service(l3.networkService, l3_inv.uuid,
                                    providers, session_uuid)
 
     for zone in xmlobject.safe_list(deployConfig.zones.zone):
@@ -800,15 +801,15 @@ def add_l3_network(deployConfig, session_uuid, l3_name=None, l2_name=None, \
 
 
 # Add Iprange
-def add_ip_range(deployConfig, session_uuid, ip_range_name=None, \
+def add_ip_range(deployConfig, session_uuid, ip_range_name=None,
                  zone_name=None, l3_name=None):
-    '''
-    Call by only adding an IP range. If the IP range is in L3 config, 
-    add_l3_network will add ip range direclty. 
+    """
+    Call by only adding an IP range. If the IP range is in L3 config,
+    add_l3_network will add ip range direclty.
 
-    deployConfig is a xmlobject. If using standard net_operation, please 
+    deployConfig is a xmlobject. If using standard net_operation, please
     check net_operations.add_ip_range(test_util.IpRangeOption())
-    '''
+    """
     if not xmlobject.has_element(deployConfig, "zones.zone"):
         return
 
@@ -849,11 +850,11 @@ def add_ip_range(deployConfig, session_uuid, ip_range_name=None, \
 
             l3_invs = res_ops.get_resource(res_ops.L3_NETWORK, session_uuid, name=l3Name)
             l3_inv = get_first_item_from_list(l3_invs, 'L3 Network', l3Name, 'IP range')
-            do_add_ip_range(l3.ipRange, l3_inv.uuid, session_uuid, \
+            do_add_ip_range(l3.ipRange, l3_inv.uuid, session_uuid,
                             ip_range_name)
 
 
-def do_add_ip_range(ip_range_xml_obj, l3_uuid, session_uuid, \
+def do_add_ip_range(ip_range_xml_obj, l3_uuid, session_uuid,
                     ip_range_name=None):
     for ir in xmlobject.safe_list(ip_range_xml_obj):
         if ip_range_name and ip_range_name != ir.name_:
@@ -926,11 +927,11 @@ def add_network_service(deployConfig, session_uuid):
 
             l3_invs = res_ops.get_resource(res_ops.L3_NETWORK, session_uuid, name=l3_name)
             l3_inv = get_first_item_from_list(l3_invs, 'L3 Network', l3_name, 'Network Service')
-            do_add_network_service(l3.networkService, l3_inv.uuid, \
+            do_add_network_service(l3.networkService, l3_inv.uuid,
                                    providers, session_uuid)
 
 
-def do_add_network_service(net_service_xml_obj, l3_uuid, providers, \
+def do_add_network_service(net_service_xml_obj, l3_uuid, providers,
                            session_uuid):
     allservices = {}
     for ns in xmlobject.safe_list(net_service_xml_obj):
@@ -1025,7 +1026,7 @@ def add_disk_offering(deployConfig, session_uuid):
 
     for disk_offering_xml_obj in \
             xmlobject.safe_list(deployConfig.diskOfferings.diskOffering):
-        thread = threading.Thread(target=_add_disk_offering, \
+        thread = threading.Thread(target=_add_disk_offering,
                                   args=(disk_offering_xml_obj, session_uuid))
         wait_for_thread_queue()
         thread.start()
@@ -1048,13 +1049,13 @@ def add_instance_offering(deployConfig, session_uuid):
         evt = action.run()
         deploy_logger(jsonobject.dumps(evt))
 
-    if not xmlobject.has_element(deployConfig, \
+    if not xmlobject.has_element(deployConfig,
                                  'instanceOfferings.instanceOffering'):
         return
 
     for instance_offering_xml_obj in \
             xmlobject.safe_list(deployConfig.instanceOfferings.instanceOffering):
-        thread = threading.Thread(target=_add_io, \
+        thread = threading.Thread(target=_add_io,
                                   args=(instance_offering_xml_obj, session_uuid,))
         wait_for_thread_queue()
         thread.start()
@@ -1073,7 +1074,7 @@ def _thread_for_action(action):
 
 
 # Add Virtual Router Offering
-def add_virtual_router(deployConfig, session_uuid, l3_name=None, \
+def add_virtual_router(deployConfig, session_uuid, l3_name=None,
                        zone_name=None):
     if not xmlobject.has_element(deployConfig, 'instanceOfferings.virtualRouterOffering'):
         return
@@ -1101,9 +1102,9 @@ def add_virtual_router(deployConfig, session_uuid, l3_name=None, \
         zinv = get_first_item_from_list(zinvs, 'zone', i.zoneRef.text_, 'virtual router offering')
         action.zoneUuid = zinv.uuid
         cond = res_ops.gen_query_conditions('zoneUuid', '=', zinv.uuid)
-        cond1 = res_ops.gen_query_conditions('name', '=', \
+        cond1 = res_ops.gen_query_conditions('name', '=',
                                              i.managementL3NetworkRef.text_, cond)
-        minvs = res_ops.query_resource(res_ops.L3_NETWORK, cond1, \
+        minvs = res_ops.query_resource(res_ops.L3_NETWORK, cond1,
                                        session_uuid)
 
         minv = get_first_item_from_list(minvs, 'Management L3 Network', i.managementL3NetworkRef.text_,
@@ -1111,16 +1112,16 @@ def add_virtual_router(deployConfig, session_uuid, l3_name=None, \
 
         action.managementNetworkUuid = minv.uuid
         if xmlobject.has_element(i, 'publicL3NetworkRef'):
-            cond1 = res_ops.gen_query_conditions('name', '=', \
+            cond1 = res_ops.gen_query_conditions('name', '=',
                                                  i.publicL3NetworkRef.text_, cond)
-            pinvs = res_ops.query_resource(res_ops.L3_NETWORK, cond1, \
+            pinvs = res_ops.query_resource(res_ops.L3_NETWORK, cond1,
                                            session_uuid)
             pinv = get_first_item_from_list(pinvs, 'Public L3 Network', i.publicL3NetworkRef.text_,
                                             'virtualRouterOffering')
 
             action.publicNetworkUuid = pinv.uuid
 
-        iinvs = res_ops.get_resource(res_ops.IMAGE, session_uuid, \
+        iinvs = res_ops.get_resource(res_ops.IMAGE, session_uuid,
                                      name=i.imageRef.text_)
         iinv = get_first_item_from_list(iinvs, 'Image', i.imageRef.text_, 'virtualRouterOffering')
 
@@ -1153,7 +1154,8 @@ def deploy_initial_database(deploy_config, admin_passwd=None):
             operation(deploy_config, session_uuid)
         except Exception as e:
             deploy_logger(
-                '[Error] zstack deployment meets exception when doing: %s . The real exception are:.' % operation.__name__)
+                '[Error] zstack deployment meets exception when doing: %s . The real exception are:.' %
+                operation.__name__)
             print('----------------------Exception Reason------------------------')
             traceback.print_exc(file=sys.stdout)
             print('-------------------------Reason End---------------------------\n')

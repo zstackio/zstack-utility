@@ -1,7 +1,7 @@
-'''
+"""
 
 @author: Frank
-'''
+"""
 import os
 
 try:
@@ -80,13 +80,13 @@ def clean_password_in_cli_history():
 
 
 class CliError(Exception):
-    '''Cli Error'''
+    """Cli Error"""
 
 
 class Cli(object):
-    '''
+    """
     classdocs
-    '''
+    """
 
     msg_creator = {}
 
@@ -98,6 +98,7 @@ class Cli(object):
     CREATE_USER_NAME = 'APICreateUserMsg'
     ACCOUNT_RESET_PASSWORD_NAME = 'APIUpdateAccountMsg'
     USER_RESET_PASSWORD_NAME = 'APIUpdateUserMsg'
+    QUERY_ACCOUNT_NAME = 'APIQueryAccountMsg'
 
     @staticmethod
     def register_message_creator(apiname, func):
@@ -116,10 +117,10 @@ class Cli(object):
         print '\033[91m' + err + '\033[0m'
 
     def complete(self, pattern, index):
-        '''
+        """
         pattern is current input. index is current matched number of list.
         complete will be kept calling, until it return None.
-        '''
+        """
 
         def prepare_primitive_fields_words(apiname, separator='=', prefix=''):
             if not prefix:
@@ -291,7 +292,7 @@ Parse command parameters error:
                 raise CliError('"%s" is not an API message' % apiname)
 
             # '=' will be used for more meanings than 'equal' in Query API
-            if apiname.startswith('APIQuery') and not apiname in NOT_QUERY_MYSQL_APIS:
+            if apiname.startswith('APIQuery') and apiname not in NOT_QUERY_MYSQL_APIS:
                 return apiname, pairs[1:]
 
             all_params = {}
@@ -319,7 +320,7 @@ Parse command parameters error:
             return (apiname, all_params)
 
         def generate_query_params(apiname, params):
-            '''
+            """
             Query params will include conditions expression, which includes ops:
             =, !=, >, <, >=, <=, ?=, !?=, ~=, !~=
             ?= means 'in'
@@ -328,7 +329,7 @@ Parse command parameters error:
             !~= means 'not like'
             =null means 'is null'
             !=null means 'is not null'
-            '''
+            """
 
             null = 'null'
             eq = '='
@@ -428,7 +429,7 @@ Parse command parameters error:
             if creator:
                 return creator(apiname, params)
 
-            if apiname.startswith('APIQuery') and not apiname in NOT_QUERY_MYSQL_APIS:
+            if apiname.startswith('APIQuery') and apiname not in NOT_QUERY_MYSQL_APIS:
                 params = generate_query_params(apiname, params)
 
             msg = eval('inventory.%s()' % apiname)
@@ -441,6 +442,12 @@ Parse command parameters error:
             session = inventory.Session()
             session.uuid = self.session_uuid
             msg.session = session
+
+        def clear_session():
+            self.session_uuid = None
+            self.account_name = None
+            self.user_name = None
+            open(SESSION_FILE, 'w').close()
 
         if line.startswith('#'):
             return
@@ -477,19 +484,42 @@ Parse command parameters error:
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME]:
                 self.session_uuid = event.inventory.uuid
-                open(SESSION_FILE, 'w').write(self.session_uuid)
+                self.account_name = None
+                self.user_name = None
+
+                session_file_writer = open(SESSION_FILE, 'w')
+                session_file_writer.write(self.session_uuid)
+                account_name_field = 'accountName'
+                user_name_field = 'userName'
+
+                if apiname == self.LOGIN_BY_LDAP_MESSAGE_NAME:
+                    self.account_name = event.accountInventory.name
+                    session_file_writer.write("\n" + self.account_name)
+                elif apiname == self.LOGIN_MESSAGE_NAME:
+                    self.account_name = all_params[account_name_field]
+                    session_file_writer.write("\n" + self.account_name)
+                elif apiname == self.LOGIN_BY_USER_NAME:
+                    self.account_name = all_params[account_name_field]
+                    self.user_name = all_params[user_name_field]
+                    session_file_writer.write("\n" + self.account_name)
+                    session_file_writer.write("\n" + self.user_name)
+
+            if apiname == self.LOGOUT_MESSAGE_NAME:
+                clear_session()
 
             result = jsonobject.dumps(event, True)
             print '%s\n' % result
             # print 'Time costing: %fs' % (end_time - start_time)
             self.write_more(line, result)
-        except urllib3.exceptions.MaxRetryError as urlerr:
+        except urllib3.exceptions.MaxRetryError as url_err:
             self.print_error('Is %s reachable? Please make sure the management node is running.' % self.api.api_url)
-            self.print_error(str(urlerr))
+            self.print_error(str(url_err))
             raise ("Server: %s is not reachable" % self.hostname)
         except Exception as e:
             self.print_error(str(e))
             self.write_more(line, str(e), False)
+            if 'Session expired' in str(e):
+                clear_session()
             raise e
 
     def main(self, cmd=None):
@@ -509,7 +539,7 @@ Parse command parameters error:
                 if cmd:
                     self.do_command(cmd)
                 else:
-                    line = raw_input(prompt)
+                    line = raw_input(self.get_prompt_with_account_info())
                     if line:
                         self.do_command(line)
             except CliError as cli_err:
@@ -542,9 +572,9 @@ Parse command parameters error:
             self.api_class_params[apiname] = rule_out_unneeded_params(params)
 
     def _parse_api_name(self, api_names):
-        '''
+        """
         Remove API pattern 'API' and appendix 'MSG'
-        '''
+        """
         short_api_name = []
         for api in api_names:
             if api.endswith('Msg'):
@@ -552,6 +582,17 @@ Parse command parameters error:
 
         short_api_name.sort()
         return short_api_name
+
+    def get_prompt_with_account_info(self):
+        prompt_with_account_info = ''
+        if self.account_name:
+            prompt_with_account_info = self.account_name
+            if self.user_name:
+                prompt_with_account_info = prompt_with_account_info + '/' + self.user_name
+        else:
+            prompt_with_account_info = '-'
+        prompt_with_account_info = prompt_with_account_info + ' ' + prompt
+        return prompt_with_account_info
 
     def completer_print(self, substitution, matches, longest_match_length):
         def print_match(columes, new_matches, max_match_length):
@@ -636,7 +677,8 @@ Parse command parameters error:
         print ''
         print_bold()
         print ''
-        cprint('%s%s' % (prompt, readline.get_line_buffer()), end='')
+        cprint('%s%s' % (self.get_prompt_with_account_info(), readline.get_line_buffer()), end='')
+
         # readline.redisplay()
 
     def write_more(self, cmd, result, success=True):
@@ -685,12 +727,12 @@ Parse command parameters error:
         self.hd.set(str(start_value), [cmd, success])
 
     def read_more(self, num=None, need_print=True, full_info=True):
-        '''
+        """
         need_print will indicate whether print the command result to screen.
 
         full_info will indicate whether return command and params information
             when return command results.
-        '''
+        """
         start_value = self.hd.get(self.start_key)
         last_value = self.hd.get(self.last_key)
         more_usage_list = [text_doc.bold('Usage:'),
@@ -947,9 +989,9 @@ Parse command parameters error:
         pydoc.pager(help_string)
 
     def __init__(self, options):
-        '''
+        """
         Constructor
-        '''
+        """
         readline.parse_and_bind("tab: complete")
         readline.set_completer(self.complete)
         readline.set_completion_display_matches_hook(self.completer_print)
@@ -990,9 +1032,17 @@ Parse command parameters error:
         self.api_class_params = {}
         self.build_api_parameters()
         self.api = None
+        self.account_name = None
+        self.user_name = None
         self.session_uuid = None
         if os.path.exists(SESSION_FILE):
-            self.session_uuid = open(SESSION_FILE, 'r').readline()
+            session_file_reader = open(SESSION_FILE, 'r')
+            self.session_uuid = session_file_reader.readline().rstrip()
+            try:
+                self.account_name = session_file_reader.readline().rstrip()
+                self.user_name = session_file_reader.readline().rstrip()
+            except EOFError:
+                pass
 
         self.hostname = options.host
         self.port = options.port
