@@ -498,6 +498,7 @@ Parse command parameters error:
             if apiname == self.LOGOUT_MESSAGE_NAME:
                 self.account_name = None
                 self.user_name = None
+                open(SESSION_FILE, 'w').close()
 
             result = jsonobject.dumps(event, True)
             print '%s\n' % result
