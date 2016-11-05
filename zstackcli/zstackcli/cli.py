@@ -1,7 +1,7 @@
-'''
+"""
 
 @author: Frank
-'''
+"""
 import os
 
 try:
@@ -572,9 +572,9 @@ Parse command parameters error:
             self.api_class_params[apiname] = rule_out_unneeded_params(params)
 
     def _parse_api_name(self, api_names):
-        '''
+        """
         Remove API pattern 'API' and appendix 'MSG'
-        '''
+        """
         short_api_name = []
         for api in api_names:
             if api.endswith('Msg'):
@@ -727,12 +727,12 @@ Parse command parameters error:
         self.hd.set(str(start_value), [cmd, success])
 
     def read_more(self, num=None, need_print=True, full_info=True):
-        '''
+        """
         need_print will indicate whether print the command result to screen.
 
         full_info will indicate whether return command and params information
             when return command results.
-        '''
+        """
         start_value = self.hd.get(self.start_key)
         last_value = self.hd.get(self.last_key)
         more_usage_list = [text_doc.bold('Usage:'),
@@ -1037,8 +1037,12 @@ Parse command parameters error:
         self.session_uuid = None
         if os.path.exists(SESSION_FILE):
             session_file_reader = open(SESSION_FILE, 'r')
-            self.session_uuid = session_file_reader.readline()
-            self.account_name = session_file_reader.readline()
+            self.session_uuid = session_file_reader.readline().rstrip()
+            try:
+                self.account_name = session_file_reader.readline().rstrip()
+                self.user_name = session_file_reader.readline().rstrip()
+            except EOFError:
+                pass
 
         self.hostname = options.host
         self.port = options.port
