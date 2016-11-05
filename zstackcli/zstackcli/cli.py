@@ -588,7 +588,7 @@ Parse command parameters error:
         if self.account_name:
             prompt_with_account_info = self.account_name
             if self.user_name:
-                prompt_with_account_info = prompt_with_account_info + ':' + self.user_name
+                prompt_with_account_info = prompt_with_account_info + '/' + self.user_name
         else:
             prompt_with_account_info = '-'
         prompt_with_account_info = prompt_with_account_info + ' ' + prompt
