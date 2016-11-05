@@ -4234,14 +4234,14 @@ class CollectLogCmd(Command):
 
 
     def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info):
-        command = "cd %s && tar zcf collect-log.tar.gz *" % tmp_log_dir
+        command = "cd %s/../ && tar zcf collect-log.tar.gz %s " % (tmp_log_dir, tmp_log_dir)
         run_remote_command(command, host_post_info)
         fetch_arg = FetchArg()
-        fetch_arg.src =  "%s/collect-log.tar.gz " % tmp_log_dir
+        fetch_arg.src =  "%s/../collect-log.tar.gz " % tmp_log_dir
         fetch_arg.dest = local_collect_dir
         fetch_arg.args = "fail_on_missing=yes flat=yes"
         fetch(fetch_arg, host_post_info)
-        command = "rm -rf %s " % tmp_log_dir
+        command = "rm -rf %s %s/../collect-log.tar.gz" % (tmp_log_dir, tmp_log_dir)
         run_remote_command(command, host_post_info)
         (status, output) = commands.getstatusoutput("cd %s && tar zxf collect-log.tar.gz" % local_collect_dir)
         if status != 0:
@@ -4530,7 +4530,7 @@ class CollectLogCmd(Command):
             imageStore_bs_vo = get_host_list("ImageStoreBackupStorageVO")
             for bs in imageStore_bs_vo:
                 bs_ip = bs['hostname']
-                self.get_storage_log(self.generate_host_post_info(bs_ip, "imageStore_bs"), collect_dir, "imagestore_bs")
+                self.get_storage_log(self.generate_host_post_info(bs_ip, "imageStore_bs"), collect_dir, "imageStore_bs")
 
             #collect ps log
             ceph_ps_vo = get_host_list("CephPrimaryStorageMonVO")
