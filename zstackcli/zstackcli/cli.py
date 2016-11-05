@@ -80,13 +80,13 @@ def clean_password_in_cli_history():
 
 
 class CliError(Exception):
-    '''Cli Error'''
+    """Cli Error"""
 
 
 class Cli(object):
-    '''
+    """
     classdocs
-    '''
+    """
 
     msg_creator = {}
 
@@ -98,6 +98,7 @@ class Cli(object):
     CREATE_USER_NAME = 'APICreateUserMsg'
     ACCOUNT_RESET_PASSWORD_NAME = 'APIUpdateAccountMsg'
     USER_RESET_PASSWORD_NAME = 'APIUpdateUserMsg'
+    QUERY_ACCOUNT_NAME = 'APIQueryAccountMsg'
 
     @staticmethod
     def register_message_creator(apiname, func):
@@ -116,10 +117,10 @@ class Cli(object):
         print '\033[91m' + err + '\033[0m'
 
     def complete(self, pattern, index):
-        '''
+        """
         pattern is current input. index is current matched number of list.
         complete will be kept calling, until it return None.
-        '''
+        """
 
         def prepare_primitive_fields_words(apiname, separator='=', prefix=''):
             if not prefix:
@@ -291,7 +292,7 @@ Parse command parameters error:
                 raise CliError('"%s" is not an API message' % apiname)
 
             # '=' will be used for more meanings than 'equal' in Query API
-            if apiname.startswith('APIQuery') and not apiname in NOT_QUERY_MYSQL_APIS:
+            if apiname.startswith('APIQuery') and apiname not in NOT_QUERY_MYSQL_APIS:
                 return apiname, pairs[1:]
 
             all_params = {}
@@ -319,7 +320,7 @@ Parse command parameters error:
             return (apiname, all_params)
 
         def generate_query_params(apiname, params):
-            '''
+            """
             Query params will include conditions expression, which includes ops:
             =, !=, >, <, >=, <=, ?=, !?=, ~=, !~=
             ?= means 'in'
@@ -328,7 +329,7 @@ Parse command parameters error:
             !~= means 'not like'
             =null means 'is null'
             !=null means 'is not null'
-            '''
+            """
 
             null = 'null'
             eq = '='
@@ -428,7 +429,7 @@ Parse command parameters error:
             if creator:
                 return creator(apiname, params)
 
-            if apiname.startswith('APIQuery') and not apiname in NOT_QUERY_MYSQL_APIS:
+            if apiname.startswith('APIQuery') and apiname not in NOT_QUERY_MYSQL_APIS:
                 params = generate_query_params(apiname, params)
 
             msg = eval('inventory.%s()' % apiname)
@@ -477,15 +478,34 @@ Parse command parameters error:
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME]:
                 self.session_uuid = event.inventory.uuid
-                open(SESSION_FILE, 'w').write(self.session_uuid)
+                session_file_writer = open(SESSION_FILE, 'w')
+                session_file_writer.write(self.session_uuid)
+                account_name_field = 'accountName'
+                user_name_field = 'userName'
+
+                if apiname == self.LOGIN_BY_LDAP_MESSAGE_NAME:
+                    self.account_name = event.accountInventory.name
+                    session_file_writer.write("\n" + self.account_name)
+                elif apiname == self.LOGIN_MESSAGE_NAME:
+                    self.account_name = all_params[account_name_field]
+                    session_file_writer.write("\n" + self.account_name)
+                elif apiname == self.LOGIN_BY_USER_NAME:
+                    self.account_name = all_params[account_name_field]
+                    self.user_name = all_params[user_name_field]
+                    session_file_writer.write("\n" + self.account_name)
+                    session_file_writer.write("\n" + self.user_name)
+
+            if apiname == self.LOGOUT_MESSAGE_NAME:
+                self.account_name = None
+                self.user_name = None
 
             result = jsonobject.dumps(event, True)
             print '%s\n' % result
             # print 'Time costing: %fs' % (end_time - start_time)
             self.write_more(line, result)
-        except urllib3.exceptions.MaxRetryError as urlerr:
+        except urllib3.exceptions.MaxRetryError as url_err:
             self.print_error('Is %s reachable? Please make sure the management node is running.' % self.api.api_url)
-            self.print_error(str(urlerr))
+            self.print_error(str(url_err))
             raise ("Server: %s is not reachable" % self.hostname)
         except Exception as e:
             self.print_error(str(e))
@@ -636,7 +656,16 @@ Parse command parameters error:
         print ''
         print_bold()
         print ''
-        cprint('%s%s' % (prompt, readline.get_line_buffer()), end='')
+        prompt_with_account_info = ''
+        if self.account_name:
+            prompt_with_account_info = self.account_name
+            if self.user_name:
+                prompt_with_account_info = prompt_with_account_info + ':' + self.user_name
+        else:
+            prompt_with_account_info = '-'
+        prompt_with_account_info = prompt_with_account_info + ' ' + prompt
+        cprint('%s%s' % (prompt_with_account_info, readline.get_line_buffer()), end='')
+
         # readline.redisplay()
 
     def write_more(self, cmd, result, success=True):
@@ -947,9 +976,9 @@ Parse command parameters error:
         pydoc.pager(help_string)
 
     def __init__(self, options):
-        '''
+        """
         Constructor
-        '''
+        """
         readline.parse_and_bind("tab: complete")
         readline.set_completer(self.complete)
         readline.set_completion_display_matches_hook(self.completer_print)
@@ -990,9 +1019,13 @@ Parse command parameters error:
         self.api_class_params = {}
         self.build_api_parameters()
         self.api = None
+        self.account_name = None
+        self.user_name = None
         self.session_uuid = None
         if os.path.exists(SESSION_FILE):
-            self.session_uuid = open(SESSION_FILE, 'r').readline()
+            session_file_reader = open(SESSION_FILE, 'r')
+            self.session_uuid = session_file_reader.readline()
+            self.account_name = session_file_reader.readline()
 
         self.hostname = options.host
         self.port = options.port
