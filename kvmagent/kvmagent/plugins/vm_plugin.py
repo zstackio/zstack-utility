@@ -85,6 +85,26 @@ class StopVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(StopVmResponse, self).__init__()
 
+class SuspendVmCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SuspendVmCmd, self).__init__()
+        self.uuid = None
+        self.timeout = None
+
+class SuspendVmResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SuspendVmResponse, self).__init__()
+
+class ResumeVmCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ResumeVmCmd, self).__init__()
+        self.uuid = None
+        self.timeout = None
+
+class ResumeVmResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ResumeVmResponse, self).__init__()
+
 class RebootVmCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(RebootVmCmd, self).__init__()
@@ -800,6 +820,10 @@ class VmOperationJudger(object):
         elif self.op == VmPlugin.VM_OP_REBOOT:
             self.expected_events[LibvirtEventManager.EVENT_STARTED] = LibvirtEventManager.EVENT_STARTED
             self.expected_events[LibvirtEventManager.EVENT_STOPPED] = LibvirtEventManager.EVENT_STOPPED
+        elif self.op == VmPlugin.VM_OP_SUSPEND:
+            self.expected_events[LibvirtEventManager.EVENT_SUSPENDED] = LibvirtEventManager.EVENT_SUSPENDED
+        elif self.op == VmPlugin.VM_OP_RESUME:
+            self.expected_events[LibvirtEventManager.EVENT_RESUMED] = LibvirtEventManager.EVENT_RESUMED
         else:
             raise Exception('unknown vm operation[%s]' % self.op)
 
@@ -1043,6 +1067,40 @@ class Vm(object):
 
     def destroy(self):
         self.stop(graceful=False)
+
+    def suspend(self,timeout=5):
+        def loop_suspend(_):
+            try:
+                self.domain.suspend()
+            except:
+                pass
+            try:
+                return self.wait_for_state_change(self.VM_STATE_PAUSED)
+            except libvirt.libvirtError as ex:
+                error_code = ex.get_error_code()
+                if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                    return True
+                else:
+                    raise
+        if not linux.wait_callback_success(loop_suspend, None, timeout = 10 ):
+            raise kvmagent.KvmError('failed to suspend vm ,timeout after 10 secs')
+
+    def resume(self,timeout=5):
+        def loop_resume(_):
+            try:
+                self.domain.resume()
+            except:
+                pass
+            try:
+                return self.wait_for_state_change(self.VM_STATE_RUNNING)
+            except libvirt.libvirtError as ex:
+                error_code = ex.get_error_code()
+                if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+                    return True
+                else:
+                    raise
+        if not linux.wait_callback_success(loop_resume, None, timeout = 60 ):
+            raise kvmagent.KvmError('failed to resume vm ,timeout after 60 secs')
 
     def harden_console(self, mgmt_ip):
         id = self.domain_xmlobject.metadata.internalId.text_
@@ -2242,6 +2300,8 @@ class Vm(object):
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
     KVM_STOP_VM_PATH = "/vm/stop"
+    KVM_SUSPEND_VM_PATH = "/vm/suspend"
+    KVM_RESUME_VM_PATH = "/vm/resume"
     KVM_REBOOT_VM_PATH = "/vm/reboot"
     KVM_DESTROY_VM_PATH = "/vm/destroy"
     KVM_CHANGE_CPUMEM_PATH = "/vm/changecpumem"
@@ -2270,6 +2330,8 @@ class VmPlugin(kvmagent.KvmAgent):
     VM_OP_REBOOT = "reboot"
     VM_OP_MIGRATE = "migrate"
     VM_OP_DESTROY = "destroy"
+    VM_OP_SUSPEND = "suspend"
+    VM_OP_RESUME = "resume"
 
     timeout_object = linux.TimeoutObject()
     queue = Queue.Queue()
@@ -2533,6 +2595,37 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def suspend_vm(self,req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        try:
+            self._record_operation(cmd.uuid,self.VM_OP_SUSPEND)
+            rsp = SuspendVmResponse()
+            vm = get_vm_by_uuid(cmd.uuid)
+            vm.suspend()
+            logger.debug('successfully, suspend vm [uuid:%s]' % cmd.uuid)
+        except kvmagent.KvmError as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = str(e)
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def resume_vm(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        try:
+            self._record_operation(cmd.uuid, self.VM_OP_RESUME)
+            rsp = ResumeVmResponse()
+            vm = get_vm_by_uuid(cmd.uuid)
+            vm.resume()
+            logger.debug('successfully, resume vm [uuid:%s]' % cmd.uuid)
+        except kvmagent.KvmError as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = str(e)
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
     def reboot_vm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RebootVmResponse()
@@ -2758,6 +2851,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
         http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
         http_server.register_async_uri(self.KVM_STOP_VM_PATH, self.stop_vm)
+        http_server.register_async_uri(self.KVM_SUSPEND_VM_PATH,self.suspend_vm)
+        http_server.register_async_uri(self.KVM_RESUME_VM_PATH, self.resume_vm)
         http_server.register_async_uri(self.KVM_REBOOT_VM_PATH, self.reboot_vm)
         http_server.register_async_uri(self.KVM_DESTROY_VM_PATH, self.destroy_vm)
         http_server.register_async_uri(self.KVM_GET_CONSOLE_PORT_PATH, self.get_console_port)
