@@ -1231,9 +1231,42 @@ def service_status(name, args, host_post_info, ignore_error=False):
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
 
+def replace_content(dest, args, host_post_info):
+    '''
+    This module will replace all instances of a pattern within a file
+    '''
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    handle_ansible_info("INFO: replace file %s content" % dest, host_post_info, "INFO")
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'replace'
+    runner_args.module_args = "dest=%s %s" % (dest, args)
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+    else:
+        if 'failed' in result['contacted'][host]:
+            description = "ERROR: replace file %s content failed" % dest
+            handle_ansible_failed(description, result, host_post_info)
+        else:
+            details = "SUCC: replace file %s content successfully" % dest
+            handle_ansible_info(details, host_post_info, "INFO")
+            return True
 
 def update_file(dest, args, host_post_info):
-    '''Use this function to change the file content'''
+    '''
+    This module will search a file for a line, and ensure that it is present or absent. This is primarily useful
+    when you want to change a single line in a file only
+    '''
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -1440,8 +1473,12 @@ class ZstackLib(object):
         pip_version = "7.0.3"
         yum_server = args.yum_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
-        #require_python_env for deploy host which may not need python environment
-        require_python_env = args.require_python_env
+        #require_python_env for deploy host which may not need python environment, default is true
+        if args.require_python_env is not None:
+            require_python_env = args.require_python_env
+        else:
+            require_python_env = "true"
+
         if distro == "CentOS" or distro == "RedHat":
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
@@ -1616,8 +1653,6 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                                   "-y $pkg; done;") % zstack_repo
                         run_remote_command(command, host_post_info)
 
-                    # enable ntp service for RedHat
-                    service_status("ntpd", "state=restarted enabled=yes", host_post_info)
                 else:
                     command = (
                                   "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python ntp "
@@ -1625,7 +1660,9 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                                   "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
                     # enable ntp service for RedHat
-                    service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+                service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+                replace_content("/etc/ntp.conf","regexp='^server ' replace='#server ' backup=yes", host_post_info)
+                update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
 
         elif distro == "Debian" or distro == "Ubuntu":
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
@@ -1675,6 +1712,8 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
                 host_post_info.post_label = "ansible.shell.enable.service"
                 host_post_info.post_label_param = "ntp"
                 run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
+                replace_content("/etc/ntp.conf","regexp='^server ' replace='#server ' backup=yes", host_post_info)
+                update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
 
 
         else:
