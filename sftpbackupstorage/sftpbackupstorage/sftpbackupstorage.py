@@ -74,6 +74,7 @@ class DownloadCmd(AgentCommand):
         self.timeout = None
         self.urlScheme = None
         self.installPath = None
+        self.inject = None
 
 class DownloadResponse(AgentResponse):
     def __init__(self):
@@ -83,6 +84,7 @@ class DownloadResponse(AgentResponse):
         self.size = None
         self.actualSize = None
         self.format = None
+        self.inject = None
 
 class WriteImageMetaDataResponse(AgentResponse):
     def __init__(self):
@@ -210,6 +212,13 @@ class SftpBackupStorageAgent(object):
         rsp = WriteImageMetaDataResponse()
         return jsonobject.dumps(rsp)
 
+    def _inject_qemu_ga(self, install_path):
+        cmd = "bash /usr/local/zstack/imagestore/qemu-ga/auto-qemu-ga.sh %s" % install_path
+        try:
+            bash_o(cmd, True)
+        except BashError as e:
+            logger.warn(e)
+
     @in_bash
     @replyerror
     def download_image(self, req):
@@ -221,6 +230,8 @@ class SftpBackupStorageAgent(object):
             return linux.wget(url, workdir=workdir, rename=name, timeout=timeout, interval=2, callback=percentage_callback, callback_data=url)
         
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        logger.debug("cmd is: %s" % cmd)
+        logger.debug("installPath is: %s" % cmd.installPath)
         rsp = DownloadResponse()
         supported_schemes = [self.URL_HTTP, self.URL_HTTPS, self.URL_FILE]
         if cmd.urlScheme not in supported_schemes:
@@ -247,23 +258,31 @@ class SftpBackupStorageAgent(object):
                 rsp.success = False
                 rsp.error = str(e)
                 return jsonobject.dumps(rsp)
+            logger.debug("path is: %s" % path);
         elif cmd.urlScheme == self.URL_FILE:
             src_path = cmd.url.lstrip('file:')
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
-
+            self._inject_qemu_ga(src_path)
+            logger.debug("src_path is: %s" % src_path)
+            logger.debug("install_path is: %s" % install_path)
             shell.call('yes | cp %s %s' % (src_path, install_path))
 
 
 
         os.chmod(cmd.installPath, stat.S_IRUSR + stat.S_IRGRP + stat.S_IROTH)
 
-        size = os.path.getsize(install_path)
+
         image_format =  bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path).strip('\n')
         if "raw" in image_format:
             if "ISO" in bash_o("file %s" % install_path):
                 image_format = "iso"
+        # elif "qcow2" in image_format:
+        #     if cmd.inject:
+        #         # inject image
+        #         self._inject_qemu_ga(install_path)
+        size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
         (total, avail) = self.get_capacity()
@@ -274,7 +293,8 @@ class SftpBackupStorageAgent(object):
         rsp.availableCapacity = avail
         rsp.format = image_format
         return jsonobject.dumps(rsp)
-    
+
+
     @replyerror
     def delete_image(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
