@@ -3865,12 +3865,12 @@ class APIQueryVolumeSnapshotTreeReply(object):
         self.error = None
 
 
-APIRESETROOTVOLUMEFROMIMAGEMSG_FULL_NAME = 'org.zstack.header.storage.snapshot.APIResetRootVolumeFromImageMsg'
-class APIResetRootVolumeFromImageMsg(object):
-    FULL_NAME='org.zstack.header.storage.snapshot.APIResetRootVolumeFromImageMsg'
+APIREINITVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.storage.snapshot.APIReInitVmInstanceMsg'
+class APIReInitVmInstanceMsg(object):
+    FULL_NAME='org.zstack.header.storage.snapshot.APIReInitVmInstanceMsg'
     def __init__(self):
         #mandatory field
-        self.rootVolumeUuid = NotNoneField()
+        self.vmInstanceUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8102,6 +8102,7 @@ api_names = [
     'APIQueryVolumeSnapshotTreeReply',
     'APIQueryZoneMsg',
     'APIQueryZoneReply',
+    'APIReInitVmInstanceMsg',
     'APIRebootVmInstanceMsg',
     'APIReconnectBackupStorageMsg',
     'APIReconnectConsoleProxyAgentMsg',
@@ -8125,7 +8126,6 @@ api_names = [
     'APIRemoveVmNicFromLoadBalancerMsg',
     'APIReply',
     'APIRequestConsoleAccessMsg',
-    'APIResetRootVolumeFromImageMsg',
     'APIResumeVmInstanceMsg',
     'APIRevertVolumeFromSnapshotMsg',
     'APIRevokeResourceSharingMsg',
