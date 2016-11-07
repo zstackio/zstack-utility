@@ -69,7 +69,7 @@ class ChangePasswd(object):
             except Exception as e:
                 logger.warn(e)
         else:
-            shell.call("virt-copy-out -a %s /etc/shadow ." % self.image)
+            shell.call("virt-copy-out -a %s /etc/shadow ." % self.image, False)
         if not self._check_file("/etc/", "shadow"):
             shell.call('rm -f shadow config grub.cfg grub')
             return False
