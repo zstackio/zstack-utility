@@ -214,6 +214,7 @@ class SftpBackupStorageAgent(object):
 
     def _inject_qemu_ga(self, install_path):
         cmd = "bash /usr/local/zstack/imagestore/qemu-ga/auto-qemu-ga.sh %s" % install_path
+        logger.debug("inject qemu-ga, try to exec: %s" % cmd)
         try:
             bash_o(cmd, True)
         except BashError as e:
@@ -230,8 +231,6 @@ class SftpBackupStorageAgent(object):
             return linux.wget(url, workdir=workdir, rename=name, timeout=timeout, interval=2, callback=percentage_callback, callback_data=url)
         
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        logger.debug("cmd is: %s" % cmd)
-        logger.debug("installPath is: %s" % cmd.installPath)
         rsp = DownloadResponse()
         supported_schemes = [self.URL_HTTP, self.URL_HTTPS, self.URL_FILE]
         if cmd.urlScheme not in supported_schemes:
@@ -258,7 +257,6 @@ class SftpBackupStorageAgent(object):
                 rsp.success = False
                 rsp.error = str(e)
                 return jsonobject.dumps(rsp)
-            logger.debug("path is: %s" % path);
         elif cmd.urlScheme == self.URL_FILE:
             src_path = cmd.url.lstrip('file:')
             src_path = os.path.normpath(src_path)
@@ -266,7 +264,6 @@ class SftpBackupStorageAgent(object):
                 raise Exception('cannot find the file[%s]' % src_path)
             self._inject_qemu_ga(src_path)
             logger.debug("src_path is: %s" % src_path)
-            logger.debug("install_path is: %s" % install_path)
             shell.call('yes | cp %s %s' % (src_path, install_path))
 
 
@@ -276,12 +273,13 @@ class SftpBackupStorageAgent(object):
 
         image_format =  bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path).strip('\n')
         if "raw" in image_format:
+            # skip inject image
             if "ISO" in bash_o("file %s" % install_path):
                 image_format = "iso"
-        # elif "qcow2" in image_format:
-        #     if cmd.inject:
-        #         # inject image
-        #         self._inject_qemu_ga(install_path)
+        elif "qcow2" in image_format:
+            if cmd.inject:
+                # inject image
+                self._inject_qemu_ga(install_path)
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
