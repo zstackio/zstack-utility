@@ -38,6 +38,7 @@ class DownloadRsp(AgentResponse):
         super(DownloadRsp, self).__init__()
         self.size = None
         self.actualSize = None
+        self.inject = None
 
 class GetImageSizeRsp(AgentResponse):
     def __init__(self):
@@ -201,8 +202,9 @@ class CephAgent(object):
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             shell.call('set -o pipefail; wget --no-check-certificate -q %s -O %s ' % (cmd.url, tmp_qemu_name))
-            self._inject_qemu_ga(tmp_qemu_name)
-            shell.call('rbd import --image-format 2 - %s %s/%s' % (tmp_qemu_name, pool, tmp_image_name))
+            if cmd.inject:
+                self._inject_qemu_ga(tmp_qemu_name)
+            shell.call('rbd import --image-format 2 %s %s/%s' % (tmp_qemu_name, pool, tmp_image_name))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
         elif cmd.url.startswith('file://'):
             src_path = cmd.url.lstrip('file:')
@@ -210,7 +212,8 @@ class CephAgent(object):
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
             shell.call('cp -f %s %s' % (src_path, tmp_qemu_name))
-            self._inject_qemu_ga(tmp_qemu_name)
+            if cmd.inject:
+                self._inject_qemu_ga(tmp_qemu_name)
             shell.call("rbd import --image-format 2 %s %s/%s" % (tmp_qemu_name, pool, tmp_image_name))
             actual_size = os.path.getsize(src_path)
         else:

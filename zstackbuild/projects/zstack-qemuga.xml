@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-qemuga builder" basedir="../">
+    <property name="qemuga.bdir" location="${build.dir}/zstack-qemuga" />
+    <property name="qemuga.ansible.dir" location="${ansible.dir}/qemuga/" />
+
+    <target name="build-zstack-qemuga" if="build_war_flag">
+        <makeDir dir="${qemuga.bdir}" />
+
+        <checkProperty property="imagestore.source" />
+        <checkFile file="${imagestore.source}" />
+
+        <delete dir="${imagestore.source}/target/package/qemu-ga" />
+
+        <exec executable="make" dir="${imagestore.source}" failonerror="true">
+            <arg value="cleanQemu" />
+        </exec>
+
+        <exec executable="make" dir="${imagestore.source}" failonerror="true">
+            <arg value="packageQemu" />
+        </exec>
+
+        <copy todir="${qemuga.bdir}/">
+            <fileset dir="${imagestore.source}/target/package">
+                <exclude name="**/*~" />
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-zstack-qemuga">
+        <makeDir dir="${qemuga.ansible.dir}" />
+
+        <copy todir="${qemuga.ansible.dir}">
+            <fileset dir="${qemuga.bdir}/qemu-ga">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+</project>
