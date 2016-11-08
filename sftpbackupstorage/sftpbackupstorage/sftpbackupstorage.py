@@ -262,7 +262,6 @@ class SftpBackupStorageAgent(object):
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
-            self._inject_qemu_ga(src_path)
             logger.debug("src_path is: %s" % src_path)
             shell.call('yes | cp %s %s' % (src_path, install_path))
 

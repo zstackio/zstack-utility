@@ -182,27 +182,40 @@ class CephAgent(object):
     def _parse_install_path(self, path):
         return path.lstrip('ceph:').lstrip('//').split('/')
 
+    def _inject_qemu_ga(self, install_path):
+        cmd = "bash /usr/local/zstack/imagestore/qemu-ga/auto-qemu-ga.sh %s" % install_path
+        logger.debug("inject qemu-ga, try to exec: %s" % cmd)
+        try:
+            bash_o(cmd, True)
+        except BashError as e:
+            logger.warn(e)
+
     @replyerror
     @rollback
     def download(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         pool, image_name = self._parse_install_path(cmd.installPath)
+        tmp_qemu_name = 'tmp-%s_qemu' % image_name
         tmp_image_name = 'tmp-%s' % image_name
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
-            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s'
-                       % (cmd.url, pool, tmp_image_name))
+            shell.call('set -o pipefail; wget --no-check-certificate -q %s -O %s ' % (cmd.url, tmp_qemu_name))
+            self._inject_qemu_ga(tmp_qemu_name)
+            shell.call('rbd import --image-format 2 - %s %s/%s' % (tmp_qemu_name, pool, tmp_image_name))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
         elif cmd.url.startswith('file://'):
             src_path = cmd.url.lstrip('file:')
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
-            shell.call("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
+            shell.call('cp -f %s %s' % (src_path, tmp_qemu_name))
+            self._inject_qemu_ga(tmp_qemu_name)
+            shell.call("rbd import --image-format 2 %s %s/%s" % (tmp_qemu_name, pool, tmp_image_name))
             actual_size = os.path.getsize(src_path)
         else:
             raise Exception('unknown url[%s]' % cmd.url)
+        shell.call('rm -f %s' % tmp_qemu_name)
 
         @rollbackable
         def _1():
