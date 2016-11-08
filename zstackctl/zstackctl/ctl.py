@@ -5493,7 +5493,8 @@ class UpgradeMultiManagementNodeCmd(Command):
                     command = "zstack-ctl stop_node"
                     run_remote_command(command, host_info)
                 else:
-                    warn(colored("Management node %s is unreachable\n" % mn_ip))
+                    # running management node will block upgrade process
+                    error("Management node %s is unreachable, can't stop it, did you add the other management node from this management node ?\n" % mn_ip)
 
         for mn_ip in mn_ip_list:
             host_info = HostPostInfo()
