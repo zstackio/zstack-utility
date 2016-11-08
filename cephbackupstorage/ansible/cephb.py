@@ -2,6 +2,7 @@
 # encoding: utf-8
 import argparse
 from zstacklib import *
+import os
 
 # create log
 logger_dir = "/var/log/zstack/"
@@ -20,6 +21,8 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+qemuga_file_root = "files/qemuga"
+pkg_qemuga = "zstack-qemu-ga.bin"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph backup strorage to host')
@@ -35,6 +38,7 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/cephb/" % zstack_root
 cephb_root = "%s/cephb/package" % zstack_root
+qemuga_root = "%s/cephb/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -141,6 +145,21 @@ copy_arg.src = "%s/zstack-ceph-backupstorage" % file_root
 copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
+
+# if not mevoco, this file does not exist, skip deploy...
+if os.path.exists(qemuga_file_root):
+    # name: copy qemu-ga binary
+    copy_arg = CopyArg()
+    dest_qga_pkg = "%s/%s" % (qemuga_root, pkg_qemuga)
+    copy_arg.src = "%s/%s" % (qemuga_file_root, pkg_qemuga)
+    copy_arg.dest = dest_qga_pkg
+    copy(copy_arg, host_post_info)
+
+    # name: install qemu-ga
+    command = "bash %s %s " % (dest_qga_pkg, pkg_qemuga)
+    run_remote_command(command, host_post_info)
+    handle_ansible_info("################"+command, host_post_info, "INFO")
+
 # name: restart cephbagent
 if distro == "RedHat" or distro == "CentOS":
     command = "service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start && chkconfig zstack-ceph-backupstorage on"

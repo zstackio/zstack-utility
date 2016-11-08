@@ -10,10 +10,10 @@
         <checkProperty property="imagestore.source" />
         <checkFile file="${imagestore.source}" />
 
-        <delete dir="${imagestore.source}/target" />
+        <delete dir="${imagestore.source}/target/package/zstore" />
 
         <exec executable="make" dir="${imagestore.source}" failonerror="true">
-            <arg value="clean" />
+            <arg value="cleanStore" />
         </exec>
 
         <exec executable="make" dir="${imagestore.source}" failonerror="true">
@@ -33,9 +33,6 @@
 
         <copy todir="${imagestorebackupstorage.ansible.dir}">
             <fileset dir="${imagestore.bdir}/zstore">
-                <include name="**/*" />
-            </fileset>
-            <fileset dir="${imagestore.bdir}/qemu-ga">
                 <include name="**/*" />
             </fileset>
         </copy>
