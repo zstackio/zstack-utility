@@ -608,8 +608,8 @@ ia_install_python_gcc_db(){
 
 ia_update_apt(){
     echo_subtitle "Update Apt Source"
-    dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "execute \`dpkg -- configure -a\` failed."
+    dpkg --configure --force-confold -a >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "execute \`dpkg --onfigure --force-confold -a\` failed."
     #Fix Ubuntu conflicted dpkg lock issue. 
     if [ -f /etc/init.d/unattended-upgrades ]; then
         /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1706,8 +1706,8 @@ EOF
         which systemctl >/dev/null 2>&1
         [ $? -eq 0 ] && systemctl stop apt-daily >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-    dpkg --configure -a >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "execute \`dpkg --configure -a\` failed."
+    dpkg --configure --force-confold -a >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "execute \`dpkg --configure --force-confold -a\` failed."
     apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
     apt-get update -o Acquire::http::No-Cache=True --fix-missing>>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then
