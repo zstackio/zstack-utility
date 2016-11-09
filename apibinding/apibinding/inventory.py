@@ -3500,7 +3500,7 @@ class APIChangePrimaryStorageStateMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         #mandatory field
-        #valid values: [enable, disable]
+        #valid values: [enable, disable, maintain]
         self.stateEvent = NotNoneField()
         self.session = None
         self.timeout = None
@@ -5373,6 +5373,60 @@ class APIUpdateZoneMsg(object):
         self.description = None
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APICreateIPsecConnectionMsg'
+class APICreateIPsecConnectionMsg(object):
+    FULL_NAME='org.zstack.ipsec.APICreateIPsecConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.description = NotNoneField()
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        #mandatory field
+        self.peerAddress = NotNoneField()
+        #valid values: [psk, certs]
+        self.authMode = None
+        #mandatory field
+        self.authKey = NotNoneField()
+        #mandatory field
+        self.vipUuid = NotNoneField()
+        #mandatory field
+        self.peerCidrs = NotNoneList()
+        #valid values: [md5, sha1, sha256, sha384, sha512]
+        self.ikeAuthAlgorithm = None
+        #valid values: [3des, aes-128, aes-192, aes-256]
+        self.ikeEncryptionAlgorithm = None
+        self.ikeDhGroup = None
+        #valid values: [md5, sha1, sha256, sha384, sha512]
+        self.policyAuthAlgorithm = None
+        #valid values: [3des, aes-128, aes-192, aes-256]
+        self.policyEncryptionAlgorithm = None
+        self.pfs = None
+        #valid values: [tunnel, transport]
+        self.policyMode = None
+        #valid values: [esp, ah, ah-esp]
+        self.transformProtocol = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIDeleteIPsecConnectionMsg'
+class APIDeleteIPsecConnectionMsg(object):
+    FULL_NAME='org.zstack.ipsec.APIDeleteIPsecConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7351,6 +7405,23 @@ class APIRemoveMonFromFusionstorBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEFUSIONSTORBACKUPSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+class APIUpdateFusionstorBackupStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDFUSIONSTORPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIAddFusionstorPrimaryStorageMsg'
 class APIAddFusionstorPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.fusionstor.primary.APIAddFusionstorPrimaryStorageMsg'
@@ -7417,6 +7488,23 @@ class APIRemoveMonFromFusionstorPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEFUSIONSTORPRIMARYSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+class APIUpdateFusionstorPrimaryStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7728,6 +7816,7 @@ api_names = [
     'APICreateDataVolumeTemplateFromVolumeMsg',
     'APICreateDiskOfferingMsg',
     'APICreateEipMsg',
+    'APICreateIPsecConnectionMsg',
     'APICreateInstanceOfferingMsg',
     'APICreateL2NoVlanNetworkMsg',
     'APICreateL2VlanNetworkMsg',
@@ -7768,6 +7857,7 @@ api_names = [
     'APIDeleteEipMsg',
     'APIDeleteExportedImageFromBackupStorageMsg',
     'APIDeleteHostMsg',
+    'APIDeleteIPsecConnectionMsg',
     'APIDeleteImageMsg',
     'APIDeleteInstanceOfferingMsg',
     'APIDeleteIpRangeMsg',
@@ -8179,6 +8269,8 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEipMsg',
+    'APIUpdateFusionstorBackupStorageMonMsg',
+    'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIUpdateGlobalConfigMsg',
     'APIUpdateHostMsg',
     'APIUpdateImageMsg',
@@ -10370,6 +10462,7 @@ class VCenterInventory(object):
         self.description = None
         self.domainName = None
         self.userName = None
+        self.zoneUuid = None
         self.password = None
         self.https = None
         self.state = None
@@ -10402,6 +10495,11 @@ class VCenterInventory(object):
             self.userName = inv.userName
         else:
             self.userName = None
+
+        if hasattr(inv, 'zoneUuid'):
+            self.zoneUuid = inv.zoneUuid
+        else:
+            self.zoneUuid = None
 
         if hasattr(inv, 'password'):
             self.password = inv.password
@@ -11093,6 +11191,19 @@ class QueryObjectHostInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
+class QueryObjectIPsecConnectionInventory(object):
+     PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','l3NetworkUuid','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['peerCidrs']
+     QUERY_OBJECT_MAP = {
+        'peerCidrs' : 'QueryObjectIPsecPeerCidrInventory',
+     }
+
+class QueryObjectIPsecPeerCidrInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','cidr','uuid','connectionUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectImageBackupStorageRefInventory(object):
      PRIMITIVE_FIELDS = ['installPath','lastOpDate','imageUuid','backupStorageUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','backupStorage']
@@ -11445,7 +11556,7 @@ class QueryObjectVCenterBackupStorageInventory(object):
      }
 
 class QueryObjectVCenterInventory(object):
-     PRIMITIVE_FIELDS = ['domainName','name','lastOpDate','description','https','state','userName','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['domainName','name','zoneUuid','lastOpDate','description','https','state','userName','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
