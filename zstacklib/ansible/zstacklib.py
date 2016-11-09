@@ -1660,9 +1660,9 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                                   "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
                     # enable ntp service for RedHat
-                service_status("ntpd", "state=restarted enabled=yes", host_post_info)
                 replace_content("/etc/ntp.conf","regexp='^server ' replace='#server ' backup=yes", host_post_info)
                 update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
+                service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
         elif distro == "Debian" or distro == "Ubuntu":
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
@@ -1714,6 +1714,7 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
                 run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
                 replace_content("/etc/ntp.conf","regexp='^server ' replace='#server ' backup=yes", host_post_info)
                 update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
+                service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
 
         else:
