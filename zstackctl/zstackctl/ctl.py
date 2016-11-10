@@ -4502,13 +4502,19 @@ class CollectLogCmd(Command):
             self.get_db(collect_dir)
         if args.mn_only is not True:
             host_vo = get_host_list("HostVO")
+
             #collect host log
             for host in host_vo:
                 if args.host is not None:
                     host_ip = args.host
                 else:
                     host_ip = host['managementIp']
-                self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir)
+                    host_type = host['hypervisorType']
+                    if host_type == "KVM":
+                        self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir)
+                    else:
+                        warn("host %s is not a KVM host, skip..." % host_ip)
+                        break
                 if args.host is not None:
                     break
             #collect bs log
