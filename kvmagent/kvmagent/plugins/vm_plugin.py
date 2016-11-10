@@ -1,30 +1,26 @@
 '''
 @author: Frank
 '''
+import Queue
+import os.path
+import time
+import traceback
+import xml.etree.ElementTree as etree
+
+import libvirt
+import zstacklib.utils.iptables as iptables
+import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
 from kvmagent.plugins import generate_passwd
-from zstacklib.utils import jsonobject
-from zstacklib.utils import xmlobject
 from zstacklib.utils import http
+from zstacklib.utils import jsonobject
+from zstacklib.utils import lichbd
+from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import lichbd
-from zstacklib.utils import sizeunit
-from zstacklib.utils import uuidhelper
-from zstacklib.utils import linux
-import zstacklib.utils.lock as lock
 from zstacklib.utils import thread
-import functools
-import zstacklib.utils.iptables as iptables
-import os.path
-import re
-import xml.etree.ElementTree as etree
-import libvirt
-import traceback
-import Queue
-import sys
-import time
-import copy
+from zstacklib.utils import uuidhelper
+from zstacklib.utils import xmlobject
 
 logger = log.get_logger(__name__)
 
