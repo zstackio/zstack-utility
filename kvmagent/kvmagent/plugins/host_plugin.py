@@ -12,6 +12,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+from zstacklib.utils.bash import *
 import os.path
 import re
 import threading
@@ -20,6 +21,7 @@ import time
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
+        self.iptablesSucc = None
 
 class HostCapacityResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -96,6 +98,25 @@ class HostPlugin(kvmagent.KvmAgent):
 
         raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
+    @in_bash
+    def apply_iptables_rules(self, rules):
+        logger.debug("starting add iptables rules : %s" % rules)
+        if len(rules) != 0 and rules is not None:
+            for item in rules:
+                rule = item.strip("'").strip('"')
+                clean_rule = ' '.join(rule.split(' ')[1:])
+                ret = bash_r("iptables -C %s " % clean_rule)
+                if ret == 0:
+                    continue
+                elif ret == 1:
+                    # didn't find this rule
+                    set_rules_ret = bash_r("iptables %s" % rule)
+                    if set_rules_ret != 0:
+                        raise Exception('cannot set iptables rule: %s' % rule)
+                else:
+                    raise Exception('check iptables rule: %s failed' % rule)
+        return True
+
     @kvmagent.replyerror
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -108,7 +129,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.qemuVersion = self.qemu_version
 
         vm_plugin.cleanup_stale_vnc_iptable_chains()
-
+        apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
+        rsp.iptablesSucc = apply_iptables_result
         return jsonobject.dumps(rsp)
     
     @kvmagent.replyerror
