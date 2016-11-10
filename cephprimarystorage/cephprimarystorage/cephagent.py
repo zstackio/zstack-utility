@@ -1,22 +1,20 @@
 __author__ = 'frank'
 
+import functools
+import os
+import pprint
+import traceback
+
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
-import zstacklib.utils.log as log
-import zstacklib.utils.shell as shell
-import zstacklib.utils.iptables as iptables
 import zstacklib.utils.jsonobject as jsonobject
-import zstacklib.utils.lock as lock
 import zstacklib.utils.linux as linux
+import zstacklib.utils.lock as lock
+import zstacklib.utils.shell as shell
 import zstacklib.utils.sizeunit as sizeunit
-from zstacklib.utils import plugin
-from zstacklib.utils.rollback import rollback, rollbackable
 from zstacklib.utils.bash import *
-import os
-import functools
-import traceback
-import pprint
-import threading
+from zstacklib.utils.rollback import rollback, rollbackable
+from kvmagent.plugins import generate_passwd
 
 logger = log.get_logger(__name__)
 
@@ -26,6 +24,13 @@ class AgentResponse(object):
         self.error = error if error else ''
         self.totalCapacity = None
         self.availableCapacity = None
+
+class SetPasswordResponse(AgentResponse):
+    def __init__(self):
+        self.cephInstallPath = None
+        self.vmUuid = None
+        self.account = None
+        self.password = None
 
 class InitRsp(AgentResponse):
     def __init__(self):
@@ -104,6 +109,7 @@ class CephAgent(object):
     PING_PATH = "/ceph/primarystorage/ping"
     GET_FACTS = "/ceph/primarystorage/facts"
     DELETE_IMAGE_CACHE = "/ceph/primarystorage/deleteimagecache"
+    SET_ROOT_PASSWORD = "/ceph/primarystorage/setrootpassword";
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -128,6 +134,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
+        self.http_server.register_async_uri(self.SET_ROOT_PASSWORD, self.set_root_password)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -155,6 +162,49 @@ class CephAgent(object):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
         return long(o.size_)
+
+    @replyerror
+    @in_bash
+    def set_root_password(self, req):
+        rsp = SetPasswordResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp.cpath = cmd.cephInstallPath
+        rsp.uuid = cmd.vmUuid
+        rsp.account = cmd.account
+        rsp.password = cmd.password
+        # 1 export the ceph image to local
+        # 2 convert raw image to qcow2
+        # 3 inject password
+        # 4 convert qcow2 to raw
+        # 5 import the local file to ceph
+        # 6 delete the origin ceph image
+        # 7 mv the new ceph image to instead old one
+        # 8 delete the local file
+        ceph_path = cmd.cephInstallPath[7:]
+        local_file_name = cmd.cephInstallPath.split("/")[-1]
+        shell.call('rm -f %s %s.qcow2' % (local_file_name, local_file_name))
+        try:
+            shell.call('rbd export %s %s' % (ceph_path, local_file_name))
+            shell.call('qemu-img convert -O qcow2 %s %s.qcow2' % (local_file_name, local_file_name))
+            self._change_vm_password(cmd)
+            shell.call('qemu-img convert -O raw %s.qcow2 %s' % (local_file_name, local_file_name))
+            shell.call('rbd import %s %s.new' % (local_file_name, ceph_path))
+            shell.call('rbd rm %s' % ceph_path)
+            shell.call('rbd mv %s.new %s ' % (ceph_path, ceph_path))
+            rsp.success = True
+        except Exception as e:
+            logger.warn("catch exception while change stopped vm which based on ceph.")
+            rsp.error = str(e)
+            rsp.success = False
+        shell.call('rm -f %s %s.qcow2' % (local_file_name, local_file_name))
+
+    def _change_vm_password(self, cmd):
+        chp = generate_passwd.ChangePasswd()
+        chp.password = cmd.password
+        chp.account = cmd.account
+        chp.image = cmd.cephInstallPath.split("/")[-1]
+        if not chp.generate_passwd():
+            raise Exception('inject passwd failed.')
 
     @replyerror
     @in_bash
