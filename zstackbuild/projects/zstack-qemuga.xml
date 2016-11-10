@@ -28,7 +28,7 @@
         </copy>
     </target>
 
-    <target name="assemble-zstack-qemuga">
+    <target name="assemble-zstack-qemuga" if="build_war_flag">
         <makeDir dir="${qemuga.ansible.dir}" />
 
         <copy todir="${qemuga.ansible.dir}">
