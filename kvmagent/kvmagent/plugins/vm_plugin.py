@@ -1,30 +1,26 @@
 '''
 @author: Frank
 '''
+import Queue
+import os.path
+import time
+import traceback
+import xml.etree.ElementTree as etree
+
+import libvirt
+import zstacklib.utils.iptables as iptables
+import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
 from kvmagent.plugins import generate_passwd
-from zstacklib.utils import jsonobject
-from zstacklib.utils import xmlobject
 from zstacklib.utils import http
+from zstacklib.utils import jsonobject
+from zstacklib.utils import lichbd
+from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import lichbd
-from zstacklib.utils import sizeunit
-from zstacklib.utils import uuidhelper
-from zstacklib.utils import linux
-import zstacklib.utils.lock as lock
 from zstacklib.utils import thread
-import functools
-import zstacklib.utils.iptables as iptables
-import os.path
-import re
-import xml.etree.ElementTree as etree
-import libvirt
-import traceback
-import Queue
-import sys
-import time
-import copy
+from zstacklib.utils import uuidhelper
+from zstacklib.utils import xmlobject
 
 logger = log.get_logger(__name__)
 
@@ -1853,6 +1849,11 @@ class Vm(object):
         # check the vm state first, then choose the method in different way
         state = get_all_vm_states().get(uuid)
         if state == Vm.VM_STATE_RUNNING:
+            if cmd.ip:
+                # before set-user-password, we must check if os ready in the guest
+                out = shell.call('nc -i 0.5 -w 0.5 %s 22' % cmd.ip)
+                if out.find("SSH") < 0:
+                    raise kvmagent.KvmError("OS in vm is not ready, please try it later.")
             # running state: exec virsh set-user-password to connect the qemu-ga
             shell.call('virsh set-user-password %s %s %s' % (self.uuid, \
                 cmd.accountPerference.userAccount, cmd.accountPerference.accountPassword))
