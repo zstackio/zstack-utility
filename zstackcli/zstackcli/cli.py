@@ -447,7 +447,7 @@ Parse command parameters error:
             self.session_uuid = None
             self.account_name = None
             self.user_name = None
-            open(SESSION_FILE, 'w').close()
+            open(SESSION_FILE, 'w+').close()
 
         if line.startswith('#'):
             return
