@@ -14,7 +14,7 @@ import zstacklib.utils.shell as shell
 import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
-from kvmagent.plugins import generate_passwd
+from zstacklib.utils import generate_passwd
 
 logger = log.get_logger(__name__)
 
@@ -188,7 +188,7 @@ class CephAgent(object):
             shell.call('qemu-img convert -O qcow2 %s %s.qcow2' % (local_file_name, local_file_name))
             self._change_vm_password(cmd)
             shell.call('qemu-img convert -O raw %s.qcow2 %s' % (local_file_name, local_file_name))
-            shell.call('rbd import %s %s.new' % (local_file_name, ceph_path))
+            shell.call('rbd import --image-format 2 %s %s.new' % (local_file_name, ceph_path))
             shell.call('rbd rm %s' % ceph_path)
             shell.call('rbd mv %s.new %s ' % (ceph_path, ceph_path))
             rsp.success = True
