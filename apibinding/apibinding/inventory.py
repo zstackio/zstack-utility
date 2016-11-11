@@ -5385,8 +5385,7 @@ class APICreateIPsecConnectionMsg(object):
     def __init__(self):
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.description = NotNoneField()
+        self.description = None
         #mandatory field
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
@@ -5431,6 +5430,37 @@ class APIDeleteIPsecConnectionMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIQUERYIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIQueryIPSecConnectionMsg'
+class APIQueryIPSecConnectionMsg(object):
+    FULL_NAME='org.zstack.ipsec.APIQueryIPSecConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYIPSECCONNECTIONREPLY_FULL_NAME = 'org.zstack.ipsec.APIQueryIPSecConnectionReply'
+class APIQueryIPSecConnectionReply(object):
+    FULL_NAME='org.zstack.ipsec.APIQueryIPSecConnectionReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
 
 
 APIADDKVMHOSTMSG_FULL_NAME = 'org.zstack.kvm.APIAddKVMHostMsg'
@@ -8107,6 +8137,8 @@ api_names = [
     'APIQueryGlobalConfigReply',
     'APIQueryHostMsg',
     'APIQueryHostReply',
+    'APIQueryIPSecConnectionMsg',
+    'APIQueryIPSecConnectionReply',
     'APIQueryImageMsg',
     'APIQueryImageReply',
     'APIQueryImageStoreBackupStorageMsg',
@@ -11742,6 +11774,7 @@ queryMessageInventoryMap = {
      'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
      'APIQueryGlobalConfigMsg' : QueryObjectGlobalConfigInventory,
      'APIQueryHostMsg' : QueryObjectHostInventory,
+     'APIQueryIPSecConnectionMsg' : QueryObjectIPsecConnectionInventory,
      'APIQueryImageMsg' : QueryObjectImageInventory,
      'APIQueryImageStoreBackupStorageMsg' : QueryObjectImageStoreBackupStorageInventory,
      'APIQueryInstanceOfferingMsg' : QueryObjectInstanceOfferingInventory,
