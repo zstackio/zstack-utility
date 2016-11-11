@@ -145,8 +145,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         for f in out.split('\n'):
             f = f.strip(' \t\r\n')
             if not f: continue
-            backing_file = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % f)
-            backing_file = backing_file.strip(' \t\r\n')
+            backing_file = linux.qcow2_get_backing_file(f)
             if backing_file == cmd.path:
                 rsp.referencePaths.append(f)
 
@@ -169,8 +168,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def get_backing_file_path(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % cmd.path)
-        out = out.strip(' \t\r\n')
+        out = linux.qcow2_get_backing_file(cmd.path)
         rsp = GetBackingFileRsp()
 
         if out:
@@ -214,7 +212,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @in_bash
     def copy_bits_to_remote(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        for path in cmd.paths:
+        chain = sum([linux.qcow2_get_file_chain(p) for p in cmd.paths], [])
+        for path in set(chain):
             PATH = path
             PASSWORD = cmd.dstPassword
             USER = cmd.dstUsername
@@ -237,8 +236,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 raise Exception('cannot find the backing file[%s]' % sp.parentPath)
 
             if sp.parentPath:
-                out = shell.call("qemu-img info %s | grep 'backing file' | cut -d ':' -f 2" % sp.path)
-                out = out.strip(' \t\r\n')
+                out = linux.qcow2_get_backing_file(sp.path)
 
                 if sp.parentPath != out:
                     raise Exception("resource[Snapshot or Volume, uuid:%s, path:%s]'s backing file[%s] is not equal to %s" %
