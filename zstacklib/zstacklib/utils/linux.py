@@ -542,16 +542,23 @@ def qcow2_virtualsize(file_path):
     out = cmd.stdout.strip(' \t\r\n')
     return long(out)
 
-def get_qcow2_base_image_path_recusively(path):
-    def get(p):
-        out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % p)
-        out = out.strip(' \t\r\n')
-        if out:
-            return get(out)
-        else:
-            return p
+def qcow2_get_backing_file(path):
+    out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % path)
+    return out.strip(' \t\r\n')
 
-    return get(path)
+# Get derived file and all its backing files
+def qcow2_get_file_chain(path):
+    chain = [ path ]
+    bf = qcow2_get_backing_file(path)
+    while bf:
+        chain.append(bf)
+        bf = qcow2_get_backing_file(bf)
+
+    return chain
+
+def get_qcow2_base_image_path_recusively(path):
+    chain = qcow2_get_file_chain(path)
+    return chain[-1]
 
 def rmdir_if_empty(dirpath):
     try:
