@@ -3094,6 +3094,20 @@ class QueryHostAction(inventory.APIQueryHostMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryIPSecConnectionAction(inventory.APIQueryIPSecConnectionMsg):
+    def __init__(self):
+        super(QueryIPSecConnectionAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryIPSecConnectionAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryImageAction(inventory.APIQueryImageMsg):
     def __init__(self):
         super(QueryImageAction, self).__init__()
