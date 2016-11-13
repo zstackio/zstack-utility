@@ -1946,11 +1946,11 @@ class Vm(object):
         if state == Vm.VM_STATE_RUNNING:
             if cmd.ip:
                 # before set-user-password, we must check if os ready in the guest
-                out = shell.call('nc -i 0.5 -w 0.5 %s 22' % cmd.ip)
+                out = shell.call('nc -i 0.5 -w 0.5 %s 22' % cmd.ip, False)
                 if out.find("SSH") < 0:
                     raise kvmagent.KvmError("OS in vm is not ready, please try it later.")
             # running state: exec virsh set-user-password to connect the qemu-ga
-            shell.call('virsh set-user-password %s %s %s' % (self.uuid, \
+            shell.call('virsh set-user-password %s %s %s' % (self.uuid,
                                                              cmd.accountPerference.userAccount,
                                                              cmd.accountPerference.accountPassword))
         else:

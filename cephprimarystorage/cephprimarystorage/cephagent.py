@@ -202,7 +202,7 @@ class CephAgent(object):
         chp = generate_passwd.ChangePasswd()
         chp.password = cmd.password
         chp.account = cmd.account
-        chp.image = cmd.cephInstallPath.split("/")[-1]
+        chp.image = cmd.cephInstallPath.split("/")[-1]+".qcow2"
         if not chp.generate_passwd():
             raise Exception('inject passwd failed.')
 
