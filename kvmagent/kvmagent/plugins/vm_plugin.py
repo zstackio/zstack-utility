@@ -1953,7 +1953,7 @@ class Vm(object):
         enable = False
         retry_time = 0
         while time.time() < finish_time:
-            info_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-info"}\'' % self.uuid)
+            info_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-info"}\'' % self.uuid, False)
             info = jsonobject.loads(info_json)
             enable = self._check_qemuga_status(info)
             if enable:
