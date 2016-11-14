@@ -962,8 +962,9 @@ is_enable_ntpd(){
             echo "server 0.pool.ntp.org iburst" >> /etc/ntp.conf
             echo "server 1.pool.ntp.org iburst" >> /etc/ntp.conf
         fi
-        chkconfig ntpd on >>$ZSTACK_INSTALL_LOG 2>&1
-        service ntpd restart >>$ZSTACK_INSTALL_LOG 2>&1
+        systemctl disable chronyd.service >> $ZSTACK_INSTALL_LOG 2>&1
+        systemctl enable ntpd >> $ZSTACK_INSTALL_LOG 2>&1
+        systemctl restart ntpd >> $ZSTACK_INSTALL_LOG 2>&1
     else
         grep '^server 0.ubuntu.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
         if [ $? -ne 0 ]; then
@@ -976,6 +977,7 @@ is_enable_ntpd(){
     if [ $? -ne 0 ];then
         fail "failed to enable ntpd service."
     fi
+
     pass
 }
 
