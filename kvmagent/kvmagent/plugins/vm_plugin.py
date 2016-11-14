@@ -1951,13 +1951,15 @@ class Vm(object):
     def _wait_until_qemuga_ready(self, timeout):
         finish_time = time.time()+timeout
         enable = False
-        retry_time = 0
         while time.time() < finish_time:
             info_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-info"}\'' % self.uuid, False)
-            info = jsonobject.loads(info_json)
-            enable = self._check_qemuga_status(info)
-            if enable:
-                return enable
+            try:
+                info = jsonobject.loads(info_json)
+                enable = self._check_qemuga_status(info)
+                if enable:
+                    return enable
+            except Exception as err:
+                logger.warn(err.message)
             time.sleep(0.1)
         if not enable:
             raise kvmagent.KvmError("qemu-ga is not ready...")
@@ -2610,7 +2612,7 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ChangeVmPasswordRsp()
         vm = get_vm_by_uuid(cmd.accountPerference.vmUuid, False)
-        logger.debug('get vm %s from vmUuid: %s' % (vm, cmd.accountPerference.vmUuid))
+        logger.debug('get vmUuid: %s' % cmd.accountPerference.vmUuid)
         try:
             if not vm:
                 raise kvmagent.KvmError('vm is not in running state.')
