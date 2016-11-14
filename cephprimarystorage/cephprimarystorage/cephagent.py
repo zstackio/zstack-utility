@@ -197,7 +197,6 @@ class CephAgent(object):
             rsp.error = str(e)
             rsp.success = False
         shell.call('rm -f %s %s.qcow2' % (local_file_name, local_file_name))
-        rsp.success = True
         return jsonobject.dumps(rsp)
 
     def _change_vm_password(self, cmd):

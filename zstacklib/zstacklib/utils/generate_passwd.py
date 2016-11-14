@@ -24,10 +24,15 @@ class ChangePasswd(object):
     def _replace_shadow(self):
         crypt_passwd = crypt.crypt(self.password, crypt.mksalt(crypt.METHOD_SHA512))
         replace_cmd = "egrep \"^%s:\" shadow|awk -v passwd='%s' -F \":\" \'{$2=passwd;OFS=\":\";print}\'" % (self.account, crypt_passwd)
-        replace_passwd = shell.call(replace_cmd).strip('\n')
+        replace_passwd = shell.call(replace_cmd, False).strip('\n')
+        if not replace_passwd:
+            logger.warn('user [%s] not exist!' % self.account)
+            shell.call('rm -f shadow config grub.cfg grub')
+            raise Exception('user [%s] not exist!' % self.account)
         logger.debug("crypt_passwd is: %s, replace_passwd is: %s" % (crypt_passwd, replace_passwd.replace('$', '\$')))
         sed_cmd = "sed -i \"s!^%s:.*\\$!%s!\" shadow" % (self.account, replace_passwd.replace('$', '\$'))
         shell.call(sed_cmd)
+
         shell.call("virt-copy-in -a %s shadow /etc/" % self.image)
     def _close_selinux(self):
         # close selinux under CentOS
