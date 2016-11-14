@@ -2890,26 +2890,21 @@ class InstallHACmd(Command):
             update_file("/etc/hosts", "line='%s zstack-2'" % args.host2, self.host3_post_info)
             update_file("/etc/hosts", "line='%s zstack-3'" % args.host3, self.host3_post_info)
 
-        command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
-                       " ; iptables-save > /dev/null 2>&1" % (self.host2_post_info.host, self.host2_post_info.host)
+        #save iptables at last
+        command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host2_post_info.host, self.host2_post_info.host)
         run_remote_command(command, self.host1_post_info)
         if args.host3_info is not False:
-            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
-                           " ; iptables-save > /dev/null 2>&1" % (self.host3_post_info.host, self.host3_post_info.host)
+            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host3_post_info.host, self.host3_post_info.host)
             run_remote_command(command, self.host1_post_info)
-        command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
-                       " ; iptables-save > /dev/null 2>&1" % (self.host1_post_info.host, self.host1_post_info.host)
+        command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host1_post_info.host, self.host1_post_info.host)
         run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
-                           " ; iptables-save > /dev/null 2>&1" % (self.host3_post_info.host, self.host3_post_info.host)
+            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host3_post_info.host, self.host3_post_info.host)
             run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
-                           " ; iptables-save > /dev/null 2>&1" % (self.host1_post_info.host, self.host1_post_info.host)
+            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host1_post_info.host, self.host1_post_info.host)
             run_remote_command(command, self.host3_post_info)
-            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" \
-                           " ; iptables-save > /dev/null 2>&1" % (self.host2_post_info.host, self.host2_post_info.host)
+            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host2_post_info.host, self.host2_post_info.host)
             run_remote_command(command, self.host3_post_info)
 
         # stop haproxy and keepalived service for avoiding terminal status  disturb
