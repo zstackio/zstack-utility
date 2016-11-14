@@ -168,8 +168,8 @@ class CephAgent(object):
     def set_root_password(self, req):
         rsp = SetPasswordResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp.cpath = cmd.cephInstallPath
-        rsp.uuid = cmd.vmUuid
+        rsp.cephInstallPath = cmd.cephInstallPath
+        rsp.vmUuid = cmd.vmUuid
         rsp.account = cmd.account
         rsp.password = cmd.password
         # 1 export the ceph image to local
@@ -197,6 +197,8 @@ class CephAgent(object):
             rsp.error = str(e)
             rsp.success = False
         shell.call('rm -f %s %s.qcow2' % (local_file_name, local_file_name))
+        rsp.success = True
+        return jsonobject.dumps(rsp)
 
     def _change_vm_password(self, cmd):
         chp = generate_passwd.ChangePasswd()

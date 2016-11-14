@@ -1938,6 +1938,29 @@ class Vm(object):
         # to work around libvirt bug
         self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
 
+    def _check_qemuga_status(self, info):
+        enable = False
+        if info:
+            for command in info["return"]["supported_commands"]:
+                if command["name"] == "guest-set-user-password":
+                    enable = command["success-response"] & command["enabled"]
+                    return enable
+        return enable
+
+    def _wait_until_qemuga_ready(self, timeout):
+        finish_time = time.time()+timeout
+        enable = False
+        retry_time = 0
+        while time.time() < finish_time:
+            info_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-info"}\'' % self.uuid)
+            info = jsonobject.loads(info_json)
+            enable = self._check_qemuga_status(info)
+            if enable:
+                return enable
+            time.sleep(0.1)
+        if not enable:
+            raise kvmagent.KvmError("qemu-ga is not ready...")
+
     def change_vm_password(self, cmd):
         uuid = self.uuid
         # check the vm state first, then choose the method in different way
@@ -1948,6 +1971,7 @@ class Vm(object):
                 out = shell.call('nc -i 0.5 -w 0.5 %s 22' % cmd.ip, False)
                 if out.find("SSH") < 0:
                     raise kvmagent.KvmError("OS in vm is not ready, please try it later.")
+            self._wait_until_qemuga_ready(300000)
             # running state: exec virsh set-user-password to connect the qemu-ga
             shell.call('virsh set-user-password %s %s %s' % (self.uuid,
                                                              cmd.accountPerference.userAccount,
