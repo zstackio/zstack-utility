@@ -1664,7 +1664,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                     update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
                 replace_content("/etc/ntp.conf","regexp='restrict default nomodify notrap nopeer noquery'"
                                     " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
-                command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 && iptables -A INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT; service iptables save"
+                command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 && iptables -I INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT; service iptables save"
                 run_remote_command(command, host_post_info)
                 service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
@@ -1722,7 +1722,7 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
                     update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
                 replace_content("/etc/ntp.conf","regexp='restrict default nomodify notrap nopeer noquery'"
                                         " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
-                command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 && iptables -A INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT; service iptables save"
+                command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 && iptables -I INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT; service iptables save"
                 run_remote_command(command, host_post_info)
                 service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
