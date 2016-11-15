@@ -4196,7 +4196,7 @@ class RestoreMysqlCmd(Command):
         info("Recover data successfully! You can start node by: zstack-ctl start")
 
 class CollectLogCmd(Command):
-    zstack_log_dir = "/var/log/zstack"
+    zstack_log_dir = "/var/log/zstack/"
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
                      'zstack-agent/collectd.log','zstack-agent/server.log']
     bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
