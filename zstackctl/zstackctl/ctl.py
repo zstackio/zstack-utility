@@ -1131,7 +1131,7 @@ fi
             ctl.write_properties(properties)
 
         info('Successfully deployed ZStack database and updated corresponding DB information in %s' % property_file_path)
-    
+
 class TailLogCmd(Command):
     def __init__(self):
         super(TailLogCmd, self).__init__()
@@ -4226,10 +4226,8 @@ class CollectLogCmd(Command):
         command = "cp `zstack-ctl dump_mysql | awk '{ print $10 }'` %s" % collect_dir
         shell(command, False)
 
-
-
     def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info):
-        command = "cd %s/../ && tar zcf collect-log.tar.gz %s " % (tmp_log_dir, tmp_log_dir)
+        command = "cd %s && tar zcf ../collect-log.tar.gz ." % tmp_log_dir
         run_remote_command(command, host_post_info)
         fetch_arg = FetchArg()
         fetch_arg.src =  "%s/../collect-log.tar.gz " % tmp_log_dir
@@ -4297,7 +4295,7 @@ class CollectLogCmd(Command):
             elif '_bs' in storage_type:
                 collect_log_list = CollectLogCmd.bs_log_list
             else:
-                error("unknown storage type: %s" % storage_type)
+                warn("unknown storage type: %s" % storage_type)
             for log in collect_log_list:
                 if 'zstack-store' in log:
                     command = "mkdir -p %s" % tmp_log_dir + '/zstack-store/'
@@ -4504,12 +4502,13 @@ class CollectLogCmd(Command):
                     host_ip = args.host
                 else:
                     host_ip = host['managementIp']
-                    host_type = host['hypervisorType']
-                    if host_type == "KVM":
-                        self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir)
-                    else:
-                        warn("host %s is not a KVM host, skip..." % host_ip)
-                        break
+
+                host_type = host['hypervisorType']
+                if host_type == "KVM":
+                    self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir)
+                else:
+                    warn("host %s is not a KVM host, skip..." % host_ip)
+                    break
                 if args.host is not None:
                     break
             #collect bs log
