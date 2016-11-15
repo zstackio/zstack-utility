@@ -1940,13 +1940,12 @@ class Vm(object):
         self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
 
     def _check_qemuga_status(self, info):
-        enable = False
         if info:
             for command in info["return"]["supported_commands"]:
                 if command["name"] == "guest-set-user-password":
-                    enable = command["success-response"] & command["enabled"]
-                    return enable
-        return enable
+                    if command["enabled"]:
+                        return True
+        return False
 
     def _wait_until_qemuga_ready(self, timeout):
         finish_time = time.time()+timeout
@@ -1972,9 +1971,16 @@ class Vm(object):
             # before set-user-password, we must check if os ready in the guest
             self._wait_until_qemuga_ready(300000)
             # running state: exec virsh set-user-password to connect the qemu-ga
-            shell.call('virsh set-user-password %s %s %s' % (self.uuid,
+            try:
+                shell.call('virsh set-user-password %s %s %s' % (self.uuid,
                                                              cmd.accountPerference.userAccount,
                                                              cmd.accountPerference.accountPassword))
+            except Exception as e:
+                if e.message.find("child process has failed to set user password") > 0:
+                    logger.warn('user [%s] not exist!' % cmd.accountPerference.userAccount)
+                    raise kvmagent.KvmError('user [%s] not exist!' % cmd.accountPerference.userAccount)
+                else:
+                    raise e
         else:
             raise kvmagent.KvmError("vm may not be running, cannot connect to qemu-ga")
 
