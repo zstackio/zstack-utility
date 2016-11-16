@@ -1469,12 +1469,12 @@ def enable_ntp(trusted_host, host_post_info, distro):
         update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
     replace_content("/etc/ntp.conf", "regexp='restrict default nomodify notrap nopeer noquery'"
                                      " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
-    if distro == 'centos':
+    if distro == "CentOS" or distro == "RedHat":
         command = " iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I" \
                   " INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && service iptables save)"
         run_remote_command(command, host_post_info)
         service_status("ntpd", "state=restarted enabled=yes", host_post_info)
-    elif distro == "Ubuntu":
+    elif distro == "Debian" or distro == "Ubuntu":
         command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I " \
                   "INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && /etc/init.d/iptables-persistent save)"
         run_remote_command(command, host_post_info)
