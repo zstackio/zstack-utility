@@ -1347,8 +1347,12 @@ class StartCmd(Command):
                                'please run "update-alternatives --config java" to set Java to Java8')
 
         def check_8080():
-            if shell_return('netstat -nap | grep :8080 | grep LISTEN > /dev/null') == 0:
+            if shell_return('netstat -nap | grep :8080[[:space:]] | grep LISTEN > /dev/null') == 0:
                 raise CtlError('8080 is occupied by some process. Please use netstat to find out and stop it')
+
+        def check_9090():
+            if shell_return('netstat -nap | grep :9090[[:space:]] | grep LISTEN | grep -v prometheus > /dev/null') == 0:
+                raise CtlError('9090 is occupied by some process. Please use netstat to find out and stop it')
 
         def check_msyql():
             db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
@@ -1358,6 +1362,19 @@ class StartCmd(Command):
 
             with on_error('unable to connect to MySQL'):
                 shell('mysql --host=%s --user=%s --password=%s --port=%s -e "select 1"' % (db_hostname, db_user, db_password, db_port))
+
+        def open_iptables_port(protocol, port_list):
+            distro = platform.dist()[0]
+            for port in port_list:
+                if distro == 'centos':
+                    shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
+                          '(iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT && service iptables save)' % (protocol, protocol, port, protocol, protocol, port))
+                elif distro == 'Ubuntu':
+                    shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
+                          '(iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (protocol, protocol, port, protocol, protocol, port))
+                else:
+                    shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
+                          'iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT ' % (protocol, protocol, port, protocol, protocol, port))
 
         def check_rabbitmq():
             RABBIT_PORT = 5672
@@ -1481,9 +1498,11 @@ class StartCmd(Command):
 
         check_java_version()
         check_8080()
+        check_9090()
         check_msyql()
         check_rabbitmq()
         prepare_setenv()
+        open_iptables_port('udp',['123'])
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quickly
         time.sleep(5)
