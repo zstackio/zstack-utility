@@ -79,18 +79,11 @@ if distro == "RedHat" or distro == "CentOS":
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget " \
                   "qemu-img-ev-2.3.0 scsi-target-utils"  % zstack_repo
         run_remote_command(command, host_post_info)
-        # name: RHEL7 specific packages from user defined repos
-        if distro_version >= 7:
-            command = "rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s " \
-                      "--nogpgcheck install -y iptables-services " % zstack_repo
-            run_remote_command(command, host_post_info)
 
     else:
         # name: install isci related packages on RedHat based OS from online
         for pkg in ['wget', 'qemu-img-ev-2.3.0', 'scsi-target-utils']:
             yum_install_package(pkg, host_post_info)
-            # name: RHEL7 specific packages from online
-            yum_install_package("iptables-services", host_post_info)
     if distro_version >= 7:
         # name: disable firewalld in RHEL7 and Centos7
         command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"

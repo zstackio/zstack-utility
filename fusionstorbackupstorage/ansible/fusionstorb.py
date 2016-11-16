@@ -88,16 +88,12 @@ if distro == "RedHat" or distro == "CentOS":
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img-ev-2.3.0" % zstack_repo
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
-            command = "rpm -q iptables-services || yum --disablerepo=* --enablerepo=%s " \
-                      "--nogpgcheck install -y iptables-services " % zstack_repo
-            run_remote_command(command, host_post_info)
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
         for pkg in ["wget", "qemu-img-ev-2.3.0"]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
-            yum_install_package("iptables-services", host_post_info)
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     set_selinux("state=permissive policy=targeted", host_post_info)
