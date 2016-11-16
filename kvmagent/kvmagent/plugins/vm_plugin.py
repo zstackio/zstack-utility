@@ -1946,10 +1946,13 @@ class Vm(object):
                         return True
         return False
 
-    def _wait_until_qemuga_ready(self, timeout):
+    def _wait_until_qemuga_ready(self, timeout, uuid):
         finish_time = time.time()+timeout
         enable = False
         while time.time() < finish_time:
+            state = get_all_vm_states().get(uuid)
+            if state != Vm.VM_STATE_RUNNING:
+                raise kvmagent.KvmError("vm's state is %s, not running" % state)
             info_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-info"}\'' % self.uuid, False)
             try:
                 info = jsonobject.loads(info_json)
@@ -1968,7 +1971,7 @@ class Vm(object):
         state = get_all_vm_states().get(uuid)
         if state == Vm.VM_STATE_RUNNING:
             # before set-user-password, we must check if os ready in the guest
-            self._wait_until_qemuga_ready(300000)
+            self._wait_until_qemuga_ready(300000, uuid)
             # running state: exec virsh set-user-password to connect the qemu-ga
             try:
                 shell.call('virsh set-user-password %s %s %s' % (self.uuid,

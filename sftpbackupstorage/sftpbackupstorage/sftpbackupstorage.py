@@ -218,6 +218,7 @@ class SftpBackupStorageAgent(object):
         try:
             bash_o(cmd, True)
         except BashError as e:
+            logger.warn("inject failed due to:")
             logger.warn(e)
 
     @in_bash
