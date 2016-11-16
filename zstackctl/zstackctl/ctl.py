@@ -1365,6 +1365,8 @@ class StartCmd(Command):
 
         def open_iptables_port(protocol, port_list):
             distro = platform.dist()[0]
+            if type(port_list) is not list:
+                error("port list should be list")
             for port in port_list:
                 if distro == 'centos':
                     shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
@@ -2910,20 +2912,20 @@ class InstallHACmd(Command):
             update_file("/etc/hosts", "line='%s zstack-3'" % args.host3, self.host3_post_info)
 
         #save iptables at last
-        command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host2_post_info.host, self.host2_post_info.host)
+        command = " iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host2_post_info.host, self.host2_post_info.host)
         run_remote_command(command, self.host1_post_info)
         if args.host3_info is not False:
-            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host3_post_info.host, self.host3_post_info.host)
+            command = " iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host3_post_info.host, self.host3_post_info.host)
             run_remote_command(command, self.host1_post_info)
-        command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host1_post_info.host, self.host1_post_info.host)
+        command = " iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host1_post_info.host, self.host1_post_info.host)
         run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host3_post_info.host, self.host3_post_info.host)
+            command = " iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host3_post_info.host, self.host3_post_info.host)
             run_remote_command(command, self.host2_post_info)
         if args.host3_info is not False:
-            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host1_post_info.host, self.host1_post_info.host)
+            command = " iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host1_post_info.host, self.host1_post_info.host)
             run_remote_command(command, self.host3_post_info)
-            command = " ! iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 && iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host2_post_info.host, self.host2_post_info.host)
+            command = " iptables -C INPUT -s %s/32 -j ACCEPT >/dev/null 2>&1 || iptables -I INPUT -s %s/32 -j ACCEPT" % (self.host2_post_info.host, self.host2_post_info.host)
             run_remote_command(command, self.host3_post_info)
 
         # stop haproxy and keepalived service for avoiding terminal status  disturb
@@ -3303,13 +3305,13 @@ listen  proxy-ui 0.0.0.0:8888
             copy(copy_arg,self.host3_post_info)
 
         #config haproxy firewall
-        command = "! iptables -C INPUT -p tcp -m tcp --dport 53306 -j ACCEPT > /dev/null 2>&1 && iptables -I INPUT -p tcp -m tcp --dport 53306 -j ACCEPT; " \
-                  "! iptables -C INPUT -p tcp -m tcp --dport 58080 -j ACCEPT > /dev/null 2>&1  &&  iptables -I INPUT -p tcp -m tcp --dport 58080 -j ACCEPT ; " \
-                  "! iptables -C INPUT -p tcp -m tcp --dport 55672 -j ACCEPT > /dev/null 2>&1  &&  iptables -I INPUT -p tcp -m tcp --dport 55672 -j ACCEPT ; " \
-                       "! iptables -C INPUT -p tcp -m tcp --dport 80 -j ACCEPT > /dev/null 2>&1  && iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT ; " \
-                       "! iptables -C INPUT -p tcp -m tcp --dport 9132 -j ACCEPT > /dev/null 2>&1 &&  iptables -I INPUT -p tcp -m tcp --dport 9132 -j ACCEPT ; " \
-                       "! iptables -C INPUT -p tcp -m tcp --dport 8888 -j ACCEPT > /dev/null 2>&1 &&  iptables -I INPUT -p tcp -m tcp --dport 8888 -j ACCEPT ; " \
-                       "! iptables -C INPUT -p tcp -m tcp --dport 6033 -j ACCEPT > /dev/null 2>&1 && iptables -I INPUT -p tcp -m tcp --dport 6033 -j ACCEPT; service iptables save "
+        command = "iptables -C INPUT -p tcp -m tcp --dport 53306 -j ACCEPT > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 53306 -j ACCEPT; " \
+                  "iptables -C INPUT -p tcp -m tcp --dport 58080 -j ACCEPT > /dev/null 2>&1  ||  iptables -I INPUT -p tcp -m tcp --dport 58080 -j ACCEPT ; " \
+                  "iptables -C INPUT -p tcp -m tcp --dport 55672 -j ACCEPT > /dev/null 2>&1  ||  iptables -I INPUT -p tcp -m tcp --dport 55672 -j ACCEPT ; " \
+                       "iptables -C INPUT -p tcp -m tcp --dport 80 -j ACCEPT > /dev/null 2>&1  || iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT ; " \
+                       "iptables -C INPUT -p tcp -m tcp --dport 9132 -j ACCEPT > /dev/null 2>&1 ||  iptables -I INPUT -p tcp -m tcp --dport 9132 -j ACCEPT ; " \
+                       "iptables -C INPUT -p tcp -m tcp --dport 8888 -j ACCEPT > /dev/null 2>&1 ||  iptables -I INPUT -p tcp -m tcp --dport 8888 -j ACCEPT ; " \
+                       "iptables -C INPUT -p tcp -m tcp --dport 6033 -j ACCEPT > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 6033 -j ACCEPT; service iptables save "
         run_remote_command(command, self.host1_post_info)
         run_remote_command(command, self.host2_post_info)
         if len(self.host_post_info_list) == 3:
