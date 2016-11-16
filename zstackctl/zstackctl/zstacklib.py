@@ -178,7 +178,7 @@ def error(msg):
     sys.exit(1)
 
 def warn(msg):
-    logger.warn(msg)
+    logger.warning(msg)
     sys.stdout.write('WARNING: %s\n' % msg)
 
 def retry(times=3, sleep_time=3):
@@ -829,7 +829,7 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
         sys.exit(1)
     else:
         if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning("Network or file system problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
@@ -911,7 +911,10 @@ def file_dir_exist(name, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'stat' not in result['contacted'][host]:
+        if 'failed' in result['contacted'][host] and result['contacted'][host]['failed'] is True:
+            logger.warning("Check file or dir %s status failed" % name)
+            sys.exit(1)
+        elif 'stat' not in result['contacted'][host]:
             logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
