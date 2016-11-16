@@ -1462,6 +1462,26 @@ def modprobe(modprobe_arg, host_post_info):
             handle_ansible_failed(description, result, host_post_info)
 
 
+def enable_ntp(trusted_host, host_post_info, distro):
+    logger.debug("Starting enable ntp service")
+    if trusted_host != host_post_info.host:
+        replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
+        update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
+    replace_content("/etc/ntp.conf", "regexp='restrict default nomodify notrap nopeer noquery'"
+                                     " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
+    if distro == 'centos':
+        command = " iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I" \
+                  " INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && service iptables save)"
+        run_remote_command(command, host_post_info)
+        service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+    elif distro == "Ubuntu":
+        command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I " \
+                  "INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && /etc/init.d/iptables-persistent save)"
+        run_remote_command(command, host_post_info)
+        service_status("ntp", "state=restarted enabled=yes", host_post_info)
+
+
+
 class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
@@ -1553,11 +1573,12 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "iptables-services"]:
+                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                         yum_install_package(pkg, host_post_info)
                     if distro_version >=7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
                         yum_install_package("python-backports-ssl_match_hostname", host_post_info)
+                        yum_install_package("iptables-services", host_post_info)
             else:
                 # user defined zstack_repo, will generate repo defined in zstack_repo
                 if '163' in zstack_repo:
@@ -1642,34 +1663,28 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python-pip gcc autoconf ntp ntpdate iptables-services | grep \"not installed\" | awk"
+                              "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
                     if distro_version >= 7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
                         command = (
-                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname | "
+                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname  iptables-services| "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % zstack_repo
                         run_remote_command(command, host_post_info)
 
                 else:
+                    # imagestore do not need python environment and only on centos 7
                     command = (
                                   "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python ntp "
                                   "ntpdate iptables-services | grep \"not installed\" | awk '{ print $2 }'` "
                                   "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
                     # enable ntp service for RedHat
-                if trusted_host != host_post_info.host:
-                    replace_content("/etc/ntp.conf","regexp='^server ' replace='#server ' backup=yes", host_post_info)
-                    update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
-                replace_content("/etc/ntp.conf","regexp='restrict default nomodify notrap nopeer noquery'"
-                                    " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
-                command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 && iptables -I INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT; service iptables save"
-                run_remote_command(command, host_post_info)
-                service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+                enable_ntp(trusted_host, host_post_info, distro)
 
         elif distro == "Debian" or distro == "Ubuntu":
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
@@ -1713,23 +1728,9 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
             if require_python_env == "true":
-                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "iptables-services"]
+                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "iptables-persistent"]
                 apt_install_packages(install_pkg_list, host_post_info)
-                # name: enable ntp service for Debian
-                host_post_info.post_label = "ansible.shell.enable.service"
-                host_post_info.post_label_param = "ntp"
-                run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
-                if trusted_host != host_post_info.host:
-                    # do not change mn node ntp server list
-                    replace_content("/etc/ntp.conf","regexp='^server ' replace='#server ' backup=yes", host_post_info)
-                    update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
-                replace_content("/etc/ntp.conf","regexp='restrict default nomodify notrap nopeer noquery'"
-                                        " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
-                command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 && iptables -I INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT; service iptables save"
-                run_remote_command(command, host_post_info)
-                service_status("ntpd", "state=restarted enabled=yes", host_post_info)
-
-
+                enable_ntp(trusted_host, host_post_info, distro)
         else:
             error("ERROR: Unsupported distribution")
 
