@@ -106,11 +106,11 @@ if distro == "RedHat" or distro == "CentOS":
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
-            command = ("pkg_list=`rpm -q iptables-services collectd-virt | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
+            command = ("pkg_list=`rpm -q collectd-virt | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
                        "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
                        "--nogpgcheck install -y $pkg; done;") % zstack_repo
             host_post_info.post_label = "ansible.shell.install.pkg"
-            host_post_info.post_label_param = "iptables-services"
+            host_post_info.post_label_param = "collectd-virt"
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
@@ -120,7 +120,7 @@ if distro == "RedHat" or distro == "CentOS":
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from online
-            for pkg in ['qemu-kvm-ev-2.3.0', 'qemu-img-ev-2.3.0', 'iptables-services', 'collectd-virt']:
+            for pkg in ['qemu-kvm-ev-2.3.0', 'qemu-img-ev-2.3.0', 'collectd-virt']:
                 yum_install_package(pkg, host_post_info)
         else:
             for pkg in ['qemu-kvm', 'qemu-img']:
