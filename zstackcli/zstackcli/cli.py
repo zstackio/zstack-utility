@@ -508,7 +508,7 @@ Parse command parameters error:
                 clear_session()
 
             result = jsonobject.dumps(event, True)
-            print '%s\n' % result
+            print '%s\n' % str(result).decode('unicode_escape')
             # print 'Time costing: %fs' % (end_time - start_time)
             self.write_more(line, result)
         except urllib3.exceptions.MaxRetryError as url_err:
