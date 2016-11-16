@@ -4204,10 +4204,11 @@ class CollectLogCmd(Command):
     ps_log_list = ['ceph-primarystorage.log','fusionstor-primarystorage.log']
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
-                   'zstack-dashboard.log']
+                   'zstack-dashboard.log', 'zstack-ctl.log']
     collect_lines = 100000
     logger_dir = '/var/log/zstack/'
     logger_file = 'zstack-ctl.log'
+    failed_flag = False
 
     def __init__(self):
         super(CollectLogCmd, self).__init__()
@@ -4255,19 +4256,29 @@ class CollectLogCmd(Command):
             info("Collecting log from host: %s ..." % host_post_info.host)
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
             local_collect_dir = collect_dir + host_post_info.host + '/'
-            if not os.path.exists(local_collect_dir):
-                os.makedirs(local_collect_dir)
-            command = "mkdir -p %s " % tmp_log_dir
-            run_remote_command(command, host_post_info)
-            for log in CollectLogCmd.host_log_list:
-                if 'zstack-agent' in log:
-                    command = "mkdir -p %s" % tmp_log_dir + '/zstack-agent/'
-                    run_remote_command(command, host_post_info)
-                host_log = CollectLogCmd.zstack_log_dir + '/' + log
-                collect_log = tmp_log_dir + '/' + log
-                if file_dir_exist("path=%s" % host_log, host_post_info):
-                    command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, host_log, collect_log)
-                    run_remote_command(command, host_post_info)
+            try:
+                # file system broken shouldn't block collect log process
+                if not os.path.exists(local_collect_dir):
+                    os.makedirs(local_collect_dir)
+                command = "mkdir -p %s " % tmp_log_dir
+                run_remote_command(command, host_post_info)
+                for log in CollectLogCmd.host_log_list:
+                    if 'zstack-agent' in log:
+                        command = "mkdir -p %s" % tmp_log_dir + '/zstack-agent/'
+                        run_remote_command(command, host_post_info)
+                    host_log = CollectLogCmd.zstack_log_dir + '/' + log
+                    collect_log = tmp_log_dir + '/' + log
+                    if file_dir_exist("path=%s" % host_log, host_post_info):
+                        command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, host_log, collect_log)
+                        run_remote_command(command, host_post_info)
+            except SystemExit:
+                warn("collect log on host %s failed" % host_post_info.host)
+                logger.warn("collect log on host %s failed" % host_post_info.host)
+                command = 'rm -rf %s' % tmp_log_dir
+                CollectLogCmd.failed_flag = True
+                run_remote_command(command, host_post_info)
+                return 1
+
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
@@ -4277,6 +4288,7 @@ class CollectLogCmd(Command):
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir,host_post_info)
+
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
@@ -4286,25 +4298,32 @@ class CollectLogCmd(Command):
             info("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
             local_collect_dir = collect_dir + host_post_info.host + '-' + storage_type + '/'
-            if not os.path.exists(local_collect_dir):
-                os.makedirs(local_collect_dir)
-            command = "rm -rf %s && mkdir -p %s " % (tmp_log_dir, tmp_log_dir)
-            run_remote_command(command, host_post_info)
-            if '_ps' in storage_type:
-                collect_log_list = CollectLogCmd.ps_log_list
-            elif '_bs' in storage_type:
-                collect_log_list = CollectLogCmd.bs_log_list
-            else:
-                warn("unknown storage type: %s" % storage_type)
-            for log in collect_log_list:
-                if 'zstack-store' in log:
-                    command = "mkdir -p %s" % tmp_log_dir + '/zstack-store/'
-                    run_remote_command(command, host_post_info)
-                storage_agent_log = CollectLogCmd.zstack_log_dir + '/' + log
-                collect_log = tmp_log_dir + '/' + log
-                if file_dir_exist("path=%s" % storage_agent_log, host_post_info):
-                    command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, storage_agent_log, collect_log)
-                    run_remote_command(command, host_post_info)
+            try:
+            # file system broken shouldn't block collect log process
+                if not os.path.exists(local_collect_dir):
+                    os.makedirs(local_collect_dir)
+                command = "rm -rf %s && mkdir -p %s " % (tmp_log_dir, tmp_log_dir)
+                run_remote_command(command, host_post_info)
+                if '_ps' in storage_type:
+                    collect_log_list = CollectLogCmd.ps_log_list
+                elif '_bs' in storage_type:
+                    collect_log_list = CollectLogCmd.bs_log_list
+                else:
+                    warn("unknown storage type: %s" % storage_type)
+                for log in collect_log_list:
+                    if 'zstack-store' in log:
+                        command = "mkdir -p %s" % tmp_log_dir + '/zstack-store/'
+                        run_remote_command(command, host_post_info)
+                    storage_agent_log = CollectLogCmd.zstack_log_dir + '/' + log
+                    collect_log = tmp_log_dir + '/' + log
+                    if file_dir_exist("path=%s" % storage_agent_log, host_post_info):
+                        command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, storage_agent_log, collect_log)
+                        run_remote_command(command, host_post_info)
+            except SystemExit:
+                logger.warn("collect log on storage: %s failed" % host_post_info.host)
+                command = 'rm -rf %s' % tmp_log_dir
+                CollectLogCmd.failed_flag = True
+                run_remote_command(command, host_post_info)
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
@@ -4544,7 +4563,11 @@ class CollectLogCmd(Command):
                 self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
 
         self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
-        info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
+        if CollectLogCmd.failed_flag is True:
+            info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
+            info(colored("Please check the reason of failed task in log: %s\n" % (CollectLogCmd.logger_dir + CollectLogCmd.logger_file), 'yellow'))
+        else:
+            info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
 
 
 class ChangeIpCmd(Command):

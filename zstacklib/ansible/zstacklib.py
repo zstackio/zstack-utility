@@ -185,7 +185,7 @@ def error(msg):
     sys.exit(1)
 
 def warn(msg):
-    logger.warn(msg)
+    logger.warning(msg)
     sys.stdout.write('WARNING: %s\n' % msg)
 
 def retry(times=3, sleep_time=3):
@@ -232,16 +232,16 @@ def post_msg(msg, post_url):
                 response.close()
             except URLError, e:
                 logger.debug(e.reason)
-                logger.warn("Post msg failed! Please check the post_url: %s and check the server status" % post_url)
+                logger.warning("Post msg failed! Please check the post_url: %s and check the server status" % post_url)
         else:
-            logger.warn("No label defined for message")
+            logger.warning("No label defined for message")
     else:
         logger.info("Warning: no post_url defined by user")
     # This output will capture by management log for debug
     if msg.level == "ERROR":
         error(msg.details)
     elif msg.level == "WARNING":
-        logger.warn(msg.details)
+        logger.warning(msg.details)
     else:
         logger.info(msg.details)
 
@@ -988,6 +988,9 @@ def file_dir_exist(name, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
+        if 'failed' in result['contacted'][host] and result['contacted'][host]['failed'] is True:
+            logger.warning("Check file or dir %s status failed" % name)
+            sys.exit(1)
         if 'stat' not in result['contacted'][host]:
             logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
@@ -1550,7 +1553,7 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "iptables-services"]:
                         yum_install_package(pkg, host_post_info)
                     if distro_version >=7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
@@ -1635,11 +1638,11 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 # enable alibase repo for yum clean avoid no repo to be clean
                 host_post_info.post_label = "ansible.shell.install.pkg"
                 host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
-                                                  "autoconf,ntp,ntpdate,python-backports-ssl_match_hostname "
+                                                  "autoconf,ntp,ntpdate,python-backports-ssl_match_hostname,iptables-services"
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
+                              "python-setuptools python-pip gcc autoconf ntp ntpdate iptables-services | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
@@ -1655,7 +1658,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 else:
                     command = (
                                   "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python ntp "
-                                  "ntpdate | grep \"not installed\" | awk '{ print $2 }'` "
+                                  "ntpdate iptables-services | grep \"not installed\" | awk '{ print $2 }'` "
                                   "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
                     # enable ntp service for RedHat
@@ -1710,7 +1713,7 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
             if require_python_env == "true":
-                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]
+                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "iptables-services"]
                 apt_install_packages(install_pkg_list, host_post_info)
                 # name: enable ntp service for Debian
                 host_post_info.post_label = "ansible.shell.enable.service"
