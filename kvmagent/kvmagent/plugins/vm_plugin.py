@@ -1938,7 +1938,7 @@ class Vm(object):
         # to work around libvirt bug
         self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
 
-    def _check_qemuga_status(self, info):
+    def _check_qemuga_info(self, info):
         if info:
             for command in info["return"]["supported_commands"]:
                 if command["name"] == "guest-set-user-password":
@@ -1948,22 +1948,27 @@ class Vm(object):
 
     def _wait_until_qemuga_ready(self, timeout, uuid):
         finish_time = time.time()+timeout
-        enable = False
         while time.time() < finish_time:
             state = get_all_vm_states().get(uuid)
             if state != Vm.VM_STATE_RUNNING:
                 raise kvmagent.KvmError("vm's state is %s, not running" % state)
-            info_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-info"}\'' % self.uuid, False)
+            ping_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-ping"}\'' % self.uuid, False)
             try:
-                info = jsonobject.loads(info_json)
-                enable = self._check_qemuga_status(info)
-                if enable:
-                    return enable
+                logger.debug("ping_json: %s" % ping_json)
+                if ping_json.find("{\"return\":{}}") != -1:
+                    return True
             except Exception as err:
                 logger.warn(err.message)
+                # info_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-info"}\'' % self.uuid, False)
+                # try:
+                #     info = jsonobject.loads(info_json)
+                #     enable = self._check_qemuga_info(info)
+                #     if enable:
+                #         return enable
+                # except Exception as err:
+                #     logger.warn(err.message)
             time.sleep(0.1)
-        if not enable:
-            raise kvmagent.KvmError("qemu-ga is not ready...")
+        raise kvmagent.KvmError("qemu-ga is not ready...")
 
     def change_vm_password(self, cmd):
         uuid = self.uuid
