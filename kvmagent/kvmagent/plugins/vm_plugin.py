@@ -1634,7 +1634,7 @@ class Vm(object):
                 logger.debug('full snapshot is waiting for blockRebase job completion')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_job, timeout=300, ignore_exception_in_callback=True):
+            if not linux.wait_callback_success(wait_job, timeout=21600, ignore_exception_in_callback=True):
                 raise kvmagent.KvmError('live full snapshot failed')
 
             return take_delta_snapshot()
@@ -1676,8 +1676,9 @@ class Vm(object):
             raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
 
         try:
-            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=300):
-                raise kvmagent.KvmError('timeout after 300 seconds')
+            logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
+            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=1800):
+                raise kvmagent.KvmError('timeout after 1800 seconds')
         except kvmagent.KvmError:
             raise
         except:
@@ -1998,14 +1999,22 @@ class Vm(object):
         def do_pull(base, top):
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
 
+            # Double check (c.f. issue #1323)
+            def wait_previous_job(_):
+                logger.debug('merge snapshot is checking previous block job')
+                return not self._wait_for_block_job(disk_name, abort_on_error=True)
+
+            if not linux.wait_callback_success(wait_previous_job, timeout=21600, ignore_exception_in_callback=True):
+                raise kvmagent.KvmError('merge snapshot failed - pending previous block job')
+
             self.domain.blockRebase(disk_name, base, 0)
 
             def wait_job(_):
                 logger.debug('merging snapshot chain is waiting for blockRebase job completion')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_job, timeout=10800):
-                raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 3 hours')
+            if not linux.wait_callback_success(wait_job, timeout=21600):
+                raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 6 hours')
 
             # Double check (c.f. issue #757)
             if self._get_back_file(top) != base:
