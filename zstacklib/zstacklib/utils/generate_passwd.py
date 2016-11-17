@@ -29,6 +29,9 @@ class ChangePasswd(object):
         return True
     def _replace_shadow(self):
         crypt_method = shell.call('grep ENCRYPT_METHOD login.defs|awk \'{print $2}\'').strip('\n')
+        if not self.crypt[crypt_method]:
+            self._clean_up()
+            raise Exception("not support crypt algorithm, please check ENCRYPT_METHOD in /etc/login.defs... ")
         logger.debug("crypt_method is: %s" % str(self.crypt[crypt_method]))
         crypt_passwd = crypt.crypt(self.password, crypt.mksalt(self.crypt[crypt_method]))
         replace_cmd = "egrep \"^%s:\" shadow|awk -v passwd='%s' -F \":\" \'{$2=passwd;OFS=\":\";print}\'" % (self.account, crypt_passwd)
@@ -42,6 +45,7 @@ class ChangePasswd(object):
         shell.call(sed_cmd)
 
         shell.call("virt-copy-in -a %s shadow /etc/" % self.image)
+        self._clean_up()
     def _close_selinux(self):
         # close selinux under CentOS
         if not self._check_file("/etc/selinux/", "config") or \
