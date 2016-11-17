@@ -85,14 +85,14 @@ class ChangePasswd(object):
         if version:
             try:
                 shell.call("virt-copy-out "
-                           "-a %s /etc/shadow /etc/selinux/config /boot/grub.cfg /etc/default/grub /etc/login.defs ."
+                           "-a %s /etc/shadow /etc/login.defs /etc/selinux/config /boot/grub.cfg /etc/default/grub ."
                            % self.image)
                 self._close_selinux()
             except Exception as e:
                 logger.warn(e)
         else:
-            shell.call("virt-copy-out -a %s /etc/shadow ." % self.image, False)
-        if not self._check_file("/etc/", "shadow"):
+            shell.call("virt-copy-out -a %s /etc/shadow /etc/login.defs ." % self.image, False)
+        if (not self._check_file("/etc/", "shadow")) or (not self._check_file("/etc/", "login.defs")):
             self._clean_up()
             return False
         self._replace_shadow()
