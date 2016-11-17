@@ -52,7 +52,7 @@ class ChangePasswd(object):
         self._enable_md5_crypt()
     def _close_selinux(self):
         # close selinux under CentOS
-        selinux = shell.call("egrep ^\\s*SELINUX= config|grep disable").strip('\n')
+        selinux = shell.call("egrep ^\\s*SELINUX= config|grep disable", False).strip('\n')
         if selinux:
             return
         logger.debug("we must close selinux.")
