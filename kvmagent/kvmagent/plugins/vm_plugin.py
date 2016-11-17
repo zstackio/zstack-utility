@@ -1975,9 +1975,12 @@ class Vm(object):
         uuid = self.uuid
         # check the vm state first, then choose the method in different way
         state = get_all_vm_states().get(uuid)
+        timeout = cmd.timeout
+        if not timeout:
+            timeout = 60000
         if state == Vm.VM_STATE_RUNNING:
             # before set-user-password, we must check if os ready in the guest
-            self._wait_until_qemuga_ready(300000, uuid)
+            self._wait_until_qemuga_ready(timeout, uuid)
             # running state: exec virsh set-user-password to connect the qemu-ga
             try:
                 shell.call('virsh set-user-password %s %s %s' % (self.uuid,
