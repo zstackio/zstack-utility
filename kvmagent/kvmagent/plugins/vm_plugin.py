@@ -1955,8 +1955,8 @@ class Vm(object):
                 raise kvmagent.KvmError("vm's state is %s, not running" % state)
             ping_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-ping"}\'' % self.uuid, False)
             try:
-                ping_result = jsonobject.loads(ping_json)
-                if not ping_result["return"]:
+                logger.debug("ping_json: %s" % ping_json)
+                if ping_json.find("{\"return\":{}}") != -1:
                     return True
             except Exception as err:
                 logger.warn(err.message)
