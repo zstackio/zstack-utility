@@ -1987,6 +1987,7 @@ class Vm(object):
                                                              cmd.accountPerference.userAccount,
                                                              cmd.accountPerference.accountPassword))
             except Exception as e:
+                logger.warn(e.message)
                 if e.message.find("child process has failed to set user password") > 0:
                     logger.warn('user [%s] not exist!' % cmd.accountPerference.userAccount)
                     raise kvmagent.KvmError('user [%s] not exist!' % cmd.accountPerference.userAccount)
