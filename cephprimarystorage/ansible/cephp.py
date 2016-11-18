@@ -88,7 +88,7 @@ if distro == "RedHat" or distro == "CentOS":
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
-    set_selinux("state=permissive policy=targeted", host_post_info)
+    set_selinux("state=disabled", host_post_info)
     # name: enable libvirt daemon on RedHat based OS
     service_status("libvirtd", "state=started enabled=yes", host_post_info)
     if distro_version >= 7:
