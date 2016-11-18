@@ -1020,10 +1020,18 @@ install_system_libs(){
 is_enable_ntpd(){
     echo_subtitle "Enable NTP"
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ];then
-        grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
-        if [ $? -ne 0 ]; then
-            echo "server 0.pool.ntp.org iburst" >> /etc/ntp.conf
-            echo "server 1.pool.ntp.org iburst" >> /etc/ntp.conf
+        if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
+            grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                echo "server 0.pool.ntp.org iburst" >> /etc/ntp.conf
+                echo "server 1.pool.ntp.org iburst" >> /etc/ntp.conf
+            fi
+        else
+            cp /etc/ntp.conf /etc/ntp.conf.bak
+            sed -i '/^server/d' /etc/ntp.conf
+            sed -i '/^fudge/d' /etc/ntp.conf
+            echo "server 127.127.1.0" >> /etc/ntp.conf
+            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
         fi
         grep "server 127.127.1.0" -q /etc/ntp.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
@@ -1037,10 +1045,18 @@ is_enable_ntpd(){
         systemctl enable ntpd >> $ZSTACK_INSTALL_LOG 2>&1
         systemctl restart ntpd >> $ZSTACK_INSTALL_LOG 2>&1
     else
-        grep '^server 0.ubuntu.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
-        if [ $? -ne 0 ]; then
-            echo "server 0.ubuntu.pool.ntp.org" >> /etc/ntp.conf
-            echo "server ntp.ubuntu.com" >> /etc/ntp.conf
+        if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
+            grep '^server 0.ubuntu.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                echo "server 0.ubuntu.pool.ntp.org" >> /etc/ntp.conf
+                echo "server ntp.ubuntu.com" >> /etc/ntp.conf
+            fi
+        else
+            cp /etc/ntp.conf /etc/ntp.conf.bak
+            sed -i '/^server/d' /etc/ntp.conf
+            sed -i '/^fudge/d' /etc/ntp.conf
+            echo "server 127.127.1.0" >> /etc/ntp.conf
+            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
         fi
         grep "server 127.127.1.0" -q /etc/ntp.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
