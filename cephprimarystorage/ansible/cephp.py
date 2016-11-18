@@ -204,6 +204,8 @@ elif distro == "Debian" or distro == "Ubuntu":
         # name: restart debian libvirtd
         service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
 run_remote_command(command, host_post_info)
+# change ceph config
+set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
 
 
 host_post_info.start_time = start_time
