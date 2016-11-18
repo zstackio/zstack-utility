@@ -199,6 +199,30 @@ def get_ha_mn_list(conf_file):
         mn_list = ha_conf_content['host_list'].split(',')
     return mn_list
 
+
+
+def stop_mevoco(host_post_info):
+    command = "zstack-ctl stop_node && zstack-ctl stop_ui"
+    logger.debug("[ HOST: %s ] INFO: starting run shell command: '%s' " % (host_post_info.host, command))
+    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+                                               (host_post_info.private_key, host_post_info.host, command))
+    if status != 0:
+        logger.error("[ HOST: %s ] INFO: shell command: '%s' failed" % (host_post_info.host, command))
+        error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
+    else:
+        logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
+
+def start_mevoco(host_post_info):
+    command = "zstack-ctl start_node && zstack-ctl start_ui"
+    logger.debug("[ HOST: %s ] INFO: starting run shell command: '%s' " % (host_post_info.host, command))
+    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+                                               (host_post_info.private_key, host_post_info.host, command))
+    if status != 0:
+        logger.error("[ HOST: %s ] FAIL: shell command: '%s' failed" % (host_post_info.host, command))
+        error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
+    else:
+        logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
+
 class ExceptionWrapper(object):
     def __init__(self, msg):
         self.msg = msg
@@ -2001,14 +2025,6 @@ class UpgradeHACmd(Command):
                 error('The management node %s status is: Unknown, please start the management node before upgrade' % host_post_info.host)
 
 
-    def stop_mevoco(self, host_post_info):
-        command = "zstack-ctl stop_node && zstack-ctl stop_ui"
-        logger.debug("[ HOST: %s ] INFO: starting run shell command: '%s' " % (host_post_info.host, command))
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
-                                                   (UpgradeHACmd.private_key_name, host_post_info.host, command))
-        if status != 0:
-            error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
-        logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
 
     def upgrade_mevoco(self, mevoco_installer, host_post_info):
         mevoco_dir = os.path.dirname(mevoco_installer)
@@ -2099,7 +2115,7 @@ class UpgradeHACmd(Command):
         SpinnerInfo.spinner_status['stop_mevoco'] = True
         ZstackSpinner(spinner_info)
         for host_post_info in UpgradeHACmd.host_post_info_list:
-            self.stop_mevoco(host_post_info)
+            stop_mevoco(host_post_info)
 
         # backup db before upgrade
         spinner_info = SpinnerInfo()
@@ -2461,7 +2477,7 @@ class InstallHACmd(Command):
     logger_file = "ha.log"
     bridge = ""
     SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,
-                      'Mevoco':False, 'check_init':False, 'recovery_cluster':False}
+                      'Mevoco':False, 'stop_mevoco':False, 'check_init':False, 'recovery_cluster':False}
     ha_config_content = None
     def __init__(self):
         super(InstallHACmd, self).__init__()
@@ -2640,6 +2656,7 @@ class InstallHACmd(Command):
         self.host1_post_info.mysql_password = args.mysql_root_password
         self.host1_post_info.mysql_userpassword = args.mysql_user_password
         self.host1_post_info.post_url = ""
+        self.host_post_info_list.append(self.host1_post_info)
 
         # init host2 parameter
         self.host2_post_info = HostPostInfo()
@@ -2653,6 +2670,7 @@ class InstallHACmd(Command):
         self.host2_post_info.mysql_password = args.mysql_root_password
         self.host2_post_info.mysql_userpassword = args.mysql_user_password
         self.host2_post_info.post_url = ""
+        self.host_post_info_list.append(self.host2_post_info)
 
         if args.host3_info is not False:
             # init host3 parameter
@@ -2667,6 +2685,7 @@ class InstallHACmd(Command):
             self.host3_post_info.mysql_password = args.mysql_root_password
             self.host3_post_info.mysql_userpassword = args.mysql_user_password
             self.host3_post_info.post_url = ""
+            self.host_post_info_list.append(self.host3_post_info)
 
 
         # init all variables in map
@@ -2734,6 +2753,17 @@ class InstallHACmd(Command):
                         error("Make sure you are running the 'zs-network-setting' command on host1 or host2 or host3")
                 else:
                     error("Make sure you are running the 'zs-network-setting' command on host1 or host2")
+
+            # stop mevoco
+            spinner_info = SpinnerInfo()
+            spinner_info.output = "Stop Mevoco on all management nodes"
+            spinner_info.name = "stop_mevoco"
+            SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status, False)
+            SpinnerInfo.spinner_status['stop_mevoco'] = True
+            ZstackSpinner(spinner_info)
+            for host_info in self.host_post_info_list:
+                stop_mevoco(host_info)
+
             spinner_info = SpinnerInfo()
             spinner_info.output = "Starting to recovery mysql from this host"
             spinner_info.name = "recovery_cluster"
@@ -2832,20 +2862,10 @@ class InstallHACmd(Command):
                 SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
                 SpinnerInfo.spinner_status['mevoco'] = True
                 ZstackSpinner(spinner_info)
-                command = "zstack-ctl start"
-                (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'"
-                                                                     % (private_key_name, args.host1, command))
-                if status != 0:
-                    error("Something wrong on host: %s\n %s" % (args.host1, output))
-                (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'"
-                                                                     % (private_key_name, args.host2, command))
-                if status != 0:
-                    error("Something wrong on host: %s\n %s" % (args.host2, output))
-                if args.host3_info is not False:
-                    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'"
-                                                                         % (private_key_name, args.host3, command))
-                    if status != 0:
-                        error("Something wrong on host: %s\n %s" % (args.host2, output))
+
+                for host_info in self.host_post_info_list:
+                    start_mevoco(host_info)
+
                 SpinnerInfo.spinner_status['mevoco'] = False
                 time.sleep(.2)
             info("The cluster has been recovered!")
