@@ -9,6 +9,9 @@ from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
+class ChangePasswordError(Exception):
+    '''test'''
+
 class ChangePasswd(object):
     def __init__(self):
         self.password = None
@@ -37,14 +40,14 @@ class ChangePasswd(object):
     def _replace_shadow(self):
         crypt_method = shell.call('egrep ^\\s*ENCRYPT_METHOD login.defs|awk \'{print $2}\'', False).strip('\n')
         if not self.crypt[crypt_method]:
-            raise Exception("not support crypt algorithm, please check ENCRYPT_METHOD in /etc/login.defs... ")
+            raise ChangePasswordError("not support crypt algorithm, please check ENCRYPT_METHOD in /etc/login.defs... ")
         logger.debug("crypt_method is: %s" % str(self.crypt[crypt_method]))
         crypt_passwd = crypt.crypt(self.password, crypt.mksalt(self.crypt[crypt_method]))
         replace_cmd = "egrep \"^%s:\" shadow|awk -v passwd='%s' -F \":\" \'{$2=passwd;OFS=\":\";print}\'" % (self.account, crypt_passwd)
         replace_passwd = shell.call(replace_cmd, False).strip('\n')
         if not replace_passwd:
             logger.warn('user [%s] not exist!' % self.account)
-            raise Exception('user [%s] not exist!' % self.account)
+            raise ChangePasswordError('user [%s] not exist!' % self.account)
         logger.debug("crypt_passwd is: %s, replace_passwd is: %s" % (crypt_passwd, replace_passwd.replace('$', '\$')))
         sed_cmd = "sed -i \"s!^%s:.*\\$!%s!\" shadow" % (self.account, replace_passwd.replace('$', '\$'))
         shell.call(sed_cmd)
@@ -95,10 +98,12 @@ class ChangePasswd(object):
             return False
         try:
             self._replace_shadow()
+        except ChangePasswordError as e:
+            raise e
         except Exception as e:
             logger.warn(e)
-            self._clean_up()
             return False
-        self._clean_up()
+        finally:
+            self._clean_up()
         return True
 
