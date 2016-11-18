@@ -3865,9 +3865,9 @@ class APIQueryVolumeSnapshotTreeReply(object):
         self.error = None
 
 
-APIREINITVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.storage.snapshot.APIReInitVmInstanceMsg'
-class APIReInitVmInstanceMsg(object):
-    FULL_NAME='org.zstack.header.storage.snapshot.APIReInitVmInstanceMsg'
+APIREIMAGEVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.storage.snapshot.APIReimageVmInstanceMsg'
+class APIReimageVmInstanceMsg(object):
+    FULL_NAME='org.zstack.header.storage.snapshot.APIReimageVmInstanceMsg'
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
@@ -7435,23 +7435,6 @@ class APIRemoveMonFromFusionstorBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
-APIUPDATEFUSIONSTORBACKUPSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
-class APIUpdateFusionstorBackupStorageMonMsg(object):
-    FULL_NAME='org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
-    def __init__(self):
-        #mandatory field
-        self.monUuid = NotNoneField()
-        self.hostname = None
-        self.sshUsername = None
-        self.sshPassword = None
-        self.sshPort = None
-        self.monPort = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIADDFUSIONSTORPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIAddFusionstorPrimaryStorageMsg'
 class APIAddFusionstorPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.fusionstor.primary.APIAddFusionstorPrimaryStorageMsg'
@@ -7518,23 +7501,6 @@ class APIRemoveMonFromFusionstorPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monHostnames = NotNoneList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIUPDATEFUSIONSTORPRIMARYSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
-class APIUpdateFusionstorPrimaryStorageMonMsg(object):
-    FULL_NAME='org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
-    def __init__(self):
-        #mandatory field
-        self.monUuid = NotNoneField()
-        self.hostname = None
-        self.sshUsername = None
-        self.sshPassword = None
-        self.sshPort = None
-        self.monPort = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8224,7 +8190,6 @@ api_names = [
     'APIQueryVolumeSnapshotTreeReply',
     'APIQueryZoneMsg',
     'APIQueryZoneReply',
-    'APIReInitVmInstanceMsg',
     'APIRebootVmInstanceMsg',
     'APIReconnectBackupStorageMsg',
     'APIReconnectConsoleProxyAgentMsg',
@@ -8237,6 +8202,7 @@ api_names = [
     'APIRecoverImageMsg',
     'APIRecoverVmInstanceMsg',
     'APIRefreshLoadBalancerMsg',
+    'APIReimageVmInstanceMsg',
     'APIReloadLicenseMsg',
     'APIReloadLicenseReply',
     'APIRemoveDnsFromL3NetworkMsg',
@@ -8301,8 +8267,6 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEipMsg',
-    'APIUpdateFusionstorBackupStorageMonMsg',
-    'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIUpdateGlobalConfigMsg',
     'APIUpdateHostMsg',
     'APIUpdateImageMsg',
