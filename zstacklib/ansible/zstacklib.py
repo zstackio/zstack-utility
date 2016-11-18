@@ -1473,7 +1473,10 @@ def enable_ntp(trusted_host, host_post_info, distro):
         command = " iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I" \
                   " INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && service iptables save)"
         run_remote_command(command, host_post_info)
-        service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+        service_status("ntpd", "state=stopped enabled=yes", host_post_info)
+        command = "ntpdate %s" % trusted_host
+        run_remote_command(command, host_post_info)
+        service_status("ntpd", "state=started enabled=yes", host_post_info)
     elif distro == "Debian" or distro == "Ubuntu":
         command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I " \
                   "INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && /etc/init.d/iptables-persistent save)"
