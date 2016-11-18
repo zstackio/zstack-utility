@@ -1464,6 +1464,12 @@ def modprobe(modprobe_arg, host_post_info):
 
 def enable_ntp(trusted_host, host_post_info, distro):
     logger.debug("Starting enable ntp service")
+    def sync_date():
+        if trusted_host != host_post_info.host:
+            service_status("ntpd", "state=stopped enabled=yes", host_post_info)
+            command = "ntpdate %s" % trusted_host
+            run_remote_command(command, host_post_info)
+            service_status("ntpd", "state=started enabled=yes", host_post_info)
     if trusted_host != host_post_info.host:
         replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
         update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
@@ -1473,15 +1479,11 @@ def enable_ntp(trusted_host, host_post_info, distro):
         command = " iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I" \
                   " INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && service iptables save)"
         run_remote_command(command, host_post_info)
-        service_status("ntpd", "state=stopped enabled=yes", host_post_info)
-        command = "ntpdate %s" % trusted_host
-        run_remote_command(command, host_post_info)
-        service_status("ntpd", "state=started enabled=yes", host_post_info)
     elif distro == "Debian" or distro == "Ubuntu":
         command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I " \
                   "INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && /etc/init.d/iptables-persistent save)"
         run_remote_command(command, host_post_info)
-        service_status("ntp", "state=restarted enabled=yes", host_post_info)
+    sync_date()
 
 
 
