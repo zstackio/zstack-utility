@@ -162,6 +162,8 @@ if distro == "RedHat" or distro == "CentOS":
 elif distro == "Debian" or distro == "Ubuntu":
     command = "service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start && update-rc.d zstack-ceph-backupstorage enable"
 run_remote_command(command, host_post_info)
+# change ceph config
+set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy cephbackup agent successful", host_post_info, "INFO")

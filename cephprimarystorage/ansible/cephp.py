@@ -21,6 +21,7 @@ remote_user = "root"
 remote_pass = None
 remote_port = None
 
+
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph primary strorage to host')
 parser.add_argument('-i', type=str, help="""specify inventory host file
@@ -163,6 +164,8 @@ elif distro == "Debian" or distro == "Ubuntu":
     command = "service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start" \
               " && update-rc.d zstack-ceph-primarystorage enable"
 run_remote_command(command, host_post_info)
+# change ceph config
+set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
 
 # name: remove libvirt default bridge
 command = '(ifconfig virbr0 &> /dev/null && virsh net-destroy default > ' \
