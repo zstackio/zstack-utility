@@ -29,13 +29,13 @@ class ChangePasswd(object):
             return False
         return True
     def _enable_md5_crypt(self):
-        md5_crypt = shell.call("grep MD5_CRYPT_ENAB login.defs", False).strip('\n')
+        md5_crypt = shell.call("egrep ^\\s*MD5_CRYPT_ENAB login.defs", False).strip('\n')
         if not md5_crypt:
             logger.debug("we must close MD5_CRYPT_ENAB.")
             shell.call("sed -i \'s/^\\s*MD5_CRYPT_ENAB\\s*no/MD5_CRYPT_ENAB yes/\' login.defs")
             shell.call("virt-copy-in -a %s login.defs /etc/" % self.image)
     def _replace_shadow(self):
-        crypt_method = shell.call('grep ENCRYPT_METHOD login.defs|awk \'{print $2}\'', False).strip('\n')
+        crypt_method = shell.call('egrep ^\\s*ENCRYPT_METHOD login.defs|awk \'{print $2}\'', False).strip('\n')
         if not self.crypt[crypt_method]:
             raise Exception("not support crypt algorithm, please check ENCRYPT_METHOD in /etc/login.defs... ")
         logger.debug("crypt_method is: %s" % str(self.crypt[crypt_method]))
