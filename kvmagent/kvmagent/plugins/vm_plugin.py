@@ -1999,6 +1999,7 @@ class Vm(object):
             try:
                 logger.debug("ping_json: %s" % ping_json)
                 if ping_json.find("{\"return\":{}}") != -1:
+                    time.sleep(0.5)
                     return True
             except Exception as err:
                 logger.warn(err.message)
