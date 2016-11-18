@@ -1948,7 +1948,7 @@ class Vm(object):
         return False
 
     def _wait_until_qemuga_ready(self, timeout, uuid):
-        finish_time = time.time()+timeout
+        finish_time = time.time()+(timeout/1000)
         while time.time() < finish_time:
             state = get_all_vm_states().get(uuid)
             if state != Vm.VM_STATE_RUNNING:
