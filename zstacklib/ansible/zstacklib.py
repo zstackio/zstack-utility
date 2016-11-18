@@ -1469,7 +1469,7 @@ def enable_ntp(trusted_host, host_post_info, distro):
             service_status("ntpd", "state=stopped enabled=yes", host_post_info)
             command = "ntpdate %s" % trusted_host
             run_remote_command(command, host_post_info)
-            service_status("ntpd", "state=started enabled=yes", host_post_info)
+        service_status("ntpd", "state=restarted enabled=yes", host_post_info)
     if trusted_host != host_post_info.host:
         replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
         update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
