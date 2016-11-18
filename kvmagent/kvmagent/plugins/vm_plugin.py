@@ -2904,12 +2904,12 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
 
-                if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN:
+                if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
                     raise kvmagent.KvmError(
-                        'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running or Stopped, current state is {2}'.format(
+                        'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Suspended, current state is {2}'.format(
                             vm.uuid, cmd.deviceId, vm.state))
 
-                if vm and vm.state == vm.VM_STATE_RUNNING:
+                if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
                     rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.deviceId,
                                                                                                 cmd.installPath,
                                                                                                 cmd.fullSnapshot)
