@@ -89,7 +89,7 @@ if distro == "RedHat" or distro == "CentOS":
         command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
         run_remote_command(command, host_post_info)
     # name: disable selinux on RedHat based OS
-    set_selinux("state=permissive policy=targeted", host_post_info)
+    set_selinux("state=disabled", host_post_info)
     # name: enable tgtd daemon on RedHat
     service_status("tgtd", "state=started enabled=yes", host_post_info)
 
