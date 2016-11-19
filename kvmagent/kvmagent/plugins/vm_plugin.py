@@ -1972,6 +1972,15 @@ class Vm(object):
             time.sleep(0.1)
         raise kvmagent.KvmError("qemu-ga is not ready...")
 
+    def _escape_char_password(self, password):
+        enscape_str = "\<\>\|\"\'\/\\\$\`\&\{\}"
+        des = ""
+        for c in list(password):
+            if c in enscape_str:
+                des += "\\"
+            des += c
+        return des
+
     def change_vm_password(self, cmd):
         uuid = self.uuid
         # check the vm state first, then choose the method in different way
@@ -1984,9 +1993,11 @@ class Vm(object):
             self._wait_until_qemuga_ready(timeout, uuid)
             # running state: exec virsh set-user-password to connect the qemu-ga
             try:
+                escape_password = self._escape_char_password(cmd.accountPerference.accountPassword)
+                logger.debug("escape_password is: %s" % escape_password)
                 shell.call('virsh set-user-password %s %s %s' % (self.uuid,
                                                              cmd.accountPerference.userAccount,
-                                                             cmd.accountPerference.accountPassword))
+                                                             escape_password))
             except Exception as e:
                 logger.warn(e.message)
                 if e.message.find("child process has failed to set user password") > 0:
