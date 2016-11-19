@@ -1465,12 +1465,12 @@ def modprobe(modprobe_arg, host_post_info):
 def enable_ntp(trusted_host, host_post_info, distro):
     logger.debug("Starting enable ntp service")
     def sync_date():
-        if trusted_host != host_post_info.host:
+        if trusted_host != host_post_info.host and host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
             service_status("ntpd", "state=stopped enabled=yes", host_post_info)
             command = "ntpdate %s" % trusted_host
             run_remote_command(command, host_post_info)
         service_status("ntpd", "state=restarted enabled=yes", host_post_info)
-    if trusted_host != host_post_info.host:
+    if trusted_host != host_post_info.host and host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
         replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
         update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
     replace_content("/etc/ntp.conf", "regexp='restrict default nomodify notrap nopeer noquery'"
