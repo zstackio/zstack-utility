@@ -2850,6 +2850,18 @@ class MonitoringPassThroughAction(inventory.APIMonitoringPassThroughMsg):
         self.out = evt
         return self.out
 
+class PauseVmInstanceAction(inventory.APIPauseVmInstanceMsg):
+    def __init__(self):
+        super(PauseVmInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PauseVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class PrometheusQueryLabelValuesAction(inventory.APIPrometheusQueryLabelValuesMsg):
     def __init__(self):
         super(PrometheusQueryLabelValuesAction, self).__init__()
@@ -4148,18 +4160,6 @@ class StopVmInstanceAction(inventory.APIStopVmInstanceMsg):
         self.out = evt
         return self.out
 
-class SuspendVmInstanceAction(inventory.APISuspendVmInstanceMsg):
-    def __init__(self):
-        super(SuspendVmInstanceAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[SuspendVmInstanceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class SyncImageSizeAction(inventory.APISyncImageSizeMsg):
     def __init__(self):
         super(SyncImageSizeAction, self).__init__()
@@ -4312,6 +4312,30 @@ class UpdateEipAction(inventory.APIUpdateEipMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateEipAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateFusionstorBackupStorageMonAction(inventory.APIUpdateFusionstorBackupStorageMonMsg):
+    def __init__(self):
+        super(UpdateFusionstorBackupStorageMonAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateFusionstorBackupStorageMonAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateFusionstorPrimaryStorageMonAction(inventory.APIUpdateFusionstorPrimaryStorageMonMsg):
+    def __init__(self):
+        super(UpdateFusionstorPrimaryStorageMonAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateFusionstorPrimaryStorageMonAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

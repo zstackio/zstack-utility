@@ -4106,7 +4106,7 @@ class APIChangeVmPasswordMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         #mandatory field
-        #valid regex values: ^\w+$
+        #valid regex values: [\da-zA-Z-`=\\\[\];',./~!@#$%^&*()_+|{}:"<>?]{1,}
         self.password = NotNoneField()
         #mandatory field
         self.account = NotNoneField()
@@ -4224,6 +4224,7 @@ class APICreateVmInstanceMsg(object):
         self.hostUuid = None
         self.primaryStorageUuidForRootVolume = None
         self.description = None
+        #valid regex values: [\da-zA-Z-`=\\\[\];',./~!@#$%^&*()_+|{}:"<>?]{1,}
         self.rootPassword = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
@@ -4685,6 +4686,18 @@ class APIMigrateVmMsg(object):
         self.userTags = OptionalList()
 
 
+APIPAUSEVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APIPauseVmInstanceMsg'
+class APIPauseVmInstanceMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIPauseVmInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APIQueryVmInstanceMsg'
 class APIQueryVmInstanceMsg(object):
     FULL_NAME='org.zstack.header.vm.APIQueryVmInstanceMsg'
@@ -4885,18 +4898,6 @@ class APIStopVmInstanceMsg(object):
         self.uuid = NotNoneField()
         #valid values: [grace, cold]
         self.type = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APISUSPENDVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APISuspendVmInstanceMsg'
-class APISuspendVmInstanceMsg(object):
-    FULL_NAME='org.zstack.header.vm.APISuspendVmInstanceMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -5407,6 +5408,7 @@ class APICreateIPsecConnectionMsg(object):
         self.policyAuthAlgorithm = None
         #valid values: [3des, aes-128, aes-192, aes-256]
         self.policyEncryptionAlgorithm = None
+        #valid values: [dh-group2, dh-group5, dh-group14, dh-group15, dh-group16, dh-group17, dh-group18, dh-group19, dh-group20, dh-group21, dh-group22, dh-group23, dh-group24, dh-group25, dh-group26]
         self.pfs = None
         #valid values: [tunnel, transport]
         self.policyMode = None
@@ -6790,6 +6792,7 @@ class APICreateVirtualRouterVmMsg(object):
         self.hostUuid = None
         self.primaryStorageUuidForRootVolume = None
         self.description = None
+        #valid regex values: [\da-zA-Z-`=\\\[\];',./~!@#$%^&*()_+|{}:"<>?]{1,}
         self.rootPassword = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
@@ -7435,6 +7438,23 @@ class APIRemoveMonFromFusionstorBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEFUSIONSTORBACKUPSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+class APIUpdateFusionstorBackupStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDFUSIONSTORPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIAddFusionstorPrimaryStorageMsg'
 class APIAddFusionstorPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.fusionstor.primary.APIAddFusionstorPrimaryStorageMsg'
@@ -7501,6 +7521,23 @@ class APIRemoveMonFromFusionstorPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEFUSIONSTORPRIMARYSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+class APIUpdateFusionstorPrimaryStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8071,6 +8108,7 @@ api_names = [
     'APIMigrateVmMsg',
     'APIMonitoringPassThroughMsg',
     'APIMonitoringPassThroughReply',
+    'APIPauseVmInstanceMsg',
     'APIPrometheusQueryLabelValuesMsg',
     'APIPrometheusQueryLabelValuesReply',
     'APIPrometheusQueryMetadataMsg',
@@ -8253,7 +8291,6 @@ api_names = [
     'APISilentMsg',
     'APIStartVmInstanceMsg',
     'APIStopVmInstanceMsg',
-    'APISuspendVmInstanceMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncVolumeSizeMsg',
@@ -8267,6 +8304,8 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEipMsg',
+    'APIUpdateFusionstorBackupStorageMonMsg',
+    'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIUpdateGlobalConfigMsg',
     'APIUpdateHostMsg',
     'APIUpdateImageMsg',
@@ -10650,8 +10689,8 @@ DESTROYING = 'Destroying'
 DESTROYED = 'Destroyed'
 MIGRATING = 'Migrating'
 EXPUNGING = 'Expunging'
-SUSPENDING = 'Suspending'
-SUSPENDED = 'Suspended'
+PAUSING = 'Pausing'
+PAUSED = 'Paused'
 RESUMING = 'Resuming'
 ERROR = 'Error'
 UNKNOWN = 'Unknown'
