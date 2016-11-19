@@ -18,12 +18,14 @@ from zstacklib.utils import generate_passwd
 
 logger = log.get_logger(__name__)
 
+
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
         self.error = error if error else ''
         self.totalCapacity = None
         self.availableCapacity = None
+
 
 class SetPasswordResponse(AgentResponse):
     def __init__(self):
@@ -32,16 +34,19 @@ class SetPasswordResponse(AgentResponse):
         self.account = None
         self.password = None
 
+
 class InitRsp(AgentResponse):
     def __init__(self):
         super(InitRsp, self).__init__()
         self.fsid = None
         self.userKey = None
 
+
 class DownloadRsp(AgentResponse):
     def __init__(self):
         super(DownloadRsp, self).__init__()
         self.size = None
+
 
 class CpRsp(AgentResponse):
     def __init__(self):
@@ -49,11 +54,13 @@ class CpRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+
 class CreateSnapshotRsp(AgentResponse):
     def __init__(self):
         super(CreateSnapshotRsp, self).__init__()
         self.size = None
         self.actualSize = None
+
 
 class GetVolumeSizeRsp(AgentResponse):
     def __init__(self):
@@ -61,16 +68,19 @@ class GetVolumeSizeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+
 class PingRsp(AgentResponse):
     def __init__(self):
         super(PingRsp, self).__init__()
         self.failure = None
+
 
 class GetFactsRsp(AgentResponse):
     def __init__(self):
         super(GetFactsRsp, self).__init__()
         self.fsid = None
         self.monAddr = None
+
 
 def replyerror(func):
     @functools.wraps(func)
@@ -85,10 +95,11 @@ def replyerror(func):
             rsp.error = str(e)
             logger.warn(err)
             return jsonobject.dumps(rsp)
+
     return wrap
 
-class CephAgent(object):
 
+class CephAgent(object):
     INIT_PATH = "/ceph/primarystorage/init"
     CREATE_VOLUME_PATH = "/ceph/primarystorage/volume/createempty"
     DELETE_PATH = "/ceph/primarystorage/delete"
@@ -203,7 +214,7 @@ class CephAgent(object):
         chp = generate_passwd.ChangePasswd()
         chp.password = cmd.password
         chp.account = cmd.account
-        chp.image = cmd.cephInstallPath.split("/")[-1]+".qcow2"
+        chp.image = cmd.cephInstallPath.split("/")[-1] + ".qcow2"
         if not chp.generate_passwd():
             raise Exception('inject passwd failed.')
 
@@ -278,18 +289,38 @@ class CephAgent(object):
                         ' may solve this issue' % (cmd.monUuid, cmd.monAddr)
             return jsonobject.dumps(rsp)
 
-        r, o, e = bash_roe('timeout 60 rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
-        if r != 0:
-            rsp.success = False
-            rsp.failure = "UnableToCreateFile"
-            if r == 124:
-                # timeout happened
-                rsp.error = 'failed to create temporary file on ceph, timeout after 60s, %s %s' % (e, o)
-            else:
-                rsp.error = "%s %s" % (e, o)
-        else:
-            bash_r('rbd rm %s' % cmd.testImagePath)
+        def retry(times=3, sleep_time=3):
+            def wrap(f):
+                @functools.wraps(f)
+                def inner(*args, **kwargs):
+                    for i in range(0, times):
+                        try:
+                            return f(*args, **kwargs)
+                        except Exception as e:
+                            logger.error(e)
+                            time.sleep(sleep_time)
+                    rsp.error = ("Still failed after retry. Below is detail:\n %s" % e)
 
+                return inner
+
+            return wrap
+
+        @retry()
+        def doPing():
+            # try to delete test file, ignore the result
+            bash_r('rbd rm %s' % cmd.testImagePath)
+            r, o, e = bash_roe('timeout 60 rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
+            if r != 0:
+                rsp.success = False
+                rsp.failure = "UnableToCreateFile"
+                if r == 124:
+                    # timeout happened
+                    rsp.error = 'failed to create temporary file on ceph, timeout after 60s, %s %s' % (e, o)
+                    raise Exception(rsp.error)
+                else:
+                    rsp.error = "%s %s" % (e, o)
+
+        doPing()
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -440,7 +471,8 @@ class CephAgent(object):
             elif pool.name not in existing_pools:
                 shell.call('ceph osd pool create %s 100' % pool.name)
 
-        o = shell.call("ceph -f json auth get-or-create client.zstack mon 'allow r' osd 'allow *' 2>/dev/null").strip(' \n\r\t')
+        o = shell.call("ceph -f json auth get-or-create client.zstack mon 'allow r' osd 'allow *' 2>/dev/null").strip(
+            ' \n\r\t')
         o = jsonobject.loads(o)
 
         rsp = InitRsp()
@@ -481,12 +513,11 @@ class CephAgent(object):
 
         try:
             shell.call("set -o pipefail; rbd export %s - | ssh -o StrictHostKeyChecking=no -i %s root@%s 'cat > %s'" %
-                        (src_path, prikey_file, cmd.hostname, cmd.backupStorageInstallPath))
+                       (src_path, prikey_file, cmd.hostname, cmd.backupStorageInstallPath))
         finally:
             os.remove(prikey_file)
 
         return jsonobject.dumps(AgentResponse())
-
 
     @replyerror
     @rollback
@@ -505,20 +536,24 @@ class CephAgent(object):
         def _0():
             tpath = "%s/%s" % (pool, tmp_image_name)
             shell.call('rbd info %s > /dev/null && rbd rm %s' % (tpath, tpath))
+
         _0()
 
         try:
-            shell.call('set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -i %s root@%s "cat %s" | rbd import --image-format 2 - %s/%s' %
-                        (port, prikey_file, hostname, cmd.backupStorageInstallPath, pool, tmp_image_name))
+            shell.call(
+                'set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -i %s root@%s "cat %s" | rbd import --image-format 2 - %s/%s' %
+                (port, prikey_file, hostname, cmd.backupStorageInstallPath, pool, tmp_image_name))
         finally:
             os.remove(prikey_file)
 
         @rollbackable
         def _1():
             shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+
         _1()
 
-        file_format = shell.call("set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+        file_format = shell.call(
+            "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
         file_format = file_format.strip()
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
@@ -531,7 +566,8 @@ class CephAgent(object):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
+                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
+                    pool, tmp_image_name, pool, image_name, conf_path))
                 shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
                 if conf_path:
@@ -567,5 +603,3 @@ class CephDaemon(daemon.Daemon):
     def run(self):
         self.agent = CephAgent()
         self.agent.http_server.start()
-
-
