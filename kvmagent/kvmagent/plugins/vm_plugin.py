@@ -88,16 +88,16 @@ class StopVmResponse(kvmagent.AgentResponse):
         super(StopVmResponse, self).__init__()
 
 
-class SuspendVmCmd(kvmagent.AgentCommand):
+class PauseVmCmd(kvmagent.AgentCommand):
     def __init__(self):
-        super(SuspendVmCmd, self).__init__()
+        super(PauseVmCmd, self).__init__()
         self.uuid = None
         self.timeout = None
 
 
-class SuspendVmResponse(kvmagent.AgentResponse):
+class PauseVmResponse(kvmagent.AgentResponse):
     def __init__(self):
-        super(SuspendVmResponse, self).__init__()
+        super(PauseVmResponse, self).__init__()
 
 
 class ResumeVmCmd(kvmagent.AgentCommand):
@@ -1137,7 +1137,7 @@ class Vm(object):
     def destroy(self):
         self.stop(graceful=False)
 
-    def suspend(self, timeout=5):
+    def pause(self, timeout=5):
         def loop_suspend(_):
             try:
                 self.domain.suspend()
@@ -2445,7 +2445,7 @@ class Vm(object):
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
     KVM_STOP_VM_PATH = "/vm/stop"
-    KVM_SUSPEND_VM_PATH = "/vm/suspend"
+    KVM_PAUSE_VM_PATH = "/vm/pause"
     KVM_RESUME_VM_PATH = "/vm/resume"
     KVM_REBOOT_VM_PATH = "/vm/reboot"
     KVM_DESTROY_VM_PATH = "/vm/destroy"
@@ -2738,14 +2738,14 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def suspend_vm(self, req):
+    def pause_vm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         try:
             self._record_operation(cmd.uuid, self.VM_OP_SUSPEND)
-            rsp = SuspendVmResponse()
+            rsp = PauseVmResponse()
             vm = get_vm_by_uuid(cmd.uuid)
-            vm.suspend()
-            logger.debug('successfully, suspend vm [uuid:%s]' % cmd.uuid)
+            vm.pause()
+            logger.debug('successfully, pause vm [uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -2906,7 +2906,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
                 if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
                     raise kvmagent.KvmError(
-                        'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Suspended, current state is {2}'.format(
+                        'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
                             vm.uuid, cmd.deviceId, vm.state))
 
                 if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
@@ -3006,7 +3006,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
         http_server.register_async_uri(self.KVM_STOP_VM_PATH, self.stop_vm)
-        http_server.register_async_uri(self.KVM_SUSPEND_VM_PATH, self.suspend_vm)
+        http_server.register_async_uri(self.KVM_PAUSE_VM_PATH, self.pause_vm)
         http_server.register_async_uri(self.KVM_RESUME_VM_PATH, self.resume_vm)
         http_server.register_async_uri(self.KVM_REBOOT_VM_PATH, self.reboot_vm)
         http_server.register_async_uri(self.KVM_DESTROY_VM_PATH, self.destroy_vm)
