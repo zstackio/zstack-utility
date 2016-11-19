@@ -68,6 +68,7 @@ MYSQL_USER_PASSWORD='zstack.password'
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
 UPGRADE_MONITOR=''
+NTP_OFFLINE_CONFIG='n'
 ONLY_UPGRADE_CTL=''
 ZSTACK_START_TIMEOUT=300
 ZSTACK_PKG_MIRROR=''
@@ -957,7 +958,7 @@ install_system_libs(){
 is_enable_ntpd(){
     echo_subtitle "Enable NTP"
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ];then
-        if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
+        if [ $NTP_OFFLINE_CONFIG = 'n' ];then
             grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
                 echo "server 0.pool.ntp.org iburst" >> /etc/ntp.conf
@@ -974,7 +975,7 @@ is_enable_ntpd(){
         systemctl enable ntpd >> $ZSTACK_INSTALL_LOG 2>&1
         systemctl restart ntpd >> $ZSTACK_INSTALL_LOG 2>&1
     else
-        if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
+        if [ $NTP_OFFLINE_CONFIG = 'n' ];then
             grep '^server 0.ubuntu.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
                 echo "server 0.ubuntu.pool.ntp.org" >> /etc/ntp.conf
@@ -1928,6 +1929,8 @@ Options:
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
         to upgrade zstack or -l to install some system libs. 
 
+  -N    change ntp.conf on management node for setup local ntp server without internet synchronization.
+
   -o    offline installation. ${PRODUCT_NAME} required system libs will installed from zstack local repository, which is installed from ZStack customed ISO. ZStack customed ISO could be got from ZStack community.
 
   -p MYSQL_PASSWORD
@@ -2021,6 +2024,7 @@ do
         l ) ONLY_INSTALL_LIBS='y';;
         m ) INSTALL_MONITOR='y';;
         M ) UPGRADE_MONITOR='y';;
+        N ) NTP_OFFLINE_CONFIG='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
         o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';; #do not use yum online repo.
         P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;

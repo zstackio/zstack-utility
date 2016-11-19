@@ -1468,7 +1468,9 @@ def enable_ntp(trusted_host, host_post_info, distro):
         if trusted_host != host_post_info.host and host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
             service_status("ntpd", "state=stopped enabled=yes", host_post_info)
             command = "ntpdate %s" % trusted_host
-            run_remote_command(command, host_post_info)
+            (status, output) = run_remote_command(command, host_post_info, True, True)
+            if status is False:
+               logger.error("ntp sync date failed! detail: %s" % output)
         service_status("ntpd", "state=restarted enabled=yes", host_post_info)
     if trusted_host != host_post_info.host and host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
         replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
