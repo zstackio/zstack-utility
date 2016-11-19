@@ -1973,7 +1973,7 @@ class Vm(object):
         raise kvmagent.KvmError("qemu-ga is not ready...")
 
     def _escape_char_password(self, password):
-        enscape_str = "\<\>\|\"\'\/\\\$\`\&\{\}"
+        enscape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}"
         des = ""
         for c in list(password):
             if c in enscape_str:
