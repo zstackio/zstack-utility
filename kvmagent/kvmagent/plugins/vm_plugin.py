@@ -1693,7 +1693,7 @@ class Vm(object):
         e(interface, 'mac', None, attrib={'address': nic.mac})
         e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
         e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
-        e(interface, 'alias', None, attrib={'name': nic.nicInternalName})
+        e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
         if nic.useVirtio:
             e(interface, 'model', None, attrib={'type': 'virtio'})
         else:
@@ -2350,7 +2350,7 @@ class Vm(object):
             for nic in cmd.nics:
                 interface = e(devices, 'interface', None, {'type': 'bridge'})
                 e(interface, 'mac', None, {'address': nic.mac})
-                e(interface, 'alias', None, {'name': nic.nicInternalName})
+                e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
                 e(interface, 'source', None, {'bridge': nic.bridgeName})
                 if use_virtio:
                     e(interface, 'model', None, {'type': 'virtio'})
