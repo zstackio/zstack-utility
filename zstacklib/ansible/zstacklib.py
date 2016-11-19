@@ -14,6 +14,7 @@ import time
 import functools
 import jinja2
 import commands
+import yaml
 
 # set global default value
 start_time = datetime.now()
@@ -1464,17 +1465,30 @@ def modprobe(modprobe_arg, host_post_info):
 
 def enable_ntp(trusted_host, host_post_info, distro):
     logger.debug("Starting enable ntp service")
+
+    def get_ha_mn_list(conf_file):
+        if os.path.isfile(conf_file):
+            with open(conf_file, 'r') as fd:
+                ha_conf_content = yaml.load(fd.read())
+                mn_list = ha_conf_content['host_list'].split(',')
+            return mn_list
+        else:
+            return []
+
     def sync_date():
-        if trusted_host != host_post_info.host and host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
-            service_status("ntpd", "state=stopped enabled=yes", host_post_info)
-            command = "ntpdate %s" % trusted_host
-            (status, output) = run_remote_command(command, host_post_info, True, True)
-            if status is False:
-               logger.error("ntp sync date failed! detail: %s" % output)
+        if trusted_host != host_post_info.host:
+            if host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
+                if host_post_info.host not in get_ha_mn_list("/var/lib/zstack/ha/ha.yaml"):
+                    service_status("ntpd", "state=stopped enabled=yes", host_post_info)
+                    command = "ntpdate %s" % trusted_host
+                    run_remote_command(command, host_post_info, True, True)
         service_status("ntpd", "state=restarted enabled=yes", host_post_info)
-    if trusted_host != host_post_info.host and host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
-        replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
-        update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
+
+    if trusted_host != host_post_info.host:
+        if host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
+            if host_post_info.host not in get_ha_mn_list("/var/lib/zstack/ha/ha.yaml"):
+                replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
+                update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
     replace_content("/etc/ntp.conf", "regexp='restrict default nomodify notrap nopeer noquery'"
                                      " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
     if distro == "CentOS" or distro == "RedHat":

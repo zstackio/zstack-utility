@@ -2024,8 +2024,6 @@ class UpgradeHACmd(Command):
             else:
                 error('The management node %s status is: Unknown, please start the management node before upgrade' % host_post_info.host)
 
-
-
     def upgrade_mevoco(self, mevoco_installer, host_post_info):
         mevoco_dir = os.path.dirname(mevoco_installer)
         mevoco_bin = os.path.basename(mevoco_installer)
@@ -2046,6 +2044,8 @@ class UpgradeHACmd(Command):
         spinner_info.name = 'check_init'
         SpinnerInfo.spinner_status['check_init'] = True
         ZstackSpinner(spinner_info)
+        if os.path.isfile(UpgradeHACmd.conf_file) is not True:
+            error("Didn't find HA config file %s, please contact support for upgrade" % UpgradeHACmd.conf_file)
         host_inventory = UpgradeHACmd.conf_dir + 'host'
         yum_repo = get_yum_repo_from_property()
         private_key_name = UpgradeHACmd.conf_dir+ "ha_key"
