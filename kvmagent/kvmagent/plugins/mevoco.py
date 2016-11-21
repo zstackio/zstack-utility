@@ -198,9 +198,12 @@ class Mevoco(kvmagent.KvmAgent):
         if o:
             cmds = []
             for l in o.split("\n"):
-                cmds.append("ebtables %s" % l.replace("-A", "-D"))
+                # we don't distinguish if the rule is in filter table or nat table
+                # but try both. The wrong table will silently fail
+                cmds.append("ebtables -t filter %s" % l.replace("-A", "-D"))
+                cmds.append("ebtables -t nat %s" % l.replace("-A", "-D"))
 
-            bash_errorout("\n".join(cmds))
+            bash_r("\n".join(cmds))
 
         bash_errorout("ps aux | grep lighttpd | grep {{BR_NAME}} | grep -w userdata | awk '{print $2}' | xargs -r kill -9")
 
