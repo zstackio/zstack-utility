@@ -146,6 +146,7 @@ class Mevoco(kvmagent.KvmAgent):
     RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
     BATCH_APPLY_USER_DATA = "/flatnetworkprovider/userdata/batchapply"
     DHCP_DELETE_NAMESPACE_PATH = "/flatnetworkprovider/dhcp/deletenamespace"
+    CLEANUP_USER_DATA = "/flatnetworkprovider/userdata/cleanup"
 
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
 
@@ -166,6 +167,7 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RELEASE_USER_DATA, self.release_userdata)
         http_server.register_async_uri(self.RESET_DEFAULT_GATEWAY_PATH, self.reset_default_gateway)
         http_server.register_async_uri(self.DHCP_DELETE_NAMESPACE_PATH, self.delete_dhcp_namespace)
+        http_server.register_async_uri(self.CLEANUP_USER_DATA, self.cleanup_userdata)
 
     def stop(self):
         pass
@@ -182,6 +184,27 @@ class Mevoco(kvmagent.KvmAgent):
         shell.call('ebtables -F')
         shell.call('ebtables -t nat -F')
         return jsonobject.dumps(ConnectRsp())
+
+    @kvmagent.replyerror
+    @in_bash
+    def cleanup_userdata(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        BR_NAME = cmd.bridgeName
+        CHAIN_NAME = "USERDATA-%s" % BR_NAME
+
+        o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
+        o = o.strip(" \t\r\n")
+        if o:
+            cmds = []
+            for l in o.split("\n"):
+                cmds.append("ebtables %s" % l.replace("-A", "-D"))
+
+            bash_errorout("\n".join(cmds))
+
+        bash_errorout("ps aux | grep lighttpd | grep {{BR_NAME}} | grep -w userdata | awk '{print $2}' | xargs -r kill -9")
+
+        return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
     def batch_apply_userdata(self, req):
