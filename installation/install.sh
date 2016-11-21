@@ -501,11 +501,16 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     ia_check_ip_hijack
 
     #add user: zstack and add sudo permission for it.
-    id -u zstack >/dev/null 2>&1 
+    id -u zstack >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        usermod -d $ZSTACK_INSTALL_ROOT zstack >/dev/null 2>&1
+        ps axu | pgrep prometheus | xargs kill
+        ps axu | pgrep prometheus
+        if [ $? -eq 0 ];then
+            ps axu | pgrep prometheus | xargs kill -9
+        fi
+        usermod -d $ZSTACK_INSTALL_ROOT zstack >/dev/null >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        useradd -d $ZSTACK_INSTALL_ROOT zstack >/dev/null 2>&1
+        useradd -d $ZSTACK_INSTALL_ROOT zstack >/dev/null >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     zstack_home=`eval echo ~zstack`
     if [ ! -d $zstack_home ];then
