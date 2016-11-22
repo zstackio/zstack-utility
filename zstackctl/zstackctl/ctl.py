@@ -1457,7 +1457,7 @@ class StartCmd(Command):
                         warn('cannot connect to the RabbitMQ server[ip:%s, port:%s]' % (ip, RABBIT_PORT))
 
                 if not success:
-                    raise CtlError('cannot connect to all RabbitMQ servers[ip:%s, port:%s] defined in %s' %
+                    raise CtlError('cannot connect to all RabbitMQ servers[ip:%s, port:%s] defined in %s, please reset rabbitmq by: "zstack-ctl reset_rabbitmq"' %
                                     (ips, RABBIT_PORT, ctl.properties_file_path))
                 else:
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
