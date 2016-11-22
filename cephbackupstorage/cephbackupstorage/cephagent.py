@@ -189,9 +189,11 @@ class CephAgent(object):
         logger.debug("inject qemu-ga, try to exec: %s" % cmd)
         try:
             bash_o(cmd, True)
+            logger.debug("inject qemu-guest-agent succeed! ")
         except BashError as e:
-            logger.warn("inject failed due to:")
-            logger.warn(e)
+            logger.warn("inject failed due to: ")
+            logger.warn(e.message)
+            raise e
 
     @replyerror
     @rollback
