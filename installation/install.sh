@@ -503,10 +503,10 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     #add user: zstack and add sudo permission for it.
     id -u zstack >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        ps axu | pgrep prometheus | xargs kill
-        ps axu | pgrep prometheus
+        ps axu | pgrep prometheus | xargs kill >/dev/null 2>&1
+        ps axu | pgrep prometheus >/dev/null 2>&1
         if [ $? -eq 0 ];then
-            ps axu | pgrep prometheus | xargs kill -9
+            ps axu | pgrep prometheus | xargs kill -9 >/dev/null 2>&1
         fi
         usermod -d $ZSTACK_INSTALL_ROOT zstack >/dev/null >>$ZSTACK_INSTALL_LOG 2>&1
     else
