@@ -77,29 +77,32 @@ class ChangePasswd(object):
             return False
         return True
     def _is_centos(self):
-        OSVersion = shell.call('virt-inspector -a %s |grep CentOS' % self.image, False)
-        if not OSVersion:
+        OSVersion = shell.call('virt-inspector -a %s' % self.image, False).split('\n')
+        if "CentOS" not in OSVersion:
             logger.debug("not CentOS, dont need to close selinux")
             return False
-        return True
+        elif "Ubuntu" in OSVersion:
+            return True
+        else:
+            raise ChangePasswordError("not support OS Version. Only support Ubuntu or CentOS")
 
     def generate_passwd(self):
         if not self._check_parameters():
             return False
-        version = self._is_centos()
-        if version:
-            try:
-                shell.call("virt-copy-out -a %s /etc/shadow /etc/login.defs /etc/selinux/config %s" % (self.image, self.tmpdir))
-                self._close_selinux()
-            except Exception as e:
-                logger.warn(e)
-        else:
-            shell.call("virt-copy-out -a %s /etc/shadow /etc/login.defs %s" % (self.image, self.tmpdir), False)
-        if (not self._check_file("/etc/", "%s/shadow" % self.tmpdir)) \
-                or (not self._check_file("/etc/", "%s/login.defs" % self.tmpdir)):
-            self._clean_up()
-            return False
         try:
+            version = self._is_centos()
+            if version:
+                try:
+                    shell.call("virt-copy-out -a %s /etc/shadow /etc/login.defs /etc/selinux/config %s" % (self.image, self.tmpdir))
+                    self._close_selinux()
+                except Exception as e:
+                    logger.warn(e)
+            else:
+                shell.call("virt-copy-out -a %s /etc/shadow /etc/login.defs %s" % (self.image, self.tmpdir), False)
+            if (not self._check_file("/etc/", "%s/shadow" % self.tmpdir)) \
+                    or (not self._check_file("/etc/", "%s/login.defs" % self.tmpdir)):
+                self._clean_up()
+                return False
             self._replace_shadow()
         except ChangePasswordError as e:
             raise e
