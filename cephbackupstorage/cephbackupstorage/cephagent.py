@@ -196,6 +196,10 @@ class CephAgent(object):
     @replyerror
     @rollback
     def download(self, req):
+        def fail_if_has_backing_file(fpath):
+            if linux.qcow2_get_backing_file(fpath):
+                raise Exception('image has backing file')
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         pool, image_name = self._parse_install_path(cmd.installPath)
@@ -204,6 +208,7 @@ class CephAgent(object):
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             shell.call('set -o pipefail; wget --no-check-certificate -q %s -O %s ' % (cmd.url, tmp_qemu_name))
+            fail_if_has_backing_file(tmp_qemu_name)
             if cmd.inject:
                 self._inject_qemu_ga(tmp_qemu_name)
             shell.call('rbd import --image-format 2 %s %s/%s' % (tmp_qemu_name, pool, tmp_image_name))
@@ -213,6 +218,7 @@ class CephAgent(object):
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
+            fail_if_has_backing_file(src_path)
             shell.call('cp -f %s %s' % (src_path, tmp_qemu_name))
             if cmd.inject:
                 self._inject_qemu_ga(tmp_qemu_name)
