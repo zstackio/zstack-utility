@@ -188,12 +188,14 @@ class CephAgent(object):
         cmd = "bash /usr/local/zstack/imagestore/qemu-ga/auto-qemu-ga.sh %s" % install_path
         logger.debug("inject qemu-ga, try to exec: %s" % cmd)
         try:
-            bash_o(cmd, True)
+            ret, stdout, stderr = bash_roe(cmd, True)
+            if ret != 0:
+                logger.warn("inject failed due to: %s", stderr)
+                raise Exception("inject failed due to: %s", stderr)
             logger.debug("inject qemu-guest-agent succeed! ")
         except BashError as e:
-            logger.warn("inject failed due to: ")
-            logger.warn(e.message)
-            raise e
+            logger.warn("inject failed due to: %s", e)
+            raise Exception("inject failed due to: %s", e)
 
     @replyerror
     @rollback
