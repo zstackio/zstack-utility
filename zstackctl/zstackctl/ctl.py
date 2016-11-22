@@ -4287,8 +4287,9 @@ class CollectLogCmd(Command):
     def get_system_log(self, host_post_info, tmp_log_dir):
         # collect uptime and last reboot log and dmesg
         host_info_log = tmp_log_dir + "host_info"
-        command = "uptime > %s && last reboot >> %s" % (host_info_log, host_info_log)
-        run_remote_command(command, host_post_info)
+        command = "uptime > %s && last reboot >> %s && free -h >> %s && cat /proc/cpuinfo >> %s  && ip addr >> %s && df -h >> %s" % \
+                  (host_info_log, host_info_log, host_info_log, host_info_log, host_info_log, host_info_log)
+        run_remote_command(command, host_post_info, True, True)
         command = "cp /var/log/dmesg* /var/log/messages %s" % tmp_log_dir
         run_remote_command(command, host_post_info)
 
@@ -4488,8 +4489,9 @@ class CollectLogCmd(Command):
                 (status, output) = commands.getstatusoutput(command)
                 if status != 0:
                     warn("get %s failed: %s" % (log, output))
-
-        command = "uptime > %s/host_info && last reboot >> %s/host_info" % (mn_log_dir, mn_log_dir)
+        host_info_log = mn_log_dir + "/host_info"
+        command = "uptime > %s && last reboot >> %s && free -h >> %s && cat /proc/cpuinfo >> %s  && ip addr >> %s && df -h >> %s" % \
+                  (host_info_log, host_info_log, host_info_log, host_info_log, host_info_log, host_info_log)
         commands.getstatusoutput(command)
         command = "cp /var/log/dmesg* /var/log/messages %s/" % mn_log_dir
         commands.getstatusoutput(command)
