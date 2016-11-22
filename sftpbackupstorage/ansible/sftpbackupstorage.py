@@ -81,18 +81,17 @@ run_remote_command("rm -rf %s/*" % sftp_root, host_post_info)
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
         # name: install sftp backup storage related packages on RedHat based OS from local
-        command = ("pkg_list=`rpm -q openssh-clients qemu-img-ev-2.3.0 | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+        command = ("pkg_list=`rpm -q openssh-clients qemu-img-ev-2.3.0 libvirt libguestfs-winsupport libguestfs-tools | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
                    " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
     else:
         # name: install sftp backup storage related packages on RedHat based OS from online
-        yum_install_package("openssh-clients", host_post_info)
-        #For install Qemu 2.3. Need to enable extras repo
-        yum_install_package("qemu-img-ev-2.3.0", host_post_info)
+        for pkg in [ "openssh-clients", "qemu-img-ev-2.3.0", "libvirt", "libguestfs-winsupport", "libguestfs-tools"]:
+            yum_install_package(pkg, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    apt_install_packages(["openssh-client"], host_post_info)
-    apt_install_packages(["qemu-utils"], host_post_info)
+    install_pkg_list = ["openssh-client", "qemu-utils", "libvirt-bin", "libguestfs-winsupport", "libguestfs-tools"]
+    apt_install_packages(install_pkg_list, host_post_info)
 
 else:
     error("unsupported OS!")
