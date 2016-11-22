@@ -500,6 +500,11 @@ You can also add '-q' to installer, then Installer will help you to remove it.
 
     ia_check_ip_hijack
 
+    #stop zstack before change zstack home dir
+    which zstack-ctl >/dev/null 2>&1
+    if [ $? -eq 0 ];then
+        zstack-ctl stop >/dev/null 2>&1
+    fi
     #add user: zstack and add sudo permission for it.
     id -u zstack >/dev/null 2>&1
     if [ $? -eq 0 ]; then
@@ -2262,12 +2267,6 @@ if [ $UPGRADE = 'y' ]; then
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_star_line
     exit 0
-else
-    #stop zstack before installation.
-    which zstack-ctl >/dev/null 2>&1
-    if [ $? -eq 0 ];then
-        zstack-ctl stop >/dev/null 2>&1
-    fi
 fi
 
 #Install unzip and unpack zstack war into apache tomcat
