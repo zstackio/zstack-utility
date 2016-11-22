@@ -75,28 +75,33 @@ if distro == "CentOS" or distro == "RedHat":
         qemu_pkg = "qemu-kvm"
     else:
         qemu_pkg = "qemu-kvm-ev-2.3.0"
+    pkg_list = [qemu_pkg, "wget", "libvirt", "libguestfs-winsupport", "libguestfs-tools"]
+    pkg_str_list = "%s wget libvirt libguestfs-winsupport libguestfs-tools" % qemu_pkg
     if client == "true" :
         if distro_version < 7:
             # change error to warning due to imagestore client will install after add kvm host
             Warning("Imagestore Client only support distribution version newer than 7.0")
         if zstack_repo == 'false':
-            yum_install_package(qemu_pkg, host_post_info)
+            for pkg in pkg_list:
+                yum_install_package(pkg, host_post_info)
         else:
             command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
-                       "-y %s") % (zstack_repo, qemu_pkg)
+                       "-y %s") % (zstack_repo, pkg_str_list)
             run_remote_command(command, host_post_info)
     else:
         if zstack_repo == 'false':
-            yum_install_package(qemu_pkg, host_post_info)
+            for pkg in pkg_list:
+                yum_install_package(pkg, host_post_info)
         else:
             command = ("yum clean --enablerepo=alibase metadata && yum --disablerepo=* --enablerepo=%s install "
-                       "-y %s") % (zstack_repo, qemu_pkg)
+                       "-y %s") % (zstack_repo, pkg_str_list)
             run_remote_command(command, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
     if client == "true" and distro_version < 16:
         Warning("Client only support distribution version newer than 16.04")
-    apt_install_packages(["qemu-kvm"], host_post_info)
+    install_pkg_list = ["wget", "qemu-kvm", "libvirt-bin", "libguestfs-winsupport", "libguestfs-tools"]
+    apt_install_packages(install_pkg_list, host_post_info)
 
 else:
     error("ERROR: Unsupported distribution")
