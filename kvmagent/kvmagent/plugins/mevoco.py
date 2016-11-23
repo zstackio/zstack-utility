@@ -176,11 +176,11 @@ class Mevoco(kvmagent.KvmAgent):
     @in_bash
     def delete_dhcp_namespace(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        bash_errorout("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % cmd.namespaceName)
-        bash_errorout("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (cmd.namespaceName, cmd.namespaceName))
+        dhcp_ip = bash_o("ip netns exec %s ip route | awk '{print $9}'" % cmd.namespaceName)
+        dhcp_ip = dhcp_ip.strip(" \t\n\r")
 
-        if cmd.dhcpIp:
-            CHAIN_NAME = "ZSTACK-%s" % cmd.dhcpIp
+        if dhcp_ip:
+            CHAIN_NAME = "ZSTACK-%s" % dhcp_ip
 
             o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
             o = o.strip(" \t\r\n")
@@ -190,6 +190,9 @@ class Mevoco(kvmagent.KvmAgent):
                     cmds.append("ebtables %s" % l.replace("-A", "-D"))
 
                 bash_r("\n".join(cmds))
+
+        bash_errorout("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % cmd.namespaceName)
+        bash_errorout("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (cmd.namespaceName, cmd.namespaceName))
 
         return jsonobject.dumps(DeleteNamespaceRsp())
 
