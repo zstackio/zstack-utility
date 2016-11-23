@@ -348,7 +348,7 @@ cs_check_mysql_password () {
 
 cs_check_zstack_data_exist(){
     cs_check_mysql_password
-    if [ -z $ONLY_INSTALL_ZSTACK ];then
+    if [ -z $ONLY_INSTALL_ZSTACK ] && [ 'y' != $UPGRADE ];then
         mysql --user=root --password=$MYSQL_NEW_ROOT_PASSWORD --host=$MANAGEMENT_IP -e "use zstack" >/dev/null 2>&1
         if [ $? -eq  0 ];then
             if [ -z $NEED_DROP_DB ] && [ -z $NEED_KEEP_DB ];then
