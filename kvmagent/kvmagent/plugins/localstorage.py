@@ -218,8 +218,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             PASSWORD = cmd.dstPassword
             USER = cmd.dstUsername
             IP = cmd.dstIp
-            bash_errorout('rsync -a --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -l {{USER}}" {{IP}}:/')
-            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
+            PORT = (cmd.dstPort and cmd.dstPort or "22")
+            bash_errorout('rsync -a --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/')
+            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
 
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
