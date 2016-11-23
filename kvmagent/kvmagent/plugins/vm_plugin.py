@@ -3126,6 +3126,9 @@ class VmPlugin(kvmagent.KvmAgent):
             if evstr not in (LibvirtEventManager.EVENT_STARTED, LibvirtEventManager.EVENT_STOPPED):
                 logger.debug("ignore event[%s] of the vm[uuid:%s]" % (evstr, vm_uuid))
                 return
+            if vm_uuid.startswith("guestfs-"):
+                logger.debug("ignore the temp vm[%s] while using guestfish" % vm_uuid)
+                return
 
             vm_op_judger = self._get_operation(vm_uuid)
             if vm_op_judger and evstr in vm_op_judger.ignore_libvirt_events():
