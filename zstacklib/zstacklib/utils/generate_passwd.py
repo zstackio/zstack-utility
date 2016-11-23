@@ -41,6 +41,9 @@ class ChangePasswd(object):
             shell.call("virt-copy-in -a %s %s/login.defs /etc/" % (self.image, self.tmpdir))
     def _replace_shadow(self):
         crypt_method = shell.call('egrep ^\\s*ENCRYPT_METHOD %s/login.defs|awk \'{print $2}\'' % self.tmpdir, False).strip('\n')
+        pass_min_len = shell.call('egrep ^\\s*PASS_MIN_LEN %s/login.defs|awk \'{print $2}\'' % self.tmpdir, False).strip('\n')
+        if len(pass_min_len) > 0 and len(self.password) < int(pass_min_len):
+            raise ChangePasswordError('pass_min_len is %s in this OS' % pass_min_len)
         if not self.crypt[crypt_method]:
             raise ChangePasswordError("not support crypt algorithm, please check ENCRYPT_METHOD in /etc/login.defs... ")
         logger.debug("crypt_method is: %s" % str(self.crypt[crypt_method]))
