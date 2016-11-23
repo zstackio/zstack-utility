@@ -82,13 +82,13 @@ class ChangePasswd(object):
     def _is_centos(self):
         OSVersion = shell.call('virt-inspector -a %s | grep -3 \<product_name\>' % self.image, False).split('\n')
         logger.debug("get OS info: %s" % OSVersion)
-        if "CentOS" in OSVersion:
-            logger.debug("if CentOS, we must close selinux")
-            return True
-        elif "Ubuntu" in OSVersion:
-            return False
-        else:
-            raise ChangePasswordError("not support OS Version. Only support Ubuntu or CentOS")
+        for line in OSVersion:
+            if "CentOS" in line:
+                logger.debug("if CentOS, we must close selinux")
+                return True
+            elif "Ubuntu" in line:
+                return False
+        raise ChangePasswordError("not support OS Version. Only support Ubuntu or CentOS")
 
     def generate_passwd(self):
         if not self._check_parameters():
