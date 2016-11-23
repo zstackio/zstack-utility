@@ -318,7 +318,47 @@ You can also add '-q' to installer, then Installer will help you to set one.
     fi
 }
 
-#Do preinstallation checking for CentOS and Ubuntu
+cs_check_mysql_password () {
+    #If user didn't assign mysql root password, then check original zstack mysql password status
+    if [ 'y' != $UPGRADE ]; then
+        if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
+            which mysql >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                #check if mysql server is running
+                ps -aef|grep mysqld |grep -v grep >/dev/null 2>&1
+                if [ $? -eq 0 ]; then
+                    mysql -u root --password='' -e 'exit' >/dev/null 2>&1
+                    if [ $? -ne 0 ]; then
+                        mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
+                        if [ $? -ne 0 ]; then
+                            if [ -z $QUIET_INSTALLATION ]; then
+                                fail2 "\nCannot not login mysql!
+     If you have mysql root password, please add option '-P MYSQL_ROOT_PASSWORD'.
+     If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again.\n"
+                            fi
+                        else
+                            MYSQL_ROOT_PASSWORD=$MYSQL_NEW_ROOT_PASSWORD
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    fi
+}
+
+cs_check_zstack_data_exist(){
+    cs_check_mysql_password
+    if [ -z $ONLY_INSTALL_ZSTACK ];then
+        mysql --user=root --password=$MYSQL_NEW_ROOT_PASSWORD --host=$MANAGEMENT_IP -e "use zstack" >/dev/null 2>&1
+        if [ $? -eq  0 ];then
+            if [ -z $NEED_DROP_DB ] && [ -z $NEED_KEEP_DB ];then
+            fail2 'detected existing zstack database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database'
+            fi
+        fi
+    fi
+}
+
+#Do preinstallation checking for CentOS and Ubuntu and Database
 check_system(){
     echo_title "Check System"
     echo ""
@@ -384,6 +424,7 @@ check_system(){
     cs_check_epel
     cs_check_hostname
     show_spinner do_check_system
+    cs_check_zstack_data_exist
     show_spinner cs_create_repo
 }
 
@@ -2113,31 +2154,6 @@ fi
 
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
-#If user didn't assign mysql root password, then check original zstack mysql password status
-if [ 'y' != $UPGRADE ]; then
-    if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
-        which mysql >/dev/null 2>&1
-        if [ $? -eq 0 ]; then
-            #check if mysql server is running
-            ps -aef|grep mysqld |grep -v grep >/dev/null 2>&1
-            if [ $? -eq 0 ]; then
-                mysql -u root --password='' -e 'exit' >/dev/null 2>&1
-                if [ $? -ne 0 ]; then
-                    mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
-                    if [ $? -ne 0 ]; then
-                        if [ -z $QUIET_INSTALLATION ]; then
-                            fail2 "\nCannot not login mysql!
- If you have mysql root password, please add option '-P MYSQL_ROOT_PASSWORD'.
- If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again.\n"
-                        fi
-                    else
-                        MYSQL_ROOT_PASSWORD=$MYSQL_NEW_ROOT_PASSWORD
-                    fi
-                fi
-            fi
-        fi
-    fi
-fi
 
 if [ -f $PRODUCT_TITLE_FILE ]; then
     cat $PRODUCT_TITLE_FILE
