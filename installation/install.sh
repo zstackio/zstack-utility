@@ -1419,7 +1419,7 @@ cs_gen_sshkey(){
 cs_install_mysql(){
     echo_subtitle "Install Mysql Server"
     rpm -qa | grep mysql-community >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -eq 0];then
+    if [ $? -eq 0 ];then
         fail "Detect mysql-community installed, please uninstall it due to ZStack will use mariadb."
     fi
     rsa_key_file=$1/id_rsa
