@@ -3208,9 +3208,12 @@ class VmPlugin(kvmagent.KvmAgent):
             event = LibvirtEventManager.event_to_string(event)
             if event not in (LibvirtEventManager.EVENT_STARTED, LibvirtEventManager.EVENT_STOPPED):
                 return
+            vm_uuid = dom.name()
+            if vm_uuid.startswith("guestfs-"):
+                logger.debug("ignore the temp vm[%s] while using guestfish" % vm_uuid)
+                return
             domain_xml = dom.XMLDesc(0)
             domain_xmlobject = xmlobject.loads(domain_xml)
-            vm_uuid = dom.name()
             if not xmlobject.has_element(domain_xmlobject, 'metadata.internalId'):
                 logger.debug('vm[uuid:%s] is not managed by zstack,  do not configure the vnc iptables rules' % vm_uuid)
                 return
