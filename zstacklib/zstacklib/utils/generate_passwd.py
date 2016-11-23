@@ -80,7 +80,8 @@ class ChangePasswd(object):
             return False
         return True
     def _is_centos(self):
-        OSVersion = shell.call('virt-inspector -a %s | grep -3' % self.image, False).split('\n')
+        OSVersion = shell.call('virt-inspector -a %s | grep -3 \<product_name\>' % self.image, False).split('\n')
+        logger.debug("get OS info: %s" % OSVersion)
         if "CentOS" in OSVersion:
             logger.debug("if CentOS, we must close selinux")
             return True
