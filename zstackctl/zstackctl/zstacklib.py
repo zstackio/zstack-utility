@@ -796,6 +796,9 @@ def check_host_reachable(host_post_info, warning=False):
     logger.debug(result)
     if result['contacted'] == {}:
         return False
+    elif 'failed' in result['contacted'][host]:
+        if result['contacted'][host]['failed'] is True:
+            return False
     elif result['contacted'][host]['ping'] == 'pong':
         return True
     else:

@@ -860,8 +860,10 @@ def check_host_reachable(host_post_info, warning=False):
     result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
-        warn("host %s unreachable" % host_post_info.host)
         return False
+    elif 'failed' in result['contacted'][host]:
+        if result['contacted'][host]['failed'] is True:
+            return False
     elif result['contacted'][host]['ping'] == 'pong':
         return True
     else:
