@@ -146,7 +146,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
-        self.http_server.register_async_uri(self.SET_ROOT_PASSWORD, self.set_root_password_mount)
+        self.http_server.register_async_uri(self.SET_ROOT_PASSWORD, self.set_root_password)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -236,14 +236,16 @@ class CephAgent(object):
             logger.debug("step2: %s, %s" % (ceph_path, local_file_name))
             shell.call('mkdir -p %s' % local_file_name)
             shadow = None
-            for mdir in shell.call('ls %sp*' % dev_rbd).strip().split(' '):
-                logger.debug("step3: %s" % mdir)
-                shell.call('mount %s %s' % (mdir, local_file_name), False)
-                shadow = shell.call('ls %s/etc/shadow', False).strip()
+            for mdir in shell.call('ls %sp*' % dev_rbd).strip().split('\n'):
+                logger.debug("step3: %s" % mdir.strip())
+                shell.call('mount %s %s' % (mdir.strip(), local_file_name), False)
+                shadow = "%s/etc/shadow" % local_file_name
                 logger.debug("step4: %s" % shadow)
                 if os.path.isfile(shadow):
                     break
-            if shadow:
+                else:
+                    shell.call('umount %s' % local_file_name, False)
+            if os.path.isfile(shadow):
                 for key in cmd.__dict__:
                     logger.debug("step5: %s" % cmd.__dict__[key])
                 self._change_vm_password1(cmd, local_file_name)
@@ -259,6 +261,7 @@ class CephAgent(object):
             shell.call('umount %s' % local_file_name, False)
             shell.call('rbd unmap %s' % dev_rbd, False)
             shell.call('rm -rf %s' % local_file_name, False)
+            '''test'''
         return jsonobject.dumps(rsp)
 
     def _change_vm_password1(self, cmd, root):
