@@ -56,23 +56,26 @@ class ChangePasswd(object):
         shell.call("sed -i \'s/^\\s*SELINUX\\s*=.*$/SELINUX=disabled/\' %s/etc/selinux/config" % self.root)
 
     def _check_parameters(self):
+        logger.debug(self.password)
+        logger.debug(self.account)
+        logger.debug(self.root)
         if not self.password or not self.account or not self.root:
             logger.warn("parameters must contain 3 parameters at least: account, password, qcow2")
             return False
-        if not os.path.isfile(self.root+"/etc/shadow"):
-            logger.warn("/etc/shadow not found")
+        if not os.path.isfile("%s/etc/shadow" % self.root):
+            logger.warn("%s/etc/shadow not found" % self.root)
             return False
         return True
     def _is_centos(self):
         OSVersion = shell.call('cat /etc/system-release').strip()
         logger.debug("get OS info: %s" % OSVersion)
-        for line in OSVersion:
-            if "CentOS" in line:
-                logger.debug("if CentOS, we must close selinux")
-                return True
-            elif "Ubuntu" in line:
-                return False
-        raise ChangePasswordError("not support OS Version. Only support Ubuntu or CentOS")
+        if "CentOS" in OSVersion:
+            logger.debug("if CentOS, we must close selinux")
+            return True
+        elif "Ubuntu" in OSVersion:
+            return False
+        else:
+            raise ChangePasswordError("not support OS Version. Only support Ubuntu or CentOS")
 
     def generate_passwd(self):
         if not self._check_parameters():
