@@ -275,6 +275,9 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
 Parse command parameters error:
   eval '%s' error for: '%s'
   the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]"
+  'KEY' is the uuid of network service provider
+  'VALUE' is the service name, like 'SNAT','DHCP' and so on
+  Example: networkServices="{'$NetworkServiceProvider_UUID':['SNAT','DHCP']}"
                           """ % (value_string, key)
                     self.print_error(err_msg)
                     raise e
