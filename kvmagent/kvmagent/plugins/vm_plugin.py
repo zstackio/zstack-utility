@@ -492,23 +492,23 @@ class IscsiLogin(object):
         assert self.target, "target cannot be None"
 
         device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (
-        self.server_hostname, self.server_port, self.target, self.lun))
+            self.server_hostname, self.server_port, self.target, self.lun))
 
         shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
 
         if self.chap_username and self.chap_password:
             shell.call(
                 'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (
-                self.target, self.server_hostname, self.server_port))
+                    self.target, self.server_hostname, self.server_port))
             shell.call(
                 'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (
-                self.target, self.server_hostname, self.server_port, self.chap_username))
+                    self.target, self.server_hostname, self.server_port, self.chap_username))
             shell.call(
                 'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
-                self.target, self.server_hostname, self.server_port, self.chap_password))
+                    self.target, self.server_hostname, self.server_port, self.chap_password))
 
         shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
-        self.target, self.server_hostname, self.server_port))
+            self.target, self.server_hostname, self.server_port))
 
         def wait_device_to_show(_):
             return os.path.exists(device_path)
@@ -738,6 +738,37 @@ class VirtioFusionstor(object):
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
         e(disk, 'target', None, {'dev': 'vd%s' % self.dev_letter, 'bus': 'virtio'})
         e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
+        return disk
+
+
+class VirtioSCSIFusionstor(object):
+    def __init__(self):
+        self.volume = None
+        self.dev_letter = None
+
+    def to_xmlobject(self):
+        protocol = lichbd.get_protocol()
+        if protocol == 'lichbd':
+            lichbd.makesure_qemu_img_with_lichbd()
+        elif protocol == 'sheepdog' or protocol == 'nbd':
+            pass
+        else:
+            raise shell.ShellError('Protocol[%s] not supported, only support [lichbd, sheepdog, nbd]' % protocol)
+
+        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
+        file_format = lichbd.lichbd_get_format(path)
+
+        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
+        if protocol == 'sheepdog':
+            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
+        elif protocol == 'nbd':
+            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
+
+        e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
+        e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
+        e(disk, 'wwn', self.volume.wwn)
+        e(disk, 'shareable')
         return disk
 
 
@@ -1204,7 +1235,7 @@ class Vm(object):
     def _attach_data_volume(self, volume, addons):
         if volume.deviceId >= len(self.DEVICE_LETTERS):
             err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 24 allowed" % (
-            self.uuid, volume.deviceId)
+                self.uuid, volume.deviceId)
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
@@ -1323,10 +1354,21 @@ class Vm(object):
                 volume_qos(ic)
                 return etree.tostring(ic.to_xmlobject())
 
-            if volume.useVirtio:
-                return virtoio_fusionstor()
+            def virtio_scsi_fusionstor():
+                sc = VirtioSCSICeph()
+                sc.volume = volume
+                sc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                xml_obj = sc.to_xmlobject()
+                volume_qos(xml_obj)
+                return etree.tostring(xml_obj)
+
+            if volume.useVirtioSCSI:
+                return virtio_scsi_fusionstor()
             else:
-                return blk_fusionstor()
+                if volume.useVirtio:
+                    return virtoio_fusionstor()
+                else:
+                    return blk_fusionstor()
 
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
@@ -1948,7 +1990,7 @@ class Vm(object):
         return False
 
     def _wait_until_qemuga_ready(self, timeout, uuid):
-        finish_time = time.time()+(timeout/1000)
+        finish_time = time.time() + (timeout / 1000)
         while time.time() < finish_time:
             state = get_all_vm_states().get(uuid)
             if state != Vm.VM_STATE_RUNNING:
@@ -1984,8 +2026,8 @@ class Vm(object):
             # running state: exec virsh set-user-password to connect the qemu-ga
             try:
                 shell.call('virsh set-user-password %s %s %s' % (self.uuid,
-                                                             cmd.accountPerference.userAccount,
-                                                             cmd.accountPerference.accountPassword))
+                                                                 cmd.accountPerference.userAccount,
+                                                                 cmd.accountPerference.accountPassword))
             except Exception as e:
                 logger.warn(e.message)
                 if e.message.find("child process has failed to set user password") > 0:
@@ -3101,7 +3143,7 @@ class VmPlugin(kvmagent.KvmAgent):
             url = self.config.get(kvmagent.SEND_COMMAND_URL)
             if not url:
                 logger.warn('cannot find SEND_COMMAND_URL, unable to report abnormal operation[vm:%s, op:%s]' % (
-                vm_uuid, evstr))
+                    vm_uuid, evstr))
                 return
 
             host_uuid = self.config.get(kvmagent.HOST_UUID)
@@ -3137,7 +3179,7 @@ class VmPlugin(kvmagent.KvmAgent):
             boot_dev = domain_xmlobject.os.get_child_node_as_list('boot')[0]
             if boot_dev.dev_ != 'cdrom':
                 logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (
-                vm_uuid, boot_dev.dev_))
+                    vm_uuid, boot_dev.dev_))
                 return
 
             logger.debug(
