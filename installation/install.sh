@@ -321,6 +321,13 @@ You can also add '-q' to installer, then Installer will help you to set one.
 cs_check_mysql_password () {
     #If user didn't assign mysql root password, then check original zstack mysql password status
     if [ 'y' != $UPGRADE ]; then
+        if [ -z $ONLY_INSTALL_ZSTACK ];then
+            rpm -qa | grep mysql-community >>$ZSTACK_INSTALL_LOG 2>&1
+            if [ $? -eq 0 ];then
+                fail "Detect mysql-community installed, please uninstall it due to ZStack will use mariadb."
+            fi
+        fi
+
         if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
             which mysql >/dev/null 2>&1
             if [ $? -eq 0 ]; then
@@ -349,10 +356,13 @@ cs_check_mysql_password () {
 cs_check_zstack_data_exist(){
     cs_check_mysql_password
     if [ -z $ONLY_INSTALL_ZSTACK ] && [ 'y' != $UPGRADE ];then
-        mysql --user=root --password=$MYSQL_NEW_ROOT_PASSWORD --host=$MANAGEMENT_IP -e "use zstack" >/dev/null 2>&1
-        if [ $? -eq  0 ];then
-            if [ -z $NEED_DROP_DB ] && [ -z $NEED_KEEP_DB ];then
-            fail2 'detected existing zstack database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database'
+        which mysql >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            mysql --user=root --password=$MYSQL_NEW_ROOT_PASSWORD --host=$MANAGEMENT_IP -e "use zstack" >/dev/null 2>&1
+            if [ $? -eq  0 ];then
+                if [ -z $NEED_DROP_DB ] && [ -z $NEED_KEEP_DB ];then
+                fail2 'detected existing zstack database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database'
+                fi
             fi
         fi
     fi
@@ -1459,10 +1469,6 @@ cs_gen_sshkey(){
 
 cs_install_mysql(){
     echo_subtitle "Install Mysql Server"
-    rpm -qa | grep mysql-community >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -eq 0 ];then
-        fail "Detect mysql-community installed, please uninstall it due to ZStack will use mariadb."
-    fi
     rsa_key_file=$1/id_rsa
     if [ -z $ZSTACK_YUM_REPOS ];then
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
