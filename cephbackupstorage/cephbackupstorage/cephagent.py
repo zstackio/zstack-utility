@@ -185,6 +185,9 @@ class CephAgent(object):
         return path.lstrip('ceph:').lstrip('//').split('/')
 
     def _inject_qemu_ga(self, install_path):
+        image_format = bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path).strip('\n')
+        if image_format not in ['qcow2']:
+            raise Exception('can only support inject qcow2 image(it is depended on change password)')
         cmd = "bash /usr/local/zstack/imagestore/qemu-ga/auto-qemu-ga.sh %s" % install_path
         logger.debug("inject qemu-ga, try to exec: %s" % cmd)
         ret, stdout, stderr = bash_roe(cmd, False)
@@ -206,17 +209,6 @@ class CephAgent(object):
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_qemu_name = 'tmp-%s_qemu' % image_name
         tmp_image_name = 'tmp-%s' % image_name
-
-        file_format = shell.call(
-            "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
-        file_format = file_format.strip()
-        if file_format not in ['qcow2', 'raw']:
-            raise Exception('unknown image format: %s' % file_format)
-
-        if file_format not in ['qcow2'] and cmd.inject:
-            rsp.success = False
-            rsp.error = "can only support inject qcow2 format image(it is depended on change password)"
-            return jsonobject.dumps(rsp)
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             shell.call('set -o pipefail; wget --no-check-certificate -q %s -O %s ' % (cmd.url, tmp_qemu_name))
@@ -256,7 +248,11 @@ class CephAgent(object):
             shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         _1()
 
-
+        file_format = shell.call(
+            "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+        file_format = file_format.strip()
+        if file_format not in ['qcow2', 'raw']:
+            raise Exception('unknown image format: %s' % file_format)
 
         if file_format == 'qcow2':
             conf_path = None
