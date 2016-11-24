@@ -253,7 +253,7 @@ class CephAgent(object):
             if os.path.isfile(shadow):
                 for key in cmd.__dict__:
                     logger.debug("step5: %s" % cmd.__dict__[key])
-                self._change_vm_password1(cmd, local_file_name)
+                self._change_vm_password(cmd, local_file_name)
             else:
                 rsp.success = False
                 rsp.error = "no shadow file in dest OS"
