@@ -1077,7 +1077,7 @@ def get_remote_host_info(host_post_info):
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
             return (distro, version, release)
         else:
-            host_post_info.post_label = "ansible.get.host.info.succ"
+            host_post_info.post_label = "ansible.get.host.info.fail"
             logger.warning("get_remote_host_info on host %s failed!" % host)
             raise Exception(result)
 

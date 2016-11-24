@@ -30,6 +30,8 @@ import commands
 import threading
 import itertools
 import platform
+from  datetime import datetime, timedelta
+
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -4262,6 +4264,7 @@ class CollectLogCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--db', help='collect database for diagnose ', action="store_true", default=False)
         parser.add_argument('--mn-only', help='only collect management log', action="store_true", default=False)
+        parser.add_argument('--full', help='collect full management logs and host logs', action="store_true", default=False)
         parser.add_argument('--host', help='only collect management log and specific host log')
 
     def get_db(self, collect_dir):
@@ -4442,7 +4445,8 @@ class CollectLogCmd(Command):
 
 
 
-    def get_management_node_log(self, collect_dir, host_post_info):
+    def get_management_node_log(self, collect_dir, host_post_info, collect_full_log=False):
+        '''management.log maybe not exist, so collect latest files, maybe a tarball'''
         if check_host_reachable(host_post_info) is True:
             mn_ip = host_post_info.host
             info("Collecting log from management node %s ..." % mn_ip)
@@ -4460,6 +4464,12 @@ class CollectLogCmd(Command):
             if status is not True:
                 warn("get management-server log failed: %s" % output)
 
+            if collect_full_log:
+                for item in range(0, 15):
+                    log_name = "management-server-" + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
+                    command = "/bin/cp -rf %s/../../logs/%s* %s/" % (ctl.zstack_home, log_name, tmp_log_dir)
+                    (status, output) = run_remote_command(command, host_post_info, True, True)
+
             for log in CollectLogCmd.mn_log_list:
                 if file_dir_exist("path=%s/%s" % (CollectLogCmd.zstack_log_dir, log), host_post_info):
                     command = "tail -n %d %s/%s > %s/%s " \
@@ -4472,16 +4482,24 @@ class CollectLogCmd(Command):
         else:
             warn("Management node %s is unreachable!" % host_post_info.host)
 
-    def get_local_mn_log(self, collect_dir):
+
+    def get_local_mn_log(self, collect_dir, collect_full_log=False):
         info("Collecting log from this management node ...")
         mn_log_dir = collect_dir + 'management-node-%s' % get_default_ip()
         if not os.path.exists(mn_log_dir):
             os.makedirs(mn_log_dir)
+
         command = "mn_log=`find %s/../..//logs/management-serve* -maxdepth 1 -type f -printf '%%T+\\t%%p\\n' | sort -r | " \
-                  "awk '{print $2; exit}'`; /bin/cp -rf $mn_log %s/" % (ctl.zstack_home, mn_log_dir)
+                "awk '{print $2; exit}'`; /bin/cp -rf $mn_log %s/" % (ctl.zstack_home, mn_log_dir)
         (status, output) = commands.getstatusoutput(command)
         if status !=0:
             warn("get management-server log failed: %s" % output)
+
+        if collect_full_log:
+            for item in range(0, 15):
+                log_name = "management-server-" + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
+                command = "/bin/cp -rf %s/../../logs/%s* %s/" % (ctl.zstack_home, log_name, mn_log_dir)
+                (status, output) = commands.getstatusoutput(command)
 
         for log in CollectLogCmd.mn_log_list:
             if os.path.exists(CollectLogCmd.zstack_log_dir + log):
@@ -4538,7 +4556,7 @@ class CollectLogCmd(Command):
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
         if os.path.exists(InstallHACmd.conf_file) is not True:
-            self.get_local_mn_log(collect_dir)
+            self.get_local_mn_log(collect_dir, args.full)
         else:
             # this only for HA due to db will lost mn info if mn offline
             mn_list = get_ha_mn_list(InstallHACmd.conf_file)
@@ -4551,7 +4569,7 @@ class CollectLogCmd(Command):
                 host_post_info.host_inventory = InstallHACmd.conf_dir + 'host'
                 host_post_info.post_url = ""
                 host_post_info.private_key = InstallHACmd.conf_dir + 'ha_key'
-                self.get_management_node_log(collect_dir, host_post_info)
+                self.get_management_node_log(collect_dir, host_post_info, args.full)
 
         if args.db is True:
             self.get_db(collect_dir)
