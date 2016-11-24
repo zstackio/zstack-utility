@@ -215,15 +215,11 @@ class SftpBackupStorageAgent(object):
     def _inject_qemu_ga(self, install_path):
         cmd = "bash /usr/local/zstack/imagestore/qemu-ga/auto-qemu-ga.sh %s" % install_path
         logger.debug("inject qemu-ga, try to exec: %s" % cmd)
-        try:
-            ret, stdout, stderr = bash_roe(cmd, True)
-            if ret != 0:
-                logger.warn("inject failed due to: %s", stderr)
-                raise Exception("inject failed due to: %s", stderr)
-            logger.debug("inject qemu-guest-agent succeed! ")
-        except BashError as e:
-            logger.warn("inject failed due to: %s", e)
-            raise Exception("inject failed due to: %s", e)
+        ret, stdout, stderr = bash_roe(cmd, False)
+        if ret != 0:
+            logger.warn("inject failed due to: %s", stderr)
+            raise Exception(stderr)
+        logger.debug("inject qemu-guest-agent succeed! ")
 
     @in_bash
     @replyerror
@@ -278,12 +274,21 @@ class SftpBackupStorageAgent(object):
         image_format =  bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path).strip('\n')
         if "raw" in image_format:
             # skip inject image
+            if cmd.inject:
+                rsp.success = False
+                rsp.error = "can only support inject qcow2 image(it is depended on change password)"
+                return jsonobject.dumps(rsp)
             if "ISO" in bash_o("file %s" % install_path):
                 image_format = "iso"
         elif "qcow2" in image_format:
             if cmd.inject:
                 # inject image
-                self._inject_qemu_ga(install_path)
+                try:
+                    self._inject_qemu_ga(install_path)
+                except Exception as e:
+                    rsp.success = False
+                    rsp.error = e.message
+                    return jsonobject.dumps(rsp)
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))

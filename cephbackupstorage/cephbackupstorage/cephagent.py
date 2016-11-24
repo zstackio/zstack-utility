@@ -187,19 +187,16 @@ class CephAgent(object):
     def _inject_qemu_ga(self, install_path):
         cmd = "bash /usr/local/zstack/imagestore/qemu-ga/auto-qemu-ga.sh %s" % install_path
         logger.debug("inject qemu-ga, try to exec: %s" % cmd)
-        try:
-            ret, stdout, stderr = bash_roe(cmd, True)
-            if ret != 0:
-                logger.warn("inject failed due to: %s", stderr)
-                raise Exception("inject failed due to: %s", stderr)
-            logger.debug("inject qemu-guest-agent succeed! ")
-        except BashError as e:
-            logger.warn("inject failed due to: %s", e)
-            raise Exception("inject failed due to: %s", e)
+        ret, stdout, stderr = bash_roe(cmd, False)
+        if ret != 0:
+            logger.warn("inject failed due to: %s", stderr)
+            raise Exception("inject failed due to: %s", stderr)
+        logger.debug("inject qemu-guest-agent succeed! ")
 
     @replyerror
     @rollback
     def download(self, req):
+        rsp = DownloadRsp()
         def fail_if_has_backing_file(fpath):
             if linux.qcow2_get_backing_file(fpath):
                 raise Exception('image has backing file')
@@ -210,11 +207,27 @@ class CephAgent(object):
         tmp_qemu_name = 'tmp-%s_qemu' % image_name
         tmp_image_name = 'tmp-%s' % image_name
 
+        file_format = shell.call(
+            "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+        file_format = file_format.strip()
+        if file_format not in ['qcow2', 'raw']:
+            raise Exception('unknown image format: %s' % file_format)
+
+        if file_format not in ['qcow2'] and cmd.inject:
+            rsp.success = False
+            rsp.error = "can only support inject qcow2 format image(it is depended on change password)"
+            return jsonobject.dumps(rsp)
+
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             shell.call('set -o pipefail; wget --no-check-certificate -q %s -O %s ' % (cmd.url, tmp_qemu_name))
             fail_if_has_backing_file(tmp_qemu_name)
             if cmd.inject:
-                self._inject_qemu_ga(tmp_qemu_name)
+                try:
+                    self._inject_qemu_ga(tmp_qemu_name)
+                except Exception as e:
+                    rsp.success = False
+                    rsp.error = e.message
+                    return jsonobject.dumps(rsp)
             shell.call('rbd import --image-format 2 %s %s/%s' % (tmp_qemu_name, pool, tmp_image_name))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
         elif cmd.url.startswith('file://'):
@@ -225,7 +238,13 @@ class CephAgent(object):
             fail_if_has_backing_file(src_path)
             shell.call('cp -f %s %s' % (src_path, tmp_qemu_name))
             if cmd.inject:
-                self._inject_qemu_ga(tmp_qemu_name)
+                # inject image
+                try:
+                    self._inject_qemu_ga(tmp_qemu_name)
+                except Exception as e:
+                    rsp.success = False
+                    rsp.error = e.message
+                    return jsonobject.dumps(rsp)
             shell.call("rbd import --image-format 2 %s %s/%s" % (tmp_qemu_name, pool, tmp_image_name))
             actual_size = os.path.getsize(src_path)
         else:
@@ -237,10 +256,7 @@ class CephAgent(object):
             shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         _1()
 
-        file_format = shell.call("set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
-        file_format = file_format.strip()
-        if file_format not in ['qcow2', 'raw']:
-            raise Exception('unknown image format: %s' % file_format)
+
 
         if file_format == 'qcow2':
             conf_path = None
@@ -261,7 +277,6 @@ class CephAgent(object):
         o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
         image_stats = jsonobject.loads(o)
 
-        rsp = DownloadRsp()
         rsp.size = long(image_stats.size_)
         rsp.actualSize = actual_size
         rsp.format = file_format
