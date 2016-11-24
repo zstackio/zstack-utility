@@ -324,7 +324,7 @@ cs_check_mysql_password () {
         if [ -z $ONLY_INSTALL_ZSTACK ];then
             rpm -qa | grep mysql-community >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ];then
-                fail "Detect mysql-community installed, please uninstall it due to ZStack will use mariadb."
+                fail2 "Detect mysql-community installed, please uninstall it due to ZStack will use mariadb."
             fi
         fi
 
