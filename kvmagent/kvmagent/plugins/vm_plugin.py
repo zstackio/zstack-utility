@@ -2646,15 +2646,17 @@ class VmPlugin(kvmagent.KvmAgent):
             "m": lambda x: x*1024*1024,
             "k": lambda x: x*1024,
         }
-        return units[unit](num)
+        return int(units[unit](int(num)))
 
     def _get_image_mb_size(self, image):
         backing = shell.call('qemu-img info %s|grep "backing file:"|awk -F \'backing file:\' \'{print $2}\' ' % image).strip()
         size = shell.call('qemu-img info %s|grep "disk size:"|awk -F \'disk size:\' \'{print $2}\' ' % image).strip()
+        logger.debug("backing file: %s" % backing)
+        logger.debug("size is: %s" % size)
         if not backing:
-            return int(self._escape(size))
+            return self._escape(size)
         else:
-            return int(self._get_image_mb_size(backing)) + int(self._escape(size))
+            return self._get_image_mb_size(backing) + self._escape(size)
 
     def _change_stopped_vm_password(self, cmd):
         if not cmd.qcowFile:
