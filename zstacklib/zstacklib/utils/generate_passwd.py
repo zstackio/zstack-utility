@@ -26,7 +26,7 @@ class ChangePasswd(object):
     def __del__(self):
         self._clean_up()
     def _clean_up(self):
-        if os.path.exists(self.tmpdir) == True:
+        if os.path.exists(self.tmpdir):
             shell.call('rm -rf %s' % (self.tmpdir))
     def _check_file(self, path, file_str):
         if not os.path.exists(file_str):
@@ -60,12 +60,12 @@ class ChangePasswd(object):
         self._enable_md5_crypt()
     def _close_selinux(self):
         # close selinux under CentOS
-        selinux = shell.call("egrep ^\\s*SELINUX= %s/config|grep disable" % self.tmpdir, False).strip('\n')
+        selinux = shell.call("egrep ^\\s*SELINUX\\s*= %s/config|grep disable" % self.tmpdir, False).strip('\n')
         if selinux:
             return
         logger.debug("we must close selinux.")
         # change /etc/selinux/config
-        shell.call("sed -i \'s/^\\s*SELINUX=.*$/SELINUX=disabled/\' %s/config" % self.tmpdir)
+        shell.call("sed -i \'s/^\\s*SELINUX\\s*=.*$/SELINUX=disabled/\' %s/config" % self.tmpdir)
         # shell.call("sed -i \'s/^\\s*GRUB_CMDLINE_LINUX=/{/selinux=0/!{s/\"\\s*$/ selinux=0\"/}}\' grub")
         # shell.call("sed -i \'1,${/^\\s*linux16 /{/selinux=0/!{s/\\s*$/ selinux=0/}}}\' grub.cfg")
         shell.call("virt-copy-in -a %s %s/config /etc/selinux/" % (self.image, self.tmpdir))

@@ -15,6 +15,7 @@ import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
 from zstacklib.utils import generate_passwd
+from zstacklib.utils import generate_passwd_ceph
 
 logger = log.get_logger(__name__)
 
@@ -145,7 +146,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
-        self.http_server.register_async_uri(self.SET_ROOT_PASSWORD, self.set_root_password)
+        self.http_server.register_async_uri(self.SET_ROOT_PASSWORD, self.set_root_password_mount)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -209,6 +210,65 @@ class CephAgent(object):
             rsp.success = False
         shell.call('rm -f %s %s.qcow2' % (local_file_name, local_file_name))
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    @in_bash
+    def set_root_password_mount(self, req):
+        rsp = SetPasswordResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp.cephInstallPath = cmd.cephInstallPath
+        rsp.vmUuid = cmd.vmUuid
+        rsp.account = cmd.account
+        rsp.password = cmd.password
+        # 0 stop from concurrent
+        # 1 rbd map vm
+        # 2 mk tmp_dir
+        # 3 mount rbd tmp_dir
+        # 4 inject password
+        # 5 umount tmp_dir
+        # 6 rbd unmap vm
+        # 7 rm tmp_dir
+        ceph_path = cmd.cephInstallPath[7:]
+        local_file_name = "/tmp/" + cmd.cephInstallPath.split("/")[-1]
+        logger.debug("step1: %s, %s" % (ceph_path,local_file_name))
+        try:
+            dev_rbd = shell.call('rbd map %s' % ceph_path).strip()
+            logger.debug("step2: %s, %s" % (ceph_path, local_file_name))
+            shell.call('mkdir -p %s' % local_file_name)
+            shadow = None
+            for mdir in shell.call('ls %sp*' % dev_rbd).strip().split(' '):
+                logger.debug("step3: %s" % mdir)
+                shell.call('mount %s %s' % (mdir, local_file_name), False)
+                shadow = shell.call('ls %s/etc/shadow', False).strip()
+                logger.debug("step4: %s" % shadow)
+                if os.path.isfile(shadow):
+                    break
+            if shadow:
+                for key in cmd.__dict__:
+                    logger.debug("step5: %s" % cmd.__dict__[key])
+                self._change_vm_password1(cmd, local_file_name)
+            else:
+                rsp.success = False
+                rsp.error = "no shadow file in dest OS"
+
+        except Exception as e:
+            logger.warn("catch exception while change stopped vm which based on ceph.")
+            rsp.error = str(e)
+            rsp.success = False
+        finally:
+            shell.call('umount %s' % local_file_name, False)
+            shell.call('rbd unmap %s' % dev_rbd, False)
+            shell.call('rm -rf %s' % local_file_name, False)
+        return jsonobject.dumps(rsp)
+
+    def _change_vm_password1(self, cmd, root):
+        chp = generate_passwd_ceph.ChangePasswd()
+        chp.password = cmd.password
+        chp.account = cmd.account
+        chp.root = root
+        if not chp.generate_passwd():
+            raise Exception('inject passwd failed.')
+
 
     def _change_vm_password(self, cmd):
         chp = generate_passwd.ChangePasswd()
