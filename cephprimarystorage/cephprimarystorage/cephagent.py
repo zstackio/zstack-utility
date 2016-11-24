@@ -146,7 +146,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
-        self.http_server.register_async_uri(self.SET_ROOT_PASSWORD, self.set_root_password)
+        self.http_server.register_async_uri(self.SET_ROOT_PASSWORD, self.set_root_password_mount)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
