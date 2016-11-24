@@ -194,6 +194,11 @@ class CephAgent(object):
         # 8 delete the local file
         ceph_path = cmd.cephInstallPath[7:]
         local_file_name = cmd.cephInstallPath.split("/")[-1]
+        size = shell.call('rbd diff %s|awk \'{SUM += $2}\'END\'{print SUM/1024/1024}\'' % ceph_path).strip()
+        logger.debug("size: %s" % size)
+        if int(float(size)) > 10000:
+            raise Exception('image is too large for ceph storage(>10GB), '
+                                    'if you still want to change passwd, please try it while vm is running.')
         shell.call('rm -f %s %s.qcow2' % (local_file_name, local_file_name))
         try:
             shell.call('rbd export %s %s' % (ceph_path, local_file_name))
