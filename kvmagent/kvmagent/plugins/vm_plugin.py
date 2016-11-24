@@ -855,7 +855,11 @@ def get_running_vm_uuids():
 
     for i in ids:
         domain = get_domain()
-        uuids.append(domain.name())
+        uuid = domain.name()
+        if uuid.startswith("guestfs-"):
+            logger.debug("ignore the temp vm generate by guestfish.")
+            continue
+        uuids.append(uuid)
     return uuids
 
 
@@ -2026,7 +2030,7 @@ class Vm(object):
         uuid = self.uuid
         # check the vm state first, then choose the method in different way
         state = get_all_vm_states().get(uuid)
-        timeout = cmd.timeout
+        timeout = cmd.timeout and cmd.timeout or 60000
         if not timeout:
             timeout = 60000
         if state == Vm.VM_STATE_RUNNING:
@@ -2644,19 +2648,35 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.states[uuid] = s
         return jsonobject.dumps(rsp)
 
+    def _escape(self, size):
+        unit = size.strip().lower()[-1]
+        num = size.strip()[:-1]
+        units = {
+            "g": lambda x: x*1024*1024*1024,
+            "m": lambda x: x*1024*1024,
+            "k": lambda x: x*1024,
+        }
+        return units[unit](num)
+
+    def _get_image_mb_size(self, image):
+        backing = shell.call('qemu-img info %s|grep "backing file:"|awk -F \'backing file:\' \'{print $2}\' ' % image).strip()
+        size = shell.call('qemu-img info %s|grep "disk size:"|awk -F \'disk size:\' \'{print $2}\' ' % image).strip()
+        if not backing:
+            return int(self._escape(size))
+        else:
+            return int(self._get_image_mb_size(backing)) + int(self._escape(size))
+
     def _change_stopped_vm_password(self, cmd):
         if not cmd.qcowFile:
             raise kvmagent.KvmError("vm is stopped or created, cmd must contain qcowFile parameter!")
-            # shutdown state: inject password with locale scriptss
-        #        zstack_home = os.path.expanduser('~zstack')
-        #        logger.debug('zstack_home: %s' % zstack_home)
-        #        passwd_script_path = os.path.join(zstack_home,"imagestore","qemu-ga","generate-passwd.sh")
-        #        shell.call('%s %s %s %s' % (passwd_script_path, cmd.accountPerference.userAccount, \
-        #                cmd.accountPerference.accountPassword, cmd.qcowFile))
         chp = generate_passwd.ChangePasswd()
         chp.password = cmd.accountPerference.accountPassword
         chp.account = cmd.accountPerference.userAccount
         chp.image = cmd.qcowFile
+        logger.debug("_get_image_mb_size: %s" % self._get_image_mb_size(chp.image))
+        if self._get_image_mb_size(chp.image) > 20000:
+            raise kvmagent.KvmError('image is too large for localstorage(>20GB), '
+                                    'if you still want to change passwd, please try it while vm is running.')
         if not chp.generate_passwd():
             raise kvmagent.KvmError('inject passwd failed.')
 
