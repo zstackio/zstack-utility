@@ -3089,7 +3089,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
-        http_server.register_async_uri(self.KVM_VM_SET_ROOT_PASSWORD_PATH, self.set_root_password)
+        # http_server.register_async_uri(self.KVM_VM_SET_ROOT_PASSWORD_PATH, self.set_root_password)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
 
