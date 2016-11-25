@@ -2652,17 +2652,15 @@ class VmPlugin(kvmagent.KvmAgent):
         unit = size.strip().lower()[-1]
         num = size.strip()[:-1]
         units = {
-            "g": lambda x: x*1024*1024*1024,
-            "m": lambda x: x*1024*1024,
-            "k": lambda x: x*1024,
+            "g": lambda x: x*1024,
+            "m": lambda x: x,
+            "k": lambda x: x/1024,
         }
         return int(units[unit](int(num)))
 
     def _get_image_mb_size(self, image):
         backing = shell.call('qemu-img info %s|grep "backing file:"|awk -F \'backing file:\' \'{print $2}\' ' % image).strip()
         size = shell.call('qemu-img info %s|grep "disk size:"|awk -F \'disk size:\' \'{print $2}\' ' % image).strip()
-        logger.debug("backing file: %s" % backing)
-        logger.debug("size is: %s" % size)
         if not backing:
             return self._escape(size)
         else:
@@ -2703,7 +2701,6 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ChangeVmPasswordRsp()
         vm = get_vm_by_uuid(cmd.accountPerference.vmUuid, False)
-        logger.debug('get vmUuid: %s' % cmd.accountPerference.vmUuid)
         try:
             if not vm:
                 raise kvmagent.KvmError('vm is not in running state.')
