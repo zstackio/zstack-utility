@@ -189,7 +189,6 @@ class FusionstorAgent(object):
         rsp = DownloadRsp()
         rsp.size = size
         rsp.actualSize = actual_size
-        rsp.format = file_format.strip('\n')
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 

@@ -272,14 +272,10 @@ class SftpBackupStorageAgent(object):
 
 
         image_format =  bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path).strip('\n')
-        if "raw" in image_format:
-            # skip inject image
-            if "ISO" in bash_o("file %s" % install_path):
-                image_format = "iso"
-        elif "qcow2" in image_format:
-            if cmd.inject:
-                # inject image
-                self._inject_qemu_ga(install_path)
+        if "qcow2" in image_format:
+           if cmd.inject:
+               # inject image
+               self._inject_qemu_ga(install_path)
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
