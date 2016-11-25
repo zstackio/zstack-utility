@@ -1359,7 +1359,7 @@ class Vm(object):
                 return etree.tostring(ic.to_xmlobject())
 
             def virtio_scsi_fusionstor():
-                sc = VirtioSCSICeph()
+                sc = VirtioSCSIFusionstor()
                 sc.volume = volume
                 sc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = sc.to_xmlobject()
