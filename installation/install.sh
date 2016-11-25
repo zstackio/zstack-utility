@@ -361,7 +361,7 @@ cs_check_zstack_data_exist(){
             mysql --user=root --password=$MYSQL_NEW_ROOT_PASSWORD --host=$MANAGEMENT_IP -e "use zstack" >/dev/null 2>&1
             if [ $? -eq  0 ];then
                 if [ -z $NEED_DROP_DB ] && [ -z $NEED_KEEP_DB ];then
-                fail2 'detected existing zstack database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database'
+                fail2 'detected existing zstack database; if you are sure to drop it, please append parameter -D or use -K to keep the database'
                 fi
             fi
         fi
