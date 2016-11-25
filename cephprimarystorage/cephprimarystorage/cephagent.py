@@ -234,20 +234,6 @@ class CephAgent(object):
         # 6 rbd unmap vm
         # 7 rm tmp_dir
         ceph_path = cmd.cephInstallPath[7:]
-<<<<<<< HEAD
-        local_file_name = "/tmp/" + cmd.cephInstallPath.split("/")[-1]
-        logger.debug("step1: %s, %s" % (ceph_path,local_file_name))
-        try:
-            dev_rbd = shell.call('rbd map %s' % ceph_path).strip()
-            logger.debug("step2: %s, %s" % (ceph_path, local_file_name))
-            shell.call('mkdir -p %s' % local_file_name)
-            shadow = None
-            for mdir in shell.call('ls %sp*' % dev_rbd).strip().split('\n'):
-                logger.debug("step3: %s" % mdir.strip())
-                shell.call('mount %s %s' % (mdir.strip(), local_file_name), False)
-                shadow = "%s/etc/shadow" % local_file_name
-                logger.debug("step4: %s" % shadow)
-=======
         shell.call("mkdir -p /tmp/generage_passwd")
         local_file_name = shell.call("mktemp -d /tmp/generage_passwd/passwd.XXXXXX").strip('\n')
         try:
@@ -256,19 +242,12 @@ class CephAgent(object):
             for mdir in shell.call('ls %sp*' % dev_rbd).strip().split('\n'):
                 shell.call('mount %s %s' % (mdir.strip(), local_file_name), False)
                 shadow = "%s/etc/shadow" % local_file_name
->>>>>>> mingjian
                 if os.path.isfile(shadow):
                     break
                 else:
                     shell.call('umount %s' % local_file_name, False)
             if os.path.isfile(shadow):
-<<<<<<< HEAD
-                for key in cmd.__dict__:
-                    logger.debug("step5: %s" % cmd.__dict__[key])
-                self._change_vm_password1(cmd, local_file_name)
-=======
                 self._change_vm_password_mount(cmd, local_file_name)
->>>>>>> mingjian
             else:
                 rsp.success = False
                 rsp.error = "no shadow file in dest OS"
@@ -284,11 +263,7 @@ class CephAgent(object):
             '''test'''
         return jsonobject.dumps(rsp)
 
-<<<<<<< HEAD
-    def _change_vm_password1(self, cmd, root):
-=======
     def _change_vm_password_mount(self, cmd, root):
->>>>>>> mingjian
         chp = generate_passwd_ceph.ChangePasswd()
         chp.password = cmd.password
         chp.account = cmd.account
