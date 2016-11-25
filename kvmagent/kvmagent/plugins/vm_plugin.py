@@ -2651,8 +2651,6 @@ class VmPlugin(kvmagent.KvmAgent):
     def _get_image_mb_size(self, image):
         backing = shell.call('qemu-img info %s|grep "backing file:"|awk -F \'backing file:\' \'{print $2}\' ' % image).strip()
         size = shell.call('qemu-img info %s|grep "disk size:"|awk -F \'disk size:\' \'{print $2}\' ' % image).strip()
-        logger.debug("backing file: %s" % backing)
-        logger.debug("size is: %s" % size)
         if not backing:
             return self._escape(size)
         else:
