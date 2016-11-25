@@ -56,9 +56,6 @@ class ChangePasswd(object):
         shell.call("sed -i \'s/^\\s*SELINUX\\s*=.*$/SELINUX=disabled/\' %s/etc/selinux/config" % self.root)
 
     def _check_parameters(self):
-        logger.debug(self.password)
-        logger.debug(self.account)
-        logger.debug(self.root)
         if not self.password or not self.account or not self.root:
             logger.warn("parameters must contain 3 parameters at least: account, password, qcow2")
             return False
