@@ -275,7 +275,6 @@ class CephAgent(object):
 
         rsp.size = long(image_stats.size_)
         rsp.actualSize = actual_size
-        rsp.format = file_format
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
