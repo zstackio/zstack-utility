@@ -4225,7 +4225,7 @@ class APICreateVmInstanceMsg(object):
         self.primaryStorageUuidForRootVolume = None
         self.description = None
         #valid regex values: [\da-zA-Z-`=\\\[\];',./~!@#$%^&*()_+|{}:"<>?]{1,}
-        self.rootPassword = None
+        # self.rootPassword = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
