@@ -13,6 +13,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import linux
 import zstacklib.utils.uuidhelper as uuidhelper
+from zstacklib.utils.bash import *
 
 
 logger = log.get_logger(__name__)
@@ -229,10 +230,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         mount_path = self.mount_path[cmd.uuid]
-        if not mount_path or not os.path.isdir(mount_path):
+        # if nfs service stop, os.path.isdir will hung
+        if not mount_path or (bash_r("timeout 15 ls %s" % mount_path) != 0):
             raise Exception('the mount path[%s] of the nfs primary storage[uuid:%s] is not existing' % (mount_path, cmd.uuid))
 
         test_file = os.path.join(mount_path, '%s-ping-test-file' % uuidhelper.uuid())
