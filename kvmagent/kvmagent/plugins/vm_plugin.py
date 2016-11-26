@@ -839,13 +839,13 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True):
         raise libvirt.libvirtError(err)
 
 
-def get_running_vm_uuids():
+def get_active_vm_uuids_states():
     @LibvirtAutoReconnect
     def call_libvirt(conn):
         return conn.listDomainsID()
 
     ids = call_libvirt()
-    uuids = []
+    uuids_states = {}
 
     @LibvirtAutoReconnect
     def get_domain(conn):
@@ -859,16 +859,15 @@ def get_running_vm_uuids():
         if uuid.startswith("guestfs-"):
             logger.debug("ignore the temp vm generate by guestfish.")
             continue
-        uuids.append(uuid)
-    return uuids
+        (state, _, _, _, _) = domain.info()
+        state = Vm.power_state[state]
+        # or use
+        uuids_states[uuid] = state
+    return uuids_states
 
 
 def get_all_vm_states():
-    ret = {}
-    running = get_running_vm_uuids()
-    for r in running:
-        ret[r] = Vm.VM_STATE_RUNNING
-    return ret
+    return get_active_vm_uuids_states()
 
 
 def get_running_vms():
