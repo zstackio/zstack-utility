@@ -260,7 +260,8 @@ class Mevoco(kvmagent.KvmAgent):
 
         # set ebtables
         BR_NAME = to.bridgeName
-        ETH_NAME = BR_NAME.replace('br_', '', 1)
+        # BR_NAME is "br_%s_%s"
+        ETH_NAME = BR_NAME.replace('br_', '', 1).replace('_', '.', 1)
         MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
         CHAIN_NAME="USERDATA-%s" % BR_NAME
 
