@@ -4513,6 +4513,8 @@ class CollectLogCmd(Command):
         commands.getstatusoutput(command)
         command = "cp /var/log/dmesg* /var/log/messages %s/" % mn_log_dir
         commands.getstatusoutput(command)
+        command = "cp %s/*-git-commit %s/" % (ctl.zstack_home, mn_log_dir)
+        commands.getstatusoutput(command)
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
