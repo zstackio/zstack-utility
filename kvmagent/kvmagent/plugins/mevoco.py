@@ -75,7 +75,7 @@ class DhcpEnv(object):
         BR_NAME = self.bridge_name
         DHCP_IP = self.dhcp_server_ip
         DHCP_NETMASK = self.dhcp_netmask
-        BR_PHY_DEV = self.bridge_name.replace('br_', '', 1)
+        BR_PHY_DEV = self.bridge_name.replace('br_', '', 1).replace('_', '.', 1)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
         CHAIN_NAME = "ZSTACK-%s" % DHCP_IP
