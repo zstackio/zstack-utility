@@ -24,7 +24,45 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
-enabled_nested_flag = False
+
+def check_nested_kvm(host_post_info):
+    enabled_nested_flag = False
+    # enable nested kvm
+    command = "cat /sys/module/kvm_intel/parameters/nested"
+    (status, stdout) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
+    if "Y" in stdout:
+        enabled_nested_flag = True
+    else:
+        command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_intel nested=1' >  /etc/modprobe.d/kvm-nested.conf"
+        run_remote_command(command, host_post_info)
+
+    #add kvm module and tun module
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = 'kvm'
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
+
+    modprobe_arg = ModProbeArg()
+    if 'intel' in get_remote_host_cpu(host_post_info).lower():
+        # reload kvm_intel for enable nested kvm
+        if enabled_nested_flag is False:
+            command = "modprobe -r kvm_intel"
+            run_remote_command(command, host_post_info, return_status=True)
+        modprobe_arg.name = 'kvm_intel'
+    elif 'amd' in get_remote_host_cpu(host_post_info).lower():
+        if enabled_nested_flag is False:
+            command = "modprobe -r kvm_amd"
+            run_remote_command(command, host_post_info, return_status=True)
+        modprobe_arg.name = 'kvm_amd'
+    else:
+        handle_ansible_info("Unknown CPU type detected when modprobe kvm", host_post_info, "WARNING")
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
+
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = 'tun'
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
@@ -84,6 +122,8 @@ else:
     run_remote_command(command, host_post_info)
 
 run_remote_command("rm -rf %s/*" % kvm_root, host_post_info)
+
+check_nested_kvm(host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
     # handle zstack_repo
@@ -219,42 +259,6 @@ elif distro == "Debian" or distro == "Ubuntu":
 else:
     error("unsupported OS!")
 
-# enable nested kvm
-command = "cat /sys/module/kvm_intel/parameters/nested"
-(status, stdout) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
-if "Y" in stdout:
-    enabled_nested_flag = True
-else:
-    command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_intel nested=1' >  /etc/modprobe.d/kvm-nested.conf"
-    run_remote_command(command, host_post_info)
-
-#add kvm module and tun module
-modprobe_arg = ModProbeArg()
-modprobe_arg.name = 'kvm'
-modprobe_arg.state = 'present'
-modprobe(modprobe_arg, host_post_info)
-
-modprobe_arg = ModProbeArg()
-if 'intel' in get_remote_host_cpu(host_post_info).lower():
-    # reload kvm_intel for enable nested kvm
-    if enabled_nested_flag is False:
-        command = "modprobe -r kvm_intel"
-        run_remote_command(command, host_post_info, return_status=True)
-    modprobe_arg.name = 'kvm_intel'
-elif 'amd' in get_remote_host_cpu(host_post_info).lower():
-    if enabled_nested_flag is False:
-        command = "modprobe -r kvm_amd"
-        run_remote_command(command, host_post_info, return_status=True)
-    modprobe_arg.name = 'kvm_amd'
-else:
-    handle_ansible_info("Unknown CPU type detected when modprobe kvm", host_post_info, "WARNING")
-modprobe_arg.state = 'present'
-modprobe(modprobe_arg, host_post_info)
-
-modprobe_arg = ModProbeArg()
-modprobe_arg.name = 'tun'
-modprobe_arg.state = 'present'
-modprobe(modprobe_arg, host_post_info)
 
 #set max performance 
 if distro == "RedHat" or distro == "CentOS":
