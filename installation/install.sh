@@ -722,6 +722,7 @@ upgrade_zstack(){
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_enable_zstack_service
+    show_spinner is_enable_ntpd
     show_spinner cs_config_zstack_properties
 
     if [ $UI_INSTALLATION_STATUS = 'y' ]; then
