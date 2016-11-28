@@ -4217,7 +4217,8 @@ class RestoreMysqlCmd(Command):
         shell_no_pipe('zstack-ctl dump_mysql')
         shell_no_pipe('zstack-ctl stop_node')
         info("Starting recover data ...")
-        if db_hostname == "localhost" or db_hostname == "127.0.0.1":
+        status, all_local_ip = commands.getstatusoutput("ip a")
+        if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in all_local_ip):
             if db_password is None or db_password == "":
                 db_connect_password = ""
             else:
