@@ -724,6 +724,7 @@ upgrade_zstack(){
     show_spinner cs_enable_zstack_service
     show_spinner is_enable_ntpd
     show_spinner cs_config_zstack_properties
+    show_spinner cs_append_iptables
 
     if [ $UI_INSTALLATION_STATUS = 'y' ]; then
         echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
@@ -1558,8 +1559,8 @@ cs_append_iptables(){
     echo_subtitle "Append iptables"
     if [ "$NEED_SET_MN_IP" == "y" ]; then
         management_addr=`ip addr show |grep ${MANAGEMENT_IP}|awk '{print $2}'`
-        iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -j DROP" > /dev/null 2>&1 || iptables -I INPUT -p tcp --dport 3306 -j DROP >>$ZSTACK_INSTALL_LOG 2>&1
-        iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
+        iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -j DROP" || iptables -I INPUT -p tcp --dport 3306 -j DROP >>$ZSTACK_INSTALL_LOG 2>&1
+        iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT" || iptables -I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
         service iptables save >> $ZSTACK_INSTALL_LOG 2>&1
     fi
     pass
