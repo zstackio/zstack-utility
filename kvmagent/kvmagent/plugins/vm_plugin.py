@@ -2003,7 +2003,6 @@ class Vm(object):
             try:
                 logger.debug("ping_json: %s" % ping_json)
                 if ping_json.find("{\"return\":{}}") != -1:
-                    time.sleep(0.5)
                     return True
             except Exception as err:
                 logger.warn(err.message)
@@ -2018,6 +2017,15 @@ class Vm(object):
             time.sleep(0.1)
         raise kvmagent.KvmError("qemu-ga is not ready...")
 
+    def _escape_char_password(self, password):
+        enscape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}"
+        des = ""
+        for c in list(password):
+            if c in enscape_str:
+                des += "\\"
+            des += c
+        return des
+
     def change_vm_password(self, cmd):
         uuid = self.uuid
         # check the vm state first, then choose the method in different way
@@ -2030,9 +2038,11 @@ class Vm(object):
             self._wait_until_qemuga_ready(timeout, uuid)
             # running state: exec virsh set-user-password to connect the qemu-ga
             try:
+                escape_password = self._escape_char_password(cmd.accountPerference.accountPassword)
+                logger.debug("escape_password is: %s" % escape_password)
                 shell.call('virsh set-user-password %s %s %s' % (self.uuid,
-                                                                 cmd.accountPerference.userAccount,
-                                                                 cmd.accountPerference.accountPassword))
+                                                             cmd.accountPerference.userAccount,
+                                                             escape_password))
             except Exception as e:
                 logger.warn(e.message)
                 if e.message.find("child process has failed to set user password") > 0:
@@ -3146,7 +3156,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.debug("ignore event[%s] of the vm[uuid:%s]" % (evstr, vm_uuid))
                 return
             if vm_uuid.startswith("guestfs-"):
-                logger.debug("ignore the temp vm[%s] while using guestfish" % vm_uuid)
+                logger.debug("[vm_lifecycle]ignore the temp vm[%s] while using guestfish" % vm_uuid)
                 return
 
             vm_op_judger = self._get_operation(vm_uuid)
@@ -3229,7 +3239,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 return
             vm_uuid = dom.name()
             if vm_uuid.startswith("guestfs-"):
-                logger.debug("ignore the temp vm[%s] while using guestfish" % vm_uuid)
+                logger.debug("[set_vnc_port_iptable]ignore the temp vm[%s] while using guestfish" % vm_uuid)
                 return
             domain_xml = dom.XMLDesc(0)
             domain_xmlobject = xmlobject.loads(domain_xml)

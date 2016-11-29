@@ -1358,6 +1358,7 @@ config_system(){
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
+    show_spinner cs_append_iptables
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
     fi
@@ -1553,6 +1554,16 @@ EOF
     pass
 }
 
+cs_append_iptables(){
+    echo_subtitle "Append iptables"
+    if [ -n "$MANAGEMENT_IP" ]; then
+        management_addr=`ip addr show |grep ${MANAGEMENT_IP}|awk '{print $2}'`
+        iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -j DROP" > /dev/null 2>&1 || iptables -I INPUT -p tcp --dport 3306 -j DROP >>$ZSTACK_INSTALL_LOG 2>&1
+        iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
+        service iptables save >> $ZSTACK_INSTALL_LOG 2>&1
+    fi
+    pass
+}
 cs_install_zstack_service(){
     echo_subtitle "Install ${PRODUCT_NAME} management node"
     /bin/cp -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/install/zstack-server /etc/init.d

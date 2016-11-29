@@ -208,6 +208,7 @@ run_remote_command(command, host_post_info)
 set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
 
 
+
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy ceph primary agent successful", host_post_info, "INFO")
 

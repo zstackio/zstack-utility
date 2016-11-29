@@ -49,7 +49,8 @@ class Api(object):
         return rsp
 
     def _error_code_to_string(self, error):
-        return "[code: %s, description: %s, details: %s]" % (error.code, error.description, error.details)
+        return "[code: %s, description: %s, details: %s, cause: %s]" % \
+               (error.code, error.description, error.details, error.cause)
 
     def _check_not_none_field(self, apicmd):
         for k, v in apicmd.__dict__.items():
