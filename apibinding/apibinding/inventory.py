@@ -246,15 +246,6 @@ class APIQueryResourcePriceReply(object):
         self.error = None
 
 
-APIQUERYCASSANDRAREPLY_FULL_NAME = 'org.zstack.cassandra.APIQueryCassandraReply'
-class APIQueryCassandraReply(object):
-    FULL_NAME='org.zstack.cassandra.APIQueryCassandraReply'
-    def __init__(self):
-        self.total = None
-        self.success = None
-        self.error = None
-
-
 APIGETGLOBALCONFIGMSG_FULL_NAME = 'org.zstack.core.config.APIGetGlobalConfigMsg'
 class APIGetGlobalConfigMsg(object):
     FULL_NAME='org.zstack.core.config.APIGetGlobalConfigMsg'
@@ -4224,8 +4215,6 @@ class APICreateVmInstanceMsg(object):
         self.hostUuid = None
         self.primaryStorageUuidForRootVolume = None
         self.description = None
-        #valid regex values: [\da-zA-Z-`=\\\[\];',./~!@#$%^&*()_+|{}:"<>?]{1,}
-        # self.rootPassword = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
@@ -5803,14 +5792,6 @@ class APIQueryLogMsg(object):
         #valid values: [RESOURCE, SYSTEM, EVENT]
         self.type = NotNoneField()
         self.resourceUuid = None
-        self.conditions = OptionalList()
-        self.limit = None
-        self.start = None
-        self.count = None
-        self.replyWithCount = None
-        self.sortBy = None
-        #valid values: [asc, desc]
-        self.sortDirection = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -5822,7 +5803,6 @@ class APIQueryLogReply(object):
     FULL_NAME='org.zstack.logging.APIQueryLogReply'
     def __init__(self):
         self.inventories = OptionalList()
-        self.total = None
         self.success = None
         self.error = None
 
@@ -6400,6 +6380,27 @@ class APIDeleteLoadBalancerMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETCANDIDATEVMNICSFORLOADBALANCERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIGetCandidateVmNicsForLoadBalancerMsg'
+class APIGetCandidateVmNicsForLoadBalancerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIGetCandidateVmNicsForLoadBalancerMsg'
+    def __init__(self):
+        #mandatory field
+        self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETCANDIDATEVMNICSFORLOADBALANCERREPLY_FULL_NAME = 'org.zstack.network.service.lb.APIGetCandidateVmNicsForLoadBalancerReply'
+class APIGetCandidateVmNicsForLoadBalancerReply(object):
+    FULL_NAME='org.zstack.network.service.lb.APIGetCandidateVmNicsForLoadBalancerReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIQUERYLOADBALANCERLISTENERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIQueryLoadBalancerListenerMsg'
 class APIQueryLoadBalancerListenerMsg(object):
     FULL_NAME='org.zstack.network.service.lb.APIQueryLoadBalancerListenerMsg'
@@ -6792,8 +6793,6 @@ class APICreateVirtualRouterVmMsg(object):
         self.hostUuid = None
         self.primaryStorageUuidForRootVolume = None
         self.description = None
-        #valid regex values: [\da-zA-Z-`=\\\[\];',./~!@#$%^&*()_+|{}:"<>?]{1,}
-        self.rootPassword = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
@@ -7966,6 +7965,8 @@ api_names = [
     'APIGetCandidateVmForAttachingIsoReply',
     'APIGetCandidateVmNicForSecurityGroupMsg',
     'APIGetCandidateVmNicForSecurityGroupReply',
+    'APIGetCandidateVmNicsForLoadBalancerMsg',
+    'APIGetCandidateVmNicsForLoadBalancerReply',
     'APIGetCandidateZonesClustersHostsForCreatingVmMsg',
     'APIGetCandidateZonesClustersHostsForCreatingVmReply',
     'APIGetClusterReply',
@@ -8124,7 +8125,6 @@ api_names = [
     'APIQueryApplianceVmReply',
     'APIQueryBackupStorageMsg',
     'APIQueryBackupStorageReply',
-    'APIQueryCassandraReply',
     'APIQueryCephBackupStorageMsg',
     'APIQueryCephPrimaryStorageMsg',
     'APIQueryClusterMsg',
@@ -10986,6 +10986,7 @@ class GlobalConfig_VIRTUALROUTER(object):
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
+    VYOS_PASSWORD = 'vyos.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod
@@ -11121,10 +11122,11 @@ class QueryObjectCephPrimaryStorageMonInventory(object):
 
 class QueryObjectClusterInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','zoneUuid','description','state','hypervisorType','type','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['vmInstance','zone','host','l2Network','primaryStorage']
+     EXPANDED_FIELDS = ['vmInstance','zone','host','l2VlanNetwork','l2Network','primaryStorage']
      QUERY_OBJECT_MAP = {
         'vmInstance' : 'QueryObjectVmInstanceInventory',
         'zone' : 'QueryObjectZoneInventory',
+        'l2VlanNetwork' : 'QueryObjectL2NetworkInventory',
         'host' : 'QueryObjectHostInventory',
         'l2Network' : 'QueryObjectL2NetworkInventory',
         'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
