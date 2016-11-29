@@ -1556,7 +1556,7 @@ EOF
 
 cs_append_iptables(){
     echo_subtitle "Append iptables"
-    if [ -n "$MANAGEMENT_IP" ]; then
+    if [ "$NEED_SET_MN_IP" == "y" ]; then
         management_addr=`ip addr show |grep ${MANAGEMENT_IP}|awk '{print $2}'`
         iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -j DROP" > /dev/null 2>&1 || iptables -I INPUT -p tcp --dport 3306 -j DROP >>$ZSTACK_INSTALL_LOG 2>&1
         iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
