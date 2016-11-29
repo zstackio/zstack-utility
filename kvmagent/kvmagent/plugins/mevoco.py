@@ -53,6 +53,7 @@ class DhcpEnv(object):
         self.dhcp_netmask = None
         self.namespace_name = None
 
+
     @lock.lock('prepare_dhcp_namespace')
     @lock.file_lock('iptables')
     @in_bash
@@ -136,7 +137,9 @@ class DhcpEnv(object):
         if ret != 0:
             bash_errorout('ebtables -I {{CHAIN_NAME}} -p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
 
-        bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
+        ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+        if ret != 0:
+            bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
@@ -193,7 +196,9 @@ class Mevoco(kvmagent.KvmAgent):
 
                 bash_r("\n".join(cmds))
 
-            bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
+            ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+            if ret != 0:
+                bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
 
         bash_errorout("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % cmd.namespaceName)
         bash_errorout("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (cmd.namespaceName, cmd.namespaceName))
@@ -298,7 +303,9 @@ class Mevoco(kvmagent.KvmAgent):
         if ret != 0:
             bash_errorout('ebtables -I {{CHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
 
-        bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
+        ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+        if ret != 0:
+            bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
 
 
         # DNAT port 80
