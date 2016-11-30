@@ -5581,7 +5581,7 @@ class UpgradeMultiManagementNodeCmd(Command):
                     run_remote_command(command, host_info)
                 else:
                     # running management node will block upgrade process
-                    error("Management node %s is unreachable, can't stop it, did you add the other management node from this management node ?\n" % mn_ip)
+                    error("Management node %s is unreachable, please sync public key %s to other management nodes" % (mn_ip, ssh_key))
 
         for mn_ip in mn_ip_list:
             host_info = HostPostInfo()
