@@ -2013,8 +2013,8 @@ class Vm(object):
                 #         return enable
                 # except Exception as err:
                 #     logger.warn(err.message)
-            time.sleep(0.1)
-        raise kvmagent.KvmError("qemu-ga is not ready...")
+            time.sleep(0.5)
+        raise kvmagent.KvmError("service is not ready in vm...")
 
     def _escape_char_password(self, password):
         enscape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}"
@@ -2029,13 +2029,10 @@ class Vm(object):
         uuid = self.uuid
         # check the vm state first, then choose the method in different way
         state = get_all_vm_states().get(uuid)
-        timeout = cmd.timeout and cmd.timeout or 60000
-        if not timeout:
-            timeout = 60000
+        timeout = cmd.timeout and cmd.timeout or 120000
         if state == Vm.VM_STATE_RUNNING:
             # before set-user-password, we must check if os ready in the guest
             self._wait_until_qemuga_ready(timeout, uuid)
-            # running state: exec virsh set-user-password to connect the qemu-ga
             try:
                 escape_password = self._escape_char_password(cmd.accountPerference.accountPassword)
                 logger.debug("escape_password is: %s" % escape_password)
