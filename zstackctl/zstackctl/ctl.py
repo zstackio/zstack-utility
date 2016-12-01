@@ -305,7 +305,7 @@ def start_remote_mn( host_post_info):
     logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
 
 class SpinnerInfo(object):
-    spinner_status = []
+    spinner_status = {}
     def __init__(self):
         self.output = ""
         self.name = ""
@@ -5526,7 +5526,7 @@ fi
 class UpgradeMultiManagementNodeCmd(Command):
     logger_dir = '/var/log/zstack'
     logger_file = 'zstack-ctl.log'
-    SpinnerInfo.spinner_status = {'upgrade_local':False ,'upgrade':False, 'stop':False, 'start':False}
+    SpinnerInfo.spinner_status = {'stop_local':False, 'upgrade_local':False , 'start_local':False, 'upgrade':False, 'stop':False, 'start':False}
     def __init__(self):
         super(UpgradeMultiManagementNodeCmd, self).__init__()
         self.name = "upgrade_multi_management_node"
@@ -5560,7 +5560,7 @@ class UpgradeMultiManagementNodeCmd(Command):
         cmd = create_check_mgmt_node_command()
         cmd(False)
         if 'true' not in cmd.stdout:
-            error("Local management node status is not Running")
+            error("Local management node status is not Running, can't make sure ZStack status is healthy")
         for mn in mn_vo:
             mn_ip_list.append(mn['hostName'])
         mn_ip_list.insert(0, mn_ip_list.pop(mn_ip_list.index(local_mn_ip)))
@@ -5578,16 +5578,28 @@ class UpgradeMultiManagementNodeCmd(Command):
                 host_reachable = check_host_reachable(host_info, True)
                 if host_reachable is True:
                     spinner_info = SpinnerInfo()
-                    spinner_info.output = "Stop management node on host %s" % mn_ip
-                    spinner_info.name = 'stop'
+                    spinner_info.output = "Stop remote management node %s" % mn_ip
+                    spinner_info.name = "stop_%s" % mn_ip
+                    SpinnerInfo.spinner_status['stop_%s' % mn_ip] = False
                     SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-                    SpinnerInfo.spinner_status['stop'] = True
+                    SpinnerInfo.spinner_status['stop_%s' % mn_ip] = True
                     ZstackSpinner(spinner_info)
                     command = "zstack-ctl stop_node"
                     run_remote_command(command, host_info)
                 else:
                     # running management node will block upgrade process
                     error("Management node %s is unreachable, please sync public key %s to other management nodes" % (mn_ip, ssh_key))
+            else:
+                spinner_info = SpinnerInfo()
+                spinner_info.output = "Stop local management node %s" % mn_ip
+                spinner_info.name = "stop_local"
+                SpinnerInfo.spinner_status['stop_local'] = False
+                SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                SpinnerInfo.spinner_status['stop_local'] = True
+                ZstackSpinner(spinner_info)
+                command = "zstack-ctl stop_node"
+                shell(command)
+
 
         for mn_ip in mn_ip_list:
             host_info = HostPostInfo()
@@ -5605,6 +5617,14 @@ class UpgradeMultiManagementNodeCmd(Command):
                     shell("rm -rf /tmp/zstack_upgrade.lock && bash %s -u -F" % args.installer_bin)
                 else:
                     shell("rm -rf /tmp/zstack_upgrade.lock && bash %s -u" % args.installer_bin)
+
+                spinner_info = SpinnerInfo()
+                spinner_info.output = "Start management node on localhost(%s)" % local_mn_ip
+                spinner_info.name = 'start'
+                SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
+                SpinnerInfo.spinner_status['start_local'] = True
+                ZstackSpinner(spinner_info)
+                shell("zstack-ctl start_node && zstack-ctl start_ui")
 
             else:
                 spinner_info = SpinnerInfo()
