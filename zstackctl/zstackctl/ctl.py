@@ -4723,11 +4723,17 @@ class ChangeIpCmd(Command):
             return 1
 
         # Reset RabbitMQ
+        info("Starting reset rabbitmq...")
         if args.yum is not None:
-            shell("zstack-ctl reset_rabbitmq --yum=%s" % args.yum)
+            ret = shell_return("zstack-ctl reset_rabbitmq --yum=%s" % args.yum)
         else:
-            shell("zstack-ctl reset_rabbitmq")
-        info("Reset RabbitMQ")
+            ret = shell_return("zstack-ctl reset_rabbitmq")
+        if ret == 0:
+            info("Reset rabbitMQ successfully")
+            info("Change ip successfully")
+        else:
+            error("Change ip failed")
+
 
 class InstallManagementNodeCmd(Command):
     def __init__(self):
