@@ -38,7 +38,7 @@ def rollback(func):
                     f(*fargs, **fkwargs)
                 except:
                     content = traceback.format_exc()
-                    logger.warn('exception when calling rollback functions' % content)
+                    logger.warn('exception when calling rollback functions %s' % content)
 
             tlocal.rollback_structs = []
 

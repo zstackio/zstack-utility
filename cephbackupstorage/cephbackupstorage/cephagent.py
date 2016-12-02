@@ -12,12 +12,14 @@ import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils import plugin
 from zstacklib.utils.rollback import rollback, rollbackable
 from zstacklib.utils.bash import *
+from zstacklib.utils import inject_qemu_ga_ceph
 
 import os
 import os.path
 import functools
 import traceback
 import pprint
+import urllib2
 import threading
 
 logger = log.get_logger(__name__)
@@ -184,43 +186,79 @@ class CephAgent(object):
     def _parse_install_path(self, path):
         return path.lstrip('ceph:').lstrip('//').split('/')
 
-    def _inject_qemu_ga(self, install_path):
-        image_format = bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path).strip('\n')
-        if image_format not in ['qcow2']:
-            raise Exception('can only support inject qcow2 image(it is depended on change password)')
-        cmd = "bash /usr/local/zstack/imagestore/qemu-ga/auto-qemu-ga.sh %s" % install_path
-        logger.debug("inject qemu-ga, try to exec: %s" % cmd)
-        ret, stdout, stderr = bash_roe(cmd, False)
-        if ret != 0:
-            logger.warn("inject failed due to: %s", stderr)
-            raise Exception("inject failed due to: %s", stderr)
-        logger.debug("inject qemu-guest-agent succeed! ")
+    def _inject_qemu_ga_ceph(self, install_path):
+        # 1 mount it
+        shell.call("mkdir -p /tmp/generage_passwd")
+        local_file_name = shell.call("mktemp -dq /tmp/generage_passwd/passwd.XXXXXX").strip('\n')
+        dev_rbd = shell.call('rbd map %s' % install_path).strip()
+        shadow = None
+        try:
+            for mdir in shell.call('ls %sp*' % dev_rbd).strip().split('\n'):
+                shell.call('mount %s %s' % (mdir.strip(), local_file_name), False)
+                shadow = "%s/etc/shadow" % local_file_name
+                if os.path.isfile(shadow):
+                    break
+                else:
+                    shell.call('umount %s' % local_file_name, False)
+            # if shadow is not a file here, the mount dir is not a real OS, failed mount
+            if not os.path.isfile(shadow):
+                raise Exception('mount %s failed' % install_path)
+
+            # 2 inject the mount dir
+            inj = inject_qemu_ga_ceph.InjectQemuGa()
+            inj.inject_path = local_file_name
+            inj.local_path = '/usr/local/zstack/imagestore/qemu-ga/'
+            os.chdir(local_file_name)
+            inj.inject_qemuGa()
+            logger.debug("inject qemu-guest-agent succeed! ")
+        finally:
+            os.chdir('/usr/local/zstack/imagestore/qemu-ga/')
+            shell.call('umount %s' % local_file_name, False)
+            shell.call('rbd unmap %s' % dev_rbd, False)
+            shell.call('rm -rf %s' % local_file_name, False)
 
     @replyerror
     @rollback
     def download(self, req):
         rsp = DownloadRsp()
+
+        def isDerivedQcow2Image(path):
+            if path.startswith('http://') or path.startswith('https://'):
+                resp = urllib2.urlopen(path)
+                qhdr = resp.read(72)
+                resp.close()
+            elif(path.startswith('file://')):
+                resp = open(path)
+                qhdr = resp.read(72)
+                resp.close
+            else:
+                raise Exception('unknown url[%s]' % path)
+            if len(qhdr) != 72:
+                return False
+            if qhdr[:4] != 'QFI\xfb':
+                return False
+            return qhdr[16:20] != '\x00\x00\x00\00'
+
         def fail_if_has_backing_file(fpath):
-            if linux.qcow2_get_backing_file(fpath):
-                raise Exception('image has backing file')
+            if isDerivedQcow2Image(fpath):
+                raise Exception('image has backing file or %s is not exist!' % fpath)
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         pool, image_name = self._parse_install_path(cmd.installPath)
-        tmp_qemu_name = 'tmp-%s_qemu' % image_name
         tmp_image_name = 'tmp-%s' % image_name
 
+        @rollbackable
+        def _1():
+            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+
+
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
-            shell.call('set -o pipefail; wget --no-check-certificate -q %s -O %s ' % (cmd.url, tmp_qemu_name))
-            fail_if_has_backing_file(tmp_qemu_name)
-            if cmd.inject:
-                try:
-                    self._inject_qemu_ga(tmp_qemu_name)
-                except Exception as e:
-                    rsp.success = False
-                    rsp.error = e.message
-                    return jsonobject.dumps(rsp)
-            shell.call('rbd import --image-format 2 %s %s/%s' % (tmp_qemu_name, pool, tmp_image_name))
+            fail_if_has_backing_file(cmd.url)
+            # roll back tmp ceph file after import it
+            _1()
+            shell.call('set -o pipefail;wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s'
+                       % (cmd.url, pool, tmp_image_name))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
         elif cmd.url.startswith('file://'):
             src_path = cmd.url.lstrip('file:')
@@ -228,25 +266,12 @@ class CephAgent(object):
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
             fail_if_has_backing_file(src_path)
-            shell.call('cp -f %s %s' % (src_path, tmp_qemu_name))
-            if cmd.inject:
-                # inject image
-                try:
-                    self._inject_qemu_ga(tmp_qemu_name)
-                except Exception as e:
-                    rsp.success = False
-                    rsp.error = e.message
-                    return jsonobject.dumps(rsp)
-            shell.call("rbd import --image-format 2 %s %s/%s" % (tmp_qemu_name, pool, tmp_image_name))
+            # roll back tmp ceph file after import it
+            _1()
+            shell.call("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
             actual_size = os.path.getsize(src_path)
         else:
             raise Exception('unknown url[%s]' % cmd.url)
-        shell.call('rm -f %s' % tmp_qemu_name)
-
-        @rollbackable
-        def _1():
-            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
-        _1()
 
         file_format = shell.call(
             "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
@@ -263,14 +288,24 @@ class CephAgent(object):
                     conf_path = linux.write_to_temp_file(conf)
 
                 shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
-                shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
                 if conf_path:
                     os.remove(conf_path)
         else:
             shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
 
+        @rollbackable
+        def _2():
+            shell.call('rbd rm %s/%s' % (pool, image_name))
+        _2()
+
+        if cmd.inject:
+            # inject image
+            self._inject_qemu_ga_ceph('%s/%s' % (pool, image_name))
+
         o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
+        # delete tmp image
+        shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         image_stats = jsonobject.loads(o)
 
         rsp.size = long(image_stats.size_)
