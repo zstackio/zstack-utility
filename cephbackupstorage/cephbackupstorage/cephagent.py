@@ -215,9 +215,9 @@ class CephAgent(object):
             logger.debug("inject qemu-guest-agent succeed! ")
         finally:
             os.chdir('/usr/local/zstack/imagestore/qemu-ga/')
-            shell.call('umount %s' % local_file_name, False)
-            shell.call('rbd unmap %s' % dev_rbd, False)
-            shell.call('rm -rf %s' % local_file_name, False)
+            # shell.call('umount %s' % local_file_name, False)
+            # shell.call('rbd unmap %s' % dev_rbd, False)
+            # shell.call('rm -rf %s' % local_file_name, False)
 
     @replyerror
     @rollback
