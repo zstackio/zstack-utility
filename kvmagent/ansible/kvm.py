@@ -206,6 +206,9 @@ if distro == "RedHat" or distro == "CentOS":
         copy(copy_arg, host_post_info)
         if chroot_env == 'false':
             # name: restart iptables
+            # name: workaround RHEL7 iptables service issue
+            command = 'mkdir -p /var/lock/subsys/'
+            run_remote_command(command, host_post_info)
             service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
     if chroot_env == 'false':
