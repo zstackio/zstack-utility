@@ -227,12 +227,10 @@ class CephAgent(object):
                 resp = urllib2.urlopen(path)
                 qhdr = resp.read(72)
                 resp.close()
-            elif(path.startswith('file://')):
+            else:
                 resp = open(path)
                 qhdr = resp.read(72)
                 resp.close
-            else:
-                raise Exception('unknown url[%s]' % path)
             if len(qhdr) != 72:
                 return False
             if qhdr[:4] != 'QFI\xfb':
@@ -260,6 +258,7 @@ class CephAgent(object):
             shell.call('set -o pipefail;wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s'
                        % (cmd.url, pool, tmp_image_name))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
+
         elif cmd.url.startswith('file://'):
             src_path = cmd.url.lstrip('file:')
             src_path = os.path.normpath(src_path)
