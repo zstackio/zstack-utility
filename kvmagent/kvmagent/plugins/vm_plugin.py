@@ -3102,6 +3102,11 @@ class VmPlugin(kvmagent.KvmAgent):
 
         self.register_libvirt_event()
 
+        # the virtio-channel directory used by VR.
+        # libvirt won't create this directory when migrating a VR,
+        # we have to do this otherwise VR migration may fail
+        shell.call('mkdir -p /var/lib/zstack/kvm/agentSocket/')
+
         @thread.AsyncThread
         def wait_end_signal():
             while True:
