@@ -260,7 +260,6 @@ class CephAgent(object):
             shell.call('umount %s' % local_file_name, False)
             shell.call('rbd unmap %s' % dev_rbd, False)
             shell.call('rm -rf %s' % local_file_name, False)
-            '''test'''
         return jsonobject.dumps(rsp)
 
     def _change_vm_password_mount(self, cmd, root):
