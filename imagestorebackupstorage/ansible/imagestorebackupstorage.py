@@ -12,7 +12,6 @@ banner("Starting to deploy image store backup storage agent")
 start_time = datetime.now()
 # set default value
 file_root = "files/imagestorebackupstorage"
-qemuga_file_root = "files/qemuga"
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
 sproxy = ""
@@ -22,7 +21,6 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 fs_rootpath = ""
 pkg_imagestorebackupstorage = ""
-pkg_qemuga = "zstack-qemu-ga.bin"
 client = "false"
 remote_user = "root"
 remote_pass = None
@@ -42,7 +40,6 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 imagestore_root = "%s/imagestorebackupstorage/package" % zstack_root
-qemuga_root = "%s/imagestorebackupstorage/package" % zstack_root
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -109,20 +106,6 @@ else:
 run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
 command = 'mkdir -p %s ' % (imagestore_root + "/certs")
 run_remote_command(command, host_post_info)
-
-# if not mevoco, this file does not exist, skip deploy...
-if os.path.exists(qemuga_file_root):
-    # name: copy qemu-ga binary
-    copy_arg = CopyArg()
-    dest_qga_pkg = "%s/%s" % (qemuga_root, pkg_qemuga)
-    copy_arg.src = "%s/%s" % (qemuga_file_root, pkg_qemuga)
-    copy_arg.dest = dest_qga_pkg
-    copy(copy_arg, host_post_info)
-
-    # name: install qemu-ga
-    command = "bash %s %s " % (dest_qga_pkg, pkg_qemuga)
-    run_remote_command(command, host_post_info)
-    handle_ansible_info("################"+command, host_post_info, "INFO")
 
 # name: copy imagestore binary
 copy_arg = CopyArg()

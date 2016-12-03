@@ -224,13 +224,6 @@ class AccountPerference(object):
         self.vmUuid = None
 
 
-class SetRootPasswordRsp(kvmagent.AgentResponse):
-    def __init__(self):
-        super(SetRootPasswordRsp, self).__init__()
-        self.accountPerference = AccountPerference()
-        self.qcowFile = None
-
-
 class ReconnectMeCmd(object):
     def __init__(self):
         self.hostUuid = None
@@ -2005,14 +1998,6 @@ class Vm(object):
                     return True
             except Exception as err:
                 logger.warn(err.message)
-                # info_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-info"}\'' % self.uuid, False)
-                # try:
-                #     info = jsonobject.loads(info_json)
-                #     enable = self._check_qemuga_info(info)
-                #     if enable:
-                #         return enable
-                # except Exception as err:
-                #     logger.warn(err.message)
             time.sleep(0.5)
         raise kvmagent.KvmError("service is not ready in vm...")
 
@@ -2519,7 +2504,6 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
     KVM_VM_CHANGE_PASSWORD_PATH = "/vm/changepasswd"
-    KVM_VM_SET_ROOT_PASSWORD_PATH = "/vm/setrootpasswd"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
 
@@ -2661,36 +2645,6 @@ class VmPlugin(kvmagent.KvmAgent):
             return self._escape(size)
         else:
             return self._get_image_mb_size(backing) + self._escape(size)
-
-    def _change_stopped_vm_password(self, cmd):
-        if not cmd.qcowFile:
-            raise kvmagent.KvmError("vm is stopped or created, cmd must contain qcowFile parameter!")
-        chp = generate_passwd.ChangePasswd()
-        chp.password = cmd.accountPerference.accountPassword
-        chp.account = cmd.accountPerference.userAccount
-        chp.image = cmd.qcowFile
-        logger.debug("_get_image_mb_size: %s" % self._get_image_mb_size(chp.image))
-        if self._get_image_mb_size(chp.image) > 20000:
-            raise kvmagent.KvmError('image is too large for localstorage(>20GB), '
-                                    'if you still want to change passwd, please try it while vm is running.')
-        if not chp.generate_passwd():
-            raise kvmagent.KvmError('inject passwd failed.')
-
-    @kvmagent.replyerror
-    def set_root_password(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        # inject the root password
-        rsp = SetRootPasswordRsp()
-        try:
-            self._change_stopped_vm_password(cmd)
-        except Exception as e:
-            logger.warn("catch exception while change stopped vm")
-            rsp.error = str(e)
-            rsp.success = False
-        rsp.accountPerference = cmd.accountPerference
-        rsp.accountPerference.accountPassword = "******"
-        rsp.qcowFile = cmd.qcowFile
-        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def change_vm_password(self, req):
@@ -3095,7 +3049,6 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
-        # http_server.register_async_uri(self.KVM_VM_SET_ROOT_PASSWORD_PATH, self.set_root_password)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
 

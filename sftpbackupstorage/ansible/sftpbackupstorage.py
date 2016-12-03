@@ -12,14 +12,12 @@ banner("Starting to deploy sftpbackup storage agent")
 start_time = datetime.now()
 # set default value
 file_root = "files/sftpbackupstorage"
-qemuga_file_root = "files/qemuga"
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
 sproxy = ""
 chroot_env = 'false'
 zstack_repo = 'false'
 current_dir = os.path.dirname(os.path.realpath(__file__))
-pkg_qemuga = "zstack-qemu-ga.bin"
 post_url = ""
 pkg_sftpbackupstorage = ""
 virtualenv_version = "12.1.1"
@@ -41,7 +39,6 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 virtenv_path = "%s/virtualenv/sftpbackupstorage/" % zstack_root
 sftp_root = "%s/sftpbackupstorage/package" % zstack_root
-qemuga_root = "%s/sftpbackupstorage/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -123,20 +120,6 @@ if zstacklib_copy_result != "changed:False":
     agent_install_arg.agent_root = sftp_root
     agent_install_arg.pkg_name = pkg_zstacklib
     agent_install(agent_install_arg, host_post_info)
-
-# if not mevoco, this file does not exist, skip deploy...
-if os.path.exists(qemuga_file_root):
-    # name: copy qemu-ga binary
-    copy_arg = CopyArg()
-    dest_qga_pkg = "%s/%s" % (qemuga_root, pkg_qemuga)
-    copy_arg.src = "%s/%s" % (qemuga_file_root, pkg_qemuga)
-    copy_arg.dest = dest_qga_pkg
-    copy(copy_arg, host_post_info)
-
-    # name: install qemu-ga
-    command = "bash %s %s " % (dest_qga_pkg, pkg_qemuga)
-    run_remote_command(command, host_post_info)
-    handle_ansible_info("################"+command, host_post_info, "INFO")
 
 # name: copy sftp
 copy_arg = CopyArg()

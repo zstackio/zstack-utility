@@ -12,7 +12,6 @@ import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils import plugin
 from zstacklib.utils.rollback import rollback, rollbackable
 from zstacklib.utils.bash import *
-from zstacklib.utils import inject_qemu_ga_ceph
 
 import os
 import os.path
@@ -41,7 +40,6 @@ class DownloadRsp(AgentResponse):
         super(DownloadRsp, self).__init__()
         self.size = None
         self.actualSize = None
-        self.inject = None
 
 class GetImageSizeRsp(AgentResponse):
     def __init__(self):
@@ -186,39 +184,6 @@ class CephAgent(object):
     def _parse_install_path(self, path):
         return path.lstrip('ceph:').lstrip('//').split('/')
 
-    def _inject_qemu_ga_ceph(self, install_path):
-        # 1 mount it
-        shell.call("mkdir -p /tmp/generage_passwd")
-        local_file_name = shell.call("mktemp -dq /tmp/generage_passwd/passwd.XXXXXX").strip('\n')
-        dev_rbd = shell.call('rbd map %s' % install_path).strip()
-        shadow = None
-        try:
-            for mdir in shell.call('ls %sp*' % dev_rbd).strip().split('\n'):
-                shell.call('mount %s %s' % (mdir.strip(), local_file_name), False)
-                shadow = "%s/etc/shadow" % local_file_name
-                if os.path.isfile(shadow):
-                    break
-                else:
-                    logger.debug('%s is not exist, umount and try the next device' % shadow)
-                    shell.call('umount %s' % local_file_name, False)
-                    # raise Exception('shadow failed')
-            # if shadow is not a file here, the mount dir is not a real OS, failed mount
-            if not os.path.isfile(shadow):
-                raise Exception('mount %s failed' % install_path)
-
-            # 2 inject the mount dir
-            inj = inject_qemu_ga_ceph.InjectQemuGa()
-            inj.inject_path = local_file_name
-            inj.local_path = '/usr/local/zstack/imagestore/qemu-ga/'
-            os.chdir(local_file_name)
-            inj.inject_qemuGa()
-            logger.debug("inject qemu-guest-agent succeed! ")
-        finally:
-            os.chdir('/usr/local/zstack/imagestore/qemu-ga/')
-            shell.call('umount %s' % local_file_name, False)
-            shell.call('rbd unmap %s' % dev_rbd, False)
-            shell.call('rm -rf %s' % local_file_name, False)
-
     @replyerror
     @rollback
     def download(self, req):
@@ -300,9 +265,6 @@ class CephAgent(object):
             shell.call('rbd rm %s/%s' % (pool, image_name))
         _2()
 
-        if cmd.inject:
-            # inject image
-            self._inject_qemu_ga_ceph('%s/%s' % (pool, image_name))
 
         o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
         image_stats = jsonobject.loads(o)
