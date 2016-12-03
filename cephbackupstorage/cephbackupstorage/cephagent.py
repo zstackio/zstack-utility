@@ -199,7 +199,9 @@ class CephAgent(object):
                 if os.path.isfile(shadow):
                     break
                 else:
+                    logger.debug('%s is not exist, umount and try the next device' % shadow)
                     shell.call('umount %s' % local_file_name, False)
+                    # raise Exception('shadow failed')
             # if shadow is not a file here, the mount dir is not a real OS, failed mount
             if not os.path.isfile(shadow):
                 raise Exception('mount %s failed' % install_path)
@@ -213,9 +215,9 @@ class CephAgent(object):
             logger.debug("inject qemu-guest-agent succeed! ")
         finally:
             os.chdir('/usr/local/zstack/imagestore/qemu-ga/')
-            # shell.call('umount %s' % local_file_name, False)
-            # shell.call('rbd unmap %s' % dev_rbd, False)
-            # shell.call('rm -rf %s' % local_file_name, False)
+            shell.call('umount %s' % local_file_name, False)
+            shell.call('rbd unmap %s' % dev_rbd, False)
+            shell.call('rm -rf %s' % local_file_name, False)
 
     @replyerror
     @rollback
