@@ -305,8 +305,6 @@ class CephAgent(object):
             self._inject_qemu_ga_ceph('%s/%s' % (pool, image_name))
 
         o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
-        # delete tmp image
-        shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
         image_stats = jsonobject.loads(o)
 
         rsp.size = long(image_stats.size_)
