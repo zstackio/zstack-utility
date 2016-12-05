@@ -11,7 +11,6 @@ import libvirt
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
-from zstacklib.utils import generate_passwd
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lichbd
