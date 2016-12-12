@@ -53,6 +53,7 @@ class ImageStoreClient(object):
             self.commit_to_imagestore(primaryStorageInstallPath)
 
         cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath)
+        logger.debug(cmdstr)
         logger.debug('pushing %s to image store' % primaryStorageInstallPath)
         shell.call(cmdstr)
         logger.debug('%s pushed to image store' % primaryStorageInstallPath)

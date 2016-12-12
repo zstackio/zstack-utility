@@ -3,15 +3,14 @@ __author__ = 'frank'
 import os.path
 import traceback
 
+import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import jsonobject
 from zstacklib.utils import http
-from zstacklib.utils import log
-from zstacklib.utils import shell
+from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
+from zstacklib.utils import shell
 from zstacklib.utils.bash import *
-import zstacklib.utils.uuidhelper as uuidhelper
 
 logger = log.get_logger(__name__)
 
@@ -213,13 +212,18 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     def copy_bits_to_remote(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         chain = sum([linux.qcow2_get_file_chain(p) for p in cmd.paths], [])
+        total = 0
+        for path in set(chain):
+            total = total + os.path.getsize(path)
+
         for path in set(chain):
             PATH = path
             PASSWORD = cmd.dstPassword
             USER = cmd.dstUsername
             IP = cmd.dstIp
             PORT = (cmd.dstPort and cmd.dstPort or "22")
-            bash_errorout('rsync -a --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/')
+            bash_progress('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/',
+                          total, "LocalStorageMigrateVolume", cmd.uuid)
             bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
 
         rsp = AgentResponse()

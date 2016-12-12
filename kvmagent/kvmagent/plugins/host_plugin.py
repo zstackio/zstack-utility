@@ -13,6 +13,7 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
+from zstacklib.utils.report import Report
 import os.path
 import re
 import threading
@@ -123,6 +124,8 @@ class HostPlugin(kvmagent.KvmAgent):
         self.host_uuid = cmd.hostUuid
         self.config[kvmagent.HOST_UUID] = self.host_uuid
         self.config[kvmagent.SEND_COMMAND_URL] = cmd.sendCommandUrl
+        Report.url = cmd.sendCommandUrl
+        Report.serverUuid = self.host_uuid
         logger.debug(http.path_msg(self.CONNECT_PATH, 'host[uuid: %s] connected' % cmd.hostUuid))
         rsp = ConnectResponse()
         rsp.libvirtVersion = self.libvirt_version

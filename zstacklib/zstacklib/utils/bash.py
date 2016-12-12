@@ -6,6 +6,9 @@ from zstacklib.utils import log
 import inspect
 import time
 import re
+from zstacklib.utils import shell
+from progress_report import WatchThread
+import os
 
 logger = log.get_logger(__name__)
 
@@ -88,6 +91,33 @@ def bash_r(cmd, pipe_fail=False):
 def bash_errorout(cmd, code=0, pipe_fail=False):
     _, o, _ = bash_roe(cmd, errorout=True, ret_code=code, pipe_fail=pipe_fail)
     return o
+
+def bash_progress(cmd, total, processType, uuid):
+    ctx = __collect_locals_on_stack()
+    cmd = bash_eval(cmd, ctx)
+    progress_report = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+    fpwrite = open(progress_report, 'w')
+    p = subprocess.Popen('/bin/bash', stdout=fpwrite, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    watch_thread = WatchThread(open(progress_report, 'r'), p, processType, uuid)
+    watch_thread.setTotal(total)
+    watch_thread.start()
+    _, e = p.communicate(cmd)
+    r = p.returncode
+    watch_thread.stop()
+    fpwrite.close()
+    os.remove(progress_report)
+
+    __BASH_DEBUG_INFO__ = ctx.get('__BASH_DEBUG_INFO__')
+    if __BASH_DEBUG_INFO__ is not None:
+        __BASH_DEBUG_INFO__.append({
+            'cmd': cmd,
+            'return_code': p.returncode,
+            'stderr': e
+        })
+
+    if r != 0:
+        raise BashError('failed to execute bash[%s], return code: %s, stderr: %s' % (cmd, r, e))
+    return r, e
 
 def in_bash(func):
     @functools.wraps(func)
