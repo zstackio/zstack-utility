@@ -1049,6 +1049,29 @@ class APIRequestConsoleAccessMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETTASKPROGRESSMSG_FULL_NAME = 'org.zstack.header.core.progress.APIGetTaskProgressMsg'
+class APIGetTaskProgressMsg(object):
+    FULL_NAME='org.zstack.header.core.progress.APIGetTaskProgressMsg'
+    def __init__(self):
+        #mandatory field
+        self.resourceUuid = NotNoneField()
+        #valid values: [AddImage, LocalStorageMigrateVolume, CreateRootVolumeTemplateFromRootVolume]
+        self.processType = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETTASKPROGRESSREPLY_FULL_NAME = 'org.zstack.header.core.progress.APIGetTaskProgressReply'
+class APIGetTaskProgressReply(object):
+    FULL_NAME='org.zstack.header.core.progress.APIGetTaskProgressReply'
+    def __init__(self):
+        self.taskProgress = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APICREATESCHEDULERMESSAGE_FULL_NAME = 'org.zstack.header.core.scheduler.APICreateSchedulerMessage'
 class APICreateSchedulerMessage(object):
     FULL_NAME='org.zstack.header.core.scheduler.APICreateSchedulerMessage'
@@ -4906,6 +4929,8 @@ class APIUpdateVmInstanceMsg(object):
         self.defaultL3NetworkUuid = None
         #valid values: [Linux, Windows, Other, Paravirtualization, WindowsVirtio]
         self.platform = None
+        self.cpuCores = None
+        self.memory = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7437,6 +7462,23 @@ class APIRemoveMonFromFusionstorBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEFUSIONSTORBACKUPSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+class APIUpdateFusionstorBackupStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDFUSIONSTORPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIAddFusionstorPrimaryStorageMsg'
 class APIAddFusionstorPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.fusionstor.primary.APIAddFusionstorPrimaryStorageMsg'
@@ -7503,6 +7545,23 @@ class APIRemoveMonFromFusionstorPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEFUSIONSTORPRIMARYSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+class APIUpdateFusionstorPrimaryStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7995,6 +8054,8 @@ api_names = [
     'APIGetResourceAccountMsg',
     'APIGetResourceAccountReply',
     'APIGetSftpBackupStorageReply',
+    'APIGetTaskProgressMsg',
+    'APIGetTaskProgressReply',
     'APIGetUserGroupReply',
     'APIGetUserReply',
     'APIGetVersionMsg',
@@ -8270,6 +8331,8 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEipMsg',
+    'APIUpdateFusionstorBackupStorageMonMsg',
+    'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIUpdateGlobalConfigMsg',
     'APIUpdateHostMsg',
     'APIUpdateImageMsg',
@@ -10577,6 +10640,8 @@ RANDOM_IP_ALLOCATOR_STRATEGY = 'RandomIpAllocatorStrategy'
 #LocalStorageConstants
 LOCAL_STORAGE_TYPE = 'LocalStorage'
 
+#MevocoKVMConstant
+
 #NfsPrimaryStorageConstant
 NFS_PRIMARY_STORAGE_TYPE = 'NFS'
 
@@ -10947,10 +11012,10 @@ class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
     SSH_PORT = 'ssh.port'
     PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
+    VROUTER_PASSWORD = 'vrouter.password'
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
-    VYOS_PASSWORD = 'vyos.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod

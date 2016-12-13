@@ -2546,6 +2546,18 @@ class GetResourceAccountAction(inventory.APIGetResourceAccountMsg):
         self.out = evt
         return self.out
 
+class GetTaskProgressAction(inventory.APIGetTaskProgressMsg):
+    def __init__(self):
+        super(GetTaskProgressAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetTaskProgressAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVersionAction(inventory.APIGetVersionMsg):
     def __init__(self):
         super(GetVersionAction, self).__init__()
@@ -4324,6 +4336,30 @@ class UpdateEipAction(inventory.APIUpdateEipMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateEipAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateFusionstorBackupStorageMonAction(inventory.APIUpdateFusionstorBackupStorageMonMsg):
+    def __init__(self):
+        super(UpdateFusionstorBackupStorageMonAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateFusionstorBackupStorageMonAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateFusionstorPrimaryStorageMonAction(inventory.APIUpdateFusionstorPrimaryStorageMonMsg):
+    def __init__(self):
+        super(UpdateFusionstorPrimaryStorageMonAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateFusionstorPrimaryStorageMonAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
