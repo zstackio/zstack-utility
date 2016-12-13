@@ -1056,7 +1056,7 @@ class Vm(object):
         self.start(cmd.timeout)
 
     def start(self, timeout=60):
-        # TODO: 1. enbale hair_pin mode
+        # TODO: 1. enable hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
 
         @LibvirtAutoReconnect
@@ -2001,10 +2001,10 @@ class Vm(object):
         raise kvmagent.KvmError("service is not ready in vm...")
 
     def _escape_char_password(self, password):
-        enscape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}"
+        escape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}"
         des = ""
         for c in list(password):
-            if c in enscape_str:
+            if c in escape_str:
                 des += "\\"
             des += c
         return des
@@ -2021,8 +2021,8 @@ class Vm(object):
                 escape_password = self._escape_char_password(cmd.accountPerference.accountPassword)
                 logger.debug("escape_password is: %s" % escape_password)
                 shell.call('virsh set-user-password %s %s %s' % (self.uuid,
-                                                             cmd.accountPerference.userAccount,
-                                                             escape_password))
+                                                                 cmd.accountPerference.userAccount,
+                                                                 escape_password))
             except Exception as e:
                 logger.warn(e.message)
                 if e.message.find("child process has failed to set user password") > 0:
@@ -2083,7 +2083,7 @@ class Vm(object):
     @staticmethod
     def from_StartVmCmd(cmd):
         use_virtio = cmd.useVirtio
-        instanceoffering_onliechange = cmd.instanceOfferingOnlineChange
+        instance_offering_online_change = cmd.instanceOfferingOnlineChange
 
         elements = {}
 
@@ -2095,7 +2095,7 @@ class Vm(object):
             elements['root'] = root
 
         def make_cpu():
-            if instanceoffering_onliechange:
+            if instance_offering_online_change:
                 root = elements['root']
                 e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
@@ -2136,7 +2136,7 @@ class Vm(object):
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
-            if instanceoffering_onliechange:
+            if instance_offering_online_change:
                 e(root, 'maxMemory', str(104857600), {'slots': str(16), 'unit': 'KiB'})
                 # e(root,'memory',str(mem),{'unit':'k'})
                 e(root, 'currentMemory', str(mem), {'unit': 'k'})
@@ -2218,82 +2218,100 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
 
-            def filebased_volume(dev_letter, v):
+            def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': v.cacheMode})
-                e(disk, 'source', None, {'file': v.installPath})
-                if v.useVirtioSCSI:
-                    e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-                    e(disk, 'wwn', v.wwn)
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
+                e(disk, 'source', None, {'file': _v.installPath})
+                if _v.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
+                    e(disk, 'wwn', _v.wwn)
                     e(disk, 'shareable')
                     return disk
 
-                if v.useVirtio:
-                    e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
+                if _v.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
                 else:
-                    e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'ide'})
+                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'ide'})
                 return disk
 
-            def iscsibased_volume(dev_letter, virtio):
+            def iscsibased_volume(_dev_letter, _v):
                 def blk_iscsi():
                     bi = BlkIscsi()
-                    portal, bi.target, bi.lun = v.installPath.lstrip('iscsi://').split('/')
+                    portal, bi.target, bi.lun = _v.installPath.lstrip('iscsi://').split('/')
                     bi.server_hostname, bi.server_port = portal.split(':')
-                    bi.device_letter = dev_letter
-                    bi.volume_uuid = v.volumeUuid
-                    bi.chap_username = v.chapUsername
-                    bi.chap_password = v.chapPassword
+                    bi.device_letter = _dev_letter
+                    bi.volume_uuid = _v.volumeUuid
+                    bi.chap_username = _v.chapUsername
+                    bi.chap_password = _v.chapPassword
 
                     return bi.to_xmlobject()
 
                 def virtio_iscsi():
                     vi = VirtioIscsi()
-                    portal, vi.target, vi.lun = v.installPath.lstrip('iscsi://').split('/')
+                    portal, vi.target, vi.lun = _v.installPath.lstrip('iscsi://').split('/')
                     vi.server_hostname, vi.server_port = portal.split(':')
-                    vi.device_letter = dev_letter
-                    vi.volume_uuid = v.volumeUuid
-                    vi.chap_username = v.chapUsername
-                    vi.chap_password = v.chapPassword
+                    vi.device_letter = _dev_letter
+                    vi.volume_uuid = _v.volumeUuid
+                    vi.chap_username = _v.chapUsername
+                    vi.chap_password = _v.chapPassword
 
                     return vi.to_xmlobject()
 
-                if virtio:
+                if _v.useVirtio:
                     return virtio_iscsi()
                 else:
                     return blk_iscsi()
 
-            def ceph_volume(dev_letter, virtio):
+            def ceph_volume(_dev_letter, _v):
                 def ceph_virtio():
                     vc = VirtioCeph()
-                    vc.volume = v
-                    vc.dev_letter = dev_letter
+                    vc.volume = _v
+                    vc.dev_letter = _dev_letter
                     return vc.to_xmlobject()
 
                 def ceph_blk():
                     ic = IdeCeph()
-                    ic.volume = v
-                    ic.dev_letter = dev_letter
+                    ic.volume = _v
+                    ic.dev_letter = _dev_letter
                     return ic.to_xmlobject()
 
-                if virtio:
+                def ceph_virtio_scsi():
+                    vsc = VirtioSCSICeph()
+                    vsc.volume = _v
+                    vsc.dev_letter = _dev_letter
+                    return vsc.to_xmlobject()
+
+                if _v.useVirtioSCSI:
+                    return ceph_virtio_scsi()
+
+                if _v.useVirtio:
                     return ceph_virtio()
                 else:
                     return ceph_blk()
 
-            def fusionstor_volume(dev_letter, virtio):
+            def fusionstor_volume(_dev_letter, _v):
                 def fusionstor_virtio():
                     vc = VirtioFusionstor()
-                    vc.volume = v
-                    vc.dev_letter = dev_letter
+                    vc.volume = _v
+                    vc.dev_letter = _dev_letter
                     return vc.to_xmlobject()
 
                 def fusionstor_blk():
                     ic = IdeFusionstor()
-                    ic.volume = v
-                    ic.dev_letter = dev_letter
+                    ic.volume = _v
+                    ic.dev_letter = _dev_letter
                     return ic.to_xmlobject()
 
-                if virtio:
+                def fusionstor_virtio_scsi():
+                    vsc = VirtioSCSIFusionstor()
+                    vsc.volume = _v
+                    vsc.dev_letter = _dev_letter
+                    return vsc.to_xmlobject()
+
+                if _v.useVirtioSCSI:
+                    return fusionstor_virtio_scsi()
+
+                if _v.useVirtio:
                     return fusionstor_virtio()
                 else:
                     return fusionstor_blk()
@@ -2334,13 +2352,13 @@ class Vm(object):
                 if v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
-                    vol = iscsibased_volume(dev_letter, v.useVirtio)
+                    vol = iscsibased_volume(dev_letter, v)
                 elif v.deviceType == 'ceph':
-                    vol = ceph_volume(dev_letter, v.useVirtio)
+                    vol = ceph_volume(dev_letter, v)
                 elif v.deviceType == 'fusionstor':
-                    vol = fusionstor_volume(dev_letter, v.useVirtio)
+                    vol = fusionstor_volume(dev_letter, v)
                 else:
-                    raise Exception('unknown volume deivceType: %s' % v.deviceType)
+                    raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
                 assert vol is not None, 'vol cannot be None'
                 volume_qos(vol)
@@ -2631,14 +2649,15 @@ class VmPlugin(kvmagent.KvmAgent):
         unit = size.strip().lower()[-1]
         num = size.strip()[:-1]
         units = {
-            "g": lambda x: x*1024,
+            "g": lambda x: x * 1024,
             "m": lambda x: x,
-            "k": lambda x: x/1024,
+            "k": lambda x: x / 1024,
         }
         return int(units[unit](int(num)))
 
     def _get_image_mb_size(self, image):
-        backing = shell.call('qemu-img info %s|grep "backing file:"|awk -F \'backing file:\' \'{print $2}\' ' % image).strip()
+        backing = shell.call(
+            'qemu-img info %s|grep "backing file:"|awk -F \'backing file:\' \'{print $2}\' ' % image).strip()
         size = shell.call('qemu-img info %s|grep "disk size:"|awk -F \'disk size:\' \'{print $2}\' ' % image).strip()
         if not backing:
             return self._escape(size)
