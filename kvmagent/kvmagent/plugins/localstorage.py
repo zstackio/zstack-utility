@@ -10,6 +10,7 @@ from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import shell
+from zstacklib.utils.report import Progress
 from zstacklib.utils.bash import *
 
 logger = log.get_logger(__name__)
@@ -182,7 +183,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = GetMd5Rsp()
         rsp.md5s = []
         for to in cmd.md5s:
-            md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % to.path)
+            progress = Progress()
+            progress.processType = "LocalStorageMigrateVolume"
+            progress.resourceUuid = to.resourceUuid
+            progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
+            progress.stage = 1
+            progress.total = os.path.getsize(to.path)
+            _, md5, _ = bash_progress("md5sum %s | cut -d ' ' -f 1" % to.path, progress)
             rsp.md5s.append({
                 'resourceUuid': to.resourceUuid,
                 'path': to.path,
@@ -195,7 +202,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     def check_md5(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for to in cmd.md5s:
-            dst_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % to.path)
+            progress = Progress()
+            progress.processType = "LocalStorageMigrateVolume"
+            progress.resourceUuid = to.resourceUuid
+            progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
+            progress.stage = 3
+            progress.total = os.path.getsize(to.path)
+            progress.flag = "end"
+            _, dst_md5, _ = bash_progress("md5sum %s | cut -d ' ' -f 1" % to.path, progress)
             if dst_md5 != to.md5:
                 raise Exception("MD5 unmatch. The file[uuid:%s, path:%s]'s md5 (src host:%s, dst host:%s)" %
                                 (to.resourceUuid, to.path, to.md5, dst_md5))
@@ -213,17 +227,23 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         chain = sum([linux.qcow2_get_file_chain(p) for p in cmd.paths], [])
         total = 0
+        progress = Progress()
+        progress.processType = "LocalStorageMigrateVolume"
+        progress.resourceUuid = cmd.uuid
+        progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
+        progress.stage = 2
         for path in set(chain):
             total = total + os.path.getsize(path)
 
+        progress.total = total
         for path in set(chain):
             PATH = path
             PASSWORD = cmd.dstPassword
             USER = cmd.dstUsername
             IP = cmd.dstIp
             PORT = (cmd.dstPort and cmd.dstPort or "22")
-            bash_progress('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/',
-                          total, "LocalStorageMigrateVolume", cmd.uuid)
+
+            bash_progress('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/', progress)
             bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
 
         rsp = AgentResponse()

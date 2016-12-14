@@ -8,6 +8,8 @@ import time
 import re
 from zstacklib.utils import shell
 from progress_report import WatchThread
+from zstacklib.utils.report import Progress
+from zstacklib.utils.rollback import rollback, rollbackable
 import os
 
 logger = log.get_logger(__name__)
@@ -92,16 +94,21 @@ def bash_errorout(cmd, code=0, pipe_fail=False):
     _, o, _ = bash_roe(cmd, errorout=True, ret_code=code, pipe_fail=pipe_fail)
     return o
 
-def bash_progress(cmd, total, processType, uuid):
+def bash_progress(cmd, progress):
     ctx = __collect_locals_on_stack()
     cmd = bash_eval(cmd, ctx)
+
     progress_report = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+    @rollbackable
+    def _rollback():
+        os.remove(progress_report)
+
+    _rollback()
     fpwrite = open(progress_report, 'w')
     p = subprocess.Popen('/bin/bash', stdout=fpwrite, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-    watch_thread = WatchThread(open(progress_report, 'r'), p, processType, uuid)
-    watch_thread.setTotal(total)
+    watch_thread = WatchThread(open(progress_report, 'r'), p, progress)
     watch_thread.start()
-    _, e = p.communicate(cmd)
+    o, e = p.communicate(cmd)
     r = p.returncode
     watch_thread.stop()
     fpwrite.close()
@@ -117,7 +124,7 @@ def bash_progress(cmd, total, processType, uuid):
 
     if r != 0:
         raise BashError('failed to execute bash[%s], return code: %s, stderr: %s' % (cmd, r, e))
-    return r, e
+    return r, o, e
 
 def in_bash(func):
     @functools.wraps(func)
