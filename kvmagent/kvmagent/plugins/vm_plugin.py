@@ -2344,7 +2344,7 @@ class Vm(object):
 
             for v in volumes:
                 if v.deviceId >= len(Vm.DEVICE_LETTERS):
-                    err = "%s exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
+                    err = "exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
                     logger.warn(err)
                     raise kvmagent.KvmError(err)
 
