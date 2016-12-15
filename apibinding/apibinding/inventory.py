@@ -3962,6 +3962,23 @@ class APIDeleteTagMsg(object):
         self.userTags = OptionalList()
 
 
+APIENABLECHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.tag.APIEnableChangeVmPasswordMsg'
+class APIEnableChangeVmPasswordMsg(object):
+    FULL_NAME='org.zstack.header.tag.APIEnableChangeVmPasswordMsg'
+    def __init__(self):
+        #mandatory field
+        #valid values: [ImageVO, VmInstanceVO]
+        self.resourceType = NotNoneField()
+        #mandatory field
+        self.resourceUuid = NotNoneField()
+        #mandatory field
+        self.enable = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYSYSTEMTAGMSG_FULL_NAME = 'org.zstack.header.tag.APIQuerySystemTagMsg'
 class APIQuerySystemTagMsg(object):
     FULL_NAME='org.zstack.header.tag.APIQuerySystemTagMsg'
@@ -4573,6 +4590,28 @@ class APIGetVmConsolePasswordReply(object):
         self.error = None
 
 
+APIGETVMDISKQOSMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmDiskQosMsg'
+class APIGetVmDiskQosMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmDiskQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmUuid = NotNoneField()
+        self.volumeUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVMDISKQOSREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmDiskQosReply'
+class APIGetVmDiskQosReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmDiskQosReply'
+    def __init__(self):
+        self.vmDiskQOSList = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIGETVMHOSTNAMEMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmHostnameMsg'
 class APIGetVmHostnameMsg(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmHostnameMsg'
@@ -4620,6 +4659,28 @@ class APIGetVmMigrationCandidateHostsReply(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmMigrationCandidateHostsReply'
     def __init__(self):
         self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETVMNICQOSMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmNicQosMsg'
+class APIGetVmNicQosMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmNicQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmUuid = NotNoneField()
+        self.vmNicUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVMNICQOSREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmNicQosReply'
+class APIGetVmNicQosReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmNicQosReply'
+    def __init__(self):
+        self.vmNicQOSList = OptionalList()
         self.success = None
         self.error = None
 
@@ -4844,6 +4905,22 @@ class APISetVmConsolePasswordMsg(object):
         self.userTags = OptionalList()
 
 
+APISETVMDISKQOSMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmDiskQosMsg'
+class APISetVmDiskQosMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetVmDiskQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmUuid = NotNoneField()
+        #mandatory field
+        self.volumeUuid = NotNoneField()
+        self.volumeBandwidth = None
+        self.volumeIOPS = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APISETVMHOSTNAMEMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmHostnameMsg'
 class APISetVmHostnameMsg(object):
     FULL_NAME='org.zstack.header.vm.APISetVmHostnameMsg'
@@ -4852,6 +4929,21 @@ class APISetVmHostnameMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.hostname = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISETVMNICQOSMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmNicQosMsg'
+class APISetVmNicQosMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetVmNicQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmUuid = NotNoneField()
+        self.vmNicUuid = None
+        self.outboundBandwidth = None
+        self.inboundBandwidth = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7961,6 +8053,7 @@ api_names = [
     'APIDetachPortForwardingRuleMsg',
     'APIDetachPrimaryStorageFromClusterMsg',
     'APIDetachSecurityGroupFromL3NetworkMsg',
+    'APIEnableChangeVmPasswordMsg',
     'APIExportImageFromBackupStorageMsg',
     'APIExpungeDataVolumeMsg',
     'APIExpungeImageMsg',
@@ -8073,6 +8166,8 @@ api_names = [
     'APIGetVmConsoleAddressReply',
     'APIGetVmConsolePasswordMsg',
     'APIGetVmConsolePasswordReply',
+    'APIGetVmDiskQosMsg',
+    'APIGetVmDiskQosReply',
     'APIGetVmHostnameMsg',
     'APIGetVmHostnameReply',
     'APIGetVmInstanceHaLevelMsg',
@@ -8082,6 +8177,8 @@ api_names = [
     'APIGetVmMigrationCandidateHostsReply',
     'APIGetVmMonitoringDataMsg',
     'APIGetVmMonitoringDataReply',
+    'APIGetVmNicQosMsg',
+    'APIGetVmNicQosReply',
     'APIGetVmSshKeyMsg',
     'APIGetVmSshKeyReply',
     'APIGetVmStartingCandidateClustersHostsMsg',
@@ -8310,8 +8407,10 @@ api_names = [
     'APISessionMessage',
     'APISetVmBootOrderMsg',
     'APISetVmConsolePasswordMsg',
+    'APISetVmDiskQosMsg',
     'APISetVmHostnameMsg',
     'APISetVmInstanceHaLevelMsg',
+    'APISetVmNicQosMsg',
     'APISetVmSshKeyMsg',
     'APISetVmStaticIpMsg',
     'APIShareResourceMsg',

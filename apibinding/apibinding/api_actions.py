@@ -1994,6 +1994,18 @@ class DetachSecurityGroupFromL3NetworkAction(inventory.APIDetachSecurityGroupFro
         self.out = evt
         return self.out
 
+class EnableChangeVmPasswordAction(inventory.APIEnableChangeVmPasswordMsg):
+    def __init__(self):
+        super(EnableChangeVmPasswordAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[EnableChangeVmPasswordAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ExportImageFromBackupStorageAction(inventory.APIExportImageFromBackupStorageMsg):
     def __init__(self):
         super(ExportImageFromBackupStorageAction, self).__init__()
@@ -2642,6 +2654,18 @@ class GetVmConsolePasswordAction(inventory.APIGetVmConsolePasswordMsg):
         self.out = evt
         return self.out
 
+class GetVmDiskQosAction(inventory.APIGetVmDiskQosMsg):
+    def __init__(self):
+        super(GetVmDiskQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmDiskQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVmHostnameAction(inventory.APIGetVmHostnameMsg):
     def __init__(self):
         super(GetVmHostnameAction, self).__init__()
@@ -2686,6 +2710,18 @@ class GetVmMonitoringDataAction(inventory.APIGetVmMonitoringDataMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVmMonitoringDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetVmNicQosAction(inventory.APIGetVmNicQosMsg):
+    def __init__(self):
+        super(GetVmNicQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmNicQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4088,6 +4124,18 @@ class SetVmConsolePasswordAction(inventory.APISetVmConsolePasswordMsg):
         self.out = evt
         return self.out
 
+class SetVmDiskQosAction(inventory.APISetVmDiskQosMsg):
+    def __init__(self):
+        super(SetVmDiskQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmDiskQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SetVmHostnameAction(inventory.APISetVmHostnameMsg):
     def __init__(self):
         super(SetVmHostnameAction, self).__init__()
@@ -4108,6 +4156,18 @@ class SetVmInstanceHaLevelAction(inventory.APISetVmInstanceHaLevelMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetVmInstanceHaLevelAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVmNicQosAction(inventory.APISetVmNicQosMsg):
+    def __init__(self):
+        super(SetVmNicQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmNicQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
