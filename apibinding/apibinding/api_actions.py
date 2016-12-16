@@ -3626,6 +3626,20 @@ class QueryVCenterAction(inventory.APIQueryVCenterMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryVCenterDatacenterAction(inventory.APIQueryVCenterDatacenterMsg):
+    def __init__(self):
+        super(QueryVCenterDatacenterAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVCenterDatacenterAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryVipAction(inventory.APIQueryVipMsg):
     def __init__(self):
         super(QueryVipAction, self).__init__()

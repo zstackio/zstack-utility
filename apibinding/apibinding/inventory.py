@@ -7852,6 +7852,37 @@ class APIDeleteVCenterMsg(object):
         self.userTags = OptionalList()
 
 
+APIQUERYVCENTERDATACENTERMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterDatacenterMsg'
+class APIQueryVCenterDatacenterMsg(object):
+    FULL_NAME='org.zstack.vmware.APIQueryVCenterDatacenterMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVCENTERDATACENTERREPLY_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterDatacenterReply'
+class APIQueryVCenterDatacenterReply(object):
+    FULL_NAME='org.zstack.vmware.APIQueryVCenterDatacenterReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterMsg'
 class APIQueryVCenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIQueryVCenterMsg'
@@ -8330,6 +8361,8 @@ api_names = [
     'APIQueryUserReply',
     'APIQueryUserTagMsg',
     'APIQueryUserTagReply',
+    'APIQueryVCenterDatacenterMsg',
+    'APIQueryVCenterDatacenterReply',
     'APIQueryVCenterMsg',
     'APIQueryVCenterReply',
     'APIQueryVipMsg',
@@ -10616,6 +10649,36 @@ class VCenterBackupStorageInventory(BackupStorageInventory):
 
 
 
+class VCenterDatacenterInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.vCenterUuid = None
+        self.name = None
+        self.morval = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'vCenterUuid'):
+            self.vCenterUuid = inv.vCenterUuid
+        else:
+            self.vCenterUuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'morval'):
+            self.morval = inv.morval
+        else:
+            self.morval = None
+
+
+
 class VCenterInventory(object):
     def __init__(self):
         self.uuid = None
@@ -11115,6 +11178,7 @@ class GlobalConfig_VIRTUALROUTER(object):
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
+    VYOS_PASSWORD = 'vyos.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod
@@ -11720,6 +11784,12 @@ class QueryObjectVCenterBackupStorageInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
+class QueryObjectVCenterDatacenterInventory(object):
+     PRIMITIVE_FIELDS = ['morval','name','vCenterUuid','uuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectVCenterInventory(object):
      PRIMITIVE_FIELDS = ['domainName','name','zoneUuid','lastOpDate','description','https','state','userName','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -11937,6 +12007,7 @@ queryMessageInventoryMap = {
      'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,
      'APIQueryUserMsg' : QueryObjectUserInventory,
      'APIQueryUserTagMsg' : QueryObjectUserTagInventory,
+     'APIQueryVCenterDatacenterMsg' : QueryObjectVCenterDatacenterInventory,
      'APIQueryVCenterMsg' : QueryObjectVCenterInventory,
      'APIQueryVipMsg' : QueryObjectVipInventory,
      'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
