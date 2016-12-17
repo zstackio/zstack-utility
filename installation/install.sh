@@ -827,11 +827,9 @@ is_install_general_libs_rh(){
     else
         mysql_pkg='mysql'
     fi
-    if [ ! -z $ZSTACK_YUM_REPOS ]; then
-        yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
-        echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
-        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y \
-            libselinux-python \
+	
+	# Just install what is not installed
+	deps_list="libselinux-python \
             java-1.8.0-openjdk \
             bridge-utils \
             wget \
@@ -865,54 +863,28 @@ is_install_general_libs_rh(){
             dmidecode \
             $mysql_pkg \
             python-backports-ssl_match_hostname \
-            python-setuptools \
-            >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        yum clean metadata >/dev/null 2>&1
-        echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
-        yum install -y \
-            libselinux-python \
-            java-1.8.0-openjdk \
-            bridge-utils \
-            wget \
-            libvirt-python \
-            libvirt \
-            nfs-utils \
-            rpcbind \
-            vconfig \
-            libvirt-client \
-            python-devel \
-            gcc \
-            autoconf \
-            iptables \
-            iptables-services \
-            tar \
-            gzip \
-            unzip \
-            httpd \
-            openssh \
-            openssh-clients \
-            openssh-server \
-            sshpass \
-            sudo \
-            ntp \
-            ntpdate \
-            bzip2 \
-            libffi-devel \
-            openssl-devel \
-            net-tools \
-            bash-completion \
-            dmidecode \
-            $mysql_pkg \
-            python-backports-ssl_match_hostname \
-            python-setuptools \
-            >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
+            python-setuptools"
 
-    if [ $? -ne 0 ];then
-        #yum clean metadata >/dev/null 2>&1
-        fail "install system libraries failed."
-    fi
+	missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
+
+	if [ ! -z $missing_list ]; then
+		if [ ! -z $ZSTACK_YUM_REPOS ]; then
+			yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
+			echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
+			yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
+		else
+			yum clean metadata >/dev/null 2>&1
+			echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
+			yum install -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
+		fi
+
+		if [ $? -ne 0 ];then
+			#yum clean metadata >/dev/null 2>&1
+			fail "install system libraries failed."
+		fi
+	else
+		echo general libs are already installed... >>$ZSTACK_INSTALL_LOG
+	fi
 
     rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1 || java -version 2>&1 |grep 1.8 >/dev/null
     if [ $? -ne 0 ]; then
