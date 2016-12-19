@@ -2504,7 +2504,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_RESUME_VM_PATH = "/vm/resume"
     KVM_REBOOT_VM_PATH = "/vm/reboot"
     KVM_DESTROY_VM_PATH = "/vm/destroy"
-    KVM_CHANGE_CPUMEM_PATH = "/vm/changecpumem"
+    KVM_ONLINE_CHANGE_CPUMEM_PATH = "/vm/online/changecpumem"
     KVM_GET_CONSOLE_PORT_PATH = "/vm/getvncport"
     KVM_VM_SYNC_PATH = "/vm/vmsync"
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
@@ -2710,8 +2710,9 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp.states = get_all_vm_states()
         return jsonobject.dumps(rsp)
 
+
     @kvmagent.replyerror
-    def change_cpumem(self, req):
+    def online_change_cpumem(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ChangeCpuMemResponse()
         try:
@@ -3051,7 +3052,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_REBOOT_VM_PATH, self.reboot_vm)
         http_server.register_async_uri(self.KVM_DESTROY_VM_PATH, self.destroy_vm)
         http_server.register_async_uri(self.KVM_GET_CONSOLE_PORT_PATH, self.get_console_port)
-        http_server.register_async_uri(self.KVM_CHANGE_CPUMEM_PATH, self.change_cpumem)
+        http_server.register_async_uri(self.KVM_ONLINE_CHANGE_CPUMEM_PATH, self.online_change_cpumem)
         http_server.register_async_uri(self.KVM_VM_SYNC_PATH, self.vm_sync)
         http_server.register_async_uri(self.KVM_ATTACH_VOLUME, self.attach_data_volume)
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)
