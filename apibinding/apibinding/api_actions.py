@@ -530,18 +530,6 @@ class BackupVolumeSnapshotAction(inventory.APIBackupVolumeSnapshotMsg):
         self.out = evt
         return self.out
 
-class BindLdapAccountAction(inventory.APIBindLdapAccountMsg):
-    def __init__(self):
-        super(BindLdapAccountAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[BindLdapAccountAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
     def __init__(self):
         super(CalculateAccountSpendingAction, self).__init__()
@@ -794,14 +782,14 @@ class CheckIpAvailabilityAction(inventory.APICheckIpAvailabilityMsg):
         self.out = evt
         return self.out
 
-class CleanInvalidLdapBindingsAction(inventory.APICleanInvalidLdapBindingsMsg):
+class CleanInvalidLdapBindingAction(inventory.APICleanInvalidLdapBindingMsg):
     def __init__(self):
-        super(CleanInvalidLdapBindingsAction, self).__init__()
+        super(CleanInvalidLdapBindingAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CleanInvalidLdapBindingsAction] cannot be None')
+            raise Exception('sessionUuid of action[CleanInvalidLdapBindingAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -994,6 +982,18 @@ class CreateL3NetworkAction(inventory.APICreateL3NetworkMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateLdapBindingAction(inventory.APICreateLdapBindingMsg):
+    def __init__(self):
+        super(CreateLdapBindingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateLdapBindingAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1498,6 +1498,18 @@ class DeleteL3NetworkAction(inventory.APIDeleteL3NetworkMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteLdapBindingAction(inventory.APIDeleteLdapBindingMsg):
+    def __init__(self):
+        super(DeleteLdapBindingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteLdapBindingAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3278,15 +3290,15 @@ class QueryL3NetworkAction(inventory.APIQueryL3NetworkMsg):
         self.out = reply.inventories
         return self.out
 
-class QueryLdapAccountAction(inventory.APIQueryLdapAccountMsg):
+class QueryLdapBindingAction(inventory.APIQueryLdapBindingMsg):
     def __init__(self):
-        super(QueryLdapAccountAction, self).__init__()
+        super(QueryLdapBindingAction, self).__init__()
         self.sessionUuid = None
         self.reply = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryLdapAccountAction] cannot be None')
+            raise Exception('sessionUuid of action[QueryLdapBindingAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -4302,18 +4314,6 @@ class TestAddLdapServerConnectionAction(inventory.APITestAddLdapServerConnection
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[TestAddLdapServerConnectionAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UnbindLdapAccountAction(inventory.APIUnbindLdapAccountMsg):
-    def __init__(self):
-        super(UnbindLdapAccountAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UnbindLdapAccountAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

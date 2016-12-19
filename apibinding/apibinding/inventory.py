@@ -5651,9 +5651,19 @@ class APIAddLdapServerMsg(object):
         self.userTags = OptionalList()
 
 
-APIBINDLDAPACCOUNTMSG_FULL_NAME = 'org.zstack.ldap.APIBindLdapAccountMsg'
-class APIBindLdapAccountMsg(object):
-    FULL_NAME='org.zstack.ldap.APIBindLdapAccountMsg'
+APICLEANINVALIDLDAPBINDINGMSG_FULL_NAME = 'org.zstack.ldap.APICleanInvalidLdapBindingMsg'
+class APICleanInvalidLdapBindingMsg(object):
+    FULL_NAME='org.zstack.ldap.APICleanInvalidLdapBindingMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATELDAPBINDINGMSG_FULL_NAME = 'org.zstack.ldap.APICreateLdapBindingMsg'
+class APICreateLdapBindingMsg(object):
+    FULL_NAME='org.zstack.ldap.APICreateLdapBindingMsg'
     def __init__(self):
         #mandatory field
         self.ldapUid = NotNoneField()
@@ -5665,10 +5675,12 @@ class APIBindLdapAccountMsg(object):
         self.userTags = OptionalList()
 
 
-APICLEANINVALIDLDAPBINDINGSMSG_FULL_NAME = 'org.zstack.ldap.APICleanInvalidLdapBindingsMsg'
-class APICleanInvalidLdapBindingsMsg(object):
-    FULL_NAME='org.zstack.ldap.APICleanInvalidLdapBindingsMsg'
+APIDELETELDAPBINDINGMSG_FULL_NAME = 'org.zstack.ldap.APIDeleteLdapBindingMsg'
+class APIDeleteLdapBindingMsg(object):
+    FULL_NAME='org.zstack.ldap.APIDeleteLdapBindingMsg'
     def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -5712,9 +5724,9 @@ class APILogInByLdapReply(object):
         self.error = None
 
 
-APIQUERYLDAPACCOUNTMSG_FULL_NAME = 'org.zstack.ldap.APIQueryLdapAccountMsg'
-class APIQueryLdapAccountMsg(object):
-    FULL_NAME='org.zstack.ldap.APIQueryLdapAccountMsg'
+APIQUERYLDAPBINDINGMSG_FULL_NAME = 'org.zstack.ldap.APIQueryLdapBindingMsg'
+class APIQueryLdapBindingMsg(object):
+    FULL_NAME='org.zstack.ldap.APIQueryLdapBindingMsg'
     def __init__(self):
         #mandatory field
         self.conditions = NotNoneList()
@@ -5733,9 +5745,9 @@ class APIQueryLdapAccountMsg(object):
         self.userTags = OptionalList()
 
 
-APIQUERYLDAPACCOUNTREPLY_FULL_NAME = 'org.zstack.ldap.APIQueryLdapAccountReply'
-class APIQueryLdapAccountReply(object):
-    FULL_NAME='org.zstack.ldap.APIQueryLdapAccountReply'
+APIQUERYLDAPBINDINGREPLY_FULL_NAME = 'org.zstack.ldap.APIQueryLdapBindingReply'
+class APIQueryLdapBindingReply(object):
+    FULL_NAME='org.zstack.ldap.APIQueryLdapBindingReply'
     def __init__(self):
         self.inventories = OptionalList()
         self.total = None
@@ -5793,18 +5805,6 @@ class APITestAddLdapServerConnectionMsg(object):
         #mandatory field
         #valid values: [None, TLS]
         self.encryption = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIUNBINDLDAPACCOUNTMSG_FULL_NAME = 'org.zstack.ldap.APIUnbindLdapAccountMsg'
-class APIUnbindLdapAccountMsg(object):
-    FULL_NAME='org.zstack.ldap.APIUnbindLdapAccountMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7959,7 +7959,6 @@ api_names = [
     'APIAttachSecurityGroupToL3NetworkMsg',
     'APIBackupDataVolumeMsg',
     'APIBackupVolumeSnapshotMsg',
-    'APIBindLdapAccountMsg',
     'APICalculateAccountSpendingMsg',
     'APICalculateAccountSpendingReply',
     'APIChangeBackupStorageStateMsg',
@@ -7984,7 +7983,7 @@ api_names = [
     'APICheckApiPermissionReply',
     'APICheckIpAvailabilityMsg',
     'APICheckIpAvailabilityReply',
-    'APICleanInvalidLdapBindingsMsg',
+    'APICleanInvalidLdapBindingMsg',
     'APICleanUpImageCacheOnPrimaryStorageMsg',
     'APICloneVmInstanceMsg',
     'APICommitVolumeAsImageMsg',
@@ -8001,6 +8000,7 @@ api_names = [
     'APICreateL2NoVlanNetworkMsg',
     'APICreateL2VlanNetworkMsg',
     'APICreateL3NetworkMsg',
+    'APICreateLdapBindingMsg',
     'APICreateLoadBalancerListenerMsg',
     'APICreateLoadBalancerMsg',
     'APICreateMessage',
@@ -8043,6 +8043,7 @@ api_names = [
     'APIDeleteIpRangeMsg',
     'APIDeleteL2NetworkMsg',
     'APIDeleteL3NetworkMsg',
+    'APIDeleteLdapBindingMsg',
     'APIDeleteLdapServerMsg',
     'APIDeleteLoadBalancerListenerMsg',
     'APIDeleteLoadBalancerMsg',
@@ -8312,8 +8313,8 @@ api_names = [
     'APIQueryL2VlanNetworkReply',
     'APIQueryL3NetworkMsg',
     'APIQueryL3NetworkReply',
-    'APIQueryLdapAccountMsg',
-    'APIQueryLdapAccountReply',
+    'APIQueryLdapBindingMsg',
+    'APIQueryLdapBindingReply',
     'APIQueryLdapServerMsg',
     'APIQueryLdapServerReply',
     'APIQueryLoadBalancerListenerMsg',
@@ -8454,7 +8455,6 @@ api_names = [
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncVolumeSizeMsg',
     'APITestAddLdapServerConnectionMsg',
-    'APIUnbindLdapAccountMsg',
     'APIUpdateAccountMsg',
     'APIUpdateAlertMsg',
     'APIUpdateBackupStorageMsg',
@@ -11178,7 +11178,6 @@ class GlobalConfig_VIRTUALROUTER(object):
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
-    VYOS_PASSWORD = 'vyos.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod
@@ -11985,7 +11984,7 @@ queryMessageInventoryMap = {
      'APIQueryL2NetworkMsg' : QueryObjectL2NetworkInventory,
      'APIQueryL2VlanNetworkMsg' : QueryObjectL2VlanNetworkInventory,
      'APIQueryL3NetworkMsg' : QueryObjectL3NetworkInventory,
-     'APIQueryLdapAccountMsg' : QueryObjectLdapAccountRefInventory,
+     'APIQueryLdapBindingMsg' : QueryObjectLdapAccountRefInventory,
      'APIQueryLdapServerMsg' : QueryObjectLdapServerInventory,
      'APIQueryLoadBalancerListenerMsg' : QueryObjectLoadBalancerListenerInventory,
      'APIQueryLoadBalancerMsg' : QueryObjectLoadBalancerInventory,
