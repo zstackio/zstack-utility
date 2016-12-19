@@ -54,6 +54,7 @@
     <import file="${basedir}/utils.xml" optional="false" />
     <import file="${basedir}/projects/zstack-war.xml" optional="false" />
     <import file="${basedir}/projects/zstacklib.xml" optional="false" />
+    <import file="${basedir}/projects/build-python-sdk.xml" optional="false" />
     <import file="${basedir}/projects/zstack-kvmagent.xml" optional="false" />
     <import file="${basedir}/projects/zstack-virtualrouter.xml" optional="false" />
     <import file="${basedir}/projects/zstack-appliancevm.xml" optional="false" />
@@ -191,6 +192,9 @@
 
     <target name="do-build" depends="prepare, build-zstack-war" >
         <parallel failonany="true">
+            <sequential>
+                <antcall target="build-python-sdk"/>
+            </sequential>
             <sequential>
                 <antcall target="build-zstacklib"/>
             </sequential>
