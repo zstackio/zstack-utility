@@ -5786,6 +5786,31 @@ class APIQueryLdapServerReply(object):
         self.error = None
 
 
+APITESTADDLDAPSERVERCONNECTIONMSG_FULL_NAME = 'org.zstack.ldap.APITestAddLdapServerConnectionMsg'
+class APITestAddLdapServerConnectionMsg(object):
+    FULL_NAME='org.zstack.ldap.APITestAddLdapServerConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.description = NotNoneField()
+        #mandatory field
+        self.url = NotNoneField()
+        #mandatory field
+        self.base = NotNoneField()
+        #mandatory field
+        self.username = NotNoneField()
+        #mandatory field
+        self.password = NotNoneField()
+        #mandatory field
+        #valid values: [None, TLS]
+        self.encryption = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIUPDATELDAPSERVERMSG_FULL_NAME = 'org.zstack.ldap.APIUpdateLdapServerMsg'
 class APIUpdateLdapServerMsg(object):
     FULL_NAME='org.zstack.ldap.APIUpdateLdapServerMsg'
@@ -8429,6 +8454,7 @@ api_names = [
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncVolumeSizeMsg',
+    'APITestAddLdapServerConnectionMsg',
     'APIUpdateAccountMsg',
     'APIUpdateAlertMsg',
     'APIUpdateBackupStorageMsg',

@@ -4306,6 +4306,18 @@ class SyncVolumeSizeAction(inventory.APISyncVolumeSizeMsg):
         self.out = evt
         return self.out
 
+class TestAddLdapServerConnectionAction(inventory.APITestAddLdapServerConnectionMsg):
+    def __init__(self):
+        super(TestAddLdapServerConnectionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[TestAddLdapServerConnectionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateAccountAction(inventory.APIUpdateAccountMsg):
     def __init__(self):
         super(UpdateAccountAction, self).__init__()
