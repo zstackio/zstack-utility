@@ -192,9 +192,9 @@
 
     <target name="do-build" depends="prepare, build-zstack-war" >
         <parallel failonany="true">
-            <!--<sequential>-->
-                <!--<antcall target="build-python-sdk"/>-->
-            <!--</sequential>-->
+            <sequential>
+                <antcall target="build-python-sdk"/>
+            </sequential>
             <sequential>
                 <antcall target="build-zstacklib"/>
             </sequential>
