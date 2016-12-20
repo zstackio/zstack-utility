@@ -195,13 +195,26 @@ def get_host_list(table_name):
     host_vo = query.query()
     return host_vo
 
+def get_vrouter_list():
+    ip_list = []
+    db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+    query = MySqlCommandLineQuery()
+    query.host = db_hostname
+    query.port = db_port
+    query.user = db_user
+    query.password = db_password
+    query.table = 'zstack'
+    query.sql = "select ip from VmNicVO where deviceId = 0 and vmInstanceUuid in (select uuid from VirtualRouterVmVO)"
+    vrouter_ip_list = query.query()
+    for ip in vrouter_ip_list:
+        ip_list.append(ip['ip'])
+    return ip_list
+
 def get_ha_mn_list(conf_file):
     with open(conf_file, 'r') as fd:
         ha_conf_content = yaml.load(fd.read())
         mn_list = ha_conf_content['host_list'].split(',')
     return mn_list
-
-
 
 def stop_mevoco(host_post_info):
     command = "zstack-ctl stop_node && zstack-ctl stop_ui"
@@ -4241,6 +4254,7 @@ class RestoreMysqlCmd(Command):
 
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack/"
+    vrouter_log_dir = "/home/vyos/zvr/"
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
                      'zstack-agent/collectd.log','zstack-agent/server.log']
     bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
@@ -4296,6 +4310,22 @@ class CollectLogCmd(Command):
         run_remote_command(command, host_post_info, True, True)
         command = "cp /var/log/dmesg* /var/log/messages %s" % tmp_log_dir
         run_remote_command(command, host_post_info)
+
+    def get_vrouter_log(self, host_post_info, collect_dir):
+        #current vrouter log is very small, so collect all logs for debug
+        if check_host_reachable(host_post_info) is True:
+            info("Collecting log from vrouter: %s ..." % host_post_info.host)
+            local_collect_dir = collect_dir + host_post_info.host + '-vrouter/'
+            tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.vrouter_log_dir
+            command = "mkdir -p %s " % tmp_log_dir
+            run_remote_command(command, host_post_info)
+            command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
+            run_remote_command(command, host_post_info)
+            command = "cp %s/*.log %s/*.json %s" % (CollectLogCmd.vrouter_log_dir, CollectLogCmd.vrouter_log_dir,tmp_log_dir)
+            run_remote_command(command, host_post_info)
+            self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
+        else:
+            warn("Vrouter %s is unreachable!" % host_post_info.host)
 
     def get_host_log(self, host_post_info, collect_dir):
         if check_host_reachable(host_post_info) is True:
@@ -4441,10 +4471,14 @@ class CollectLogCmd(Command):
             password = ssh_info['sshPassword']
             ssh_port = ssh_info['sshPort']
             return (username, password, ssh_port)
+        elif type == "vrouter":
+            query.sql = "select value from GlobalConfigVO where name='vrouter.password'"
+            password = query.query()
+            username = "vyos"
+            ssh_port = 22
+            return (username, password, ssh_port)
         else:
             warn("unknown target type: %s" % type)
-
-
 
     def get_management_node_log(self, collect_dir, host_post_info, collect_full_log=False):
         '''management.log maybe not exist, so collect latest files, maybe a tarball'''
@@ -4594,6 +4628,12 @@ class CollectLogCmd(Command):
                     break
                 if args.host is not None:
                     break
+
+            #collect vrouter log
+            vrouter_ip_list = get_vrouter_list()
+            for vrouter_ip in vrouter_ip_list:
+                self.get_vrouter_log(self.generate_host_post_info(vrouter_ip, "vrouter"),collect_dir)
+
             #collect bs log
             sftp_bs_vo = get_host_list("SftpBackupStorageVO")
             for bs in sftp_bs_vo:
@@ -4625,6 +4665,8 @@ class CollectLogCmd(Command):
             for ps in fusionStor_ps_vo:
                 ps_ip = ps['hostname']
                 self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
+
+
 
         self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
         if CollectLogCmd.failed_flag is True:
