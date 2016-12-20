@@ -5786,31 +5786,6 @@ class APIQueryLdapServerReply(object):
         self.error = None
 
 
-APITESTADDLDAPSERVERCONNECTIONMSG_FULL_NAME = 'org.zstack.ldap.APITestAddLdapServerConnectionMsg'
-class APITestAddLdapServerConnectionMsg(object):
-    FULL_NAME='org.zstack.ldap.APITestAddLdapServerConnectionMsg'
-    def __init__(self):
-        #mandatory field
-        self.name = NotNoneField()
-        #mandatory field
-        self.description = NotNoneField()
-        #mandatory field
-        self.url = NotNoneField()
-        #mandatory field
-        self.base = NotNoneField()
-        #mandatory field
-        self.username = NotNoneField()
-        #mandatory field
-        self.password = NotNoneField()
-        #mandatory field
-        #valid values: [None, TLS]
-        self.encryption = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIUPDATELDAPSERVERMSG_FULL_NAME = 'org.zstack.ldap.APIUpdateLdapServerMsg'
 class APIUpdateLdapServerMsg(object):
     FULL_NAME='org.zstack.ldap.APIUpdateLdapServerMsg'
@@ -7852,6 +7827,68 @@ class APIDeleteVCenterMsg(object):
         self.userTags = OptionalList()
 
 
+APIQUERYVCENTERBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterBackupStorageMsg'
+class APIQueryVCenterBackupStorageMsg(object):
+    FULL_NAME='org.zstack.vmware.APIQueryVCenterBackupStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVCENTERBACKUPSTORAGEREPLY_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterBackupStorageReply'
+class APIQueryVCenterBackupStorageReply(object):
+    FULL_NAME='org.zstack.vmware.APIQueryVCenterBackupStorageReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYVCENTERCLUSTERMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterClusterMsg'
+class APIQueryVCenterClusterMsg(object):
+    FULL_NAME='org.zstack.vmware.APIQueryVCenterClusterMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVCENTERCLUSTERREPLY_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterClusterReply'
+class APIQueryVCenterClusterReply(object):
+    FULL_NAME='org.zstack.vmware.APIQueryVCenterClusterReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYVCENTERDATACENTERMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterDatacenterMsg'
 class APIQueryVCenterDatacenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIQueryVCenterDatacenterMsg'
@@ -7902,6 +7939,26 @@ class APIQueryVCenterMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIQUERYVCENTERPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterPrimaryStorageMsg'
+class APIQueryVCenterPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.vmware.APIQueryVCenterPrimaryStorageMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVCENTERPRIMARYSTORAGEREPLY_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterPrimaryStorageReply'
+class APIQueryVCenterPrimaryStorageReply(object):
+    FULL_NAME='org.zstack.vmware.APIQueryVCenterPrimaryStorageReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
 
 
 APIQUERYVCENTERREPLY_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterReply'
@@ -8362,9 +8419,15 @@ api_names = [
     'APIQueryUserReply',
     'APIQueryUserTagMsg',
     'APIQueryUserTagReply',
+    'APIQueryVCenterBackupStorageMsg',
+    'APIQueryVCenterBackupStorageReply',
+    'APIQueryVCenterClusterMsg',
+    'APIQueryVCenterClusterReply',
     'APIQueryVCenterDatacenterMsg',
     'APIQueryVCenterDatacenterReply',
     'APIQueryVCenterMsg',
+    'APIQueryVCenterPrimaryStorageMsg',
+    'APIQueryVCenterPrimaryStorageReply',
     'APIQueryVCenterReply',
     'APIQueryVipMsg',
     'APIQueryVipReply',
@@ -8454,7 +8517,6 @@ api_names = [
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncVolumeSizeMsg',
-    'APITestAddLdapServerConnectionMsg',
     'APIUpdateAccountMsg',
     'APIUpdateAlertMsg',
     'APIUpdateBackupStorageMsg',
@@ -10649,6 +10711,26 @@ class VCenterBackupStorageInventory(BackupStorageInventory):
 
 
 
+class VCenterClusterInventory(ClusterInventory):
+    def __init__(self):
+        super(VCenterClusterInventory, self).__init__()
+        self.vCenterUuid = None
+        self.morval = None
+
+    def evaluate(self, inv):
+        super(VCenterClusterInventory, self).evaluate(inv)
+        if hasattr(inv, 'vCenterUuid'):
+            self.vCenterUuid = inv.vCenterUuid
+        else:
+            self.vCenterUuid = None
+
+        if hasattr(inv, 'morval'):
+            self.morval = inv.morval
+        else:
+            self.morval = None
+
+
+
 class VCenterDatacenterInventory(object):
     def __init__(self):
         self.uuid = None
@@ -10757,6 +10839,20 @@ class VCenterInventory(object):
 
 
 
+class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
+    def __init__(self):
+        super(VCenterPrimaryStorageInventory, self).__init__()
+        self.vCenterUuid = None
+
+    def evaluate(self, inv):
+        super(VCenterPrimaryStorageInventory, self).evaluate(inv)
+        if hasattr(inv, 'vCenterUuid'):
+            self.vCenterUuid = inv.vCenterUuid
+        else:
+            self.vCenterUuid = None
+
+
+
 #AccountConstant
 INITIAL_SYSTEM_ADMIN_UUID = '36c27e8ff05c4780bf6d2fa65700f22e'
 INITIAL_SYSTEM_ADMIN_NAME = 'admin'
@@ -10774,7 +10870,7 @@ CEPH_PRIMARY_STORAGE_TYPE = 'Ceph'
 ZSTACK_CLUSTER_TYPE = 'zstack'
 
 #ESXConstant
-HYPERVISOR_TYPE = 'ESX'
+VMWARE_HYPERVISOR_TYPE = 'ESX'
 VMWARE_IMAGE_TYPE = 'vmware'
 
 #FusionstorConstants
@@ -11130,21 +11226,7 @@ class GlobalConfig_PRIMARYSTORAGE(object):
 
 class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
-    VOLUME_DATA_NUM = 'volume.data.num'
-    L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
-    VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
-    VM_CPUNUM = 'vm.cpuNum'
-    VM_TOTALNUM = 'vm.totalNum'
-    SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
-    VIP_NUM = 'vip.num'
-    VM_NUM = 'vm.num'
-    VOLUME_CAPACITY = 'volume.capacity'
 
     @staticmethod
     def get_category():
@@ -11178,6 +11260,7 @@ class GlobalConfig_VIRTUALROUTER(object):
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
+    VYOS_PASSWORD = 'vyos.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod
@@ -11783,6 +11866,12 @@ class QueryObjectVCenterBackupStorageInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
+class QueryObjectVCenterClusterInventory(object):
+     PRIMITIVE_FIELDS = ['morval','name','lastOpDate','zoneUuid','vCenterUuid','description','state','hypervisorType','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectVCenterDatacenterInventory(object):
      PRIMITIVE_FIELDS = ['morval','name','vCenterUuid','uuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -11793,6 +11882,16 @@ class QueryObjectVCenterInventory(object):
      PRIMITIVE_FIELDS = ['domainName','name','zoneUuid','lastOpDate','description','https','state','userName','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectVCenterPrimaryStorageInventory(object):
+     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','zoneUuid','description','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','name','lastOpDate','vCenterUuid','state','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['volume','volumeSnapshot','zone','cluster']
+     QUERY_OBJECT_MAP = {
+        'volume' : 'QueryObjectVolumeInventory',
+        'cluster' : 'QueryObjectClusterInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'zone' : 'QueryObjectZoneInventory',
      }
 
 class QueryObjectVipInventory(object):
@@ -12006,6 +12105,8 @@ queryMessageInventoryMap = {
      'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,
      'APIQueryUserMsg' : QueryObjectUserInventory,
      'APIQueryUserTagMsg' : QueryObjectUserTagInventory,
+     'APIQueryVCenterBackupStorageMsg' : QueryObjectVCenterBackupStorageInventory,
+     'APIQueryVCenterClusterMsg' : QueryObjectVCenterClusterInventory,
      'APIQueryVCenterDatacenterMsg' : QueryObjectVCenterDatacenterInventory,
      'APIQueryVCenterMsg' : QueryObjectVCenterInventory,
      'APIQueryVipMsg' : QueryObjectVipInventory,

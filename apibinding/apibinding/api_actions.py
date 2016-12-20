@@ -3638,6 +3638,34 @@ class QueryVCenterAction(inventory.APIQueryVCenterMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryVCenterBackupStorageAction(inventory.APIQueryVCenterBackupStorageMsg):
+    def __init__(self):
+        super(QueryVCenterBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVCenterBackupStorageAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVCenterClusterAction(inventory.APIQueryVCenterClusterMsg):
+    def __init__(self):
+        super(QueryVCenterClusterAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVCenterClusterAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryVCenterDatacenterAction(inventory.APIQueryVCenterDatacenterMsg):
     def __init__(self):
         super(QueryVCenterDatacenterAction, self).__init__()
@@ -3650,6 +3678,18 @@ class QueryVCenterDatacenterAction(inventory.APIQueryVCenterDatacenterMsg):
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
+        return self.out
+
+class QueryVCenterPrimaryStorageAction(inventory.APIQueryVCenterPrimaryStorageMsg):
+    def __init__(self):
+        super(QueryVCenterPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVCenterPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
         return self.out
 
 class QueryVipAction(inventory.APIQueryVipMsg):
@@ -4302,18 +4342,6 @@ class SyncVolumeSizeAction(inventory.APISyncVolumeSizeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncVolumeSizeAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class TestAddLdapServerConnectionAction(inventory.APITestAddLdapServerConnectionMsg):
-    def __init__(self):
-        super(TestAddLdapServerConnectionAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[TestAddLdapServerConnectionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
