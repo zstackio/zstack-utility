@@ -1837,7 +1837,7 @@ class Vm(object):
 
         cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
         e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-        e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide', 'tray': 'open'})
+        e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
         e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
