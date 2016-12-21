@@ -3534,29 +3534,6 @@ class APICleanUpImageCacheOnPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
-APICOMMITVOLUMEASIMAGEMSG_FULL_NAME = 'org.zstack.header.storage.primary.APICommitVolumeAsImageMsg'
-class APICommitVolumeAsImageMsg(object):
-    FULL_NAME='org.zstack.header.storage.primary.APICommitVolumeAsImageMsg'
-    def __init__(self):
-        #mandatory field
-        self.name = NotNoneField()
-        self.description = None
-        self.guestOsType = None
-        #valid values: [Linux, Windows, Other, Paravirtualization, WindowsVirtio]
-        self.platform = None
-        self.system = None
-        #mandatory field
-        self.volumeUuid = NotNoneField()
-        self.primaryStorageUuid = None
-        #mandatory field
-        self.backupStorageUuids = NotNoneList()
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIDELETEPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.header.storage.primary.APIDeletePrimaryStorageMsg'
 class APIDeletePrimaryStorageMsg(object):
     FULL_NAME='org.zstack.header.storage.primary.APIDeletePrimaryStorageMsg'
@@ -8057,7 +8034,6 @@ api_names = [
     'APICleanInvalidLdapBindingMsg',
     'APICleanUpImageCacheOnPrimaryStorageMsg',
     'APICloneVmInstanceMsg',
-    'APICommitVolumeAsImageMsg',
     'APICreateAccountMsg',
     'APICreateClusterMsg',
     'APICreateDataVolumeFromVolumeSnapshotMsg',

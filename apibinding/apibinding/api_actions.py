@@ -818,18 +818,6 @@ class CloneVmInstanceAction(inventory.APICloneVmInstanceMsg):
         self.out = evt
         return self.out
 
-class CommitVolumeAsImageAction(inventory.APICommitVolumeAsImageMsg):
-    def __init__(self):
-        super(CommitVolumeAsImageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CommitVolumeAsImageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class CreateAccountAction(inventory.APICreateAccountMsg):
     def __init__(self):
         super(CreateAccountAction, self).__init__()
