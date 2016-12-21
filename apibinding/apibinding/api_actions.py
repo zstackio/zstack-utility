@@ -3684,12 +3684,14 @@ class QueryVCenterPrimaryStorageAction(inventory.APIQueryVCenterPrimaryStorageMs
     def __init__(self):
         super(QueryVCenterPrimaryStorageAction, self).__init__()
         self.sessionUuid = None
+        self.reply = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryVCenterPrimaryStorageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
         return self.out
 
 class QueryVipAction(inventory.APIQueryVipMsg):

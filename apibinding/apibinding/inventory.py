@@ -4596,7 +4596,8 @@ class APIGetVmDiskQosMsg(object):
     def __init__(self):
         #mandatory field
         self.vmUuid = NotNoneField()
-        self.volumeUuid = None
+        #mandatory field
+        self.volumeUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -4607,7 +4608,7 @@ APIGETVMDISKQOSREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmDiskQosReply'
 class APIGetVmDiskQosReply(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmDiskQosReply'
     def __init__(self):
-        self.vmDiskQOSList = OptionalList()
+        self.vmDiskQOS = None
         self.success = None
         self.error = None
 
@@ -4669,7 +4670,8 @@ class APIGetVmNicQosMsg(object):
     def __init__(self):
         #mandatory field
         self.vmUuid = NotNoneField()
-        self.vmNicUuid = None
+        #mandatory field
+        self.vmNicUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -4680,7 +4682,7 @@ APIGETVMNICQOSREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmNicQosReply'
 class APIGetVmNicQosReply(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmNicQosReply'
     def __init__(self):
-        self.vmNicQOSList = OptionalList()
+        self.vmNicQOS = None
         self.success = None
         self.error = None
 
@@ -4941,7 +4943,8 @@ class APISetVmNicQosMsg(object):
     def __init__(self):
         #mandatory field
         self.vmUuid = NotNoneField()
-        self.vmNicUuid = None
+        #mandatory field
+        self.vmNicUuid = NotNoneField()
         self.outboundBandwidth = None
         self.inboundBandwidth = None
         self.session = None
@@ -5021,8 +5024,8 @@ class APIUpdateVmInstanceMsg(object):
         self.defaultL3NetworkUuid = None
         #valid values: [Linux, Windows, Other, Paravirtualization, WindowsVirtio]
         self.platform = None
-        self.cpuCores = None
-        self.memory = None
+        self.cpuNum = None
+        self.memorySize = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7945,6 +7948,17 @@ APIQUERYVCENTERPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterP
 class APIQueryVCenterPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.vmware.APIQueryVCenterPrimaryStorageMsg'
     def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11226,7 +11240,19 @@ class GlobalConfig_PRIMARYSTORAGE(object):
 
 class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
+    VOLUME_DATA_NUM = 'volume.data.num'
+    L3_NUM = 'l3.num'
+    SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
+    VM_MEMORYSIZE = 'vm.memorySize'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
+    VM_CPUNUM = 'vm.cpuNum'
+    VM_TOTALNUM = 'vm.totalNum'
+    SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    VIP_NUM = 'vip.num'
+    VM_NUM = 'vm.num'
+    VOLUME_CAPACITY = 'volume.capacity'
 
     @staticmethod
     def get_category():
@@ -11260,7 +11286,6 @@ class GlobalConfig_VIRTUALROUTER(object):
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
-    VYOS_PASSWORD = 'vyos.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod
@@ -12109,6 +12134,7 @@ queryMessageInventoryMap = {
      'APIQueryVCenterClusterMsg' : QueryObjectVCenterClusterInventory,
      'APIQueryVCenterDatacenterMsg' : QueryObjectVCenterDatacenterInventory,
      'APIQueryVCenterMsg' : QueryObjectVCenterInventory,
+     'APIQueryVCenterPrimaryStorageMsg' : QueryObjectVCenterPrimaryStorageInventory,
      'APIQueryVipMsg' : QueryObjectVipInventory,
      'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
      'APIQueryVirtualRouterVmMsg' : QueryObjectVirtualRouterVmInventory,
