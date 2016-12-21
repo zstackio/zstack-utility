@@ -73,7 +73,7 @@ if distro == "CentOS" or distro == "RedHat":
     else:
         qemu_pkg = "qemu-kvm-ev-2.3.0"
     pkg_list = [qemu_pkg, "wget", "libvirt", "libguestfs-winsupport", "libguestfs-tools"]
-    pkg_str_list = "%s wget libvirt libguestfs-winsupport libguestfs-tools" % qemu_pkg
+    pkg_str_list = "%s wget libvirt-python libvirt libguestfs-winsupport libguestfs-tools" % qemu_pkg
     if client == "true" :
         if distro_version < 7:
             # change error to warning due to imagestore client will install after add kvm host
