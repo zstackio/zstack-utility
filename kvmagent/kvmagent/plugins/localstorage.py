@@ -449,8 +449,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
 
         shell.call('rm -rf %s' % cmd.path)
-        pdir = os.path.dirname(cmd.path)
-        linux.rmdir_if_empty(pdir)
 
         logger.debug('successfully delete %s' % cmd.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
