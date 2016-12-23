@@ -78,6 +78,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CREATE_EMPTY_VOLUME_PATH = "/localstorage/volume/createempty";
     CREATE_VOLUME_FROM_CACHE_PATH = "/localstorage/volume/createvolumefromcache";
     DELETE_BITS_PATH = "/localstorage/delete";
+    DELETE_DIR_PATH = "/localstorage/deletedir"
     UPLOAD_BIT_PATH = "/localstorage/sftp/upload";
     DOWNLOAD_BIT_PATH = "/localstorage/sftp/download";
     UPLOAD_TO_IMAGESTORE_PATH = "/localstorage/imagestore/upload"
@@ -107,6 +108,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume_from_template)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete)
+        http_server.register_async_uri(self.DELETE_DIR_PATH, self.deletedir)
         http_server.register_async_uri(self.DOWNLOAD_BIT_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.UPLOAD_BIT_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
@@ -440,6 +442,20 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         logger.debug('successfully delete %s' % cmd.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def deletedir(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        shell.call('rm -rf %s' % cmd.path)
+        pdir = os.path.dirname(cmd.path)
+        linux.rmdir_if_empty(pdir)
+
+        logger.debug('successfully delete %s' % cmd.path)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        return jsonobject.dumps(rsp)
+
 
     @kvmagent.replyerror
     def upload_to_sftp(self, req):
