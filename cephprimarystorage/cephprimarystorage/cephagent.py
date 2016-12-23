@@ -1,3 +1,5 @@
+from zstacklib.zstacklib.utils import log
+
 __author__ = 'frank'
 
 import functools

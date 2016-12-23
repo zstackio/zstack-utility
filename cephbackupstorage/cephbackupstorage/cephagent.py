@@ -1,25 +1,19 @@
 __author__ = 'frank'
 
-import zstacklib.utils.daemon as daemon
-import zstacklib.utils.http as http
-import zstacklib.utils.log as log
-import zstacklib.utils.shell as shell
-import zstacklib.utils.iptables as iptables
-import zstacklib.utils.jsonobject as jsonobject
-import zstacklib.utils.lock as lock
-import zstacklib.utils.linux as linux
-import zstacklib.utils.sizeunit as sizeunit
-from zstacklib.utils import plugin
-from zstacklib.utils.rollback import rollback, rollbackable
-from zstacklib.utils.bash import *
-
+import functools
 import os
 import os.path
-import functools
-import traceback
 import pprint
+import traceback
 import urllib2
-import threading
+
+import zstacklib.utils.daemon as daemon
+import zstacklib.utils.http as http
+import zstacklib.utils.jsonobject as jsonobject
+import zstacklib.utils.linux as linux
+from zstacklib.utils.bash import *
+from zstacklib.utils.report import Progress
+from zstacklib.utils.report import Report
 
 logger = log.get_logger(__name__)
 
@@ -373,13 +367,57 @@ class CephAgent(object):
         def _1():
             shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
 
+        def _getRealSize(length):
+            '''length looks like: 10245K'''
+            logger.debug(length)
+            if not length[-1].isalpha():
+                return length
+            units = {
+                "g": lambda x: x * 1024 * 1024 * 1024,
+                "m": lambda x: x * 1024 * 1024,
+                "k": lambda x: x * 1024,
+            }
+            try:
+                if not length[-1].isalpha():
+                    return length
+                return units[length[-1].lower()](int(length[:-1]))
+            except:
+                logger.warn(linux.get_exception_stacktrace())
+                return length
+
+        def _getProgress(progress, synced):
+            logger.debug("getProgress in ceph-bs-agent, synced: %s, total: %s" % (synced, progress.total))
+            last = shell.call('tail -1 %s' % progress.pfile).strip()
+            if not last or len(last.split()) < 1:
+                return synced, ""
+            logger.debug("last synced: %s" % last)
+            written = _getRealSize(last.split()[0])
+            if progress.total > 0 and synced < written:
+                synced = written
+                if synced < progress.total:
+                    percent = int(round(float(synced) / float(progress.total) * 100))
+                    return synced, percent
+            return synced, ""
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             fail_if_has_backing_file(cmd.url)
             # roll back tmp ceph file after import it
             _1()
-            shell.call('set -o pipefail;wget --no-check-certificate -q -O - %s | rbd import --image-format 2 - %s/%s'
-                       % (cmd.url, pool, tmp_image_name))
+            Report.url = cmd.sendCommandUrl
+            progress = Progress()
+            progress.processType = "AddImage"
+            progress.resourceUuid = cmd.imageUuid
+            progress.stages = {1: "0:100"}
+            progress.stage = 1
+            progress.func = _getProgress
+            pfile = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+
+            progress.pfile = pfile
+            content_length = shell.call('curl -sI %s|grep Content-Length' % cmd.url).strip().split()[1]
+            progress.total = _getRealSize(content_length)
+            logger.debug("content-length is: %s" % progress.total)
+            bash_progress('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
+                       % (cmd.url, pfile, pool, tmp_image_name), progress)
             actual_size = linux.get_file_size_by_http_head(cmd.url)
 
         elif cmd.url.startswith('file://'):

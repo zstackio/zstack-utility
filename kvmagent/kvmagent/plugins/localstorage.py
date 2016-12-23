@@ -9,9 +9,9 @@ from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
-from zstacklib.utils import shell
 from zstacklib.utils.report import Progress
 from zstacklib.utils.bash import *
+from zstacklib.utils.report import Report
 
 logger = log.get_logger(__name__)
 
@@ -226,14 +226,43 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @in_bash
     def copy_bits_to_remote(self, req):
+        def _getProgress(progress, synced):
+            logger.debug("getProgress in localstorage-agent, synced: %s, total: %s" % (synced, progress.total))
+            fpread = open(progress.pfile, 'r')
+            lines = fpread.readlines()
+            if not lines:
+                fpread.close()
+                return synced, ""
+            logger.debug("lines: %s, lines[-1]: %s" % (lines, lines[-1]))
+            last = str(lines[-1]).strip()
+            if not last or len(last.split()) < 2:
+                fpread.close()
+                return synced, ""
+            logger.debug("last synced: %s" % last)
+            written = last.split()[1]
+            if not written.isdigit():
+                return synced, ""
+            if progress.total > 0 and synced < written:
+                synced += long(written)
+                if synced < progress.total:
+                    percent = int(round(float(synced) / float(progress.total) * 80 + 10))
+                    fpread.close()
+                    return synced, percent
+            fpread.close()
+            return synced, ""
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         chain = sum([linux.qcow2_get_file_chain(p) for p in cmd.paths], [])
         total = 0
+        if cmd.sendCommandUrl:
+            logger.debug("cmd.sendCommandUrl: %s" % cmd.sendCommandUrl)
+            Report.url = cmd.sendCommandUrl
         progress = Progress()
         progress.processType = "LocalStorageMigrateVolume"
         progress.resourceUuid = cmd.uuid
         progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
         progress.stage = 2
+        progress.func = _getProgress
         for path in set(chain):
             total = total + os.path.getsize(path)
 

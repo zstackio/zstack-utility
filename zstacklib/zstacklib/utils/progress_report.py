@@ -5,17 +5,16 @@ import subprocess
 import os
 import traceback
 from zstacklib.utils import log
-from zstacklib.utils import thread
 from zstacklib.utils.report import Report
 from zstacklib.utils.report import Progress
+from zstacklib.utils import linux
 
 
 logger = log.get_logger(__name__)
 
 class WatchThread(threading.Thread):
-    def __init__(self, fpread, popen, progress=None):
+    def __init__(self, popen, progress=None):
         threading.Thread.__init__(self)
-        self.fpread = fpread
         self.popen = popen
         self.keepRunning = True
         self.progress = progress if progress else Progress()
@@ -26,41 +25,27 @@ class WatchThread(threading.Thread):
     def run(self):
         logger.debug("watch thread start...")
         start, end = self.progress.getScale()
-        self._progress_report(start, self.progress.getStart())
-        while self.keepRunning and self.popen and self.popen.poll() is None:
-            line = str(self.fpread.readlines()).strip()
+        try:
+            self._progress_report(start, self.progress.getStart())
             synced = 0
-            logger.debug(line)
-            lines = line.split()
-            logger.debug("line: %s, synced: %s, total: %s", line, synced, self.progress.total)
-            try:
-                if len(lines) > 1 and self.progress.total > 0:
-                    logger.debug("lines[1]: %s", lines[1])
-                    synced += long(lines[1])
-                    if synced < self.progress.total:
-                        percent = start if start == end \
-                            else int(round(float(synced) / float(self.progress.total) * (end - start) + start))
-                    else:
-                        break
-                    self._progress_report(percent, self.progress.getReport())
-                else:
-                    pass
-            except Exception as e:
-                # sometimes the line is not illegal, we cannot stop the action
-                logger.debug("ignore the exception: %s", e.message)
-                pass
-            time.sleep(1)
-        self._progress_report(end, self.progress.getEnd())
+            while self.keepRunning and self.popen and self.popen.poll() is None:
+                time.sleep(1)
+                synced, percent = self.progress.func(self.progress, synced)
+                logger.debug("synced: %s, percent: %s" % (synced, percent))
+                self._progress_report(percent, self.progress.getReport())
+        except:
+            logger.warning(linux.get_exception_stacktrace())
+        finally:
+            self._progress_report(end, self.progress.getEnd())
 
     def stop(self):
         self.keepRunning = False
-        self.fpread.close()
 
     def _report(self, percent):
-        self._progress_report(self, percent, self.progress.getReport())
+        self._progress_report(percent, self.progress.getReport())
 
     def _progress_report(self, percent, flag):
-        logger.debug("progress is: %s", percent)
+        logger.debug("progress is: %s" % percent)
         try:
             reports = Report()
             reports.progress = percent
@@ -74,9 +59,8 @@ class WatchThread(threading.Thread):
             reports.resourceUuid = self.progress.resourceUuid
             reports.report()
         except Exception as e:
-            content = traceback.format_exc()
-            logger.warn(content)
-            logger.warn("report progress failed: %s", e.message)
+            logger.warn(linux.get_exception_stacktrace())
+            logger.warn("report progress failed: %s" % e.message)
 
 
 def main():
@@ -91,7 +75,7 @@ def main():
     fpwrite.close()
     os.remove(test_out)
     if r != 0:
-        print "error return: %s", r
+        print "error return: %s" % r
 
 if __name__ == "__main__":
     main()
