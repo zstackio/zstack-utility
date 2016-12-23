@@ -79,7 +79,12 @@ class ImageStoreClient(object):
 
         rsp = kvmagent.AgentResponse()
         rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
-        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(primaryStorageInstallPath)
+        rsp.size = linux.qcow2_size_and_actual_size(primaryStorageInstallPath)[0]
+
+        # we need to sum all the disk size within the chain ...
+        chain = linux.qcow2_get_file_chain(primaryStorageInstallPath)
+        rsp.actualSize = sum([ linux.qcow2_size_and_actual_size(f)[1] for f in chain ])
+
         return jsonobject.dumps(rsp)
 
     def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath):
