@@ -2408,6 +2408,8 @@ class Vm(object):
             for nic in cmd.nics:
                 interface = e(devices, 'interface', None, {'type': 'bridge'})
                 e(interface, 'mac', None, {'address': nic.mac})
+                filterref = e(interface, 'filterref', None, {'filter':'clean-traffic'})
+                e(filterref, 'parameter', None, {'name':'IP', 'value': nic.ip})
                 e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
                 e(interface, 'source', None, {'bridge': nic.bridgeName})
                 if use_virtio:
