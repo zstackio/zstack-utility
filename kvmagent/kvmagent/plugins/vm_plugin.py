@@ -626,7 +626,6 @@ class VirtioSCSICeph(object):
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
-        e(disk, 'shareable')
         return disk
 
 
@@ -760,7 +759,6 @@ class VirtioSCSIFusionstor(object):
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
         e(disk, 'wwn', self.volume.wwn)
-        e(disk, 'shareable')
         return disk
 
 
@@ -1219,7 +1217,7 @@ class Vm(object):
             if g.type_ == 'vnc' or g.type_ == 'spice':
                 return g.type_
 
-        raise kvmagent.KvmError['no vnc console defined for vm[uuid:%s]' % self.uuid]
+        raise kvmagent.KvmError('no vnc console defined for vm[uuid:%s]' % self.uuid)
 
     def attach_data_volume(self, volume, addons):
         self._wait_vm_run_until_seconds(10)
@@ -1260,10 +1258,12 @@ class Vm(object):
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': volume.cacheMode})
             e(disk, 'source', None, {'file': volume.installPath})
 
+            if volume.shareable:
+                e(disk, 'shareable')
+
             if volume.useVirtioSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
-                e(disk, 'shareable')
             else:
                 if volume.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
@@ -1319,15 +1319,18 @@ class Vm(object):
                 return etree.tostring(xml_obj)
 
             def virtio_scsi_ceph():
-                sc = VirtioSCSICeph()
-                sc.volume = volume
-                sc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
-                xml_obj = sc.to_xmlobject()
+                vsc = VirtioSCSICeph()
+                vsc.volume = volume
+                vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                xml_obj = vsc.to_xmlobject()
                 volume_qos(xml_obj)
                 return etree.tostring(xml_obj)
 
             if volume.useVirtioSCSI:
-                return virtio_scsi_ceph()
+                disk = virtio_scsi_ceph()
+                if volume.shareable:
+                    e(disk, 'shareable')
+                return disk
             else:
                 if volume.useVirtio:
                     return virtoio_ceph()
@@ -1350,15 +1353,18 @@ class Vm(object):
                 return etree.tostring(ic.to_xmlobject())
 
             def virtio_scsi_fusionstor():
-                sc = VirtioSCSIFusionstor()
-                sc.volume = volume
-                sc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
-                xml_obj = sc.to_xmlobject()
+                vsc = VirtioSCSIFusionstor()
+                vsc.volume = volume
+                vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                xml_obj = vsc.to_xmlobject()
                 volume_qos(xml_obj)
                 return etree.tostring(xml_obj)
 
             if volume.useVirtioSCSI:
-                return virtio_scsi_fusionstor()
+                disk = virtio_scsi_fusionstor()
+                if volume.shareable:
+                    e(disk, 'shareable')
+                return disk
             else:
                 if volume.useVirtio:
                     return virtoio_fusionstor()
@@ -2222,10 +2228,13 @@ class Vm(object):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
                 e(disk, 'source', None, {'file': _v.installPath})
+
+                if _v.shareable:
+                    e(disk, 'shareable')
+
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
-                    e(disk, 'shareable')
                     return disk
 
                 if _v.useVirtio:
@@ -2282,7 +2291,10 @@ class Vm(object):
                     return vsc.to_xmlobject()
 
                 if _v.useVirtioSCSI:
-                    return ceph_virtio_scsi()
+                    disk = ceph_virtio_scsi()
+                    if _v.shareable:
+                        e(disk, 'shareable')
+                    return disk
 
                 if _v.useVirtio:
                     return ceph_virtio()
@@ -2309,7 +2321,10 @@ class Vm(object):
                     return vsc.to_xmlobject()
 
                 if _v.useVirtioSCSI:
-                    return fusionstor_virtio_scsi()
+                    disk = fusionstor_virtio_scsi()
+                    if _v.shareable:
+                        e(disk, 'shareable')
+                    return disk
 
                 if _v.useVirtio:
                     return fusionstor_virtio()

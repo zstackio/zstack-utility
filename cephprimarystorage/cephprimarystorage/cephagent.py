@@ -449,7 +449,10 @@ class CephAgent(object):
 
         path = self._normalize_install_path(cmd.installPath)
         size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
-        shell.call('rbd create --size %s --image-format 2 %s' % (size_M, path))
+        call_string = 'rbd create --size %s --image-format 2 %s ' % (size_M, path)
+        if cmd.shareable:
+            call_string = call_string + " --image-shared"
+        shell.call(call_string)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
