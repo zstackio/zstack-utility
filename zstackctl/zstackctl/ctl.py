@@ -494,6 +494,8 @@ class Ctl(object):
     USER_ZSTACK_HOME_DIR = os.path.expanduser('~zstack')
     LAST_ALIVE_MYSQL_IP = "MYSQL_LATEST_IP"
     LAST_ALIVE_MYSQL_PORT = "MYSQL_LATEST_PORT"
+    LOGGER_DIR = "/var/log/zstack/"
+    LOGGER_FILE = "zstack-ctl.log"
 
     def __init__(self):
         self.commands = {}
@@ -550,6 +552,8 @@ class Ctl(object):
         env.write_properties(vs)
 
     def run(self):
+        create_log(Ctl.LOGGER_DIR, Ctl.LOGGER_FILE)
+        logger.info('Starting run command [ zstack-ctl %s ]' % ' '.join(sys.argv[1:]))
         if os.getuid() != 0:
             raise CtlError('zstack-ctl needs root privilege, please run with sudo')
 
@@ -568,6 +572,7 @@ class Ctl(object):
             else:
                 cmd.install_argparse_arguments(subparsers.add_parser(cmd.name))
         args, self.extra_arguments = self.main_parser.parse_known_args(sys.argv[1:])
+
         self.verbose = args.verbose
         globals()['verbose'] = self.verbose
 
