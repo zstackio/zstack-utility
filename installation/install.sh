@@ -93,6 +93,7 @@ DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
+CONSOLE_PROXY_ADDRESS=''
 
 #define extra upgrade params
 #1.0  1.1  1.2  1.3  1.4
@@ -1411,6 +1412,10 @@ cs_config_zstack_properties(){
     if [ $PRODUCT_NAME = $SS100 ] ; then
         zstack-ctl configure Fusionstor.type=$SS100_STORAGE
     fi
+    if [ ! -z $CONSOLE_PROXY_ADDRESS ];then
+        zstack-ctl configure consoleProxyOverriddenIp=${CONSOLE_PROXY_ADDRESS}
+    fi
+    exit 1
     if [ $? -ne 0 ];then
         fail "failed to add yum repo to $ZSTACK_PROPERTIES"
     fi
@@ -2073,11 +2078,12 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acdDFhiklmMNoquz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:acC:dDFhiklmMNoquz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
         c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
+        C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
         d ) DEBUG='y';;
         D ) NEED_DROP_DB='y';;
         H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
@@ -2349,7 +2355,9 @@ install_db_msgbus
 
 if [ ! -z $NEED_SET_MN_IP ];then
     zstack-ctl configure management.server.ip=${MANAGEMENT_IP}
-    zstack-ctl configure consoleProxyOverriddenIp=${MANAGEMENT_IP}
+    if [ -z $CONSOLE_PROXY_ADDRESS ];then
+        zstack-ctl configure consoleProxyOverriddenIp=${MANAGEMENT_IP}
+    fi
 fi
 
 #Start ${PRODUCT_NAME} 
