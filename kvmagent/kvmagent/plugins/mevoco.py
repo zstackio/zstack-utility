@@ -287,6 +287,10 @@ class Mevoco(kvmagent.KvmAgent):
         if ret != 0:
             bash_errorout('ebtables -t nat -I {{CHAIN_NAME}} {{RULE}}')
 
+        ret = bash_r('ebtables -t nat -L {{CHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
+        if ret != 0:
+            bash_errorout('ebtables -t nat -A {{CHAIN_NAME}} -j RETURN')
+
         ret = bash_r('ebtables -L {{CHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
             bash_errorout('ebtables -N {{CHAIN_NAME}}')
