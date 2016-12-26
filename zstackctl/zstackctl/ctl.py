@@ -4788,6 +4788,8 @@ class ChangeIpCmd(Command):
 
             if old_ip != None:
                 shell('sed -i "/^%s .*$/d" /etc/hosts' % old_ip)
+            else:
+                shell('sed -i "/^.* %s$/d" /etc/hosts' % new_hostname)
 
             shell('echo "%s %s" >> /etc/hosts' % (args.ip, new_hostname))
             shell('hostnamectl set-hostname %s' % new_hostname)
