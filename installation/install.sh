@@ -79,7 +79,9 @@ ZSTACK_LOCAL_YUM_REPOS='zstack-local'
 ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn'
 ZSTACK_MN_UPGRADE_REPOS='zstack-mn'
 MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel,163-qemu-ev'
+MIRROR_163_YUM_WEBSITE='mirrors.163.com'
 MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel,ali-qemu-ev'
+MIRROR_ALI_YUM_WEBSITE='mirrors.aliyun.com'
 #used for zstack.properties Ansible.var.zstack_repo
 ZSTACK_PROPERTIES_REPO=''
 ZSTACK_OFFLINE_INSTALL='n'
@@ -2116,9 +2118,11 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     if [ $ZSTACK_PKG_MIRROR = $PKG_MIRROR_163 ]; then
         ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
         ZSTACK_PROPERTIES_REPO=$MIRROR_163_YUM_REPOS
+        WEBSITE=$MIRROR_163_YUM_WEBSITE
     else
         ZSTACK_YUM_REPOS=$MIRROR_ALI_YUM_REPOS
         ZSTACK_PROPERTIES_REPO=$MIRROR_ALI_YUM_REPOS
+        WEBSITE=$MIRROR_ALI_YUM_WEBSITE
     fi
 elif [ -z $YUM_ONLINE_REPO ]; then
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
