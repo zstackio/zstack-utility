@@ -5406,6 +5406,23 @@ class APIAddMonToFusionstorPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEFUSIONSTORPRIMARYSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+class APIUpdateFusionstorPrimaryStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.primary.APIUpdateFusionstorPrimaryStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYFUSIONSTORPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.fusionstor.primary.APIQueryFusionstorPrimaryStorageMsg'
 class APIQueryFusionstorPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.fusionstor.primary.APIQueryFusionstorPrimaryStorageMsg'
@@ -5472,6 +5489,23 @@ class APIAddMonToFusionstorBackupStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEFUSIONSTORBACKUPSTORAGEMONMSG_FULL_NAME = 'org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+class APIUpdateFusionstorBackupStorageMonMsg(object):
+    FULL_NAME='org.zstack.storage.fusionstor.backup.APIUpdateFusionstorBackupStorageMonMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.monPort = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7919,10 +7953,12 @@ api_names = [
     'APIAddSharedMountPointPrimaryStorageMsg',
     'APIRemoveMonFromFusionstorPrimaryStorageMsg',
     'APIAddMonToFusionstorPrimaryStorageMsg',
+    'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIQueryFusionstorPrimaryStorageMsg',
     'APIAddFusionstorPrimaryStorageMsg',
     'APIRemoveMonFromFusionstorBackupStorageMsg',
     'APIAddMonToFusionstorBackupStorageMsg',
+    'APIUpdateFusionstorBackupStorageMonMsg',
     'APIQueryFusionstorBackupStorageMsg',
     'APIAddFusionstorBackupStorageMsg',
     'APIKvmRunShellMsg',
