@@ -5166,6 +5166,7 @@ class APIDetachDataVolumeFromVmMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.vmUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -5876,6 +5877,37 @@ class APIQueryLogReply(object):
     FULL_NAME='org.zstack.logging.APIQueryLogReply'
     def __init__(self):
         self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYSHAREABLEVOLUMEVMINSTANCEREFMSG_FULL_NAME = 'org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefMsg'
+class APIQueryShareableVolumeVmInstanceRefMsg(object):
+    FULL_NAME='org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSHAREABLEVOLUMEVMINSTANCEREFREPLY_FULL_NAME = 'org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefReply'
+class APIQueryShareableVolumeVmInstanceRefReply(object):
+    FULL_NAME='org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
         self.success = None
         self.error = None
 
@@ -8402,6 +8434,8 @@ api_names = [
     'APIQuerySecurityGroupRuleReply',
     'APIQuerySftpBackupStorageMsg',
     'APIQuerySftpBackupStorageReply',
+    'APIQueryShareableVolumeVmInstanceRefMsg',
+    'APIQueryShareableVolumeVmInstanceRefReply',
     'APIQuerySharedResourceMsg',
     'APIQuerySharedResourceReply',
     'APIQuerySystemTagMsg',
@@ -9899,7 +9933,6 @@ class BackupStorageInventory(object):
         self.type = None
         self.state = None
         self.status = None
-        self.importImageInfo = None
         self.createDate = None
         self.lastOpDate = None
         self.attachedZoneUuids = None
@@ -9949,11 +9982,6 @@ class BackupStorageInventory(object):
             self.status = inv.status
         else:
             self.status = None
-
-        if hasattr(inv, 'importImageInfo'):
-            self.importImageInfo = inv.importImageInfo
-        else:
-            self.importImageInfo = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -10099,6 +10127,7 @@ class VolumeInventory(object):
         self.status = None
         self.createDate = None
         self.lastOpDate = None
+        self.isShareable = None
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -10185,6 +10214,11 @@ class VolumeInventory(object):
             self.lastOpDate = inv.lastOpDate
         else:
             self.lastOpDate = None
+
+        if hasattr(inv, 'isShareable'):
+            self.isShareable = inv.isShareable
+        else:
+            self.isShareable = None
 
 
 
@@ -10357,6 +10391,48 @@ class LdapServerInventory(object):
             self.encryption = inv.encryption
         else:
             self.encryption = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class ShareableVolumeVmInstanceRefInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.volumeUuid = None
+        self.vmInstanceUuid = None
+        self.deviceId = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'volumeUuid'):
+            self.volumeUuid = inv.volumeUuid
+        else:
+            self.volumeUuid = None
+
+        if hasattr(inv, 'vmInstanceUuid'):
+            self.vmInstanceUuid = inv.vmInstanceUuid
+        else:
+            self.vmInstanceUuid = None
+
+        if hasattr(inv, 'deviceId'):
+            self.deviceId = inv.deviceId
+        else:
+            self.deviceId = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -11357,7 +11433,7 @@ class QueryObjectApplianceVmInventory(object):
      }
 
 class QueryObjectBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','name','lastOpDate','state','status','importImageInfo','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','totalCapacity','name','lastOpDate','description','state','type','uuid','url','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -11374,7 +11450,7 @@ class QueryObjectBackupStorageZoneRefInventory(object):
      }
 
 class QueryObjectCephBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','importImageInfo','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['mons','mons','image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -11461,7 +11537,7 @@ class QueryObjectEipInventory(object):
      }
 
 class QueryObjectFusionstorBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','importImageInfo','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['mons','mons','image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -11515,7 +11591,7 @@ class QueryObjectHostInventory(object):
      }
 
 class QueryObjectIPsecConnectionInventory(object):
-     PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','l3NetworkUuid','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','l3NetworkUuid','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','state','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['peerCidrs']
      QUERY_OBJECT_MAP = {
         'peerCidrs' : 'QueryObjectIPsecPeerCidrInventory',
@@ -11545,7 +11621,7 @@ class QueryObjectImageInventory(object):
      }
 
 class QueryObjectImageStoreBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','hostname','totalCapacity','name','lastOpDate','state','username','status','importImageInfo','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','hostname','totalCapacity','name','lastOpDate','state','username','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -11795,12 +11871,18 @@ class QueryObjectSecurityGroupRuleInventory(object):
      }
 
 class QueryObjectSftpBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','hostname','totalCapacity','name','lastOpDate','state','username','status','importImageInfo','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','hostname','totalCapacity','name','lastOpDate','state','username','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
         'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
         'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectShareableVolumeVmInstanceRefInventory(object):
+     PRIMITIVE_FIELDS = ['volumeUuid','lastOpDate','uuid','deviceId','vmInstanceUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectSharedResourceInventory(object):
@@ -11870,7 +11952,7 @@ class QueryObjectUserTagInventory(object):
      }
 
 class QueryObjectVCenterBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','name','lastOpDate','vCenterUuid','state','status','importImageInfo','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','name','lastOpDate','vCenterUuid','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -12017,7 +12099,7 @@ class QueryObjectVmUsageInventory(object):
      }
 
 class QueryObjectVolumeInventory(object):
-     PRIMITIVE_FIELDS = ['installPath','actualSize','format','description','type','uuid','deviceId','diskOfferingUuid','size','name','lastOpDate','state','primaryStorageUuid','vmInstanceUuid','rootImageUuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['installPath','actualSize','format','description','type','uuid','deviceId','diskOfferingUuid','size','name','lastOpDate','isShareable','state','primaryStorageUuid','vmInstanceUuid','rootImageUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','vmInstance','diskOffering','primaryStorage','localStorageHostRef','snapshot']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -12112,6 +12194,7 @@ queryMessageInventoryMap = {
      'APIQuerySecurityGroupMsg' : QueryObjectSecurityGroupInventory,
      'APIQuerySecurityGroupRuleMsg' : QueryObjectSecurityGroupRuleInventory,
      'APIQuerySftpBackupStorageMsg' : QueryObjectSftpBackupStorageInventory,
+     'APIQueryShareableVolumeVmInstanceRefMsg' : QueryObjectShareableVolumeVmInstanceRefInventory,
      'APIQuerySharedResourceMsg' : QueryObjectSharedResourceInventory,
      'APIQuerySystemTagMsg' : QueryObjectSystemTagInventory,
      'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,
