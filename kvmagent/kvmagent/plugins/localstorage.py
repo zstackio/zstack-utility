@@ -179,19 +179,38 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def _get_progress_parameters(self, to, stage, cmd):
+        progress = Progress()
+        progress.processType = "LocalStorageMigrateVolume"
+        progress.resourceUuid = to.resourceUuid
+        progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
+        progress.stage = stage
+        progress.total = os.path.getsize(to.path)
+        progress.pfile = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+        if cmd.sendCommandUrl:
+            Report.url = cmd.sendCommandUrl
+        return progress
+
     @kvmagent.replyerror
     def get_md5(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetMd5Rsp()
         rsp.md5s = []
+
+        def _get_progress(progress, synced):
+            logger.debug("getProgress in ceph-bs-agent, synced: %s, total: %s" % (synced, progress.total))
+            if not os.path.exists(progress.pfile):
+                return synced, ""
+            last = shell.call('tail -1 %s' % progress.pfile).strip()
+            if not last or not last.isdigit():
+                return synced, ""
+            percent = int(round(float(last)/10))
+            return percent, percent
+
         for to in cmd.md5s:
-            progress = Progress()
-            progress.processType = "LocalStorageMigrateVolume"
-            progress.resourceUuid = to.resourceUuid
-            progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
-            progress.stage = 1
-            progress.total = os.path.getsize(to.path)
-            _, md5, _ = bash_progress("md5sum %s | cut -d ' ' -f 1" % to.path, progress)
+            progress = self._get_progress_parameters(to, 1, cmd)
+            progress.func = _get_progress
+            _, md5, _ = bash_progress("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, progress.pfile), progress)
             rsp.md5s.append({
                 'resourceUuid': to.resourceUuid,
                 'path': to.path,
@@ -203,15 +222,22 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def check_md5(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        def _get_progress(progress, synced):
+            logger.debug("getProgress in ceph-bs-agent, synced: %s, total: %s" % (synced, progress.total))
+            if not os.path.exists(progress.pfile):
+                return synced, ""
+            last = shell.call('tail -1 %s' % progress.pfile).strip()
+            if not last or not last.isdigit():
+                return synced, ""
+            percent = int(round(float(last)/10) + 90)
+            return percent, percent
+
         for to in cmd.md5s:
-            progress = Progress()
-            progress.processType = "LocalStorageMigrateVolume"
-            progress.resourceUuid = to.resourceUuid
-            progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
-            progress.stage = 3
-            progress.total = os.path.getsize(to.path)
-            progress.flag = "end"
-            _, dst_md5, _ = bash_progress("md5sum %s | cut -d ' ' -f 1" % to.path, progress)
+            progress = self._get_progress_parameters(to, 3, cmd)
+            progress.func = _get_progress
+            _, dst_md5, _ = bash_progress("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, progress.pfile), progress)
+
             if dst_md5 != to.md5:
                 raise Exception("MD5 unmatch. The file[uuid:%s, path:%s]'s md5 (src host:%s, dst host:%s)" %
                                 (to.resourceUuid, to.path, to.md5, dst_md5))
@@ -219,31 +245,30 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
 
-
     def _get_disk_capacity(self):
         return linux.get_disk_capacity_by_df(self.path)
 
     @kvmagent.replyerror
     @in_bash
     def copy_bits_to_remote(self, req):
-        def _getProgress(progress, synced):
+        def _get_progress(progress, synced):
             logger.debug("getProgress in localstorage-agent, synced: %s, total: %s" % (synced, progress.total))
+            if not os.path.exists(progress.pfile):
+                return synced, ""
             fpread = open(progress.pfile, 'r')
             lines = fpread.readlines()
             if not lines:
                 fpread.close()
                 return synced, ""
-            logger.debug("lines: %s, lines[-1]: %s" % (lines, lines[-1]))
-            last = str(lines[-1]).strip()
-            if not last or len(last.split()) < 2:
+            last = str(lines[-1]).strip().split('\r')[-1]
+            if not last or len(last.split()) < 1:
                 fpread.close()
                 return synced, ""
-            logger.debug("last synced: %s" % last)
-            written = last.split()[1]
+            written = last.split()[0]
             if not written.isdigit():
                 return synced, ""
-            if progress.total > 0 and synced < written:
-                synced += long(written)
+            if progress.total > 0:
+                synced = long(written)
                 if synced < progress.total:
                     percent = int(round(float(synced) / float(progress.total) * 80 + 10))
                     fpread.close()
@@ -262,7 +287,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         progress.resourceUuid = cmd.uuid
         progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
         progress.stage = 2
-        progress.func = _getProgress
+        progress.func = _get_progress
         for path in set(chain):
             total = total + os.path.getsize(path)
 
@@ -274,7 +299,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             IP = cmd.dstIp
             PORT = (cmd.dstPort and cmd.dstPort or "22")
 
-            bash_progress('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/', progress)
+            if cmd.sendCommandUrl:
+                bash_progress('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/', progress)
+            else:
+                bash_errorout('rsync -avz --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/')
             bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
 
         rsp = AgentResponse()

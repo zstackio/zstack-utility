@@ -3,7 +3,6 @@ import threading
 from zstacklib.utils import shell
 import subprocess
 import os
-import traceback
 from zstacklib.utils import log
 from zstacklib.utils.report import Report
 from zstacklib.utils.report import Progress
@@ -32,7 +31,8 @@ class WatchThread(threading.Thread):
                 time.sleep(1)
                 synced, percent = self.progress.func(self.progress, synced)
                 logger.debug("synced: %s, percent: %s" % (synced, percent))
-                self._progress_report(percent, self.progress.getReport())
+                if percent:
+                    self._progress_report(percent, self.progress.getReport())
         except:
             logger.warning(linux.get_exception_stacktrace())
         finally:
