@@ -4446,6 +4446,18 @@ class UpdateEipAction(inventory.APIUpdateEipMsg):
         self.out = evt
         return self.out
 
+class UpdateEncryptKeyAction(inventory.APIUpdateEncryptKeyMsg):
+    def __init__(self):
+        super(UpdateEncryptKeyAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEncryptKeyAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateFusionstorBackupStorageMonAction(inventory.APIUpdateFusionstorBackupStorageMonMsg):
     def __init__(self):
         super(UpdateFusionstorBackupStorageMonAction, self).__init__()

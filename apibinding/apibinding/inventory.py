@@ -1049,6 +1049,18 @@ class APIRequestConsoleAccessMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEENCRYPTKEYMSG_FULL_NAME = 'org.zstack.header.core.encrypt.APIUpdateEncryptKeyMsg'
+class APIUpdateEncryptKeyMsg(object):
+    FULL_NAME='org.zstack.header.core.encrypt.APIUpdateEncryptKeyMsg'
+    def __init__(self):
+        #mandatory field
+        self.encryptKey = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIGETTASKPROGRESSMSG_FULL_NAME = 'org.zstack.header.core.progress.APIGetTaskProgressMsg'
 class APIGetTaskProgressMsg(object):
     FULL_NAME='org.zstack.header.core.progress.APIGetTaskProgressMsg'
@@ -8554,6 +8566,7 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEipMsg',
+    'APIUpdateEncryptKeyMsg',
     'APIUpdateFusionstorBackupStorageMonMsg',
     'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIUpdateGlobalConfigMsg',
@@ -11120,6 +11133,13 @@ class GlobalConfig_EIP(object):
     def get_category():
         return 'eip'
 
+class GlobalConfig_ENCRYPT(object):
+    ENCRYPT_ALGORITHM = 'encrypt.algorithm'
+
+    @staticmethod
+    def get_category():
+        return 'encrypt'
+
 class GlobalConfig_FUSIONSTOR(object):
     IMAGECACHE_CLEANUP_INTERVAL = 'imageCache.cleanup.interval'
     BACKUPSTORAGE_MON_AUTORECONNECT = 'backupStorage.mon.autoReconnect'
@@ -11196,10 +11216,12 @@ class GlobalConfig_IMAGE(object):
         return 'image'
 
 class GlobalConfig_KVM(object):
+    HOST_DNSCHECKALIYUN = 'host.DNSCheckAliyun'
     RESERVEDMEMORY = 'reservedMemory'
     HOST_SYNCLEVEL = 'host.syncLevel'
     VM_CPUMODE = 'vm.cpuMode'
     VM_CACHEMODE = 'vm.cacheMode'
+    HOST_DNSCHECK163 = 'host.DNSCheck163'
     RESERVEDCPU = 'reservedCpu'
     VM_CONSOLEMODE = 'vm.consoleMode'
     DATAVOLUME_MAXNUM = 'dataVolume.maxNum'
@@ -11300,26 +11322,6 @@ class GlobalConfig_PRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'primaryStorage'
-
-class GlobalConfig_QUOTA(object):
-    IMAGE_SIZE = 'image.size'
-    VOLUME_DATA_NUM = 'volume.data.num'
-    L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
-    VM_MEMORYSIZE = 'vm.memorySize'
-    EIP_NUM = 'eip.num'
-    IMAGE_NUM = 'image.num'
-    VM_CPUNUM = 'vm.cpuNum'
-    VM_TOTALNUM = 'vm.totalNum'
-    SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
-    VM_NUM = 'vm.num'
-    VOLUME_CAPACITY = 'volume.capacity'
-
-    @staticmethod
-    def get_category():
-        return 'quota'
 
 class GlobalConfig_SECURITYGROUP(object):
     INGRESS_DEFAULTPOLICY = 'ingress.defaultPolicy'
