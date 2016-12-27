@@ -1952,6 +1952,8 @@ Options:
 
   -c    Only upgrade zstack-ctl tool.
 
+  -C    specify console proxy address.
+
   -d    print detailed installation log to screen
         By default the installation log will be saved to $ZSTACK_INSTALL_LOG
 
