@@ -3528,6 +3528,20 @@ class QuerySftpBackupStorageAction(inventory.APIQuerySftpBackupStorageMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryShareableVolumeVmInstanceRefAction(inventory.APIQueryShareableVolumeVmInstanceRefMsg):
+    def __init__(self):
+        super(QueryShareableVolumeVmInstanceRefAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryShareableVolumeVmInstanceRefAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QuerySharedResourceAction(inventory.APIQuerySharedResourceMsg):
     def __init__(self):
         super(QuerySharedResourceAction, self).__init__()
