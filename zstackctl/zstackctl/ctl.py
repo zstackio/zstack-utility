@@ -4149,6 +4149,57 @@ fi
             ctl.write_property('CloudBus.rabbitmqPassword', args.rabbit_password)
             info('updated CloudBus.rabbitmqPassword=%s in %s' % (args.rabbit_password, ctl.properties_file_path))
 
+class ChangeMysqlPasswordCmd(Command):
+    def __init__(self):
+        super(ChangeMysqlPasswordCmd, self).__init__()
+        self.name = "change_mysql_password"
+        self.description = (
+            "Change mysql password for root or normal user"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--root-password','-root',
+                            help="Current mysql root password",
+                            required=True)
+        parser.add_argument('--user-name','-user',
+                            help="The user you want to change password",
+                            required=True)
+        parser.add_argument('--new-password','-new',
+                            help="New mysql password of root or normal user",
+                            required=True)
+        parser.add_argument('--remote-ip','-ip',
+                            help="Mysql ip address if didn't install on localhost",
+                            )
+
+    def check_username_password(self,args):
+        if args.remote_ip is not None:
+            status, output = commands.getstatusoutput("mysql -u root -p%s -h '%s' -e 'show databases;'" % (args.root_password,  args.remote_ip))
+        else:
+            status, output = commands.getstatusoutput("mysql -u root -p%s -e 'show databases;'" % args.root_password)
+        if status != 0:
+            error(output)
+
+
+    def run(self, args):
+        self.check_username_password(args)
+        if args.user_name != 'root':
+            if args.remote_ip is not None:
+                sql = "mysql -u root -p'%s' -h '%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.remote_ip, args.new_password, args.user_name)
+            else:
+                sql = "mysql -u root -p'%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.new_password, args.user_name)
+            status, output = commands.getstatusoutput(sql)
+            if status != 0:
+                error(output)
+        else:
+           if args.remote_ip is not None:
+               status, output = commands.getstatusoutput("mysqladmin -u %s -p'%s' password %s -h %s" % (args.user_name, args.root_password, args.new_password, args.remote_ip))
+           else:
+               status, output = commands.getstatusoutput("mysqladmin -u %s -p'%s' password  %s" % (args.user_name, args.root_password, args.new_password))
+           if status != 0:
+               error(output)
+        info("Change mysql password for user '%s' successfully!" % args.user_name)
+
 class DumpMysqlCmd(Command):
     def __init__(self):
         super(DumpMysqlCmd, self).__init__()
@@ -6293,6 +6344,7 @@ def main():
     CollectLogCmd()
     ConfigureCmd()
     DumpMysqlCmd()
+    ChangeMysqlPasswordCmd()
     DeployDBCmd()
     GetEnvironmentVariableCmd()
     InstallWebUiCmd()
