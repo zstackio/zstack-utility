@@ -71,7 +71,7 @@ if distro == "CentOS" or distro == "RedHat":
     if distro_version < 7:
         qemu_pkg = "qemu-kvm"
     else:
-        qemu_pkg = "qemu-kvm-ev-2.3.0"
+        qemu_pkg = "qemu-kvm-ev"
     pkg_list = [qemu_pkg, "wget", "libvirt", "libguestfs-winsupport", "libguestfs-tools"]
     pkg_str_list = "%s wget libvirt-python libvirt libguestfs-winsupport libguestfs-tools" % qemu_pkg
     if client == "true" :

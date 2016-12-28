@@ -77,12 +77,12 @@ if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
         # name: install iscsi related packages on RedHat based OS from user defined repo
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget " \
-                  "qemu-img-ev-2.3.0 scsi-target-utils"  % zstack_repo
+                  "qemu-img-ev scsi-target-utils"  % zstack_repo
         run_remote_command(command, host_post_info)
 
     else:
         # name: install isci related packages on RedHat based OS from online
-        for pkg in ['wget', 'qemu-img-ev-2.3.0', 'scsi-target-utils']:
+        for pkg in ['wget', 'qemu-img-ev', 'scsi-target-utils']:
             yum_install_package(pkg, host_post_info)
     if distro_version >= 7:
         # name: disable firewalld in RHEL7 and Centos7

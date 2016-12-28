@@ -127,7 +127,10 @@ check_nested_kvm(host_post_info)
 if distro == "RedHat" or distro == "CentOS":
     # handle zstack_repo
     if zstack_repo != 'false':
-        qemu_pkg = 'qemu-kvm'
+        if distro_version >= 7:
+            qemu_pkg = 'qemu-kvm-ev'
+        else:
+            qemu_pkg = 'qemu-kvm'
         # name: install kvm related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils sed "
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
