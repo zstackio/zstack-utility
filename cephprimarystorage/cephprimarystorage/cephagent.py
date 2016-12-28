@@ -1,9 +1,5 @@
-from zstacklib.zstacklib.utils import log
-
 __author__ = 'frank'
 
-import functools
-import os
 import pprint
 import traceback
 
@@ -12,11 +8,9 @@ import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.linux as linux
 import zstacklib.utils.lock as lock
-import zstacklib.utils.shell as shell
 import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
-
 
 logger = log.get_logger(__name__)
 
