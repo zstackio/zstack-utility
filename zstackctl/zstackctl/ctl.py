@@ -4183,7 +4183,7 @@ class ChangeMysqlPasswordCmd(Command):
 
     def run(self, args):
         self.check_username_password(args)
-        if args.user_name != 'root':
+        if args.user_name == 'zstack':
             if args.remote_ip is not None:
                 sql = "mysql -u root -p'%s' -h '%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.remote_ip, args.new_password, args.user_name)
             else:
@@ -4191,14 +4191,18 @@ class ChangeMysqlPasswordCmd(Command):
             status, output = commands.getstatusoutput(sql)
             if status != 0:
                 error(output)
-        else:
+            info("Change mysql password for user '%s' successfully! " % args.user_name)
+            info(colored("Please change 'DB.password' in 'zstack.properties' then restart zstack to make the changes effective" , 'yellow'))
+        elif args.user_name == 'root':
            if args.remote_ip is not None:
                status, output = commands.getstatusoutput("mysqladmin -u %s -p'%s' password %s -h %s" % (args.user_name, args.root_password, args.new_password, args.remote_ip))
            else:
                status, output = commands.getstatusoutput("mysqladmin -u %s -p'%s' password  %s" % (args.user_name, args.root_password, args.new_password))
            if status != 0:
                error(output)
-        info("Change mysql password for user '%s' successfully!" % args.user_name)
+           info("Change mysql password for user '%s' successfully!" % args.user_name)
+        else:
+           error("Only support change 'zstack' and 'root' password")
 
 class DumpMysqlCmd(Command):
     def __init__(self):
