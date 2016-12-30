@@ -2005,6 +2005,8 @@ Options:
 
   -o    offline installation. ${PRODUCT_NAME} required system libs will installed from zstack local repository, which is installed from ZStack customed ISO. ZStack customed ISO could be got from ZStack community.
 
+  -O    online installation. Mevoco don't support this option.
+
   -p MYSQL_PASSWORD
         password for MySQL user 'zstack' that is the user ${PRODUCT_NAME} management nodes use to access database. By default, an empty password is applied.
 
@@ -2018,6 +2020,7 @@ Options:
 
   -R ZSTACK_PKG_MIRROR
         which yum mirror user want to use to install ZStack required CentOS rpm packages. User can choose 163 or aliyun, like -R aliyun, -R 163 
+        Mevoco don't support this option.
 
   -t ZSTACK_START_TIMEOUT
         The timeout for waiting ZStack start. The default value is $ZSTACK_START_TIMEOUT
@@ -2080,10 +2083,12 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acC:dDFhiklmMNoquz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:acC:dDFhiklmMNoOquz" Option
 do
     case $Option in
-        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
+        # -a: do not use yum online repo.
+        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
+		[ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
         c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
         C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
         d ) DEBUG='y';;
@@ -2098,12 +2103,28 @@ do
         m ) INSTALL_MONITOR='y';;
         M ) UPGRADE_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
-        o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';; #do not use yum online repo.
+        # -o: do not use yum online repo
+        o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
+		[ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
+        # -O: use yum online repo
+        O ) if [ 'zstack' = ${PRODUCT_NAME} ]; then
+		YUM_ONLINE_REPO='y'
+		ZSTACK_OFFLINE_INSTALL=''
+		else
+		fail2 "$PRODUCT_NAME don't support '-O' option! Please remove '-O' and try again."
+		fi;;
         P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
-        R ) ZSTACK_PKG_MIRROR=$OPTARG && YUM_ONLINE_REPO='';;
+        # -R: use yum third party repo
+        R ) if [ 'zstack' = ${PRODUCT_NAME} ]; then
+		ZSTACK_PKG_MIRROR=$OPTARG
+		YUM_ONLINE_REPO='y'
+		ZSTACK_OFFLINE_INSTALL=''
+		else
+		fail2 "$PRODUCT_NAME don't support '-R' option! Please remove '-R' and try again."
+		fi;;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
@@ -2115,7 +2136,7 @@ OPTIND=1
 
 if [ $ZSTACK_OFFLINE_INSTALL = 'y' ]; then
     if [ ! -d /opt/zstack-dvd/ ]; then
-        fail2 "Did not find /opt/zstack-dvd folder, please do not use -o option"
+        fail2 "Did not find the /opt/zstack-dvd folder, offline installation cannot proceed!"
     fi
 fi
 
