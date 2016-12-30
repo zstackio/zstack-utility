@@ -1596,7 +1596,7 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                    for pkg in ["python-devel", "python-setuptools", "python-pip", "python2-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
                         yum_install_package(pkg, host_post_info)
                     if distro_version >=7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
@@ -1681,12 +1681,12 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 # install libselinux-python and other command system libs from user defined repos
                 # enable alibase repo for yum clean avoid no repo to be clean
                 host_post_info.post_label = "ansible.shell.install.pkg"
-                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
+                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,python2-pip,gcc," \
                                                   "autoconf,ntp,ntpdate,python-backports-ssl_match_hostname,iptables-services"
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
+                              "python-setuptools python-pip python2-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
@@ -1751,7 +1751,7 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
             if require_python_env == "true":
-                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "iptables-persistent"]
+                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "python2-pip", "gcc", "autoconf", "ntp", "ntpdate", "iptables-persistent"]
                 apt_install_packages(install_pkg_list, host_post_info)
                 enable_ntp(trusted_host, host_post_info, distro)
         else:
