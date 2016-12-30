@@ -705,6 +705,10 @@ def create_bridge(bridge_name, interface, move_route=True):
         raise LinuxError("network device[%s] is not existing" % interface)
 
     shell.call("brctl addif %s %s" % (bridge_name, interface))
+    #Set bridge MAC address as network device MAC address. It will avoid of 
+    # bridge MAC address is reset to other new added dummy network device's 
+    # MAC address.
+    shell.call("mac=`ip link show %s|grep ether|awk '{print $2}'`;ip link set br_eth0 address $mac" % interface)
 
     if not move_route:
         return
