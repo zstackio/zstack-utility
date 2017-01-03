@@ -47,12 +47,12 @@ class ImageStoreClient(object):
     def _build_install_path(self, name, imgid):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
-    def upload_to_imagestore(self, host, primaryStorageInstallPath):
+    def upload_to_imagestore(self, host, primaryStorageInstallPath, callbackUrl):
         imf = self._get_image_json_file(primaryStorageInstallPath)
         if not os.path.isfile(imf):
             self.commit_to_imagestore(primaryStorageInstallPath)
 
-        cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath)
+        cmdstr = '%s -url %s:%s -callbackurl %s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, callbackUrl, primaryStorageInstallPath)
         logger.debug(cmdstr)
         logger.debug('pushing %s to image store' % primaryStorageInstallPath)
         shell.call(cmdstr)
