@@ -6,6 +6,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import http
 
 logger = log.get_logger(__name__)
 
@@ -47,21 +48,24 @@ class ImageStoreClient(object):
     def _build_install_path(self, name, imgid):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
-    def upload_to_imagestore(self, host, primaryStorageInstallPath, callbackUrl):
-        imf = self._get_image_json_file(primaryStorageInstallPath)
+    def upload_to_imagestore(self, cmd, req):
+        imf = self._get_image_json_file(cmd.primaryStorageInstallPath)
         if not os.path.isfile(imf):
-            self.commit_to_imagestore(primaryStorageInstallPath)
+            self.commit_to_imagestore(cmd.primaryStorageInstallPath)
 
-        cmdstr = '%s -url %s:%s -callbackurl %s push %s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, callbackUrl, primaryStorageInstallPath)
+        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s push %s' % (
+        self.ZSTORE_CLI_PATH, cmd.host, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
+                req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.primaryStorageInstallPath)
         logger.debug(cmdstr)
-        logger.debug('pushing %s to image store' % primaryStorageInstallPath)
+        logger.debug('pushing %s to image store' % cmd.primaryStorageInstallPath)
         shell.call(cmdstr)
-        logger.debug('%s pushed to image store' % primaryStorageInstallPath)
+        logger.debug('%s pushed to image store' % cmd.primaryStorageInstallPath)
 
         rsp = kvmagent.AgentResponse()
-        name, imageid = self._get_image_reference(primaryStorageInstallPath)
+        name, imageid = self._get_image_reference(cmd.primaryStorageInstallPath)
         rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
         return jsonobject.dumps(rsp)
+
 
     def commit_to_imagestore(self, primaryStorageInstallPath):
         fpath = primaryStorageInstallPath

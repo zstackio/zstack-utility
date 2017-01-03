@@ -536,7 +536,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     def upload_to_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         logger.debug("test callback uri: %s" % req[http.REQUEST_HEADER].get(http.CALLBACK_URI))
-        return self.imagestore_client.upload_to_imagestore(cmd.hostname, cmd.primaryStorageInstallPath, req[http.REQUEST_HEADER].get(http.CALLBACK_URI))
+        return self.imagestore_client.upload_to_imagestore(cmd, req)
 
     @kvmagent.replyerror
     def commit_to_imagestore(self, req):
