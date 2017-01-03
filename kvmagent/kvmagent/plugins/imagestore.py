@@ -51,10 +51,10 @@ class ImageStoreClient(object):
     def upload_to_imagestore(self, cmd, req):
         imf = self._get_image_json_file(cmd.primaryStorageInstallPath)
         if not os.path.isfile(imf):
-            self.commit_to_imagestore(cmd.primaryStorageInstallPath)
+            self.commit_to_imagestore(cmd, req)
 
         cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s push %s' % (
-        self.ZSTORE_CLI_PATH, cmd.host, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
+        self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
                 req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.primaryStorageInstallPath)
         logger.debug(cmdstr)
         logger.debug('pushing %s to image store' % cmd.primaryStorageInstallPath)
@@ -67,14 +67,15 @@ class ImageStoreClient(object):
         return jsonobject.dumps(rsp)
 
 
-    def commit_to_imagestore(self, primaryStorageInstallPath):
-        fpath = primaryStorageInstallPath
+    def commit_to_imagestore(self, cmd, req):
+        fpath = cmd.primaryStorageInstallPath
 
         # Synchronize cached writes for 'fpath'
         shell.call('/bin/sync ' + fpath)
 
         # Add the image to registry
-        cmdstr = '%s -json add -file %s' % (self.ZSTORE_CLI_PATH, fpath)
+        cmdstr = '%s -json  -callbackurl %s -taskid %s add -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
+                req[http.REQUEST_HEADER].get(http.TASK_UUID), fpath)
 
         logger.debug('adding %s to local image store' % fpath)
         shell.call(cmdstr)
@@ -84,10 +85,10 @@ class ImageStoreClient(object):
 
         rsp = kvmagent.AgentResponse()
         rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
-        rsp.size = linux.qcow2_size_and_actual_size(primaryStorageInstallPath)[0]
+        rsp.size = linux.qcow2_size_and_actual_size(cmd.primaryStorageInstallPath)[0]
 
         # we need to sum all the disk size within the chain ...
-        chain = linux.qcow2_get_file_chain(primaryStorageInstallPath)
+        chain = linux.qcow2_get_file_chain(cmd.primaryStorageInstallPath)
         rsp.actualSize = sum([ linux.qcow2_size_and_actual_size(f)[1] for f in chain ])
 
         return jsonobject.dumps(rsp)

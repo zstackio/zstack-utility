@@ -9,6 +9,7 @@ import re
 from zstacklib.utils import shell
 from progress_report import WatchThread
 from zstacklib.utils.rollback import rollback, rollbackable
+from zstacklib.utils import linux
 import os
 
 logger = log.get_logger(__name__)
@@ -109,22 +110,21 @@ def bash_progress(cmd, progress):
         p = subprocess.Popen('/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
     watch_thread = WatchThread(p, progress)
-    @rollbackable
-    def _rollback():
+
+    try:
+        watch_thread.start()
+        o, e = p.communicate(cmd)
+        r = p.returncode
+    except:
+        linux.get_exception_stacktrace()
+    finally:
         watch_thread.stop()
         if fpwrite:
             fpwrite.close()
         os.remove(progress_report)
+        return r, o, e
 
-    _rollback()
-    watch_thread.start()
-    o, e = p.communicate(cmd)
-    r = p.returncode
 
-    watch_thread.stop()
-    if fpwrite:
-        fpwrite.close()
-    os.remove(progress_report)
 
     __BASH_DEBUG_INFO__ = ctx.get('__BASH_DEBUG_INFO__')
     if __BASH_DEBUG_INFO__ is not None:

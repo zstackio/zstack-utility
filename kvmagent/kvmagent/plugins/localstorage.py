@@ -300,12 +300,15 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             PORT = (cmd.dstPort and cmd.dstPort or "22")
 
             if cmd.sendCommandUrl:
-                bash_progress('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/', progress)
+                _, err, _ = bash_progress('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/', progress)
             else:
                 bash_errorout('rsync -avz --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/')
             bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
 
         rsp = AgentResponse()
+        if err:
+            rsp.success = False
+            rsp.error = err
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
@@ -535,13 +538,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def upload_to_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        logger.debug("test callback uri: %s" % req[http.REQUEST_HEADER].get(http.CALLBACK_URI))
         return self.imagestore_client.upload_to_imagestore(cmd, req)
 
     @kvmagent.replyerror
     def commit_to_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        return self.imagestore_client.commit_to_imagestore(cmd.primaryStorageInstallPath)
+        return self.imagestore_client.commit_to_imagestore(cmd, req)
 
     @kvmagent.replyerror
     def download_from_sftp(self, req):
