@@ -818,6 +818,18 @@ class CloneVmInstanceAction(inventory.APICloneVmInstanceMsg):
         self.out = evt
         return self.out
 
+class CommitVolumeAsImageAction(inventory.APICommitVolumeAsImageMsg):
+    def __init__(self):
+        super(CommitVolumeAsImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CommitVolumeAsImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateAccountAction(inventory.APICreateAccountMsg):
     def __init__(self):
         super(CreateAccountAction, self).__init__()
@@ -2654,18 +2666,6 @@ class GetVmConsolePasswordAction(inventory.APIGetVmConsolePasswordMsg):
         self.out = evt
         return self.out
 
-class GetVmDiskQosAction(inventory.APIGetVmDiskQosMsg):
-    def __init__(self):
-        super(GetVmDiskQosAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetVmDiskQosAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class GetVmHostnameAction(inventory.APIGetVmHostnameMsg):
     def __init__(self):
         super(GetVmHostnameAction, self).__init__()
@@ -2770,6 +2770,18 @@ class GetVolumeFormatAction(inventory.APIGetVolumeFormatMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVolumeFormatAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetVolumeQosAction(inventory.APIGetVolumeQosMsg):
+    def __init__(self):
+        super(GetVolumeQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVolumeQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4194,18 +4206,6 @@ class SetVmConsolePasswordAction(inventory.APISetVmConsolePasswordMsg):
         self.out = evt
         return self.out
 
-class SetVmDiskQosAction(inventory.APISetVmDiskQosMsg):
-    def __init__(self):
-        super(SetVmDiskQosAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[SetVmDiskQosAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class SetVmHostnameAction(inventory.APISetVmHostnameMsg):
     def __init__(self):
         super(SetVmHostnameAction, self).__init__()
@@ -4262,6 +4262,18 @@ class SetVmStaticIpAction(inventory.APISetVmStaticIpMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetVmStaticIpAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVolumeQosAction(inventory.APISetVolumeQosMsg):
+    def __init__(self):
+        super(SetVolumeQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVolumeQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
