@@ -410,14 +410,12 @@ class CephAgent(object):
             progress.stages = {1: "0:100"}
             progress.stage = 1
             progress.func = _getProgress
-            pfile = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
-
-            progress.pfile = pfile
+            progress.pfile = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
             content_length = shell.call('curl -sI %s|grep Content-Length' % cmd.url).strip().split()[1]
             progress.total = _getRealSize(content_length)
             logger.debug("content-length is: %s" % progress.total)
             bash_progress('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
-                       % (cmd.url, pfile, pool, tmp_image_name), progress)
+                       % (cmd.url, progress.pfile, pool, tmp_image_name), progress)
             actual_size = linux.get_file_size_by_http_head(cmd.url)
 
         elif cmd.url.startswith('file://'):

@@ -8,6 +8,7 @@ import time
 import re
 from zstacklib.utils import shell
 from progress_report import WatchThread
+from progress_report import WatchThread_1
 from zstacklib.utils.rollback import rollback, rollbackable
 from zstacklib.utils import linux
 import os
@@ -94,23 +95,37 @@ def bash_errorout(cmd, code=0, pipe_fail=False):
     _, o, _ = bash_roe(cmd, errorout=True, ret_code=code, pipe_fail=pipe_fail)
     return o
 
+def bash_progress_1(cmd, func):
+    ctx = __collect_locals_on_stack()
+    cmd = bash_eval(cmd, ctx)
+    logger.debug(cmd)
+    p = subprocess.Popen('/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    watch_thread = WatchThread_1(func)
+    try:
+        watch_thread.start()
+        o, _ = p.communicate(cmd)
+        r = p.returncode
+        watch_thread.stop()
+        return r, o, None
+    except Exception as ex:
+        linux.get_exception_stacktrace()
+        watch_thread.stop()
+        return None, None, ex
+
+
+
 def bash_progress(cmd, progress):
     ctx = __collect_locals_on_stack()
     cmd = bash_eval(cmd, ctx)
     logger.debug(cmd)
-    fpwrite = None
 
-    if not progress.pfile:
-        progress_report = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
-        fpwrite = open(progress_report, 'w')
-        p = subprocess.Popen('/bin/bash', stdout=fpwrite, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        progress.pfile = progress_report
-    else:
-        progress_report = progress.pfile
-        p = subprocess.Popen('/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    fpwrite = open(progress.pfile, 'w')
+    p = subprocess.Popen('/bin/bash', stdout=fpwrite, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
     watch_thread = WatchThread(p, progress)
-
+    o = None
+    e = None
+    r = 0
     try:
         watch_thread.start()
         o, e = p.communicate(cmd)
@@ -121,7 +136,7 @@ def bash_progress(cmd, progress):
         watch_thread.stop()
         if fpwrite:
             fpwrite.close()
-        os.remove(progress_report)
+        os.remove(progress.pfile)
         return r, o, e
 
 

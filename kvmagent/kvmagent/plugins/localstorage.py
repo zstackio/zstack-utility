@@ -179,70 +179,79 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    def _get_progress_parameters(self, to, stage, cmd):
-        progress = Progress()
-        progress.processType = "LocalStorageMigrateVolume"
-        progress.resourceUuid = to.resourceUuid
-        progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
-        progress.stage = stage
-        progress.total = os.path.getsize(to.path)
-        progress.pfile = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
-        if cmd.sendCommandUrl:
-            Report.url = cmd.sendCommandUrl
-        return progress
-
     @kvmagent.replyerror
     def get_md5(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetMd5Rsp()
         rsp.md5s = []
 
-        def _get_progress(progress, synced):
-            logger.debug("getProgress in ceph-bs-agent, synced: %s, total: %s" % (synced, progress.total))
-            if not os.path.exists(progress.pfile):
-                return synced, ""
-            last = shell.call('tail -1 %s' % progress.pfile).strip()
+        if cmd.sendCommandUrl:
+            Report.url = cmd.sendCommandUrl
+        report = Report()
+        report.processType = "LocalStorageMigrateVolume"
+        PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+        report.progress_report("0", "start")
+
+        def _get_progress(synced):
+            logger.debug("getProgress in get_md5")
+            if not os.path.exists(PFILE):
+                return synced
+            last = shell.call('tail -1 %s' % PFILE).strip()
             if not last or not last.isdigit():
-                return synced, ""
+                return synced
             percent = int(round(float(last)/10))
-            return percent, percent
+            report.progress_report(str(percent), "report")
+            return synced
 
         for to in cmd.md5s:
-            progress = self._get_progress_parameters(to, 1, cmd)
-            progress.func = _get_progress
-            _, md5, _ = bash_progress("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, progress.pfile), progress)
+            _, md5, _ = bash_progress_1("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, PFILE), _get_progress)
             rsp.md5s.append({
                 'resourceUuid': to.resourceUuid,
                 'path': to.path,
                 'md5': md5
             })
+            report.resourceUuid = to.resourceUuid
 
+        if os.path.exists(PFILE):
+            os.remove(PFILE)
+
+        report.progress_report("10", "report")
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def check_md5(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.sendCommandUrl:
+            Report.url = cmd.sendCommandUrl
 
-        def _get_progress(progress, synced):
-            logger.debug("getProgress in ceph-bs-agent, synced: %s, total: %s" % (synced, progress.total))
-            if not os.path.exists(progress.pfile):
-                return synced, ""
-            last = shell.call('tail -1 %s' % progress.pfile).strip()
+        report = Report()
+        report.processType = "LocalStorageMigrateVolume"
+        PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+
+        def _get_progress(synced):
+            logger.debug("getProgress in check_md5")
+            if not os.path.exists(PFILE):
+                return synced
+            last = shell.call('tail -1 %s' % PFILE).strip()
             if not last or not last.isdigit():
-                return synced, ""
+                return synced
             percent = int(round(float(last)/10) + 90)
-            return percent, percent
+            report.progress_report(percent, "report")
+            return synced
 
         for to in cmd.md5s:
-            progress = self._get_progress_parameters(to, 3, cmd)
-            progress.func = _get_progress
-            _, dst_md5, _ = bash_progress("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, progress.pfile), progress)
+            report.resourceUuid = to.resourceUuid
+            _, dst_md5, _ = bash_progress_1("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, PFILE), _get_progress)
 
             if dst_md5 != to.md5:
                 raise Exception("MD5 unmatch. The file[uuid:%s, path:%s]'s md5 (src host:%s, dst host:%s)" %
                                 (to.resourceUuid, to.path, to.md5, dst_md5))
 
+        if os.path.exists(PFILE):
+            os.remove(PFILE)
+
         rsp = AgentResponse()
+        report.progress_report("100", "finish")
         return jsonobject.dumps(rsp)
 
     def _get_disk_capacity(self):
@@ -251,47 +260,48 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @in_bash
     def copy_bits_to_remote(self, req):
-        def _get_progress(progress, synced):
-            logger.debug("getProgress in localstorage-agent, synced: %s, total: %s" % (synced, progress.total))
-            if not os.path.exists(progress.pfile):
-                return synced, ""
-            fpread = open(progress.pfile, 'r')
-            lines = fpread.readlines()
-            if not lines:
-                fpread.close()
-                return synced, ""
-            last = str(lines[-1]).strip().split('\r')[-1]
-            if not last or len(last.split()) < 1:
-                fpread.close()
-                return synced, ""
-            written = last.split()[0]
-            if not written.isdigit():
-                return synced, ""
-            if progress.total > 0:
-                synced = long(written)
-                if synced < progress.total:
-                    percent = int(round(float(synced) / float(progress.total) * 80 + 10))
-                    fpread.close()
-                    return synced, percent
-            fpread.close()
-            return synced, ""
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         chain = sum([linux.qcow2_get_file_chain(p) for p in cmd.paths], [])
-        total = 0
         if cmd.sendCommandUrl:
-            logger.debug("cmd.sendCommandUrl: %s" % cmd.sendCommandUrl)
             Report.url = cmd.sendCommandUrl
-        progress = Progress()
-        progress.processType = "LocalStorageMigrateVolume"
-        progress.resourceUuid = cmd.uuid
-        progress.stages = {1: "0:10", 2: "10:90", 3: "90:100"}
-        progress.stage = 2
-        progress.func = _get_progress
+
+        report = Report()
+        report.processType = "LocalStorageMigrateVolume"
+        report.resourceUuid = cmd.uuid
+        PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+        report.progress_report("10", "report")
+
+        total = 0
         for path in set(chain):
             total = total + os.path.getsize(path)
 
-        progress.total = total
+        written = 0
+        def _get_progress(synced):
+            logger.debug("getProgress in localstorage-agent, total: %s" % total)
+            if not os.path.exists(PFILE):
+                return synced
+            fpread = open(PFILE, 'r')
+            lines = fpread.readlines()
+            if not lines:
+                fpread.close()
+                return synced
+            last = str(lines[-1]).strip().split('\r')[-1]
+            if not last or len(last.split()) < 1:
+                fpread.close()
+                return synced
+            line = last.split()[0]
+            if not line.isdigit():
+                return synced
+            if total > 0:
+                write = written + long(line) + synced
+                if write < total:
+                    percent = int(round(float(written) / float(total) * 80 + 10))
+                    report.progress_report(percent, "report")
+                synced += long(line)
+            fpread.close()
+            return synced
+
+        err = None
         for path in set(chain):
             PATH = path
             PASSWORD = cmd.dstPassword
@@ -299,16 +309,16 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             IP = cmd.dstIp
             PORT = (cmd.dstPort and cmd.dstPort or "22")
 
-            if cmd.sendCommandUrl:
-                _, err, _ = bash_progress('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/', progress)
-            else:
-                bash_errorout('rsync -avz --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/')
+            _, _, err = bash_progress_1('rsync -avz --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
+            written += os.path.getsize(path)
             bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
+            percent = int(round(float(written) / float(total) * 80 + 10))
+            report.progress_report(percent, "report")
 
+        if os.path.exists(PFILE):
+            os.remove(PFILE)
+        report.progress_report("90", "report")
         rsp = AgentResponse()
-        if err:
-            rsp.success = False
-            rsp.error = err
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 

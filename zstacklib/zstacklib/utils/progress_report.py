@@ -11,6 +11,25 @@ from zstacklib.utils import linux
 
 logger = log.get_logger(__name__)
 
+class WatchThread_1(threading.Thread):
+    def __init__(self, func):
+        threading.Thread.__init__(self)
+        self.func = func
+        self.keepRunning = True
+
+    def run(self):
+        logger.debug("watch_thread_1: %s start" % self.__class__)
+        try:
+            synced = 0
+            while self.keepRunning:
+                time.sleep(1)
+                synced = self.func(synced)
+        except:
+            logger.warning(linux.get_exception_stacktrace())
+
+    def stop(self):
+        self.keepRunning = False
+
 class WatchThread(threading.Thread):
     def __init__(self, popen, progress=None):
         threading.Thread.__init__(self)
@@ -26,7 +45,7 @@ class WatchThread(threading.Thread):
         start, end = self.progress.getScale()
         try:
             self._progress_report(start, self.progress.getStart())
-            synced = 0
+            synced = self.progress.written
             while self.keepRunning and self.popen and self.popen.poll() is None:
                 time.sleep(1)
                 synced, percent = self.progress.func(self.progress, synced)

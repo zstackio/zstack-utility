@@ -1,6 +1,7 @@
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import thread
+from zstacklib.utils import linux
 
 logger = log.get_logger(__name__)
 
@@ -20,6 +21,7 @@ class Progress(object):
         self.resourceUuid = None
         self.pfile = None
         self.func = None
+        self.written = 0
 
     def getScale(self):
         stages = self.stages.get(self.stage) if self.stages.get(self.stage) else "0:100"
@@ -54,6 +56,20 @@ class Report(object):
         self.header = None
         self.processType = None
 
+    def progress_report(self, percent, flag):
+        try:
+            self.progress = percent
+            header = {
+                "start": "/progress/start",
+                "finish": "/progress/finish",
+                "report": "/progress/report"
+            }
+            self.header = {'commandpath': header.get(flag, "/progress/report")}
+            self.report()
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            logger.warn("report progress failed: %s" % e.message)
+
     @thread.AsyncThread
     def report(self):
         cmd = ProgressReportCmd()
@@ -61,6 +77,6 @@ class Report(object):
         cmd.processType = self.processType
         cmd.progress = self.progress
         cmd.resourceUuid = self.resourceUuid
-        logger.debug("url: %s, cmd: %s, header: %s", Report.url, cmd, self.header)
+        logger.debug("url: %s, progress: %s, header: %s", Report.url, cmd.progress, self.header)
         http.json_dump_post(Report.url, cmd, self.header)
 
