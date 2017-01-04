@@ -1980,6 +1980,26 @@ class APIGetCandidateBackupStorageForCreatingImageReply(object):
         self.error = None
 
 
+APIGETIMAGEQGAENABLEMSG_FULL_NAME = 'org.zstack.header.image.APIGetImageQgaEnableMsg'
+class APIGetImageQgaEnableMsg(object):
+    FULL_NAME='org.zstack.header.image.APIGetImageQgaEnableMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETIMAGEQGAENABLEREPLY_FULL_NAME = 'org.zstack.header.image.APIGetImageQgaEnableReply'
+class APIGetImageQgaEnableReply(object):
+    FULL_NAME='org.zstack.header.image.APIGetImageQgaEnableReply'
+    def __init__(self):
+        self.uuid = None
+        self.enable = None
+        self.success = None
+        self.error = None
+
+
 APIGETIMAGEREPLY_FULL_NAME = 'org.zstack.header.image.APIGetImageReply'
 class APIGetImageReply(object):
     FULL_NAME='org.zstack.header.image.APIGetImageReply'
@@ -2045,6 +2065,26 @@ class APISearchImageReply(object):
         self.content = None
         self.success = None
         self.error = None
+
+
+APISETIMAGEQGADISABLEMSG_FULL_NAME = 'org.zstack.header.image.APISetImageQgaDisableMsg'
+class APISetImageQgaDisableMsg(object):
+    FULL_NAME='org.zstack.header.image.APISetImageQgaDisableMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISETIMAGEQGAENABLEMSG_FULL_NAME = 'org.zstack.header.image.APISetImageQgaEnableMsg'
+class APISetImageQgaEnableMsg(object):
+    FULL_NAME='org.zstack.header.image.APISetImageQgaEnableMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APISYNCIMAGESIZEMSG_FULL_NAME = 'org.zstack.header.image.APISyncImageSizeMsg'
@@ -4232,6 +4272,26 @@ class APIGetVmMigrationCandidateHostsReply(object):
         self.error = None
 
 
+APIGETVMQGAENABLEMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmQgaEnableMsg'
+class APIGetVmQgaEnableMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmQgaEnableMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVMQGAENABLEREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmQgaEnableReply'
+class APIGetVmQgaEnableReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmQgaEnableReply'
+    def __init__(self):
+        self.uuid = None
+        self.enable = None
+        self.success = None
+        self.error = None
+
+
 APIGETVMSSHKEYMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmSshKeyMsg'
 class APIGetVmSshKeyMsg(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmSshKeyMsg'
@@ -4450,6 +4510,26 @@ class APISetVmHostnameMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.hostname = NotNoneField()
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISETVMQGADISABLEMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmQgaDisableMsg'
+class APISetVmQgaDisableMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetVmQgaDisableMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISETVMQGAENABLEMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmQgaEnableMsg'
+class APISetVmQgaEnableMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetVmQgaEnableMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7475,6 +7555,8 @@ api_names = [
     'APIGetHostReply',
     'APIGetHypervisorTypesMsg',
     'APIGetHypervisorTypesReply',
+    'APIGetImageQgaEnableMsg',
+    'APIGetImageQgaEnableReply',
     'APIGetImageReply',
     'APIGetInstanceOfferingReply',
     'APIGetInterdependentL3NetworkImageReply',
@@ -7542,6 +7624,8 @@ api_names = [
     'APIGetVmMigrationCandidateHostsReply',
     'APIGetVmMonitoringDataMsg',
     'APIGetVmMonitoringDataReply',
+    'APIGetVmQgaEnableMsg',
+    'APIGetVmQgaEnableReply',
     'APIGetVmSshKeyMsg',
     'APIGetVmSshKeyReply',
     'APIGetVmStartingCandidateClustersHostsMsg',
@@ -7780,11 +7864,15 @@ api_names = [
     'APISearchVolumeReply',
     'APISearchZoneReply',
     'APISessionMessage',
+    'APISetImageQgaDisableMsg',
+    'APISetImageQgaEnableMsg',
     'APISetNicQosMsg',
     'APISetVmBootOrderMsg',
     'APISetVmConsolePasswordMsg',
     'APISetVmHostnameMsg',
     'APISetVmInstanceHaLevelMsg',
+    'APISetVmQgaDisableMsg',
+    'APISetVmQgaEnableMsg',
     'APISetVmSshKeyMsg',
     'APISetVmStaticIpMsg',
     'APISetVolumeQosMsg',

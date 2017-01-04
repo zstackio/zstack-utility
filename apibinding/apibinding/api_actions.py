@@ -2402,6 +2402,18 @@ class GetHypervisorTypesAction(inventory.APIGetHypervisorTypesMsg):
         self.out = evt
         return self.out
 
+class GetImageQgaEnableAction(inventory.APIGetImageQgaEnableMsg):
+    def __init__(self):
+        super(GetImageQgaEnableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetImageQgaEnableAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetInterdependentL3NetworksImagesAction(inventory.APIGetInterdependentL3NetworksImagesMsg):
     def __init__(self):
         super(GetInterdependentL3NetworksImagesAction, self).__init__()
@@ -2722,6 +2734,18 @@ class GetVmMonitoringDataAction(inventory.APIGetVmMonitoringDataMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVmMonitoringDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetVmQgaEnableAction(inventory.APIGetVmQgaEnableMsg):
+    def __init__(self):
+        super(GetVmQgaEnableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmQgaEnableAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4182,6 +4206,30 @@ class SessionMessageAction(inventory.APISessionMessage):
         self.out = evt
         return self.out
 
+class SetImageQgaDisableAction(inventory.APISetImageQgaDisableMsg):
+    def __init__(self):
+        super(SetImageQgaDisableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetImageQgaDisableAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetImageQgaEnableAction(inventory.APISetImageQgaEnableMsg):
+    def __init__(self):
+        super(SetImageQgaEnableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetImageQgaEnableAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SetNicQosAction(inventory.APISetNicQosMsg):
     def __init__(self):
         super(SetNicQosAction, self).__init__()
@@ -4238,6 +4286,30 @@ class SetVmInstanceHaLevelAction(inventory.APISetVmInstanceHaLevelMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetVmInstanceHaLevelAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVmQgaDisableAction(inventory.APISetVmQgaDisableMsg):
+    def __init__(self):
+        super(SetVmQgaDisableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmQgaDisableAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVmQgaEnableAction(inventory.APISetVmQgaEnableMsg):
+    def __init__(self):
+        super(SetVmQgaEnableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmQgaEnableAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
