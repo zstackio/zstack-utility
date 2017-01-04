@@ -2510,6 +2510,18 @@ class GetNetworkServiceTypesAction(inventory.APIGetNetworkServiceTypesMsg):
         self.out = evt
         return self.out
 
+class GetNicQosAction(inventory.APIGetNicQosMsg):
+    def __init__(self):
+        super(GetNicQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetNicQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetPortForwardingAttachableVmNicsAction(inventory.APIGetPortForwardingAttachableVmNicsMsg):
     def __init__(self):
         super(GetPortForwardingAttachableVmNicsAction, self).__init__()
@@ -2710,18 +2722,6 @@ class GetVmMonitoringDataAction(inventory.APIGetVmMonitoringDataMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVmMonitoringDataAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class GetVmNicQosAction(inventory.APIGetVmNicQosMsg):
-    def __init__(self):
-        super(GetVmNicQosAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetVmNicQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4182,6 +4182,18 @@ class SessionMessageAction(inventory.APISessionMessage):
         self.out = evt
         return self.out
 
+class SetNicQosAction(inventory.APISetNicQosMsg):
+    def __init__(self):
+        super(SetNicQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetNicQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SetVmBootOrderAction(inventory.APISetVmBootOrderMsg):
     def __init__(self):
         super(SetVmBootOrderAction, self).__init__()
@@ -4226,18 +4238,6 @@ class SetVmInstanceHaLevelAction(inventory.APISetVmInstanceHaLevelMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetVmInstanceHaLevelAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class SetVmNicQosAction(inventory.APISetVmNicQosMsg):
-    def __init__(self):
-        super(SetVmNicQosAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[SetVmNicQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

@@ -4048,6 +4048,27 @@ class APIGetInterdependentL3NetworksImagesMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETNICQOSMSG_FULL_NAME = 'org.zstack.header.vm.APIGetNicQosMsg'
+class APIGetNicQosMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetNicQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETNICQOSREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetNicQosReply'
+class APIGetNicQosReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetNicQosReply'
+    def __init__(self):
+        self.vmNicUuid = None
+        self.outboundBandwidth = None
+        self.inboundBandwidth = None
+        self.success = None
+        self.error = None
+
+
 APIGETVMATTACHABLEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmAttachableDataVolumeMsg'
 class APIGetVmAttachableDataVolumeMsg(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmAttachableDataVolumeMsg'
@@ -4207,27 +4228,6 @@ class APIGetVmMigrationCandidateHostsReply(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmMigrationCandidateHostsReply'
     def __init__(self):
         self.inventories = OptionalList()
-        self.success = None
-        self.error = None
-
-
-APIGETVMNICQOSMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmNicQosMsg'
-class APIGetVmNicQosMsg(object):
-    FULL_NAME='org.zstack.header.vm.APIGetVmNicQosMsg'
-    def __init__(self):
-        #mandatory field
-        self.vmUuid = NotNoneField()
-        #mandatory field
-        self.vmNicUuid = NotNoneField()
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIGETVMNICQOSREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmNicQosReply'
-class APIGetVmNicQosReply(object):
-    FULL_NAME='org.zstack.header.vm.APIGetVmNicQosReply'
-    def __init__(self):
-        self.vmNicQOS = None
         self.success = None
         self.error = None
 
@@ -4407,6 +4407,18 @@ class APISearchVmInstanceReply(object):
         self.error = None
 
 
+APISETNICQOSMSG_FULL_NAME = 'org.zstack.header.vm.APISetNicQosMsg'
+class APISetNicQosMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetNicQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.outboundBandwidth = None
+        self.inboundBandwidth = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APISETVMBOOTORDERMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmBootOrderMsg'
 class APISetVmBootOrderMsg(object):
     FULL_NAME='org.zstack.header.vm.APISetVmBootOrderMsg'
@@ -4438,20 +4450,6 @@ class APISetVmHostnameMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.hostname = NotNoneField()
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APISETVMNICQOSMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmNicQosMsg'
-class APISetVmNicQosMsg(object):
-    FULL_NAME='org.zstack.header.vm.APISetVmNicQosMsg'
-    def __init__(self):
-        #mandatory field
-        self.vmUuid = NotNoneField()
-        #mandatory field
-        self.vmNicUuid = NotNoneField()
-        self.outboundBandwidth = None
-        self.inboundBandwidth = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7501,6 +7499,8 @@ api_names = [
     'APIGetNetworkServiceProviderReply',
     'APIGetNetworkServiceTypesMsg',
     'APIGetNetworkServiceTypesReply',
+    'APIGetNicQosMsg',
+    'APIGetNicQosReply',
     'APIGetPolicyReply',
     'APIGetPortForwardingAttachableVmNicsMsg',
     'APIGetPortForwardingAttachableVmNicsReply',
@@ -7542,8 +7542,6 @@ api_names = [
     'APIGetVmMigrationCandidateHostsReply',
     'APIGetVmMonitoringDataMsg',
     'APIGetVmMonitoringDataReply',
-    'APIGetVmNicQosMsg',
-    'APIGetVmNicQosReply',
     'APIGetVmSshKeyMsg',
     'APIGetVmSshKeyReply',
     'APIGetVmStartingCandidateClustersHostsMsg',
@@ -7782,11 +7780,11 @@ api_names = [
     'APISearchVolumeReply',
     'APISearchZoneReply',
     'APISessionMessage',
+    'APISetNicQosMsg',
     'APISetVmBootOrderMsg',
     'APISetVmConsolePasswordMsg',
     'APISetVmHostnameMsg',
     'APISetVmInstanceHaLevelMsg',
-    'APISetVmNicQosMsg',
     'APISetVmSshKeyMsg',
     'APISetVmStaticIpMsg',
     'APISetVolumeQosMsg',
@@ -10569,13 +10567,11 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
