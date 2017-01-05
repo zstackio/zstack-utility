@@ -190,7 +190,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         report = Report()
         report.processType = "LocalStorageMigrateVolume"
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
-        report.progress_report("0", "start")
+
 
         def _get_progress(synced):
             logger.debug("getProgress in get_md5")
@@ -203,6 +203,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             report.progress_report(str(percent), "report")
             return synced
 
+        if len(cmd.md5s) > 0:
+            report.resourceUuid = cmd.md5s[0].resourceUuid
+            report.progress_report("0", "start")
         for to in cmd.md5s:
             _, md5, _ = bash_progress_1("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, PFILE), _get_progress)
             rsp.md5s.append({
@@ -210,7 +213,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 'path': to.path,
                 'md5': md5
             })
-            report.resourceUuid = to.resourceUuid
 
         if os.path.exists(PFILE):
             os.remove(PFILE)

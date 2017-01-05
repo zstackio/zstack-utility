@@ -6,12 +6,8 @@ from zstacklib.utils import log
 import inspect
 import time
 import re
-from zstacklib.utils import shell
-from progress_report import WatchThread
 from progress_report import WatchThread_1
-from zstacklib.utils.rollback import rollback, rollbackable
 from zstacklib.utils import linux
-import os
 
 logger = log.get_logger(__name__)
 
@@ -103,9 +99,20 @@ def bash_progress_1(cmd, func):
     watch_thread = WatchThread_1(func)
     try:
         watch_thread.start()
-        o, _ = p.communicate(cmd)
+        o, e = p.communicate(cmd)
         r = p.returncode
         watch_thread.stop()
+
+        __BASH_DEBUG_INFO__ = ctx.get('__BASH_DEBUG_INFO__')
+        if __BASH_DEBUG_INFO__ is not None:
+            __BASH_DEBUG_INFO__.append({
+                'cmd': cmd,
+                'return_code': p.returncode,
+                'stderr': e
+            })
+
+        if r != 0:
+            raise BashError('failed to execute bash[%s], return code: %s, stderr: %s' % (cmd, r, e))
         return r, o, None
     except Exception as ex:
         linux.get_exception_stacktrace()
@@ -114,44 +121,6 @@ def bash_progress_1(cmd, func):
 
 
 
-def bash_progress(cmd, progress):
-    ctx = __collect_locals_on_stack()
-    cmd = bash_eval(cmd, ctx)
-    logger.debug(cmd)
-
-    fpwrite = open(progress.pfile, 'w')
-    p = subprocess.Popen('/bin/bash', stdout=fpwrite, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    watch_thread = WatchThread(p, progress)
-    o = None
-    e = None
-    r = 0
-    try:
-        watch_thread.start()
-        o, e = p.communicate(cmd)
-        r = p.returncode
-    except:
-        linux.get_exception_stacktrace()
-    finally:
-        watch_thread.stop()
-        if fpwrite:
-            fpwrite.close()
-        os.remove(progress.pfile)
-        return r, o, e
-
-
-
-    __BASH_DEBUG_INFO__ = ctx.get('__BASH_DEBUG_INFO__')
-    if __BASH_DEBUG_INFO__ is not None:
-        __BASH_DEBUG_INFO__.append({
-            'cmd': cmd,
-            'return_code': p.returncode,
-            'stderr': e
-        })
-
-    if r != 0:
-        raise BashError('failed to execute bash[%s], return code: %s, stderr: %s' % (cmd, r, e))
-    return r, o, e
 
 def in_bash(func):
     @functools.wraps(func)
