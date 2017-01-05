@@ -137,9 +137,14 @@ class DhcpEnv(object):
         if ret != 0:
             bash_errorout('ebtables -I {{CHAIN_NAME}} -p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
 
-        ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+        ret = bash_r("ebtables-save | grep -- '-A {{CHAIN_NAME}} -j RETURN'")
         if ret != 0:
             bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
+
+        # Note(WeiW): fix dhcp checksum, see more at #982
+        ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
+        if ret != 0:
+            bash_errorout('iptables -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
