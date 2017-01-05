@@ -46,6 +46,8 @@ class APIDeleteMessage(object):
     FULL_NAME='org.zstack.header.message.APIDeleteMessage'
     def __init__(self):
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -81,6 +83,8 @@ class APICreateVmCpuAlarmMsg(object):
         self.conditionValue = NotNoneField()
         self.conditionDuration = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -92,6 +96,8 @@ class APIDeleteAlarmMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -106,6 +112,8 @@ class APIUpdateAlertMsg(object):
         self.description = None
         #valid values: [Active, Muted]
         self.status = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -134,6 +142,8 @@ class APIQueryApplianceVmMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -156,6 +166,8 @@ class APICalculateAccountSpendingMsg(object):
         self.accountUuid = NotNoneField()
         self.dateStart = None
         self.dateEnd = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -184,6 +196,8 @@ class APICreateResourcePriceMsg(object):
         self.price = NotNoneField()
         self.accountUuid = None
         self.dateInLong = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -195,6 +209,8 @@ class APIDeleteResourcePriceMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -214,6 +230,8 @@ class APIQueryResourcePriceMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -236,6 +254,8 @@ class APIGetGlobalConfigMsg(object):
         self.category = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -273,6 +293,8 @@ class APIQueryGlobalConfigMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -296,6 +318,8 @@ class APIUpdateGlobalConfigMsg(object):
         #mandatory field
         self.name = NotNoneField()
         self.value = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -306,6 +330,8 @@ class APIDebugSignalMsg(object):
     def __init__(self):
         #mandatory field
         self.signals = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -319,6 +345,8 @@ class APIChangeSchedulerStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -330,6 +358,8 @@ class APIDeleteSchedulerMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -349,6 +379,8 @@ class APIQuerySchedulerMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -371,6 +403,8 @@ class APIUpdateSchedulerMsg(object):
         self.uuid = NotNoneField()
         self.schedulerName = None
         self.schedulerDescription = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -381,6 +415,8 @@ class APIDeleteVmInstanceHaLevelMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -391,6 +427,8 @@ class APIGetVmInstanceHaLevelMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -413,6 +451,8 @@ class APISetVmInstanceHaLevelMsg(object):
         #mandatory field
         #valid values: [NeverStop, OnHostFailure]
         self.level = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -425,6 +465,8 @@ class APIGetCpuMemoryCapacityMsg(object):
         self.clusterUuids = OptionalList()
         self.hostUuids = OptionalList()
         self.all = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -445,6 +487,8 @@ APIGETHOSTALLOCATORSTRATEGIESMSG_FULL_NAME = 'org.zstack.header.allocator.APIGet
 class APIGetHostAllocatorStrategiesMsg(object):
     FULL_NAME='org.zstack.header.allocator.APIGetHostAllocatorStrategiesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -463,6 +507,8 @@ class APIIsReadyToGoMsg(object):
     FULL_NAME='org.zstack.header.apimediator.APIIsReadyToGoMsg'
     def __init__(self):
         self.managementNodeId = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -485,6 +531,8 @@ class APIChangeClusterStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -504,6 +552,8 @@ class APICreateClusterMsg(object):
         #valid values: [zstack]
         self.type = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -515,6 +565,8 @@ class APIDeleteClusterMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -552,6 +604,8 @@ class APIQueryClusterMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -583,6 +637,8 @@ class APIUpdateClusterMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -596,6 +652,8 @@ class APIChangeDiskOfferingStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -609,6 +667,8 @@ class APIChangeInstanceOfferingStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -627,6 +687,8 @@ class APICreateDiskOfferingMsg(object):
         #valid values: [zstack]
         self.type = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -648,6 +710,8 @@ class APICreateInstanceOfferingMsg(object):
         self.sortKey = None
         self.type = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -659,6 +723,8 @@ class APIDeleteDiskOfferingMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -670,6 +736,8 @@ class APIDeleteInstanceOfferingMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -680,6 +748,8 @@ class APIGenerateApiJsonTemplateMsg(object):
     def __init__(self):
         self.exportPath = None
         self.basePackageNames = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -689,6 +759,8 @@ class APIGenerateApiTypeScriptDefinitionMsg(object):
     FULL_NAME='org.zstack.header.configuration.APIGenerateApiTypeScriptDefinitionMsg'
     def __init__(self):
         self.outputPath = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -699,6 +771,8 @@ class APIGenerateGroovyClassMsg(object):
     def __init__(self):
         self.outputPath = None
         self.basePackageNames = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -709,6 +783,8 @@ class APIGenerateSqlForeignKeyMsg(object):
     def __init__(self):
         self.outputPath = None
         self.basePackageNames = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -719,6 +795,8 @@ class APIGenerateSqlIndexMsg(object):
     def __init__(self):
         self.outputPath = None
         self.basePackageNames = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -728,6 +806,8 @@ class APIGenerateSqlVOViewMsg(object):
     FULL_NAME='org.zstack.header.configuration.APIGenerateSqlVOViewMsg'
     def __init__(self):
         self.basePackageNames = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -737,6 +817,8 @@ class APIGenerateTestLinkDocumentMsg(object):
     FULL_NAME='org.zstack.header.configuration.APIGenerateTestLinkDocumentMsg'
     def __init__(self):
         self.outputDir = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -754,6 +836,8 @@ APIGETGLOBALPROPERTYMSG_FULL_NAME = 'org.zstack.header.configuration.APIGetGloba
 class APIGetGlobalPropertyMsg(object):
     FULL_NAME='org.zstack.header.configuration.APIGetGlobalPropertyMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -809,6 +893,8 @@ class APIQueryDiskOfferingMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -838,6 +924,8 @@ class APIQueryInstanceOfferingMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -887,6 +975,8 @@ class APIUpdateDiskOfferingMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -899,6 +989,8 @@ class APIUpdateInstanceOfferingMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -918,6 +1010,8 @@ class APIQueryConsoleProxyAgentMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -937,6 +1031,8 @@ class APIReconnectConsoleProxyAgentMsg(object):
     FULL_NAME='org.zstack.header.console.APIReconnectConsoleProxyAgentMsg'
     def __init__(self):
         self.agentUuids = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -947,6 +1043,8 @@ class APIRequestConsoleAccessMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -957,6 +1055,8 @@ class APIUpdateEncryptKeyMsg(object):
     def __init__(self):
         #mandatory field
         self.encryptKey = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -969,6 +1069,8 @@ class APIGetTaskProgressMsg(object):
         self.resourceUuid = NotNoneField()
         #valid values: [AddImage, LocalStorageMigrateVolume, CreateRootVolumeTemplateFromRootVolume]
         self.processType = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1001,6 +1103,8 @@ class APICreateSchedulerMessage(object):
         self.startTime = None
         self.cron = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1014,6 +1118,8 @@ class APIChangeHostStateMsg(object):
         #mandatory field
         #valid values: [enable, disable, maintain]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1025,6 +1131,8 @@ class APIDeleteHostMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1042,6 +1150,8 @@ APIGETHYPERVISORTYPESMSG_FULL_NAME = 'org.zstack.header.host.APIGetHypervisorTyp
 class APIGetHypervisorTypesMsg(object):
     FULL_NAME='org.zstack.header.host.APIGetHypervisorTypesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1079,6 +1189,8 @@ class APIQueryHostMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1099,6 +1211,8 @@ class APIReconnectHostMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1121,6 +1235,8 @@ class APIUpdateHostMsg(object):
         self.name = None
         self.description = None
         self.managementIp = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1133,6 +1249,8 @@ class APIAddUserToGroupMsg(object):
         self.userUuid = NotNoneField()
         #mandatory field
         self.groupUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1145,6 +1263,8 @@ class APIAttachPoliciesToUserMsg(object):
         self.userUuid = NotNoneField()
         #mandatory field
         self.policyUuids = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1157,6 +1277,8 @@ class APIAttachPolicyToUserGroupMsg(object):
         self.policyUuid = NotNoneField()
         #mandatory field
         self.groupUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1169,6 +1291,8 @@ class APIAttachPolicyToUserMsg(object):
         self.userUuid = NotNoneField()
         #mandatory field
         self.policyUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1181,6 +1305,8 @@ class APIChangeResourceOwnerMsg(object):
         self.accountUuid = NotNoneField()
         #mandatory field
         self.resourceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1192,6 +1318,8 @@ class APICheckApiPermissionMsg(object):
         self.userUuid = None
         #mandatory field
         self.apiNames = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1217,6 +1345,8 @@ class APICreateAccountMsg(object):
         self.type = None
         self.description = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1231,6 +1361,8 @@ class APICreatePolicyMsg(object):
         #mandatory field
         self.statements = NotNoneList()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1243,6 +1375,8 @@ class APICreateUserGroupMsg(object):
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1257,6 +1391,8 @@ class APICreateUserMsg(object):
         self.password = NotNoneField()
         self.description = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1268,6 +1404,8 @@ class APIDeleteAccountMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1279,6 +1417,8 @@ class APIDeletePolicyMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1290,6 +1430,8 @@ class APIDeleteUserGroupMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1301,6 +1443,8 @@ class APIDeleteUserMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1313,6 +1457,8 @@ class APIDetachPoliciesFromUserMsg(object):
         self.policyUuids = NotNoneList()
         #mandatory field
         self.userUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1325,6 +1471,8 @@ class APIDetachPolicyFromUserGroupMsg(object):
         self.policyUuid = NotNoneField()
         #mandatory field
         self.groupUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1337,6 +1485,8 @@ class APIDetachPolicyFromUserMsg(object):
         self.policyUuid = NotNoneField()
         #mandatory field
         self.userUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1346,6 +1496,8 @@ class APIGetAccountQuotaUsageMsg(object):
     FULL_NAME='org.zstack.header.identity.APIGetAccountQuotaUsageMsg'
     def __init__(self):
         self.uuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1383,6 +1535,8 @@ class APIGetResourceAccountMsg(object):
     def __init__(self):
         #mandatory field
         self.resourceUuids = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1449,6 +1603,8 @@ class APILogInByAccountMsg(object):
         self.accountName = NotNoneField()
         #mandatory field
         self.password = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1463,6 +1619,8 @@ class APILogInByUserMsg(object):
         self.userName = NotNoneField()
         #mandatory field
         self.password = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1481,6 +1639,8 @@ class APILogOutMsg(object):
     FULL_NAME='org.zstack.header.identity.APILogOutMsg'
     def __init__(self):
         self.sessionUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1508,6 +1668,8 @@ class APIQueryAccountMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1537,6 +1699,8 @@ class APIQueryAccountResourceRefMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1566,6 +1730,8 @@ class APIQueryPolicyMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1595,6 +1761,8 @@ class APIQueryQuotaMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1624,6 +1792,8 @@ class APIQuerySharedResourceMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1653,6 +1823,8 @@ class APIQueryUserGroupMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1682,6 +1854,8 @@ class APIQueryUserMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1704,6 +1878,8 @@ class APIRemoveUserFromGroupMsg(object):
         self.userUuid = NotNoneField()
         #mandatory field
         self.groupUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1717,6 +1893,8 @@ class APIRevokeResourceSharingMsg(object):
         self.toPublic = None
         self.accountUuids = OptionalList()
         self.all = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1761,6 +1939,8 @@ APISESSIONMESSAGE_FULL_NAME = 'org.zstack.header.identity.APISessionMessage'
 class APISessionMessage(object):
     FULL_NAME='org.zstack.header.identity.APISessionMessage'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1773,6 +1953,8 @@ class APIShareResourceMsg(object):
         self.resourceUuids = NotNoneList()
         self.accountUuids = OptionalList()
         self.toPublic = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1785,6 +1967,8 @@ class APIUpdateAccountMsg(object):
         self.password = None
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1799,6 +1983,8 @@ class APIUpdateQuotaMsg(object):
         self.name = NotNoneField()
         #mandatory field
         self.value = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1811,6 +1997,8 @@ class APIUpdateUserGroupMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1823,6 +2011,8 @@ class APIUpdateUserMsg(object):
         self.password = None
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1833,6 +2023,8 @@ class APIValidateSessionMsg(object):
     def __init__(self):
         #mandatory field
         self.sessionUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1867,6 +2059,8 @@ class APIAddImageMsg(object):
         self.backupStorageUuids = NotNoneList()
         self.type = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1880,6 +2074,8 @@ class APIChangeImageStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1895,6 +2091,8 @@ class APICreateDataVolumeTemplateFromVolumeMsg(object):
         self.volumeUuid = NotNoneField()
         self.backupStorageUuids = OptionalList()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1914,6 +2112,8 @@ class APICreateRootVolumeTemplateFromRootVolumeMsg(object):
         self.platform = None
         self.system = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1934,6 +2134,8 @@ class APICreateRootVolumeTemplateFromVolumeSnapshotMsg(object):
         self.platform = None
         self.system = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1946,6 +2148,8 @@ class APIDeleteImageMsg(object):
         self.uuid = NotNoneField()
         self.backupStorageUuids = OptionalList()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1957,6 +2161,8 @@ class APIExpungeImageMsg(object):
         #mandatory field
         self.imageUuid = NotNoneField()
         self.backupStorageUuids = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1967,6 +2173,8 @@ class APIGetCandidateBackupStorageForCreatingImageMsg(object):
     def __init__(self):
         self.volumeUuid = None
         self.volumeSnapshotUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -1986,6 +2194,8 @@ class APIGetImageQgaEnableMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2033,6 +2243,8 @@ class APIQueryImageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2054,6 +2266,8 @@ class APIRecoverImageMsg(object):
         #mandatory field
         self.imageUuid = NotNoneField()
         self.backupStorageUuids = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2073,6 +2287,8 @@ class APISetImageQgaDisableMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2083,6 +2299,8 @@ class APISetImageQgaEnableMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2093,6 +2311,8 @@ class APISyncImageSizeMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2113,6 +2333,8 @@ class APIUpdateImageMsg(object):
         self.system = None
         #valid values: [Linux, Windows, Other, Paravirtualization, WindowsVirtio]
         self.platform = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2121,6 +2343,8 @@ APIGETCURRENTTIMEMSG_FULL_NAME = 'org.zstack.header.managementnode.APIGetCurrent
 class APIGetCurrentTimeMsg(object):
     FULL_NAME='org.zstack.header.managementnode.APIGetCurrentTimeMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2138,6 +2362,8 @@ APIGETVERSIONMSG_FULL_NAME = 'org.zstack.header.managementnode.APIGetVersionMsg'
 class APIGetVersionMsg(object):
     FULL_NAME='org.zstack.header.managementnode.APIGetVersionMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2175,6 +2401,8 @@ class APIQueryManagementNodeMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2194,6 +2422,8 @@ class APICreateMessage(object):
     FULL_NAME='org.zstack.header.message.APICreateMessage'
     def __init__(self):
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2214,6 +2444,8 @@ class APIAttachL2NetworkToClusterMsg(object):
         self.l2NetworkUuid = NotNoneField()
         #mandatory field
         self.clusterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2231,6 +2463,8 @@ class APICreateL2NoVlanNetworkMsg(object):
         self.physicalInterface = NotNoneField()
         self.type = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2250,6 +2484,8 @@ class APICreateL2VlanNetworkMsg(object):
         self.physicalInterface = NotNoneField()
         self.type = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2261,6 +2497,8 @@ class APIDeleteL2NetworkMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2273,6 +2511,8 @@ class APIDetachL2NetworkFromClusterMsg(object):
         self.l2NetworkUuid = NotNoneField()
         #mandatory field
         self.clusterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2290,6 +2530,8 @@ APIGETL2NETWORKTYPESMSG_FULL_NAME = 'org.zstack.header.network.l2.APIGetL2Networ
 class APIGetL2NetworkTypesMsg(object):
     FULL_NAME='org.zstack.header.network.l2.APIGetL2NetworkTypesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2345,6 +2587,8 @@ class APIQueryL2NetworkMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2374,6 +2618,8 @@ class APIQueryL2VlanNetworkMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2414,6 +2660,8 @@ class APIUpdateL2NetworkMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2426,6 +2674,8 @@ class APIAddDnsToL3NetworkMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.dns = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2442,6 +2692,8 @@ class APIAddIpRangeByNetworkCidrMsg(object):
         #mandatory field
         self.networkCidr = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2464,6 +2716,8 @@ class APIAddIpRangeMsg(object):
         #mandatory field
         self.gateway = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2477,6 +2731,8 @@ class APIChangeL3NetworkStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2489,6 +2745,8 @@ class APICheckIpAvailabilityMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.ip = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2515,6 +2773,8 @@ class APICreateL3NetworkMsg(object):
         self.system = None
         self.dnsDomain = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2526,6 +2786,8 @@ class APIDeleteIpRangeMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2537,6 +2799,8 @@ class APIDeleteL3NetworkMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2549,6 +2813,8 @@ class APIGetFreeIpMsg(object):
         self.ipRangeUuid = None
         self.start = None
         self.limit = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2570,6 +2836,8 @@ class APIGetIpAddressCapacityMsg(object):
         self.l3NetworkUuids = OptionalList()
         self.ipRangeUuids = OptionalList()
         self.all = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2597,6 +2865,8 @@ APIGETL3NETWORKTYPESMSG_FULL_NAME = 'org.zstack.header.network.l3.APIGetL3Networ
 class APIGetL3NetworkTypesMsg(object):
     FULL_NAME='org.zstack.header.network.l3.APIGetL3NetworkTypesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2643,6 +2913,8 @@ class APIQueryIpRangeMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2672,6 +2944,8 @@ class APIQueryL3NetworkMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2694,6 +2968,8 @@ class APIRemoveDnsFromL3NetworkMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.dns = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2715,6 +2991,8 @@ class APIUpdateIpRangeMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2728,6 +3006,8 @@ class APIUpdateL3NetworkMsg(object):
         self.name = None
         self.description = None
         self.system = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2744,6 +3024,8 @@ class APIAddNetworkServiceProviderMsg(object):
         self.networkServiceTypes = NotNoneList()
         #mandatory field
         self.type = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2756,6 +3038,8 @@ class APIAttachNetworkServiceProviderToL2NetworkMsg(object):
         self.networkServiceProviderUuid = NotNoneField()
         #mandatory field
         self.l2NetworkUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2768,6 +3052,8 @@ class APIAttachNetworkServiceToL3NetworkMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.networkServices = NotNoneMap()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2780,6 +3066,8 @@ class APIDetachNetworkServiceFromL3NetworkMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.networkServices = NotNoneMap()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2792,6 +3080,8 @@ class APIDetachNetworkServiceProviderFromL2NetworkMsg(object):
         self.networkServiceProviderUuid = NotNoneField()
         #mandatory field
         self.l2NetworkUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2809,6 +3099,8 @@ APIGETNETWORKSERVICETYPESMSG_FULL_NAME = 'org.zstack.header.network.service.APIG
 class APIGetNetworkServiceTypesMsg(object):
     FULL_NAME='org.zstack.header.network.service.APIGetNetworkServiceTypesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2846,6 +3138,8 @@ class APIQueryNetworkServiceL3NetworkRefMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2875,6 +3169,8 @@ class APIQueryNetworkServiceProviderMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2904,6 +3200,8 @@ class APIGenerateInventoryQueryDetailsMsg(object):
     def __init__(self):
         self.outputDir = None
         self.basePackageNames = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2915,6 +3213,8 @@ class APIGenerateQueryableFieldsMsg(object):
         self.PYTHON_FORMAT = None
         self.format = None
         self.outputFolder = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2935,6 +3235,8 @@ class APICreateSearchIndexMsg(object):
         #mandatory field
         self.inventoryNames = NotNoneList()
         self.isRecreate = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2944,6 +3246,8 @@ class APIDeleteSearchIndexMsg(object):
     FULL_NAME='org.zstack.header.search.APIDeleteSearchIndexMsg'
     def __init__(self):
         self.indexName = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2953,6 +3257,8 @@ class APISearchGenerateSqlTriggerMsg(object):
     FULL_NAME='org.zstack.header.search.APISearchGenerateSqlTriggerMsg'
     def __init__(self):
         self.resultPath = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -2982,6 +3288,8 @@ class APIAddSimulatorHostMsg(object):
         #mandatory field
         self.clusterUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3000,6 +3308,8 @@ class APIAddSimulatorBackupStorageMsg(object):
         self.type = None
         self.importImages = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3019,6 +3329,8 @@ class APIAddSimulatorPrimaryStorageMsg(object):
         #mandatory field
         self.zoneUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3031,6 +3343,8 @@ class APIAttachBackupStorageToZoneMsg(object):
         self.zoneUuid = NotNoneField()
         #mandatory field
         self.backupStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3044,6 +3358,8 @@ class APIChangeBackupStorageStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3055,6 +3371,8 @@ class APIDeleteBackupStorageMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3067,6 +3385,8 @@ class APIDeleteExportedImageFromBackupStorageMsg(object):
         self.backupStorageUuid = NotNoneField()
         #mandatory field
         self.imageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3079,6 +3399,8 @@ class APIDetachBackupStorageFromZoneMsg(object):
         self.backupStorageUuid = NotNoneField()
         #mandatory field
         self.zoneUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3091,6 +3413,8 @@ class APIExportImageFromBackupStorageMsg(object):
         self.backupStorageUuid = NotNoneField()
         #mandatory field
         self.imageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3102,6 +3426,8 @@ class APIGetBackupStorageCapacityMsg(object):
         self.zoneUuids = OptionalList()
         self.backupStorageUuids = OptionalList()
         self.all = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3129,6 +3455,8 @@ APIGETBACKUPSTORAGETYPESMSG_FULL_NAME = 'org.zstack.header.storage.backup.APIGet
 class APIGetBackupStorageTypesMsg(object):
     FULL_NAME='org.zstack.header.storage.backup.APIGetBackupStorageTypesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3166,6 +3494,8 @@ class APIQueryBackupStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3186,6 +3516,8 @@ class APIReconnectBackupStorageMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3195,6 +3527,8 @@ class APIScanBackupStorageMsg(object):
     FULL_NAME='org.zstack.header.storage.backup.APIScanBackupStorageMsg'
     def __init__(self):
         self.backupStorageUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3216,6 +3550,8 @@ class APIUpdateBackupStorageMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3228,6 +3564,8 @@ class APIAttachPrimaryStorageToClusterMsg(object):
         self.clusterUuid = NotNoneField()
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3241,6 +3579,8 @@ class APIChangePrimaryStorageStateMsg(object):
         #mandatory field
         #valid values: [enable, disable, maintain]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3251,6 +3591,8 @@ class APICleanUpImageCacheOnPrimaryStorageMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3272,6 +3614,8 @@ class APICommitVolumeAsImageMsg(object):
         #mandatory field
         self.backupStorageUuids = NotNoneList()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3283,6 +3627,8 @@ class APIDeletePrimaryStorageMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3295,6 +3641,8 @@ class APIDetachPrimaryStorageFromClusterMsg(object):
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
         self.clusterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3303,6 +3651,8 @@ APIGETPRIMARYSTORAGEALLOCATORSTRATEGIESMSG_FULL_NAME = 'org.zstack.header.storag
 class APIGetPrimaryStorageAllocatorStrategiesMsg(object):
     FULL_NAME='org.zstack.header.storage.primary.APIGetPrimaryStorageAllocatorStrategiesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3324,6 +3674,8 @@ class APIGetPrimaryStorageCapacityMsg(object):
         self.clusterUuids = OptionalList()
         self.primaryStorageUuids = OptionalList()
         self.all = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3353,6 +3705,8 @@ APIGETPRIMARYSTORAGETYPESMSG_FULL_NAME = 'org.zstack.header.storage.primary.APIG
 class APIGetPrimaryStorageTypesMsg(object):
     FULL_NAME='org.zstack.header.storage.primary.APIGetPrimaryStorageTypesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3390,6 +3744,8 @@ class APIQueryPrimaryStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3410,6 +3766,8 @@ class APIReconnectPrimaryStorageMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3429,6 +3787,8 @@ class APISyncPrimaryStorageCapacityMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3442,6 +3802,8 @@ class APIUpdatePrimaryStorageMsg(object):
         self.name = None
         self.description = None
         self.url = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3463,6 +3825,8 @@ class APIBackupVolumeSnapshotMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.backupStorageUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3476,6 +3840,8 @@ class APIDeleteVolumeSnapshotFromBackupStorageMsg(object):
         #mandatory field
         self.backupStorageUuids = NotNoneList()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3487,6 +3853,8 @@ class APIDeleteVolumeSnapshotMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3497,6 +3865,8 @@ class APIGetVolumeSnapshotTreeMsg(object):
     def __init__(self):
         self.volumeUuid = None
         self.treeUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3525,6 +3895,8 @@ class APIQueryVolumeSnapshotMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3554,6 +3926,8 @@ class APIQueryVolumeSnapshotTreeMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3574,6 +3948,8 @@ class APIReimageVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3584,6 +3960,8 @@ class APIRevertVolumeFromSnapshotMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3596,6 +3974,8 @@ class APIUpdateVolumeSnapshotMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3610,6 +3990,8 @@ class APICreateSystemTagMsg(object):
         self.resourceUuid = NotNoneField()
         #mandatory field
         self.tag = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3624,6 +4006,8 @@ class APICreateUserTagMsg(object):
         self.resourceUuid = NotNoneField()
         #mandatory field
         self.tag = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3635,6 +4019,8 @@ class APIDeleteTagMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3650,6 +4036,8 @@ class APIEnableChangeVmPasswordMsg(object):
         self.resourceUuid = NotNoneField()
         #mandatory field
         self.enable = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3669,6 +4057,8 @@ class APIQuerySystemTagMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3699,6 +4089,8 @@ class APIQueryTagMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3728,6 +4120,8 @@ class APIQueryUserTagMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3750,6 +4144,8 @@ class APIUpdateSystemTagMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.tag = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3762,6 +4158,8 @@ class APIAttachIsoToVmInstanceMsg(object):
         self.vmInstanceUuid = NotNoneField()
         #mandatory field
         self.isoUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3775,6 +4173,8 @@ class APIAttachL3NetworkToVmMsg(object):
         #mandatory field
         self.l3NetworkUuid = NotNoneField()
         self.staticIp = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3787,6 +4187,8 @@ class APIChangeInstanceOfferingMsg(object):
         self.vmInstanceUuid = NotNoneField()
         #mandatory field
         self.instanceOfferingUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3802,6 +4204,8 @@ class APIChangeVmPasswordMsg(object):
         self.password = NotNoneField()
         #mandatory field
         self.account = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3816,6 +4220,8 @@ class APICloneVmInstanceMsg(object):
         self.strategy = None
         #mandatory field
         self.names = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3837,6 +4243,8 @@ class APICreateRebootVmInstanceSchedulerMsg(object):
         self.startTime = None
         self.cron = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3860,6 +4268,8 @@ class APICreateStartVmInstanceSchedulerMsg(object):
         self.startTime = None
         self.cron = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3881,6 +4291,8 @@ class APICreateStopVmInstanceSchedulerMsg(object):
         self.startTime = None
         self.cron = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3910,6 +4322,8 @@ class APICreateVmInstanceMsg(object):
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3920,6 +4334,8 @@ class APIDeleteVmConsolePasswordMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3931,6 +4347,8 @@ class APIDeleteVmHostnameMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3940,6 +4358,8 @@ class APIDeleteVmSshKeyMsg(object):
     FULL_NAME='org.zstack.header.vm.APIDeleteVmSshKeyMsg'
     def __init__(self):
         self.uuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3953,6 +4373,8 @@ class APIDeleteVmStaticIpMsg(object):
         #mandatory field
         self.l3NetworkUuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3964,6 +4386,8 @@ class APIDestroyVmInstanceMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3974,6 +4398,8 @@ class APIDetachIsoFromVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3984,6 +4410,8 @@ class APIDetachL3NetworkFromVmMsg(object):
     def __init__(self):
         #mandatory field
         self.vmNicUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -3994,6 +4422,8 @@ class APIExpungeVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4004,6 +4434,8 @@ class APIGetCandidateIsoForAttachingVmMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4023,6 +4455,8 @@ class APIGetCandidateVmForAttachingIsoMsg(object):
     def __init__(self):
         #mandatory field
         self.isoUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4051,6 +4485,8 @@ class APIGetCandidateZonesClustersHostsForCreatingVmMsg(object):
         self.zoneUuid = None
         self.clusterUuid = None
         self.defaultL3NetworkUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4084,6 +4520,8 @@ class APIGetInterdependentL3NetworksImagesMsg(object):
         self.zoneUuid = NotNoneField()
         self.l3NetworkUuids = OptionalList()
         self.imageUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4094,6 +4532,8 @@ class APIGetNicQosMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4115,6 +4555,8 @@ class APIGetVmAttachableDataVolumeMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4134,6 +4576,8 @@ class APIGetVmAttachableL3NetworkMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4153,6 +4597,8 @@ class APIGetVmBootOrderMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4172,6 +4618,8 @@ class APIGetVmCapabilitiesMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4191,6 +4639,8 @@ class APIGetVmConsoleAddressMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4212,6 +4662,8 @@ class APIGetVmConsolePasswordMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4231,6 +4683,8 @@ class APIGetVmHostnameMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4259,6 +4713,8 @@ class APIGetVmMigrationCandidateHostsMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4278,6 +4734,8 @@ class APIGetVmQgaEnableMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4298,6 +4756,8 @@ class APIGetVmSshKeyMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4317,6 +4777,8 @@ class APIGetVmStartingCandidateClustersHostsMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4356,6 +4818,8 @@ class APIMigrateVmMsg(object):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
         self.hostUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4366,6 +4830,8 @@ class APIPauseVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4385,6 +4851,8 @@ class APIQueryVmInstanceMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4414,6 +4882,8 @@ class APIQueryVmNicMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4434,6 +4904,8 @@ class APIRebootVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4444,6 +4916,8 @@ class APIRecoverVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4454,6 +4928,8 @@ class APIResumeVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4475,6 +4951,8 @@ class APISetNicQosMsg(object):
         self.uuid = NotNoneField()
         self.outboundBandwidth = None
         self.inboundBandwidth = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4486,6 +4964,8 @@ class APISetVmBootOrderMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.bootOrder = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4498,6 +4978,8 @@ class APISetVmConsolePasswordMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.consolePassword = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4510,6 +4992,8 @@ class APISetVmHostnameMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.hostname = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4520,6 +5004,8 @@ class APISetVmQgaDisableMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4530,6 +5016,8 @@ class APISetVmQgaEnableMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4542,6 +5030,8 @@ class APISetVmSshKeyMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.SshKey = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4556,6 +5046,8 @@ class APISetVmStaticIpMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.ip = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4568,6 +5060,8 @@ class APIStartVmInstanceMsg(object):
         self.uuid = NotNoneField()
         self.clusterUuid = None
         self.hostUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4580,6 +5074,8 @@ class APIStopVmInstanceMsg(object):
         self.uuid = NotNoneField()
         #valid values: [grace, cold]
         self.type = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4599,6 +5095,8 @@ class APIUpdateVmInstanceMsg(object):
         self.platform = None
         self.cpuNum = None
         self.memorySize = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4611,6 +5109,8 @@ class APIAttachDataVolumeToVmMsg(object):
         self.vmInstanceUuid = NotNoneField()
         #mandatory field
         self.volumeUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4622,6 +5122,8 @@ class APIBackupDataVolumeMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.backupStorageUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4635,6 +5137,8 @@ class APIChangeVolumeStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4650,6 +5154,8 @@ class APICreateDataVolumeFromVolumeSnapshotMsg(object):
         self.volumeSnapshotUuid = NotNoneField()
         self.primaryStorageUuid = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4667,6 +5173,8 @@ class APICreateDataVolumeFromVolumeTemplateMsg(object):
         self.primaryStorageUuid = NotNoneField()
         self.hostUuid = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4682,6 +5190,8 @@ class APICreateDataVolumeMsg(object):
         self.diskOfferingUuid = NotNoneField()
         self.primaryStorageUuid = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4696,6 +5206,8 @@ class APICreateVolumeSnapshotMsg(object):
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4720,6 +5232,8 @@ class APICreateVolumeSnapshotSchedulerMsg(object):
         self.startTime = None
         self.cron = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4731,6 +5245,8 @@ class APIDeleteDataVolumeMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4742,6 +5258,8 @@ class APIDetachDataVolumeFromVmMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.vmUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4751,6 +5269,8 @@ class APIExpungeDataVolumeMsg(object):
     FULL_NAME='org.zstack.header.volume.APIExpungeDataVolumeMsg'
     def __init__(self):
         self.uuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4761,6 +5281,8 @@ class APIGetDataVolumeAttachableVmMsg(object):
     def __init__(self):
         #mandatory field
         self.volumeUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4780,6 +5302,8 @@ class APIGetVolumeCapabilitiesMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4797,6 +5321,8 @@ APIGETVOLUMEFORMATMSG_FULL_NAME = 'org.zstack.header.volume.APIGetVolumeFormatMs
 class APIGetVolumeFormatMsg(object):
     FULL_NAME='org.zstack.header.volume.APIGetVolumeFormatMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4816,6 +5342,8 @@ class APIGetVolumeQosMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4863,6 +5391,8 @@ class APIQueryVolumeMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4883,6 +5413,8 @@ class APIRecoverDataVolumeMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4903,6 +5435,8 @@ class APISetVolumeQosMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.volumeBandwidth = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4913,6 +5447,8 @@ class APISyncVolumeSizeMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4925,6 +5461,8 @@ class APIUpdateVolumeMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4938,6 +5476,8 @@ class APIChangeZoneStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4950,6 +5490,8 @@ class APICreateZoneMsg(object):
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4961,6 +5503,8 @@ class APIDeleteZoneMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4970,6 +5514,8 @@ class APIGetZoneMsg(object):
     FULL_NAME='org.zstack.header.zone.APIGetZoneMsg'
     def __init__(self):
         self.uuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5007,6 +5553,8 @@ class APIQueryZoneMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5038,6 +5586,8 @@ class APIUpdateZoneMsg(object):
         self.description = None
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5077,6 +5627,8 @@ class APICreateIPsecConnectionMsg(object):
         #valid values: [esp, ah, ah-esp]
         self.transformProtocol = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5088,6 +5640,8 @@ class APIDeleteIPsecConnectionMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5107,6 +5661,8 @@ class APIQueryIPSecConnectionMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5138,6 +5694,8 @@ class APIAddKVMHostMsg(object):
         #mandatory field
         self.clusterUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5150,6 +5708,8 @@ class APIKvmRunShellMsg(object):
         self.hostUuids = NotNoneList()
         #mandatory field
         self.script = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5166,6 +5726,8 @@ class APIUpdateKVMHostMsg(object):
         self.name = None
         self.description = None
         self.managementIp = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5189,6 +5751,8 @@ class APIAddLdapServerMsg(object):
         #mandatory field
         #valid values: [None, TLS]
         self.encryption = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5197,6 +5761,8 @@ APICLEANINVALIDLDAPBINDINGMSG_FULL_NAME = 'org.zstack.ldap.APICleanInvalidLdapBi
 class APICleanInvalidLdapBindingMsg(object):
     FULL_NAME='org.zstack.ldap.APICleanInvalidLdapBindingMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5209,6 +5775,8 @@ class APICreateLdapBindingMsg(object):
         self.ldapUid = NotNoneField()
         #mandatory field
         self.accountUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5219,6 +5787,8 @@ class APIDeleteLdapBindingMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5230,6 +5800,8 @@ class APIDeleteLdapServerMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5242,6 +5814,8 @@ class APILogInByLdapMsg(object):
         self.uid = NotNoneField()
         #mandatory field
         self.password = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5271,6 +5845,8 @@ class APIQueryLdapBindingMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5300,6 +5876,8 @@ class APIQueryLdapServerMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5328,6 +5906,8 @@ class APIUpdateLdapServerMsg(object):
         self.password = None
         #valid values: [None, TLS]
         self.encryption = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5336,6 +5916,8 @@ APIGETLICENSECAPABILITIESMSG_FULL_NAME = 'org.zstack.license.APIGetLicenseCapabi
 class APIGetLicenseCapabilitiesMsg(object):
     FULL_NAME='org.zstack.license.APIGetLicenseCapabilitiesMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5353,6 +5935,8 @@ APIGETLICENSEINFOMSG_FULL_NAME = 'org.zstack.license.APIGetLicenseInfoMsg'
 class APIGetLicenseInfoMsg(object):
     FULL_NAME='org.zstack.license.APIGetLicenseInfoMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5371,6 +5955,8 @@ class APIReloadLicenseMsg(object):
     FULL_NAME='org.zstack.license.APIReloadLicenseMsg'
     def __init__(self):
         self.managementNodeUuids = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5390,6 +5976,8 @@ class APIDeleteLogMsg(object):
     def __init__(self):
         self.uuids = OptionalList()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5402,6 +5990,8 @@ class APIQueryLogMsg(object):
         #valid values: [RESOURCE, SYSTEM, EVENT]
         self.type = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5430,6 +6020,8 @@ class APIQueryShareableVolumeVmInstanceRefMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5451,6 +6043,8 @@ class APIGetHostMonitoringDataMsg(object):
         self.hostUuid = None
         #mandatory field
         self.query = NotNoneMap()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5471,6 +6065,8 @@ class APIGetVmMonitoringDataMsg(object):
         self.vmInstanceUuid = None
         #mandatory field
         self.query = NotNoneMap()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5495,6 +6091,8 @@ class APIMonitoringPassThroughMsg(object):
         self.httpMethod = None
         self.httpHeaders = OptionalList()
         self.successStatusCodes = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5516,6 +6114,8 @@ class APIAddSecurityGroupRuleMsg(object):
         self.securityGroupUuid = NotNoneField()
         #mandatory field
         self.rules = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5528,6 +6128,8 @@ class APIAddVmNicToSecurityGroupMsg(object):
         self.securityGroupUuid = NotNoneField()
         #mandatory field
         self.vmNicUuids = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5540,6 +6142,8 @@ class APIAttachSecurityGroupToL3NetworkMsg(object):
         self.securityGroupUuid = NotNoneField()
         #mandatory field
         self.l3NetworkUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5553,6 +6157,8 @@ class APIChangeSecurityGroupStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5565,6 +6171,8 @@ class APICreateSecurityGroupMsg(object):
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5576,6 +6184,8 @@ class APIDeleteSecurityGroupMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5586,6 +6196,8 @@ class APIDeleteSecurityGroupRuleMsg(object):
     def __init__(self):
         #mandatory field
         self.ruleUuids = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5598,6 +6210,8 @@ class APIDeleteVmNicFromSecurityGroupMsg(object):
         self.securityGroupUuid = NotNoneField()
         #mandatory field
         self.vmNicUuids = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5610,6 +6224,8 @@ class APIDetachSecurityGroupFromL3NetworkMsg(object):
         self.securityGroupUuid = NotNoneField()
         #mandatory field
         self.l3NetworkUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5620,6 +6236,8 @@ class APIGetCandidateVmNicForSecurityGroupMsg(object):
     def __init__(self):
         #mandatory field
         self.securityGroupUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5666,6 +6284,8 @@ class APIQuerySecurityGroupMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5695,6 +6315,8 @@ class APIQuerySecurityGroupRuleMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5724,6 +6346,8 @@ class APIQueryVmNicInSecurityGroupMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5746,6 +6370,8 @@ class APIUpdateSecurityGroupMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5758,6 +6384,8 @@ class APIAttachEipMsg(object):
         self.eipUuid = NotNoneField()
         #mandatory field
         self.vmNicUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5771,6 +6399,8 @@ class APIChangeEipStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5786,6 +6416,8 @@ class APICreateEipMsg(object):
         self.vipUuid = NotNoneField()
         self.vmNicUuid = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5797,6 +6429,8 @@ class APIDeleteEipMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5807,6 +6441,8 @@ class APIDetachEipMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5817,6 +6453,8 @@ class APIGetEipAttachableVmNicsMsg(object):
     def __init__(self):
         self.eipUuid = None
         self.vipUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5845,6 +6483,8 @@ class APIQueryEipMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5867,6 +6507,8 @@ class APIUpdateEipMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5876,6 +6518,8 @@ class APIGetL3NetworkDhcpIpAddressMsg(object):
     FULL_NAME='org.zstack.network.service.flat.APIGetL3NetworkDhcpIpAddressMsg'
     def __init__(self):
         self.l3NetworkUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5897,6 +6541,8 @@ class APIAddVmNicToLoadBalancerMsg(object):
         self.vmNicUuids = NotNoneList()
         #mandatory field
         self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5916,6 +6562,8 @@ class APICreateLoadBalancerListenerMsg(object):
         #valid values: [tcp, http]
         self.protocol = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5930,6 +6578,8 @@ class APICreateLoadBalancerMsg(object):
         #mandatory field
         self.vipUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5940,6 +6590,8 @@ class APIDeleteLoadBalancerListenerMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5951,6 +6603,8 @@ class APIDeleteLoadBalancerMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5961,6 +6615,8 @@ class APIGetCandidateVmNicsForLoadBalancerMsg(object):
     def __init__(self):
         #mandatory field
         self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -5989,6 +6645,8 @@ class APIQueryLoadBalancerListenerMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6018,6 +6676,8 @@ class APIQueryLoadBalancerMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6038,6 +6698,8 @@ class APIRefreshLoadBalancerMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6050,6 +6712,8 @@ class APIRemoveVmNicFromLoadBalancerMsg(object):
         self.vmNicUuids = NotNoneList()
         #mandatory field
         self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6062,6 +6726,8 @@ class APIAttachPortForwardingRuleMsg(object):
         self.ruleUuid = NotNoneField()
         #mandatory field
         self.vmNicUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6075,6 +6741,8 @@ class APIChangePortForwardingRuleStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6099,6 +6767,8 @@ class APICreatePortForwardingRuleMsg(object):
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6110,6 +6780,8 @@ class APIDeletePortForwardingRuleMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6120,6 +6792,8 @@ class APIDetachPortForwardingRuleMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6130,6 +6804,8 @@ class APIGetPortForwardingAttachableVmNicsMsg(object):
     def __init__(self):
         #mandatory field
         self.ruleUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6167,6 +6843,8 @@ class APIQueryPortForwardingRuleMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6189,6 +6867,8 @@ class APIUpdatePortForwardingRuleMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6202,6 +6882,8 @@ class APIChangeVipStateMsg(object):
         #mandatory field
         #valid values: [enable, disable]
         self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6218,6 +6900,8 @@ class APICreateVipMsg(object):
         self.allocatorStrategy = None
         self.requiredIp = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6229,6 +6913,8 @@ class APIDeleteVipMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6248,6 +6934,8 @@ class APIQueryVipMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6270,6 +6958,8 @@ class APIUpdateVipMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6299,6 +6989,8 @@ class APICreateVirtualRouterOfferingMsg(object):
         self.sortKey = None
         self.type = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6334,6 +7026,8 @@ class APICreateVirtualRouterVmMsg(object):
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6362,6 +7056,8 @@ class APIQueryVirtualRouterOfferingMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6391,6 +7087,8 @@ class APIQueryVirtualRouterVmMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6411,6 +7109,8 @@ class APIReconnectVirtualRouterMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6443,6 +7143,8 @@ class APIUpdateVirtualRouterOfferingMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6453,6 +7155,8 @@ class APIPrometheusQueryLabelValuesMsg(object):
     def __init__(self):
         #mandatory field
         self.labels = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6472,6 +7176,8 @@ class APIPrometheusQueryMetadataMsg(object):
     def __init__(self):
         #mandatory field
         self.matches = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6496,6 +7202,8 @@ class APIPrometheusQueryPassThroughMsg(object):
         #mandatory field
         self.expression = NotNoneField()
         self.relativeTime = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6513,6 +7221,8 @@ class APIPrometheusQueryVmMonitoringDataMsg(object):
         #mandatory field
         self.expression = NotNoneField()
         self.relativeTime = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6545,6 +7255,8 @@ class APIAddImageStoreBackupStorageMsg(object):
         self.type = None
         self.importImages = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6564,6 +7276,8 @@ class APIQueryImageStoreBackupStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6584,6 +7298,8 @@ class APIReconnectImageStoreBackupStorageMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6600,6 +7316,8 @@ class APIUpdateImageStoreBackupStorageMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6623,6 +7341,8 @@ class APIAddSftpBackupStorageMsg(object):
         self.type = None
         self.importImages = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6651,6 +7371,8 @@ class APIQuerySftpBackupStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6671,6 +7393,8 @@ class APIReconnectSftpBackupStorageMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6696,6 +7420,8 @@ class APIUpdateSftpBackupStorageMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6714,6 +7440,8 @@ class APIAddCephBackupStorageMsg(object):
         self.type = None
         self.importImages = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6726,6 +7454,8 @@ class APIAddMonToCephBackupStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6745,6 +7475,8 @@ class APIQueryCephBackupStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6757,6 +7489,8 @@ class APIRemoveMonFromCephBackupStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6772,6 +7506,8 @@ class APIUpdateCephBackupStorageMonMsg(object):
         self.sshPassword = None
         self.sshPort = None
         self.monPort = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6793,6 +7529,8 @@ class APIAddCephPrimaryStorageMsg(object):
         #mandatory field
         self.zoneUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6805,6 +7543,8 @@ class APIAddMonToCephPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6824,6 +7564,8 @@ class APIQueryCephPrimaryStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6836,6 +7578,8 @@ class APIRemoveMonFromCephPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6851,6 +7595,8 @@ class APIUpdateCephPrimaryStorageMonMsg(object):
         self.sshPassword = None
         self.sshPort = None
         self.monPort = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6869,6 +7615,8 @@ class APIAddFusionstorBackupStorageMsg(object):
         self.type = None
         self.importImages = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6881,6 +7629,8 @@ class APIAddMonToFusionstorBackupStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6900,6 +7650,8 @@ class APIQueryFusionstorBackupStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6912,6 +7664,8 @@ class APIRemoveMonFromFusionstorBackupStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6927,6 +7681,8 @@ class APIUpdateFusionstorBackupStorageMonMsg(object):
         self.sshPassword = None
         self.sshPort = None
         self.monPort = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6948,6 +7704,8 @@ class APIAddFusionstorPrimaryStorageMsg(object):
         #mandatory field
         self.zoneUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6960,6 +7718,8 @@ class APIAddMonToFusionstorPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6979,6 +7739,8 @@ class APIQueryFusionstorPrimaryStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6991,6 +7753,8 @@ class APIRemoveMonFromFusionstorPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7006,6 +7770,8 @@ class APIUpdateFusionstorPrimaryStorageMonMsg(object):
         self.sshPassword = None
         self.sshPort = None
         self.monPort = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7023,6 +7789,8 @@ class APIAddLocalPrimaryStorageMsg(object):
         #mandatory field
         self.zoneUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7034,6 +7802,8 @@ class APIGetLocalStorageHostDiskCapacityMsg(object):
         self.hostUuid = None
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7053,6 +7823,8 @@ class APILocalStorageGetVolumeMigratableHostsMsg(object):
     def __init__(self):
         #mandatory field
         self.volumeUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7074,6 +7846,8 @@ class APILocalStorageMigrateVolumeMsg(object):
         self.volumeUuid = NotNoneField()
         #mandatory field
         self.destHostUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7093,6 +7867,8 @@ class APIQueryLocalStorageResourceRefMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7120,6 +7896,8 @@ class APIAddNfsPrimaryStorageMsg(object):
         #mandatory field
         self.zoneUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7137,6 +7915,8 @@ class APIAddSharedMountPointPrimaryStorageMsg(object):
         #mandatory field
         self.zoneUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7145,6 +7925,8 @@ APISILENTMSG_FULL_NAME = 'org.zstack.test.multinodes.APISilentMsg'
 class APISilentMsg(object):
     FULL_NAME='org.zstack.test.multinodes.APISilentMsg'
     def __init__(self):
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7167,6 +7949,8 @@ class APIAddVCenterMsg(object):
         self.domainName = NotNoneField()
         self.description = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7178,6 +7962,8 @@ class APIDeleteVCenterMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7197,6 +7983,8 @@ class APIQueryVCenterBackupStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7226,6 +8014,8 @@ class APIQueryVCenterClusterMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7255,6 +8045,8 @@ class APIQueryVCenterDatacenterMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7284,6 +8076,8 @@ class APIQueryVCenterMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -7303,6 +8097,8 @@ class APIQueryVCenterPrimaryStorageMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
