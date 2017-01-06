@@ -3942,18 +3942,6 @@ class APIQueryVolumeSnapshotTreeReply(object):
         self.error = None
 
 
-APIREIMAGEVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.storage.snapshot.APIReimageVmInstanceMsg'
-class APIReimageVmInstanceMsg(object):
-    FULL_NAME='org.zstack.header.storage.snapshot.APIReimageVmInstanceMsg'
-    def __init__(self):
-        #mandatory field
-        self.vmInstanceUuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIREVERTVOLUMEFROMSNAPSHOTMSG_FULL_NAME = 'org.zstack.header.storage.snapshot.APIRevertVolumeFromSnapshotMsg'
 class APIRevertVolumeFromSnapshotMsg(object):
     FULL_NAME='org.zstack.header.storage.snapshot.APIRevertVolumeFromSnapshotMsg'
@@ -4916,6 +4904,18 @@ class APIRecoverVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIREIMAGEVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APIReimageVmInstanceMsg'
+class APIReimageVmInstanceMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIReimageVmInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8123,6 +8123,21 @@ class APIQueryVCenterReply(object):
         self.error = None
 
 
+APIUPDATEVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIUpdateVCenterMsg'
+class APIUpdateVCenterMsg(object):
+    FULL_NAME='org.zstack.vmware.APIUpdateVCenterMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.username = None
+        self.password = None
+        self.domainName = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 api_names = [
     'APIAddCephBackupStorageMsg',
     'APIAddCephPrimaryStorageMsg',
@@ -8709,6 +8724,7 @@ api_names = [
     'APIUpdateSystemTagMsg',
     'APIUpdateUserGroupMsg',
     'APIUpdateUserMsg',
+    'APIUpdateVCenterMsg',
     'APIUpdateVipMsg',
     'APIUpdateVirtualRouterOfferingMsg',
     'APIUpdateVmInstanceMsg',
@@ -11451,11 +11467,13 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -11500,6 +11518,7 @@ class GlobalConfig_VIRTUALROUTER(object):
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
+    VYOS_PASSWORD = 'vyos.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod
@@ -11699,7 +11718,7 @@ class QueryObjectFusionstorBackupStorageInventory(object):
      }
 
 class QueryObjectFusionstorBackupStorageMonInventory(object):
-     PRIMITIVE_FIELDS = ['sshPort','hostname','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','status','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','status','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -11716,7 +11735,7 @@ class QueryObjectFusionstorPrimaryStorageInventory(object):
      }
 
 class QueryObjectFusionstorPrimaryStorageMonInventory(object):
-     PRIMITIVE_FIELDS = ['sshPort','hostname','sshUsername','monPort','lastOpDate','sshPassword','primaryStorageUuid','createDate','status','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','primaryStorageUuid','createDate','status','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }

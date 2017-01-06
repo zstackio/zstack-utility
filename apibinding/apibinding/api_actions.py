@@ -4794,6 +4794,18 @@ class UpdateUserGroupAction(inventory.APIUpdateUserGroupMsg):
         self.out = evt
         return self.out
 
+class UpdateVCenterAction(inventory.APIUpdateVCenterMsg):
+    def __init__(self):
+        super(UpdateVCenterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateVCenterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateVipAction(inventory.APIUpdateVipMsg):
     def __init__(self):
         super(UpdateVipAction, self).__init__()
