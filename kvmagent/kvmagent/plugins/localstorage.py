@@ -202,9 +202,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             report.progress_report(str(percent), "report")
             return synced
 
-        if len(cmd.md5s) > 0:
-            report.resourceUuid = cmd.md5s[0].resourceUuid
-            report.progress_report("0", "start")
+        report.resourceUuid = cmd.volumeUuid
+        report.progress_report("0", "start")
+
         for to in cmd.md5s:
             _, md5, _ = bash_progress_1("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, PFILE), _get_progress)
             rsp.md5s.append({
@@ -240,8 +240,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             report.progress_report(percent, "report")
             return synced
 
+        report.resourceUuid = cmd.volumeUuid
         for to in cmd.md5s:
-            report.resourceUuid = to.resourceUuid
             _, dst_md5, _ = bash_progress_1("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, PFILE), _get_progress)
 
             if dst_md5 != to.md5:
