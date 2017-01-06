@@ -11,6 +11,8 @@ import zstacklib.utils.lock as lock
 import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
+import os
+from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 

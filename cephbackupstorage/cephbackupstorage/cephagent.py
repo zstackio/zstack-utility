@@ -1,6 +1,5 @@
 __author__ = 'frank'
 
-import functools
 import os
 import os.path
 import pprint
@@ -10,10 +9,10 @@ import urllib2
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
-import zstacklib.utils.linux as linux
 from zstacklib.utils.bash import *
-from zstacklib.utils.report import Progress
 from zstacklib.utils.report import Report
+from zstacklib.utils import shell
+from zstacklib.utils.rollback import rollback, rollbackable
 
 logger = log.get_logger(__name__)
 

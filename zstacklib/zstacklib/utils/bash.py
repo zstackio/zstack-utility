@@ -101,7 +101,6 @@ def bash_progress_1(cmd, func):
         watch_thread.start()
         o, e = p.communicate(cmd)
         r = p.returncode
-        watch_thread.stop()
 
         __BASH_DEBUG_INFO__ = ctx.get('__BASH_DEBUG_INFO__')
         if __BASH_DEBUG_INFO__ is not None:
@@ -112,12 +111,14 @@ def bash_progress_1(cmd, func):
             })
 
         if r != 0:
+            watch_thread.stop()
             raise BashError('failed to execute bash[%s], return code: %s, stderr: %s' % (cmd, r, e))
         return r, o, None
     except Exception as ex:
         linux.get_exception_stacktrace()
-        watch_thread.stop()
         return None, None, ex
+    finally:
+        watch_thread.stop()
 
 
 

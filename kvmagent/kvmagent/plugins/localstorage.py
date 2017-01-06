@@ -8,10 +8,9 @@ from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
-from zstacklib.utils import linux
-from zstacklib.utils.report import Progress
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
+from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
