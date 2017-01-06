@@ -53,9 +53,9 @@ class ImageStoreClient(object):
         if not os.path.isfile(imf):
             self.commit_to_imagestore(cmd, req)
 
-        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s push %s' % (
+        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s push %s' % (
         self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
-                req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.primaryStorageInstallPath)
+                req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.primaryStorageInstallPath)
         logger.debug(cmdstr)
         logger.debug('pushing %s to image store' % cmd.primaryStorageInstallPath)
         shell.call(cmdstr)
@@ -74,8 +74,8 @@ class ImageStoreClient(object):
         shell.call('/bin/sync ' + fpath)
 
         # Add the image to registry
-        cmdstr = '%s -json  -callbackurl %s -taskid %s add -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
-                req[http.REQUEST_HEADER].get(http.TASK_UUID), fpath)
+        cmdstr = '%s -json  -callbackurl %s -taskid %s -imageUuid %s add -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
+                req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, fpath)
 
         logger.debug('adding %s to local image store' % fpath)
         shell.call(cmdstr)
