@@ -4371,11 +4371,16 @@ class CollectLogCmd(Command):
         command = "cp /var/log/dmesg* /var/log/messages %s" % tmp_log_dir
         run_remote_command(command, host_post_info)
 
+    def get_pkg_list(self, host_post_info, tmp_log_dir):
+        command = "rpm -qa | sort > %s/pkg_list" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+
+
     def get_vrouter_log(self, host_post_info, collect_dir):
         #current vrouter log is very small, so collect all logs for debug
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from vrouter: %s ..." % host_post_info.host)
-            local_collect_dir = collect_dir + host_post_info.host + '-vrouter/'
+            local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.vrouter_log_dir
             command = "mkdir -p %s " % tmp_log_dir
             run_remote_command(command, host_post_info)
@@ -4387,17 +4392,18 @@ class CollectLogCmd(Command):
         else:
             warn("Vrouter %s is unreachable!" % host_post_info.host)
 
-    def get_host_log(self, host_post_info, collect_dir):
+    def get_host_log(self, host_post_info, collect_dir, collect_full_log=False):
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from host: %s ..." % host_post_info.host)
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
-            local_collect_dir = collect_dir + host_post_info.host + '/'
+            local_collect_dir = collect_dir + 'host-%s/' %  host_post_info.host
             try:
                 # file system broken shouldn't block collect log process
                 if not os.path.exists(local_collect_dir):
                     os.makedirs(local_collect_dir)
                 command = "mkdir -p %s " % tmp_log_dir
                 run_remote_command(command, host_post_info)
+
                 for log in CollectLogCmd.host_log_list:
                     if 'zstack-agent' in log:
                         command = "mkdir -p %s" % tmp_log_dir + '/zstack-agent/'
@@ -4405,8 +4411,16 @@ class CollectLogCmd(Command):
                     host_log = CollectLogCmd.zstack_log_dir + '/' + log
                     collect_log = tmp_log_dir + '/' + log
                     if file_dir_exist("path=%s" % host_log, host_post_info):
-                        command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, host_log, collect_log)
-                        run_remote_command(command, host_post_info)
+                        if collect_full_log:
+                            for num in range(1, 16):
+                                log_name = "%s.%s.gz" % (host_log, num)
+                                command = "/bin/cp -rf %s %s/" % (log_name, tmp_log_dir)
+                                (status, output) = run_remote_command(command, host_post_info, True, True)
+                            command = "/bin/cp -rf %s %s/" % (host_log, tmp_log_dir)
+                            (status, output) = run_remote_command(command, host_post_info, True, True)
+                        else:
+                            command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, host_log, collect_log)
+                            run_remote_command(command, host_post_info)
             except SystemExit:
                 warn("collect log on host %s failed" % host_post_info.host)
                 logger.warn("collect log on host %s failed" % host_post_info.host)
@@ -4423,17 +4437,18 @@ class CollectLogCmd(Command):
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
+            self.get_pkg_list(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir,host_post_info)
 
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
-    def get_storage_log(self, host_post_info, collect_dir, storage_type):
+    def get_storage_log(self, host_post_info, collect_dir, storage_type, collect_full_log=False):
         collect_log_list = []
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
-            local_collect_dir = collect_dir + host_post_info.host + '-' + storage_type + '/'
+            local_collect_dir = collect_dir + storage_type + '-' + host_post_info.host+ '/'
             try:
             # file system broken shouldn't block collect log process
                 if not os.path.exists(local_collect_dir):
@@ -4453,8 +4468,16 @@ class CollectLogCmd(Command):
                     storage_agent_log = CollectLogCmd.zstack_log_dir + '/' + log
                     collect_log = tmp_log_dir + '/' + log
                     if file_dir_exist("path=%s" % storage_agent_log, host_post_info):
-                        command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, storage_agent_log, collect_log)
-                        run_remote_command(command, host_post_info)
+                        if collect_full_log:
+                            for num in range(1, 16):
+                                log_name = "%s.%s.gz" % (storage_agent_log, num)
+                                command = "/bin/cp -rf %s %s/" % (log_name, tmp_log_dir)
+                                (status, output) = run_remote_command(command, host_post_info, True, True)
+                            command = "/bin/cp -rf %s %s/" % (storage_agent_log, tmp_log_dir)
+                            (status, output) = run_remote_command(command, host_post_info, True, True)
+                        else:
+                            command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, storage_agent_log, collect_log)
+                            run_remote_command(command, host_post_info)
             except SystemExit:
                 logger.warn("collect log on storage: %s failed" % host_post_info.host)
                 command = 'rm -rf %s' % tmp_log_dir
@@ -4468,6 +4491,7 @@ class CollectLogCmd(Command):
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
+            self.get_pkg_list(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir, host_post_info)
         else:
             warn("%s storage %s is unreachable!" % (storage_type, host_post_info.host))
@@ -4545,7 +4569,7 @@ class CollectLogCmd(Command):
         if check_host_reachable(host_post_info) is True:
             mn_ip = host_post_info.host
             info("Collecting log from management node %s ..." % mn_ip)
-            local_collect_dir = collect_dir + "/mn-%s/" % mn_ip + '/'
+            local_collect_dir = collect_dir + "/management-node-%s/" % mn_ip + '/'
             if not os.path.exists(local_collect_dir):
                 os.makedirs(local_collect_dir)
 
@@ -4572,6 +4596,7 @@ class CollectLogCmd(Command):
                     run_remote_command(command, host_post_info)
 
             self.get_system_log(host_post_info, tmp_log_dir)
+            self.get_pkg_list(host_post_info, tmp_log_dir)
 
             self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
@@ -4609,6 +4634,8 @@ class CollectLogCmd(Command):
         command = "cp /var/log/dmesg* /var/log/messages %s/" % mn_log_dir
         commands.getstatusoutput(command)
         command = "cp %s/*-git-commit %s/" % (ctl.zstack_home, mn_log_dir)
+        commands.getstatusoutput(command)
+        command = " rpm -qa | sort  > %s/pkg_list" % mn_log_dir
         commands.getstatusoutput(command)
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
@@ -4649,7 +4676,7 @@ class CollectLogCmd(Command):
             hostname, port, user, password = ctl.get_live_mysql_portal()
             detail_version = get_zstack_version(hostname, port, user, password)
         # collect_dir used to store the collect-log
-        collect_dir = run_command_dir + "/" + 'collect-log-' + detail_version + '-' + time_stamp + '/'
+        collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
         if os.path.exists(InstallHACmd.conf_file) is not True:
@@ -4682,7 +4709,7 @@ class CollectLogCmd(Command):
 
                 host_type = host['hypervisorType']
                 if host_type == "KVM":
-                    self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir)
+                    self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir, args.full)
                 else:
                     warn("host %s is not a KVM host, skip..." % host_ip)
                     break
