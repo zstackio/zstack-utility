@@ -4633,7 +4633,7 @@ class CollectLogCmd(Command):
         commands.getstatusoutput(command)
         command = "cp /var/log/dmesg* /var/log/messages %s/" % mn_log_dir
         commands.getstatusoutput(command)
-        command = "cp %s/*-git-commit %s/" % (ctl.zstack_home, mn_log_dir)
+        command = "cp %s/*git-commit %s/" % (ctl.zstack_home, mn_log_dir)
         commands.getstatusoutput(command)
         command = " rpm -qa | sort  > %s/pkg_list" % mn_log_dir
         commands.getstatusoutput(command)
