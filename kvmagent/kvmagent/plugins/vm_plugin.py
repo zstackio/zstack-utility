@@ -626,6 +626,8 @@ class VirtioSCSICeph(object):
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
+        if self.volume.shareable:
+            e(disk, 'shareable')
         return disk
 
 
@@ -759,6 +761,8 @@ class VirtioSCSIFusionstor(object):
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
         e(disk, 'wwn', self.volume.wwn)
+        if self.volume.shareable:
+            e(disk, 'shareable')
         return disk
 
 
@@ -1327,10 +1331,7 @@ class Vm(object):
                 return etree.tostring(xml_obj)
 
             if volume.useVirtioSCSI:
-                disk = virtio_scsi_ceph()
-                if volume.shareable:
-                    e(disk, 'shareable')
-                return disk
+                return virtio_scsi_ceph()
             else:
                 if volume.useVirtio:
                     return virtoio_ceph()
@@ -1361,10 +1362,7 @@ class Vm(object):
                 return etree.tostring(xml_obj)
 
             if volume.useVirtioSCSI:
-                disk = virtio_scsi_fusionstor()
-                if volume.shareable:
-                    e(disk, 'shareable')
-                return disk
+                return virtio_scsi_fusionstor()
             else:
                 if volume.useVirtio:
                     return virtoio_fusionstor()
