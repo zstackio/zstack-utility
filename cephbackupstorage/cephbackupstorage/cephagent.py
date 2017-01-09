@@ -384,15 +384,17 @@ class CephAgent(object):
                 logger.warn(linux.get_exception_stacktrace())
                 return length
 
+        report = Report()
+        report.processType = "AddImage"
+        report.resourceUuid = cmd.imageUuid
+        report.progress_report("0", "start")
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             fail_if_has_backing_file(cmd.url)
             # roll back tmp ceph file after import it
             _1()
             if cmd.sendCommandUrl:
                 Report.url = cmd.sendCommandUrl
-            report = Report()
-            report.processType = "AddImage"
-            report.resourceUuid = cmd.imageUuid
+
             PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
             content_length = shell.call('curl -sI %s|grep Content-Length' % cmd.url).strip().split()[1]
             total = _getRealSize(content_length)
@@ -407,16 +409,16 @@ class CephAgent(object):
                 if total > 0 and synced < written:
                     synced = written
                     if synced < total:
-                        percent = int(round(float(synced) / float(total) * 100))
+                        percent = int(round(float(synced) / float(total) * 90))
                         report.progress_report(percent, "report")
                 return synced
 
             logger.debug("content-length is: %s" % total)
-            report.progress_report("0", "start")
+
             bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
                        % (cmd.url, PFILE, pool, tmp_image_name), _getProgress)
             actual_size = linux.get_file_size_by_http_head(cmd.url)
-            report.progress_report("100", "finish")
+
             if os.path.exists(PFILE):
                 os.remove(PFILE)
 
@@ -454,6 +456,7 @@ class CephAgent(object):
                     os.remove(conf_path)
         else:
             shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
+        report.progress_report("100", "finish")
 
         @rollbackable
         def _2():
