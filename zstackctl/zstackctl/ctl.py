@@ -4392,7 +4392,7 @@ class CollectLogCmd(Command):
         else:
             warn("Vrouter %s is unreachable!" % host_post_info.host)
 
-    def get_host_log(self, host_post_info, collect_dir):
+    def get_host_log(self, host_post_info, collect_dir, collect_full_log=False):
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from host: %s ..." % host_post_info.host)
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
@@ -4403,6 +4403,7 @@ class CollectLogCmd(Command):
                     os.makedirs(local_collect_dir)
                 command = "mkdir -p %s " % tmp_log_dir
                 run_remote_command(command, host_post_info)
+
                 for log in CollectLogCmd.host_log_list:
                     if 'zstack-agent' in log:
                         command = "mkdir -p %s" % tmp_log_dir + '/zstack-agent/'
@@ -4410,8 +4411,16 @@ class CollectLogCmd(Command):
                     host_log = CollectLogCmd.zstack_log_dir + '/' + log
                     collect_log = tmp_log_dir + '/' + log
                     if file_dir_exist("path=%s" % host_log, host_post_info):
-                        command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, host_log, collect_log)
-                        run_remote_command(command, host_post_info)
+                        if collect_full_log:
+                            for num in range(1, 16):
+                                log_name = "%s.%s.gz" % (host_log, num)
+                                command = "/bin/cp -rf %s %s/" % (log_name, tmp_log_dir)
+                                (status, output) = run_remote_command(command, host_post_info, True, True)
+                            command = "/bin/cp -rf %s %s/" % (host_log, tmp_log_dir)
+                            (status, output) = run_remote_command(command, host_post_info, True, True)
+                        else:
+                            command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, host_log, collect_log)
+                            run_remote_command(command, host_post_info)
             except SystemExit:
                 warn("collect log on host %s failed" % host_post_info.host)
                 logger.warn("collect log on host %s failed" % host_post_info.host)
@@ -4434,7 +4443,7 @@ class CollectLogCmd(Command):
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
-    def get_storage_log(self, host_post_info, collect_dir, storage_type):
+    def get_storage_log(self, host_post_info, collect_dir, storage_type, collect_full_log=False):
         collect_log_list = []
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
@@ -4459,8 +4468,16 @@ class CollectLogCmd(Command):
                     storage_agent_log = CollectLogCmd.zstack_log_dir + '/' + log
                     collect_log = tmp_log_dir + '/' + log
                     if file_dir_exist("path=%s" % storage_agent_log, host_post_info):
-                        command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, storage_agent_log, collect_log)
-                        run_remote_command(command, host_post_info)
+                        if collect_full_log:
+                            for num in range(1, 16):
+                                log_name = "%s.%s.gz" % (storage_agent_log, num)
+                                command = "/bin/cp -rf %s %s/" % (log_name, tmp_log_dir)
+                                (status, output) = run_remote_command(command, host_post_info, True, True)
+                            command = "/bin/cp -rf %s %s/" % (storage_agent_log, tmp_log_dir)
+                            (status, output) = run_remote_command(command, host_post_info, True, True)
+                        else:
+                            command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, storage_agent_log, collect_log)
+                            run_remote_command(command, host_post_info)
             except SystemExit:
                 logger.warn("collect log on storage: %s failed" % host_post_info.host)
                 command = 'rm -rf %s' % tmp_log_dir
@@ -4692,7 +4709,7 @@ class CollectLogCmd(Command):
 
                 host_type = host['hypervisorType']
                 if host_type == "KVM":
-                    self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir)
+                    self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir, args.full)
                 else:
                     warn("host %s is not a KVM host, skip..." % host_ip)
                     break
