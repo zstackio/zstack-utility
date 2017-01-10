@@ -2537,6 +2537,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
     KVM_VM_CHANGE_PASSWORD_PATH = "/vm/changepasswd"
+    KVM_SET_VOLUME_BANDWIDTH = "/set/volume/bandwidth"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
 
@@ -2679,6 +2680,30 @@ class VmPlugin(kvmagent.KvmAgent):
             return self._escape(size)
         else:
             return self._get_image_mb_size(backing) + self._escape(size)
+
+    def _get_device(self, path, uuid):
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.lookupByName(uuid)
+        domain = call_libvirt()
+        domain_xml = domain.XMLDesc(0)
+        domain_xml_obj = xmlobject.loads(domain_xml)
+        device_id = None
+        for disk in domain_xml_obj.devices.get_child_node_as_list('disk'):
+            if disk.device_ == 'disk':
+                for source in disk.get_child_node_as_list('source'):
+                    if source.file_ == path:
+                        device_id = disk.get_child_node('target').dev_
+        return device_id
+
+    @kvmagent.replyerror
+    def set_volume_bandwidth(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
+        shell.call('virsh blkdeviotune %s %s --total_bytes_sec_max %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
+        shell.call('virsh blkdeviotune %s %s --total_bytes_sec %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def change_vm_password(self, req):
@@ -3084,6 +3109,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
+        http_server.register_async_uri(self.KVM_SET_VOLUME_BANDWIDTH, self.set_volume_bandwidth)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
 
@@ -3245,7 +3271,6 @@ class VmPlugin(kvmagent.KvmAgent):
                     logger.debug('the vm is migrated from another host, we do not need to set the console firewall, as '
                                  'the management node will take care')
                     return
-
                 for g in domain_xmlobject.devices.get_child_node_as_list('graphics'):
                     if g.type_ == 'vnc' or g.type_ == 'spice':
                         vir.port = g.port_
