@@ -1077,6 +1077,12 @@ if [ $? -ne 0 ]; then
     sed -i '/\[mysqld\]/a binlog_format=mixed\' $mysql_conf
 fi
 
+grep 'log_bin_trust_function_creators=' $mysql_conf
+if [ $? -ne 0 ]; then
+    echo "log_bin_trust_function_creators=1"
+    sed -i '/\[mysqld\]/a log_bin_trust_function_creators=1\' $mysql_conf
+fi
+
 grep 'expire_logs=' $mysql_conf
 if [ $? -ne 0 ]; then
     echo "expire_logs=30"
