@@ -216,7 +216,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if os.path.exists(PFILE):
             os.remove(PFILE)
 
-        report.progress_report("10", "report")
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -270,7 +269,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         report.processType = "LocalStorageMigrateVolume"
         report.resourceUuid = cmd.uuid
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
-        report.progress_report("10", "report")
 
         total = 0
         for path in set(chain):
@@ -278,7 +276,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         written = 0
         def _get_progress(synced):
-            logger.debug("getProgress in localstorage-agent, total: %s" % total)
+            logger.debug("getProgress in localstorage-agent, synced: %s, total: %s" % (synced, total))
             if not os.path.exists(PFILE):
                 return synced
             fpread = open(PFILE, 'r')
@@ -294,11 +292,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if not line.isdigit():
                 return synced
             if total > 0:
-                write = written + long(line) + synced
-                if write < total:
-                    percent = int(round(float(written) / float(total) * 80 + 10))
+                synced = long(line)
+                if synced < total:
+                    percent = int(round(float(written + synced) / float(total) * 80 + 10))
                     report.progress_report(percent, "report")
-                synced += long(line)
+                    synced = written
             fpread.close()
             return synced
 
@@ -318,7 +316,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
-        report.progress_report("90", "report")
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
