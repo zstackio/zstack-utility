@@ -4714,7 +4714,6 @@ class CollectLogCmd(Command):
                     self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir, args.full)
                 else:
                     warn("host %s is not a KVM host, skip..." % host_ip)
-                    break
                 if args.host is not None:
                     break
 
