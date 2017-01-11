@@ -2606,6 +2606,18 @@ class GetTaskProgressAction(inventory.APIGetTaskProgressMsg):
         self.out = evt
         return self.out
 
+class GetVCenterDVSwitchesAction(inventory.APIGetVCenterDVSwitchesMsg):
+    def __init__(self):
+        super(GetVCenterDVSwitchesAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVCenterDVSwitchesAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVersionAction(inventory.APIGetVersionMsg):
     def __init__(self):
         super(GetVersionAction, self).__init__()
