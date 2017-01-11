@@ -2538,6 +2538,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_VM_CHECK_STATE = "/vm/checkstate"
     KVM_VM_CHANGE_PASSWORD_PATH = "/vm/changepasswd"
     KVM_SET_VOLUME_BANDWIDTH = "/set/volume/bandwidth"
+    KVM_SET_NIC_QOS = "/set/nic/qos"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
 
@@ -2703,6 +2704,16 @@ class VmPlugin(kvmagent.KvmAgent):
         device_id = self._get_device(cmd.installPath, cmd.vmUuid)
         shell.call('virsh blkdeviotune %s %s --total_bytes_sec_max %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
         shell.call('virsh blkdeviotune %s %s --total_bytes_sec %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def set_nic_qos(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if cmd.inboundBandwidth != -1:
+            shell.call('virsh domiftune %s %s --inbound %s' % (cmd.vmUuid, cmd.internalName, cmd.inboundBandwidth/1024))
+        if cmd.outboundBandwidth != -1:
+            shell.call('virsh domiftune %s %s --outbound %s' % (cmd.vmUuid, cmd.internalName, cmd.outboundBandwidth/1024))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -3110,6 +3121,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
         http_server.register_async_uri(self.KVM_SET_VOLUME_BANDWIDTH, self.set_volume_bandwidth)
+        http_server.register_async_uri(self.KVM_SET_NIC_QOS, self.set_nic_qos)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
 
