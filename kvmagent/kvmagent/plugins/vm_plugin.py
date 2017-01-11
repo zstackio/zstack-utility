@@ -2703,8 +2703,6 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
         device_id = self._get_device(cmd.installPath, cmd.vmUuid)
         shell.call('virsh blkdeviotune %s %s --total_bytes_sec %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
-        shell.call('virsh blkdeviotune %s %s --total_bytes_sec_max %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
-        shell.call('virsh blkdeviotune %s %s --total_bytes_sec %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
