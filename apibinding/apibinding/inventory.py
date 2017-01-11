@@ -3577,7 +3577,7 @@ class APIChangePrimaryStorageStateMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         #mandatory field
-        #valid values: [enable, disable, maintain]
+        #valid values: [enable, disable, maintain, deleting]
         self.stateEvent = NotNoneField()
         self.session = None
         self.timeout = None
@@ -7968,6 +7968,28 @@ class APIDeleteVCenterMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETVCENTERDVSWITCHESMSG_FULL_NAME = 'org.zstack.vmware.APIGetVCenterDVSwitchesMsg'
+class APIGetVCenterDVSwitchesMsg(object):
+    FULL_NAME='org.zstack.vmware.APIGetVCenterDVSwitchesMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVCENTERDVSWITCHESREPLY_FULL_NAME = 'org.zstack.vmware.APIGetVCenterDVSwitchesReply'
+class APIGetVCenterDVSwitchesReply(object):
+    FULL_NAME='org.zstack.vmware.APIGetVCenterDVSwitchesReply'
+    def __init__(self):
+        self.vcUuid = None
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIQUERYVCENTERBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterBackupStorageMsg'
 class APIQueryVCenterBackupStorageMsg(object):
     FULL_NAME='org.zstack.vmware.APIQueryVCenterBackupStorageMsg'
@@ -8411,6 +8433,8 @@ api_names = [
     'APIGetTaskProgressReply',
     'APIGetUserGroupReply',
     'APIGetUserReply',
+    'APIGetVCenterDVSwitchesMsg',
+    'APIGetVCenterDVSwitchesReply',
     'APIGetVersionMsg',
     'APIGetVersionReply',
     'APIGetVirtualRouterOfferingReply',
