@@ -4316,6 +4316,21 @@ class APICreateVmInstanceMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETENICQOSMSG_FULL_NAME = 'org.zstack.header.vm.APIDeleteNicQosMsg'
+class APIDeleteNicQosMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIDeleteNicQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [in, out]
+        self.direction = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDELETEVMCONSOLEPASSWORDMSG_FULL_NAME = 'org.zstack.header.vm.APIDeleteVmConsolePasswordMsg'
 class APIDeleteVmConsolePasswordMsg(object):
     FULL_NAME='org.zstack.header.vm.APIDeleteVmConsolePasswordMsg'
@@ -5251,6 +5266,18 @@ class APIDeleteDataVolumeMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEVOLUMEQOSMSG_FULL_NAME = 'org.zstack.header.volume.APIDeleteVolumeQosMsg'
+class APIDeleteVolumeQosMsg(object):
+    FULL_NAME='org.zstack.header.volume.APIDeleteVolumeQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDETACHDATAVOLUMEFROMVMMSG_FULL_NAME = 'org.zstack.header.volume.APIDetachDataVolumeFromVmMsg'
 class APIDetachDataVolumeFromVmMsg(object):
     FULL_NAME='org.zstack.header.volume.APIDetachDataVolumeFromVmMsg'
@@ -5434,7 +5461,8 @@ class APISetVolumeQosMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.volumeBandwidth = None
+        #mandatory field
+        self.volumeBandwidth = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7968,28 +7996,6 @@ class APIDeleteVCenterMsg(object):
         self.userTags = OptionalList()
 
 
-APIGETVCENTERDVSWITCHESMSG_FULL_NAME = 'org.zstack.vmware.APIGetVCenterDVSwitchesMsg'
-class APIGetVCenterDVSwitchesMsg(object):
-    FULL_NAME='org.zstack.vmware.APIGetVCenterDVSwitchesMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIGETVCENTERDVSWITCHESREPLY_FULL_NAME = 'org.zstack.vmware.APIGetVCenterDVSwitchesReply'
-class APIGetVCenterDVSwitchesReply(object):
-    FULL_NAME='org.zstack.vmware.APIGetVCenterDVSwitchesReply'
-    def __init__(self):
-        self.vcUuid = None
-        self.inventories = OptionalList()
-        self.success = None
-        self.error = None
-
-
 APIQUERYVCENTERBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.vmware.APIQueryVCenterBackupStorageMsg'
 class APIQueryVCenterBackupStorageMsg(object):
     FULL_NAME='org.zstack.vmware.APIQueryVCenterBackupStorageMsg'
@@ -8294,6 +8300,7 @@ api_names = [
     'APIDeleteLoadBalancerListenerMsg',
     'APIDeleteLoadBalancerMsg',
     'APIDeleteLogMsg',
+    'APIDeleteNicQosMsg',
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
@@ -8313,6 +8320,7 @@ api_names = [
     'APIDeleteVmNicFromSecurityGroupMsg',
     'APIDeleteVmSshKeyMsg',
     'APIDeleteVmStaticIpMsg',
+    'APIDeleteVolumeQosMsg',
     'APIDeleteVolumeSnapshotFromBackupStorageMsg',
     'APIDeleteVolumeSnapshotMsg',
     'APIDeleteZoneMsg',
@@ -8433,8 +8441,6 @@ api_names = [
     'APIGetTaskProgressReply',
     'APIGetUserGroupReply',
     'APIGetUserReply',
-    'APIGetVCenterDVSwitchesMsg',
-    'APIGetVCenterDVSwitchesReply',
     'APIGetVersionMsg',
     'APIGetVersionReply',
     'APIGetVirtualRouterOfferingReply',
@@ -11491,13 +11497,11 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -11542,7 +11546,6 @@ class GlobalConfig_VIRTUALROUTER(object):
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
-    VYOS_PASSWORD = 'vyos.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod

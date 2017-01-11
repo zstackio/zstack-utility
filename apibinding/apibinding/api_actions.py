@@ -1562,6 +1562,18 @@ class DeleteLogAction(inventory.APIDeleteLogMsg):
         self.out = evt
         return self.out
 
+class DeleteNicQosAction(inventory.APIDeleteNicQosMsg):
+    def __init__(self):
+        super(DeleteNicQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteNicQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeletePolicyAction(inventory.APIDeletePolicyMsg):
     def __init__(self):
         super(DeletePolicyAction, self).__init__()
@@ -1786,6 +1798,18 @@ class DeleteVmStaticIpAction(inventory.APIDeleteVmStaticIpMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteVmStaticIpAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVolumeQosAction(inventory.APIDeleteVolumeQosMsg):
+    def __init__(self):
+        super(DeleteVolumeQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVolumeQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2602,18 +2626,6 @@ class GetTaskProgressAction(inventory.APIGetTaskProgressMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetTaskProgressAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class GetVCenterDVSwitchesAction(inventory.APIGetVCenterDVSwitchesMsg):
-    def __init__(self):
-        super(GetVCenterDVSwitchesAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetVCenterDVSwitchesAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
