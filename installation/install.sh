@@ -1146,12 +1146,36 @@ uz_upgrade_zstack_ctl(){
     pass
 }
 
+upgrade_mysql_configuration(){
+    echo "modify my.cnf" >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ -f /etc/mysql/mariadb.conf.d/50-server.cnf ]; then
+        #ubuntu 16.04
+        mysql_conf=/etc/mysql/mariadb.conf.d/50-server.cnf
+    elif [ -f /etc/mysql/my.cnf ]; then
+        # Ubuntu 14.04
+        mysql_conf=/etc/mysql/my.cnf
+    elif [ -f /etc/my.cnf ]; then
+        # centos
+        mysql_conf=/etc/my.cnf
+    fi
+
+    grep 'log_bin_trust_function_creators=' $mysql_conf >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "log_bin_trust_function_creators=1" >>$ZSTACK_INSTALL_LOG 2>&1
+        sed -i '/\[mysqld\]/a log_bin_trust_function_creators=1\' $mysql_conf
+    fi
+
+    systemctl restart mariadb.service >>$ZSTACK_INSTALL_LOG 2>&1
+
+}
+
 uz_upgrade_zstack(){
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
     cd $upgrade_folder
 
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        upgrade_mysql_configuration
         if [ ! -z $DEBUG ]; then
             if [ $FORCE = 'n' ];then
                 zstack-ctl upgrade_db --dry-run
