@@ -2693,8 +2693,18 @@ class VmPlugin(kvmagent.KvmAgent):
         for disk in domain_xml_obj.devices.get_child_node_as_list('disk'):
             if disk.device_ == 'disk':
                 for source in disk.get_child_node_as_list('source'):
-                    if source.file_ == path:
+                    if source.hasattr('file_') and source.file_ == path:
                         device_id = disk.get_child_node('target').dev_
+                    elif source.hasattr('protocol_') and source.protocol_ == 'rbd' \
+                        and source.name_ == path[7:]:
+                        '''ceph://xxx'''
+                        device_id = disk.get_child_node('target').dev_
+                    elif source.hasattr('protocol_') and source.protocol_ == 'nbd' \
+                        and source.name_ == path[13:]:
+                        '''fusionstor://xxx'''
+                        device_id = disk.get_child_node('target').dev_
+                    else:
+                        pass
         return device_id
 
     @kvmagent.replyerror
