@@ -426,7 +426,7 @@ check_system(){
     fi
     debug "Your system is: $OS"
 
-    if [ $UPGRADE = 'y' ]; then
+    if [ x"$UPGRADE" = x'y' ]; then
         which zstack-ctl >/dev/null 2>&1
         if [ $? -ne 0 ]; then
             fail2 "Did not find zstack-ctl. Can not use option '-u' to upgrade $PRODUCT_NAME . Please remove '-u' and do fresh installation."
@@ -459,7 +459,7 @@ cs_check_epel(){
     [ ! -z $ZSTACK_PKG_MIRROR ] && return
     if [ "$OS" = $CENTOS7 -o "$OS" = $CENTOS6 ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
-            if [ $UPGRADE != 'n' ]; then
+            if [ x"$UPGRADE" != x'n' ]; then
                 [ ! -z $ZSTACK_YUM_REPOS ] && return
             fi
 #            if [ -z $QUIET_INSTALLATION ]; then
@@ -512,7 +512,7 @@ do_enable_sudo(){
 
 do_check_system(){
     echo_subtitle "Check System"
-    if [ $UPGRADE = 'n' ]; then
+    if [ x"$UPGRADE" = x'n' ]; then
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
             echo "stop zstack all services" >>$ZSTACK_INSTALL_LOG
             zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
@@ -524,7 +524,7 @@ do_check_system(){
         fail "User checking failure: ${PRODUCT_NAME} installation must be run with user: root . Current user is: `whoami`. Please append 'sudo'."
     fi
 
-    if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
+    if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
         ping -c 1 -w 1 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ]; then
             ping -c 1 -w 2 $WEBSITE >>$ZSTACK_INSTALL_LOG 2>&1
@@ -729,7 +729,7 @@ upgrade_zstack(){
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
 
-    if [ $UI_INSTALLATION_STATUS = 'y' ]; then
+    if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
         echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
         show_spinner sd_install_dashboard
     fi
@@ -744,7 +744,7 @@ upgrade_zstack(){
     current_major_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
     current_minor_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     upgrade_params=''
-    if [ $current_major_version = $PRE_MAJOR_VERSION ]; then
+    if [ x"$current_major_version" = x"$PRE_MAJOR_VERSION" ]; then
         while [ $current_minor_version -gt $PRE_MINOR_VERSION ]; do
             PRE_MINOR_VERSION=`expr $PRE_MINOR_VERSION + 1`
             upgrade_params="${upgrade_params} ${upgrade_params_arrays_zstack1[$PRE_MINOR_VERSION]}"
@@ -759,7 +759,7 @@ upgrade_zstack(){
             show_spinner sz_start_zstack
         fi
     
-        if [ $UI_CURRENT_STATUS = 'y' ]; then
+        if [ x"$UI_CURRENT_STATUS" = x'y' ]; then
             echo "start dashboard" >>$ZSTACK_INSTALL_LOG
             show_spinner sd_start_dashboard
         fi
@@ -780,7 +780,7 @@ cs_pre_check(){
         fi
     fi
     #change zstack.properties config
-    if [ $UPGRADE != 'n' ]; then
+    if [ x"$UPGRADE" != x'n' ]; then
         zstack_properties=`zstack-ctl status 2>/dev/null|grep zstack.properties|awk '{print $2}'`
     else
         zstack_properties=$ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES
@@ -995,7 +995,7 @@ install_system_libs(){
 is_enable_ntpd(){
     echo_subtitle "Enable NTP"
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ];then
-        if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
+        if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
             grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
                 echo "server 0.pool.ntp.org iburst" >> /etc/ntp.conf
@@ -1020,7 +1020,7 @@ is_enable_ntpd(){
         systemctl enable ntpd >> $ZSTACK_INSTALL_LOG 2>&1
         systemctl restart ntpd >> $ZSTACK_INSTALL_LOG 2>&1
     else
-        if [ $ZSTACK_OFFLINE_INSTALL = 'n' ];then
+        if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
             grep '^server 0.ubuntu.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
                 echo "server 0.ubuntu.pool.ntp.org" >> /etc/ntp.conf
@@ -1081,7 +1081,7 @@ iz_download_zstack(){
 
 iz_unpack_zstack(){
     echo_subtitle "Unpack ${PRODUCT_NAME} package"
-    if [ $UPGRADE = 'n' ]; then
+    if [ x"$UPGRADE" = x'n' ]; then
         mkdir -p $ZSTACK_INSTALL_ROOT
         all_in_one=$ZSTACK_INSTALL_ROOT/zstack_all_in_one.tgz
         mv $zstack_tmp_file $all_in_one
@@ -1177,13 +1177,13 @@ uz_upgrade_zstack(){
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         upgrade_mysql_configuration
         if [ ! -z $DEBUG ]; then
-            if [ $FORCE = 'n' ];then
+            if [ x"$FORCE" = x'n' ];then
                 zstack-ctl upgrade_db --dry-run
             else
                 zstack-ctl upgrade_db --dry-run --force
             fi
         else
-            if [ $FORCE = 'n' ];then
+            if [ x"$FORCE" = x'n' ];then
                 zstack-ctl upgrade_db --dry-run >>$ZSTACK_INSTALL_LOG 2>&1
             else
                 zstack-ctl upgrade_db --dry-run --force >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1221,13 +1221,13 @@ uz_upgrade_zstack(){
     
         if [ -z $NEED_KEEP_DB ];then
             if [ ! -z $DEBUG ]; then
-                if [ $FORCE = 'n' ];then
+                if [ x"$FORCE" = x'n' ];then
                     zstack-ctl upgrade_db
                 else
                     zstack-ctl upgrade_db --force
                 fi
             else
-                if [ $FORCE = 'n' ];then
+                if [ x"$FORCE" = x'n' ];then
                     zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
                 else
                     zstack-ctl upgrade_db --force >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1426,14 +1426,14 @@ cs_config_zstack_properties(){
     if [ $? -ne 0 ];then
         fail "failed to change owner for /var/lib/zstack"
     fi
-    if [ $UPGRADE = 'n' ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
+    if [ x"$UPGRADE" = x'n' ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
         zstack-ctl configure CloudBus.rabbitmqUsername=zstack
         zstack-ctl configure CloudBus.rabbitmqPassword=zstack.password
     fi
     if [ ! -z $ZSTACK_PROPERTIES_REPO ];then
         zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_PROPERTIES_REPO
     fi
-    if [ $PRODUCT_NAME = $SS100 ] ; then
+    if [ x"$PRODUCT_NAME" = x"$SS100" ] ; then
         zstack-ctl configure Fusionstor.type=$SS100_STORAGE
     fi
     if [ ! -z $CONSOLE_PROXY_ADDRESS ];then
@@ -2158,7 +2158,7 @@ do
 done
 OPTIND=1
 
-if [ $ZSTACK_OFFLINE_INSTALL = 'y' ]; then
+if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
     if [ ! -d /opt/zstack-dvd/ ]; then
         fail2 "Did not find the /opt/zstack-dvd folder, offline installation cannot proceed!"
     fi
@@ -2168,7 +2168,7 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
     if [ "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_163" -a "$ZSTACK_PKG_MIRROR" != "$PKG_MIRROR_ALIYUN" ]; then
         fail2 "\n\tYou want to use yum mirror from '$ZSTACK_PKG_MIRROR' . But $PRODUCT_NAME only supports yum mirrors for '$PKG_MIRROR_ALIYUN' or '$PKG_MIRROR_163'. Please fix it and rerun the installation.\n\n"
     fi
-    if [ $ZSTACK_PKG_MIRROR = $PKG_MIRROR_163 ]; then
+    if [ x"$ZSTACK_PKG_MIRROR" = x"$PKG_MIRROR_163" ]; then
         ZSTACK_YUM_REPOS=$MIRROR_163_YUM_REPOS
         ZSTACK_PROPERTIES_REPO=$MIRROR_163_YUM_REPOS
         WEBSITE=$MIRROR_163_YUM_WEBSITE
@@ -2180,7 +2180,7 @@ if [ ! -z $ZSTACK_PKG_MIRROR ]; then
 elif [ -z $YUM_ONLINE_REPO ]; then
     ZSTACK_YUM_REPOS=$ZSTACK_LOCAL_YUM_REPOS
     ZSTACK_PROPERTIES_REPO=$ZSTACK_MN_REPOS
-elif [ $UPGRADE != 'n' ]; then
+elif [ x"$UPGRADE" != x'n' ]; then
     get_zstack_repo
 fi
 
@@ -2255,7 +2255,7 @@ if [ ! -z $HTTP_PROXY ]; then
     export https_proxy=$HTTP_PROXY
 fi
 
-if [ $UPGRADE = 'y' ]; then
+if [ x"$UPGRADE" = x'y' ]; then
     if [ -f $UPGRADE_LOCK ]; then
         echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"
         echo -e "$(tput setaf 1)  Reason: $UPGRADE_LOCK exist. If no other upgrading operation, please manually remove $UPGRADE_LOCK.\n$(tput sgr0)"
@@ -2303,7 +2303,7 @@ check_system
 #Download ${PRODUCT_NAME} all in one package
 download_zstack
 
-if [ $UPGRADE = 'y' ]; then
+if [ x"$UPGRADE" = x'y' ]; then
     PRE_MAJOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
     PRE_MINOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     #only upgrade zstack
@@ -2325,7 +2325,7 @@ if [ $UPGRADE = 'y' ]; then
     echo_star_line
     echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
     echo ""
-    if [ $CURRENT_STATUS = 'y' ]; then
+    if [ x"$CURRENT_STATUS" = x'y' ]; then
         if [ -z $NEED_KEEP_DB ];then
             echo -e " $(tput setaf 2)Management node has been started up again.$(tput sgr0) You can use \`zstack-ctl status\` to check its status."
         else
@@ -2335,10 +2335,10 @@ if [ $UPGRADE = 'y' ]; then
         echo -e " $(tput setaf 3)Management node is not started. Please use \`zstack-ctl start\` to start it up.$(tput sgr0)"
     fi
     echo ""
-    if [ $UI_INSTALLATION_STATUS = 'y' ]; then
+    if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
         echo -e " $(tput setaf 2)UI has been upgraded.$(tput sgr0)"
         echo ""
-        if [ $UI_CURRENT_STATUS = 'y' ]; then
+        if [ x"$UI_CURRENT_STATUS" = x'y' ]; then
             echo -e " $(tput setaf 2)UI daemon has been started up again.$(tput sgr0)"
         else
             echo -e " $(tput setaf 3)UI daemon is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
