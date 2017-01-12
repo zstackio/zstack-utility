@@ -79,6 +79,15 @@ if [ $? -ne 0 ]; then
     sed -i '/\[mysqld\]/a log-bin=mysql-binlog\' $mysql_conf
 fi
 
+grep 'max_connections' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "max_connections=1024"
+    sed -i '/\[mysqld\]/a max_connections=1024\' $mysql_conf
+else
+    echo "max_connections=1024"
+    sed -i 's/max_connections.*/max_connections=1024/g' $mysql_conf
+fi
+
 grep '^character-set-server' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "binlog_format=mixed"
