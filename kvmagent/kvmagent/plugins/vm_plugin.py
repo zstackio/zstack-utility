@@ -6,6 +6,7 @@ import os.path
 import time
 import traceback
 import xml.etree.ElementTree as etree
+import re
 
 import libvirt
 import zstacklib.utils.iptables as iptables
@@ -23,6 +24,9 @@ from zstacklib.utils import xmlobject
 
 logger = log.get_logger(__name__)
 
+ZS_XML_NAMESPACE = 'http://zstack.org'
+
+etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
 class NicTO(object):
     def __init__(self):
@@ -268,12 +272,20 @@ class VncPortIptableRule(object):
 
         internal_ids = []
         for vm in vms:
-            if not vm.domain_xmlobject.has_element('metadata.internalId'):
-                continue
+            if is_namespace_used():
+                vm_id_node = find_zstack_metadata_node(etree.fromstring(vm.domain_xml), 'internalId')
+                if not vm_id_node:
+                    continue
 
-            id = vm.domain_xmlobject.metadata.internalId.text_
-            if id:
-                internal_ids.append(id)
+                vm_id = vm_id_node.text
+            else:
+                if not vm.domain_xmlobject.has_element('metadata.internalId'):
+                    continue
+
+                vm_id = vm.domain_xmlobject.metadata.internalId.text_
+
+            if vm_id:
+                internal_ids.append(vm_id)
 
         # delete all vnc chains
         for chain in tbl.children:
@@ -286,12 +298,48 @@ class VncPortIptableRule(object):
         ipt.iptable_restore()
 
 
-def e(parent, tag, value=None, attrib={}):
+def e(parent, tag, value=None, attrib={}, usenamesapce = False):
+    if usenamesapce:
+        tag = '{%s}%s' % (ZS_XML_NAMESPACE, tag)
+
     el = etree.SubElement(parent, tag, attrib)
     if value:
         el.text = value
     return el
 
+
+def find_namespace_node(root, path, name):
+    ns = {'zs': ZS_XML_NAMESPACE}
+
+    ps = path.split('.')
+    cnode = root
+    for p in ps:
+        cnode = cnode.find(p)
+        if cnode is None:
+            return None
+
+    return cnode.find('zs:%s' % name, ns)
+
+def find_zstack_metadata_node(root, name):
+    zs = find_namespace_node(root, 'metadata', 'zstack')
+    if not zs:
+        return None
+
+    return zs.find(name)
+
+def compare_version(version1, version2):
+    def normalize(v):
+        return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
+    return cmp(normalize(version1), normalize(version2))
+
+def get_libvirt_version():
+    ret = shell.call('libvirtd --version')
+    return ret.split()[-1]
+
+LIBVIRT_VERSION = get_libvirt_version()
+
+def is_namespace_used():
+    return compare_version(LIBVIRT_VERSION, '2.5') >= 0
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
@@ -1202,7 +1250,12 @@ class Vm(object):
             raise kvmagent.KvmError('failed to resume vm ,timeout after 60 secs')
 
     def harden_console(self, mgmt_ip):
-        id = self.domain_xmlobject.metadata.internalId.text_
+        if is_namespace_used():
+            id_node = find_zstack_metadata_node(etree.fromstring(self.domain_xml), 'internalId')
+            id = id_node.text
+        else:
+            id = self.domain_xmlobject.metadata.internalId.text_
+
         vir = VncPortIptableRule()
         vir.vm_internal_id = id
         vir.delete()
@@ -2429,9 +2482,9 @@ class Vm(object):
             e(root, 'on_crash', 'restart')
             e(root, 'on_reboot', 'restart')
             meta = e(root, 'metadata')
-            e(meta, 'zstack', 'True')
-            e(meta, 'internalId', str(cmd.vmInternalId))
-            e(meta, 'hostManagementIp', str(cmd.hostManagementIp))
+            zs = e(meta, 'zstack', usenamesapce=True)
+            e(zs, 'internalId', str(cmd.vmInternalId))
+            e(zs, 'hostManagementIp', str(cmd.hostManagementIp))
 
         def make_vnc():
             devices = elements['devices']
@@ -3277,16 +3330,28 @@ class VmPlugin(kvmagent.KvmAgent):
             if vm_uuid.startswith("guestfs-"):
                 logger.debug("[set_vnc_port_iptable]ignore the temp vm[%s] while using guestfish" % vm_uuid)
                 return
+
             domain_xml = dom.XMLDesc(0)
             domain_xmlobject = xmlobject.loads(domain_xml)
-            if not xmlobject.has_element(domain_xmlobject, 'metadata.internalId'):
+
+            if is_namespace_used():
+                internal_id_node = find_zstack_metadata_node(etree.fromstring(domain_xml), 'internalId')
+                vm_id = internal_id_node.text if internal_id_node is not None else None
+            else:
+                vm_id = domain_xmlobject.metadata.internalId.text_ if xmlobject.has_element(domain_xmlobject, 'metadata.internalId') else None
+
+            if not vm_id:
                 logger.debug('vm[uuid:%s] is not managed by zstack,  do not configure the vnc iptables rules' % vm_uuid)
                 return
 
-            id = domain_xmlobject.metadata.internalId.text_
             vir = VncPortIptableRule()
             if LibvirtEventManager.EVENT_STARTED == event:
-                vir.host_ip = domain_xmlobject.metadata.hostManagementIp.text_
+
+                if is_namespace_used():
+                    host_ip_node = find_zstack_metadata_node(etree.fromstring(domain_xml), 'hostManagementIp')
+                    vir.host_ip = host_ip_node.text
+                else:
+                    vir.host_ip = domain_xmlobject.metadata.hostManagementIp.text_
 
                 if shell.run('ip addr | grep -w %s > /dev/null' % vir.host_ip) != 0:
                     logger.debug('the vm is migrated from another host, we do not need to set the console firewall, as '
@@ -3297,10 +3362,10 @@ class VmPlugin(kvmagent.KvmAgent):
                         vir.port = g.port_
                         break
 
-                vir.vm_internal_id = id
+                vir.vm_internal_id = vm_id
                 vir.apply()
             elif LibvirtEventManager.EVENT_STOPPED == event:
-                vir.vm_internal_id = id
+                vir.vm_internal_id = vm_id
                 vir.delete()
 
         except:
