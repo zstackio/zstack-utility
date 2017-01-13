@@ -1961,6 +1961,13 @@ get_zstack_repo(){
     fi
 }
 
+check_iso_version() {
+	[ ! -f "ISO_VERSION" ] && return 1
+	[ ! -f "/opt/zstack-dvd/ISO_VERSION" ] && return 1
+	diff ISO_VERSION /opt/zstack-dvd/ISO_VERSION >/dev/null 2>&1
+	return $?
+}
+
 help (){
     echo "
 ${PRODUCT_NAME} Installer.
@@ -2131,7 +2138,7 @@ do
         o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
 		[ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
         # -O: use yum online repo
-        O ) if [ 'zstack' = ${PRODUCT_NAME} ]; then
+        O ) if [ x'zstack' = x"$PRODUCT_NAME" ]; then
 		YUM_ONLINE_REPO='y'
 		ZSTACK_OFFLINE_INSTALL=''
 		else
@@ -2142,7 +2149,7 @@ do
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         # -R: use yum third party repo
-        R ) if [ 'zstack' = ${PRODUCT_NAME} ]; then
+        R ) if [ x'zstack' = x"$PRODUCT_NAME" ]; then
 		ZSTACK_PKG_MIRROR=$OPTARG
 		YUM_ONLINE_REPO='y'
 		ZSTACK_OFFLINE_INSTALL=''
@@ -2247,6 +2254,23 @@ echo '                                                                   '
 echo_star_line
 sleep 0.3
 echo ""
+fi
+
+# check iso version
+# - If PRODUCT_NAME is zstack, then do not check iso version
+# - If PRODUCT_NAME is mevoco, then check iso version, and ISO name is ZStack-Enterprise-...
+# - If PRODUCT_NAME is something else, then check iso version, and ISO name is ${PRODUCT_NAME}-Enterprise-...
+if [ x'zstack' != x"$PRODUCT_NAME" ]; then
+	if [ x'mevoco' = x"$PRODUCT_NAME" ]; then
+		ISO_NAME="ZStack"
+	else
+		ISO_NAME=${PRODUCT_NAME}
+	fi
+	check_iso_version
+	if [ $? -ne 0 ]; then
+		BIN_VERSION=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
+		fail2 "The Operating System version is not suitable for ${PRODUCT_NAME} installation.\nPlease download and upgrade your Operating System to ${ISO_NAME}-Enterprise-x86-64-DVD-${BIN_VERSION}.iso"
+	fi
 fi
 
 #set http_proxy if needed

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-distro checkouter" basedir="../">
+    <condition property="source.exists">
+        <available file="${zstack.distro.source}" type="dir"/>
+    </condition>
+
+    <condition property="needs.check">
+        <or>
+            <isset property="build_war_flag"/>
+            <isset property="source.exists" />
+        </or>
+    </condition>
+
+    <target name="checkout-zstack-distro" if="needs.check">
+        <checkFile file="${zstack.distro.source}" />
+        <exec executable="git" dir="${zstack.distro.source}" failonerror="true">
+            <arg value="checkout" />
+            <arg value="${zstack.distro.build_version}" />
+        </exec>
+    </target>
+</project>
