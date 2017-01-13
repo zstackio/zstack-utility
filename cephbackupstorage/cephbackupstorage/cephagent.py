@@ -415,8 +415,10 @@ class CephAgent(object):
 
             logger.debug("content-length is: %s" % total)
 
-            bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
+            _, _, err = bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
                        % (cmd.url, PFILE, pool, tmp_image_name), _getProgress)
+            if err:
+                raise err
             actual_size = linux.get_file_size_by_http_head(cmd.url)
 
             if os.path.exists(PFILE):

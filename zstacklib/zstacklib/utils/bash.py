@@ -115,7 +115,7 @@ def bash_progress_1(cmd, func):
             raise BashError('failed to execute bash[%s], return code: %s, stderr: %s' % (cmd, r, e))
         return r, o, None
     except Exception as ex:
-        linux.get_exception_stacktrace()
+        logger.debug(linux.get_exception_stacktrace())
         return None, None, ex
     finally:
         watch_thread.stop()
