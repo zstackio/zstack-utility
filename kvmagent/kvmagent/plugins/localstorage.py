@@ -308,7 +308,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             IP = cmd.dstIp
             PORT = (cmd.dstPort and cmd.dstPort or "22")
 
+            DIR = os.path.dirname(path)
+            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -t -p {{PORT}} {{USER}}@{{IP}} "mkdir -p {{DIR}}"')
             _, _, err = bash_progress_1('rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
+            if err:
+                raise err
             written += os.path.getsize(path)
             bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
             percent = int(round(float(written) / float(total) * 80 + 10))
