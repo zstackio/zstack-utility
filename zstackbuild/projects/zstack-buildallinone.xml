@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="zstack all in one package builder" basedir="../">
     <property name="target.license.file" location="${allinone.dir}/zstack-license" />
+    <property name="zstack.iso.version" location="${zstack.distro.source}/mkiso/ISO_VERSION" />
+
     <target name="all-in-one-package" >
         <copy file="${zstack.install}" todir="${build.dir}" />
         <copy file="${war.file}" todir="${allinone.dir}" />
@@ -14,7 +16,16 @@
         <copy file="${license.file}" tofile="${target.license.file}" />
     </target>
 
-    <target name="build-centos-offline" depends="copy-license-file">
+    <target name="check-iso-version-exists">
+        <available file="${zstack.iso.version}"  property="iso.version.exists"/>
+    </target>
+
+    <target name="copy-iso-version" depends="check-iso-version-exists" if="iso.version.exists">
+        <echo message="copy ISO_VERSION to ${allinone.bin.dir}" />
+        <copy file="${zstack.iso.version}" todir="${allinone.bin.dir}" />
+    </target>
+
+    <target name="build-centos-offline" depends="copy-license-file, check-iso-version-exists">
         <copy file="${war.file}" todir="${allinone.dir}" />
         <echo message="copy apache-tomcat to ${allinone.file}" />
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
@@ -23,6 +34,7 @@
         <makeDir dir="${allinone.bin.dir}" />
         <move file="${allinone.file}" todir="${allinone.bin.dir}" />
         <copy file="${zstack.install}" todir="${allinone.bin.dir}" />
+
         <exec executable="bash" dir="${allinone.bin.dir}" failonerror="true">
             <arg value="${offline.bin.gen.setup.script}" />
             <arg value="${product.name}" />
@@ -36,6 +48,18 @@
             <arg value="${product.version}" />
             <arg value="${allinone.bin.product.title}" />
         </exec>
+
+        <fail message="ISO_VERSION file does not exists.">
+            <condition>
+                <and>
+                    <isset property="build_war_flag" />
+                    <not>
+                        <isset property="iso.version.exists" />
+                    </not>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="copy-iso-version" />
 
         <tar destfile="${allinone.offline.file}" basedir="${allinone.bin.dir}" />
         <exec executable="bash" dir="${build.dir}" failonerror="true">
