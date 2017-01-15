@@ -339,7 +339,7 @@ def get_libvirt_version():
 LIBVIRT_VERSION = get_libvirt_version()
 
 def is_namespace_used():
-    return compare_version(LIBVIRT_VERSION, '2.5') >= 0
+    return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
@@ -3312,6 +3312,13 @@ class VmPlugin(kvmagent.KvmAgent):
             boot_dev = xmlobject.XmlObject('boot')
             boot_dev.put_attr('dev', 'hd')
             domain_xmlobject.os.replace_node('boot', boot_dev)
+
+            #the metadata was wrongly renamed to strange string.
+            curr_meta = domain_xmlobject.metadata.get_children_nodes()
+            domain_xmlobject.metadata.put_attr('xmlns:zs', ZS_XML_NAMESPACE)
+            for key, val in curr_meta.iteritems():
+                curr_meta[key].set_tag('zs:zstack')
+
             dom.destroy()
 
             xml = domain_xmlobject.dump()
