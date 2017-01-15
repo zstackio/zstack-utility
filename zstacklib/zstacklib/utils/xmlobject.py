@@ -16,6 +16,9 @@ class XmlObject(object):
     def get_tag(self):
         return self.__tag_name__
     
+    def set_tag(self, tag):
+        self.__tag_name__ = tag
+
     def put_attr(self, name, val):
         val = val.strip().strip('\t')
         setattr(self, name + '_', val)
