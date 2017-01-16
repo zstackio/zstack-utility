@@ -78,16 +78,16 @@ run_remote_command("rm -rf %s/*" % sftp_root, host_post_info)
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
         # name: install sftp backup storage related packages on RedHat based OS from local
-        command = ("pkg_list=`rpm -q openssh-clients qemu-img-ev libvirt libguestfs-winsupport libguestfs-tools | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+        command = ("pkg_list=`rpm -q openssh-clients qemu-img-ev libvirt | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
                    " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
     else:
         # name: install sftp backup storage related packages on RedHat based OS from online
-        for pkg in [ "openssh-clients", "qemu-img-ev", "libvirt", "libguestfs-winsupport", "libguestfs-tools"]:
+        for pkg in [ "openssh-clients", "qemu-img-ev", "libvirt"]:
             yum_install_package(pkg, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    install_pkg_list = ["openssh-client", "qemu-utils", "libvirt-bin", "libguestfs-winsupport", "libguestfs-tools"]
+    install_pkg_list = ["openssh-client", "qemu-utils", "libvirt-bin"]
     apt_install_packages(install_pkg_list, host_post_info)
 
 else:
