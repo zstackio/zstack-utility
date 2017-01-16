@@ -2591,7 +2591,9 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_VM_CHECK_STATE = "/vm/checkstate"
     KVM_VM_CHANGE_PASSWORD_PATH = "/vm/changepasswd"
     KVM_SET_VOLUME_BANDWIDTH = "/set/volume/bandwidth"
+    KVM_GET_VOLUME_BANDWIDTH = "/get/volume/bandwidth"
     KVM_SET_NIC_QOS = "/set/nic/qos"
+    KVM_GET_NIC_QOS = "/get/nic/qos"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
 
@@ -2769,6 +2771,15 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def get_volume_bandwidth(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
+        bandWidth = shell.call('virsh blkdeviotune %s %s | grep "total_bytes_sec:"|awk \'{print $2}\'' % (cmd.vmUuid, device_id)).strip()
+        rsp.bandWidth = bandWidth
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def set_nic_qos(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
@@ -2776,6 +2787,16 @@ class VmPlugin(kvmagent.KvmAgent):
             shell.call('virsh domiftune %s %s --inbound %s' % (cmd.vmUuid, cmd.internalName, cmd.inboundBandwidth/1024))
         if cmd.outboundBandwidth != -1:
             shell.call('virsh domiftune %s %s --outbound %s' % (cmd.vmUuid, cmd.internalName, cmd.outboundBandwidth/1024))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_nic_qos(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        inbound = shell.call('virsh domiftune %s %s | grep "inbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
+        outbound = shell.call('virsh domiftune %s %s | grep "outbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
+        rsp.inbound = inbound
+        rsp.outbound = outbound
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -3183,7 +3204,9 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
         http_server.register_async_uri(self.KVM_SET_VOLUME_BANDWIDTH, self.set_volume_bandwidth)
+        http_server.register_async_uri(self.KVM_GET_VOLUME_BANDWIDTH, self.get_volume_bandwidth)
         http_server.register_async_uri(self.KVM_SET_NIC_QOS, self.set_nic_qos)
+        http_server.register_async_uri(self.KVM_GET_NIC_QOS, self.get_nic_qos)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
 
