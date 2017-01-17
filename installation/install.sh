@@ -1962,9 +1962,9 @@ get_zstack_repo(){
 }
 
 check_iso_version() {
-	[ ! -f "ISO_VERSION" ] && return 1
-	[ ! -f "/opt/zstack-dvd/ISO_VERSION" ] && return 1
-	diff ISO_VERSION /opt/zstack-dvd/ISO_VERSION >/dev/null 2>&1
+	[ ! -f ".repo_version" ] && return 1
+	[ ! -f "/opt/zstack-dvd/.repo_version" ] && return 1
+	diff .repo_version /opt/zstack-dvd/.repo_version >/dev/null 2>&1
 	return $?
 }
 
