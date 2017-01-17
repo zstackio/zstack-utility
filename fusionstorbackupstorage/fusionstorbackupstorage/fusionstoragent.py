@@ -157,6 +157,15 @@ class FusionstorAgent(object):
         protocol = lichbd.get_protocol()
         lichbd.lichbd_mkpool(os.path.dirname(lichbd_file))
 
+        @rollbackable
+        def _1():
+            if lichbd.lichbd_file_exist(tmp_lichbd_file):
+                lichbd.lichbd_rm(tmp_lichbd_file)
+            if lichbd.lichbd_file_exist(lichbd_file):
+                lichbd.lichbd_rm(lichbd_file)
+
+        _1()
+
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd import - %s -p %s' % (cmd.url, tmp_lichbd_file, protocol))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
@@ -170,12 +179,7 @@ class FusionstorAgent(object):
         else:
             raise Exception('unknown url[%s]' % cmd.url)
 
-        @rollbackable
-        def _1():
-            if lichbd.lichbd_file_exist(tmp_lichbd_file):
-                lichbd.lichbd_rm(tmp_lichbd_file)
-            lichbd.lichbd_rm(lichbd_file)
-        _1()
+
 
         file_format = lichbd.lichbd_get_format(tmp_lichbd_file)
         if file_format not in ['qcow2', 'raw']:
