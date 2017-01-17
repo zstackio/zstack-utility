@@ -86,14 +86,14 @@ run_remote_command(command, host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q wget qemu-img-ev libvirt | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+        command = ("pkg_list=`rpm -q wget qemu-img-ev libvirt libguestfs-winsupport libguestfs-tools | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
                    " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
-        for pkg in [ "wget", "qemu-img-ev", "libvirt"]:
+        for pkg in [ "wget", "qemu-img-ev", "libvirt", "libguestfs-winsupport", "libguestfs-tools"]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
@@ -101,7 +101,7 @@ if distro == "RedHat" or distro == "CentOS":
     set_selinux("state=disabled", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    install_pkg_list = ["wget", "qemu-utils", "libvirt-bin"]
+    install_pkg_list = ["wget", "qemu-utils", "libvirt-bin", "libguestfs-winsupport", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
 else:
     error("unsupported OS!")
