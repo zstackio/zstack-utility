@@ -190,6 +190,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         report.processType = "LocalStorageMigrateVolume"
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
 
+        total = 0
+        written = 0
+        for to in cmd.md5s:
+            total = total + os.path.getsize(to.path)
+
 
         def _get_progress(synced):
             logger.debug("getProgress in get_md5")
@@ -198,7 +203,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             last = shell.call('tail -1 %s' % PFILE).strip()
             if not last or not last.isdigit():
                 return synced
-            percent = int(round(float(last)/10))
+            percent = int((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total / 10)
             report.progress_report(str(percent), "report")
             return synced
 
@@ -212,6 +217,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 'path': to.path,
                 'md5': md5
             })
+            written += os.path.getsize(to.path)
+            percent = int(round(float(written) / float(total) * 10))
+            report.progress_report(percent, "report")
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
@@ -227,6 +235,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         report = Report()
         report.processType = "LocalStorageMigrateVolume"
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+        total = 0
+        written = 0
+        for to in cmd.md5s:
+            total = total + os.path.getsize(to.path)
 
         def _get_progress(synced):
             logger.debug("getProgress in check_md5")
@@ -235,7 +247,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             last = shell.call('tail -1 %s' % PFILE).strip()
             if not last or not last.isdigit():
                 return synced
-            percent = int(round(float(last)/10) + 90)
+            percent = int(round((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total / 10) + 90)
             report.progress_report(percent, "report")
             return synced
 
@@ -246,6 +258,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if dst_md5 != to.md5:
                 raise Exception("MD5 unmatch. The file[uuid:%s, path:%s]'s md5 (src host:%s, dst host:%s)" %
                                 (to.resourceUuid, to.path, to.md5, dst_md5))
+            written += os.path.getsize(to.path)
+            percent = int(round(float(written) / float(total) * 10 + 90))
+            report.progress_report(percent, "report")
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
@@ -309,12 +324,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             PORT = (cmd.dstPort and cmd.dstPort or "22")
 
             DIR = os.path.dirname(path)
-            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -t -t -p {{PORT}} {{USER}}@{{IP}} "sudo mkdir -p {{DIR}}"')
+            bash_errorout('/usr/bin/sshpass -o StrictHostKeyChecking=no -p {{PASSWORD}} ssh -t -t -p {{PORT}} {{USER}}@{{IP}} "sudo mkdir -p {{DIR}}"')
             _, _, err = bash_progress_1('rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
             if err:
                 raise err
             written += os.path.getsize(path)
-            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
+            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
             percent = int(round(float(written) / float(total) * 80 + 10))
             report.progress_report(percent, "report")
 
