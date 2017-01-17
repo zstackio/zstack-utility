@@ -2700,8 +2700,12 @@ class VmPlugin(kvmagent.KvmAgent):
             self._start_vm(cmd)
             logger.debug('successfully started vm[uuid:%s, name:%s]' % (cmd.vmInstanceUuid, cmd.vmName))
         except kvmagent.KvmError as e:
-            logger.warn(linux.get_exception_stacktrace())
-            rsp.error = str(e)
+            e_str = linux.get_exception_stacktrace()
+            logger.warn(e_str)
+            if "burst" in e_str and "Illegal" in e_str and "rate" in e_str:
+                rsp.error = "illegal QoS, please check and reset it in zstack"
+            else:
+                rsp.error = str(e)
             rsp.success = False
 
         return jsonobject.dumps(rsp)
