@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="zstack all in one package builder" basedir="../">
     <property name="target.license.file" location="${allinone.dir}/zstack-license" />
-    <property name="zstack.iso.version" location="${zstack.distro.source}/mkiso/ISO_VERSION" />
+    <property name="zstack.iso.version" location="${zstack.distro.source}/mkiso/.repo_version" />
 
     <target name="all-in-one-package" >
         <copy file="${zstack.install}" todir="${build.dir}" />
@@ -21,7 +21,7 @@
     </target>
 
     <target name="copy-iso-version" depends="check-iso-version-exists" if="iso.version.exists">
-        <echo message="copy ISO_VERSION to ${allinone.bin.dir}" />
+        <echo message="copy .repo_version to ${allinone.bin.dir}" />
         <copy file="${zstack.iso.version}" todir="${allinone.bin.dir}" />
     </target>
 
@@ -49,7 +49,7 @@
             <arg value="${allinone.bin.product.title}" />
         </exec>
 
-        <fail message="ISO_VERSION file does not exists.">
+        <fail message=".repo_version file does not exists.">
             <condition>
                 <and>
                     <isset property="build_war_flag" />
