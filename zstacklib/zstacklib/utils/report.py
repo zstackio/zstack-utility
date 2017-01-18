@@ -12,39 +12,13 @@ class ProgressReportCmd(object):
         self.resourceUuid = None
         self.serverUuid = None
 
-class Progress(object):
-    def __init__(self):
-        self.total = 0
-        self.stage = 1
-        self.stages = {1: "0:100"}
-        self.processType = None
-        self.resourceUuid = None
-        self.pfile = None
-        self.func = None
-        self.written = 0
-
-    def getScale(self):
-        stages = self.stages.get(self.stage) if self.stages.get(self.stage) else "0:100"
-        start = int(stages.split(":")[0]) if int(stages.split(":")[0]) > 0 else 0
-        end = int(stages.split(":")[1]) if int(stages.split(":")[1]) < 100 else 100
-        assert start < end
-        return start, end
-
-    def getStart(self):
-        self.stages.keys().sort()
-        if self.stage == self.stages.keys()[0]:
-            return "start"
-        return self.getReport()
-
-    def getEnd(self):
-        self.stages.keys().sort()
-        if self.stage == self.stages.keys()[-1]:
-            return "finish"
-        return self.getReport()
-
-    def getReport(self):
-        return "report"
-
+def get_scale(stage=None):
+    if not stage:
+        return 0, 100
+    stages = stage.split("-")
+    start = int(stages[0])
+    end = int(stages[1])
+    return start, end
 
 class Report(object):
     url = None
