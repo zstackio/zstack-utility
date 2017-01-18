@@ -9,7 +9,7 @@ from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils.bash import *
-from zstacklib.utils.report import Report
+from zstacklib.utils.report import *
 from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
@@ -195,6 +195,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         for to in cmd.md5s:
             total = total + os.path.getsize(to.path)
 
+        start = 0
+        end = 10
+        if cmd.stage:
+            start, end = get_scale(cmd.stage)
+
 
         def _get_progress(synced):
             logger.debug("getProgress in get_md5")
@@ -203,12 +208,15 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             last = shell.call('tail -1 %s' % PFILE).strip()
             if not last or not last.isdigit():
                 return synced
-            percent = int((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total / 10)
+            percent = int(round((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total * (end - start) / 100) + start)
             report.progress_report(str(percent), "report")
             return synced
 
         report.resourceUuid = cmd.volumeUuid
-        report.progress_report("0", "start")
+        if start == 0:
+            report.progress_report("0", "start")
+        else:
+            report.progress_report(str(start), "report")
 
         for to in cmd.md5s:
             _, md5, _ = bash_progress_1("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, PFILE), _get_progress)
@@ -237,6 +245,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
         total = 0
         written = 0
+
+        start = 90
+        end = 100
+        if cmd.stage:
+            start, end = get_scale(cmd.stage)
         for to in cmd.md5s:
             total = total + os.path.getsize(to.path)
 
@@ -247,7 +260,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             last = shell.call('tail -1 %s' % PFILE).strip()
             if not last or not last.isdigit():
                 return synced
-            percent = int(round((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total / 10) + 90)
+            percent = int(round((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total * (end - start) / 100) + start)
             report.progress_report(percent, "report")
             return synced
 
@@ -266,7 +279,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.remove(PFILE)
 
         rsp = AgentResponse()
-        report.progress_report("100", "finish")
+        if end == 100:
+            report.progress_report("100", "finish")
+        else:
+            report.progress_report(str(end), "report")
         return jsonobject.dumps(rsp)
 
     def _get_disk_capacity(self):
@@ -284,6 +300,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         report.processType = "LocalStorageMigrateVolume"
         report.resourceUuid = cmd.uuid
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+
+        start = 10
+        end = 90
+        if cmd.stage:
+            start, end = get_scale(cmd.stage)
 
         total = 0
         for path in set(chain):
@@ -309,7 +330,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if total > 0:
                 synced = long(line)
                 if synced < total:
-                    percent = int(round(float(written + synced) / float(total) * 80 + 10))
+                    percent = int(round(float(written + synced) / float(total) * (end - start) + start))
                     report.progress_report(percent, "report")
                     synced = written
             fpread.close()
