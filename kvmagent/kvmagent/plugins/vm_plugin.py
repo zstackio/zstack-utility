@@ -2703,11 +2703,10 @@ class VmPlugin(kvmagent.KvmAgent):
             e_str = linux.get_exception_stacktrace()
             logger.warn(e_str)
             if "burst" in e_str and "Illegal" in e_str and "rate" in e_str:
-                rsp.error = "illegal QoS, please check and reset it in zstack"
+                rsp.error = "QoS exceed max limit, please check and reset it in zstack"
             else:
-                rsp.error = str(e)
+                rsp.error = e_str
             rsp.success = False
-
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2787,10 +2786,19 @@ class VmPlugin(kvmagent.KvmAgent):
     def set_nic_qos(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        if cmd.inboundBandwidth != -1:
-            shell.call('virsh domiftune %s %s --inbound %s' % (cmd.vmUuid, cmd.internalName, cmd.inboundBandwidth/1024))
-        if cmd.outboundBandwidth != -1:
-            shell.call('virsh domiftune %s %s --outbound %s' % (cmd.vmUuid, cmd.internalName, cmd.outboundBandwidth/1024))
+        try:
+            if cmd.inboundBandwidth != -1:
+                shell.call('virsh domiftune %s %s --inbound %s' % (cmd.vmUuid, cmd.internalName, cmd.inboundBandwidth/1024))
+            if cmd.outboundBandwidth != -1:
+                shell.call('virsh domiftune %s %s --outbound %s' % (cmd.vmUuid, cmd.internalName, cmd.outboundBandwidth/1024))
+        except Exception as e:
+            e_str = linux.get_exception_stacktrace()
+            logger.warn(e_str)
+            if "burst" in e_str and "Illegal" in e_str and "rate" in e_str:
+                rsp.error = "QoS exceed the max limit, please check and reset it in zstack"
+            else:
+                rsp.error = e_str
+            rsp.success = False
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
