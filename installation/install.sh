@@ -870,6 +870,7 @@ is_install_general_libs_rh(){
 
 	missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
+	[ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
 	if [ ! -z "$missing_list" ]; then
 		if [ ! -z $ZSTACK_YUM_REPOS ]; then
 			yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
