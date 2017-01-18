@@ -2427,8 +2427,6 @@ class Vm(object):
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
                 assert vol is not None, 'vol cannot be None'
-                if v.deviceId == 0:
-                    e(vol, 'boot', None, {'order': '1'})
                 volume_qos(vol)
                 devices.append(vol)
 
