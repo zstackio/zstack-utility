@@ -6,11 +6,10 @@ import traceback
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http
 from zstacklib.utils import jsonobject
+from zstacklib.utils import shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
-from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
@@ -72,21 +71,21 @@ class GetQCOW2ReferenceRsp(AgentResponse):
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
 
-    INIT_PATH = "/localstorage/init";
-    GET_PHYSICAL_CAPACITY_PATH = "/localstorage/getphysicalcapacity";
-    CREATE_EMPTY_VOLUME_PATH = "/localstorage/volume/createempty";
-    CREATE_VOLUME_FROM_CACHE_PATH = "/localstorage/volume/createvolumefromcache";
-    DELETE_BITS_PATH = "/localstorage/delete";
+    INIT_PATH = "/localstorage/init"
+    GET_PHYSICAL_CAPACITY_PATH = "/localstorage/getphysicalcapacity"
+    CREATE_EMPTY_VOLUME_PATH = "/localstorage/volume/createempty"
+    CREATE_VOLUME_FROM_CACHE_PATH = "/localstorage/volume/createvolumefromcache"
+    DELETE_BITS_PATH = "/localstorage/delete"
     DELETE_DIR_PATH = "/localstorage/deletedir"
-    UPLOAD_BIT_PATH = "/localstorage/sftp/upload";
-    DOWNLOAD_BIT_PATH = "/localstorage/sftp/download";
+    UPLOAD_BIT_PATH = "/localstorage/sftp/upload"
+    DOWNLOAD_BIT_PATH = "/localstorage/sftp/download"
     UPLOAD_TO_IMAGESTORE_PATH = "/localstorage/imagestore/upload"
     COMMIT_TO_IMAGESTORE_PATH = "/localstorage/imagestore/commit"
     DOWNLOAD_FROM_IMAGESTORE_PATH = "/localstorage/imagestore/download"
-    REVERT_SNAPSHOT_PATH = "/localstorage/snapshot/revert";
-    MERGE_SNAPSHOT_PATH = "/localstorage/snapshot/merge";
-    MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase";
-    OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge";
+    REVERT_SNAPSHOT_PATH = "/localstorage/snapshot/revert"
+    MERGE_SNAPSHOT_PATH = "/localstorage/snapshot/merge"
+    MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase"
+    OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge"
     CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
     CHECK_BITS_PATH = "/localstorage/checkbits"
     REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH = "/localstorage/volume/rebaserootvolumetobackingfile"
@@ -99,6 +98,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_SIZE = "/localstorage/volume/getsize"
     GET_BASE_IMAGE_PATH = "/localstorage/volume/getbaseimagepath"
     GET_QCOW2_REFERENCE = "/localstorage/getqcow2reference"
+
+    LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -336,21 +337,24 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             fpread.close()
             return synced
 
-        err = None
         for path in set(chain):
             PATH = path
             PASSWORD = cmd.dstPassword
             USER = cmd.dstUsername
             IP = cmd.dstIp
             PORT = (cmd.dstPort and cmd.dstPort or "22")
-
             DIR = os.path.dirname(path)
-            _, _, err = bash_progress_1('rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
-            if err:
-                raise err
+
+            if cmd.dstUsername == 'root':
+                _, _, err = bash_progress_1(
+                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
+                if err:
+                    raise err
+            else:
+                raise Exception("cannot support migrate to non-root user host")
             written += os.path.getsize(path)
             bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
-            percent = int(round(float(written) / float(total) * 80 + 10))
+            percent = int(round(float(written) / float(total) * (end - start) + start))
             report.progress_report(percent, "report")
 
         if os.path.exists(PFILE):
@@ -392,6 +396,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBitsRsp()
         rsp.existing = os.path.exists(cmd.path)
+        if not rsp.existing and cmd.username != 'root':
+            user_path = os.path.join('/home', cmd.username, self.LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH, cmd.path)
+            rsp.existing = os.path.exists(user_path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -545,8 +552,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         shell.call('rm -f %s' % cmd.path)
         pdir = os.path.dirname(cmd.path)
         linux.rmdir_if_empty(pdir)
-
         logger.debug('successfully delete %s' % cmd.path)
+
+        if cmd.username != 'root':
+            non_root_path = os.path.join('/home', cmd.username, self.LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH, cmd.path)
+            shell.call('rm -f %s' % non_root_path)
+            logger.debug('successfully delete non-root-path %s' % non_root_path)
+
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
@@ -556,8 +568,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
 
         shell.call('rm -rf %s' % cmd.path)
-
         logger.debug('successfully delete %s' % cmd.path)
+
+        if cmd.username != 'root':
+            non_root_path = os.path.join('/home', cmd.username, self.LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH, cmd.path)
+            shell.call('rm -rf %s' % non_root_path)
+            logger.debug('successfully delete non-root-path %s' % non_root_path)
+
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
