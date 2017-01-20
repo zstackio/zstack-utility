@@ -273,7 +273,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 raise Exception("MD5 unmatch. The file[uuid:%s, path:%s]'s md5 (src host:%s, dst host:%s)" %
                                 (to.resourceUuid, to.path, to.md5, dst_md5))
             written += os.path.getsize(to.path)
-            percent = int(round(float(written) / float(total) * 10 + 90))
+            percent = int(round(float(written) / float(total) * (end - start) + start))
             report.progress_report(percent, "report")
 
         if os.path.exists(PFILE):
