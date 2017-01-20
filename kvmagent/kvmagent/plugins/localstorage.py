@@ -396,9 +396,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBitsRsp()
         rsp.existing = os.path.exists(cmd.path)
-        if not rsp.existing and cmd.username != 'root':
-            user_path = os.path.join('/home', cmd.username, self.LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH, cmd.path)
-            rsp.existing = os.path.exists(user_path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -554,11 +551,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.rmdir_if_empty(pdir)
         logger.debug('successfully delete %s' % cmd.path)
 
-        if cmd.username != 'root':
-            non_root_path = os.path.join('/home', cmd.username, self.LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH, cmd.path)
-            shell.call('rm -f %s' % non_root_path)
-            logger.debug('successfully delete non-root-path %s' % non_root_path)
-
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
@@ -569,11 +561,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         shell.call('rm -rf %s' % cmd.path)
         logger.debug('successfully delete %s' % cmd.path)
-
-        if cmd.username != 'root':
-            non_root_path = os.path.join('/home', cmd.username, self.LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH, cmd.path)
-            shell.call('rm -rf %s' % non_root_path)
-            logger.debug('successfully delete non-root-path %s' % non_root_path)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
