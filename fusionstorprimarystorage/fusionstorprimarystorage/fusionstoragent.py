@@ -319,7 +319,7 @@ class FusionstorAgent(object):
         dst_path = self._normalize_install_path(cmd.dstPath)
 
         _pool = os.path.dirname(dst_path)
-        if not lichbd.lichbd_file_exist(_pool):
+        if not lichbd.lichbd_pool_exist(_pool):
             lichbd.lichbd_mkpool(_pool)
 
         lichbd.lichbd_snap_clone(src_path, dst_path)
@@ -385,7 +385,7 @@ class FusionstorAgent(object):
         size = "%dM" % (size_M)
 
         _pool = os.path.dirname(path)
-        if not lichbd.lichbd_file_exist(_pool):
+        if not lichbd.lichbd_pool_exist(_pool):
             lichbd.lichbd_mkpool(_pool)
         lichbd.lichbd_create_raw(path, size)
 
