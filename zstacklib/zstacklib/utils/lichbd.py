@@ -310,6 +310,17 @@ def lichbd_file_exist(path):
             raise_exp(shellcmd)
     return True
 
+def lichbd_pool_exist(path):
+    shellcmd = call_try("lichfs --stat /default/%s" % (path))
+    if shellcmd.return_code != 0:
+        if shellcmd.return_code == 2:
+            return False
+        elif shellcmd.return_code == 21:
+            return True
+        else:
+            raise_exp(shellcmd)
+    return True
+
 def lichbd_cluster_stat():
     shellcmd = call_try('lich stat --human-unreadable 2>/dev/null')
     if shellcmd.return_code != 0:
