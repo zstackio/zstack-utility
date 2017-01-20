@@ -2788,9 +2788,9 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
         try:
             if cmd.inboundBandwidth != -1:
-                shell.call('virsh domiftune %s %s --inbound %s' % (cmd.vmUuid, cmd.internalName, cmd.inboundBandwidth/1024))
+                shell.call('virsh domiftune %s %s --inbound %s' % (cmd.vmUuid, cmd.internalName, cmd.inboundBandwidth/1024/8))
             if cmd.outboundBandwidth != -1:
-                shell.call('virsh domiftune %s %s --outbound %s' % (cmd.vmUuid, cmd.internalName, cmd.outboundBandwidth/1024))
+                shell.call('virsh domiftune %s %s --outbound %s' % (cmd.vmUuid, cmd.internalName, cmd.outboundBandwidth/1024/8))
         except Exception as e:
             e_str = linux.get_exception_stacktrace()
             logger.warn(e_str)
@@ -2807,8 +2807,8 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
         inbound = shell.call('virsh domiftune %s %s | grep "inbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
         outbound = shell.call('virsh domiftune %s %s | grep "outbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
-        rsp.inbound = inbound
-        rsp.outbound = outbound
+        rsp.inbound = long(inbound) * 8 * 1024
+        rsp.outbound = long(outbound) * 8 * 1024
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
