@@ -1806,9 +1806,9 @@ class Vm(object):
 
             bandwidth = e(interface, 'bandwidth')
             if qos.outboundBandwidth:
-                e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 8)})
+                e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 8 / 1024)})
             if qos.inboundBandwidth:
-                e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 8)})
+                e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 8 / 1024)})
 
         nic_qos()
 
@@ -2451,9 +2451,9 @@ class Vm(object):
 
                 bandwidth = e(nic_xml_object, 'bandwidth')
                 if qos.outboundBandwidth:
-                    e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 1024)})
+                    e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 1024 / 8)})
                 if qos.inboundBandwidth:
-                    e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 1024)})
+                    e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 1024 / 8)})
 
             devices = elements['devices']
             for nic in cmd.nics:
