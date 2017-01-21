@@ -11814,9 +11814,11 @@ class QueryObjectHostInventory(object):
 
 class QueryObjectIPsecConnectionInventory(object):
      PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','l3NetworkUuid','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','state','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['peerCidrs']
+     EXPANDED_FIELDS = ['peerCidrs','l3Network','vip']
      QUERY_OBJECT_MAP = {
+        'l3Network' : 'QueryObjectL3NetworkInventory',
         'peerCidrs' : 'QueryObjectIPsecPeerCidrInventory',
+        'vip' : 'QueryObjectVipInventory',
      }
 
 class QueryObjectIPsecPeerCidrInventory(object):
