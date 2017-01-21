@@ -1806,9 +1806,9 @@ class Vm(object):
 
             bandwidth = e(interface, 'bandwidth')
             if qos.outboundBandwidth:
-                e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth)})
+                e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 8)})
             if qos.inboundBandwidth:
-                e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth)})
+                e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 8)})
 
         nic_qos()
 
