@@ -4013,23 +4013,6 @@ class APIDeleteTagMsg(object):
         self.userTags = OptionalList()
 
 
-APIENABLECHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.tag.APIEnableChangeVmPasswordMsg'
-class APIEnableChangeVmPasswordMsg(object):
-    FULL_NAME='org.zstack.header.tag.APIEnableChangeVmPasswordMsg'
-    def __init__(self):
-        #mandatory field
-        #valid values: [ImageVO, VmInstanceVO]
-        self.resourceType = NotNoneField()
-        #mandatory field
-        self.resourceUuid = NotNoneField()
-        #mandatory field
-        self.enable = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIQUERYSYSTEMTAGMSG_FULL_NAME = 'org.zstack.header.tag.APIQuerySystemTagMsg'
 class APIQuerySystemTagMsg(object):
     FULL_NAME='org.zstack.header.tag.APIQuerySystemTagMsg'
@@ -8361,7 +8344,6 @@ api_names = [
     'APIDetachPortForwardingRuleMsg',
     'APIDetachPrimaryStorageFromClusterMsg',
     'APIDetachSecurityGroupFromL3NetworkMsg',
-    'APIEnableChangeVmPasswordMsg',
     'APIExportImageFromBackupStorageMsg',
     'APIExpungeDataVolumeMsg',
     'APIExpungeImageMsg',

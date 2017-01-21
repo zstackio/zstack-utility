@@ -2030,18 +2030,6 @@ class DetachSecurityGroupFromL3NetworkAction(inventory.APIDetachSecurityGroupFro
         self.out = evt
         return self.out
 
-class EnableChangeVmPasswordAction(inventory.APIEnableChangeVmPasswordMsg):
-    def __init__(self):
-        super(EnableChangeVmPasswordAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[EnableChangeVmPasswordAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class ExportImageFromBackupStorageAction(inventory.APIExportImageFromBackupStorageMsg):
     def __init__(self):
         super(ExportImageFromBackupStorageAction, self).__init__()
