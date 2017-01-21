@@ -2205,9 +2205,11 @@ class Vm(object):
             root = elements['root']
             os = e(root, 'os')
             e(os, 'type', 'hvm', attrib={'machine': 'pc'})
-            for boot_dev in cmd.bootDev:
-                e(os, 'boot', None, {'dev': boot_dev})
-            e(os, 'bootmenu', attrib={'enable': 'yes'})
+            # if not booting from cdrom, don't add any boot element in os section
+            if cmd.bootDev[0] == "cdrom":
+                for boot_dev in cmd.bootDev:
+                    e(os, 'boot', None, {'dev': boot_dev})
+                e(os, 'bootmenu', attrib={'enable': 'yes'})
 
         def make_features():
             root = elements['root']
@@ -2427,6 +2429,9 @@ class Vm(object):
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
                 assert vol is not None, 'vol cannot be None'
+                # set boot order for root volume when boot from hd
+                if v.deviceId == 0 and cmd.bootDev[0] == 'hd':
+                    e(vol, 'boot', None, {'order': '1'})
                 volume_qos(vol)
                 devices.append(vol)
 
