@@ -250,9 +250,24 @@ class VncPortIptableRule(object):
 
         ipt = iptables.from_iptables_save()
         chain_name = self._make_chain_name()
+
+        # get ipv4 address via ping
+        current_ip = shell.call('ping %s -c 1 | fgrep "icmp" | grep -o \'[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\'' % self.host_ip)
+        if "" == current_ip:
+            err = 'cannot get host ip for %s' % self.host_ip
+            logger.warn(err)
+            raise kvmagent.KvmError(err)
+
+        # get ipv4 subnet
+        current_ip_with_netmask = shell.call('ip -o -f inet addr show | awk \'/scope global/ {print $4}\' | fgrep %s' % current_ip)
+        if "" == shell.call("echo %s | grep -o \'[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}/[0-9]\{1,2\}\'" % current_ip_with_netmask):
+            err = 'cannot get host ip with netmask for %s' % self.host_ip
+            logger.warn(err)
+            raise kvmagent.KvmError(err)
+
         ipt.add_rule('-A INPUT -p tcp -m tcp --dport %s -j %s' % (self.port, chain_name))
-        ipt.add_rule('-A %s -d %s/32 -j ACCEPT' % (chain_name, self.host_ip))
-        ipt.add_rule('-A %s ! -d %s/32 -j REJECT --reject-with icmp-host-prohibited' % (chain_name, self.host_ip))
+        ipt.add_rule('-A %s -d %s -j ACCEPT' % (chain_name, current_ip_with_netmask))
+        ipt.add_rule('-A %s ! -d %s -j REJECT --reject-with icmp-host-prohibited' % (chain_name, current_ip_with_netmask))
         ipt.iptable_restore()
 
     @lock.file_lock('iptables')
