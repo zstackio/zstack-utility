@@ -31,6 +31,7 @@ import threading
 import itertools
 import platform
 from  datetime import datetime, timedelta
+import multiprocessing
 
 mysql_db_config_script='''
 echo "modify my.cnf"
@@ -1369,6 +1370,9 @@ class StartAllCmd(Command):
 class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
     SET_ENV_SCRIPT = '../../bin/setenv.sh'
+    MINIMAL_CPU_NUMBER = 4
+    #MINIMAL_MEM_SIZE unit is KB
+    MINIMAL_MEM_SIZE = 6291456
 
     def __init__(self):
         super(StartCmd, self).__init__()
@@ -1385,15 +1389,24 @@ class StartCmd(Command):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
         shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl start_node --timeout=%s"' % (args.host, args.timeout))
 
+    def check_cpu_mem(self):
+        if multiprocessing.cpu_count() < StartCmd.MINIMAL_CPU_NUMBER:
+            error("CPU number should not less than %d" % StartCmd.MINIMAL_CPU_NUMBER)
+        status, output = commands.getstatusoutput("cat /proc/meminfo | grep MemTotal |   awk -F \":\" '{print $2}' | awk -F \" \" '{print $1}'")
+        if status == 0:
+            if output < StartCmd.MINIMAL_MEM_SIZE:
+                error("Memory size should not less than %d KB" % StartCmd.MINIMAL_MEM_SIZE)
+        else:
+            warn("Can't get system memory size from /proc/meminfo")
+
     def run(self, args):
+        self.check_cpu_mem()
         if args.host:
             self._start_remote(args)
             return
-
         # clean the error log before booting
         boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
         shell('rm -f %s' % boot_error_log)
-
         pid = get_management_node_pid()
         if pid:
             info('the management node[pid:%s] is already running' % pid)
