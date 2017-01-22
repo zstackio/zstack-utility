@@ -2206,6 +2206,8 @@ class AddManagementNodeCmd(Command):
         command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl " \
                   "start_node " % (key, host_info.host)
         (status, output) = commands.getstatusoutput(command)
+        command = "ln -s /opt/zstack-dvd/ /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-dvd"
+        run_remote_command(command, host_info, True, True)
         if status != 0:
             error("start node on host %s failed:\n %s" % (host_info.host, output))
         command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl " \
