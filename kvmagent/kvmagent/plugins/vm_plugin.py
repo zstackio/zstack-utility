@@ -2224,7 +2224,8 @@ class Vm(object):
             if cmd.bootDev[0] == "cdrom":
                 for boot_dev in cmd.bootDev:
                     e(os, 'boot', None, {'dev': boot_dev})
-                e(os, 'bootmenu', attrib={'enable': 'yes'})
+
+            e(os, 'bootmenu', attrib={'enable': 'yes'})
 
         def make_features():
             root = elements['root']
