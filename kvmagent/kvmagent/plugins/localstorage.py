@@ -227,7 +227,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 'md5': md5
             })
             written += os.path.getsize(to.path)
-            percent = int(round(float(written) / float(total) * 10))
+            percent = int(round(float(written) / float(total) * (end - start) + start))
             report.progress_report(percent, "report")
 
         if os.path.exists(PFILE):
