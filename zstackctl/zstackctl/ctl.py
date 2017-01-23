@@ -1394,7 +1394,7 @@ class StartCmd(Command):
             error("CPU number should not less than %d" % StartCmd.MINIMAL_CPU_NUMBER)
         status, output = commands.getstatusoutput("cat /proc/meminfo | grep MemTotal |   awk -F \":\" '{print $2}' | awk -F \" \" '{print $1}'")
         if status == 0:
-            if output < StartCmd.MINIMAL_MEM_SIZE:
+            if int(output) < StartCmd.MINIMAL_MEM_SIZE:
                 error("Memory size should not less than %d KB" % StartCmd.MINIMAL_MEM_SIZE)
         else:
             warn("Can't get system memory size from /proc/meminfo")
