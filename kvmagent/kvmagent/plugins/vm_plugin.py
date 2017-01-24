@@ -3427,9 +3427,11 @@ class VmPlugin(kvmagent.KvmAgent):
 
                 vir.vm_internal_id = vm_id
                 vir.apply()
+                logger.debug('Enable [port:%s] in firewall rule for vm[uuid:%s] console' % (vir.port, vm_id))
             elif LibvirtEventManager.EVENT_STOPPED == event:
                 vir.vm_internal_id = vm_id
                 vir.delete()
+                logger.debug('Delete firewall rule for vm[uuid:%s] console' % vm_id)
 
         except:
             content = traceback.format_exc()
