@@ -17,8 +17,8 @@ class WatchThread_1(threading.Thread):
         try:
             synced = 0
             while self.keepRunning:
-                time.sleep(1)
                 synced = self.func(synced)
+                time.sleep(1)
         except:
             logger.warning(linux.get_exception_stacktrace())
 
