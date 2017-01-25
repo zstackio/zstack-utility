@@ -9,6 +9,7 @@ import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.linux as linux
 import zstacklib.utils.lock as lock
 import zstacklib.utils.sizeunit as sizeunit
+from zstacklib.utils import log
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
 import os
