@@ -9,6 +9,7 @@ import urllib2
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
+from zstacklib.utils import log
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
 from zstacklib.utils import shell
