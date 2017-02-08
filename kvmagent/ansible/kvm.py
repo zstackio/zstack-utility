@@ -215,8 +215,7 @@ if distro == "RedHat" or distro == "CentOS":
         service_status("libvirtd", "state=started enabled=yes", host_post_info)
         if distro_version >= 7:
             # name: enable virtlockd daemon on RedHat based OS
-            time.sleep(2)
-            service_status("virtlockd", "state=started enabled=yes", host_post_info)
+            service_status("virtlockd", "state=stopped enabled=no", host_post_info)
             service_status("virtlogd", "state=started enabled=yes", host_post_info, True)
 
     # name: copy updated dnsmasq for RHEL6 and RHEL7
