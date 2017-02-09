@@ -1372,7 +1372,8 @@ class StartCmd(Command):
     SET_ENV_SCRIPT = '../../bin/setenv.sh'
     MINIMAL_CPU_NUMBER = 4
     #MINIMAL_MEM_SIZE unit is KB, here is 6GB, in linxu, 6GB is 5946428 KB
-    MINIMAL_MEM_SIZE = 5946428
+    #Save some memory for kdump etc. The actual limitation is 5000000KB
+    MINIMAL_MEM_SIZE = 5000000
 
     def __init__(self):
         super(StartCmd, self).__init__()
