@@ -2521,6 +2521,11 @@ class Vm(object):
             spice = e(devices, 'graphics', None, {'type': 'spice', 'port': '5900', 'autoport': 'yes'})
             e(spice, "listen", None, {'type': 'address', 'address': '0.0.0.0'})
 
+        def make_video():
+            devices = elements['devices']
+            video = e(devices, 'video')
+            e(video, 'model', None, {'type': str(cmd.videoType)})
+
         def make_graphic_console():
             if cmd.consoleMode == 'spice':
                 make_spice()
@@ -2567,6 +2572,7 @@ class Vm(object):
         make_os()
         make_features()
         make_devices()
+        make_video()
         make_nics()
         make_volumes()
         make_cdrom()
