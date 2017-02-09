@@ -1473,7 +1473,7 @@ class StartCmd(Command):
                     cmd.raise_error()
                 else:
                     if 'error' in cmd.stdout:
-                        raise CtlError('unable tot connect to the rabbitmq server[ip:%s] with username/password configured in zstack.properties.\n'
+                        raise CtlError('unable to connect to the rabbitmq server[ip:%s] with username/password configured in zstack.properties.\n'
                                        'If you have reset the rabbimtq server, get the username/password from zstack.properties and do followings on the rabbitmq server:\n'
                                        '1) rabbitmqctl add_user $username $password\n'
                                        '2) rabbitmqctl set_user_tags $username administrator\n'
