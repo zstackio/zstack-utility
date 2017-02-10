@@ -4168,7 +4168,7 @@ class ChangeMysqlPasswordCmd(Command):
         self.check_username_password(args)
         if args.user_name == 'zstack':
             if args.remote_ip is not None:
-                sql = "mysql -u root -p'%s' -h '%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.remote_ip, args.new_password, args.user_name)
+                sql = "mysql -u root -p'%s' -h '%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') , Host = \'%s\' WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.remote_ip, args.new_password,args.remote_ip, args.user_name)
             else:
                 sql = "mysql -u root -p'%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.new_password, args.user_name)
             status, output = commands.getstatusoutput(sql)
