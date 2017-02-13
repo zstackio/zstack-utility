@@ -9,14 +9,12 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import daemon
 from zstacklib.utils import linux
 import os.path
-import atexit
-import time
 import traceback
 import pprint
 import functools
-import sys
-import libvirt
+import string
 
+from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
@@ -122,8 +120,19 @@ def replyerror(func):
             rsp.error = str(e)
             logger.warn(err)
             return jsonobject.dumps(rsp)
-        
     return wrap
+
+
+def deleteImage(path):
+     shell.call('rm -f %s' % path)
+     logger.debug('successfully delete %s' % path)
+     if (path.endswith('.qcow2')):
+        imfFiles = [".imf",".imf2"]
+        for f in imfFiles:
+            filePath = path.replace(".qcow2", f)
+            shell.call('rm -f %s' % filePath)
+     pdir = os.path.dirname(path)
+     linux.rmdir_if_empty(pdir)
 
 class KvmDaemon(daemon.Daemon):
     def __init__(self, pidfile, config={}):

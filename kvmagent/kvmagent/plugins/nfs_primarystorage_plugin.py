@@ -403,10 +403,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         if cmd.isFolder:
             shell.call('rm -rf %s' % cmd.installPath)
         else:
-            shell.call('rm -f %s' % cmd.installPath)
-            pdir = os.path.dirname(cmd.installPath)
-            linux.rmdir_if_empty(pdir)
-
+            kvmagent.deleteImage(cmd.installPath)
         logger.debug('successfully delete %s' % cmd.installPath)
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)

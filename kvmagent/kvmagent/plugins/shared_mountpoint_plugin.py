@@ -132,12 +132,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def delete_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-
-        shell.call('rm -f %s' % cmd.path)
-        pdir = os.path.dirname(cmd.path)
-        linux.rmdir_if_empty(pdir)
-
-        logger.debug('successfully delete %s' % cmd.path)
+        kvmagent.deleteImage(cmd.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
         return jsonobject.dumps(rsp)
 
