@@ -8,6 +8,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import linux
+from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import iptables
 
@@ -59,7 +60,8 @@ class NicPlugin(virtualrouter.VRAgent):
             nics[mac] = dev_name
             
         return nics
-        
+
+    @lock.file_lock('iptables')
     def _default_iptable_rules(self, nicname):
         in_chain_name = "%s-in" % nicname
         

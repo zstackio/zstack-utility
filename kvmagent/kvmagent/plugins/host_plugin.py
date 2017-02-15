@@ -7,6 +7,7 @@ from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import sizeunit
@@ -99,6 +100,7 @@ class HostPlugin(kvmagent.KvmAgent):
 
         raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
+    @lock.file_lock('iptables')
     @in_bash
     def apply_iptables_rules(self, rules):
         logger.debug("starting add iptables rules : %s" % rules)
