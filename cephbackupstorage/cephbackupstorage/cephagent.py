@@ -513,7 +513,17 @@ class CephAgent(object):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool, image_name = self._parse_install_path(cmd.installPath)
-        shell.call('rbd rm %s/%s' % (pool, image_name))
+
+        def delete_image(_):
+            shell.call('rbd rm %s/%s' % (pool, image_name))
+            return True
+
+        # 'rbd rm' might fail due to client crash. We wait for 30 seconds as suggested by 'rbd'.
+        #
+        # rbd: error: image still has watchers
+        # This means the image is still open or the client using it crashed. Try again after
+        # closing/unmapping it or waiting 30s for the crashed client to timeout.
+        linux.wait_callback_success(delete_image, interval=5, timeout=30, ignore_exception_in_callback=True)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
