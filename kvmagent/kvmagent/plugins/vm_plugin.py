@@ -908,10 +908,18 @@ def get_active_vm_uuids_states():
     def get_domain(conn):
         # i is for..loop's control variable
         # it's Python's local scope tricky
-        return conn.lookupByID(i)
+        try:
+            return conn.lookupByID(i)
+        except libvirt.libvirtError as ex:
+            if ex.get_error_code() == libvirt.VIR_ERR_NO_DOMAIN:
+                return None
+            raise ex
 
     for i in ids:
         domain = get_domain()
+        if domain == None:
+            continue
+
         uuid = domain.name()
         if uuid.startswith("guestfs-"):
             logger.debug("ignore the temp vm generate by guestfish.")
@@ -937,10 +945,18 @@ def get_running_vms():
 
     @LibvirtAutoReconnect
     def get_domain(conn):
-        return conn.lookupByID(i)
+        try:
+            return conn.lookupByID(i)
+        except libvirt.libvirtError as ex:
+            if ex.get_error_code() == libvirt.VIR_ERR_NO_DOMAIN:
+                return None
+            raise ex
 
     for i in ids:
-        vm = Vm.from_virt_domain(get_domain())
+        domain = get_domain()
+        if domain == None:
+            continue
+        vm = Vm.from_virt_domain(domain)
         vms.append(vm)
     return vms
 
