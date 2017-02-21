@@ -45,7 +45,9 @@ class ShellCmd(object):
             logger.debug(self.cmd)
             
         (self.stdout, self.stderr) = self.process.communicate()
-        if is_exception and self.process.returncode != 0:
+        if is_exception and self.process.returncode == -11:
+            return 'Resource Temporarily Unavailable please wait and try again'
+        elif is_exception and self.process.returncode != 0:
             self.raise_error()
 
         self.return_code = self.process.returncode
