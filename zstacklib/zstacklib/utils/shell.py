@@ -3,6 +3,7 @@
 @author: frank
 '''
 import subprocess
+from time import sleep
 from zstacklib.utils import log
 
 logcmd = True
@@ -22,15 +23,21 @@ class ShellCmd(object):
         Constructor
         '''
         self.cmd = cmd
-        if pipe:
-            self.process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
-                                            stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
-        else:
-            self.process = subprocess.Popen(cmd, shell=True, executable='/bin/bash', cwd=workdir)
+        self.workdir = workdir
+        self.pipe = pipe
+
+        self.do_popen()
             
         self.stdout = None
         self.stderr = None
         self.return_code = None
+
+    def do_popen(self):
+        if self.pipe:
+            self.process = subprocess.Popen(self.cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+                                            stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=self.workdir)
+        else:
+            self.process = subprocess.Popen(self.cmd, shell=True, executable='/bin/bash', cwd=self.workdir)
 
     def raise_error(self):
         err = []
@@ -39,12 +46,22 @@ class ShellCmd(object):
         err.append('stdout: %s' % self.stdout)
         err.append('stderr: %s' % self.stderr)
         raise ShellError('\n'.join(err))
-        
+
+    def retry(self):
+        self.do_popen()
+        (self.stdout, self.stderr) = self.process.communicate()
+
     def __call__(self, is_exception=True):
         if logcmd:
             logger.debug(self.cmd)
-            
+
         (self.stdout, self.stderr) = self.process.communicate()
+
+        while(is_exception and self.process.returncode == -11):
+            sleep(3)
+            self.retry()
+
+
         if is_exception and self.process.returncode != 0:
             self.raise_error()
 
