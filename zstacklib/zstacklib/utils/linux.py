@@ -1025,7 +1025,7 @@ def create_vip(nic_mac, ip, netmask):
             if len(name_pair) == 1:
                 base_name = name_pair[0]
                 continue
-            devids.append(name_pair[1])
+            devids.append(int(name_pair[1]))
 
         assert base_name
         if len(nic_names) == 1:
