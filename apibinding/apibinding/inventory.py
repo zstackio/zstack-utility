@@ -703,8 +703,6 @@ class APICreateInstanceOfferingMsg(object):
         #mandatory field
         self.cpuNum = NotNoneField()
         #mandatory field
-        self.cpuSpeed = NotNoneField()
-        #mandatory field
         self.memorySize = NotNoneField()
         self.allocatorStrategy = None
         self.sortKey = None
@@ -2287,9 +2285,10 @@ class APISetImageQgaMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        #mandatory field
+        self.enable = NotNoneField()
         self.session = None
         self.timeout = None
-        self.enable = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4473,7 +4472,6 @@ class APIGetCandidateZonesClustersHostsForCreatingVmReply(object):
         self.zones = OptionalList()
         self.clusters = OptionalList()
         self.hosts = OptionalList()
-        self.clusterPsMap = OptionalMap()
         self.success = None
         self.error = None
 
@@ -4517,7 +4515,6 @@ APIGETNICQOSREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetNicQosReply'
 class APIGetNicQosReply(object):
     FULL_NAME='org.zstack.header.vm.APIGetNicQosReply'
     def __init__(self):
-        self.vmNicUuid = None
         self.outboundBandwidth = None
         self.inboundBandwidth = None
         self.success = None
@@ -4985,16 +4982,16 @@ class APISetVmHostnameMsg(object):
         self.userTags = OptionalList()
 
 
-
 APISETVMQGAMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmQgaMsg'
 class APISetVmQgaMsg(object):
     FULL_NAME='org.zstack.header.vm.APISetVmQgaMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        #mandatory field
+        self.enable = NotNoneField()
         self.session = None
         self.timeout = None
-        self.enable = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -6971,8 +6968,6 @@ class APICreateVirtualRouterOfferingMsg(object):
         self.description = None
         #mandatory field
         self.cpuNum = NotNoneField()
-        #mandatory field
-        self.cpuSpeed = NotNoneField()
         #mandatory field
         self.memorySize = NotNoneField()
         self.allocatorStrategy = None
@@ -11536,6 +11531,7 @@ class GlobalConfig_VIRTUALROUTER(object):
         return 'virtualRouter'
 
 class GlobalConfig_VM(object):
+    VIDEOTYPE = 'videoType'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
     EXPUNGEPERIOD = 'expungePeriod'
     DELETIONPOLICY = 'deletionPolicy'
