@@ -2664,6 +2664,7 @@ class VmPlugin(kvmagent.KvmAgent):
             return None
         return o[0]
 
+    @lock.lock('libvirt-startvm')
     def _start_vm(self, cmd):
         try:
             vm = get_vm_by_uuid(cmd.vmInstanceUuid)
