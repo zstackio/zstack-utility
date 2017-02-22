@@ -407,10 +407,12 @@ class SftpBackupStorageAgent(object):
         timeout = cmd.timeout if cmd.timeout else 7200
         if cmd.urlScheme in [self.URL_HTTP, self.URL_HTTPS]:
             try:
-                ret = use_wget(cmd.url, image_name, path, timeout)
+                url = "'''" + cmd.url + "'''"
+                name = "'''" + image_name + "'''"
+                ret = use_wget(url, name, path, timeout)
                 if ret != 0:
                     rsp.success = False
-                    rsp.error = 'http/https download failed, [wget -O %s %s] returns value %s' % (image_name, cmd.url, ret)
+                    rsp.error = 'http/https download failed, [wget -O %s %s] returns value %s' % (image_name, url, ret)
                     return jsonobject.dumps(rsp)
             except linux.LinuxError as e:
                 traceback.format_exc()
