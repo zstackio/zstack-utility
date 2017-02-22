@@ -2188,9 +2188,9 @@ class APIGetCandidateBackupStorageForCreatingImageReply(object):
         self.error = None
 
 
-APIGETIMAGEQGAENABLEMSG_FULL_NAME = 'org.zstack.header.image.APIGetImageQgaEnableMsg'
-class APIGetImageQgaEnableMsg(object):
-    FULL_NAME='org.zstack.header.image.APIGetImageQgaEnableMsg'
+APIGETIMAGEQGAMSG_FULL_NAME = 'org.zstack.header.image.APIGetImageQgaMsg'
+class APIGetImageQgaMsg(object):
+    FULL_NAME='org.zstack.header.image.APIGetImageQgaMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -2200,9 +2200,9 @@ class APIGetImageQgaEnableMsg(object):
         self.userTags = OptionalList()
 
 
-APIGETIMAGEQGAENABLEREPLY_FULL_NAME = 'org.zstack.header.image.APIGetImageQgaEnableReply'
-class APIGetImageQgaEnableReply(object):
-    FULL_NAME='org.zstack.header.image.APIGetImageQgaEnableReply'
+APIGETIMAGEQGAREPLY_FULL_NAME = 'org.zstack.header.image.APIGetImageQgaReply'
+class APIGetImageQgaReply(object):
+    FULL_NAME='org.zstack.header.image.APIGetImageQgaReply'
     def __init__(self):
         self.uuid = None
         self.enable = None
@@ -2281,26 +2281,15 @@ class APISearchImageReply(object):
         self.error = None
 
 
-APISETIMAGEQGADISABLEMSG_FULL_NAME = 'org.zstack.header.image.APISetImageQgaDisableMsg'
-class APISetImageQgaDisableMsg(object):
-    FULL_NAME='org.zstack.header.image.APISetImageQgaDisableMsg'
+APISETIMAGEQGAMSG_FULL_NAME = 'org.zstack.header.image.APISetImageQgaMsg'
+class APISetImageQgaMsg(object):
+    FULL_NAME='org.zstack.header.image.APISetImageQgaMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APISETIMAGEQGAENABLEMSG_FULL_NAME = 'org.zstack.header.image.APISetImageQgaEnableMsg'
-class APISetImageQgaEnableMsg(object):
-    FULL_NAME='org.zstack.header.image.APISetImageQgaEnableMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.session = None
-        self.timeout = None
+        self.enable = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -4714,9 +4703,9 @@ class APIGetVmMigrationCandidateHostsReply(object):
         self.error = None
 
 
-APIGETVMQGAENABLEMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmQgaEnableMsg'
-class APIGetVmQgaEnableMsg(object):
-    FULL_NAME='org.zstack.header.vm.APIGetVmQgaEnableMsg'
+APIGETVMQGAMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmQgaMsg'
+class APIGetVmQgaMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmQgaMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -4726,9 +4715,9 @@ class APIGetVmQgaEnableMsg(object):
         self.userTags = OptionalList()
 
 
-APIGETVMQGAENABLEREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmQgaEnableReply'
-class APIGetVmQgaEnableReply(object):
-    FULL_NAME='org.zstack.header.vm.APIGetVmQgaEnableReply'
+APIGETVMQGAREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmQgaReply'
+class APIGetVmQgaReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmQgaReply'
     def __init__(self):
         self.uuid = None
         self.enable = None
@@ -4996,26 +4985,16 @@ class APISetVmHostnameMsg(object):
         self.userTags = OptionalList()
 
 
-APISETVMQGADISABLEMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmQgaDisableMsg'
-class APISetVmQgaDisableMsg(object):
-    FULL_NAME='org.zstack.header.vm.APISetVmQgaDisableMsg'
+
+APISETVMQGAMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmQgaMsg'
+class APISetVmQgaMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetVmQgaMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APISETVMQGAENABLEMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmQgaEnableMsg'
-class APISetVmQgaEnableMsg(object):
-    FULL_NAME='org.zstack.header.vm.APISetVmQgaEnableMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.session = None
-        self.timeout = None
+        self.enable = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
@@ -8400,8 +8379,8 @@ api_names = [
     'APIGetHostReply',
     'APIGetHypervisorTypesMsg',
     'APIGetHypervisorTypesReply',
-    'APIGetImageQgaEnableMsg',
-    'APIGetImageQgaEnableReply',
+    'APIGetImageQgaMsg',
+    'APIGetImageQgaReply',
     'APIGetImageReply',
     'APIGetInstanceOfferingReply',
     'APIGetInterdependentL3NetworkImageReply',
@@ -8471,8 +8450,8 @@ api_names = [
     'APIGetVmMigrationCandidateHostsReply',
     'APIGetVmMonitoringDataMsg',
     'APIGetVmMonitoringDataReply',
-    'APIGetVmQgaEnableMsg',
-    'APIGetVmQgaEnableReply',
+    'APIGetVmQgaMsg',
+    'APIGetVmQgaReply',
     'APIGetVmSshKeyMsg',
     'APIGetVmSshKeyReply',
     'APIGetVmStartingCandidateClustersHostsMsg',
@@ -8711,15 +8690,13 @@ api_names = [
     'APISearchVolumeReply',
     'APISearchZoneReply',
     'APISessionMessage',
-    'APISetImageQgaDisableMsg',
-    'APISetImageQgaEnableMsg',
+    'APISetImageQgaMsg',
     'APISetNicQosMsg',
     'APISetVmBootOrderMsg',
     'APISetVmConsolePasswordMsg',
     'APISetVmHostnameMsg',
     'APISetVmInstanceHaLevelMsg',
-    'APISetVmQgaDisableMsg',
-    'APISetVmQgaEnableMsg',
+    'APISetVmQgaMsg',
     'APISetVmSshKeyMsg',
     'APISetVmStaticIpMsg',
     'APISetVolumeQosMsg',
