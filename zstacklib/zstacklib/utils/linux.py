@@ -12,6 +12,7 @@ import struct
 import netaddr
 import functools
 import threading
+from time import sleep
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -808,7 +809,15 @@ def get_cpu_speed():
         out = shell.ShellCmd('cat %s' % max_freq)()
         return int(float(out) / 1000)
 
-    out = shell.ShellCmd("cat /proc/cpuinfo  | grep 'cpu MHz' | tail -n 1")()
+    while True:
+        try:
+            out = shell.ShellCmd("cat /proc/cpuinfo  | grep 'cpu MHz' | tail -n 1")()
+        except Exception as e:
+            print "Resource temporarily unavailable automatically retry..."
+            sleep(3)
+            continue
+        break
+
     (name, speed) = out.split(':')
     speed = speed.strip()
     #logger.warn('%s is not existing, getting cpu speed from "cpu MHZ" of /proc/cpuinfo which may not be accurate' % max_freq)
