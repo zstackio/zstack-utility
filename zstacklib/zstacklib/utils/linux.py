@@ -48,15 +48,18 @@ class EthernetInfo(object):
     def __str__(self):
         return 'interface:%s, mac:%s, ip:%s, netmask:%s' % (self.interface, self.mac, self.ip, self.netmask)
 
-def retry(times=3, sleep_time=3):
+def retry(times=3, sleep_time=3, errno=[]):
     def wrap(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
             for i in range(0, times):
                 try:
                     return f(*args, **kwargs)
-                except:
-                    time.sleep(sleep_time)
+                except Exception as e:
+                    if e.message in errno or errno == []:
+                        time.sleep(sleep_time)
+                    else:
+                        raise
             raise
 
         return inner
@@ -802,6 +805,7 @@ def get_cpu_num():
     out = shell.ShellCmd("cat /proc/cpuinfo | grep 'processor' | wc -l")()
     return int(out)
 
+@retry(times=3, sleep_time=3, errno=['-11'])
 def get_cpu_speed():
     max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'
     if os.path.exists(max_freq):
