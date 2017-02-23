@@ -113,6 +113,7 @@ class CephAgent(object):
     PROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/protect"
     ROLLBACK_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/rollback"
     UNPROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/unprotect"
+    CHECK_BITS_PATH = "/ceph/primarystorage/snapshot/checkbits"
     CP_PATH = "/ceph/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/ceph/primarystorage/deletepool"
     GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
@@ -143,6 +144,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
+        self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -383,6 +385,20 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     @replyerror
+    def check_bits(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.installPath)
+        rsp = AgentResponse()
+        try:
+            shell.call('rbd snap ls --format json %s' % path)
+        except Exception as e:
+            if 'No such file or directory' in str(e):
+                rsp.success = False
+                return jsonobject.dumps(rsp)
+        rsp.success = True
+        return jsonobject.dumps(rsp)
+
+    @replyerror
     def clone(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         src_path = self._normalize_install_path(cmd.srcPath)
@@ -566,3 +582,4 @@ class CephDaemon(daemon.Daemon):
     def run(self):
         self.agent = CephAgent()
         self.agent.http_server.start()
+
