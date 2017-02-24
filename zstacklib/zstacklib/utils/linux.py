@@ -526,6 +526,9 @@ def raw_create(dst, size):
 def qcow2_create_template(src, dst):
     shell.call('/usr/bin/qemu-img convert -f qcow2 -O qcow2 %s %s' % (src, dst))
 
+def qcow2_convert_to_raw(src, dst):
+    shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (src, dst))
+
 def qcow2_rebase(backing_file, target):
     fmt = get_img_fmt(backing_file)
     shell.call('/usr/bin/qemu-img rebase -F %s -f qcow2 -b %s %s' % (fmt, backing_file, target))

@@ -98,6 +98,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_SIZE = "/localstorage/volume/getsize"
     GET_BASE_IMAGE_PATH = "/localstorage/volume/getbaseimagepath"
     GET_QCOW2_REFERENCE = "/localstorage/getqcow2reference"
+    CONVERT_QCOW2_TO_RAW = "/localstorage/imagestore/convert/raw"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -130,12 +131,18 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
         http_server.register_async_uri(self.GET_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
+        http_server.register_async_uri(self.CONVERT_QCOW2_TO_RAW, self.convert_qcow2_to_raw)
 
         self.path = None
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def convert_qcow2_to_raw(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.convert_image_raw(cmd)
 
     @kvmagent.replyerror
     def get_qcow2_reference(self, req):
