@@ -19,6 +19,7 @@ class ImageStoreClient(object):
     UPLOAD_BIT_PATH = "/imagestore/upload"
     DOWNLOAD_BIT_PATH = "/imagestore/download"
     COMMIT_BIT_PATH = "/imagestore/commit"
+    CONVERT_TO_RAW = "/imagestore/convert/raw"
 
     def _get_image_json_file(self, primaryInstallPath):
         idx = primaryInstallPath.rfind('.')
@@ -100,3 +101,10 @@ class ImageStoreClient(object):
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
         return
+
+    def convert_image_raw(self, cmd):
+        destPath = cmd.srcPath.replace('.qcow2', '.raw')
+        linux.qcow2_convert_to_raw(cmd.srcPath, destPath)
+        rsp = kvmagent.AgentResponse()
+        rsp.destPath = destPath
+        return jsonobject.dumps(rsp)
