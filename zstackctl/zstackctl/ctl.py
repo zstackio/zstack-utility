@@ -4244,6 +4244,8 @@ class DumpMysqlCmd(Command):
 
 
 class RestoreMysqlCmd(Command):
+    status, all_local_ip = commands.getstatusoutput("ip a")
+
     def __init__(self):
         super(RestoreMysqlCmd, self).__init__()
         self.name = "restore_mysql"
@@ -4261,6 +4263,15 @@ class RestoreMysqlCmd(Command):
                             help="mysql root password",
                             default=None)
 
+    def test_mysql_connection(self, db_connect_password, db_port, db_hostname):
+        command = "mysql -uroot %s -P %s  %s -e 'show databases'  >> /dev/null 2>&1" \
+                      % (db_connect_password, db_port, db_hostname)
+        try:
+            shell_no_pipe(command)
+        except:
+            error("Can't connect mysql with root password '%s', please specify databse root password with --mysql-root-password" % db_connect_password.split('-p')[1])
+
+
     def run(self, args):
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
         # only root user can restore database
@@ -4273,25 +4284,24 @@ class RestoreMysqlCmd(Command):
         shell_no_pipe('zstack-ctl dump_mysql')
         shell_no_pipe('zstack-ctl stop_node')
         info("Starting recover data ...")
-        status, all_local_ip = commands.getstatusoutput("ip a")
-        if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in all_local_ip):
-            if db_password is None or db_password == "":
-                db_connect_password = ""
-            else:
-                db_connect_password = "-p" + db_password
-            for database in ['zstack','zstack_rest']:
-                command = "gunzip < %s | mysql -uroot %s -P %s %s" \
-                          % (db_backup_name, db_connect_password, db_port, database)
-                shell_no_pipe(command)
+        if db_password is None or db_password == "":
+            db_connect_password = ""
         else:
-            if db_password is None or db_password == "":
-                db_connect_password = ""
-            else:
-                db_connect_password = "-p" + db_password
-            for database in ['zstack','zstack_rest']:
-                command = "gunzip < %s | mysql -uroot %s --host %s -P %s %s" \
-                      % (db_backup_name, db_connect_password, db_hostname, db_port, database)
-                shell_no_pipe(command)
+            db_connect_password = "-p" + db_password
+        if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in RestoreMysqlCmd.all_local_ip):
+            db_hostname = ""
+        else:
+            db_hostname = "--host %s" % db_hostname
+
+        self.test_mysql_connection(db_connect_password, db_port, db_hostname)
+
+        for database in ['zstack','zstack_rest']:
+            command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
+                      % (db_connect_password, db_port, db_hostname, database, database)
+            shell_no_pipe(command)
+            command = "gunzip < %s | mysql -uroot %s %s -P %s %s" \
+                  % (db_backup_name, db_connect_password, db_hostname, db_port, database)
+            shell_no_pipe(command)
         #shell_no_pipe('zstack-ctl start_node')
         info("Recover data successfully! You can start node by: zstack-ctl start")
 
