@@ -35,15 +35,19 @@ def main():
 
         cmd = sys.argv[1]
         agentdaemon = kvmagent.KvmDaemon(pidfile)
+        iptablesDaemon = kvmagent.iptablesDaemon()
         if cmd == 'start':
             logger.debug('zstack-kvmagent starts')
             agentdaemon.start()
+            iptablesDaemon.start()
         elif cmd == 'stop':
             logger.debug('zstack-kvmagent stops')
             agentdaemon.stop()
+            iptablesDaemon.stop()
         elif cmd == 'restart':
             logger.debug('zstack-kvmagent restarts')
             agentdaemon.restart()
+            iptablesDaemon.restart()
         sys.exit(0)    
     except Exception:
         logger.warning(linux.get_exception_stacktrace())

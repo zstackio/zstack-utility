@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from kvmagent.plugins import vm_plugin
 from zstacklib.utils import plugin
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -13,6 +14,7 @@ import traceback
 import pprint
 import functools
 import string
+import time
 
 from zstacklib.utils import shell
 
@@ -141,6 +143,14 @@ class KvmDaemon(daemon.Daemon):
     def run(self):
         self.agent = new_rest_service()
         self.agent.start(in_thread=False)
+
+class iptablesDaemon(daemon.Daemon):
+    def __init__(self, pidfile, config={}):
+        super(iptablesDaemon, self).__init__(pidfile)
+
+    def run(self):
+        vm_plugin.cleanup_stale_vnc_iptable_chains()
+        time.sleep(600)
 
 SEND_COMMAND_URL = 'SEND_COMMAND_URL'
 HOST_UUID = 'HOST_UUID'
