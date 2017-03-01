@@ -3498,6 +3498,19 @@ class APIQueryBackupStorageReply(object):
         self.error = None
 
 
+APIRECONNECTBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.header.storage.primary.APIReconnectPrimaryStorageMsg'
+class APIReconnectPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.header.storage.backup.APIReconnectPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+
 APIRECONNECTBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.header.storage.backup.APIReconnectBackupStorageMsg'
 class APIReconnectBackupStorageMsg(object):
     FULL_NAME='org.zstack.header.storage.backup.APIReconnectBackupStorageMsg'

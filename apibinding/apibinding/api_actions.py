@@ -3908,6 +3908,18 @@ class RebootVmInstanceAction(inventory.APIRebootVmInstanceMsg):
         self.out = evt
         return self.out
 
+class ReconnectPrimaryStorageAction(inventory.APIReconnectPrimaryStorageMsg):
+    def __init__(self):
+        super(ReconnectPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ReconnectPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ReconnectBackupStorageAction(inventory.APIReconnectBackupStorageMsg):
     def __init__(self):
         super(ReconnectBackupStorageAction, self).__init__()
