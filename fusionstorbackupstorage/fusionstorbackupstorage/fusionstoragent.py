@@ -167,8 +167,7 @@ class FusionstorAgent(object):
         _1()
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
-            url =  "'''" + cmd.url + "'''"
-            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd import - %s -p %s' % (url, tmp_lichbd_file, protocol))
+            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd import - %s -p %s' % (cmd.url, tmp_lichbd_file, protocol))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
         elif cmd.url.startswith('file://'):
             src_path = cmd.url.lstrip('file:')
