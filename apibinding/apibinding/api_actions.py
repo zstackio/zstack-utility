@@ -26,6 +26,18 @@ class AddCephPrimaryStorageAction(inventory.APIAddCephPrimaryStorageMsg):
         self.out = evt
         return self.out
 
+class AddCephPrimaryStoragePoolAction(inventory.APIAddCephPrimaryStoragePoolMsg):
+    def __init__(self):
+        super(AddCephPrimaryStoragePoolAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddCephPrimaryStoragePoolAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddDnsToL3NetworkAction(inventory.APIAddDnsToL3NetworkMsg):
     def __init__(self):
         super(AddDnsToL3NetworkAction, self).__init__()
@@ -1358,6 +1370,18 @@ class DeleteBackupStorageAction(inventory.APIDeleteBackupStorageMsg):
         self.out = evt
         return self.out
 
+class DeleteCephPrimaryStoragePoolAction(inventory.APIDeleteCephPrimaryStoragePoolMsg):
+    def __init__(self):
+        super(DeleteCephPrimaryStoragePoolAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteCephPrimaryStoragePoolAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteClusterAction(inventory.APIDeleteClusterMsg):
     def __init__(self):
         super(DeleteClusterAction, self).__init__()
@@ -1546,18 +1570,6 @@ class DeleteLoadBalancerListenerAction(inventory.APIDeleteLoadBalancerListenerMs
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteLoadBalancerListenerAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DeleteLogAction(inventory.APIDeleteLogMsg):
-    def __init__(self):
-        super(DeleteLogAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteLogAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3114,6 +3126,20 @@ class QueryCephPrimaryStorageAction(inventory.APIQueryCephPrimaryStorageMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryCephPrimaryStoragePoolAction(inventory.APIQueryCephPrimaryStoragePoolMsg):
+    def __init__(self):
+        super(QueryCephPrimaryStoragePoolAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryCephPrimaryStoragePoolAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryClusterAction(inventory.APIQueryClusterMsg):
     def __init__(self):
         super(QueryClusterAction, self).__init__()
@@ -3406,18 +3432,6 @@ class QueryLocalStorageResourceRefAction(inventory.APIQueryLocalStorageResourceR
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
-        return self.out
-
-class QueryLogAction(inventory.APIQueryLogMsg):
-    def __init__(self):
-        super(QueryLogAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryLogAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
         return self.out
 
 class QueryManagementNodeAction(inventory.APIQueryManagementNodeMsg):
@@ -3904,18 +3918,6 @@ class RebootVmInstanceAction(inventory.APIRebootVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RebootVmInstanceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class ReconnectPrimaryStorageAction(inventory.APIReconnectPrimaryStorageMsg):
-    def __init__(self):
-        super(ReconnectPrimaryStorageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ReconnectPrimaryStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

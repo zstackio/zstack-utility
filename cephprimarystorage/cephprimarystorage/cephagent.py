@@ -119,12 +119,14 @@ class CephAgent(object):
     PING_PATH = "/ceph/primarystorage/ping"
     GET_FACTS = "/ceph/primarystorage/facts"
     DELETE_IMAGE_CACHE = "/ceph/primarystorage/deleteimagecache"
+    ADD_POOL_PATH = "/ceph/primarystorage/addpool"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
 
     def __init__(self):
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
+        self.http_server.register_async_uri(self.ADD_POOL_PATH, self.add_pool)
         self.http_server.register_async_uri(self.DELETE_PATH, self.delete)
         self.http_server.register_async_uri(self.CREATE_VOLUME_PATH, self.create)
         self.http_server.register_async_uri(self.CLONE_PATH, self.clone)
@@ -409,6 +411,20 @@ class CephAgent(object):
     def echo(self, req):
         logger.debug('get echoed')
         return ''
+
+    @replyerror
+    def add_pool(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        existing_pools = shell.call('ceph osd lspools')
+
+        if cmd.errorIfNotExist and cmd.poolName not in existing_pools:
+            raise Exception('cannot find the pool[%s] in the ceph cluster, you must create it manually' % cmd.poolName)
+
+        if cmd.poolName not in existing_pools:
+            shell.call('ceph osd pool create %s 100' % cmd.poolName)
+
+        return jsonobject.dumps(AgentResponse())
+
 
     @replyerror
     def init(self, req):

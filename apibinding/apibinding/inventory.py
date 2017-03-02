@@ -3498,19 +3498,6 @@ class APIQueryBackupStorageReply(object):
         self.error = None
 
 
-APIRECONNECTBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.header.storage.primary.APIReconnectPrimaryStorageMsg'
-class APIReconnectPrimaryStorageMsg(object):
-    FULL_NAME='org.zstack.header.storage.backup.APIReconnectPrimaryStorageMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-
 APIRECONNECTBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.header.storage.backup.APIReconnectBackupStorageMsg'
 class APIReconnectBackupStorageMsg(object):
     FULL_NAME='org.zstack.header.storage.backup.APIReconnectBackupStorageMsg'
@@ -5970,41 +5957,6 @@ class APIReloadLicenseReply(object):
         self.error = None
 
 
-APIDELETELOGMSG_FULL_NAME = 'org.zstack.logging.APIDeleteLogMsg'
-class APIDeleteLogMsg(object):
-    FULL_NAME='org.zstack.logging.APIDeleteLogMsg'
-    def __init__(self):
-        self.uuids = OptionalList()
-        self.deleteMode = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYLOGMSG_FULL_NAME = 'org.zstack.logging.APIQueryLogMsg'
-class APIQueryLogMsg(object):
-    FULL_NAME='org.zstack.logging.APIQueryLogMsg'
-    def __init__(self):
-        #mandatory field
-        #valid values: [RESOURCE, SYSTEM, EVENT]
-        self.type = NotNoneField()
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYLOGREPLY_FULL_NAME = 'org.zstack.logging.APIQueryLogReply'
-class APIQueryLogReply(object):
-    FULL_NAME='org.zstack.logging.APIQueryLogReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.success = None
-        self.error = None
-
-
 APIQUERYSHAREABLEVOLUMEVMINSTANCEREFMSG_FULL_NAME = 'org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefMsg'
 class APIQueryShareableVolumeVmInstanceRefMsg(object):
     FULL_NAME='org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefMsg'
@@ -7533,6 +7485,23 @@ class APIAddCephPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDCEPHPRIMARYSTORAGEPOOLMSG_FULL_NAME = 'org.zstack.storage.ceph.primary.APIAddCephPrimaryStoragePoolMsg'
+class APIAddCephPrimaryStoragePoolMsg(object):
+    FULL_NAME='org.zstack.storage.ceph.primary.APIAddCephPrimaryStoragePoolMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.errorIfNotExist = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDMONTOCEPHPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.ceph.primary.APIAddMonToCephPrimaryStorageMsg'
 class APIAddMonToCephPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.ceph.primary.APIAddMonToCephPrimaryStorageMsg'
@@ -7541,6 +7510,18 @@ class APIAddMonToCephPrimaryStorageMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.monUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETECEPHPRIMARYSTORAGEPOOLMSG_FULL_NAME = 'org.zstack.storage.ceph.primary.APIDeleteCephPrimaryStoragePoolMsg'
+class APIDeleteCephPrimaryStoragePoolMsg(object):
+    FULL_NAME='org.zstack.storage.ceph.primary.APIDeleteCephPrimaryStoragePoolMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7566,6 +7547,37 @@ class APIQueryCephPrimaryStorageMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIQUERYCEPHPRIMARYSTORAGEPOOLMSG_FULL_NAME = 'org.zstack.storage.ceph.primary.APIQueryCephPrimaryStoragePoolMsg'
+class APIQueryCephPrimaryStoragePoolMsg(object):
+    FULL_NAME='org.zstack.storage.ceph.primary.APIQueryCephPrimaryStoragePoolMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYCEPHPRIMARYSTORAGEPOOLREPLY_FULL_NAME = 'org.zstack.storage.ceph.primary.APIQueryCephPrimaryStoragePoolReply'
+class APIQueryCephPrimaryStoragePoolReply(object):
+    FULL_NAME='org.zstack.storage.ceph.primary.APIQueryCephPrimaryStoragePoolReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
 
 
 APIREMOVEMONFROMCEPHPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.ceph.primary.APIRemoveMonFromCephPrimaryStorageMsg'
@@ -8161,6 +8173,7 @@ class APIUpdateVCenterMsg(object):
 api_names = [
     'APIAddCephBackupStorageMsg',
     'APIAddCephPrimaryStorageMsg',
+    'APIAddCephPrimaryStoragePoolMsg',
     'APIAddDnsToL3NetworkMsg',
     'APIAddFusionstorBackupStorageMsg',
     'APIAddFusionstorPrimaryStorageMsg',
@@ -8275,6 +8288,7 @@ api_names = [
     'APIDeleteAccountMsg',
     'APIDeleteAlarmMsg',
     'APIDeleteBackupStorageMsg',
+    'APIDeleteCephPrimaryStoragePoolMsg',
     'APIDeleteClusterMsg',
     'APIDeleteDataVolumeMsg',
     'APIDeleteDiskOfferingMsg',
@@ -8291,7 +8305,6 @@ api_names = [
     'APIDeleteLdapServerMsg',
     'APIDeleteLoadBalancerListenerMsg',
     'APIDeleteLoadBalancerMsg',
-    'APIDeleteLogMsg',
     'APIDeleteNicQosMsg',
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
@@ -8534,6 +8547,8 @@ api_names = [
     'APIQueryBackupStorageReply',
     'APIQueryCephBackupStorageMsg',
     'APIQueryCephPrimaryStorageMsg',
+    'APIQueryCephPrimaryStoragePoolMsg',
+    'APIQueryCephPrimaryStoragePoolReply',
     'APIQueryClusterMsg',
     'APIQueryClusterReply',
     'APIQueryConsoleProxyAgentMsg',
@@ -8574,8 +8589,6 @@ api_names = [
     'APIQueryLoadBalancerReply',
     'APIQueryLocalStorageResourceRefMsg',
     'APIQueryLocalStorageResourceRefReply',
-    'APIQueryLogMsg',
-    'APIQueryLogReply',
     'APIQueryManagementNodeMsg',
     'APIQueryManagementNodeReply',
     'APIQueryNetworkServiceL3NetworkRefMsg',
@@ -11311,6 +11324,13 @@ class GlobalConfig_FUSIONSTOR(object):
     def get_category():
         return 'fusionstor'
 
+class GlobalConfig_GC(object):
+    ORPHANJOBSCANINTERVAL = 'orphanJobScanInterval'
+
+    @staticmethod
+    def get_category():
+        return 'gc'
+
 class GlobalConfig_HA(object):
     HOST_SELFFENCER_MAXATTEMPTS = 'host.selfFencer.maxAttempts'
     HOST_CHECK_SUCCESSTIMES = 'host.check.successTimes'
@@ -11485,10 +11505,8 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
@@ -11668,6 +11686,12 @@ class QueryObjectCephPrimaryStorageInventory(object):
 
 class QueryObjectCephPrimaryStorageMonInventory(object):
      PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','primaryStorageUuid','createDate','status','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectCephPrimaryStoragePoolInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','primaryStorageUuid','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -12353,6 +12377,7 @@ queryMessageInventoryMap = {
      'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
      'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,
      'APIQueryCephPrimaryStorageMsg' : QueryObjectCephPrimaryStorageInventory,
+     'APIQueryCephPrimaryStoragePoolMsg' : QueryObjectCephPrimaryStoragePoolInventory,
      'APIQueryClusterMsg' : QueryObjectClusterInventory,
      'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
      'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
