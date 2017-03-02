@@ -397,8 +397,7 @@ class CephAgent(object):
                 Report.url = cmd.sendCommandUrl
 
             PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
-            url = "'''" + cmd.url + "'''"
-            content_length = shell.call('curl -sI %s|grep Content-Length' % url).strip().split()[1]
+            content_length = shell.call('curl -sI %s|grep Content-Length' % cmd.url).strip().split()[1]
             total = _getRealSize(content_length)
 
             def _getProgress(synced):
