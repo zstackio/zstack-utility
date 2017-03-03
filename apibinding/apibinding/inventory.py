@@ -7242,6 +7242,18 @@ class APIQueryImageStoreBackupStorageReply(object):
         self.error = None
 
 
+APIRECLAIMSPACEFROMIMAGESTOREMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIReclaimSpaceFromImageStoreMsg'
+class APIReclaimSpaceFromImageStoreMsg(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APIReclaimSpaceFromImageStoreMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIRECONNECTIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIReconnectImageStoreBackupStorageMsg'
 class APIReconnectImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIReconnectImageStoreBackupStorageMsg'
@@ -8659,6 +8671,7 @@ api_names = [
     'APIQueryZoneMsg',
     'APIQueryZoneReply',
     'APIRebootVmInstanceMsg',
+    'APIReclaimSpaceFromImageStoreMsg',
     'APIReconnectBackupStorageMsg',
     'APIReconnectConsoleProxyAgentMsg',
     'APIReconnectHostMsg',
@@ -11511,7 +11524,6 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
