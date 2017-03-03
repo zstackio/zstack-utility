@@ -3922,6 +3922,18 @@ class RebootVmInstanceAction(inventory.APIRebootVmInstanceMsg):
         self.out = evt
         return self.out
 
+class ReclaimSpaceFromImageStoreAction(inventory.APIReclaimSpaceFromImageStoreMsg):
+    def __init__(self):
+        super(ReclaimSpaceFromImageStoreAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ReclaimSpaceFromImageStoreAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ReconnectBackupStorageAction(inventory.APIReconnectBackupStorageMsg):
     def __init__(self):
         super(ReconnectBackupStorageAction, self).__init__()

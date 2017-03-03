@@ -7242,6 +7242,18 @@ class APIQueryImageStoreBackupStorageReply(object):
         self.error = None
 
 
+APIRECLAIMSPACEFROMIMAGESTOREMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIReclaimSpaceFromImageStoreMsg'
+class APIReclaimSpaceFromImageStoreMsg(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APIReclaimSpaceFromImageStoreMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIRECONNECTIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIReconnectImageStoreBackupStorageMsg'
 class APIReconnectImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIReconnectImageStoreBackupStorageMsg'
@@ -7492,7 +7504,7 @@ class APIAddCephPrimaryStoragePoolMsg(object):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
-        self.name = NotNoneField()
+        self.poolName = NotNoneField()
         self.description = None
         self.errorIfNotExist = None
         self.resourceUuid = None
@@ -8659,6 +8671,7 @@ api_names = [
     'APIQueryZoneMsg',
     'APIQueryZoneReply',
     'APIRebootVmInstanceMsg',
+    'APIReclaimSpaceFromImageStoreMsg',
     'APIReconnectBackupStorageMsg',
     'APIReconnectConsoleProxyAgentMsg',
     'APIReconnectHostMsg',
@@ -11505,6 +11518,7 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
+    SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     IMAGE_NUM = 'image.num'
@@ -11691,7 +11705,7 @@ class QueryObjectCephPrimaryStorageMonInventory(object):
      }
 
 class QueryObjectCephPrimaryStoragePoolInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','primaryStorageUuid','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['lastOpDate','description','primaryStorageUuid','uuid','poolName','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
