@@ -4,5 +4,24 @@ if [ ! -d $VIRTUAL_ENV ]; then
     echo "Need to install zstackctl before using it"
     exit 1
 fi
+
+# check disk space
+all_full=true
+paths=('/tmp', '/var/tmp', '/usr/tmp', '/root')
+for path in ${paths[@]}; do
+  percent="100%"
+  if [ -d $path ]; then
+      percent=`df -H $path | sed '1d' | awk '{print $(NF-1)}'`
+  fi
+  if [ x"$percent" != x"100%" ]; then
+      all_full=false
+      break
+  fi
+done
+if [ $all_full == true ]; then
+  echo -e "\033[31m There is not enough disk space available for zstack-ctl! \033[0m"
+  exit 1
+fi
+
 . $VIRTUAL_ENV/bin/activate
 python -c "from zstackctl import ctl; ctl.main()" $@
