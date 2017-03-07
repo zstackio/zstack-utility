@@ -1963,6 +1963,14 @@ get_zstack_repo(){
     fi
 }
 
+set_tomcat_config() {
+    new_timeout=120000
+    new_max_thread_num=400
+    tomcat_config_path=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf
+    sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
+    sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
+}
+
 check_iso_version() {
 	[ ! -f ".repo_version" ] && return 1
 	[ ! -f "/opt/zstack-dvd/.repo_version" ] && return 1
@@ -2407,6 +2415,9 @@ install_zstack
 
 #Post Configuration, including apache, zstack-server, NFS Server, HTTP Server
 config_system
+
+#If tomcat use the default conf update it
+set_tomcat_config
 
 if [ -f $ZSTACK_VERSION -a -z "$VERSION" ]; then
     VERSION=`cat $ZSTACK_VERSION`' '
