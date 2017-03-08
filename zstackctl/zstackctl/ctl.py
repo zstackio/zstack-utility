@@ -46,6 +46,7 @@ elif [ -f /etc/my.cnf ]; then
     mysql_conf=/etc/my.cnf
 fi
 
+echo 'tmpdir=/var/lib/mysql/tmp' >> $mysql_conf
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
 sed -i 's/^skip-networking/#skip-networking/' $mysql_conf
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
