@@ -4802,19 +4802,10 @@ class ChangeIpCmd(Command):
         if os.path.isfile(zstack_conf_file):
             db_url = ctl.read_property('DB.url')
             db_ip = db_url.split('/')[-1].split(':')[0]
-            isLocal = True
-            info("try connection mysql local server...")
             status, output = commands.getstatusoutput(
-            "mysql  -uroot -p%s -e 'show databases;'" % (args.mysql_root_password))
+            "mysql -h '%s' -uroot -p%s -e 'show databases;'" % (db_ip, args.mysql_root_password))
             if status != 0:
                 error(output)
-                info("connected fail of mysql local server ,try  connection mysql server % s",db_ip)
-                status, output = commands.getstatusoutput(
-                    "mysql -h '%s' -uroot -p%s -e 'show databases;'" % (db_ip, args.mysql_root_password))
-                if status != 0:
-                    error(output)
-                else :
-                    isLocal = False
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file)
             return 1
@@ -4869,19 +4860,12 @@ class ChangeIpCmd(Command):
               ('DB.url', db_new_url),
             ])
             # Update DB
-            if isLocal == False:
-                old_ip = old_ip.replace(".", "-")
-                sql = "mysql -uroot -p'%s' -h '%s' -e \"UPDATE mysql.user SET  Host = \'%s\' WHERE USER='zstack' AND Host = \'%s\' ;FLUSH PRIVILEGES;\"" % (
-                    args.mysql_root_password, db_ip, args.ip.replace(".", "-"), old_ip)
-                status, output = commands.getstatusoutput(sql)
-                if status != 0:
-                    error(output)
-            else :
-                sql = "mysql -uroot -p'%s' -e \"UPDATE mysql.user SET  Host = \'%s\' WHERE USER='zstack' AND Host = \'%s\' ;FLUSH PRIVILEGES;\"" % (
-                    args.mysql_root_password, args.ip.replace(".", "-"), old_ip)
-                status, output = commands.getstatusoutput(sql)
-                if status != 0:
-                    error(output)
+            old_ip = old_ip.replace(".", "-")
+            sql = "mysql -uroot -p'%s' -h '%s' -e \"UPDATE mysql.user SET  Host = \'%s\' WHERE USER='zstack' AND Host = \'%s\' ;FLUSH PRIVILEGES;\"" % (
+                args.mysql_root_password, db_ip, args.ip.replace(".", "-"), old_ip)
+            status, output = commands.getstatusoutput(sql)
+            if status != 0:
+                error(output)
             info("Update mysql new url %s in %s and DB" % (db_new_url, zstack_conf_file))
             info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
         else:
