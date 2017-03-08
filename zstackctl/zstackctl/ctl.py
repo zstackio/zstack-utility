@@ -98,6 +98,18 @@ grep '^skip-name-resolve' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
     sed -i '/\[mysqld\]/a skip-name-resolve\' $mysql_conf
 fi
+
+grep 'tmpdir' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    mysql_tmp_path="/var/lib/mysql/tmp"
+    if [ ! -x "$mysql_tmp_path" ]; then
+        mkdir "$mysql_tmp_path"
+        chown mysql:mysql "$mysql_tmp_path"
+        chmod 1777 "$mysql_tmp_path"
+    fi
+    echo "tmpdir=/var/lib/mysql/tmp"
+    sed -i '/\[mysqld\]/a tmpdir=/var/lib/mysql/tmp\' $mysql_conf
+fi
 '''
 
 def signal_handler(signal, frame):
