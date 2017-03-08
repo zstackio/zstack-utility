@@ -4767,9 +4767,6 @@ class ChangeIpCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--mysql_root_password','-password',
-                            help="Current mysql root password",
-                            required=True)
         parser.add_argument('--ip', help='The new IP address of management node.'
                                          'This operation will update the new ip address to '
                                          'zstack config file' , required=True)
@@ -4797,18 +4794,6 @@ class ChangeIpCmd(Command):
             if not ip_check.match(input_ip):
                 info("The ip address you input: %s seems not a valid ip" % input_ip)
                 return 1
-
-        # check
-        if os.path.isfile(zstack_conf_file):
-            db_url = ctl.read_property('DB.url')
-            db_ip = db_url.split('/')[-1].split(':')[0]
-            status, output = commands.getstatusoutput(
-            "mysql -h '%s' -uroot -p%s -e 'show databases;'" % (db_ip, args.mysql_root_password))
-            if status != 0:
-                error(output)
-        else:
-            info("Didn't find %s, skip update new ip" % zstack_conf_file)
-            return 1
 
         # Update /etc/hosts
         if os.path.isfile(zstack_conf_file):
@@ -4853,20 +4838,13 @@ class ChangeIpCmd(Command):
               ('management.server.ip', args.ip),
             ])
             info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
+            db_url = ctl.read_property('DB.url')
 
             db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
             db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
             ctl.write_properties([
               ('DB.url', db_new_url),
             ])
-            # Update DB
-            old_ip = old_ip.replace(".", "-")
-            sql = "mysql -uroot -p'%s' -h '%s' -e \"UPDATE mysql.user SET  Host = \'%s\' WHERE USER='zstack' AND Host = \'%s\' ;FLUSH PRIVILEGES;\"" % (
-                args.mysql_root_password, db_ip, args.ip.replace(".", "-"), old_ip)
-            status, output = commands.getstatusoutput(sql)
-            if status != 0:
-                error(output)
-            info("Update mysql new url %s in %s and DB" % (db_new_url, zstack_conf_file))
             info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
