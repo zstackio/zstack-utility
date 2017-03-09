@@ -9,7 +9,7 @@ CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
 UPGRADE='n'
 FORCE='n'
-MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
+MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG

@@ -1221,7 +1221,7 @@ def kill_process(pid, timeout=5):
         raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
 
 def get_gateway_by_default_route():
-    cmd = shell.ShellCmd("ip route | grep default | cut -d ' ' -f 3")
+    cmd = shell.ShellCmd("ip route | grep default | head -n 1 | cut -d ' ' -f 3")
     cmd(False)
     if cmd.return_code != 0:
         return None
