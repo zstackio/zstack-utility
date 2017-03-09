@@ -396,7 +396,7 @@ class CephAgent(object):
         path = self._normalize_install_path(cmd.installPath)
         rsp = CheckIsBitsExistingRsp()
         try:
-            shell.call('rbd snap ls --format json %s' % path)
+            shell.call('rbd info %s' % path)
         except Exception as e:
             if 'No such file or directory' in str(e):
                 rsp.existing = False
