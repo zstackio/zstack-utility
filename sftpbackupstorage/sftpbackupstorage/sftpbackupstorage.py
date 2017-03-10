@@ -407,6 +407,8 @@ class SftpBackupStorageAgent(object):
         timeout = cmd.timeout if cmd.timeout else 7200
         if cmd.urlScheme in [self.URL_HTTP, self.URL_HTTPS]:
             try:
+                image_name = linux.shellquote(image_name)
+                cmd.url = linux.shellquote(cmd.url)
                 ret = use_wget(cmd.url, image_name, path, timeout)
                 if ret != 0:
                     rsp.success = False
@@ -423,14 +425,13 @@ class SftpBackupStorageAgent(object):
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
             logger.debug("src_path is: %s" % src_path)
-            shell.call('yes | cp %s %s' % (src_path, install_path))
+            shell.call('yes | cp %s %s' % (src_path, linux.shellquote(install_path) ))
 
 
 
         os.chmod(cmd.installPath, stat.S_IRUSR + stat.S_IRGRP + stat.S_IROTH)
 
-
-        image_format =  bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % install_path).strip('\n')
+        image_format = bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % linux.shellquote(install_path)).strip('\n')
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))

@@ -391,6 +391,7 @@ class CephAgent(object):
         report.progress_report("0", "start")
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             fail_if_has_backing_file(cmd.url)
+            cmd.url = linux.shellquote(cmd.url)
             # roll back tmp ceph file after import it
             _1()
             if cmd.sendCommandUrl:
