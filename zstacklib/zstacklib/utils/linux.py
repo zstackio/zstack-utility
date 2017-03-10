@@ -237,6 +237,9 @@ def get_file_size_by_http_head(url):
             return long(filesize)
     return None
 
+def shellquote(s):
+    return "'" + s.replace("'", "'\\''") + "'"
+
 def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callback_data=None, cert_check=False):
     def get_percentage(filesize, dst):
         try:
@@ -470,14 +473,14 @@ def qcow2_size_and_actual_size(file_path):
     cmd = shell.ShellCmd('''set -o pipefail; qemu-img info %s |  awk '{if (/^virtual size:/) {vs=substr($4,2)}; if (/^disk size:/) {ds=$3} } END{print vs?vs:"null", ds?ds:"null"}' ''' % file_path)
     cmd(False)
     if cmd.return_code != 0:
-        raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
+        raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (shellquote(file_path), cmd.stdout, cmd.stderr))
 
     logger.debug('qcow2_size_and_actual_size: %s' % cmd.stdout)
 
     out = cmd.stdout.strip(" \t\n\r")
     virtual_size, actual_size = out.split(" ")
     if virtual_size == "null" and actual_size == "null":
-        raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
+        raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (shellquote(file_path), cmd.stdout, cmd.stderr))
 
     if virtual_size == "null":
         virtual_size = None
@@ -538,6 +541,7 @@ def qcow2_rebase_no_check(backing_file, target):
     shell.call('/usr/bin/qemu-img rebase -F %s -u -f qcow2 -b %s %s' % (fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
+    file_path = shellquote(file_path)
     cmd = shell.ShellCmd("set -o pipefail; qemu-img info %s | grep -w 'virtual size' | awk -F '(' '{print $2}' | awk '{print $1}'" % file_path)
     cmd(False)
     if cmd.return_code != 0:
