@@ -101,8 +101,10 @@ if distro == "RedHat" or distro == "CentOS":
     libvirtd_status = copy(copy_arg, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-winsupport", "libguestfs-tools"]
+    install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
+    command = "(chmod 0644 /boot/vmlinuz*) || true"
+    run_remote_command(command, host_post_info)
     # name: copy default libvirtd conf in Debian
     copy_arg = CopyArg()
     copy_arg.src = "%s/../kvm/libvirt-bin" % file_root
@@ -161,8 +163,7 @@ if distro == "RedHat" or distro == "CentOS":
     command = "service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start" \
               " && chkconfig zstack-ceph-primarystorage on"
 elif distro == "Debian" or distro == "Ubuntu":
-    command = "service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start" \
-              " && update-rc.d zstack-ceph-primarystorage enable"
+    command = "update-rc.d zstack-ceph-primarystorage defaults && service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start"
 run_remote_command(command, host_post_info)
 # change ceph config
 set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)

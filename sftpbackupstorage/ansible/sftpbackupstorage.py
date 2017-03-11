@@ -87,8 +87,10 @@ if distro == "RedHat" or distro == "CentOS":
             yum_install_package(pkg, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    install_pkg_list = ["openssh-client", "qemu-utils", "libvirt-bin", "libguestfs-winsupport", "libguestfs-tools"]
+    install_pkg_list = ["openssh-client", "qemu-utils", "libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
+    command = "(chmod 0644 /boot/vmlinuz*) || true"
+    run_remote_command(command, host_post_info)
 
 else:
     error("unsupported OS!")
@@ -148,7 +150,7 @@ if chroot_env == 'false':
         # some users meet restart can't work on their system
         command = "service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start && chkconfig zstack-sftpbackupstorage on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start && update-rc.d zstack-sftpbackupstorage enable"
+        command = "update-rc.d zstack-sftpbackupstorage defaults && service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start"
     run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
