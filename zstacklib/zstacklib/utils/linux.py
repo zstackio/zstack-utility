@@ -723,9 +723,9 @@ def create_bridge(bridge_name, interface, move_route=True):
 
     #record old routes
     routes = []
-    r_out = shell.call('ip route show dev %s' % interface)
+    r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % interface)
     for line in r_out.split('\n'):
-        if 'via' in line:
+        if line != "":
             routes.append(line)
             shell.call('ip route del %s' % line)
 

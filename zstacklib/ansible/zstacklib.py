@@ -1477,14 +1477,20 @@ def enable_ntp(trusted_host, host_post_info, distro):
         else:
             return []
 
-    def sync_date():
+    def sync_date(distro):
         if trusted_host != host_post_info.host:
             if host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
                 if host_post_info.host not in get_ha_mn_list("/var/lib/zstack/ha/ha.yaml"):
-                    service_status("ntpd", "state=stopped enabled=yes", host_post_info)
+                    if distro == "CentOS" or distro == "RedHat":
+                        service_status("ntpd", "state=stopped enabled=yes", host_post_info)
+                    elif distro == "Debian" or distro == "Ubuntu":
+                        service_status("ntp", "state=stopped enabled=yes", host_post_info)
                     command = "ntpdate %s" % trusted_host
                     run_remote_command(command, host_post_info, True, True)
-        service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+        if distro == "CentOS" or distro == "RedHat":
+            service_status("ntpd", "state=restarted enabled=yes", host_post_info)
+        elif distro == "Debian" or distro == "Ubuntu":
+            service_status("ntp", "state=restarted enabled=yes", host_post_info)
 
     if trusted_host != host_post_info.host:
         if host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
@@ -1501,7 +1507,7 @@ def enable_ntp(trusted_host, host_post_info, distro):
         command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I " \
                   "INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && /etc/init.d/iptables-persistent save)"
         run_remote_command(command, host_post_info)
-    sync_date()
+    sync_date(distro)
 
 
 
