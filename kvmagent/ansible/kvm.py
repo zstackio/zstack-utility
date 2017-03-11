@@ -257,10 +257,6 @@ elif distro == "Debian" or distro == "Ubuntu":
     host_post_info.post_label_param = "br_netfilter"
     run_remote_command(command, host_post_info)
 
-    if libvirt_bin_status != "changed:False":
-        # name: restart debian libvirtd
-        service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
-
 else:
     error("unsupported OS!")
 
@@ -365,7 +361,7 @@ if chroot_env == 'false':
             # name: restart redhat libvirtd
             service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
     elif distro == "Debian" or distro == "Ubuntu":
-        if libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
+        if libvirt_bin_status != "changed:False" or libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
             # name: restart debian libvirtd
             service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
@@ -373,7 +369,7 @@ if chroot_env == 'false':
     if distro == "RedHat" or distro == "CentOS":
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "service zstack-kvmagent stop && service zstack-kvmagent start && update-rc.d zstack-kvmagent enable"
+        command = "update-rc.d zstack-kvmagent start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-kvmagent stop && service zstack-kvmagent start"
     host_post_info.post_label = "ansible.shell.restart.service"
     host_post_info.post_label_param = "zstack-kvmagent"
     run_remote_command(command, host_post_info)
