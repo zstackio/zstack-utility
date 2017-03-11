@@ -7,8 +7,7 @@ fi
 
 # check disk space
 all_full=true
-paths=('/tmp', '/var/tmp', '/usr/tmp', '/root')
-for path in ${paths[@]}; do
+for path in '/tmp' '/var/tmp' '/usr/tmp' '/root'; do
   percent="100%"
   if [ -d $path ]; then
       percent=`df -H $path | sed '1d' | awk '{print $(NF-1)}'`
@@ -18,7 +17,7 @@ for path in ${paths[@]}; do
       break
   fi
 done
-if [ $all_full == true ]; then
+if [ $all_full = true ]; then
   echo -e "\033[31m There is not enough disk space available for zstack-ctl! \033[0m"
   exit 1
 fi

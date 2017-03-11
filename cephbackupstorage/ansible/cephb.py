@@ -101,8 +101,10 @@ if distro == "RedHat" or distro == "CentOS":
     set_selinux("state=disabled", host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
-    install_pkg_list = ["wget", "qemu-utils", "libvirt-bin", "libguestfs-winsupport", "libguestfs-tools"]
+    install_pkg_list = ["wget", "qemu-utils", "libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
+    command = "(chmod 0644 /boot/vmlinuz*) || true"
+    run_remote_command(command, host_post_info)
 else:
     error("unsupported OS!")
 
@@ -145,7 +147,7 @@ copy(copy_arg, host_post_info)
 if distro == "RedHat" or distro == "CentOS":
     command = "service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start && chkconfig zstack-ceph-backupstorage on"
 elif distro == "Debian" or distro == "Ubuntu":
-    command = "service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start && update-rc.d zstack-ceph-backupstorage enable"
+    command = "update-rc.d zstack-ceph-backupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start"
 run_remote_command(command, host_post_info)
 # change ceph config
 set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
