@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="zstack all in one package builder" basedir="../">
     <property name="target.license.file" location="${allinone.dir}/zstack-license" />
-    <property name="zstack.iso.version" location="${zstack.distro.source}/mkiso/.repo_version" />
+    <property name="zstack.repo.version" location="${zstack.distro.source}/mkiso/.repo_version" />
+    <condition property="check.repo.version" value="True" else="False">
+        <and>
+            <isset property="build_war_flag"/>
+        </and>
+    </condition>
 
     <target name="all-in-one-package" >
         <copy file="${zstack.install}" todir="${build.dir}" />
@@ -16,16 +21,16 @@
         <copy file="${license.file}" tofile="${target.license.file}" />
     </target>
 
-    <target name="check-iso-version-exists">
-        <available file="${zstack.iso.version}"  property="iso.version.exists"/>
+    <target name="check-repo-version-exists">
+        <available file="${zstack.repo.version}"  property="repo.version.exists"/>
     </target>
 
-    <target name="copy-iso-version" depends="check-iso-version-exists" if="iso.version.exists">
+    <target name="copy-repo-version" depends="check-repo-version-exists" if="repo.version.exists">
         <echo message="copy .repo_version to ${allinone.bin.dir}" />
-        <copy file="${zstack.iso.version}" todir="${allinone.bin.dir}" />
+        <copy file="${zstack.repo.version}" todir="${allinone.bin.dir}" />
     </target>
 
-    <target name="build-centos-offline" depends="copy-license-file, check-iso-version-exists">
+    <target name="build-centos-offline" depends="copy-license-file, check-repo-version-exists">
         <copy file="${war.file}" todir="${allinone.dir}" />
         <echo message="copy apache-tomcat to ${allinone.file}" />
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
@@ -39,6 +44,7 @@
             <arg value="${offline.bin.gen.setup.script}" />
             <arg value="${product.name}" />
             <arg value="${product.version}" />
+            <arg value="${check.repo.version}" />
             <arg value="${offline.bin.setup.script}" />
         </exec>
 
@@ -54,12 +60,12 @@
                 <and>
                     <isset property="build_war_flag" />
                     <not>
-                        <isset property="iso.version.exists" />
+                        <isset property="repo.version.exists" />
                     </not>
                 </and>
             </condition>
         </fail>
-        <antcall target="copy-iso-version" />
+        <antcall target="copy-repo-version" />
 
         <tar destfile="${allinone.offline.file}" basedir="${allinone.bin.dir}" />
         <exec executable="bash" dir="${build.dir}" failonerror="true">
