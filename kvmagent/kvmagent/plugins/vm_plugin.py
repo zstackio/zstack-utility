@@ -259,7 +259,7 @@ class VncPortIptableRule(object):
             raise kvmagent.KvmError(err)
 
         # get ipv4 subnet
-        current_ip_with_netmask = shell.call('ip -o -f inet addr show | awk \'/scope global/ {print $4}\' | fgrep %s' % current_ip).strip()
+        current_ip_with_netmask = shell.call('ip -o -f inet addr show | awk \'/scope global/ {print $4}\' | fgrep %s' % current_ip).strip().split('\n', 1)[0]
         if "" == shell.call("echo %s | grep -o \'[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}/[0-9]\{1,2\}\'" % current_ip_with_netmask):
             err = 'cannot get host ip with netmask for %s' % self.host_ip
             logger.warn(err)
