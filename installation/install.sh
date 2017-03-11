@@ -1963,7 +1963,7 @@ get_zstack_repo(){
     fi
 }
 
-check_iso_version() {
+check_repo_version() {
 	[ ! -f ".repo_version" ] && return 1
 	[ ! -f "/opt/zstack-dvd/.repo_version" ] && return 1
 	diff .repo_version /opt/zstack-dvd/.repo_version >/dev/null 2>&1
@@ -2258,20 +2258,14 @@ sleep 0.3
 echo ""
 fi
 
-# check iso version
-# - If PRODUCT_NAME is zstack, then do not check iso version
-# - If PRODUCT_NAME is mevoco, then check iso version, and ISO name is ZStack-Enterprise-...
-# - If PRODUCT_NAME is something else, then check iso version, and ISO name is ${PRODUCT_NAME}-Enterprise-...
-if [ x'zstack' != x"$PRODUCT_NAME" ]; then
-	if [ x'mevoco' = x"$PRODUCT_NAME" ]; then
-		ISO_NAME="ZStack"
-	else
-		ISO_NAME=${PRODUCT_NAME}
-	fi
-	check_iso_version
+# CHECK_REPO_VERSION
+if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
+	check_repo_version
 	if [ $? -ne 0 ]; then
+		ISO_NAME=${PRODUCT_NAME^}
+		[ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ] && ISO_NAME="ZStack-Enterprise"
 		BIN_VERSION=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
-		fail2 "The Operating System version is not suitable for ${PRODUCT_NAME} installation.\nPlease download and upgrade your Operating System to ${ISO_NAME}-Enterprise-x86-64-DVD-${BIN_VERSION}.iso"
+		fail2 "The Operating System version is not suitable for ${PRODUCT_NAME} installation.\nPlease download and upgrade your Operating System to ${ISO_NAME}-x86-64-DVD-${BIN_VERSION}.iso"
 	fi
 fi
 
