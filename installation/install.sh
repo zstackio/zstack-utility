@@ -8,6 +8,7 @@ SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 
+OS=''
 CENTOS6='CENTOS6'
 CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
@@ -422,7 +423,7 @@ check_system(){
         fi
     fi
     
-    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604]; then
+    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 ]; then
         #only support offline installation for CentoS7.x
         if [ -z "$YUM_ONLINE_REPO" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
@@ -933,9 +934,11 @@ is_install_general_libs_deb(){
     fi
     openjdk=openjdk-8-jdk
 
-    #install openjdk ppa for openjdk-8
-    #add-apt-repository ppa:openjdk-r/ppa -y >>$ZSTACK_INSTALL_LOG 2>&1
-    apt-get update  >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $OS == $UBUNTU1404 ]; then
+        #install openjdk ppa for openjdk-8
+        add-apt-repository ppa:openjdk-r/ppa -y >>$ZSTACK_INSTALL_LOG 2>&1
+        apt-get update  >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
 
     apt-get -y install \
         $openjdk \
@@ -975,17 +978,19 @@ is_install_general_libs_deb(){
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
 
-    #iptables-persistent broken from 14.04 to 16.04
-    [ ! -f /etc/init.d/iptables-persistent ] && [ -f /etc/init.d/netfilter-persistent ] \
-        && ln -s /etc/init.d/netfilter-persistent /etc/init.d/iptables-persistent
-    [ ! -f /etc/init.d/iptables ] && [ -f /etc/init.d/netfilter-persistent ] \
-        && ln -s /etc/init.d/netfilter-persistent /etc/init.d/iptables
-
-    #set java 8 as default jre.
-    #update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0 >>$ZSTACK_INSTALL_LOG 2>&1
-    #update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0 >>$ZSTACK_INSTALL_LOG 2>&1
-    #update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
-    #update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $OS == $UBUNTU1404 ]; then
+        #set java 8 as default jre.
+        update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0 >>$ZSTACK_INSTALL_LOG 2>&1
+        update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0 >>$ZSTACK_INSTALL_LOG 2>&1
+        update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
+        update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        #iptables-persistent broken from 14.04 to 16.04
+        [ ! -f /etc/init.d/iptables-persistent ] && [ -f /etc/init.d/netfilter-persistent ] \
+            && ln -s /etc/init.d/netfilter-persistent /etc/init.d/iptables-persistent
+        [ ! -f /etc/init.d/iptables ] && [ -f /etc/init.d/netfilter-persistent ] \
+            && ln -s /etc/init.d/netfilter-persistent /etc/init.d/iptables
+    fi
     pass
 }
 
