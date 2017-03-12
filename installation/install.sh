@@ -984,6 +984,9 @@ is_install_general_libs_deb(){
         update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0 >>$ZSTACK_INSTALL_LOG 2>&1
         update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
         update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac >>$ZSTACK_INSTALL_LOG 2>&1
+        #no service iptables
+        [ ! -f /etc/init.d/iptables ] && [ -f /etc/init.d/iptables-persistent ] \
+            && ln -s /etc/init.d/iptables-persistent /etc/init.d/iptables
     else
         #iptables-persistent broken from 14.04 to 16.04
         [ ! -f /etc/init.d/iptables-persistent ] && [ -f /etc/init.d/netfilter-persistent ] \
@@ -1644,6 +1647,11 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 EOF
         systemctl enable zstack.service  >> $ZSTACK_INSTALL_LOG 2>&1
+    else
+        which update-rc.d >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -eq 0 ]; then
+            update-rc.d zstack-server start 97 3 4 5 . stop 3 0 1 2 6 .  >> $ZSTACK_INSTALL_LOG 2>&1
+        fi
     fi
     pass
 }

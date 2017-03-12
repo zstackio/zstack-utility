@@ -150,7 +150,7 @@ if chroot_env == 'false':
         # some users meet restart can't work on their system
         command = "service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start && chkconfig zstack-sftpbackupstorage on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-sftpbackupstorage defaults && service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start"
+        command = "update-rc.d zstack-sftpbackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start"
     run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

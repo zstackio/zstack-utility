@@ -163,7 +163,7 @@ if distro == "RedHat" or distro == "CentOS":
     command = "service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start" \
               " && chkconfig zstack-ceph-primarystorage on"
 elif distro == "Debian" or distro == "Ubuntu":
-    command = "update-rc.d zstack-ceph-primarystorage defaults && service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start"
+    command = "update-rc.d zstack-ceph-primarystorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start"
 run_remote_command(command, host_post_info)
 # change ceph config
 set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)

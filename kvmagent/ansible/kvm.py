@@ -369,7 +369,7 @@ if chroot_env == 'false':
     if distro == "RedHat" or distro == "CentOS":
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-kvmagent defaults && service zstack-kvmagent stop && service zstack-kvmagent start"
+        command = "update-rc.d zstack-kvmagent start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-kvmagent stop && service zstack-kvmagent start"
     host_post_info.post_label = "ansible.shell.restart.service"
     host_post_info.post_label_param = "zstack-kvmagent"
     run_remote_command(command, host_post_info)

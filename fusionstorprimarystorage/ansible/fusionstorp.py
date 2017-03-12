@@ -140,7 +140,7 @@ copy(copy_arg, host_post_info)
 if distro == "RedHat" or distro == "CentOS":
     command = "service zstack-fusionstor-primarystorage stop && service zstack-fusionstor-primarystorage start && chkconfig zstack-fusionstor-primarystorage on"
 elif distro == "Debian" or distro == "Ubuntu":
-    command = "update-rc.d zstack-fusionstor-primarystorage defaults && service zstack-fusionstor-primarystorage stop &&  service zstack-fusionstor-primarystorage start"
+    command = "update-rc.d zstack-fusionstor-primarystorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-fusionstor-primarystorage stop &&  service zstack-fusionstor-primarystorage start"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

@@ -138,7 +138,7 @@ if client != "true":
     if distro == "CentOS" or distro == "RedHat":
         command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-imagestorebackupstorage defaults && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start"
+        command = "update-rc.d zstack-imagestorebackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start"
     run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

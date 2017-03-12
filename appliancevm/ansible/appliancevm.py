@@ -188,7 +188,7 @@ if chroot_env == 'false':
     if distro == "RedHat" or distro == "CentOS":
         command = "service zstack-appliancevm stop && service zstack-appliancevm start && chkconfig zstack-appliancevm on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-appliancevm defaults && service zstack-appliancevm stop && service zstack-appliancevm start"
+        command = "update-rc.d zstack-appliancevm start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-appliancevm stop && service zstack-appliancevm start"
     run_remote_command(command, host_post_info)
 else:
     if distro == "RedHat" or distro == "CentOS":

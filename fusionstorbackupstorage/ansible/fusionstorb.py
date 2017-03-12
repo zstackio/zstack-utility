@@ -141,7 +141,7 @@ copy(copy_arg, host_post_info)
 if distro == "RedHat" or distro == "CentOS":
     command = "service zstack-fusionstor-backupstorage stop && service zstack-fusionstor-backupstorage start && chkconfig zstack-fusionstor-backupstorage on"
 elif distro == "Debian" or distro == "Ubuntu":
-    command = "update-rc.d zstack-fusionstor-backupstorage defaults && service zstack-fusionstor-backupstorage stop && service zstack-fusionstor-backupstorage start"
+    command = "update-rc.d zstack-fusionstor-backupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-fusionstor-backupstorage stop && service zstack-fusionstor-backupstorage start"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
