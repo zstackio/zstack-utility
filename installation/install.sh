@@ -2140,7 +2140,7 @@ do
         o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
 		[ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
         # -O: use yum online repo
-        O ) if [ x'zstack' = x"$PRODUCT_NAME" ]; then
+        O ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
 		YUM_ONLINE_REPO='y'
 		ZSTACK_OFFLINE_INSTALL=''
 		else
@@ -2151,7 +2151,7 @@ do
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         # -R: use yum third party repo
-        R ) if [ x'zstack' = x"$PRODUCT_NAME" ]; then
+        R ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
 		ZSTACK_PKG_MIRROR=$OPTARG
 		YUM_ONLINE_REPO='y'
 		ZSTACK_OFFLINE_INSTALL=''
