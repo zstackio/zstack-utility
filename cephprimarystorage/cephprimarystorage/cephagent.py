@@ -437,12 +437,14 @@ class CephAgent(object):
     @replyerror
     def add_pool(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        existing_pools = shell.call('ceph osd lspools')
+        existing_pools = shell.call('ceph osd pool ls')
 
-        if cmd.errorIfNotExist and cmd.poolName not in existing_pools:
+        pool_names = existing_pools.split("\n")
+
+        if cmd.errorIfNotExist and cmd.poolName not in pool_names:
             raise Exception('cannot find the pool[%s] in the ceph cluster, you must create it manually' % cmd.poolName)
 
-        if cmd.poolName not in existing_pools:
+        if cmd.poolName not in pool_names:
             shell.call('ceph osd pool create %s 100' % cmd.poolName)
 
         return jsonobject.dumps(AgentResponse())
