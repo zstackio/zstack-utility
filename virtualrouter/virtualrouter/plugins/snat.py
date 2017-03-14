@@ -88,7 +88,7 @@ class Snat(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('snat')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def remove_snat(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RemoveSNATRsp()
@@ -107,7 +107,7 @@ class Snat(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('snat')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def set_snat(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetSNATRsp()
@@ -126,7 +126,7 @@ class Snat(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('snat')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def sync_snat(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SyncSNATRsp()

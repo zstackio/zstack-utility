@@ -6,9 +6,11 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import ebtables
 from zstacklib.utils.bash import *
 
 logger = log.get_logger(__name__)
+EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
 class AgentRsp(object):
     def __init__(self):
@@ -58,7 +60,7 @@ class DEip(kvmagent.KvmAgent):
         return jsonobject.dumps(AgentRsp())
 
     @in_bash
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def _delete_eip(self, eip):
         dev_base_name = eip.nicName.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
@@ -78,23 +80,23 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout('ip link del {{PUB_ODEV}}')
 
         def delete_arp_rules():
-            if bash_r('ebtables -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
                 RULE = "-i {{NIC_NAME}} -j {{CHAIN_NAME}}"
-                if bash_r('ebtables -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
-                    bash_errorout('ebtables -t nat -D PREROUTING {{RULE}}')
+                if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                    bash_errorout(EBTABLES_CMD + ' -t nat -D PREROUTING {{RULE}}')
 
-                bash_errorout('ebtables -t nat -F {{CHAIN_NAME}}')
-                bash_errorout('ebtables -t nat -X {{CHAIN_NAME}}')
+                bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
+                bash_errorout(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
 
             BLOCK_CHAIN_NAME = '{{PRI_ODEV}}-arp'
 
-            if bash_r('ebtables -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
                 RULE = '-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}'
-                if bash_r('ebtables -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
-                    bash_errorout('ebtables -t nat -D POSTROUTING {{RULE}}')
+                if bash_r(EBTABLES_CMD + ' -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                    bash_errorout(EBTABLES_CMD + ' -t nat -D POSTROUTING {{RULE}}')
 
-                bash_errorout('ebtables -t nat -F {{BLOCK_CHAIN_NAME}}')
-                bash_errorout('ebtables -t nat -X {{BLOCK_CHAIN_NAME}}')
+                bash_errorout(EBTABLES_CMD + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
+                bash_errorout(EBTABLES_CMD + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
 
         delete_namespace()
         delete_outer_dev()
@@ -106,7 +108,7 @@ class DEip(kvmagent.KvmAgent):
             self._delete_eip(eip)
 
     @in_bash
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def _apply_eip(self, eip):
         dev_base_name = eip.nicName.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
@@ -164,8 +166,8 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout('eval {{NS}} iptables {{table}} -A {{rule}}')
 
         def create_ebtable_rule_if_needed(table, chain, rule):
-            if bash_r('ebtables -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:
-                bash_errorout('ebtables -t {{table}} -A {{chain}} {{rule}}')
+            if bash_r(EBTABLES_CMD + ' -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:
+                bash_errorout(EBTABLES_CMD + ' -t {{table}} -A {{chain}} {{rule}}')
 
         def set_eip_rules():
             DNAT_NAME = "DNAT-{{VIP}}"
@@ -198,8 +200,8 @@ class DEip(kvmagent.KvmAgent):
         def set_gateway_arp_if_needed():
             CHAIN_NAME = "{{NIC_NAME}}-gw"
 
-            if bash_r('ebtables -t nat -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
-                bash_errorout('ebtables -t nat -N {{CHAIN_NAME}}')
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
+                bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}')
             GATEWAY = bash_o("eval {{NS}} ip link | grep -w {{PRI_IDEV}} -A 1 | awk '/link\/ether/{print $2}'")
@@ -209,8 +211,8 @@ class DEip(kvmagent.KvmAgent):
             create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY}}")
 
             BLOCK_CHAIN_NAME = '{{PRI_ODEV}}-arp'
-            if bash_r('ebtables -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
-                bash_errorout('ebtables -t nat -N {{BLOCK_CHAIN_NAME}}')
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
+                bash_errorout(EBTABLES_CMD + ' -t nat -N {{BLOCK_CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}")
             create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{PRI_ODEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
