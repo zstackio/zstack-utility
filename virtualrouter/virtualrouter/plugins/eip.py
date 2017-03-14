@@ -97,7 +97,7 @@ class Eip(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('eip')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def create_eip(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateEipRsp()
@@ -135,7 +135,7 @@ class Eip(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('eip')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def remove_eip(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RemoveEipRsp()
@@ -146,7 +146,7 @@ class Eip(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('eip')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def sync_eip(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SyncEipRsp()

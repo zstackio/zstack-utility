@@ -61,7 +61,7 @@ class NicPlugin(virtualrouter.VRAgent):
             
         return nics
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def _default_iptable_rules(self, nicname):
         in_chain_name = "%s-in" % nicname
         
