@@ -242,7 +242,7 @@ class VncPortIptableRule(object):
     def _make_chain_name(self):
         return "vm-%s-vnc" % self.vm_internal_id
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def apply(self):
         assert self.host_ip is not None
         assert self.port is not None
@@ -270,7 +270,7 @@ class VncPortIptableRule(object):
         ipt.add_rule('-A %s ! -d %s -j REJECT --reject-with icmp-host-prohibited' % (chain_name, current_ip_with_netmask))
         ipt.iptable_restore()
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def delete(self):
         assert self.vm_internal_id is not None
 
@@ -279,7 +279,7 @@ class VncPortIptableRule(object):
         ipt.delete_chain(chain_name)
         ipt.iptable_restore()
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def delete_stale_chains(self):
         vms = get_running_vms()
         ipt = iptables.from_iptables_save()

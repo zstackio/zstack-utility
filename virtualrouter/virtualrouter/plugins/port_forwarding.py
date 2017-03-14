@@ -84,7 +84,7 @@ class PortForwarding(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('port_forwarding')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def create_rule(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreatePortForwardingRuleRsp()
@@ -110,7 +110,7 @@ class PortForwarding(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('port_forwarding')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def revoke_rule(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RevokePortForwardingRuleRsp()
@@ -122,7 +122,7 @@ class PortForwarding(virtualrouter.VRAgent):
 
     @virtualrouter.replyerror
     @lock.lock('port_forwarding')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def sync_rule(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SyncPortForwardingRuleRsp()
