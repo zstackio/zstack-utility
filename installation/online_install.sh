@@ -9,7 +9,7 @@ CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
 UPGRADE='n'
 FORCE='n'
-MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
+MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -1109,6 +1109,13 @@ sd_start_dashboard(){
     pass
 }
 
+set_tomcat_config() {
+    new_timeout=120000
+    new_max_thread_num=400
+    tomcat_config_path=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf
+    sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
+    sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
+}
 
 help (){
     echo "
@@ -1371,6 +1378,9 @@ install_zstack
 
 #Post Configuration, including apache, zstack-server, NFS Server, HTTP Server
 config_system
+
+#If tomcat use the default conf update it
+set_tomcat_config
 
 if [ -f $ZSTACK_VERSION ]; then
     VERSION=`cat $ZSTACK_VERSION`' '

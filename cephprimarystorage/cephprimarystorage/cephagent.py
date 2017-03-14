@@ -25,6 +25,10 @@ class AgentResponse(object):
         self.totalCapacity = None
         self.availableCapacity = None
 
+class CheckIsBitsExistingRsp(AgentResponse):
+    def __init__(self):
+        super(CheckIsBitsExistingRsp, self).__init__()
+        self.existing = None
 
 class SetPasswordResponse(AgentResponse):
     def __init__(self):
@@ -113,18 +117,21 @@ class CephAgent(object):
     PROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/protect"
     ROLLBACK_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/rollback"
     UNPROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/unprotect"
+    CHECK_BITS_PATH = "/ceph/primarystorage/snapshot/checkbits"
     CP_PATH = "/ceph/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/ceph/primarystorage/deletepool"
     GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
     PING_PATH = "/ceph/primarystorage/ping"
     GET_FACTS = "/ceph/primarystorage/facts"
     DELETE_IMAGE_CACHE = "/ceph/primarystorage/deleteimagecache"
+    ADD_POOL_PATH = "/ceph/primarystorage/addpool"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
 
     def __init__(self):
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
+        self.http_server.register_async_uri(self.ADD_POOL_PATH, self.add_pool)
         self.http_server.register_async_uri(self.DELETE_PATH, self.delete)
         self.http_server.register_async_uri(self.CREATE_VOLUME_PATH, self.create)
         self.http_server.register_async_uri(self.CLONE_PATH, self.clone)
@@ -143,6 +150,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
+        self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -383,6 +391,22 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     @replyerror
+    def check_bits(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.installPath)
+        rsp = CheckIsBitsExistingRsp()
+        try:
+            shell.call('rbd info %s' % path)
+        except Exception as e:
+            if 'No such file or directory' in str(e):
+                rsp.existing = False
+                return jsonobject.dumps(rsp)
+            else:
+                raise e
+        rsp.existing = True
+        return jsonobject.dumps(rsp)
+
+    @replyerror
     def clone(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         src_path = self._normalize_install_path(cmd.srcPath)
@@ -409,6 +433,22 @@ class CephAgent(object):
     def echo(self, req):
         logger.debug('get echoed')
         return ''
+
+    @replyerror
+    def add_pool(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        existing_pools = shell.call('ceph osd pool ls')
+
+        pool_names = existing_pools.split("\n")
+
+        if cmd.errorIfNotExist and cmd.poolName not in pool_names:
+            raise Exception('cannot find the pool[%s] in the ceph cluster, you must create it manually' % cmd.poolName)
+
+        if cmd.poolName not in pool_names:
+            shell.call('ceph osd pool create %s 100' % cmd.poolName)
+
+        return jsonobject.dumps(AgentResponse())
+
 
     @replyerror
     def init(self, req):
@@ -566,3 +606,4 @@ class CephDaemon(daemon.Daemon):
     def run(self):
         self.agent = CephAgent()
         self.agent.http_server.start()
+

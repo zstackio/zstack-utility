@@ -590,10 +590,12 @@ class APICreateEcsinstanceFromLocalImageMsg(object):
         #valid values: [cloud, cloud_efficiency, cloud_ssd, ephemeral_ssd]
         self.ecsRootVolumeType = None
         self.description = None
-        self.ecsVpcUuid = None
         self.ecsRootVolumeGBSize = None
         #valid values: [atomic, permissive]
         self.createMode = None
+        self.privateIpAddress = None
+        #valid values: [true, false]
+        self.allocatePublicIp = None
         #mandatory field
         self.identityZoneUuid = NotNoneField()
         #mandatory field
@@ -644,6 +646,28 @@ class APIDeleteEcsInstanceMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETECSINSTANCEVNCMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncMsg'
+class APIGetEcsInstanceVncMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETECSINSTANCEVNCREPLY_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncReply'
+class APIGetEcsInstanceVncReply(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncReply'
+    def __init__(self):
+        self.ecsId = None
+        self.vncUrl = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIQueryEcsInstanceMsg'
 class APIQueryEcsInstanceMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APIQueryEcsInstanceMsg'
@@ -675,6 +699,42 @@ class APIQueryEcsInstanceReply(object):
         self.error = None
 
 
+APIREBOOTECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIRebootEcsInstanceMsg'
+class APIRebootEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIRebootEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISTARTECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIStartEcsInstanceMsg'
+class APIStartEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIStartEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISTOPECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIStopEcsInstanceMsg'
+class APIStopEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIStopEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APISYNCECSINSTANCEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APISyncEcsInstanceFromRemoteMsg'
 class APISyncEcsInstanceFromRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APISyncEcsInstanceFromRemoteMsg'
@@ -688,10 +748,32 @@ class APISyncEcsInstanceFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEECSINSTANCEVNCPASSWORDMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceVncPasswordMsg'
+class APIUpdateEcsInstanceVncPasswordMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceVncPasswordMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid regex values: [A-Za-z0-9]{6}
+        self.password = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEECSIMAGEFROMLOCALIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APICreateEcsImageFromLocalImageMsg'
 class APICreateEcsImageFromLocalImageMsg(object):
     FULL_NAME='org.zstack.header.aliyun.image.APICreateEcsImageFromLocalImageMsg'
     def __init__(self):
+        #mandatory field
+        self.imageUuid = NotNoneField()
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        #mandatory field
+        self.backupStorageUuid = NotNoneField()
+        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -9162,6 +9244,8 @@ api_names = [
     'APIGetDataVolumeAttachableVmMsg',
     'APIGetDataVolumeAttachableVmReply',
     'APIGetDiskOfferingReply',
+    'APIGetEcsInstanceVncMsg',
+    'APIGetEcsInstanceVncReply',
     'APIGetEipAttachableVmNicsMsg',
     'APIGetEipAttachableVmNicsReply',
     'APIGetFreeIpMsg',
@@ -9456,6 +9540,7 @@ api_names = [
     'APIQueryVolumeSnapshotTreeReply',
     'APIQueryZoneMsg',
     'APIQueryZoneReply',
+    'APIRebootEcsInstanceMsg',
     'APIRebootVmInstanceMsg',
     'APIReclaimSpaceFromImageStoreMsg',
     'APIReconnectBackupStorageMsg',
@@ -9522,7 +9607,9 @@ api_names = [
     'APISetVolumeQosMsg',
     'APIShareResourceMsg',
     'APISilentMsg',
+    'APIStartEcsInstanceMsg',
     'APIStartVmInstanceMsg',
+    'APIStopEcsInstanceMsg',
     'APIStopVmInstanceMsg',
     'APISyncEcsImageFromRemoteMsg',
     'APISyncEcsInstanceFromRemoteMsg',
@@ -9540,6 +9627,7 @@ api_names = [
     'APIUpdateCephPrimaryStorageMonMsg',
     'APIUpdateClusterMsg',
     'APIUpdateDiskOfferingMsg',
+    'APIUpdateEcsInstanceVncPasswordMsg',
     'APIUpdateEipMsg',
     'APIUpdateEncryptKeyMsg',
     'APIUpdateFusionstorBackupStorageMonMsg',
@@ -9799,6 +9887,48 @@ class GlobalConfigInventory(object):
 
 
 
+class EcsInstanceConsoleProxyInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.ecsInstanceUuid = None
+        self.vncUrl = None
+        self.vncPassword = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'ecsInstanceUuid'):
+            self.ecsInstanceUuid = inv.ecsInstanceUuid
+        else:
+            self.ecsInstanceUuid = None
+
+        if hasattr(inv, 'vncUrl'):
+            self.vncUrl = inv.vncUrl
+        else:
+            self.vncUrl = None
+
+        if hasattr(inv, 'vncPassword'):
+            self.vncPassword = inv.vncPassword
+        else:
+            self.vncPassword = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class EcsInstanceInventory(object):
     def __init__(self):
         self.uuid = None
@@ -10050,36 +10180,6 @@ class EcsImageMd5SumMappingInventory(object):
             self.ossBucketName = inv.ossBucketName
         else:
             self.ossBucketName = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
-class EcsEipAddressInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.description = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -10890,6 +10990,78 @@ class HostInventory(object):
             self.availableMemoryCapacity = inv.availableMemoryCapacity
         else:
             self.availableMemoryCapacity = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class HybridEipAddressInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.eipId = None
+        self.bandWidth = None
+        self.allocateResourceUuid = None
+        self.allocateResourceType = None
+        self.status = None
+        self.eipAddress = None
+        self.eipType = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'eipId'):
+            self.eipId = inv.eipId
+        else:
+            self.eipId = None
+
+        if hasattr(inv, 'bandWidth'):
+            self.bandWidth = inv.bandWidth
+        else:
+            self.bandWidth = None
+
+        if hasattr(inv, 'allocateResourceUuid'):
+            self.allocateResourceUuid = inv.allocateResourceUuid
+        else:
+            self.allocateResourceUuid = None
+
+        if hasattr(inv, 'allocateResourceType'):
+            self.allocateResourceType = inv.allocateResourceType
+        else:
+            self.allocateResourceType = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'eipAddress'):
+            self.eipAddress = inv.eipAddress
+        else:
+            self.eipAddress = None
+
+        if hasattr(inv, 'eipType'):
+            self.eipType = inv.eipType
+        else:
+            self.eipType = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -13428,12 +13600,6 @@ class QueryObjectESXHostInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
-class QueryObjectEcsEipAddressInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
-     QUERY_OBJECT_MAP = {
-     }
-
 class QueryObjectEcsImageInventory(object):
      PRIMITIVE_FIELDS = ['ossMd5Sum','ecsImageId','format','description','type','uuid','platform','name','ecsImageSize','lastOpDate','localImageUuid','dataCenterUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -13442,6 +13608,12 @@ class QueryObjectEcsImageInventory(object):
 
 class QueryObjectEcsImageMd5SumMappingInventory(object):
      PRIMITIVE_FIELDS = ['rawMd5Sum','lastOpDate','id','ossBucketName','qcow2Md5Sum','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEcsInstanceConsoleProxyInventory(object):
+     PRIMITIVE_FIELDS = ['ecsInstanceUuid','lastOpDate','vncUrl','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -13540,6 +13712,12 @@ class QueryObjectHostInventory(object):
 
 class QueryObjectHybridAccountInventory(object):
      PRIMITIVE_FIELDS = ['userUuid','lastOpDate','accountUuid','description','type','uuid','key','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectHybridEipAddressInventory(object):
+     PRIMITIVE_FIELDS = ['bandWidth','allocateResourceType','eipType','allocateResourceUuid','eipAddress','eipId','lastOpDate','description','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }

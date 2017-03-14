@@ -805,13 +805,20 @@ def get_cpu_num():
     out = shell.ShellCmd("cat /proc/cpuinfo | grep 'processor' | wc -l")()
     return int(out)
 
+@retry(times=3, sleep_time=3)
 def get_cpu_speed():
     max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'
     if os.path.exists(max_freq):
         out = shell.ShellCmd('cat %s' % max_freq)()
         return int(float(out) / 1000)
 
-    out = shell.ShellCmd("cat /proc/cpuinfo  | grep 'cpu MHz' | tail -n 1")()
+    cmd = shell.ShellCmd("cat /proc/cpuinfo  | grep 'cpu MHz' | tail -n 1")
+    out = cmd(False)
+    if cmd.return_code == -11:
+        raise
+    elif cmd.return_code != 0:
+        cmd.raise_error()
+
     (name, speed) = out.split(':')
     speed = speed.strip()
     #logger.warn('%s is not existing, getting cpu speed from "cpu MHZ" of /proc/cpuinfo which may not be accurate' % max_freq)
@@ -1214,7 +1221,7 @@ def kill_process(pid, timeout=5):
         raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
 
 def get_gateway_by_default_route():
-    cmd = shell.ShellCmd("ip route | grep default | cut -d ' ' -f 3")
+    cmd = shell.ShellCmd("ip route | grep default | head -n 1 | cut -d ' ' -f 3")
     cmd(False)
     if cmd.return_code != 0:
         return None

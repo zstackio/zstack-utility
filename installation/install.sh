@@ -17,7 +17,7 @@ RHEL7='RHEL7'
 ISOFT4='ISOFT4'
 UPGRADE='n'
 FORCE='n'
-MANAGEMENT_INTERFACE=`ip route | grep default | cut -d ' ' -f 5`
+MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS7, $UBUNTU1404, $ISOFT4, $RHEL7"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
@@ -1963,7 +1963,15 @@ get_zstack_repo(){
     fi
 }
 
-check_iso_version() {
+set_tomcat_config() {
+    new_timeout=120000
+    new_max_thread_num=400
+    tomcat_config_path=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf
+    sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
+    sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
+}
+
+check_repo_version() {
 	[ ! -f ".repo_version" ] && return 1
 	[ ! -f "/opt/zstack-dvd/.repo_version" ] && return 1
 	diff .repo_version /opt/zstack-dvd/.repo_version >/dev/null 2>&1
@@ -2258,20 +2266,14 @@ sleep 0.3
 echo ""
 fi
 
-# check iso version
-# - If PRODUCT_NAME is zstack, then do not check iso version
-# - If PRODUCT_NAME is mevoco, then check iso version, and ISO name is ZStack-Enterprise-...
-# - If PRODUCT_NAME is something else, then check iso version, and ISO name is ${PRODUCT_NAME}-Enterprise-...
-if [ x'zstack' != x"$PRODUCT_NAME" ]; then
-	if [ x'mevoco' = x"$PRODUCT_NAME" ]; then
-		ISO_NAME="ZStack"
-	else
-		ISO_NAME=${PRODUCT_NAME}
-	fi
-	check_iso_version
+# CHECK_REPO_VERSION
+if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
+	check_repo_version
 	if [ $? -ne 0 ]; then
+		ISO_NAME=${PRODUCT_NAME^}
+		[ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ] && ISO_NAME="ZStack-Enterprise"
 		BIN_VERSION=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
-		fail2 "The Operating System version is not suitable for ${PRODUCT_NAME} installation.\nPlease download and upgrade your Operating System to ${ISO_NAME}-Enterprise-x86-64-DVD-${BIN_VERSION}.iso"
+		fail2 "The Operating System version is not suitable for ${PRODUCT_NAME} installation.\nPlease download and upgrade your Operating System to ${ISO_NAME}-x86-64-DVD-${BIN_VERSION}.iso"
 	fi
 fi
 
@@ -2407,6 +2409,9 @@ install_zstack
 
 #Post Configuration, including apache, zstack-server, NFS Server, HTTP Server
 config_system
+
+#If tomcat use the default conf update it
+set_tomcat_config
 
 if [ -f $ZSTACK_VERSION -a -z "$VERSION" ]; then
     VERSION=`cat $ZSTACK_VERSION`' '

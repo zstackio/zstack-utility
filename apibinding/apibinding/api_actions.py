@@ -2606,6 +2606,18 @@ class GetDataVolumeAttachableVmAction(inventory.APIGetDataVolumeAttachableVmMsg)
         self.out = evt
         return self.out
 
+class GetEcsInstanceVncAction(inventory.APIGetEcsInstanceVncMsg):
+    def __init__(self):
+        super(GetEcsInstanceVncAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetEcsInstanceVncAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetEipAttachableVmNicsAction(inventory.APIGetEipAttachableVmNicsMsg):
     def __init__(self):
         super(GetEipAttachableVmNicsAction, self).__init__()
@@ -4326,6 +4338,18 @@ class QueryZoneAction(inventory.APIQueryZoneMsg):
         self.out = reply.inventories
         return self.out
 
+class RebootEcsInstanceAction(inventory.APIRebootEcsInstanceMsg):
+    def __init__(self):
+        super(RebootEcsInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RebootEcsInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RebootVmInstanceAction(inventory.APIRebootVmInstanceMsg):
     def __init__(self):
         super(RebootVmInstanceAction, self).__init__()
@@ -4816,6 +4840,18 @@ class SilentAction(inventory.APISilentMsg):
         self.out = evt
         return self.out
 
+class StartEcsInstanceAction(inventory.APIStartEcsInstanceMsg):
+    def __init__(self):
+        super(StartEcsInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[StartEcsInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class StartVmInstanceAction(inventory.APIStartVmInstanceMsg):
     def __init__(self):
         super(StartVmInstanceAction, self).__init__()
@@ -4824,6 +4860,18 @@ class StartVmInstanceAction(inventory.APIStartVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[StartVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class StopEcsInstanceAction(inventory.APIStopEcsInstanceMsg):
+    def __init__(self):
+        super(StopEcsInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[StopEcsInstanceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5028,6 +5076,18 @@ class UpdateDiskOfferingAction(inventory.APIUpdateDiskOfferingMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateDiskOfferingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateEcsInstanceVncPasswordAction(inventory.APIUpdateEcsInstanceVncPasswordMsg):
+    def __init__(self):
+        super(UpdateEcsInstanceVncPasswordAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEcsInstanceVncPasswordAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
