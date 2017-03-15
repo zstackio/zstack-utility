@@ -1190,7 +1190,7 @@ class Vm(object):
                 try:
                     self.domain.undefine()
                 except Exception as ex:
-                    if 'transient domain' not in str(ex):
+                    if self.domain.isPersistent() == 1:
                         raise
 
                     # the vm is in transient state, do our best to kill it
