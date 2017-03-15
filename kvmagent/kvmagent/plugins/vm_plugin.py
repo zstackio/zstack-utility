@@ -924,6 +924,9 @@ def get_active_vm_uuids_states():
         if uuid.startswith("guestfs-"):
             logger.debug("ignore the temp vm generate by guestfish.")
             continue
+        if uuid == "ZStack Management Node VM":
+            logger.debug("ignore the vm used for MN HA.")
+            continue
         (state, _, _, _, _) = domain.info()
         state = Vm.power_state[state]
         # or use
