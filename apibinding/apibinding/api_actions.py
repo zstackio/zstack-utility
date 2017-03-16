@@ -1442,6 +1442,18 @@ class DeleteExportedImageFromBackupStorageAction(inventory.APIDeleteExportedImag
         self.out = evt
         return self.out
 
+class DeleteGCJobAction(inventory.APIDeleteGCJobMsg):
+    def __init__(self):
+        super(DeleteGCJobAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteGCJobAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteHostAction(inventory.APIDeleteHostMsg):
     def __init__(self):
         super(DeleteHostAction, self).__init__()
@@ -3224,6 +3236,20 @@ class QueryFusionstorPrimaryStorageAction(inventory.APIQueryFusionstorPrimarySto
         self.out = reply.inventories
         return self.out
 
+class QueryGCJobAction(inventory.APIQueryGCJobMsg):
+    def __init__(self):
+        super(QueryGCJobAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryGCJobAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryGlobalConfigAction(inventory.APIQueryGlobalConfigMsg):
     def __init__(self):
         super(QueryGlobalConfigAction, self).__init__()
@@ -4388,18 +4414,6 @@ class ShareResourceAction(inventory.APIShareResourceMsg):
         self.out = evt
         return self.out
 
-class SilentAction(inventory.APISilentMsg):
-    def __init__(self):
-        super(SilentAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[SilentAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class StartVmInstanceAction(inventory.APIStartVmInstanceMsg):
     def __init__(self):
         super(StartVmInstanceAction, self).__init__()
@@ -4456,6 +4470,18 @@ class SyncVolumeSizeAction(inventory.APISyncVolumeSizeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncVolumeSizeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class TriggerGCJobAction(inventory.APITriggerGCJobMsg):
+    def __init__(self):
+        super(TriggerGCJobAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[TriggerGCJobAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
