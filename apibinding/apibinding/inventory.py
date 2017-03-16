@@ -336,6 +336,61 @@ class APIDebugSignalMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEGCJOBMSG_FULL_NAME = 'org.zstack.core.gc.APIDeleteGCJobMsg'
+class APIDeleteGCJobMsg(object):
+    FULL_NAME='org.zstack.core.gc.APIDeleteGCJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYGCJOBMSG_FULL_NAME = 'org.zstack.core.gc.APIQueryGCJobMsg'
+class APIQueryGCJobMsg(object):
+    FULL_NAME='org.zstack.core.gc.APIQueryGCJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYGCJOBREPLY_FULL_NAME = 'org.zstack.core.gc.APIQueryGCJobReply'
+class APIQueryGCJobReply(object):
+    FULL_NAME='org.zstack.core.gc.APIQueryGCJobReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APITRIGGERGCJOBMSG_FULL_NAME = 'org.zstack.core.gc.APITriggerGCJobMsg'
+class APITriggerGCJobMsg(object):
+    FULL_NAME='org.zstack.core.gc.APITriggerGCJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICHANGESCHEDULERSTATEMSG_FULL_NAME = 'org.zstack.core.scheduler.APIChangeSchedulerStateMsg'
 class APIChangeSchedulerStateMsg(object):
     FULL_NAME='org.zstack.core.scheduler.APIChangeSchedulerStateMsg'
@@ -7943,16 +7998,6 @@ class APIAddSharedMountPointPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
-APISILENTMSG_FULL_NAME = 'org.zstack.test.multinodes.APISilentMsg'
-class APISilentMsg(object):
-    FULL_NAME='org.zstack.test.multinodes.APISilentMsg'
-    def __init__(self):
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIADDVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIAddVCenterMsg'
 class APIAddVCenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIAddVCenterMsg'
@@ -8306,6 +8351,7 @@ api_names = [
     'APIDeleteDiskOfferingMsg',
     'APIDeleteEipMsg',
     'APIDeleteExportedImageFromBackupStorageMsg',
+    'APIDeleteGCJobMsg',
     'APIDeleteHostMsg',
     'APIDeleteIPsecConnectionMsg',
     'APIDeleteImageMsg',
@@ -8571,6 +8617,8 @@ api_names = [
     'APIQueryEipReply',
     'APIQueryFusionstorBackupStorageMsg',
     'APIQueryFusionstorPrimaryStorageMsg',
+    'APIQueryGCJobMsg',
+    'APIQueryGCJobReply',
     'APIQueryGlobalConfigMsg',
     'APIQueryGlobalConfigReply',
     'APIQueryHostMsg',
@@ -8735,12 +8783,12 @@ api_names = [
     'APISetVmStaticIpMsg',
     'APISetVolumeQosMsg',
     'APIShareResourceMsg',
-    'APISilentMsg',
     'APIStartVmInstanceMsg',
     'APIStopVmInstanceMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncVolumeSizeMsg',
+    'APITriggerGCJobMsg',
     'APIUpdateAccountMsg',
     'APIUpdateAlertMsg',
     'APIUpdateBackupStorageMsg',
@@ -11399,6 +11447,7 @@ class GlobalConfig_IDENTITY(object):
 class GlobalConfig_IMAGE(object):
     EXPUNGEPERIOD = 'expungePeriod'
     DELETIONPOLICY = 'deletionPolicy'
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
     ENABLERESETPASSWORD = 'enableResetPassword'
     EXPUNGEINTERVAL = 'expungeInterval'
 
@@ -11484,6 +11533,7 @@ class GlobalConfig_MONITOR(object):
         return 'monitor'
 
 class GlobalConfig_NFSPRIMARYSTORAGE(object):
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
     MOUNT_BASE = 'mount.base'
 
     @staticmethod
@@ -11518,14 +11568,12 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
@@ -11551,6 +11599,13 @@ class GlobalConfig_SECURITYGROUP(object):
     @staticmethod
     def get_category():
         return 'securityGroup'
+
+class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
+
+    @staticmethod
+    def get_category():
+        return 'sharedMountPointPrimaryStorage'
 
 class GlobalConfig_TEST(object):
     TEST = 'Test'
@@ -11797,6 +11852,12 @@ class QueryObjectFusionstorPrimaryStorageMonInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectGarbageCollectorInventory(object):
+     PRIMITIVE_FIELDS = ['managementNodeUuid','name','context','lastOpDate','runnerClass','type','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectGlobalConfigInventory(object):
      PRIMITIVE_FIELDS = ['defaultValue','name','description','category','value','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -11804,7 +11865,7 @@ class QueryObjectGlobalConfigInventory(object):
      }
 
 class QueryObjectHostCapacityInventory(object):
-     PRIMITIVE_FIELDS = ['totalMemory','totalCpu','availableMemory','availableCpu','uuid','totalPhysicalMemory','availablePhysicalMemory','cpuNum','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['totalMemory','totalCpu','availableMemory','availableCpu','uuid','cpuSockets','totalPhysicalMemory','availablePhysicalMemory','cpuNum','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -12398,6 +12459,7 @@ queryMessageInventoryMap = {
      'APIQueryEipMsg' : QueryObjectEipInventory,
      'APIQueryFusionstorBackupStorageMsg' : QueryObjectFusionstorBackupStorageInventory,
      'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
+     'APIQueryGCJobMsg' : QueryObjectGarbageCollectorInventory,
      'APIQueryGlobalConfigMsg' : QueryObjectGlobalConfigInventory,
      'APIQueryHostMsg' : QueryObjectHostInventory,
      'APIQueryIPSecConnectionMsg' : QueryObjectIPsecConnectionInventory,
