@@ -8,6 +8,7 @@ SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 
+OS=''
 CENTOS6='CENTOS6'
 CENTOS7='CENTOS7'
 UBUNTU1404='UBUNTU14.04'
@@ -18,7 +19,7 @@ ISOFT4='ISOFT4'
 UPGRADE='n'
 FORCE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
-SUPPORTED_OS="$CENTOS7, $UBUNTU1404, $ISOFT4, $RHEL7"
+SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -408,9 +409,13 @@ check_system(){
             grep '16.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
                 OS=$UBUNTU1604
-                fail2 "Host OS checking failure: your system is: $OS, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
             else
-                OS=$UBUNTU1404
+                grep '14.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
+                if [ $? -eq 0 ]; then
+                    OS=$UBUNTU1404
+                else
+                    fail2 "Host OS checking failure: your system is: $OS, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
+                fi
             fi
             . /etc/lsb-release
         else
@@ -418,7 +423,7 @@ check_system(){
         fi
     fi
     
-    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 ]; then
+    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 ]; then
         #only support offline installation for CentoS7.x
         if [ -z "$YUM_ONLINE_REPO" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
@@ -929,9 +934,11 @@ is_install_general_libs_deb(){
     fi
     openjdk=openjdk-8-jdk
 
-    #install openjdk ppa for openjdk-8
-    add-apt-repository ppa:openjdk-r/ppa -y >>$ZSTACK_INSTALL_LOG 2>&1
-    apt-get update  >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $OS == $UBUNTU1404 ]; then
+        #install openjdk ppa for openjdk-8
+        add-apt-repository ppa:openjdk-r/ppa -y >>$ZSTACK_INSTALL_LOG 2>&1
+        apt-get update  >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
 
     apt-get -y install \
         $openjdk \
@@ -946,17 +953,21 @@ is_install_general_libs_deb(){
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 1 failed"
 
+    apt-get -y install --no-upgrade \
+        sudo \
+        >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "install system lib 2 failed"
+
     apt-get -y install \
         nfs-common \
         nfs-kernel-server \
         autoconf \
-        iptables \
+        iptables-persistent \
         tar \
         gzip \
         unzip \
         apache2 \
         sshpass \
-        sudo \
         ntp  \
         ntpdate \
         bzip2 \
@@ -967,11 +978,22 @@ is_install_general_libs_deb(){
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
 
-    #set java 8 as default jre.
-    update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0 >>$ZSTACK_INSTALL_LOG 2>&1
-    update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0 >>$ZSTACK_INSTALL_LOG 2>&1
-    update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
-    update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $OS == $UBUNTU1404 ]; then
+        #set java 8 as default jre.
+        update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 0 >>$ZSTACK_INSTALL_LOG 2>&1
+        update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/javac 0 >>$ZSTACK_INSTALL_LOG 2>&1
+        update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java >>$ZSTACK_INSTALL_LOG 2>&1
+        update-alternatives --set javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac >>$ZSTACK_INSTALL_LOG 2>&1
+        #no service iptables
+        [ ! -f /etc/init.d/iptables ] && [ -f /etc/init.d/iptables-persistent ] \
+            && ln -s /etc/init.d/iptables-persistent /etc/init.d/iptables
+    else
+        #iptables-persistent broken from 14.04 to 16.04
+        [ ! -f /etc/init.d/iptables-persistent ] && [ -f /etc/init.d/netfilter-persistent ] \
+            && ln -s /etc/init.d/netfilter-persistent /etc/init.d/iptables-persistent
+        [ ! -f /etc/init.d/iptables ] && [ -f /etc/init.d/netfilter-persistent ] \
+            && ln -s /etc/init.d/netfilter-persistent /etc/init.d/iptables
+    fi
     pass
 }
 
@@ -1625,6 +1647,11 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 EOF
         systemctl enable zstack.service  >> $ZSTACK_INSTALL_LOG 2>&1
+    else
+        which update-rc.d >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -eq 0 ]; then
+            update-rc.d zstack-server start 97 3 4 5 . stop 3 0 1 2 6 .  >> $ZSTACK_INSTALL_LOG 2>&1
+        fi
     fi
     pass
 }
@@ -2148,7 +2175,7 @@ do
         o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
 		[ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
         # -O: use yum online repo
-        O ) if [ x'zstack' = x"$PRODUCT_NAME" ]; then
+        O ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
 		YUM_ONLINE_REPO='y'
 		ZSTACK_OFFLINE_INSTALL=''
 		else
@@ -2159,7 +2186,7 @@ do
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         # -R: use yum third party repo
-        R ) if [ x'zstack' = x"$PRODUCT_NAME" ]; then
+        R ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
 		ZSTACK_PKG_MIRROR=$OPTARG
 		YUM_ONLINE_REPO='y'
 		ZSTACK_OFFLINE_INSTALL=''

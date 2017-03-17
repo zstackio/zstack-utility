@@ -242,7 +242,7 @@ class VncPortIptableRule(object):
     def _make_chain_name(self):
         return "vm-%s-vnc" % self.vm_internal_id
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def apply(self):
         assert self.host_ip is not None
         assert self.port is not None
@@ -270,7 +270,7 @@ class VncPortIptableRule(object):
         ipt.add_rule('-A %s ! -d %s -j REJECT --reject-with icmp-host-prohibited' % (chain_name, current_ip_with_netmask))
         ipt.iptable_restore()
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def delete(self):
         assert self.vm_internal_id is not None
 
@@ -279,7 +279,7 @@ class VncPortIptableRule(object):
         ipt.delete_chain(chain_name)
         ipt.iptable_restore()
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def delete_stale_chains(self):
         vms = get_running_vms()
         ipt = iptables.from_iptables_save()
@@ -924,6 +924,9 @@ def get_active_vm_uuids_states():
         if uuid.startswith("guestfs-"):
             logger.debug("ignore the temp vm generate by guestfish.")
             continue
+        if uuid == "ZStack Management Node VM":
+            logger.debug("ignore the vm used for MN HA.")
+            continue
         (state, _, _, _, _) = domain.info()
         state = Vm.power_state[state]
         # or use
@@ -1190,7 +1193,7 @@ class Vm(object):
                 try:
                     self.domain.undefine()
                 except Exception as ex:
-                    if 'transient domain' not in str(ex):
+                    if self.domain.isPersistent() == 1:
                         raise
 
                     # the vm is in transient state, do our best to kill it

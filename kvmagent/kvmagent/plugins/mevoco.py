@@ -11,6 +11,7 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils import iptables
+from zstacklib.utils import ebtables
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
 import os.path
@@ -20,7 +21,7 @@ import time
 from jinja2 import Template
 
 logger = log.get_logger(__name__)
-
+EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
 class ApplyDhcpRsp(kvmagent.AgentResponse):
     pass
@@ -55,7 +56,7 @@ class DhcpEnv(object):
 
 
     @lock.lock('prepare_dhcp_namespace')
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     @in_bash
     def prepare(self):
         NAMESPACE_ID = None
@@ -113,33 +114,33 @@ class DhcpEnv(object):
 
         bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
 
-        ret = bash_r('ebtables -L {{CHAIN_NAME}} > /dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
         if ret != 0:
-            bash_errorout('ebtables -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
 
-        ret = bash_r('ebtables -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -I FORWARD -j {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
 
-        ret = bash_r('ebtables -L {{CHAIN_NAME}} | grep -- "-p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -I {{CHAIN_NAME}} -p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
 
-        ret = bash_r('ebtables -L {{CHAIN_NAME}} | grep -- "-p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -I {{CHAIN_NAME}} -p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
 
-        ret = bash_r('ebtables -L {{CHAIN_NAME}} | grep -- "-p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -I {{CHAIN_NAME}} -p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
 
-        ret = bash_r('ebtables -L {{CHAIN_NAME}} | grep -- "-p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -I {{CHAIN_NAME}} -p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
 
         ret = bash_r("ebtables-save | grep -- '-A {{CHAIN_NAME}} -j RETURN'")
         if ret != 0:
-            bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
 
         # Note(WeiW): fix dhcp checksum, see more at #982
         ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
@@ -197,13 +198,13 @@ class Mevoco(kvmagent.KvmAgent):
             if o:
                 cmds = []
                 for l in o.split("\n"):
-                    cmds.append("ebtables %s" % l.replace("-A", "-D"))
+                    cmds.append(EBTABLES_CMD + " %s" % l.replace("-A", "-D"))
 
                 bash_r("\n".join(cmds))
 
             ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
             if ret != 0:
-                bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
+                bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
 
         bash_errorout("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % cmd.namespaceName)
         bash_errorout("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (cmd.namespaceName, cmd.namespaceName))
@@ -212,8 +213,8 @@ class Mevoco(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def connect(self, req):
-        shell.call('ebtables -F')
-        shell.call('ebtables -t nat -F')
+        shell.call(EBTABLES_CMD + ' -F')
+        shell.call(EBTABLES_CMD + ' -t nat -F')
         return jsonobject.dumps(ConnectRsp())
 
     @kvmagent.replyerror
@@ -231,8 +232,8 @@ class Mevoco(kvmagent.KvmAgent):
             for l in o.split("\n"):
                 # we don't distinguish if the rule is in filter table or nat table
                 # but try both. The wrong table will silently fail
-                cmds.append("ebtables -t filter %s" % l.replace("-A", "-D"))
-                cmds.append("ebtables -t nat %s" % l.replace("-A", "-D"))
+                cmds.append(EBTABLES_CMD + " -t filter %s" % l.replace("-A", "-D"))
+                cmds.append(EBTABLES_CMD + " -t nat %s" % l.replace("-A", "-D"))
 
             bash_r("\n".join(cmds))
 
@@ -258,7 +259,7 @@ class Mevoco(kvmagent.KvmAgent):
         self._apply_userdata(cmd.userdata)
         return jsonobject.dumps(ApplyUserdataRsp())
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     @in_bash
     def _apply_userdata(self, to):
         # set VIP
@@ -279,42 +280,42 @@ class Mevoco(kvmagent.KvmAgent):
         MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
         CHAIN_NAME="USERDATA-%s" % BR_NAME
 
-        ret = bash_r('ebtables -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
-            bash_errorout('ebtables -t nat -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
-        if bash_r('ebtables -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{CHAIN_NAME}}"') != 0:
-            bash_errorout('ebtables -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{CHAIN_NAME}}')
+        if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{CHAIN_NAME}}"') != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{CHAIN_NAME}}')
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         RULE = "-p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % MAC.replace(":0", ":")
-        ret = bash_r('ebtables -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -t nat -I {{CHAIN_NAME}} {{RULE}}')
+            bash_errorout(EBTABLES_CMD + ' -t nat -I {{CHAIN_NAME}} {{RULE}}')
 
-        ret = bash_r('ebtables -t nat -L {{CHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -t nat -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -t nat -A {{CHAIN_NAME}} -j RETURN')
 
-        ret = bash_r('ebtables -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
-            bash_errorout('ebtables -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
 
-        ret = bash_r('ebtables -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}')
 
-        ret = bash_r('ebtables -L {{CHAIN_NAME}} | grep -- "-i {{ETH_NAME}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-i {{ETH_NAME}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -I {{CHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
 
-        ret = bash_r('ebtables -L {{CHAIN_NAME}} | grep -- "-o {{ETH_NAME}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-o {{ETH_NAME}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout('ebtables -I {{CHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
 
         ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
         if ret != 0:
-            bash_errorout('ebtables -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
 
 
         # DNAT port 80

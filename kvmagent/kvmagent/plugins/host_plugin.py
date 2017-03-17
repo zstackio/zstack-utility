@@ -100,7 +100,7 @@ class HostPlugin(kvmagent.KvmAgent):
 
         raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     @in_bash
     def apply_iptables_rules(self, rules):
         logger.debug("starting add iptables rules : %s" % rules)

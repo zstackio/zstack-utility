@@ -13342,7 +13342,6 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
@@ -13350,7 +13349,6 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
@@ -13376,6 +13374,13 @@ class GlobalConfig_SECURITYGROUP(object):
     @staticmethod
     def get_category():
         return 'securityGroup'
+
+class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
+
+    @staticmethod
+    def get_category():
+        return 'sharedMountPointPrimaryStorage'
 
 class GlobalConfig_TEST(object):
     TEST = 'Test'

@@ -275,7 +275,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         self._delete_all_chains(ipt)
         self._apply_rules_using_iprange_match(cmd, ipt)
     
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     @kvmagent.replyerror
     def apply_rules(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -289,7 +289,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             rsp.success = False
         return jsonobject.dumps(rsp)
     
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     @kvmagent.replyerror
     def refresh_rules_on_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -307,7 +307,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         all_nics = linux.get_all_ethernet_device_names()
         ipt.cleanup_unused_chain(self._cleanup_iptable_chains, data=all_nics)
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     @kvmagent.replyerror
     def cleanup_unused_rules_on_host(self, req):
         rsp = CleanupUnusedRulesOnHostResponse()
