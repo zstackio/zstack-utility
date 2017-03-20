@@ -205,6 +205,11 @@ def check_ip_port(host, port):
     result = sock.connect_ex((host, int(port)))
     return result == 0
 
+def compare_version(version1, version2):
+    def normalize(v):
+        return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
+    return cmp(normalize(version2), normalize(version1))
+
 def get_zstack_version(db_hostname, db_port, db_user, db_password):
     query = MySqlCommandLineQuery()
     query.host = db_hostname
@@ -215,8 +220,10 @@ def get_zstack_version(db_hostname, db_port, db_user, db_password):
     query.sql = "select version from schema_version order by version desc"
     ret = query.query()
 
-    v = ret[0]
-    version = v['version']
+    versions = [r['version'] for r in ret]
+    versions.sort(cmp=compare_version)
+
+    version = versions[0]
     return version
 
 def get_default_gateway_ip():
