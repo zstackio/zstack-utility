@@ -33,6 +33,7 @@ class HostCapacityResponse(kvmagent.AgentResponse):
         self.usedCpu = None
         self.totalMemory = None
         self.usedMemory = None
+        self.cpuSockets = None
 
 class HostFactResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -171,6 +172,7 @@ class HostPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
         
     @kvmagent.replyerror
+    @in_bash
     def capacity(self, req):
         rsp = HostCapacityResponse()
         rsp.cpuNum = linux.get_cpu_num()
@@ -179,6 +181,9 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usedCpu = used_cpu
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
+
+        sockets = bash_o('cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l').strip('\n')
+        rsp.cpuSockets = int(sockets)
 
         ret = jsonobject.dumps(rsp)
         logger.debug('get host capacity: %s' % ret)
