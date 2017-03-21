@@ -268,10 +268,15 @@ def handle_ansible_failed(description, result, host_post_info):
     cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10 ** 6) / 10 ** 6.0 * 1000
     msg.label = host_post_info.post_label
     msg.parameters = host_post_info.post_label_param
+    if 'stdout' in result['contacted'][host]:
+        msg.details = "[ HOST: %s ] " % host_post_info.host + description + "stdout: " + result['contacted'][host]['stdout']
+    else:
+        msg.details = "[ HOST: %s ] " % host_post_info.host + description
+
     if 'stderr' in result['contacted'][host]:
-        msg.details = "[ HOST: %s ] " % host_post_info.host + description + "error: " + result['contacted'][host]['stderr']
+        msg.details += " error: " + result['contacted'][host]['stderr']
     elif 'msg' in result['contacted'][host]:
-        msg.details = "[ HOST: %s ] " % host_post_info.host + description + "error: " + result['contacted'][host]['msg']
+        msg.details += " error: " + result['contacted'][host]['msg']
 
     msg.level = "ERROR"
     post_msg(msg, post_url)
