@@ -76,7 +76,7 @@ class FusionstorPlugin(kvmagent.KvmAgent):
 
                     mon_url = '\;'.join(cmd.monUrls)
                     mon_url = mon_url.replace(':', '\\\:')
-                    create = shell.ShellCmd('timeout %s lichbd create %s -s 1b -p nbd' %
+                    create = shell.ShellCmd('timeout %s lichbd vol create %s -s 1b -p nbd' %
                                                 (cmd.storageCheckerTimeout, cmd.heartbeatImagePath))
                     create(False)
 
