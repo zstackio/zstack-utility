@@ -194,7 +194,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         if cmd.sendCommandUrl:
             Report.url = cmd.sendCommandUrl
-        report = Report()
+        report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "LocalStorageMigrateVolume"
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
 
@@ -248,7 +248,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if cmd.sendCommandUrl:
             Report.url = cmd.sendCommandUrl
 
-        report = Report()
+        report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "LocalStorageMigrateVolume"
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
         total = 0
@@ -304,7 +304,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if cmd.sendCommandUrl:
             Report.url = cmd.sendCommandUrl
 
-        report = Report()
+        report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "LocalStorageMigrateVolume"
         report.resourceUuid = cmd.uuid
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
