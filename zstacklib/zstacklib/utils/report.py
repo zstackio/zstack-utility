@@ -24,18 +24,20 @@ class Report(object):
     url = None
     serverUuid = None
 
-    def __init__(self):
+    def __init__(self, ctxMap, ctxStack):
         self.resourceUuid = None
         self.progress = None
         self.header = None
         self.processType = None
+        self.ctxMap = ctxMap
+        self.ctxStack = ctxStack
 
     def progress_report(self, percent, flag):
         try:
             self.progress = percent
             header = {
-                "start": "/progress/start",
-                "finish": "/progress/finish",
+                "start": "/progress/report",
+                "finish": "/progress/report",
                 "report": "/progress/report"
             }
             self.header = {'commandpath': header.get(flag, "/progress/report")}
@@ -51,6 +53,8 @@ class Report(object):
         cmd.processType = self.processType
         cmd.progress = self.progress
         cmd.resourceUuid = self.resourceUuid
+        cmd.threadContextMap = self.ctxMap
+        cmd.threadContextStack = self.ctxStack
         logger.debug("url: %s, progress: %s, header: %s", Report.url, cmd.progress, self.header)
         http.json_dump_post(Report.url, cmd, self.header)
 

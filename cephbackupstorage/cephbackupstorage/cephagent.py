@@ -385,7 +385,7 @@ class CephAgent(object):
                 logger.warn(linux.get_exception_stacktrace())
                 return length
 
-        report = Report()
+        report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "AddImage"
         report.resourceUuid = cmd.imageUuid
         report.progress_report("0", "start")
