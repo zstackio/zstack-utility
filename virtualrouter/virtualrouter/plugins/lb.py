@@ -110,7 +110,7 @@ listen {{listenerUuid}}
         ipt.iptable_restore()
 
     @virtualrouter.replyerror
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def refresh(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for to in cmd.lbs:
@@ -123,7 +123,7 @@ listen {{listenerUuid}}
         return jsonobject.dumps(rsp)
 
     @virtualrouter.replyerror
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for to in cmd.lbs:

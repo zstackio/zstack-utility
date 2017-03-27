@@ -47,7 +47,7 @@ class ApplianceVm(object):
     ECHO_PATH = "/appliancevm/echo"
     INIT_PATH = "/appliancevm/init"
 
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def set_default_iptable_rules(self):
         shell.call('iptables --policy INPUT DROP')
         shell.call('iptables --policy FORWARD DROP')
@@ -98,7 +98,7 @@ class ApplianceVm(object):
         return ''
 
     @replyerror
-    @lock.file_lock('iptables')
+    @lock.file_lock('/run/xtables.lock')
     def refresh_rule(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RefreshFirewallRsp()
