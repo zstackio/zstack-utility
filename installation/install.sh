@@ -1189,8 +1189,11 @@ upgrade_mysql_configuration(){
         sed -i '/\[mysqld\]/a log_bin_trust_function_creators=1\' $mysql_conf
     fi
 
-    systemctl restart mariadb.service >>$ZSTACK_INSTALL_LOG 2>&1
-
+    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
+        service mysql restart >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        systemctl restart mariadb.service >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
 }
 
 uz_upgrade_zstack(){
