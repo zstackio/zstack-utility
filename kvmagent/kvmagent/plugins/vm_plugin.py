@@ -1192,11 +1192,7 @@ class Vm(object):
             def force_undefine():
                 try:
                     self.domain.undefine()
-                except Exception as ex:
-                    if self.domain.isPersistent() == 1:
-                        raise
-
-                    # the vm is in transient state, do our best to kill it
+                except:
                     pid = linux.find_process_by_cmdline(['qemu', self.uuid])
                     if not pid:
                         logger.warn('cannot find the PID of the transient VM[uuid:%s]' % self.uuid)
@@ -1208,7 +1204,8 @@ class Vm(object):
             try:
                 self.domain.undefineFlags(
                     libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE | libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA)
-            except libvirt.libvirtError:
+            except libvirt.libvirtError as ex:
+                logger.warn('undefine domain[%s] failed: %s' % (self.uuid, str(ex)))
                 force_undefine()
 
             return self.wait_for_state_change(None)
@@ -1241,6 +1238,11 @@ class Vm(object):
                 raise kvmagent.KvmError('failed to destroy vm, timeout after 60 secs')
 
         cleanup_addons()
+
+        # undefine domain only if it is persistent
+        if not self.domain.isPersistent():
+            return
+
         if not linux.wait_callback_success(loop_undefine, None, timeout=60):
             raise kvmagent.KvmError('failed to undefine vm, timeout after 60 secs')
 

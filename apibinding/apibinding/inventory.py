@@ -512,6 +512,656 @@ class APISetVmInstanceHaLevelMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
+class APIAddAliyunKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.key = NotNoneField()
+        #mandatory field
+        self.secret = NotNoneField()
+        self.accountUuid = None
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIDeleteAliyunKeySecretMsg'
+class APIDeleteAliyunKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.account.APIDeleteAliyunKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNACCOUNTREPLY_FULL_NAME = 'org.zstack.header.aliyun.account.APIQueryAliyunAccountReply'
+class APIQueryAliyunAccountReply(object):
+    FULL_NAME='org.zstack.header.aliyun.account.APIQueryAliyunAccountReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIQueryAliyunKeySecretMsg'
+class APIQueryAliyunKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.account.APIQueryAliyunKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICLONEECSINSTANCEFROMLOCALVMMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICloneEcsInstanceFromLocalVmMsg'
+class APICloneEcsInstanceFromLocalVmMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APICloneEcsInstanceFromLocalVmMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEECSINSTANCEFROMLOCALIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
+class APICreateEcsInstanceFromLocalImageMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
+    def __init__(self):
+        #valid values: [cloud, cloud_efficiency, cloud_ssd, ephemeral_ssd]
+        self.ecsRootVolumeType = None
+        self.description = None
+        self.ecsRootVolumeGBSize = None
+        #valid values: [atomic, permissive]
+        self.createMode = None
+        self.privateIpAddress = None
+        self.ecsInstanceName = None
+        #valid values: [true, false]
+        self.allocatePublicIp = None
+        #mandatory field
+        self.identityZoneUuid = NotNoneField()
+        #mandatory field
+        self.backupStorageUuid = NotNoneField()
+        #mandatory field
+        self.imageUuid = NotNoneField()
+        #mandatory field
+        self.instanceOfferingUuid = NotNoneField()
+        #mandatory field
+        self.ecsVSwitchUuid = NotNoneField()
+        #mandatory field
+        self.ecsSecurityGroupUuid = NotNoneField()
+        #mandatory field
+        #valid regex values: ^[a-zA-Z]\w{7,17}$
+        self.ecsRootPassword = NotNoneField()
+        #mandatory field
+        self.ecsBandWidth = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALLECSINSTANCESFROMDATACENTERMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
+class APIDeleteAllEcsInstancesFromDataCenterMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIDeleteEcsInstanceMsg'
+class APIDeleteEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETECSINSTANCEVNCURLMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncUrlMsg'
+class APIGetEcsInstanceVncUrlMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncUrlMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETECSINSTANCEVNCURLREPLY_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncUrlReply'
+class APIGetEcsInstanceVncUrlReply(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncUrlReply'
+    def __init__(self):
+        self.ecsId = None
+        self.vncUrl = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYECSINSTANCEFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIQueryEcsInstanceFromLocalMsg'
+class APIQueryEcsInstanceFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIQueryEcsInstanceFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYECSINSTANCEFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIQueryEcsInstanceFromLocalReply'
+class APIQueryEcsInstanceFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIQueryEcsInstanceFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIREBOOTECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIRebootEcsInstanceMsg'
+class APIRebootEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIRebootEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISTARTECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIStartEcsInstanceMsg'
+class APIStartEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIStartEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISTOPECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIStopEcsInstanceMsg'
+class APIStopEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIStopEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCECSINSTANCEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APISyncEcsInstanceFromRemoteMsg'
+class APISyncEcsInstanceFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APISyncEcsInstanceFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEECSINSTANCEVNCPASSWORDMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceVncPasswordMsg'
+class APIUpdateEcsInstanceVncPasswordMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceVncPasswordMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid regex values: [A-Za-z0-9]{6}
+        self.password = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEECSIMAGEFROMLOCALIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APICreateEcsImageFromLocalImageMsg'
+class APICreateEcsImageFromLocalImageMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APICreateEcsImageFromLocalImageMsg'
+    def __init__(self):
+        #mandatory field
+        self.imageUuid = NotNoneField()
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        #mandatory field
+        self.backupStorageUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSIMAGELOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APIDeleteEcsImageLocalMsg'
+class APIDeleteEcsImageLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APIDeleteEcsImageLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSIMAGEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APIDeleteEcsImageRemoteMsg'
+class APIDeleteEcsImageRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APIDeleteEcsImageRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYECSIMAGEFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APIQueryEcsImageFromLocalMsg'
+class APIQueryEcsImageFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APIQueryEcsImageFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYECSIMAGEFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.image.APIQueryEcsImageFromLocalReply'
+class APIQueryEcsImageFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APIQueryEcsImageFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APISYNCECSIMAGEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APISyncEcsImageFromRemoteMsg'
+class APISyncEcsImageFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APISyncEcsImageFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSSECURITYGROUPINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIDeleteEcsSecurityGroupInLocalMsg'
+class APIDeleteEcsSecurityGroupInLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APIDeleteEcsSecurityGroupInLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYECSSECURITYGROUPFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIQueryEcsSecurityGroupFromLocalMsg'
+class APIQueryEcsSecurityGroupFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APIQueryEcsSecurityGroupFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYECSSECURITYGROUPFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIQueryEcsSecurityGroupFromLocalReply'
+class APIQueryEcsSecurityGroupFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APIQueryEcsSecurityGroupFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYECSSECURITYGROUPRULEFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIQueryEcsSecurityGroupRuleFromLocalMsg'
+class APIQueryEcsSecurityGroupRuleFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APIQueryEcsSecurityGroupRuleFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYECSSECURITYGROUPRULEFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIQueryEcsSecurityGroupRuleFromLocalReply'
+class APIQueryEcsSecurityGroupRuleFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APIQueryEcsSecurityGroupRuleFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APISYNCECSSECURITYGROUPFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APISyncEcsSecurityGroupFromRemoteMsg'
+class APISyncEcsSecurityGroupFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APISyncEcsSecurityGroupFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.ecsVpcUuid = NotNoneField()
+        self.ecsSecurityGroupId = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSVSWITCHINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIDeleteEcsVSwitchInLocalMsg'
+class APIDeleteEcsVSwitchInLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIDeleteEcsVSwitchInLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSVPCINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIDeleteEcsVpcInLocalMsg'
+class APIDeleteEcsVpcInLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIDeleteEcsVpcInLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIECSQUERYVPCFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIEcsQueryVpcFromLocalReply'
+class APIEcsQueryVpcFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIEcsQueryVpcFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYECSVSWITCHFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIQueryEcsVSwitchFromLocalMsg'
+class APIQueryEcsVSwitchFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIQueryEcsVSwitchFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYECSVSWITCHFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIQueryEcsVSwitchFromLocalReply'
+class APIQueryEcsVSwitchFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIQueryEcsVSwitchFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYECSVPCFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIQueryEcsVpcFromLocalMsg'
+class APIQueryEcsVpcFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIQueryEcsVpcFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCECSVSWITCHFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APISyncEcsVSwitchFromRemoteMsg'
+class APISyncEcsVSwitchFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APISyncEcsVSwitchFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.identityZoneUuid = NotNoneField()
+        self.vSwitchId = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCECSVPCFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APISyncEcsVpcFromRemoteMsg'
+class APISyncEcsVpcFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APISyncEcsVpcFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.ecsVpcId = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIADDOSSFILEBUCKETNAMEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIAddOssFileBucketNameMsg'
+class APIAddOssFileBucketNameMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIAddOssFileBucketNameMsg'
+    def __init__(self):
+        #mandatory field
+        self.ossBucketName = NotNoneField()
+        #mandatory field
+        self.regionId = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIATTACHOSSBUCKETTOECSDATACENTERMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIAttachOssBucketToEcsDataCenterMsg'
+class APIAttachOssBucketToEcsDataCenterMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIAttachOssBucketToEcsDataCenterMsg'
+    def __init__(self):
+        #mandatory field
+        self.ossBucketUuid = NotNoneField()
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEOSSFILEBUCKETNAMEINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssFileBucketNameInLocalMsg'
+class APIDeleteOssFileBucketNameInLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssFileBucketNameInLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHOSSBUCKETTOECSDATACENTERMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDetachOssBucketToEcsDataCenterMsg'
+class APIDetachOssBucketToEcsDataCenterMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDetachOssBucketToEcsDataCenterMsg'
+    def __init__(self):
+        #mandatory field
+        self.ossBucketUuid = NotNoneField()
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETOSSBUCKETNAMEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGetOssBucketNameFromRemoteMsg'
+class APIGetOssBucketNameFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIGetOssBucketNameFromRemoteMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETOSSBUCKETNAMEFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGetOssBucketNameFromRemoteReply'
+class APIGetOssBucketNameFromRemoteReply(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIGetOssBucketNameFromRemoteReply'
+    def __init__(self):
+        self.bucketNames = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYOSSBUCKETFILENAMEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIQueryOssBucketFileNameMsg'
+class APIQueryOssBucketFileNameMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIQueryOssBucketFileNameMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYOSSBUCKETFILENAMEREPLY_FULL_NAME = 'org.zstack.header.aliyun.oss.APIQueryOssBucketFileNameReply'
+class APIQueryOssBucketFileNameReply(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIQueryOssBucketFileNameReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIGETCPUMEMORYCAPACITYMSG_FULL_NAME = 'org.zstack.header.allocator.APIGetCpuMemoryCapacityMsg'
 class APIGetCpuMemoryCapacityMsg(object):
     FULL_NAME='org.zstack.header.allocator.APIGetCpuMemoryCapacityMsg'
@@ -1162,6 +1812,89 @@ class APICreateSchedulerMessage(object):
         self.userTags = OptionalList()
 
 
+APIADDDATACENTERFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.datacenter.APIAddDataCenterFromRemoteMsg'
+class APIAddDataCenterFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.datacenter.APIAddDataCenterFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.regionId = NotNoneField()
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEDATACENTERINLOCALMSG_FULL_NAME = 'org.zstack.header.datacenter.APIDeleteDataCenterInLocalMsg'
+class APIDeleteDataCenterInLocalMsg(object):
+    FULL_NAME='org.zstack.header.datacenter.APIDeleteDataCenterInLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETDATACENTERFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.datacenter.APIGetDataCenterFromRemoteMsg'
+class APIGetDataCenterFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.datacenter.APIGetDataCenterFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETDATACENTERFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.datacenter.APIGetDataCenterFromRemoteReply'
+class APIGetDataCenterFromRemoteReply(object):
+    FULL_NAME='org.zstack.header.datacenter.APIGetDataCenterFromRemoteReply'
+    def __init__(self):
+        self.dataCenterList = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYDATACENTERFROMLOCALMSG_FULL_NAME = 'org.zstack.header.datacenter.APIQueryDataCenterFromLocalMsg'
+class APIQueryDataCenterFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.datacenter.APIQueryDataCenterFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYDATACENTERFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.datacenter.APIQueryDataCenterFromLocalReply'
+class APIQueryDataCenterFromLocalReply(object):
+    FULL_NAME='org.zstack.header.datacenter.APIQueryDataCenterFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APICHANGEHOSTSTATEMSG_FULL_NAME = 'org.zstack.header.host.APIChangeHostStateMsg'
 class APIChangeHostStateMsg(object):
     FULL_NAME='org.zstack.header.host.APIChangeHostStateMsg'
@@ -1292,6 +2025,37 @@ class APIUpdateHostMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIQUERYHYBRIDEIPFROMLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIQueryHybridEipFromLocalMsg'
+class APIQueryHybridEipFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIQueryHybridEipFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYHYBRIDEIPFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIQueryHybridEipFromLocalReply'
+class APIQueryHybridEipFromLocalReply(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIQueryHybridEipFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
 
 
 APIADDUSERTOGROUPMSG_FULL_NAME = 'org.zstack.header.identity.APIAddUserToGroupMsg'
@@ -2087,6 +2851,92 @@ class APIValidateSessionReply(object):
     FULL_NAME='org.zstack.header.identity.APIValidateSessionReply'
     def __init__(self):
         self.validSession = None
+        self.success = None
+        self.error = None
+
+
+APIADDIDENTITYZONEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.identityzone.APIAddIdentityZoneFromRemoteMsg'
+class APIAddIdentityZoneFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.identityzone.APIAddIdentityZoneFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.zoneId = None
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEIDENTITYZONEINLOCALMSG_FULL_NAME = 'org.zstack.header.identityzone.APIDeleteIdentityZoneInLocalMsg'
+class APIDeleteIdentityZoneInLocalMsg(object):
+    FULL_NAME='org.zstack.header.identityzone.APIDeleteIdentityZoneInLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETIDENTITYZONEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.identityzone.APIGetIdentityZoneFromRemoteMsg'
+class APIGetIdentityZoneFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.identityzone.APIGetIdentityZoneFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        self.dataCenterUuid = None
+        self.regionId = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETIDENTITYZONEFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.identityzone.APIGetIdentityZoneFromRemoteReply'
+class APIGetIdentityZoneFromRemoteReply(object):
+    FULL_NAME='org.zstack.header.identityzone.APIGetIdentityZoneFromRemoteReply'
+    def __init__(self):
+        self.identityZoneList = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYIDENTITYZONEFROMLOCALMSG_FULL_NAME = 'org.zstack.header.identityzone.APIQueryIdentityZoneFromLocalMsg'
+class APIQueryIdentityZoneFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.identityzone.APIQueryIdentityZoneFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYIDENTITYZONEFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.identityzone.APIQueryIdentityZoneFromLocalReply'
+class APIQueryIdentityZoneFromLocalReply(object):
+    FULL_NAME='org.zstack.header.identityzone.APIQueryIdentityZoneFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
         self.success = None
         self.error = None
 
@@ -7998,6 +8848,16 @@ class APIAddSharedMountPointPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APISILENTMSG_FULL_NAME = 'org.zstack.test.multinodes.APISilentMsg'
+class APISilentMsg(object):
+    FULL_NAME='org.zstack.test.multinodes.APISilentMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIAddVCenterMsg'
 class APIAddVCenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIAddVCenterMsg'
@@ -8228,12 +9088,15 @@ class APIUpdateVCenterMsg(object):
 
 
 api_names = [
+    'APIAddAliyunKeySecretMsg',
     'APIAddCephBackupStorageMsg',
     'APIAddCephPrimaryStorageMsg',
     'APIAddCephPrimaryStoragePoolMsg',
+    'APIAddDataCenterFromRemoteMsg',
     'APIAddDnsToL3NetworkMsg',
     'APIAddFusionstorBackupStorageMsg',
     'APIAddFusionstorPrimaryStorageMsg',
+    'APIAddIdentityZoneFromRemoteMsg',
     'APIAddImageMsg',
     'APIAddImageStoreBackupStorageMsg',
     'APIAddIpRangeByNetworkCidrMsg',
@@ -8247,6 +9110,7 @@ api_names = [
     'APIAddMonToFusionstorPrimaryStorageMsg',
     'APIAddNetworkServiceProviderMsg',
     'APIAddNfsPrimaryStorageMsg',
+    'APIAddOssFileBucketNameMsg',
     'APIAddSecurityGroupRuleMsg',
     'APIAddSftpBackupStorageMsg',
     'APIAddSharedMountPointPrimaryStorageMsg',
@@ -8265,6 +9129,7 @@ api_names = [
     'APIAttachL3NetworkToVmMsg',
     'APIAttachNetworkServiceProviderToL2NetworkMsg',
     'APIAttachNetworkServiceToL3NetworkMsg',
+    'APIAttachOssBucketToEcsDataCenterMsg',
     'APIAttachPoliciesToUserMsg',
     'APIAttachPolicyToUserGroupMsg',
     'APIAttachPolicyToUserMsg',
@@ -8299,6 +9164,7 @@ api_names = [
     'APICheckIpAvailabilityReply',
     'APICleanInvalidLdapBindingMsg',
     'APICleanUpImageCacheOnPrimaryStorageMsg',
+    'APICloneEcsInstanceFromLocalVmMsg',
     'APICloneVmInstanceMsg',
     'APICommitVolumeAsImageMsg',
     'APICreateAccountMsg',
@@ -8308,6 +9174,8 @@ api_names = [
     'APICreateDataVolumeMsg',
     'APICreateDataVolumeTemplateFromVolumeMsg',
     'APICreateDiskOfferingMsg',
+    'APICreateEcsImageFromLocalImageMsg',
+    'APICreateEcsInstanceFromLocalImageMsg',
     'APICreateEipMsg',
     'APICreateIPsecConnectionMsg',
     'APICreateInstanceOfferingMsg',
@@ -8344,16 +9212,26 @@ api_names = [
     'APIDebugSignalMsg',
     'APIDeleteAccountMsg',
     'APIDeleteAlarmMsg',
+    'APIDeleteAliyunKeySecretMsg',
+    'APIDeleteAllEcsInstancesFromDataCenterMsg',
     'APIDeleteBackupStorageMsg',
     'APIDeleteCephPrimaryStoragePoolMsg',
     'APIDeleteClusterMsg',
+    'APIDeleteDataCenterInLocalMsg',
     'APIDeleteDataVolumeMsg',
     'APIDeleteDiskOfferingMsg',
+    'APIDeleteEcsImageLocalMsg',
+    'APIDeleteEcsImageRemoteMsg',
+    'APIDeleteEcsInstanceMsg',
+    'APIDeleteEcsSecurityGroupInLocalMsg',
+    'APIDeleteEcsVSwitchInLocalMsg',
+    'APIDeleteEcsVpcInLocalMsg',
     'APIDeleteEipMsg',
     'APIDeleteExportedImageFromBackupStorageMsg',
     'APIDeleteGCJobMsg',
     'APIDeleteHostMsg',
     'APIDeleteIPsecConnectionMsg',
+    'APIDeleteIdentityZoneInLocalMsg',
     'APIDeleteImageMsg',
     'APIDeleteInstanceOfferingMsg',
     'APIDeleteIpRangeMsg',
@@ -8364,6 +9242,7 @@ api_names = [
     'APIDeleteLoadBalancerListenerMsg',
     'APIDeleteLoadBalancerMsg',
     'APIDeleteNicQosMsg',
+    'APIDeleteOssFileBucketNameInLocalMsg',
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
@@ -8396,12 +9275,14 @@ api_names = [
     'APIDetachL3NetworkFromVmMsg',
     'APIDetachNetworkServiceFromL3NetworkMsg',
     'APIDetachNetworkServiceProviderFromL2NetworkMsg',
+    'APIDetachOssBucketToEcsDataCenterMsg',
     'APIDetachPoliciesFromUserMsg',
     'APIDetachPolicyFromUserGroupMsg',
     'APIDetachPolicyFromUserMsg',
     'APIDetachPortForwardingRuleMsg',
     'APIDetachPrimaryStorageFromClusterMsg',
     'APIDetachSecurityGroupFromL3NetworkMsg',
+    'APIEcsQueryVpcFromLocalReply',
     'APIExportImageFromBackupStorageMsg',
     'APIExpungeDataVolumeMsg',
     'APIExpungeImageMsg',
@@ -8440,9 +9321,13 @@ api_names = [
     'APIGetCpuMemoryCapacityReply',
     'APIGetCurrentTimeMsg',
     'APIGetCurrentTimeReply',
+    'APIGetDataCenterFromRemoteMsg',
+    'APIGetDataCenterFromRemoteReply',
     'APIGetDataVolumeAttachableVmMsg',
     'APIGetDataVolumeAttachableVmReply',
     'APIGetDiskOfferingReply',
+    'APIGetEcsInstanceVncUrlMsg',
+    'APIGetEcsInstanceVncUrlReply',
     'APIGetEipAttachableVmNicsMsg',
     'APIGetEipAttachableVmNicsReply',
     'APIGetFreeIpMsg',
@@ -8458,6 +9343,8 @@ api_names = [
     'APIGetHostReply',
     'APIGetHypervisorTypesMsg',
     'APIGetHypervisorTypesReply',
+    'APIGetIdentityZoneFromRemoteMsg',
+    'APIGetIdentityZoneFromRemoteReply',
     'APIGetImageQgaMsg',
     'APIGetImageQgaReply',
     'APIGetImageReply',
@@ -8486,6 +9373,8 @@ api_names = [
     'APIGetNetworkServiceTypesReply',
     'APIGetNicQosMsg',
     'APIGetNicQosReply',
+    'APIGetOssBucketNameFromRemoteMsg',
+    'APIGetOssBucketNameFromRemoteReply',
     'APIGetPolicyReply',
     'APIGetPortForwardingAttachableVmNicsMsg',
     'APIGetPortForwardingAttachableVmNicsReply',
@@ -8599,6 +9488,8 @@ api_names = [
     'APIQueryAccountReply',
     'APIQueryAccountResourceRefMsg',
     'APIQueryAccountResourceRefReply',
+    'APIQueryAliyunAccountReply',
+    'APIQueryAliyunKeySecretMsg',
     'APIQueryApplianceVmMsg',
     'APIQueryApplianceVmReply',
     'APIQueryBackupStorageMsg',
@@ -8611,8 +9502,21 @@ api_names = [
     'APIQueryClusterReply',
     'APIQueryConsoleProxyAgentMsg',
     'APIQueryConsoleProxyAgentReply',
+    'APIQueryDataCenterFromLocalMsg',
+    'APIQueryDataCenterFromLocalReply',
     'APIQueryDiskOfferingMsg',
     'APIQueryDiskOfferingReply',
+    'APIQueryEcsImageFromLocalMsg',
+    'APIQueryEcsImageFromLocalReply',
+    'APIQueryEcsInstanceFromLocalMsg',
+    'APIQueryEcsInstanceFromLocalReply',
+    'APIQueryEcsSecurityGroupFromLocalMsg',
+    'APIQueryEcsSecurityGroupFromLocalReply',
+    'APIQueryEcsSecurityGroupRuleFromLocalMsg',
+    'APIQueryEcsSecurityGroupRuleFromLocalReply',
+    'APIQueryEcsVSwitchFromLocalMsg',
+    'APIQueryEcsVSwitchFromLocalReply',
+    'APIQueryEcsVpcFromLocalMsg',
     'APIQueryEipMsg',
     'APIQueryEipReply',
     'APIQueryFusionstorBackupStorageMsg',
@@ -8623,8 +9527,12 @@ api_names = [
     'APIQueryGlobalConfigReply',
     'APIQueryHostMsg',
     'APIQueryHostReply',
+    'APIQueryHybridEipFromLocalMsg',
+    'APIQueryHybridEipFromLocalReply',
     'APIQueryIPSecConnectionMsg',
     'APIQueryIPSecConnectionReply',
+    'APIQueryIdentityZoneFromLocalMsg',
+    'APIQueryIdentityZoneFromLocalReply',
     'APIQueryImageMsg',
     'APIQueryImageReply',
     'APIQueryImageStoreBackupStorageMsg',
@@ -8655,6 +9563,8 @@ api_names = [
     'APIQueryNetworkServiceL3NetworkRefReply',
     'APIQueryNetworkServiceProviderMsg',
     'APIQueryNetworkServiceProviderReply',
+    'APIQueryOssBucketFileNameMsg',
+    'APIQueryOssBucketFileNameReply',
     'APIQueryPolicyMsg',
     'APIQueryPolicyReply',
     'APIQueryPortForwardingRuleMsg',
@@ -8718,6 +9628,7 @@ api_names = [
     'APIQueryVolumeSnapshotTreeReply',
     'APIQueryZoneMsg',
     'APIQueryZoneReply',
+    'APIRebootEcsInstanceMsg',
     'APIRebootVmInstanceMsg',
     'APIReclaimSpaceFromImageStoreMsg',
     'APIReconnectBackupStorageMsg',
@@ -8783,8 +9694,16 @@ api_names = [
     'APISetVmStaticIpMsg',
     'APISetVolumeQosMsg',
     'APIShareResourceMsg',
+    'APISilentMsg',
+    'APIStartEcsInstanceMsg',
     'APIStartVmInstanceMsg',
+    'APIStopEcsInstanceMsg',
     'APIStopVmInstanceMsg',
+    'APISyncEcsImageFromRemoteMsg',
+    'APISyncEcsInstanceFromRemoteMsg',
+    'APISyncEcsSecurityGroupFromRemoteMsg',
+    'APISyncEcsVSwitchFromRemoteMsg',
+    'APISyncEcsVpcFromRemoteMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncVolumeSizeMsg',
@@ -8796,6 +9715,7 @@ api_names = [
     'APIUpdateCephPrimaryStorageMonMsg',
     'APIUpdateClusterMsg',
     'APIUpdateDiskOfferingMsg',
+    'APIUpdateEcsInstanceVncPasswordMsg',
     'APIUpdateEipMsg',
     'APIUpdateEncryptKeyMsg',
     'APIUpdateFusionstorBackupStorageMonMsg',
@@ -9052,6 +9972,666 @@ class GlobalConfigInventory(object):
             self.value = inv.value
         else:
             self.value = None
+
+
+
+class EcsInstanceConsoleProxyInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.ecsInstanceUuid = None
+        self.vncUrl = None
+        self.vncPassword = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'ecsInstanceUuid'):
+            self.ecsInstanceUuid = inv.ecsInstanceUuid
+        else:
+            self.ecsInstanceUuid = None
+
+        if hasattr(inv, 'vncUrl'):
+            self.vncUrl = inv.vncUrl
+        else:
+            self.vncUrl = None
+
+        if hasattr(inv, 'vncPassword'):
+            self.vncPassword = inv.vncPassword
+        else:
+            self.vncPassword = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class EcsInstanceInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.localVmInstanceUuid = None
+        self.ecsInstanceId = None
+        self.name = None
+        self.ecsStatus = None
+        self.ecsInstanceRootPassword = None
+        self.cpuCores = None
+        self.memorySize = None
+        self.ecsInstanceType = None
+        self.ecsBandWidth = None
+        self.ecsRootVolumeId = None
+        self.ecsRootVolumeCategory = None
+        self.ecsRootVolumeSize = None
+        self.privateIpAddresse = None
+        self.ecsEipUuid = None
+        self.ecsVpcUuid = None
+        self.ecsVSwitchUuid = None
+        self.ecsImageUuid = None
+        self.ecsSecurityGroupUuid = None
+        self.identityZoneUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.description = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'localVmInstanceUuid'):
+            self.localVmInstanceUuid = inv.localVmInstanceUuid
+        else:
+            self.localVmInstanceUuid = None
+
+        if hasattr(inv, 'ecsInstanceId'):
+            self.ecsInstanceId = inv.ecsInstanceId
+        else:
+            self.ecsInstanceId = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'ecsStatus'):
+            self.ecsStatus = inv.ecsStatus
+        else:
+            self.ecsStatus = None
+
+        if hasattr(inv, 'ecsInstanceRootPassword'):
+            self.ecsInstanceRootPassword = inv.ecsInstanceRootPassword
+        else:
+            self.ecsInstanceRootPassword = None
+
+        if hasattr(inv, 'cpuCores'):
+            self.cpuCores = inv.cpuCores
+        else:
+            self.cpuCores = None
+
+        if hasattr(inv, 'memorySize'):
+            self.memorySize = inv.memorySize
+        else:
+            self.memorySize = None
+
+        if hasattr(inv, 'ecsInstanceType'):
+            self.ecsInstanceType = inv.ecsInstanceType
+        else:
+            self.ecsInstanceType = None
+
+        if hasattr(inv, 'ecsBandWidth'):
+            self.ecsBandWidth = inv.ecsBandWidth
+        else:
+            self.ecsBandWidth = None
+
+        if hasattr(inv, 'ecsRootVolumeId'):
+            self.ecsRootVolumeId = inv.ecsRootVolumeId
+        else:
+            self.ecsRootVolumeId = None
+
+        if hasattr(inv, 'ecsRootVolumeCategory'):
+            self.ecsRootVolumeCategory = inv.ecsRootVolumeCategory
+        else:
+            self.ecsRootVolumeCategory = None
+
+        if hasattr(inv, 'ecsRootVolumeSize'):
+            self.ecsRootVolumeSize = inv.ecsRootVolumeSize
+        else:
+            self.ecsRootVolumeSize = None
+
+        if hasattr(inv, 'privateIpAddresse'):
+            self.privateIpAddresse = inv.privateIpAddresse
+        else:
+            self.privateIpAddresse = None
+
+        if hasattr(inv, 'ecsEipUuid'):
+            self.ecsEipUuid = inv.ecsEipUuid
+        else:
+            self.ecsEipUuid = None
+
+        if hasattr(inv, 'ecsVpcUuid'):
+            self.ecsVpcUuid = inv.ecsVpcUuid
+        else:
+            self.ecsVpcUuid = None
+
+        if hasattr(inv, 'ecsVSwitchUuid'):
+            self.ecsVSwitchUuid = inv.ecsVSwitchUuid
+        else:
+            self.ecsVSwitchUuid = None
+
+        if hasattr(inv, 'ecsImageUuid'):
+            self.ecsImageUuid = inv.ecsImageUuid
+        else:
+            self.ecsImageUuid = None
+
+        if hasattr(inv, 'ecsSecurityGroupUuid'):
+            self.ecsSecurityGroupUuid = inv.ecsSecurityGroupUuid
+        else:
+            self.ecsSecurityGroupUuid = None
+
+        if hasattr(inv, 'identityZoneUuid'):
+            self.identityZoneUuid = inv.identityZoneUuid
+        else:
+            self.identityZoneUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+
+
+class EcsImageInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.localImageUuid = None
+        self.ecsImageId = None
+        self.name = None
+        self.ecsImageSize = None
+        self.description = None
+        self.dataCenterUuid = None
+        self.platform = None
+        self.type = None
+        self.ossMd5Sum = None
+        self.format = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'localImageUuid'):
+            self.localImageUuid = inv.localImageUuid
+        else:
+            self.localImageUuid = None
+
+        if hasattr(inv, 'ecsImageId'):
+            self.ecsImageId = inv.ecsImageId
+        else:
+            self.ecsImageId = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'ecsImageSize'):
+            self.ecsImageSize = inv.ecsImageSize
+        else:
+            self.ecsImageSize = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'platform'):
+            self.platform = inv.platform
+        else:
+            self.platform = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'ossMd5Sum'):
+            self.ossMd5Sum = inv.ossMd5Sum
+        else:
+            self.ossMd5Sum = None
+
+        if hasattr(inv, 'format'):
+            self.format = inv.format
+        else:
+            self.format = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class EcsImageMd5SumMappingInventory(object):
+    def __init__(self):
+        self.id = None
+        self.qcow2Md5Sum = None
+        self.rawMd5Sum = None
+        self.ossBucketName = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'qcow2Md5Sum'):
+            self.qcow2Md5Sum = inv.qcow2Md5Sum
+        else:
+            self.qcow2Md5Sum = None
+
+        if hasattr(inv, 'rawMd5Sum'):
+            self.rawMd5Sum = inv.rawMd5Sum
+        else:
+            self.rawMd5Sum = None
+
+        if hasattr(inv, 'ossBucketName'):
+            self.ossBucketName = inv.ossBucketName
+        else:
+            self.ossBucketName = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class EcsSecurityGroupInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.ecsVpcUuid = None
+        self.securityGroupId = None
+        self.securityGroupName = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'ecsVpcUuid'):
+            self.ecsVpcUuid = inv.ecsVpcUuid
+        else:
+            self.ecsVpcUuid = None
+
+        if hasattr(inv, 'securityGroupId'):
+            self.securityGroupId = inv.securityGroupId
+        else:
+            self.securityGroupId = None
+
+        if hasattr(inv, 'securityGroupName'):
+            self.securityGroupName = inv.securityGroupName
+        else:
+            self.securityGroupName = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class EcsSecurityGroupRuleInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.ecsSecurityGroupUuid = None
+        self.protocol = None
+        self.portRange = None
+        self.cidrIp = None
+        self.priority = None
+        self.direction = None
+        self.nicType = None
+        self.policy = None
+        self.sourceGroupId = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'ecsSecurityGroupUuid'):
+            self.ecsSecurityGroupUuid = inv.ecsSecurityGroupUuid
+        else:
+            self.ecsSecurityGroupUuid = None
+
+        if hasattr(inv, 'protocol'):
+            self.protocol = inv.protocol
+        else:
+            self.protocol = None
+
+        if hasattr(inv, 'portRange'):
+            self.portRange = inv.portRange
+        else:
+            self.portRange = None
+
+        if hasattr(inv, 'cidrIp'):
+            self.cidrIp = inv.cidrIp
+        else:
+            self.cidrIp = None
+
+        if hasattr(inv, 'priority'):
+            self.priority = inv.priority
+        else:
+            self.priority = None
+
+        if hasattr(inv, 'direction'):
+            self.direction = inv.direction
+        else:
+            self.direction = None
+
+        if hasattr(inv, 'nicType'):
+            self.nicType = inv.nicType
+        else:
+            self.nicType = None
+
+        if hasattr(inv, 'policy'):
+            self.policy = inv.policy
+        else:
+            self.policy = None
+
+        if hasattr(inv, 'sourceGroupId'):
+            self.sourceGroupId = inv.sourceGroupId
+        else:
+            self.sourceGroupId = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class EcsVSwitchInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.vSwitchId = None
+        self.status = None
+        self.cidrBlock = None
+        self.availableIpAddressCount = None
+        self.description = None
+        self.vSwitchName = None
+        self.ecsVpcUuid = None
+        self.identityZoneUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'vSwitchId'):
+            self.vSwitchId = inv.vSwitchId
+        else:
+            self.vSwitchId = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'cidrBlock'):
+            self.cidrBlock = inv.cidrBlock
+        else:
+            self.cidrBlock = None
+
+        if hasattr(inv, 'availableIpAddressCount'):
+            self.availableIpAddressCount = inv.availableIpAddressCount
+        else:
+            self.availableIpAddressCount = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'vSwitchName'):
+            self.vSwitchName = inv.vSwitchName
+        else:
+            self.vSwitchName = None
+
+        if hasattr(inv, 'ecsVpcUuid'):
+            self.ecsVpcUuid = inv.ecsVpcUuid
+        else:
+            self.ecsVpcUuid = None
+
+        if hasattr(inv, 'identityZoneUuid'):
+            self.identityZoneUuid = inv.identityZoneUuid
+        else:
+            self.identityZoneUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class EcsVpcInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.ecsVpcId = None
+        self.dataCenterUuid = None
+        self.status = None
+        self.deleted = None
+        self.vpcName = None
+        self.cidrBlock = None
+        self.vRouterId = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'ecsVpcId'):
+            self.ecsVpcId = inv.ecsVpcId
+        else:
+            self.ecsVpcId = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'deleted'):
+            self.deleted = inv.deleted
+        else:
+            self.deleted = None
+
+        if hasattr(inv, 'vpcName'):
+            self.vpcName = inv.vpcName
+        else:
+            self.vpcName = None
+
+        if hasattr(inv, 'cidrBlock'):
+            self.cidrBlock = inv.cidrBlock
+        else:
+            self.cidrBlock = None
+
+        if hasattr(inv, 'vRouterId'):
+            self.vRouterId = inv.vRouterId
+        else:
+            self.vRouterId = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class OssBucketEcsDataCenterRefInventory(object):
+    def __init__(self):
+        self.id = None
+        self.ossBucketUuid = None
+        self.dataCenterUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'ossBucketUuid'):
+            self.ossBucketUuid = inv.ossBucketUuid
+        else:
+            self.ossBucketUuid = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class OssBucketInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.bucketName = None
+        self.regionId = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'bucketName'):
+            self.bucketName = inv.bucketName
+        else:
+            self.bucketName = None
+
+        if hasattr(inv, 'regionId'):
+            self.regionId = inv.regionId
+        else:
+            self.regionId = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
 
 
 
@@ -9445,6 +11025,66 @@ class SchedulerInventory(object):
 
 
 
+class DataCenterInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.deleted = None
+        self.regionName = None
+        self.dcType = None
+        self.regionId = None
+        self.defaultVpc = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'deleted'):
+            self.deleted = inv.deleted
+        else:
+            self.deleted = None
+
+        if hasattr(inv, 'regionName'):
+            self.regionName = inv.regionName
+        else:
+            self.regionName = None
+
+        if hasattr(inv, 'dcType'):
+            self.dcType = inv.dcType
+        else:
+            self.dcType = None
+
+        if hasattr(inv, 'regionId'):
+            self.regionId = inv.regionId
+        else:
+            self.regionId = None
+
+        if hasattr(inv, 'defaultVpc'):
+            self.defaultVpc = inv.defaultVpc
+        else:
+            self.defaultVpc = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class HostInventory(object):
     def __init__(self):
         self.zoneUuid = None
@@ -9528,6 +11168,78 @@ class HostInventory(object):
             self.availableMemoryCapacity = inv.availableMemoryCapacity
         else:
             self.availableMemoryCapacity = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class HybridEipAddressInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.eipId = None
+        self.bandWidth = None
+        self.allocateResourceUuid = None
+        self.allocateResourceType = None
+        self.status = None
+        self.eipAddress = None
+        self.eipType = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'eipId'):
+            self.eipId = inv.eipId
+        else:
+            self.eipId = None
+
+        if hasattr(inv, 'bandWidth'):
+            self.bandWidth = inv.bandWidth
+        else:
+            self.bandWidth = None
+
+        if hasattr(inv, 'allocateResourceUuid'):
+            self.allocateResourceUuid = inv.allocateResourceUuid
+        else:
+            self.allocateResourceUuid = None
+
+        if hasattr(inv, 'allocateResourceType'):
+            self.allocateResourceType = inv.allocateResourceType
+        else:
+            self.allocateResourceType = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'eipAddress'):
+            self.eipAddress = inv.eipAddress
+        else:
+            self.eipAddress = None
+
+        if hasattr(inv, 'eipType'):
+            self.eipType = inv.eipType
+        else:
+            self.eipType = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -9763,6 +11475,186 @@ class UserInventory(object):
             self.name = inv.name
         else:
             self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class AvailableIdentityZonesInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accountUuid = None
+        self.zoneId = None
+        self.type = None
+        self.dataCenterUuid = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountUuid'):
+            self.accountUuid = inv.accountUuid
+        else:
+            self.accountUuid = None
+
+        if hasattr(inv, 'zoneId'):
+            self.zoneId = inv.zoneId
+        else:
+            self.zoneId = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class AvailableInstanceTypeInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accountUuid = None
+        self.instanceType = None
+        self.diskCategories = None
+        self.resourceType = None
+        self.izUuid = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountUuid'):
+            self.accountUuid = inv.accountUuid
+        else:
+            self.accountUuid = None
+
+        if hasattr(inv, 'instanceType'):
+            self.instanceType = inv.instanceType
+        else:
+            self.instanceType = None
+
+        if hasattr(inv, 'diskCategories'):
+            self.diskCategories = inv.diskCategories
+        else:
+            self.diskCategories = None
+
+        if hasattr(inv, 'resourceType'):
+            self.resourceType = inv.resourceType
+        else:
+            self.resourceType = None
+
+        if hasattr(inv, 'izUuid'):
+            self.izUuid = inv.izUuid
+        else:
+            self.izUuid = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class IdentityZoneInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.deleted = None
+        self.dataCenterUuid = None
+        self.zoneId = None
+        self.type = None
+        self.zoneName = None
+        self.defaultVSwitch = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'deleted'):
+            self.deleted = inv.deleted
+        else:
+            self.deleted = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'zoneId'):
+            self.zoneId = inv.zoneId
+        else:
+            self.zoneId = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'zoneName'):
+            self.zoneName = inv.zoneName
+        else:
+            self.zoneName = None
+
+        if hasattr(inv, 'defaultVSwitch'):
+            self.defaultVSwitch = inv.defaultVSwitch
+        else:
+            self.defaultVSwitch = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -10502,6 +12394,66 @@ class ZoneInventory(object):
             self.type = inv.type
         else:
             self.type = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class HybridAccountInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accountUuid = None
+        self.userUuid = None
+        self.type = None
+        self.key = None
+        self.secret = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountUuid'):
+            self.accountUuid = inv.accountUuid
+        else:
+            self.accountUuid = None
+
+        if hasattr(inv, 'userUuid'):
+            self.userUuid = inv.userUuid
+        else:
+            self.userUuid = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'key'):
+            self.key = inv.key
+        else:
+            self.key = None
+
+        if hasattr(inv, 'secret'):
+            self.secret = inv.secret
+        else:
+            self.secret = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -11568,12 +13520,15 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
+    SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
@@ -11599,13 +13554,6 @@ class GlobalConfig_SECURITYGROUP(object):
     @staticmethod
     def get_category():
         return 'securityGroup'
-
-class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
-    DELETION_GCINTERVAL = 'deletion.gcInterval'
-
-    @staticmethod
-    def get_category():
-        return 'sharedMountPointPrimaryStorage'
 
 class GlobalConfig_TEST(object):
     TEST = 'Test'
@@ -11709,6 +13657,18 @@ class QueryObjectApplianceVmInventory(object):
         'eip' : 'QueryObjectEipInventory',
      }
 
+class QueryObjectAvailableIdentityZonesInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','accountUuid','zoneId','dataCenterUuid','description','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectAvailableInstanceTypeInventory(object):
+     PRIMITIVE_FIELDS = ['izUuid','diskCategories','instanceType','lastOpDate','accountUuid','description','uuid','resourceType','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectBackupStorageInventory(object):
      PRIMITIVE_FIELDS = ['availableCapacity','totalCapacity','name','lastOpDate','description','state','type','uuid','url','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
@@ -11789,6 +13749,13 @@ class QueryObjectConsoleProxyInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectDataCenterInventory(object):
+     PRIMITIVE_FIELDS = ['deleted','regionId','dcType','regionName','lastOpDate','description','defaultVpc','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['ossBucket']
+     QUERY_OBJECT_MAP = {
+        'ossBucket' : 'QueryObjectOssBucketInventory',
+     }
+
 class QueryObjectDataVolumeUsageInventory(object):
      PRIMITIVE_FIELDS = ['volumeUuid','volumeName','lastOpDate','accountUuid','volumeStatus','id','inventory','volumeSize','dateInLong','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -11809,6 +13776,54 @@ class QueryObjectESXHostInventory(object):
         'cluster' : 'QueryObjectClusterInventory',
         'vmInstance' : 'QueryObjectVmInstanceInventory',
         'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectEcsImageInventory(object):
+     PRIMITIVE_FIELDS = ['ossMd5Sum','ecsImageId','format','description','type','uuid','platform','name','ecsImageSize','lastOpDate','localImageUuid','dataCenterUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEcsImageMd5SumMappingInventory(object):
+     PRIMITIVE_FIELDS = ['rawMd5Sum','lastOpDate','id','ossBucketName','qcow2Md5Sum','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEcsInstanceConsoleProxyInventory(object):
+     PRIMITIVE_FIELDS = ['ecsInstanceUuid','lastOpDate','vncUrl','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEcsInstanceInventory(object):
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsVpcUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddresse','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','ecsEipUuid','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEcsSecurityGroupInventory(object):
+     PRIMITIVE_FIELDS = ['securityGroupId','securityGroupName','ecsVpcUuid','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEcsSecurityGroupRuleInventory(object):
+     PRIMITIVE_FIELDS = ['portRange','description','priority','uuid','protocol','nicType','lastOpDate','ecsSecurityGroupUuid','cidrIp','direction','policy','sourceGroupId','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEcsVSwitchInventory(object):
+     PRIMITIVE_FIELDS = ['vSwitchName','availableIpAddressCount','vSwitchId','ecsVpcUuid','cidrBlock','identityZoneUuid','lastOpDate','description','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEcsVpcInventory(object):
+     PRIMITIVE_FIELDS = ['ecsVpcId','vpcName','vRouterId','deleted','cidrBlock','lastOpDate','dataCenterUuid','description','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectEipInventory(object):
@@ -11879,6 +13894,19 @@ class QueryObjectHostInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
+class QueryObjectHybridAccountInventory(object):
+     PRIMITIVE_FIELDS = ['userUuid','lastOpDate','accountUuid','description','type','uuid','key','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectHybridEipAddressInventory(object):
+     PRIMITIVE_FIELDS = ['bandWidth','allocateResourceType','eipType','allocateResourceUuid','eipAddress','eipId','lastOpDate','description','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['ecs']
+     QUERY_OBJECT_MAP = {
+        'ecs' : 'QueryObjectEcsInstanceInventory',
+     }
+
 class QueryObjectIPsecConnectionInventory(object):
      PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','l3NetworkUuid','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','state','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['peerCidrs','l3Network','vip']
@@ -11890,6 +13918,12 @@ class QueryObjectIPsecConnectionInventory(object):
 
 class QueryObjectIPsecPeerCidrInventory(object):
      PRIMITIVE_FIELDS = ['lastOpDate','cidr','uuid','connectionUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectIdentityZoneInventory(object):
+     PRIMITIVE_FIELDS = ['deleted','lastOpDate','dataCenterUuid','zoneId','description','zoneName','type','uuid','defaultVSwitch','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -12069,6 +14103,21 @@ class QueryObjectNetworkServiceTypeInventory(object):
      PRIMITIVE_FIELDS = ['networkServiceProviderUuid','type','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectOssBucketEcsDataCenterRefInventory(object):
+     PRIMITIVE_FIELDS = ['ossBucketUuid','lastOpDate','dataCenterUuid','id','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['dataCenter','ossBucket']
+     QUERY_OBJECT_MAP = {
+        'dataCenter' : 'QueryObjectDataCenterInventory',
+        'ossBucket' : 'QueryObjectOssBucketInventory',
+     }
+
+class QueryObjectOssBucketInventory(object):
+     PRIMITIVE_FIELDS = ['bucketName','regionId','lastOpDate','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['dataCenter']
+     QUERY_OBJECT_MAP = {
+        'dataCenter' : 'QueryObjectDataCenterInventory',
      }
 
 class QueryObjectPolicyInventory(object):
@@ -12448,6 +14497,7 @@ class QueryObjectZoneInventory(object):
 queryMessageInventoryMap = {
      'APIQueryAccountMsg' : QueryObjectAccountInventory,
      'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
+     'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,
      'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
      'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
      'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,
@@ -12455,14 +14505,23 @@ queryMessageInventoryMap = {
      'APIQueryCephPrimaryStoragePoolMsg' : QueryObjectCephPrimaryStoragePoolInventory,
      'APIQueryClusterMsg' : QueryObjectClusterInventory,
      'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
+     'APIQueryDataCenterFromLocalMsg' : QueryObjectDataCenterInventory,
      'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
+     'APIQueryEcsImageFromLocalMsg' : QueryObjectEcsImageInventory,
+     'APIQueryEcsInstanceFromLocalMsg' : QueryObjectEcsInstanceInventory,
+     'APIQueryEcsSecurityGroupFromLocalMsg' : QueryObjectEcsSecurityGroupInventory,
+     'APIQueryEcsSecurityGroupRuleFromLocalMsg' : QueryObjectEcsSecurityGroupRuleInventory,
+     'APIQueryEcsVSwitchFromLocalMsg' : QueryObjectEcsVSwitchInventory,
+     'APIQueryEcsVpcFromLocalMsg' : QueryObjectEcsVpcInventory,
      'APIQueryEipMsg' : QueryObjectEipInventory,
      'APIQueryFusionstorBackupStorageMsg' : QueryObjectFusionstorBackupStorageInventory,
      'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
      'APIQueryGCJobMsg' : QueryObjectGarbageCollectorInventory,
      'APIQueryGlobalConfigMsg' : QueryObjectGlobalConfigInventory,
      'APIQueryHostMsg' : QueryObjectHostInventory,
+     'APIQueryHybridEipFromLocalMsg' : QueryObjectHybridEipAddressInventory,
      'APIQueryIPSecConnectionMsg' : QueryObjectIPsecConnectionInventory,
+     'APIQueryIdentityZoneFromLocalMsg' : QueryObjectIdentityZoneInventory,
      'APIQueryImageMsg' : QueryObjectImageInventory,
      'APIQueryImageStoreBackupStorageMsg' : QueryObjectImageStoreBackupStorageInventory,
      'APIQueryInstanceOfferingMsg' : QueryObjectInstanceOfferingInventory,
@@ -12478,6 +14537,7 @@ queryMessageInventoryMap = {
      'APIQueryManagementNodeMsg' : QueryObjectManagementNodeInventory,
      'APIQueryNetworkServiceL3NetworkRefMsg' : QueryObjectNetworkServiceL3NetworkRefInventory,
      'APIQueryNetworkServiceProviderMsg' : QueryObjectNetworkServiceProviderInventory,
+     'APIQueryOssBucketFileNameMsg' : QueryObjectOssBucketInventory,
      'APIQueryPolicyMsg' : QueryObjectPolicyInventory,
      'APIQueryPortForwardingRuleMsg' : QueryObjectPortForwardingRuleInventory,
      'APIQueryPrimaryStorageMsg' : QueryObjectPrimaryStorageInventory,
