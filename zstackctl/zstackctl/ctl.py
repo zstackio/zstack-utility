@@ -1408,14 +1408,12 @@ class StartCmd(Command):
             warn("Can't get system memory size from /proc/meminfo")
 
     def check_hostname(self):
-        o = shell('hostnamectl')
-        list = o.split('\n')
-        for attr in list:
-            if 'Static hostname' in attr and ('.' in attr or ',' in attr):
-                hostname = attr.replace('Static hostname:', '').lstrip()
-                error("Hostname cannot contain ','or '.', current hostname is '%s'.\n"
-                      "Please use following command to modify hostname\n"
-                      "hostnamectl set-hostname $hostname" % hostname)
+        hn = shell('hostname').strip()
+        if '.' in hn:
+            error("The hostname cannot contain '.', current hostname is '%s'.\n"
+                  "Please use the following commands to modify hostname and reset rabbitmq:\n"
+                  " # hostnamectl set-hostname $NEW_HOSTNAME\n"
+                  " # zstack-ctl reset_rabbitmq" % hn)
 
     def run(self, args):
         self.check_cpu_mem()
