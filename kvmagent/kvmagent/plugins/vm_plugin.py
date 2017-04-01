@@ -15,6 +15,7 @@ from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lichbd
+import zstacklib.utils.lichbd_factory as lichbdfactory
 from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
@@ -707,7 +708,7 @@ class IsoFusionstor(object):
             port = lichbd.lichbd_get_iscsiport()
             lichbd.makesure_qemu_img_with_lichbd()
 
-            shellcmd = shell.ShellCmd('lichbd mkpool %s -p iscsi' % path.split('/')[0])
+            shellcmd = shell.ShellCmd(lichbdfactory.get_lichbd_version_class().LICHBD_CMD_POOL_CREATE+' %s -p iscsi' % path.split('/')[0])
             shellcmd(False)
             if shellcmd.return_code != 0 and shellcmd.return_code != 17:
                 shellcmd.raise_error()

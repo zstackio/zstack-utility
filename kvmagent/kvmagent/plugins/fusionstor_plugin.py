@@ -13,6 +13,7 @@ from zstacklib.utils import lichbd
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+import zstacklib.utils.lichbd_factory as lichbdfactory
 import os.path
 import re
 import threading
@@ -76,8 +77,8 @@ class FusionstorPlugin(kvmagent.KvmAgent):
 
                     mon_url = '\;'.join(cmd.monUrls)
                     mon_url = mon_url.replace(':', '\\\:')
-                    create = shell.ShellCmd('timeout %s lichbd vol create %s -s 1b -p nbd' %
-                                                (cmd.storageCheckerTimeout, cmd.heartbeatImagePath))
+                    create = shell.ShellCmd('timeout %s %s %s -s 1b -p nbd' %
+                                                (cmd.storageCheckerTimeout,lichbdfactory.get_lichbd_version_class().LICHBD_CMD_VOL_CREATE, cmd.heartbeatImagePath))
                     create(False)
 
                     read_heart_beat_file = False
