@@ -1193,13 +1193,11 @@ class Vm(object):
                 try:
                     self.domain.undefine()
                 except:
+                    logger.warn('cannot undefine the VM[uuid:%s]' % self.uuid)
                     pid = linux.find_process_by_cmdline(['qemu', self.uuid])
-                    if not pid:
-                        logger.warn('cannot find the PID of the transient VM[uuid:%s]' % self.uuid)
-                        raise
-
-                    # force to kill the VM
-                    shell.call('kill -9 %s' % pid)
+                    if pid:
+                        # force to kill the VM
+                        shell.call('kill -9 %s' % pid)
 
             try:
                 self.domain.undefineFlags(
