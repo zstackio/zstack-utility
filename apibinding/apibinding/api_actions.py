@@ -1082,6 +1082,30 @@ class CreateL2VlanNetworkAction(inventory.APICreateL2VlanNetworkMsg):
         self.out = evt
         return self.out
 
+class CreateL2VxlanNetworkAction(inventory.APICreateL2VxlanNetworkMsg):
+    def __init__(self):
+        super(CreateL2VxlanNetworkAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateL2VxlanNetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateL2VxlanNetworkPoolAction(inventory.APICreateL2VxlanNetworkPoolMsg):
+    def __init__(self):
+        super(CreateL2VxlanNetworkPoolAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateL2VxlanNetworkPoolAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateL3NetworkAction(inventory.APICreateL3NetworkMsg):
     def __init__(self):
         super(CreateL3NetworkAction, self).__init__()
@@ -1378,6 +1402,18 @@ class CreateVmInstanceAction(inventory.APICreateVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateVniRangeAction(inventory.APICreateVniRangeMsg):
+    def __init__(self):
+        super(CreateVniRangeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVniRangeAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1810,6 +1846,18 @@ class DeleteNicQosAction(inventory.APIDeleteNicQosMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteNicQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteNotificationsAction(inventory.APIDeleteNotificationsMsg):
+    def __init__(self):
+        super(DeleteNotificationsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteNotificationsAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3804,6 +3852,34 @@ class QueryL2VlanNetworkAction(inventory.APIQueryL2VlanNetworkMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryL2VxlanNetworkAction(inventory.APIQueryL2VxlanNetworkMsg):
+    def __init__(self):
+        super(QueryL2VxlanNetworkAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryL2VxlanNetworkAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryL2VxlanNetworkPoolAction(inventory.APIQueryL2VxlanNetworkPoolMsg):
+    def __init__(self):
+        super(QueryL2VxlanNetworkPoolAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryL2VxlanNetworkPoolAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryL3NetworkAction(inventory.APIQueryL3NetworkMsg):
     def __init__(self):
         super(QueryL3NetworkAction, self).__init__()
@@ -3925,6 +4001,34 @@ class QueryNetworkServiceProviderAction(inventory.APIQueryNetworkServiceProvider
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryNetworkServiceProviderAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryNotificationAction(inventory.APIQueryNotificationMsg):
+    def __init__(self):
+        super(QueryNotificationAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryNotificationAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryNotificationSubscriptionAction(inventory.APIQueryNotificationSubscriptionMsg):
+    def __init__(self):
+        super(QueryNotificationSubscriptionAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryNotificationSubscriptionAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -4317,6 +4421,20 @@ class QueryVmNicInSecurityGroupAction(inventory.APIQueryVmNicInSecurityGroupMsg)
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryVmNicInSecurityGroupAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVniRangeAction(inventory.APIQueryVniRangeMsg):
+    def __init__(self):
+        super(QueryVniRangeAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVniRangeAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -4868,18 +4986,6 @@ class ShareResourceAction(inventory.APIShareResourceMsg):
         self.out = evt
         return self.out
 
-class SilentAction(inventory.APISilentMsg):
-    def __init__(self):
-        super(SilentAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[SilentAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class StartEcsInstanceAction(inventory.APIStartEcsInstanceMsg):
     def __init__(self):
         super(StartEcsInstanceAction, self).__init__()
@@ -5296,6 +5402,18 @@ class UpdateLdapServerAction(inventory.APIUpdateLdapServerMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateLdapServerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateNotificationsStatusAction(inventory.APIUpdateNotificationsStatusMsg):
+    def __init__(self):
+        super(UpdateNotificationsStatusAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateNotificationsStatusAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
