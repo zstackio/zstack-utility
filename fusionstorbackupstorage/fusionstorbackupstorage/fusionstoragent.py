@@ -10,6 +10,7 @@ import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.lock as lock
 import zstacklib.utils.linux as linux
 import zstacklib.utils.sizeunit as sizeunit
+import zstacklib.utils.lichbd_factory as lichbdfactory
 from zstacklib.utils import plugin
 from zstacklib.utils.rollback import rollback, rollbackable
 import os
@@ -168,7 +169,7 @@ class FusionstorAgent(object):
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             cmd.url = linux.shellquote(cmd.url)
-            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | lichbd vol import - %s -p %s' % (cmd.url, tmp_lichbd_file, protocol))
+            shell.call('set -o pipefail; wget --no-check-certificate -q -O - %s | %s - %s -p %s' % (cmd.url,lichbdfactory.get_lichbd_version_class().LICHBD_CMD_VOL_IMPORT, tmp_lichbd_file, protocol))
             actual_size = linux.get_file_size_by_http_head(cmd.url)
         elif cmd.url.startswith('file://'):
             src_path = cmd.url.lstrip('file:')
