@@ -627,7 +627,6 @@ class Ctl(object):
 
     def run(self):
         create_log(Ctl.LOGGER_DIR, Ctl.LOGGER_FILE)
-        logger.info('Starting run command [ zstack-ctl %s ]' % ' '.join(sys.argv[1:]))
         if os.getuid() != 0:
             raise CtlError('zstack-ctl needs root privilege, please run with sudo')
 
@@ -904,6 +903,7 @@ class Command(object):
         self.description = None
         self.hide = False
         self.cleanup_routines = []
+        self.quiet = False
 
     def install_argparse_arguments(self, parser):
         pass
@@ -920,6 +920,8 @@ class Command(object):
     def __call__(self, *args, **kwargs):
         try:
             self.run(*args)
+            if not self.quiet:
+                logger.info('Start running command [ zstack-ctl %s ]' % ' '.join(sys.argv[1:]))
         finally:
             for c in self.cleanup_routines:
                 c()
@@ -1024,11 +1026,13 @@ class ShowStatusCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
+        parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
 
     def _stop_remote(self, args):
         shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl status"' % args.host)
 
     def run(self, args):
+        self.quiet = args.quiet
         if args.host:
             self._stop_remote(args)
             return
@@ -1107,7 +1111,7 @@ class ShowStatusCmd(Command):
         check_zstack_status()
 
         info('\n'.join(info_list))
-        ctl.internal_run('ui_status')
+        ctl.internal_run('ui_status', args='-q')
         show_version()
 
 class DeployDBCmd(Command):
@@ -6186,12 +6190,14 @@ class UiStatusCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
+        parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
 
     def _remote_status(self, host):
         cmd = '/etc/init.d/zstack-dashboard status'
         ssh_run_no_pipe(host, cmd)
 
     def run(self, args):
+        self.quiet = args.quiet
         if args.host != 'localhost':
             self._remote_status(args.host)
             return
