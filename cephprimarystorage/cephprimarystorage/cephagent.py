@@ -441,11 +441,12 @@ class CephAgent(object):
 
         pool_names = existing_pools.split("\n")
 
-        if cmd.errorIfNotExist and cmd.poolName not in pool_names:
-            raise Exception('cannot find the pool[%s] in the ceph cluster, you must create it manually' % cmd.poolName)
+        realname = eval('u"' + cmd.poolName + '"').encode('utf-8')
+        if cmd.errorIfNotExist and realname not in pool_names:
+            raise Exception('cannot find the pool[%s] in the ceph cluster, you must create it manually' % realname)
 
-        if cmd.poolName not in pool_names:
-            shell.call('ceph osd pool create %s 100' % cmd.poolName)
+        if realname not in pool_names:
+            shell.call('ceph osd pool create %s 100' % realname)
 
         return jsonobject.dumps(AgentResponse())
 
