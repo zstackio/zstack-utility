@@ -70,42 +70,60 @@ class HaPlugin(kvmagent.KvmAgent):
 
         self.run_ceph_fencer = True
 
+        def ceph_in_error_stat():
+            healthStatus = shell.call('ceph health')
+            return healthStatus.startswith('HEALTH_ERR')
+
+        def heartbeat_file_exists():
+            touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
+                                   (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
+            touch(False)
+
+            if touch.return_code == 0:
+                return True
+
+            logger.warn('cannot query heartbeat image: %s: %s' % (cmd.heartbeatImagePath, touch.stderr))
+            return False
+
+        def create_heartbeat_file():
+            create = shell.ShellCmd('timeout %s qemu-img create -f raw rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s 1' %
+                                        (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
+            create(False)
+
+            if create.return_code == 0 or "File exists" in create.stderr:
+                return True
+
+            logger.warn('cannot create heartbeat image: %s: %s' % (cmd.heartbeatImagePath, create.stderr))
+            return False
+
+        def delete_heartbeat_file():
+            delete = shell.ShellCmd("timeout %s rbd rm --id zstack %s -m %s" %
+                    (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, mon_url))
+            delete(False)
+
         @thread.AsyncThread
         def heartbeat_on_ceph():
             try:
                 failure = 0
+                mon_url = '\;'.join(cmd.monUrls)
+                mon_url = mon_url.replace(':', '\\\:')
 
                 while self.run_ceph_fencer:
                     time.sleep(cmd.interval)
 
-                    mon_url = '\;'.join(cmd.monUrls)
-                    mon_url = mon_url.replace(':', '\\\:')
-                    create = shell.ShellCmd('timeout %s qemu-img create -f raw rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s 1' %
-                                                (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
-                    create(False)
-
-                    read_heart_beat_file = False
-                    if create.return_code == 0:
+                    if heartbeat_file_exists() or create_heartbeat_file():
                         failure = 0
                         continue
-                    elif "File exists" in create.stderr:
-                        read_heart_beat_file = True
-                    else:
-                        # will cause failure count +1
-                        logger.warn('cannot create heartbeat image; %s' % create.stderr)
-
-                    if read_heart_beat_file:
-                        touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
-                                               (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
-                        touch(False)
-
-                        if touch.return_code == 0:
-                            failure = 0
-                            continue
 
                     failure += 1
                     if failure == cmd.maxAttempts:
-                        kill_vm(cmd.maxAttempts)
+                        # c.f. We discovered that, Ceph could behave the following:
+                        #  1. Create heart-beat file, failed with 'File exists'
+                        #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
+                        if ceph_in_error_stat():
+                            kill_vm(cmd.maxAttempts)
+                        else:
+                            delete_heartbeat_file()
 
                         # reset the failure count
                         failure = 0
