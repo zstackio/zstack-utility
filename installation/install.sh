@@ -842,12 +842,9 @@ is_install_general_libs_rh(){
             java-1.8.0-openjdk \
             bridge-utils \
             wget \
-            libvirt-python \
-            libvirt \
             nfs-utils \
             rpcbind \
             vconfig \
-            libvirt-client \
             python-devel \
             gcc \
             autoconf \
