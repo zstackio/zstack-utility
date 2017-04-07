@@ -950,6 +950,42 @@ class CreateAccountAction(inventory.APICreateAccountMsg):
         self.out = evt
         return self.out
 
+class CreateBaremetalChessisAction(inventory.APICreateBaremetalChessisMsg):
+    def __init__(self):
+        super(CreateBaremetalChessisAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateBaremetalChessisAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateBaremetalHostCfgAction(inventory.APICreateBaremetalHostCfgMsg):
+    def __init__(self):
+        super(CreateBaremetalHostCfgAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateBaremetalHostCfgAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateBaremetalPxeServerAction(inventory.APICreateBaremetalPxeServerMsg):
+    def __init__(self):
+        super(CreateBaremetalPxeServerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateBaremetalPxeServerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateClusterAction(inventory.APICreateClusterMsg):
     def __init__(self):
         super(CreateClusterAction, self).__init__()
@@ -1042,6 +1078,54 @@ class CreateEcsInstanceFromLocalImageAction(inventory.APICreateEcsInstanceFromLo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateEcsInstanceFromLocalImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsSecurityGroupRemoteAction(inventory.APICreateEcsSecurityGroupRemoteMsg):
+    def __init__(self):
+        super(CreateEcsSecurityGroupRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsSecurityGroupRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsSecurityGroupRuleRemoteAction(inventory.APICreateEcsSecurityGroupRuleRemoteMsg):
+    def __init__(self):
+        super(CreateEcsSecurityGroupRuleRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsSecurityGroupRuleRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsVSwitchRemoteAction(inventory.APICreateEcsVSwitchRemoteMsg):
+    def __init__(self):
+        super(CreateEcsVSwitchRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsVSwitchRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsVpcRemoteAction(inventory.APICreateEcsVpcRemoteMsg):
+    def __init__(self):
+        super(CreateEcsVpcRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsVpcRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1430,18 +1514,6 @@ class CreateVirtualRouterVmAction(inventory.APICreateVirtualRouterVmMsg):
         self.out = evt
         return self.out
 
-class CreateVmCpuAlarmAction(inventory.APICreateVmCpuAlarmMsg):
-    def __init__(self):
-        super(CreateVmCpuAlarmAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateVmCpuAlarmAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class CreateVmInstanceAction(inventory.APICreateVmInstanceMsg):
     def __init__(self):
         super(CreateVmInstanceAction, self).__init__()
@@ -1490,6 +1562,18 @@ class CreateVolumeSnapshotSchedulerAction(inventory.APICreateVolumeSnapshotSched
         self.out = evt
         return self.out
 
+class CreateWebhookAction(inventory.APICreateWebhookMsg):
+    def __init__(self):
+        super(CreateWebhookAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateWebhookAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateZoneAction(inventory.APICreateZoneMsg):
     def __init__(self):
         super(CreateZoneAction, self).__init__()
@@ -1526,18 +1610,6 @@ class DeleteAccountAction(inventory.APIDeleteAccountMsg):
         self.out = evt
         return self.out
 
-class DeleteAlarmAction(inventory.APIDeleteAlarmMsg):
-    def __init__(self):
-        super(DeleteAlarmAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteAlarmAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class DeleteAliyunKeySecretAction(inventory.APIDeleteAliyunKeySecretMsg):
     def __init__(self):
         super(DeleteAliyunKeySecretAction, self).__init__()
@@ -1570,6 +1642,42 @@ class DeleteBackupStorageAction(inventory.APIDeleteBackupStorageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteBaremetalChessisAction(inventory.APIDeleteBaremetalChessisMsg):
+    def __init__(self):
+        super(DeleteBaremetalChessisAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteBaremetalChessisAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteBaremetalHostCfgAction(inventory.APIDeleteBaremetalHostCfgMsg):
+    def __init__(self):
+        super(DeleteBaremetalHostCfgAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteBaremetalHostCfgAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteBaremetalPxeServerAction(inventory.APIDeleteBaremetalPxeServerMsg):
+    def __init__(self):
+        super(DeleteBaremetalPxeServerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteBaremetalPxeServerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1694,6 +1802,30 @@ class DeleteEcsSecurityGroupInLocalAction(inventory.APIDeleteEcsSecurityGroupInL
         self.out = evt
         return self.out
 
+class DeleteEcsSecurityGroupRemoteAction(inventory.APIDeleteEcsSecurityGroupRemoteMsg):
+    def __init__(self):
+        super(DeleteEcsSecurityGroupRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsSecurityGroupRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteEcsSecurityGroupRuleRemoteAction(inventory.APIDeleteEcsSecurityGroupRuleRemoteMsg):
+    def __init__(self):
+        super(DeleteEcsSecurityGroupRuleRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsSecurityGroupRuleRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteEcsVSwitchInLocalAction(inventory.APIDeleteEcsVSwitchInLocalMsg):
     def __init__(self):
         super(DeleteEcsVSwitchInLocalAction, self).__init__()
@@ -1706,6 +1838,18 @@ class DeleteEcsVSwitchInLocalAction(inventory.APIDeleteEcsVSwitchInLocalMsg):
         self.out = evt
         return self.out
 
+class DeleteEcsVSwitchRemoteAction(inventory.APIDeleteEcsVSwitchRemoteMsg):
+    def __init__(self):
+        super(DeleteEcsVSwitchRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsVSwitchRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteEcsVpcInLocalAction(inventory.APIDeleteEcsVpcInLocalMsg):
     def __init__(self):
         super(DeleteEcsVpcInLocalAction, self).__init__()
@@ -1714,6 +1858,18 @@ class DeleteEcsVpcInLocalAction(inventory.APIDeleteEcsVpcInLocalMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteEcsVpcInLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteEcsVpcRemoteAction(inventory.APIDeleteEcsVpcRemoteMsg):
+    def __init__(self):
+        super(DeleteEcsVpcRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsVpcRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2266,6 +2422,18 @@ class DeleteVolumeSnapshotFromBackupStorageAction(inventory.APIDeleteVolumeSnaps
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteVolumeSnapshotFromBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteWebhookAction(inventory.APIDeleteWebhookMsg):
+    def __init__(self):
+        super(DeleteWebhookAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteWebhookAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3498,6 +3666,42 @@ class PauseVmInstanceAction(inventory.APIPauseVmInstanceMsg):
         self.out = evt
         return self.out
 
+class PowerOffBaremetalHostAction(inventory.APIPowerOffBaremetalHostMsg):
+    def __init__(self):
+        super(PowerOffBaremetalHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PowerOffBaremetalHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PowerOnBaremetalHostAction(inventory.APIPowerOnBaremetalHostMsg):
+    def __init__(self):
+        super(PowerOnBaremetalHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PowerOnBaremetalHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PowerResetBaremetalHostAction(inventory.APIPowerResetBaremetalHostMsg):
+    def __init__(self):
+        super(PowerResetBaremetalHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PowerResetBaremetalHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class PrometheusQueryLabelValuesAction(inventory.APIPrometheusQueryLabelValuesMsg):
     def __init__(self):
         super(PrometheusQueryLabelValuesAction, self).__init__()
@@ -3542,6 +3746,18 @@ class PrometheusQueryVmMonitoringDataAction(inventory.APIPrometheusQueryVmMonito
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[PrometheusQueryVmMonitoringDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ProvisionBaremetalHostAction(inventory.APIProvisionBaremetalHostMsg):
+    def __init__(self):
+        super(ProvisionBaremetalHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ProvisionBaremetalHostAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3611,6 +3827,48 @@ class QueryBackupStorageAction(inventory.APIQueryBackupStorageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryBackupStorageAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryBaremetalChessisAction(inventory.APIQueryBaremetalChessisMsg):
+    def __init__(self):
+        super(QueryBaremetalChessisAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryBaremetalChessisAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryBaremetalHostCfgAction(inventory.APIQueryBaremetalHostCfgMsg):
+    def __init__(self):
+        super(QueryBaremetalHostCfgAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryBaremetalHostCfgAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryBaremetalPxeServerAction(inventory.APIQueryBaremetalPxeServerMsg):
+    def __init__(self):
+        super(QueryBaremetalPxeServerAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryBaremetalPxeServerAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -4708,6 +4966,20 @@ class QueryVolumeSnapshotTreeAction(inventory.APIQueryVolumeSnapshotTreeMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryWebhookAction(inventory.APIQueryWebhookMsg):
+    def __init__(self):
+        super(QueryWebhookAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryWebhookAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryZoneAction(inventory.APIQueryZoneMsg):
     def __init__(self):
         super(QueryZoneAction, self).__init__()
@@ -5224,6 +5496,18 @@ class ShareResourceAction(inventory.APIShareResourceMsg):
         self.out = evt
         return self.out
 
+class StartBaremetalPxeServerAction(inventory.APIStartBaremetalPxeServerMsg):
+    def __init__(self):
+        super(StartBaremetalPxeServerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[StartBaremetalPxeServerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class StartEcsInstanceAction(inventory.APIStartEcsInstanceMsg):
     def __init__(self):
         super(StartEcsInstanceAction, self).__init__()
@@ -5244,6 +5528,18 @@ class StartVmInstanceAction(inventory.APIStartVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[StartVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class StopBaremetalPxeServerAction(inventory.APIStopBaremetalPxeServerMsg):
+    def __init__(self):
+        super(StopBaremetalPxeServerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[StopBaremetalPxeServerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5452,18 +5748,6 @@ class UpdateAccountAction(inventory.APIUpdateAccountMsg):
         self.out = evt
         return self.out
 
-class UpdateAlertAction(inventory.APIUpdateAlertMsg):
-    def __init__(self):
-        super(UpdateAlertAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateAlertAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class UpdateBackupStorageAction(inventory.APIUpdateBackupStorageMsg):
     def __init__(self):
         super(UpdateBackupStorageAction, self).__init__()
@@ -5472,6 +5756,42 @@ class UpdateBackupStorageAction(inventory.APIUpdateBackupStorageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateBaremetalChessisAction(inventory.APIUpdateBaremetalChessisMsg):
+    def __init__(self):
+        super(UpdateBaremetalChessisAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateBaremetalChessisAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateBaremetalHostCfgAction(inventory.APIUpdateBaremetalHostCfgMsg):
+    def __init__(self):
+        super(UpdateBaremetalHostCfgAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateBaremetalHostCfgAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateBaremetalPxeServerAction(inventory.APIUpdateBaremetalPxeServerMsg):
+    def __init__(self):
+        super(UpdateBaremetalPxeServerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateBaremetalPxeServerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5916,6 +6236,18 @@ class UpdateVolumeSnapshotAction(inventory.APIUpdateVolumeSnapshotMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateVolumeSnapshotAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateWebhookAction(inventory.APIUpdateWebhookMsg):
+    def __init__(self):
+        super(UpdateWebhookAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateWebhookAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

@@ -309,6 +309,10 @@ Parse command parameters error:
                 elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg',
                                  'APIMonitoringPassThroughMsg'] and params[0] == 'query':
                     all_params[params[0]] = eval(params[1])
+                elif apiname in ['APICreateBaremetalHostCfgMsg'] and params[0] == 'nicCfgs':
+                    all_params[params[0]] = eval(params[1])
+                elif apiname in ['APIUpdateBaremetalHostCfgMsg'] and params[0] == 'nicCfgs':
+                    all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and params[0] == 'networkServices':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIDetachNetworkServiceFromL3NetworkMsg' and params[0] == 'networkServices':
