@@ -67,6 +67,8 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        mon_url = '\;'.join(cmd.monUrls)
+        mon_url = mon_url.replace(':', '\\\:')
 
         self.run_ceph_fencer = True
 
@@ -105,8 +107,6 @@ class HaPlugin(kvmagent.KvmAgent):
         def heartbeat_on_ceph():
             try:
                 failure = 0
-                mon_url = '\;'.join(cmd.monUrls)
-                mon_url = mon_url.replace(':', '\\\:')
 
                 while self.run_ceph_fencer:
                     time.sleep(cmd.interval)
