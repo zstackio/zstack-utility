@@ -31,10 +31,10 @@ class LichbdVersionBase(object):
 	def __init__(self):
 		super(LichbdVersionBase, self).__init__()
 
-#359 is the internalid of Q4 2016
-class LichbdVersion359(LichbdVersionBase):
+#375 is the first internalid of lichbd new commands
+class LichbdVersionOlder(LichbdVersionBase):
 	def __init__(self):
-		super(LichbdVersion359, self).__init__()
+		super(LichbdVersionOlder, self).__init__()
 
 class LichbdVersionLatest(LichbdVersionBase):
 	LICHBD_CMD_POOL_CREATE = 'lichbd pool create'
@@ -56,8 +56,8 @@ class LichbdVersionLatest(LichbdVersionBase):
 def get_lichbd_version_class(lichbd_version):
 	version_class = None
 	logger.warn("lichbd version is %s" % lichbd_version)
-	if(lichbd_version <= lichbdconst.LichbdVersionConst.LICHBD_VERSION_Q4_2016):
-		version_class = LichbdVersion359()
+	if(lichbd_version < lichbdconst.LichbdVersionConst.LICHBD_VERSION_Q4_2016):
+		version_class = LichbdVersionOlder()
 	else:
 		version_class = LichbdVersionLatest()
 	return version_class

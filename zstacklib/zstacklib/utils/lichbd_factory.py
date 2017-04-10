@@ -24,8 +24,8 @@ class VersionFactory(object):
 		try:
 			self.versionNum = long(self.LICHBD_VERSION)
 		except:
-			#359 is the internalid of Q4 2016
-			self.versionNum = 359
+			#375 is the first internalid of lichbd new commands
+			self.versionNum = 375
 		VersionFactory.versionClass = lichbdbase.get_lichbd_version_class(self.versionNum)
 
 def get_lichbd_version_class():
