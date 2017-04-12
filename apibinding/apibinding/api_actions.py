@@ -50,6 +50,18 @@ class AddCephPrimaryStoragePoolAction(inventory.APIAddCephPrimaryStoragePoolMsg)
         self.out = evt
         return self.out
 
+class AddConnectionAccessPointFromRemoteAction(inventory.APIAddConnectionAccessPointFromRemoteMsg):
+    def __init__(self):
+        super(AddConnectionAccessPointFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddConnectionAccessPointFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddDataCenterFromRemoteAction(inventory.APIAddDataCenterFromRemoteMsg):
     def __init__(self):
         super(AddDataCenterFromRemoteAction, self).__init__()
@@ -1238,6 +1250,30 @@ class CreateRootVolumeTemplateFromVolumeSnapshotAction(inventory.APICreateRootVo
         self.out = evt
         return self.out
 
+class CreateRouteEntryForConnectionRemoteAction(inventory.APICreateRouteEntryForConnectionRemoteMsg):
+    def __init__(self):
+        super(CreateRouteEntryForConnectionRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateRouteEntryForConnectionRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateRouterInterfacePairRemoteAction(inventory.APICreateRouterInterfacePairRemoteMsg):
+    def __init__(self):
+        super(CreateRouterInterfacePairRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateRouterInterfacePairRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateSchedulerMessageAction(inventory.APICreateSchedulerMessage):
     def __init__(self):
         super(CreateSchedulerMessageAction, self).__init__()
@@ -1546,6 +1582,18 @@ class DeleteClusterAction(inventory.APIDeleteClusterMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteClusterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteConnectionAccessPointLocalAction(inventory.APIDeleteConnectionAccessPointLocalMsg):
+    def __init__(self):
+        super(DeleteConnectionAccessPointLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteConnectionAccessPointLocalAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1922,6 +1970,42 @@ class DeleteResourcePriceAction(inventory.APIDeleteResourcePriceMsg):
         self.out = evt
         return self.out
 
+class DeleteRouteEntryRemoteAction(inventory.APIDeleteRouteEntryRemoteMsg):
+    def __init__(self):
+        super(DeleteRouteEntryRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteRouteEntryRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteRouterInterfaceLocalAction(inventory.APIDeleteRouterInterfaceLocalMsg):
+    def __init__(self):
+        super(DeleteRouterInterfaceLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteRouterInterfaceLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteRouterInterfaceRemoteAction(inventory.APIDeleteRouterInterfaceRemoteMsg):
+    def __init__(self):
+        super(DeleteRouterInterfaceRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteRouterInterfaceRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteSchedulerAction(inventory.APIDeleteSchedulerMsg):
     def __init__(self):
         super(DeleteSchedulerAction, self).__init__()
@@ -2026,6 +2110,18 @@ class DeleteVipAction(inventory.APIDeleteVipMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteVipAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVirtualBorderRouterLocalAction(inventory.APIDeleteVirtualBorderRouterLocalMsg):
+    def __init__(self):
+        super(DeleteVirtualBorderRouterLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVirtualBorderRouterLocalAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3516,6 +3612,20 @@ class QueryClusterAction(inventory.APIQueryClusterMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryConnectionAccessPointFromLocalAction(inventory.APIQueryConnectionAccessPointFromLocalMsg):
+    def __init__(self):
+        super(QueryConnectionAccessPointFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryConnectionAccessPointFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryConsoleProxyAgentAction(inventory.APIQueryConsoleProxyAgentMsg):
     def __init__(self):
         super(QueryConsoleProxyAgentAction, self).__init__()
@@ -4118,6 +4228,34 @@ class QueryResourcePriceAction(inventory.APIQueryResourcePriceMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryRouteEntryFromLocalAction(inventory.APIQueryRouteEntryFromLocalMsg):
+    def __init__(self):
+        super(QueryRouteEntryFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryRouteEntryFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryRouterInterfaceFromLocalAction(inventory.APIQueryRouterInterfaceFromLocalMsg):
+    def __init__(self):
+        super(QueryRouterInterfaceFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryRouterInterfaceFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QuerySchedulerAction(inventory.APIQuerySchedulerMsg):
     def __init__(self):
         super(QuerySchedulerAction, self).__init__()
@@ -4351,6 +4489,34 @@ class QueryVipAction(inventory.APIQueryVipMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryVipAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVirtualBorderRouterFromLocalAction(inventory.APIQueryVirtualBorderRouterFromLocalMsg):
+    def __init__(self):
+        super(QueryVirtualBorderRouterFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVirtualBorderRouterFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVirtualRouterFromLocalAction(inventory.APIQueryVirtualRouterFromLocalMsg):
+    def __init__(self):
+        super(QueryVirtualRouterFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVirtualRouterFromLocalAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -4648,6 +4814,18 @@ class RecoverVmInstanceAction(inventory.APIRecoverVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RecoverVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RecoveryVirtualBorderRouterRemoteAction(inventory.APIRecoveryVirtualBorderRouterRemoteMsg):
+    def __init__(self):
+        super(RecoveryVirtualBorderRouterRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoveryVirtualBorderRouterRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5118,6 +5296,54 @@ class SyncPrimaryStorageCapacityAction(inventory.APISyncPrimaryStorageCapacityMs
         self.out = evt
         return self.out
 
+class SyncRouteEntryFromRemoteAction(inventory.APISyncRouteEntryFromRemoteMsg):
+    def __init__(self):
+        super(SyncRouteEntryFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncRouteEntryFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncRouterInterfaceFromRemoteAction(inventory.APISyncRouterInterfaceFromRemoteMsg):
+    def __init__(self):
+        super(SyncRouterInterfaceFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncRouterInterfaceFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncVirtualBorderRouterFromRemoteAction(inventory.APISyncVirtualBorderRouterFromRemoteMsg):
+    def __init__(self):
+        super(SyncVirtualBorderRouterFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncVirtualBorderRouterFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncVirtualRouterFromRemoteAction(inventory.APISyncVirtualRouterFromRemoteMsg):
+    def __init__(self):
+        super(SyncVirtualRouterFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncVirtualRouterFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SyncVolumeSizeAction(inventory.APISyncVolumeSizeMsg):
     def __init__(self):
         super(SyncVolumeSizeAction, self).__init__()
@@ -5126,6 +5352,18 @@ class SyncVolumeSizeAction(inventory.APISyncVolumeSizeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncVolumeSizeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class TerminateVirtualBorderRouterRemoteAction(inventory.APITerminateVirtualBorderRouterRemoteMsg):
+    def __init__(self):
+        super(TerminateVirtualBorderRouterRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[TerminateVirtualBorderRouterRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5454,6 +5692,18 @@ class UpdateQuotaAction(inventory.APIUpdateQuotaMsg):
         self.out = evt
         return self.out
 
+class UpdateRouteInterfaceRemoteAction(inventory.APIUpdateRouteInterfaceRemoteMsg):
+    def __init__(self):
+        super(UpdateRouteInterfaceRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateRouteInterfaceRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateSchedulerAction(inventory.APIUpdateSchedulerMsg):
     def __init__(self):
         super(UpdateSchedulerAction, self).__init__()
@@ -5546,6 +5796,18 @@ class UpdateVipAction(inventory.APIUpdateVipMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateVipAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateVirtualBorderRouterRemoteAction(inventory.APIUpdateVirtualBorderRouterRemoteMsg):
+    def __init__(self):
+        super(UpdateVirtualBorderRouterRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateVirtualBorderRouterRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
