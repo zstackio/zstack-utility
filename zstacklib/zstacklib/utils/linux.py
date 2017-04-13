@@ -158,6 +158,9 @@ def get_used_disk_apparent_size(dir_path):
     return long(output.split()[0])
 
 def get_disk_capacity_by_df(dir_path):
+    if not dir_path:
+        logger.warn("dir_path is none, storage might not be inited")
+        return None, None
     total = shell.call("df %s|tail -1|awk '{print $(NF-4)}'" % dir_path)
     avail = shell.call("df %s|tail -1|awk '{print $(NF-2)}'" % dir_path)
     return long(total) * 1024, long(avail) * 1024
