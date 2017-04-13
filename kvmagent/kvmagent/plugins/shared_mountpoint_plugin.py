@@ -85,6 +85,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         pass
 
     def _get_disk_capacity(self):
+        if not self.mount_point:
+            raise Exception('cannot find mount point of storage')
         return linux.get_disk_capacity_by_df(self.mount_point)
 
     @kvmagent.replyerror
