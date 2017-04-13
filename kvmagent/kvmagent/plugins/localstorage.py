@@ -69,8 +69,8 @@ class GetQCOW2ReferenceRsp(AgentResponse):
         super(GetQCOW2ReferenceRsp, self).__init__()
         self.referencePaths = None
 
-class LocalStoragePlugin(kvmagent.KvmAgent):
 
+class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
     GET_PHYSICAL_CAPACITY_PATH = "/localstorage/getphysicalcapacity"
     CREATE_EMPTY_VOLUME_PATH = "/localstorage/volume/createempty"
@@ -133,7 +133,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
         http_server.register_async_uri(self.CONVERT_QCOW2_TO_RAW, self.convert_qcow2_to_raw)
 
-        self.path = None
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
@@ -293,8 +292,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             report.progress_report(str(end), "report")
         return jsonobject.dumps(rsp)
 
-    def _get_disk_capacity(self):
-        return linux.get_disk_capacity_by_df(self.path)
+    @staticmethod
+    def _get_disk_capacity(path):
+        if not path:
+            raise Exception('storage path cannot be None')
+        return linux.get_disk_capacity_by_df(path)
 
     @kvmagent.replyerror
     @in_bash
@@ -319,6 +321,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             total = total + os.path.getsize(path)
 
         written = 0
+
         def _get_progress(synced):
             logger.debug("getProgress in localstorage-agent, synced: %s, total: %s" % (synced, total))
             if not os.path.exists(PFILE):
@@ -367,7 +370,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if os.path.exists(PFILE):
             os.remove(PFILE)
         rsp = AgentResponse()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -416,7 +419,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.qcow2_create_template(cmd.volumePath, cmd.installPath)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -442,7 +445,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -465,7 +468,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.qcow2_create_template(latest, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -479,13 +482,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def get_physical_capacity(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -503,7 +507,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(self.path, 0755)
 
         rsp = AgentResponse()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -526,7 +530,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installUrl))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -545,7 +549,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname, 0775)
 
         linux.qcow2_clone(cmd.templatePathInCache, cmd.installUrl)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -553,7 +557,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
         kvmagent.deleteImage(cmd.path)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -564,9 +568,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         shell.call('rm -rf %s' % cmd.path)
         logger.debug('successfully delete %s' % cmd.path)
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
-
 
     @kvmagent.replyerror
     def upload_to_sftp(self, req):
@@ -612,13 +615,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             rsp.error = err
             rsp.success = False
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(self.path, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        self.imagestore_client.download_from_imagestore(cmd.storagePath, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentResponse()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
