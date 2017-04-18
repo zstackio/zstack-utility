@@ -1998,15 +1998,15 @@ class UpgradeHACmd(Command):
     def __init__(self):
         super(UpgradeHACmd, self).__init__()
         self.name = "upgrade_ha"
-        self.description =  "upgrade high availability environment for Mevoco."
+        self.description =  "upgrade high availability environment for ZStack-Enterprise."
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--mevoco-installer','--mevoco',
-                            help="The new mevoco installer package, get it from http://www.mevoco.com/download/",
+        parser.add_argument('--zstack-enterprise-installer','--enterprise',
+                            help="The new zstack-enterprise installer package, get it from http://cdn.zstack.io/product_downloads/zstack-enterprise/",
                             required=True)
         parser.add_argument('--iso',
-                            help="get it from http://www.mevoco.com/mevoco-offline-install-from-custom-iso/",
+                            help="get it from http://cdn.zstack.io/product_downloads/iso/",
                             required=True)
 
     def upgrade_repo(self, iso, tmp_iso, host_post_info):
