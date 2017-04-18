@@ -100,9 +100,6 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         out_chain_name = self._make_out_chain_name(vif_name)
         rules.append(self._start_egress_rule(vif_name, out_chain_name))
 
-        # rules blocking network sniff
-        rules.append('-A %s ! -s %s -j DROP' % (out_chain_name, sto.vmNicIp))
-        rules.append('-A %s -m mac ! --mac-source %s -j DROP' % (out_chain_name, sto.vmNicMac))
 
         def make_ingress_rule(rto):
             if rto.protocol == self.PROTOCOL_ICMP:
