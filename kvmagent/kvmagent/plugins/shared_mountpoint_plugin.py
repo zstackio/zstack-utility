@@ -108,7 +108,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             raise kvmagent.KvmError('%s filesystem is %s, which is not a shared mount point type.' % (cmd.mountPoint, folder_fs_type))
 
         rsp = AgentRsp()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -126,7 +126,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname, 0775)
 
         linux.qcow2_clone(cmd.templatePathInCache, cmd.installPath)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -134,7 +134,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         kvmagent.deleteImage(cmd.path)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -148,7 +148,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         linux.qcow2_create_template(cmd.volumePath, cmd.installPath)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -172,7 +172,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
 
         linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.username, cmd.sshPort)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
 
         return jsonobject.dumps(rsp)
@@ -192,7 +192,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -218,7 +218,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -232,7 +232,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -250,7 +250,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_create(cmd.installPath, cmd.size)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
