@@ -501,13 +501,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.path = cmd.path
 
-        if not os.path.exists(self.path):
-            os.makedirs(self.path, 0755)
+        if not os.path.exists(cmd.path):
+            os.makedirs(cmd.path, 0755)
 
         rsp = AgentResponse()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
