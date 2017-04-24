@@ -2059,7 +2059,7 @@ Options:
         If multiple IP addresses share same net device, e.g. em1, em1:1, em1:2.
         The network interface should be the exact name, like -I em1:1
 
-  -k    keep previous zstack DB if it exists. If using -k with -u, will not upgrade database not start management node.
+  -k    keep previous zstack DB if it exists. If using -k with -u, will not upgrade database or start management node. Do not use this option unless you really know what is means.
 
   -l    only just install ${PRODUCT_NAME} dependent libraries
 
