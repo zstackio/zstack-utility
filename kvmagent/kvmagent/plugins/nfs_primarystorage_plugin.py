@@ -417,7 +417,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         if not linux.is_mounted(cmd.mountPath, cmd.url):
             linux.mount(cmd.url, cmd.mountPath, cmd.options)
 
-        shell.call('mount -o remount %s' % cmd.mountPath)
+        o = shell.ShellCmd('timeout 180 mount -o remount %s' % cmd.mountPath)
+        o(False)
+        if o.return_code == 124:
+            raise Exception('unable to access the mount path[%s] of the nfs primary storage[url:%s] in 180s, timeout' %
+                            (cmd.mountPath, cmd.url))
+        elif o.return_code != 0:
+            o.raise_error()
+
         self.mount_path[cmd.uuid] = cmd.mountPath
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
