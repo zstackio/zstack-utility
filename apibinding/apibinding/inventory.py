@@ -1331,16 +1331,6 @@ class APIDeleteEcsVpcInLocalMsg(object):
         self.userTags = OptionalList()
 
 
-APIECSQUERYVPCFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIEcsQueryVpcFromLocalReply'
-class APIEcsQueryVpcFromLocalReply(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIEcsQueryVpcFromLocalReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.total = None
-        self.success = None
-        self.error = None
-
-
 APIQUERYECSVSWITCHFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIQueryEcsVSwitchFromLocalMsg'
 class APIQueryEcsVSwitchFromLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vpc.APIQueryEcsVSwitchFromLocalMsg'
@@ -1391,6 +1381,16 @@ class APIQueryEcsVpcFromLocalMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIQUERYECSVPCFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIQueryEcsVpcFromLocalReply'
+class APIQueryEcsVpcFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIQueryEcsVpcFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
 
 
 APISYNCECSVSWITCHFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APISyncEcsVSwitchFromRemoteMsg'
@@ -2346,7 +2346,7 @@ APIGETDATACENTERFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.datacenter.APIGet
 class APIGetDataCenterFromRemoteReply(object):
     FULL_NAME='org.zstack.header.datacenter.APIGetDataCenterFromRemoteReply'
     def __init__(self):
-        self.dataCenterList = OptionalList()
+        self.inventories = OptionalList()
         self.success = None
         self.error = None
 
@@ -3392,7 +3392,7 @@ APIGETIDENTITYZONEFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.identityzone.AP
 class APIGetIdentityZoneFromRemoteReply(object):
     FULL_NAME='org.zstack.header.identityzone.APIGetIdentityZoneFromRemoteReply'
     def __init__(self):
-        self.identityZoneList = OptionalList()
+        self.inventories = OptionalList()
         self.success = None
         self.error = None
 
@@ -9499,8 +9499,8 @@ class APIAddVCenterMsg(object):
         self.zoneUuid = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.https = NotNoneField()
+        self.https = None
+        self.port = None
         #mandatory field
         self.domainName = NotNoneField()
         self.description = None
@@ -9710,6 +9710,7 @@ class APIUpdateVCenterMsg(object):
         self.username = None
         self.password = None
         self.domainName = None
+        self.port = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -9923,7 +9924,6 @@ api_names = [
     'APIDetachPortForwardingRuleMsg',
     'APIDetachPrimaryStorageFromClusterMsg',
     'APIDetachSecurityGroupFromL3NetworkMsg',
-    'APIEcsQueryVpcFromLocalReply',
     'APIExportImageFromBackupStorageMsg',
     'APIExpungeDataVolumeMsg',
     'APIExpungeImageMsg',
@@ -10160,6 +10160,7 @@ api_names = [
     'APIQueryEcsVSwitchFromLocalMsg',
     'APIQueryEcsVSwitchFromLocalReply',
     'APIQueryEcsVpcFromLocalMsg',
+    'APIQueryEcsVpcFromLocalReply',
     'APIQueryEipMsg',
     'APIQueryEipReply',
     'APIQueryFusionstorBackupStorageMsg',
@@ -12145,6 +12146,7 @@ class HostInventory(object):
         self.status = None
         self.totalCpuCapacity = None
         self.availableCpuCapacity = None
+        self.cpuSockets = None
         self.totalMemoryCapacity = None
         self.availableMemoryCapacity = None
         self.createDate = None
@@ -12205,6 +12207,11 @@ class HostInventory(object):
             self.availableCpuCapacity = inv.availableCpuCapacity
         else:
             self.availableCpuCapacity = None
+
+        if hasattr(inv, 'cpuSockets'):
+            self.cpuSockets = inv.cpuSockets
+        else:
+            self.cpuSockets = None
 
         if hasattr(inv, 'totalMemoryCapacity'):
             self.totalMemoryCapacity = inv.totalMemoryCapacity
@@ -14224,6 +14231,7 @@ class VCenterInventory(object):
         self.name = None
         self.description = None
         self.domainName = None
+        self.port = None
         self.userName = None
         self.zoneUuid = None
         self.password = None
@@ -14253,6 +14261,11 @@ class VCenterInventory(object):
             self.domainName = inv.domainName
         else:
             self.domainName = None
+
+        if hasattr(inv, 'port'):
+            self.port = inv.port
+        else:
+            self.port = None
 
         if hasattr(inv, 'userName'):
             self.userName = inv.userName
@@ -14973,7 +14986,7 @@ class QueryObjectDiskOfferingInventory(object):
      }
 
 class QueryObjectESXHostInventory(object):
-     PRIMITIVE_FIELDS = ['clusterUuid','morval','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','managementIp','name','lastOpDate','vCenterUuid','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['clusterUuid','morval','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','managementIp','name','lastOpDate','vCenterUuid','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['cluster','vmInstance','zone']
      QUERY_OBJECT_MAP = {
         'cluster' : 'QueryObjectClusterInventory',
@@ -15089,7 +15102,7 @@ class QueryObjectHostCapacityInventory(object):
      }
 
 class QueryObjectHostInventory(object):
-     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['cluster','vmInstance','zone']
      QUERY_OBJECT_MAP = {
         'cluster' : 'QueryObjectClusterInventory',
@@ -15178,7 +15191,7 @@ class QueryObjectIpUseInventory(object):
      }
 
 class QueryObjectKVMHostInventory(object):
-     PRIMITIVE_FIELDS = ['sshPort','clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','username','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['sshPort','clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','username','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['cluster','vmInstance','zone']
      QUERY_OBJECT_MAP = {
         'cluster' : 'QueryObjectClusterInventory',
@@ -15472,7 +15485,7 @@ class QueryObjectSharedResourceInventory(object):
      }
 
 class QueryObjectSimulatorHostInventory(object):
-     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','cpuCapacity','hypervisorType','totalMemoryCapacity','uuid','memoryCapacity','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','cpuCapacity','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','memoryCapacity','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -15553,7 +15566,7 @@ class QueryObjectVCenterDatacenterInventory(object):
      }
 
 class QueryObjectVCenterInventory(object):
-     PRIMITIVE_FIELDS = ['domainName','name','zoneUuid','lastOpDate','description','https','state','userName','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['zoneUuid','description','userName','uuid','port','domainName','name','lastOpDate','https','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
