@@ -67,6 +67,9 @@ class Api(object):
                 setattr(apicmd, k, None)
             elif isinstance(v, inventory.OptionalMap):
                 setattr(apicmd, k, None)
+            elif isinstance(v,str) and not v.strip():
+                err = 'field[%s] of %s cannot be an empty string' % (k, apicmd.FULL_NAME)
+                raise ApiError(err)
 
     def login_as_admin(self):
         apicmd = inventory.APILogInByAccountMsg()
