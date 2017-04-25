@@ -2297,10 +2297,27 @@ fi
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
 	check_repo_version
 	if [ $? -ne 0 ]; then
-		ISO_NAME=${PRODUCT_NAME^}
-		[ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ] && ISO_NAME="ZStack-Enterprise"
 		BIN_VERSION=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
-		fail2 "The Operating System version is not suitable for ${PRODUCT_NAME} installation.\nPlease download and upgrade your Operating System to ${ISO_NAME}-x86-64-DVD-${BIN_VERSION}.iso"
+		if [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
+			ISO_NAME="ZStack-Community-x86-64-DVD-${BIN_VERSION}.iso "
+			UPGRADE_WIKI="http://zstack.io/community/tutorials/ISOupgrade/"
+			ISO_DOWNLOAD_LINK="http://zstack.io/community/downloads/"
+			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+				"Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+				"# zstack-upgrade ${ISO_NAME}\n" \
+				"For more information, see ${UPGRADE_WIKI}"
+		elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
+			ISO_NAME="ZStack-Enterprise-x86-64-DVD-${BIN_VERSION}.iso"
+			UPGRADE_WIKI="http://zstack.io/support/tutorials/upgrade/"
+			ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
+			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+				"Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+				"# zstack-upgrade ${ISO_NAME}\n" \
+				"For more information, see ${UPGRADE_WIKI}"
+		else
+			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+				"Please download proper ISO and upgrade the local repo first."
+		fi
 	fi
 fi
 
