@@ -2222,6 +2222,18 @@ class DeleteVmStaticIpAction(inventory.APIDeleteVmStaticIpMsg):
         self.out = evt
         return self.out
 
+class DeleteVniRangeAction(inventory.APIDeleteVniRangeMsg):
+    def __init__(self):
+        super(DeleteVniRangeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVniRangeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteVolumeQosAction(inventory.APIDeleteVolumeQosMsg):
     def __init__(self):
         super(DeleteVolumeQosAction, self).__init__()

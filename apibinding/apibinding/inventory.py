@@ -7598,6 +7598,19 @@ class APICreateVniRangeMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEVNIRANGEMSG_FULL_NAME = 'org.zstack.network.l2.vxlan.vxlanNetworkPool.APIDeleteVniRangeMsg'
+class APIDeleteVniRangeMsg(object):
+    FULL_NAME='org.zstack.network.l2.vxlan.vxlanNetworkPool.APIDeleteVniRangeMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYL2VXLANNETWORKPOOLMSG_FULL_NAME = 'org.zstack.network.l2.vxlan.vxlanNetworkPool.APIQueryL2VxlanNetworkPoolMsg'
 class APIQueryL2VxlanNetworkPoolMsg(object):
     FULL_NAME='org.zstack.network.l2.vxlan.vxlanNetworkPool.APIQueryL2VxlanNetworkPoolMsg'
@@ -9964,6 +9977,7 @@ api_names = [
     'APIDeleteVmNicFromSecurityGroupMsg',
     'APIDeleteVmSshKeyMsg',
     'APIDeleteVmStaticIpMsg',
+    'APIDeleteVniRangeMsg',
     'APIDeleteVolumeQosMsg',
     'APIDeleteVolumeSnapshotFromBackupStorageMsg',
     'APIDeleteVolumeSnapshotMsg',
@@ -14424,6 +14438,7 @@ IMAGE_STORE_BACKUP_STORAGE_TYPE = 'ImageStoreBackupStorage'
 
 #KVMConstant
 KVM_HYPERVISOR_TYPE = 'KVM'
+KVM_VXLAN_TYPE = 'KVM_HOST_VXLAN'
 
 #L2NetworkConstant
 L2_NO_VLAN_NETWORK_TYPE = 'L2NoVlanNetwork'
@@ -14526,8 +14541,8 @@ VXLAN_NETWORK_TYPE = 'VxlanNetwork'
 
 #VxlanNetworkPoolConstant
 VXLAN_NETWORK_POOL_TYPE = 'VxlanNetworkPool'
-VXLAN_NETWORK_TYPE = 'VxlanNetwork'
 RANDOM_VNI_ALLOCATOR_STRATEGY = 'RandomVniAllocatorStrategy'
+VXLAN_PORT = '4789'
 
 #GlobalConfigPythonConstant
 class GlobalConfig_APPLIANCEVM(object):
@@ -14784,7 +14799,7 @@ class GlobalConfig_OTHERS(object):
 
     @staticmethod
     def get_category():
-        return 'Others'
+        return 'notification'
 
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
@@ -14819,10 +14834,13 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -15921,6 +15939,7 @@ queryMessageInventoryMap = {
      'APIQueryL2NetworkMsg' : QueryObjectL2NetworkInventory,
      'APIQueryL2VlanNetworkMsg' : QueryObjectL2VlanNetworkInventory,
      'APIQueryL2VxlanNetworkMsg' : QueryObjectL2VxlanNetworkInventory,
+     'APIQueryL2VxlanNetworkPoolMsg' : QueryObjectL2VxlanNetworkPoolInventory,
      'APIQueryL3NetworkMsg' : QueryObjectL3NetworkInventory,
      'APIQueryLdapBindingMsg' : QueryObjectLdapAccountRefInventory,
      'APIQueryLdapServerMsg' : QueryObjectLdapServerInventory,
