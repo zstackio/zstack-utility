@@ -12,6 +12,7 @@ import struct
 import netaddr
 import functools
 import threading
+import re
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -47,6 +48,9 @@ class EthernetInfo(object):
 
     def __str__(self):
         return 'interface:%s, mac:%s, ip:%s, netmask:%s' % (self.interface, self.mac, self.ip, self.netmask)
+
+    def __repr__(self):
+        return self.__str__()
 
 def retry(times=3, sleep_time=3):
     def wrap(f):
@@ -125,7 +129,6 @@ def get_ethernet_info():
                 alias = tokens[i+1]
 
         assert ip, 'cannot find ip for ethernet device[%s]' % ethname
-        assert brd, 'cannot find broadcast address for ethernet device[%s]' % ethname
         assert netmask, 'cannot find netmask for ethernet device[%s]' % ethname
         if alias:
             alias_eth = EthernetInfo()
@@ -1251,4 +1254,70 @@ def delete_lines_from_file(filename, is_line_to_delete):
 
     with open(filename, 'w') as fd:
         fd.write('\n'.join(lines))
+
+
+class Interface(object):
+    def __init__(self, args):
+        self.status = args.get('status')
+        self.name = args.get('name')
+        self.ips = args.get('ips')
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return str({'status':self.status,
+                'name':self.name,
+                'ips':self.ips})
+
+def get_eth_ips():
+    nics = shell.call("ip a | grep -E 'mtu| inet '")
+    result = dict()
+    interf = ''
+
+    for i in nics.splitlines():
+        if i.find('mtu') >= 0:
+            interf = re.findall(r':\ .*:\ ', i)[0].split(': ')[1]
+            status = True if re.findall(r'UP', i) else False
+            result[interf] = Interface({'name':interf, 'status':status, 'ips':list()})
+        elif i.find('inet') >= 0:
+            result[interf].ips.append(re.findall(r'inet\ .*\ scope', i)[0].split(' ')[1].split('/')[0])
+
+    return result
+
+def get_nics_by_cidr(cidr):
+    eths = get_eth_ips()
+    nics = []
+    for e in eths.itervalues():
+        if e.status == False:
+            continue
+        for ip in e.ips:
+            if ip and netaddr.IPAddress(ip) in netaddr.IPNetwork(cidr):
+                nics.append({e.name:ip})
+
+    return nics
+
+def create_vxlan_interface(vni, vtepIp):
+    vni = str(vni)
+    cmd = shell.ShellCmd("ip link add {name} type vxlan id {id} local {ip} nolearning noproxy nol2miss nol3miss".format(
+        **{"name": "vxlan" + vni, "id": vni, "ip": vtepIp}))
+    cmd(is_exception=False)
+
+    cmd = shell.ShellCmd("ip link set %s up" % ("vxlan" + vni))
+    cmd(is_exception=False)
+    return cmd.return_code == 0
+
+def create_vxlan_bridge(interf, bridgeName, ips):
+    if is_interface_bridge(bridgeName) is not True:
+        create_bridge(bridgeName, interf, False)
+    elif is_vif_on_bridge(bridgeName, interf) is None:
+        cmd = shell.ShellCmd("brctl addif %s %s" % (bridgeName, interf))
+        cmd(is_exception=False)
+
+    populate_vxlan_fdb(interf, ips)
+
+def populate_vxlan_fdb(interf, ips):
+    for ip in ips:
+        shell.call("bridge fdb append to 00:00:00:00:00:00 dev %s dst %s" % (
+            interf, ip))
 

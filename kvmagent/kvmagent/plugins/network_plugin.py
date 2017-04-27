@@ -17,6 +17,8 @@ KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
 KVM_CHECK_L2VLAN_NETWORK_PATH = "/network/l2vlan/checkbridge"
+KVM_CHECK_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/checkcidr"
+KVM_REALIZE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/createbridge"
 
 logger = log.get_logger(__name__)
 
@@ -45,9 +47,24 @@ class CreateVlanBridgeCmd(kvmagent.AgentCommand):
         super(CreateVlanBridgeCmd, self).__init__()
         self.vlan = None
 
-class CreateVlanBridgeResponse(kvmagent.AgentResponse):
+class CheckVxlanCidrCmd(kvmagent.AgentCommand):
     def __init__(self):
-        super(CreateVlanBridgeResponse, self).__init__()
+        super(CheckVxlanCidrCmd, self).__init__()
+        self.vtepIp = None
+
+class CreateVxlanBridgeCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(CreateVxlanBridgeCmd, self).__init__()
+        self.bridgeName = None
+        self.vtepIp = None
+        self.vni = None
+        self.peers = None
+
+class PopulateVxlanFdbCmd(kvmagent.AgentResponse):
+    def __init__(self):
+        super(PopulateVxlanFdbCmd, self).__init__()
+        self.interf = None
+        self.peers = None
 
 class CheckBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -57,6 +74,22 @@ class CheckVlanBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckVlanBridgeResponse, self).__init__()
 
+class CreateVlanBridgeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CreateVlanBridgeResponse, self).__init__()
+
+class CheckVxlanCidrResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckVxlanCidrResponse, self).__init__()
+        self.vtepIp = None
+
+class CreateVxlanBridgeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CreateVxlanBridgeResponse, self).__init__()
+
+class PopulateVxlanFdbResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(PopulateVxlanFdbResponse, self).__init__()
 
 class NetworkPlugin(kvmagent.KvmAgent):
     '''
@@ -173,6 +206,64 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @lock.lock('create_bridge')
+    @kvmagent.replyerror
+    def check_vxlan_cidr(self, req):
+        # Check qualified interface with cidr and interface name (if provided).
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckVxlanCidrResponse()
+        interf = cmd.physicalInterfaceName
+
+        nics = linux.get_nics_by_cidr(cmd.cidr)
+        if len(nics) == 0:
+            rsp.error = "can not find qualify interface for cidr [%s]" % cmd.cidr
+            rsp.success = False
+        elif len(nics) == 1 and interf:
+            if nics[0].keys()[0] == interf:
+                rsp.vtepIp = nics[0].values()[0]
+            else:
+                rsp.error = "The interface with cidr [%s] is not the interface [%s] which provided" % (cmd.cidr, interf)
+                rsp.success = False
+        elif len(nics) == 1:
+            rsp.vtepIp = nics[0].values()[0]
+        elif len(nics) > 1 and interf:
+            for nic in nics:
+                if nic.keys()[0] == interf:
+                    rsp.vtepIp = nics[0].values()[0]
+            if rsp.vtepIp == None:
+                rsp.error = "No interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr, interf)
+                rsp.success = False
+        else:
+            rsp.error = "Multiple interface qualify with cidr [%s] and no interface name provided" % (cmd.cidr)
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('create_bridge')
+    @kvmagent.replyerror
+    def create_vxlan_bridge(self, req):
+        # Create VXLAN interface using vtep ip then create bridge
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVxlanBridgeResponse()
+        if not (cmd.vni and cmd.vtepIp):
+            rsp.error = "vni or vtepip is none"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        linux.create_vxlan_interface(cmd.vni, cmd.vtepIp)
+
+        interf = "vxlan" + str(cmd.vni)
+        linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
+
+        return jsonobject.dumps(rsp)
+
+    def populate_vxlan_fdb(self, req):
+        # populate vxlan fdb
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = PopulateVxlanFdbResponse
+        linux.populate_vxlan_fdb(cmd.interf, cmd.peers)
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, self.check_physical_network_interface)
@@ -180,6 +271,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
         http_server.register_async_uri(KVM_CHECK_L2NOVLAN_NETWORK_PATH, self.check_bridge)
         http_server.register_async_uri(KVM_CHECK_L2VLAN_NETWORK_PATH, self.check_vlan_bridge)
+        http_server.register_async_uri(KVM_CHECK_L2VXLAN_NETWORK_PATH, self.check_vxlan_cidr)
+        http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORK_PATH, self.create_vxlan_bridge)
 
     def stop(self):
         pass
