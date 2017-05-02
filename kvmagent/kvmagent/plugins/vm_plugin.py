@@ -79,6 +79,17 @@ class ChangeCpuMemResponse(kvmagent.AgentResponse):
         self.memorySize = None
         self.vmuuid
 
+class IncreaseCpuResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(IncreaseCpuResponse, self).__init__()
+        self.cpuNum = None
+        self.vmUuid = None
+
+class IncreaseMemoryResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(IncreaseMemoryResponse, self).__init__()
+        self.memorySize = None
+        self.vmUuid = None
 
 class StopVmCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -2204,7 +2215,7 @@ class Vm(object):
                     cpu = e(root, 'cpu')
                 # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
                 mem = cmd.memory / 1024
-                e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(32), 'threads': '1'})
+                e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(4), 'threads': '1'})
                 numa = e(cpu, 'numa')
                 e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
             else:
@@ -2621,6 +2632,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_REBOOT_VM_PATH = "/vm/reboot"
     KVM_DESTROY_VM_PATH = "/vm/destroy"
     KVM_ONLINE_CHANGE_CPUMEM_PATH = "/vm/online/changecpumem"
+    KVM_ONLINE_INCREASE_CPU_PATH = "/vm/increase/cpu"
+    KVM_ONLINE_INCREASE_MEMORY_PATH = "/vm/increase/mem"
     KVM_GET_CONSOLE_PORT_PATH = "/vm/getvncport"
     KVM_VM_SYNC_PATH = "/vm/vmsync"
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
@@ -2913,6 +2926,43 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp.states = get_all_vm_states()
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def online_increase_mem(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = IncreaseMemoryResponse()
+
+        try:
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            memory_size = cmd.memorySize
+            vm.hotplug_mem(memory_size)
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            rsp.memorySize = vm.get_memory()
+            logger.debug('successfully increase memory of vm[uuid:%s] to %s Kib' % (cmd.vmUuid, vm.get_memory()))
+        except kvmagent.KvmError as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = str(e)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def online_increase_cpu(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = IncreaseCpuResponse()
+
+        try:
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            cpu_num = cmd.cpuNum
+            vm.hotplug_cpu(cpu_num)
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            rsp.cpuNum = vm.get_cpu_num()
+            logger.debug('successfully increase cpu number of vm[uuid:%s] to %s' % (cmd.vmUuid, vm.get_cpu_num()))
+        except kvmagent.KvmError as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = str(e)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def online_change_cpumem(self, req):
@@ -3256,6 +3306,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DESTROY_VM_PATH, self.destroy_vm)
         http_server.register_async_uri(self.KVM_GET_CONSOLE_PORT_PATH, self.get_console_port)
         http_server.register_async_uri(self.KVM_ONLINE_CHANGE_CPUMEM_PATH, self.online_change_cpumem)
+        http_server.register_async_uri(self.KVM_ONLINE_INCREASE_CPU_PATH, self.online_increase_cpu)
+        http_server.register_async_uri(self.KVM_ONLINE_INCREASE_MEMORY_PATH, self.online_increase_mem)
         http_server.register_async_uri(self.KVM_VM_SYNC_PATH, self.vm_sync)
         http_server.register_async_uri(self.KVM_ATTACH_VOLUME, self.attach_data_volume)
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)
