@@ -1234,7 +1234,8 @@ class Vm(object):
 
         if do_destroy:
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
-                raise kvmagent.KvmError('failed to destroy vm, timeout after 60 secs')
+                logger.warn('failed to destroy vm, timeout after 60 secs')
+                raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
         cleanup_addons()
 
@@ -1243,7 +1244,8 @@ class Vm(object):
             return
 
         if not linux.wait_callback_success(loop_undefine, None, timeout=60):
-            raise kvmagent.KvmError('failed to undefine vm, timeout after 60 secs')
+            logger.warn('failed to undefine vm, timeout after 60 secs')
+            raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
     def destroy(self):
         self.stop(graceful=False)
