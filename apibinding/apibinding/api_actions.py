@@ -410,6 +410,18 @@ class AddVmNicToSecurityGroupAction(inventory.APIAddVmNicToSecurityGroupMsg):
         self.out = evt
         return self.out
 
+class AttachAliyunKeyAction(inventory.APIAttachAliyunKeyMsg):
+    def __init__(self):
+        super(AttachAliyunKeyAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachAliyunKeyAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AttachBackupStorageToZoneAction(inventory.APIAttachBackupStorageToZoneMsg):
     def __init__(self):
         super(AttachBackupStorageToZoneAction, self).__init__()
@@ -2258,6 +2270,18 @@ class DestroyVmInstanceAction(inventory.APIDestroyVmInstanceMsg):
         self.out = evt
         return self.out
 
+class DetachAliyunKeyAction(inventory.APIDetachAliyunKeyMsg):
+    def __init__(self):
+        super(DetachAliyunKeyAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachAliyunKeyAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DetachBackupStorageFromZoneAction(inventory.APIDetachBackupStorageFromZoneMsg):
     def __init__(self):
         super(DetachBackupStorageFromZoneAction, self).__init__()
@@ -3058,6 +3082,18 @@ class GetResourceAccountAction(inventory.APIGetResourceAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetResourceAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetResourceNamesAction(inventory.APIGetResourceNamesMsg):
+    def __init__(self):
+        super(GetResourceNamesAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetResourceNamesAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
