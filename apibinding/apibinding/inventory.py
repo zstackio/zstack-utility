@@ -618,6 +618,18 @@ class APIAddAliyunKeySecretMsg(object):
         self.userTags = OptionalList()
 
 
+APIATTACHALIYUNKEYMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIAttachAliyunKeyMsg'
+class APIAttachAliyunKeyMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.account.APIAttachAliyunKeyMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDELETEALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIDeleteAliyunKeySecretMsg'
 class APIDeleteAliyunKeySecretMsg(object):
     FULL_NAME='org.zstack.header.aliyun.account.APIDeleteAliyunKeySecretMsg'
@@ -625,6 +637,18 @@ class APIDeleteAliyunKeySecretMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHALIYUNKEYMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIDetachAliyunKeyMsg'
+class APIDetachAliyunKeyMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.account.APIDetachAliyunKeyMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -6467,6 +6491,27 @@ class APIUpdateVmInstanceMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETRESOURCENAMESMSG_FULL_NAME = 'org.zstack.header.vo.APIGetResourceNamesMsg'
+class APIGetResourceNamesMsg(object):
+    FULL_NAME='org.zstack.header.vo.APIGetResourceNamesMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuids = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETRESOURCENAMESREPLY_FULL_NAME = 'org.zstack.header.vo.APIGetResourceNamesReply'
+class APIGetResourceNamesReply(object):
+    FULL_NAME='org.zstack.header.vo.APIGetResourceNamesReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIATTACHDATAVOLUMETOVMMSG_FULL_NAME = 'org.zstack.header.volume.APIAttachDataVolumeToVmMsg'
 class APIAttachDataVolumeToVmMsg(object):
     FULL_NAME='org.zstack.header.volume.APIAttachDataVolumeToVmMsg'
@@ -9752,6 +9797,7 @@ api_names = [
     'APIAddVCenterMsg',
     'APIAddVmNicToLoadBalancerMsg',
     'APIAddVmNicToSecurityGroupMsg',
+    'APIAttachAliyunKeyMsg',
     'APIAttachBackupStorageToZoneMsg',
     'APIAttachDataVolumeToVmMsg',
     'APIAttachEipMsg',
@@ -9909,6 +9955,7 @@ api_names = [
     'APIDeleteVolumeSnapshotMsg',
     'APIDeleteZoneMsg',
     'APIDestroyVmInstanceMsg',
+    'APIDetachAliyunKeyMsg',
     'APIDetachBackupStorageFromZoneMsg',
     'APIDetachDataVolumeFromVmMsg',
     'APIDetachEipMsg',
@@ -10028,6 +10075,8 @@ api_names = [
     'APIGetPrimaryStorageTypesReply',
     'APIGetResourceAccountMsg',
     'APIGetResourceAccountReply',
+    'APIGetResourceNamesMsg',
+    'APIGetResourceNamesReply',
     'APIGetSftpBackupStorageReply',
     'APIGetTaskProgressMsg',
     'APIGetTaskProgressReply',
@@ -13467,8 +13516,9 @@ class HybridAccountInventory(object):
         self.accountUuid = None
         self.userUuid = None
         self.type = None
-        self.key = None
+        self.akey = None
         self.secret = None
+        self.current = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -13494,15 +13544,20 @@ class HybridAccountInventory(object):
         else:
             self.type = None
 
-        if hasattr(inv, 'key'):
-            self.key = inv.key
+        if hasattr(inv, 'akey'):
+            self.akey = inv.akey
         else:
-            self.key = None
+            self.akey = None
 
         if hasattr(inv, 'secret'):
             self.secret = inv.secret
         else:
             self.secret = None
+
+        if hasattr(inv, 'current'):
+            self.current = inv.current
+        else:
+            self.current = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -14644,6 +14699,13 @@ class GlobalConfig_LOADBALANCER(object):
     def get_category():
         return 'loadBalancer'
 
+class GlobalConfig_LOCALSTORAGEPRIMARYSTORAGE(object):
+    LIVEMIGRATIONWITHSTORAGE_ALLOW = 'liveMigrationWithStorage.allow'
+
+    @staticmethod
+    def get_category():
+        return 'localStoragePrimaryStorage'
+
 class GlobalConfig_LOG(object):
     ENABLED = 'enabled'
 
@@ -14695,6 +14757,13 @@ class GlobalConfig_NFSPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'nfsPrimaryStorage'
+
+class GlobalConfig_NOTIFICATION(object):
+    WEBHOOK_URL = 'webhook.url'
+
+    @staticmethod
+    def get_category():
+        return 'notification'
 
 class GlobalConfig_OTHERS(object):
     TEST2 = 'Test2'
@@ -15111,7 +15180,7 @@ class QueryObjectHostInventory(object):
      }
 
 class QueryObjectHybridAccountInventory(object):
-     PRIMITIVE_FIELDS = ['userUuid','lastOpDate','accountUuid','description','type','uuid','key','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['current','akey','userUuid','lastOpDate','accountUuid','description','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -15421,10 +15490,16 @@ class QueryObjectPrimaryStorageInventory(object):
      }
 
 class QueryObjectQuotaInventory(object):
-     PRIMITIVE_FIELDS = ['identityType','identityUuid','name','lastOpDate','value','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['identityType','identityUuid','name','lastOpDate','uuid','value','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['account']
      QUERY_OBJECT_MAP = {
         'account' : 'QueryObjectAccountInventory',
+     }
+
+class QueryObjectResourceInventory(object):
+     PRIMITIVE_FIELDS = ['resourceName','uuid','resourceType','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectRootVolumeUsageInventory(object):
