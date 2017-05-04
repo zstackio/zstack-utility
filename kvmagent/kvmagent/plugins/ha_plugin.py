@@ -22,11 +22,16 @@ class ScanRsp(object):
         super(ScanRsp, self).__init__()
         self.result = None
 
-def kill_vm(maxAttempts):
+
+def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
     vm_uuid_list = shell.call("virsh list | grep running | awk '{print $2}'")
     for vm_uuid in vm_uuid_list.split('\n'):
         vm_uuid = vm_uuid.strip(' \t\n\r')
         if not vm_uuid:
+            continue
+
+        if mountPath and isFileSystem is not None \
+                and not is_need_kill(vm_uuid, mountPath, isFileSystem):
             continue
 
         vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
@@ -34,10 +39,49 @@ def kill_vm(maxAttempts):
         kill = shell.ShellCmd('kill -9 %s' % vm_pid)
         kill(False)
         if kill.return_code == 0:
-            logger.warn('kill the vm[uuid:%s, pid:%s] because we lost connection to the ceph storage.'
+            logger.warn('kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.'
                         'failed to read the heartbeat file %s times' % (vm_uuid, vm_pid, maxAttempts))
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
+
+
+def is_need_kill(vmUuid, mountPath, isFileSystem):
+    def vm_match_storage_type(vmUuid, isFileSystem):
+        o = shell.ShellCmd("virsh dumpxml %s | grep \"disk type='file'\"" % vmUuid)
+        o(False)
+        if (o.return_code == 0 and isFileSystem) or (o.return_code != 0 and not isFileSystem):
+            return True
+        return False
+
+    def vm_in_this_file_system_storage(vm_uuid, ps_path):
+        cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source file=\" | head -1 |awk -F \"'\" '{print $2}'" % vm_uuid)
+        cmd(False)
+        vm_path = cmd.stdout.strip()
+        if cmd.return_code != 0 or vm_path == "" or ps_path in vm_path:
+            return True
+        return False
+
+    def vm_in_this_distributed_storage(vm_uuid, ps_path):
+        cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source protocol\" | head -1 | awk -F \"'\" '{print $4}'" % vm_uuid)
+        cmd(False)
+        vm_path = cmd.stdout.strip()
+        if cmd.return_code != 0 or vm_path == "":
+            return True
+        elif ps_path in vm_path:
+            info = shell.ShellCmd("rbd info %s" % vm_path)
+            info(False)
+            if info.return_code != 0:
+                return True
+        return False
+
+    if vm_match_storage_type(vmUuid, isFileSystem):
+        if isFileSystem and vm_in_this_file_system_storage(vmUuid, mountPath):
+            return True
+        elif not isFileSystem and vm_in_this_distributed_storage(vmUuid, mountPath):
+            return True
+
+    return False
+
 
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
@@ -121,7 +165,8 @@ class HaPlugin(kvmagent.KvmAgent):
                         #  1. Create heart-beat file, failed with 'File exists'
                         #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
                         if ceph_in_error_stat():
-                            kill_vm(cmd.maxAttempts)
+                            path = (os.path.split(cmd.heartbeatImagePath))[0]
+                            kill_vm(cmd.maxAttempts, path, False)
                         else:
                             delete_heartbeat_file()
 
@@ -163,7 +208,8 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
-                        kill_vm(cmd.maxAttempts)
+                        mountPath = (os.path.split(heartbeat_file_path))[0]
+                        kill_vm(cmd.maxAttempts, mountPath, True)
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
             except:
