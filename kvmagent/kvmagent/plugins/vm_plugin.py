@@ -1239,8 +1239,12 @@ class Vm(object):
 
         cleanup_addons()
 
-        # undefine domain only if it is persistent
-        if not self.domain.isPersistent():
+        vm = get_vm_by_uuid(self.uuid)
+        if vm:
+            # undefine domain only if it is persistent
+            if not self.domain.isPersistent():
+                return
+        else:
             return
 
         if not linux.wait_callback_success(loop_undefine, None, timeout=60):
