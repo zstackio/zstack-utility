@@ -3471,8 +3471,14 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.debug('Delete firewall rule for vm[uuid:%s] console' % vm_id)
 
         except:
-            content = traceback.format_exc()
-            logger.warn(content)
+            try:
+                if LibvirtEventManager.EVENT_STOPPED == event or LibvirtEventManager.EVENT_SHUTDOWN == event:
+                    vm = get_vm_by_uuid(dom.name())
+                    if not vm:
+                        return
+            except:
+                content = traceback.format_exc()
+                logger.warn(content)
 
     def register_libvirt_event(self):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
