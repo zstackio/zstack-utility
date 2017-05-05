@@ -2138,6 +2138,18 @@ class DeleteVirtualBorderRouterLocalAction(inventory.APIDeleteVirtualBorderRoute
         self.out = evt
         return self.out
 
+class DeleteVirtualRouterLocalAction(inventory.APIDeleteVirtualRouterLocalMsg):
+    def __init__(self):
+        super(DeleteVirtualRouterLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVirtualRouterLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteVmConsolePasswordAction(inventory.APIDeleteVmConsolePasswordMsg):
     def __init__(self):
         super(DeleteVmConsolePasswordAction, self).__init__()

@@ -1481,6 +1481,19 @@ class APIDeleteRouteEntryRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEVIRTUALROUTERLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIDeleteVirtualRouterLocalMsg'
+class APIDeleteVirtualRouterLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIDeleteVirtualRouterLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYROUTEENTRYFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIQueryRouteEntryFromLocalMsg'
 class APIQueryRouteEntryFromLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIQueryRouteEntryFromLocalMsg'
@@ -9944,6 +9957,7 @@ api_names = [
     'APIDeleteVCenterMsg',
     'APIDeleteVipMsg',
     'APIDeleteVirtualBorderRouterLocalMsg',
+    'APIDeleteVirtualRouterLocalMsg',
     'APIDeleteVmConsolePasswordMsg',
     'APIDeleteVmHostnameMsg',
     'APIDeleteVmInstanceHaLevelMsg',
@@ -14789,6 +14803,15 @@ class GlobalConfig_PRIMARYSTORAGE(object):
     def get_category():
         return 'primaryStorage'
 
+class GlobalConfig_PROGRESS(object):
+    PROGRESS_ON = 'progress.on'
+    PROGRESS_TTL = 'progress.ttl'
+    PROGRESS_CLEANUPTHREADINTERVAL = 'progress.cleanupThreadInterval'
+
+    @staticmethod
+    def get_category():
+        return 'progress'
+
 class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
@@ -14838,6 +14861,8 @@ class GlobalConfig_TEST(object):
     TEST = 'Test'
     TEST3 = 'Test3'
     TEST4 = 'Test4'
+    TESTSTRING = 'TestString'
+    TESTBOOLEAN = 'TestBoolean'
 
     @staticmethod
     def get_category():
