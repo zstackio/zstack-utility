@@ -104,6 +104,7 @@ class CephAgent(object):
     DELETE_IMAGES_METADATA = "/ceph/backupstorage/deleteimagesmetadata"
     DUMP_IMAGE_METADATA_TO_FILE = "/ceph/backupstorage/dumpimagemetadatatofile"
     CHECK_IMAGE_METADATA_FILE_EXIST = "/ceph/backupstorage/checkimagemetadatafileexist"
+    CHECK_POOL_PATH = "/ceph/backupstorage/checkpool"
 
     CEPH_METADATA_FILE = "bs_ceph_info.json"
 
@@ -122,6 +123,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.CHECK_IMAGE_METADATA_FILE_EXIST, self.check_image_metadata_file_exist)
         self.http_server.register_async_uri(self.DUMP_IMAGE_METADATA_TO_FILE, self.dump_image_metadata_to_file)
         self.http_server.register_async_uri(self.DELETE_IMAGES_METADATA, self.delete_image_metadata_from_file)
+        self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -529,6 +531,17 @@ class CephAgent(object):
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    def check_pool(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        existing_pools = shell.call('ceph osd lspools')
+        for pool in cmd.pools:
+            if pool.name not in existing_pools:
+                raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
+
+        return jsonobject.dumps(AgentResponse())
 
 
 class CephDaemon(daemon.Daemon):
