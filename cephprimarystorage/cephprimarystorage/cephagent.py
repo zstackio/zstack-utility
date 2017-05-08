@@ -44,7 +44,6 @@ class InitRsp(AgentResponse):
         self.fsid = None
         self.userKey = None
 
-
 class DownloadRsp(AgentResponse):
     def __init__(self):
         super(DownloadRsp, self).__init__()
@@ -125,6 +124,7 @@ class CephAgent(object):
     GET_FACTS = "/ceph/primarystorage/facts"
     DELETE_IMAGE_CACHE = "/ceph/primarystorage/deleteimagecache"
     ADD_POOL_PATH = "/ceph/primarystorage/addpool"
+    CHECK_POOL_PATH = "/ceph/primarystorage/checkpool"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -132,6 +132,7 @@ class CephAgent(object):
     def __init__(self):
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.ADD_POOL_PATH, self.add_pool)
+        self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
         self.http_server.register_async_uri(self.DELETE_PATH, self.delete)
         self.http_server.register_async_uri(self.CREATE_VOLUME_PATH, self.create)
         self.http_server.register_async_uri(self.CLONE_PATH, self.clone)
@@ -450,6 +451,16 @@ class CephAgent(object):
 
         return jsonobject.dumps(AgentResponse())
 
+    @replyerror
+    def check_pool(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        existing_pools = shell.call('ceph osd lspools')
+        for pool in cmd.pools:
+            if pool.name not in existing_pools:
+                raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
+
+        return jsonobject.dumps(AgentResponse())
 
     @replyerror
     def init(self, req):
