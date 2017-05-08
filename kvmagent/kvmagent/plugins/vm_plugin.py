@@ -1239,7 +1239,7 @@ class Vm(object):
 
         cleanup_addons()
 
-        vm = get_vm_by_uuid(self.uuid)
+        vm = get_vm_by_uuid(self.uuid, False)
         if vm:
             # undefine domain only if it is persistent
             if not self.domain.isPersistent():
@@ -3475,14 +3475,13 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.debug('Delete firewall rule for vm[uuid:%s] console' % vm_id)
 
         except:
-            try:
-                if LibvirtEventManager.EVENT_STOPPED == event or LibvirtEventManager.EVENT_SHUTDOWN == event:
-                    vm = get_vm_by_uuid(dom.name())
-                    if not vm:
-                        return
-            except:
-                content = traceback.format_exc()
-                logger.warn(content)
+            # if vm do live migrate the dom may not be found
+            vm = get_vm_by_uuid(dom.name(), False)
+            if not vm:
+                return
+
+            content = traceback.format_exc()
+            logger.warn(content)
 
     def register_libvirt_event(self):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
