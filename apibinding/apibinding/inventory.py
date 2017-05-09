@@ -1242,9 +1242,57 @@ class APIUpdateVirtualBorderRouterRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEECSSECURITYGROUPREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APICreateEcsSecurityGroupRemoteMsg'
+class APICreateEcsSecurityGroupRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APICreateEcsSecurityGroupRemoteMsg'
+    def __init__(self):
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEECSSECURITYGROUPRULEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APICreateEcsSecurityGroupRuleRemoteMsg'
+class APICreateEcsSecurityGroupRuleRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APICreateEcsSecurityGroupRuleRemoteMsg'
+    def __init__(self):
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDELETEECSSECURITYGROUPINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIDeleteEcsSecurityGroupInLocalMsg'
 class APIDeleteEcsSecurityGroupInLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.group.APIDeleteEcsSecurityGroupInLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSSECURITYGROUPREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIDeleteEcsSecurityGroupRemoteMsg'
+class APIDeleteEcsSecurityGroupRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APIDeleteEcsSecurityGroupRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSSECURITYGROUPRULEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIDeleteEcsSecurityGroupRuleRemoteMsg'
+class APIDeleteEcsSecurityGroupRuleRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APIDeleteEcsSecurityGroupRuleRemoteMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -1331,6 +1379,28 @@ class APISyncEcsSecurityGroupFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEECSVSWITCHREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APICreateEcsVSwitchRemoteMsg'
+class APICreateEcsVSwitchRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APICreateEcsVSwitchRemoteMsg'
+    def __init__(self):
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEECSVPCREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APICreateEcsVpcRemoteMsg'
+class APICreateEcsVpcRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APICreateEcsVpcRemoteMsg'
+    def __init__(self):
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDELETEECSVSWITCHINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIDeleteEcsVSwitchInLocalMsg'
 class APIDeleteEcsVSwitchInLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vpc.APIDeleteEcsVSwitchInLocalMsg'
@@ -1344,9 +1414,35 @@ class APIDeleteEcsVSwitchInLocalMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEECSVSWITCHREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIDeleteEcsVSwitchRemoteMsg'
+class APIDeleteEcsVSwitchRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIDeleteEcsVSwitchRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDELETEECSVPCINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIDeleteEcsVpcInLocalMsg'
 class APIDeleteEcsVpcInLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vpc.APIDeleteEcsVpcInLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEECSVPCREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIDeleteEcsVpcRemoteMsg'
+class APIDeleteEcsVpcRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIDeleteEcsVpcRemoteMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -9880,6 +9976,10 @@ api_names = [
     'APICreateDiskOfferingMsg',
     'APICreateEcsImageFromLocalImageMsg',
     'APICreateEcsInstanceFromLocalImageMsg',
+    'APICreateEcsSecurityGroupRemoteMsg',
+    'APICreateEcsSecurityGroupRuleRemoteMsg',
+    'APICreateEcsVSwitchRemoteMsg',
+    'APICreateEcsVpcRemoteMsg',
     'APICreateEipMsg',
     'APICreateIPsecConnectionMsg',
     'APICreateInstanceOfferingMsg',
@@ -9934,8 +10034,12 @@ api_names = [
     'APIDeleteEcsImageRemoteMsg',
     'APIDeleteEcsInstanceMsg',
     'APIDeleteEcsSecurityGroupInLocalMsg',
+    'APIDeleteEcsSecurityGroupRemoteMsg',
+    'APIDeleteEcsSecurityGroupRuleRemoteMsg',
     'APIDeleteEcsVSwitchInLocalMsg',
+    'APIDeleteEcsVSwitchRemoteMsg',
     'APIDeleteEcsVpcInLocalMsg',
+    'APIDeleteEcsVpcRemoteMsg',
     'APIDeleteEipMsg',
     'APIDeleteExportedImageFromBackupStorageMsg',
     'APIDeleteGCJobMsg',
