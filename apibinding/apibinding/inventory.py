@@ -606,6 +606,8 @@ class APIAddAliyunKeySecretMsg(object):
     FULL_NAME='org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
     def __init__(self):
         #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
         self.key = NotNoneField()
         #mandatory field
         self.secret = NotNoneField()
@@ -723,7 +725,7 @@ class APICreateEcsInstanceFromLocalImageMsg(object):
         #mandatory field
         self.ecsSecurityGroupUuid = NotNoneField()
         #mandatory field
-        #valid regex values: ^[a-zA-Z]\w{7,17}$
+        #valid regex values: ^[a-zA-Z][\w\W]{7,17}$
         self.ecsRootPassword = NotNoneField()
         #mandatory field
         self.ecsBandWidth = NotNoneField()
@@ -7518,8 +7520,7 @@ class APICreateL2VxlanNetworkMsg(object):
         #mandatory field
         self.name = NotNoneField()
         self.description = None
-        #mandatory field
-        self.zoneUuid = NotNoneField()
+        self.zoneUuid = None
         self.physicalInterface = None
         self.type = None
         self.resourceUuid = None
@@ -13540,6 +13541,7 @@ class ZoneInventory(object):
 
 class HybridAccountInventory(object):
     def __init__(self):
+        self.name = None
         self.uuid = None
         self.accountUuid = None
         self.userUuid = None
@@ -13552,6 +13554,11 @@ class HybridAccountInventory(object):
         self.lastOpDate = None
 
     def evaluate(self, inv):
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
         if hasattr(inv, 'uuid'):
             self.uuid = inv.uuid
         else:
@@ -13787,6 +13794,8 @@ class VtepInventory(object):
         self.vtepIp = None
         self.port = None
         self.type = None
+        self.createDate = None
+        self.lastOpDate = None
         self.poolUuid = None
 
     def evaluate(self, inv):
@@ -13814,6 +13823,16 @@ class VtepInventory(object):
             self.type = inv.type
         else:
             self.type = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
 
         if hasattr(inv, 'poolUuid'):
             self.poolUuid = inv.poolUuid
@@ -13881,6 +13900,8 @@ class VniRangeInventory(object):
         self.description = None
         self.startVni = None
         self.endVni = None
+        self.createDate = None
+        self.lastOpDate = None
         self.l2NetworkUuid = None
 
     def evaluate(self, inv):
@@ -13908,6 +13929,16 @@ class VniRangeInventory(object):
             self.endVni = inv.endVni
         else:
             self.endVni = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
 
         if hasattr(inv, 'l2NetworkUuid'):
             self.l2NetworkUuid = inv.l2NetworkUuid
@@ -14799,7 +14830,7 @@ class GlobalConfig_OTHERS(object):
 
     @staticmethod
     def get_category():
-        return 'notification'
+        return 'Others'
 
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
@@ -14834,13 +14865,10 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -15223,7 +15251,7 @@ class QueryObjectHostInventory(object):
      }
 
 class QueryObjectHybridAccountInventory(object):
-     PRIMITIVE_FIELDS = ['current','akey','userUuid','lastOpDate','accountUuid','description','type','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['current','akey','name','userUuid','lastOpDate','accountUuid','description','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -15822,7 +15850,7 @@ class QueryObjectVmUsageInventory(object):
      }
 
 class QueryObjectVniRangeInventory(object):
-     PRIMITIVE_FIELDS = ['endVni','startVni','l2NetworkUuid','name','description','uuid','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['endVni','startVni','l2NetworkUuid','name','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['vxlanPool']
      QUERY_OBJECT_MAP = {
         'vxlanPool' : 'QueryObjectL2VxlanNetworkPoolInventory',
@@ -15882,7 +15910,7 @@ class QueryObjectVpcVirtualRouterInventory(object):
      }
 
 class QueryObjectVtepInventory(object):
-     PRIMITIVE_FIELDS = ['hostUuid','port','type','poolUuid','uuid','vtepIp','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['hostUuid','port','lastOpDate','type','poolUuid','uuid','vtepIp','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['vxlanPool']
      QUERY_OBJECT_MAP = {
         'vxlanPool' : 'QueryObjectL2VxlanNetworkPoolInventory',
