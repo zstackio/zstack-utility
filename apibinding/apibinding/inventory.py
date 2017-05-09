@@ -1246,6 +1246,12 @@ APICREATEECSSECURITYGROUPREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network
 class APICreateEcsSecurityGroupRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.group.APICreateEcsSecurityGroupRemoteMsg'
     def __init__(self):
+        #mandatory field
+        self.vpcUuid = NotNoneField()
+        self.description = None
+        #mandatory field
+        self.name = NotNoneField()
+        self.strategy = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -1257,6 +1263,24 @@ APICREATEECSSECURITYGROUPRULEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.net
 class APICreateEcsSecurityGroupRuleRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.group.APICreateEcsSecurityGroupRuleRemoteMsg'
     def __init__(self):
+        #mandatory field
+        self.groupUuid = NotNoneField()
+        #mandatory field
+        #valid values: [ingress, egress]
+        self.direction = NotNoneField()
+        #mandatory field
+        #valid values: [tcp, udp, icmp, gre, all]
+        self.protocol = NotNoneField()
+        #mandatory field
+        self.portRange = NotNoneField()
+        self.externalGroupId = None
+        self.cidr = None
+        #valid values: [accept, drop]
+        self.policy = None
+        #valid values: [intranet, internet]
+        self.nictype = None
+        self.priority = None
+        self.description = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -1371,7 +1395,57 @@ class APISyncEcsSecurityGroupFromRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.ecsVpcUuid = NotNoneField()
-        self.ecsSecurityGroupId = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCECSSECURITYGROUPRULEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APISyncEcsSecurityGroupRuleFromRemoteMsg'
+class APISyncEcsSecurityGroupRuleFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APISyncEcsSecurityGroupRuleFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEECSVSWITCHREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APICreateEcsVSwitchRemoteMsg'
+class APICreateEcsVSwitchRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APICreateEcsVSwitchRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.vpcUuid = NotNoneField()
+        #mandatory field
+        self.identityZoneUuid = NotNoneField()
+        #mandatory field
+        self.cidrBlock = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEECSVPCREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APICreateEcsVpcRemoteMsg'
+class APICreateEcsVpcRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APICreateEcsVpcRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        #mandatory field
+        self.cidrBlock = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -1692,6 +1766,7 @@ class APIAddOssFileBucketNameMsg(object):
         self.ossBucketName = NotNoneField()
         #mandatory field
         self.regionId = NotNoneField()
+        self.description = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -1707,6 +1782,50 @@ class APIAttachOssBucketToEcsDataCenterMsg(object):
         self.ossBucketUuid = NotNoneField()
         #mandatory field
         self.dataCenterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APICreateOssBucketRemoteMsg'
+class APICreateOssBucketRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APICreateOssBucketRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.regionId = NotNoneField()
+        #mandatory field
+        self.bucketName = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEOSSBUCKETFILEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketFileRemoteMsg'
+class APIDeleteOssBucketFileRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketFileRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.bucketUuid = NotNoneField()
+        #mandatory field
+        self.fileName = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
+class APIDeleteOssBucketRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1738,6 +1857,27 @@ class APIDetachOssBucketToEcsDataCenterMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIGETOSSBUCKETFILEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGetOssBucketFileFromRemoteMsg'
+class APIGetOssBucketFileFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIGetOssBucketFileFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETOSSBUCKETFILEFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGetOssBucketFileFromRemoteReply'
+class APIGetOssBucketFileFromRemoteReply(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIGetOssBucketFileFromRemoteReply'
+    def __init__(self):
+        self.files = OptionalList()
+        self.success = None
+        self.error = None
 
 
 APIGETOSSBUCKETNAMEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGetOssBucketNameFromRemoteMsg'
@@ -9992,6 +10132,7 @@ api_names = [
     'APICreateLoadBalancerListenerMsg',
     'APICreateLoadBalancerMsg',
     'APICreateMessage',
+    'APICreateOssBucketRemoteMsg',
     'APICreatePolicyMsg',
     'APICreatePortForwardingRuleMsg',
     'APICreateRebootVmInstanceSchedulerMsg',
@@ -10057,6 +10198,8 @@ api_names = [
     'APIDeleteLoadBalancerMsg',
     'APIDeleteNicQosMsg',
     'APIDeleteNotificationsMsg',
+    'APIDeleteOssBucketFileRemoteMsg',
+    'APIDeleteOssBucketRemoteMsg',
     'APIDeleteOssFileBucketNameInLocalMsg',
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
@@ -10194,6 +10337,8 @@ api_names = [
     'APIGetNetworkServiceTypesReply',
     'APIGetNicQosMsg',
     'APIGetNicQosReply',
+    'APIGetOssBucketFileFromRemoteMsg',
+    'APIGetOssBucketFileFromRemoteReply',
     'APIGetOssBucketNameFromRemoteMsg',
     'APIGetOssBucketNameFromRemoteReply',
     'APIGetPolicyReply',
@@ -10546,6 +10691,7 @@ api_names = [
     'APISyncEcsImageFromRemoteMsg',
     'APISyncEcsInstanceFromRemoteMsg',
     'APISyncEcsSecurityGroupFromRemoteMsg',
+    'APISyncEcsSecurityGroupRuleFromRemoteMsg',
     'APISyncEcsVSwitchFromRemoteMsg',
     'APISyncEcsVpcFromRemoteMsg',
     'APISyncImageSizeMsg',
@@ -11462,7 +11608,7 @@ class EcsSecurityGroupRuleInventory(object):
         self.direction = None
         self.nicType = None
         self.policy = None
-        self.sourceGroupId = None
+        self.externalGroupId = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -11513,10 +11659,10 @@ class EcsSecurityGroupRuleInventory(object):
         else:
             self.policy = None
 
-        if hasattr(inv, 'sourceGroupId'):
-            self.sourceGroupId = inv.sourceGroupId
+        if hasattr(inv, 'externalGroupId'):
+            self.externalGroupId = inv.externalGroupId
         else:
-            self.sourceGroupId = None
+            self.externalGroupId = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -11834,6 +11980,7 @@ class OssBucketInventory(object):
         self.uuid = None
         self.bucketName = None
         self.regionId = None
+        self.description = None
         self.createDate = None
         self.lastOpDate = None
 
@@ -11852,6 +11999,11 @@ class OssBucketInventory(object):
             self.regionId = inv.regionId
         else:
             self.regionId = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -15269,7 +15421,7 @@ class QueryObjectEcsSecurityGroupInventory(object):
      }
 
 class QueryObjectEcsSecurityGroupRuleInventory(object):
-     PRIMITIVE_FIELDS = ['portRange','description','priority','uuid','protocol','nicType','lastOpDate','ecsSecurityGroupUuid','cidrIp','direction','policy','sourceGroupId','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['portRange','description','externalGroupId','priority','uuid','protocol','nicType','lastOpDate','ecsSecurityGroupUuid','cidrIp','direction','policy','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -15611,7 +15763,7 @@ class QueryObjectOssBucketEcsDataCenterRefInventory(object):
      }
 
 class QueryObjectOssBucketInventory(object):
-     PRIMITIVE_FIELDS = ['bucketName','regionId','lastOpDate','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['bucketName','regionId','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['dataCenter']
      QUERY_OBJECT_MAP = {
         'dataCenter' : 'QueryObjectDataCenterInventory',
