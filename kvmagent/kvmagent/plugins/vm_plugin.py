@@ -2204,54 +2204,55 @@ class Vm(object):
             elements['root'] = root
 
         def make_cpu():
-            if instance_offering_online_change:
-                root = elements['root']
-                e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
-                tune = e(root, 'cputune')
-                e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
-                # enable nested virtualization
-                if cmd.nestedVirtualization == 'host-model':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                elif cmd.nestedVirtualization == 'host-passthrough':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                else:
-                    cpu = e(root, 'cpu')
-                # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
-                mem = cmd.memory / 1024
-                e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(4), 'threads': '1'})
-                numa = e(cpu, 'numa')
-                e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+
+            # if instance_offering_online_change:
+            root = elements['root']
+            e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+            # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
+            tune = e(root, 'cputune')
+            e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
+            # enable nested virtualization
+            if cmd.nestedVirtualization == 'host-model':
+                cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                e(cpu, 'model', attrib={'fallback': 'allow'})
+            elif cmd.nestedVirtualization == 'host-passthrough':
+                cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                e(cpu, 'model', attrib={'fallback': 'allow'})
             else:
-                root = elements['root']
-                # e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
-                tune = e(root, 'cputune')
-                e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
-                # enable nested virtualization
-                if cmd.nestedVirtualization == 'host-model':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                elif cmd.nestedVirtualization == 'host-passthrough':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                else:
-                    cpu = e(root, 'cpu')
-                e(cpu, 'topology',
-                  attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                cpu = e(root, 'cpu')
+                # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+            mem = cmd.memory / 1024
+            e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(4), 'threads': '1'})
+            numa = e(cpu, 'numa')
+            e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+            # else:
+            #     root = elements['root']
+            #     # e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+            #     e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
+            #     tune = e(root, 'cputune')
+            #     e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
+            #     # enable nested virtualization
+            #     if cmd.nestedVirtualization == 'host-model':
+            #         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+            #         e(cpu, 'model', attrib={'fallback': 'allow'})
+            #     elif cmd.nestedVirtualization == 'host-passthrough':
+            #         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+            #         e(cpu, 'model', attrib={'fallback': 'allow'})
+            #     else:
+            #         cpu = e(root, 'cpu')
+            #     e(cpu, 'topology',
+            #       attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
-            if instance_offering_online_change:
-                e(root, 'maxMemory', str(104857600), {'slots': str(16), 'unit': 'KiB'})
-                # e(root,'memory',str(mem),{'unit':'k'})
-                e(root, 'currentMemory', str(mem), {'unit': 'k'})
-            else:
-                e(root, 'memory', str(mem), {'unit': 'k'})
-                e(root, 'currentMemory', str(mem), {'unit': 'k'})
+            # if instance_offering_online_change:
+            e(root, 'maxMemory', str(104857600), {'slots': str(16), 'unit': 'KiB'})
+            # e(root,'memory',str(mem),{'unit':'k'})
+            e(root, 'currentMemory', str(mem), {'unit': 'k'})
+            # else:
+            #     e(root, 'memory', str(mem), {'unit': 'k'})
+            #     e(root, 'currentMemory', str(mem), {'unit': 'k'})
 
         def make_os():
             root = elements['root']
