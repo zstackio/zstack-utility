@@ -261,7 +261,12 @@ class NetworkPlugin(kvmagent.KvmAgent):
         # populate vxlan fdb
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PopulateVxlanFdbResponse
-        linux.populate_vxlan_fdb(cmd.interf, cmd.peers)
+
+        interf = "vxlan" + str(cmd.vni)
+        rsp.success = linux.populate_vxlan_fdb(interf, cmd.peers)
+
+        if rsp.success != True:
+            rsp.error = "error on populate fdb"
 
         return jsonobject.dumps(rsp)
 

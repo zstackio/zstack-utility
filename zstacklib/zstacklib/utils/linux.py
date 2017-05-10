@@ -1317,7 +1317,11 @@ def create_vxlan_bridge(interf, bridgeName, ips):
     populate_vxlan_fdb(interf, ips)
 
 def populate_vxlan_fdb(interf, ips):
+    success = True
     for ip in ips:
-        shell.call("bridge fdb append to 00:00:00:00:00:00 dev %s dst %s" % (
+        cmd = shell.ShellCmd("bridge fdb append to 00:00:00:00:00:00 dev %s dst %s" % (
             interf, ip))
+        cmd(is_exception=False)
+        success = success and (cmd.return_code == 0)
 
+    return success
