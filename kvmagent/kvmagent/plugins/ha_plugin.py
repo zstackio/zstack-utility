@@ -23,6 +23,13 @@ class ScanRsp(object):
         self.result = None
 
 
+class ReportPsStatusCmd(object):
+    def __init__(self):
+        self.hostUuid = None
+        self.psUuids = None
+        self.psStatus = None
+
+
 def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
     vm_uuid_list = shell.call("virsh list | grep running | awk '{print $2}'")
     for vm_uuid in vm_uuid_list.split('\n'):
@@ -81,7 +88,6 @@ def is_need_kill(vmUuid, mountPath, isFileSystem):
             return True
 
     return False
-
 
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
@@ -189,7 +195,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.run_filesystem_fencer = True
 
         @thread.AsyncThread
-        def heartbeat_file_fencer(heartbeat_file_path):
+        def heartbeat_file_fencer(heartbeat_file_path, ps_uuid):
             try:
                 failure = 0
 
@@ -209,6 +215,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         mountPath = (os.path.split(heartbeat_file_path))[0]
+                        self.report_storage_status([ps_uuid], 'Disconnected')
                         kill_vm(cmd.maxAttempts, mountPath, True)
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
@@ -240,6 +247,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
                                     'shutdown ourselves' % (gw, cmd.maxAttempts))
+                        self.report_storage_status(cmd.psUuids, 'Disconnected')
                         kill_vm(cmd.maxAttempts)
 
                 logger.debug('stop gateway[%s] fencer for filesystem self-fencer' % gw)
@@ -247,12 +255,12 @@ class HaPlugin(kvmagent.KvmAgent):
                 content = traceback.format_exc()
                 logger.warn(content)
 
-        for mount_point in cmd.mountPoints:
-            if not os.path.isdir(mount_point):
+        for mount_point, uuid in zip(cmd.mountPoints, cmd.uuids):
+            if not linux.timeout_isdir(mount_point):
                 raise Exception('the mount point[%s] is not a directory' % mount_point)
 
             hb_file = os.path.join(mount_point, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
-            heartbeat_file_fencer(hb_file)
+            heartbeat_file_fencer(hb_file, uuid)
 
         if gateway:
             storage_gateway_fencer(gateway)
@@ -308,3 +316,33 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def stop(self):
         pass
+
+    def configure(self, config):
+        self.config = config
+
+    def report_storage_status(self, ps_uuids, ps_status):
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            logger.warn('cannot find SEND_COMMAND_URL, unable to report storages status[psList:%s, status:%s]' % (
+                ps_uuids, ps_status))
+            return
+
+        host_uuid = self.config.get(kvmagent.HOST_UUID)
+        if not host_uuid:
+            logger.warn(
+                'cannot find HOST_UUID, unable to report storages status[psList:%s, status:%s]' % (ps_uuids, ps_status))
+            return
+
+        def report_to_management_node():
+            cmd = ReportPsStatusCmd()
+            cmd.psUuids = ps_uuids
+            cmd.hostUuid = host_uuid
+            cmd.psStatus = ps_status
+
+            logger.debug(
+                'primary storage[psList:%s] has new connection status[%s], report it to %s' % (
+                ps_uuids, ps_status, url))
+            http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportstoragestatus'})
+
+        report_to_management_node()
+
