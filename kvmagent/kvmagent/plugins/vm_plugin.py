@@ -2583,6 +2583,13 @@ class Vm(object):
                 e(chan, 'source', None, {'mode': 'bind', 'path': channel.socketPath})
                 e(chan, 'target', None, {'type': 'virtio', 'name': channel.targetName})
 
+            cephSecretKey = cmd.addons['ceph_secret_key']
+            cephSecretUuid = cmd.addons['ceph_secret_uuid']
+            if cephSecretKey:
+                if cephSecretUuid:
+                    VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
+
+
         def make_balloon_memory():
             devices = elements['devices']
             b = e(devices, 'memballoon', None, {'model': 'virtio'})
@@ -3275,7 +3282,12 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_ceph_secret_key(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        sh_cmd = shell.ShellCmd('virsh secret-list | grep %s > /dev/null' % cmd.uuid)
+        VmPlugin._create_ceph_secret_key(cmd.userKey, cmd.uuid)
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    @staticmethod
+    def _create_ceph_secret_key(userKey, uuid):
+        sh_cmd = shell.ShellCmd('virsh secret-list | grep %s > /dev/null' % uuid)
         sh_cmd(False)
         if sh_cmd.return_code == 0:
             return jsonobject.dumps(kvmagent.AgentResponse())
@@ -3289,18 +3301,16 @@ class VmPlugin(kvmagent.KvmAgent):
         <name>%s</name>
     </usage>
 </secret>
-    ''' % (cmd.uuid, cmd.uuid)
+    ''' % (uuid, uuid)
 
         spath = linux.write_to_temp_file(content)
         try:
             o = shell.call("virsh secret-define %s" % spath)
             o = o.strip(' \n\t\r')
-            _, uuid, _ = o.split()
-            shell.call('virsh secret-set-value %s %s' % (uuid, cmd.userKey))
+            _, generateuuid, _ = o.split()
+            shell.call('virsh secret-set-value %s %s' % (generateuuid, userKey))
         finally:
             os.remove(spath)
-
-        return jsonobject.dumps(kvmagent.AgentResponse())
 
     def start(self):
         http_server = kvmagent.get_http_server()
