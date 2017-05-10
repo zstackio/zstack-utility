@@ -366,7 +366,7 @@ def get_libvirt_version():
 LIBVIRT_VERSION = get_libvirt_version()
 
 def is_namespace_used():
-    return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
+    return compare_version(LIBVIRT_VERSION, '0.9.10') >= 0
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
