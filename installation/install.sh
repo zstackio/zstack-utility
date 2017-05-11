@@ -1996,6 +1996,7 @@ set_tomcat_config() {
     tomcat_config_path=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf
     sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
     sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
+    sed -i 's/redirectPort="8443" \/>/redirectPort="8443" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>/' $tomcat_config_path/server.xml
 }
 
 check_repo_version() {
