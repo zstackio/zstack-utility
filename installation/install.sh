@@ -2301,10 +2301,11 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
 		if [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
 			ISO_NAME="ZStack-Community-x86-64-DVD-${BIN_VERSION}.iso "
 			UPGRADE_WIKI="http://zstack.io/community/tutorials/ISOupgrade/"
-			ISO_DOWNLOAD_LINK="http://zstack.io/community/downloads/"
+			ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
 			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
 				"Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-				"# zstack-upgrade ${ISO_NAME}\n" \
+				"# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+				"# sh zstack-upgrade ${ISO_NAME}\n" \
 				"For more information, see ${UPGRADE_WIKI}"
 		elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
 			ISO_NAME="ZStack-Enterprise-x86-64-DVD-${BIN_VERSION}.iso"
@@ -2312,7 +2313,8 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
 			ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
 			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
 				"Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-				"# zstack-upgrade ${ISO_NAME}\n" \
+				"# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+				"# sh zstack-upgrade ${ISO_NAME}\n" \
 				"For more information, see ${UPGRADE_WIKI}"
 		else
 			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
