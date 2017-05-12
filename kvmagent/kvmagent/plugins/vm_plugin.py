@@ -1815,6 +1815,9 @@ class Vm(object):
         elif cmd.withStorage == 'IncCopy':
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_INC
 
+        if cmd.useNuma:
+            flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
+
         try:
             self.domain.migrateToURI(destUrl, flag, None, 0)
         except libvirt.libvirtError as ex:
