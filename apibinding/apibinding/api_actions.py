@@ -1046,6 +1046,54 @@ class CreateEcsInstanceFromLocalImageAction(inventory.APICreateEcsInstanceFromLo
         self.out = evt
         return self.out
 
+class CreateEcsSecurityGroupRemoteAction(inventory.APICreateEcsSecurityGroupRemoteMsg):
+    def __init__(self):
+        super(CreateEcsSecurityGroupRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsSecurityGroupRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsSecurityGroupRuleRemoteAction(inventory.APICreateEcsSecurityGroupRuleRemoteMsg):
+    def __init__(self):
+        super(CreateEcsSecurityGroupRuleRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsSecurityGroupRuleRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsVSwitchRemoteAction(inventory.APICreateEcsVSwitchRemoteMsg):
+    def __init__(self):
+        super(CreateEcsVSwitchRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsVSwitchRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsVpcRemoteAction(inventory.APICreateEcsVpcRemoteMsg):
+    def __init__(self):
+        super(CreateEcsVpcRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsVpcRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateEipAction(inventory.APICreateEipMsg):
     def __init__(self):
         super(CreateEipAction, self).__init__()
@@ -1186,6 +1234,18 @@ class CreateMessageAction(inventory.APICreateMessage):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateMessageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateOssBucketRemoteAction(inventory.APICreateOssBucketRemoteMsg):
+    def __init__(self):
+        super(CreateOssBucketRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateOssBucketRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1694,6 +1754,30 @@ class DeleteEcsSecurityGroupInLocalAction(inventory.APIDeleteEcsSecurityGroupInL
         self.out = evt
         return self.out
 
+class DeleteEcsSecurityGroupRemoteAction(inventory.APIDeleteEcsSecurityGroupRemoteMsg):
+    def __init__(self):
+        super(DeleteEcsSecurityGroupRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsSecurityGroupRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteEcsSecurityGroupRuleRemoteAction(inventory.APIDeleteEcsSecurityGroupRuleRemoteMsg):
+    def __init__(self):
+        super(DeleteEcsSecurityGroupRuleRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsSecurityGroupRuleRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteEcsVSwitchInLocalAction(inventory.APIDeleteEcsVSwitchInLocalMsg):
     def __init__(self):
         super(DeleteEcsVSwitchInLocalAction, self).__init__()
@@ -1706,6 +1790,18 @@ class DeleteEcsVSwitchInLocalAction(inventory.APIDeleteEcsVSwitchInLocalMsg):
         self.out = evt
         return self.out
 
+class DeleteEcsVSwitchRemoteAction(inventory.APIDeleteEcsVSwitchRemoteMsg):
+    def __init__(self):
+        super(DeleteEcsVSwitchRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsVSwitchRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteEcsVpcInLocalAction(inventory.APIDeleteEcsVpcInLocalMsg):
     def __init__(self):
         super(DeleteEcsVpcInLocalAction, self).__init__()
@@ -1714,6 +1810,18 @@ class DeleteEcsVpcInLocalAction(inventory.APIDeleteEcsVpcInLocalMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteEcsVpcInLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteEcsVpcRemoteAction(inventory.APIDeleteEcsVpcRemoteMsg):
+    def __init__(self):
+        super(DeleteEcsVpcRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsVpcRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1918,6 +2026,30 @@ class DeleteNotificationsAction(inventory.APIDeleteNotificationsMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteNotificationsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteOssBucketFileRemoteAction(inventory.APIDeleteOssBucketFileRemoteMsg):
+    def __init__(self):
+        super(DeleteOssBucketFileRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteOssBucketFileRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteOssBucketRemoteAction(inventory.APIDeleteOssBucketRemoteMsg):
+    def __init__(self):
+        super(DeleteOssBucketRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteOssBucketRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3034,6 +3166,18 @@ class GetNicQosAction(inventory.APIGetNicQosMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetNicQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetOssBucketFileFromRemoteAction(inventory.APIGetOssBucketFileFromRemoteMsg):
+    def __init__(self):
+        super(GetOssBucketFileFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetOssBucketFileFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5304,6 +5448,18 @@ class SyncEcsSecurityGroupFromRemoteAction(inventory.APISyncEcsSecurityGroupFrom
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncEcsSecurityGroupFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncEcsSecurityGroupRuleFromRemoteAction(inventory.APISyncEcsSecurityGroupRuleFromRemoteMsg):
+    def __init__(self):
+        super(SyncEcsSecurityGroupRuleFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncEcsSecurityGroupRuleFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
