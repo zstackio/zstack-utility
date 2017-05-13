@@ -213,29 +213,31 @@ class NetworkPlugin(kvmagent.KvmAgent):
         # Check qualified interface with cidr and interface name (if provided).
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckVxlanCidrResponse()
+        rsp.success = False
         interf = cmd.physicalInterfaceName
 
         nics = linux.get_nics_by_cidr(cmd.cidr)
+        ips = set(map(lambda d: d.values()[0], nics))
         if len(nics) == 0:
             rsp.error = "can not find qualify interface for cidr [%s]" % cmd.cidr
-            rsp.success = False
         elif len(nics) == 1 and interf:
             if nics[0].keys()[0] == interf:
                 rsp.vtepIp = nics[0].values()[0]
             else:
-                rsp.error = "The interface with cidr [%s] is not the interface [%s] which provided" % (cmd.cidr, interf)
-                rsp.success = False
+                rsp.error = "the interface with cidr [%s] is not the interface [%s] which provided" % (cmd.cidr, interf)
         elif len(nics) == 1:
             rsp.vtepIp = nics[0].values()[0]
+            rsp.success = True
         elif len(nics) > 1 and interf:
             for nic in nics:
                 if nic.keys()[0] == interf:
                     rsp.vtepIp = nics[0].values()[0]
             if rsp.vtepIp == None:
-                rsp.error = "No interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr, interf)
-                rsp.success = False
+                rsp.error = "no interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr, interf)
+        elif len(nics) > 1 and len(ips) == 1:
+            rsp.error = "the qualified vtep ip bound to multiple interfaces"
         else:
-            rsp.error = "Multiple interface qualify with cidr [%s] and no interface name provided" % (cmd.cidr)
+            rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % (cmd.cidr)
 
         return jsonobject.dumps(rsp)
 
