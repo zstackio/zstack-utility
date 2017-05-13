@@ -3364,15 +3364,15 @@ class VmPlugin(kvmagent.KvmAgent):
                     # we have to ask mgmt server to reboot the agent
                     url = self.config.get(kvmagent.SEND_COMMAND_URL)
                     if not url:
-                        logger.warn('cannot find SEND_COMMAND_URL, unable to ask the mgmt server to reconnect us')
+                        logger.warn('cannot find SEND_COMMAND_URL, unable to ask the management server to reconnect us')
                         os._exit(1)
 
                     host_uuid = self.config.get(kvmagent.HOST_UUID)
                     if not host_uuid:
-                        logger.warn('cannot find HOST_UUID, unable to ask the mgmt server to reconnect us')
+                        logger.warn('cannot find HOST_UUID, unable to ask the management server to reconnect us')
                         os._exit(1)
 
-                    logger.warn("libvirt has been rebooted or stopped, ask the mgmt server to reconnt us")
+                    logger.warn("libvirt has been rebooted or stopped, ask the management server to reconnect us")
                     cmd = ReconnectMeCmd()
                     cmd.hostUuid = host_uuid
                     cmd.reason = "libvirt rebooted or stopped"
@@ -3496,7 +3496,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if vm_uuid.startswith("guestfs-"):
                 logger.debug("[set_vnc_port_iptable]ignore the temp vm[%s] while using guestfish" % vm_uuid)
                 return
-
+            
             domain_xml = dom.XMLDesc(0)
             domain_xmlobject = xmlobject.loads(domain_xml)
 
@@ -3544,6 +3544,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
             content = traceback.format_exc()
             logger.warn(content)
+
 
     def register_libvirt_event(self):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
