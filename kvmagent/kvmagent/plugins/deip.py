@@ -112,12 +112,19 @@ class DEip(kvmagent.KvmAgent):
     def _apply_eip(self, eip):
         dev_base_name = eip.nicName.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
-
+        vip_ip = eip.vip.replace(".", "_")
         PUB_BR = eip.publicBridgeName
-        PUB_ODEV= "%s_eo" % dev_base_name
-        PUB_IDEV= "%s_ei" % dev_base_name
-        PRI_ODEV= "%s_o" % dev_base_name
-        PRI_IDEV= "%s_i" % dev_base_name
+
+        OLD_PUB_ODEV= "%s_eo" % dev_base_name
+        OLD_PUB_IDEV= "%s_ei" % dev_base_name
+        OLD_PRI_ODEV= "%s_o" % dev_base_name
+        OLD_PRI_IDEV= "%s_i" % dev_base_name
+
+        PUB_ODEV = "%s_eo_%s" % (dev_base_name,vip_ip)
+        PUB_IDEV = "%s_ei_%s" % (dev_base_name,vip_ip)
+        PRI_ODEV = "%s_o_%s" % (dev_base_name,vip_ip)
+        PRI_IDEV = "%s_i_%s" % (dev_base_name,vip_ip)
+
         PRI_BR= eip.vmBridgeName
         VIP= eip.vip
         VIP_NETMASK= eip.vipNetmask
@@ -219,6 +226,10 @@ class DEip(kvmagent.KvmAgent):
 
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
             bash_errorout('ip netns add {{NS_NAME}}')
+
+        # To be compatibled with old Oversion
+        delete_orphan_outer_dev(OLD_PUB_IDEV, OLD_PUB_ODEV)
+        delete_orphan_outer_dev(OLD_PRI_IDEV, OLD_PRI_ODEV)
 
         delete_orphan_outer_dev(PUB_IDEV, PUB_ODEV)
         delete_orphan_outer_dev(PRI_IDEV, PRI_ODEV)
