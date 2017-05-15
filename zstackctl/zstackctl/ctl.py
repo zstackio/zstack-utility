@@ -3953,22 +3953,34 @@ class ResetRabbitCmd(Command):
     def __init__(self):
         super(ResetRabbitCmd, self).__init__()
         self.name = "reset_rabbitmq"
-        self.description = "Reinstall RabbitMQ message broker on local machine based on current configuration in zstack.properties."
+        self.description = "Reset RabbitMQ message broker on local machine based on current configuration in zstack.properties."
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         pass
 
     def run(self, args):
         rabbitmq_ip = ctl.read_property('CloudBus.serverIp.0')
         rabbitmq_user = ctl.read_property('CloudBus.rabbitmqUsername')
         rabbitmq_passwd = ctl.read_property('CloudBus.rabbitmqPassword')
-        shell("service rabbitmq-server stop; rpm -ev rabbitmq-server; rm -rf /var/lib/rabbitmq")
-        if args.yum is not None:
-            ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s --yum=%s" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd, args.yum))
-        else:
-            ctl.internal_run('install_rabbitmq', "--host=%s --rabbit-username=%s --rabbit-password=%s" % (rabbitmq_ip, rabbitmq_user, rabbitmq_passwd))
+
+        new_hostname = shell("hostname").strip()
+        info("hostname is %s now" % new_hostname)
+
+        if shell_return("service rabbitmq-server restart") != 0:
+            error("restart rabbitmq failed")
+
+        user_list = shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl list_users | awk  '{print $1}'").split(
+            "\n")
+        if rabbitmq_user in user_list:
+            shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl delete_user %s" % rabbitmq_user)
+        shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl add_user %s %s" % (rabbitmq_user, rabbitmq_passwd))
+        shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl set_user_tags %s administrator" % rabbitmq_user)
+        shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl set_permissions -p / %s \".*\" \".*\" \".*\"" % rabbitmq_user)
+
+        if shell_return("service rabbitmq-server restart") != 0:
+            error("restart rabbitmq failed")
+        info("reset rabbitmq success")
 
 
 class InstallRabbitCmd(Command):
@@ -4884,15 +4896,13 @@ class ChangeIpCmd(Command):
 
         # Reset RabbitMQ
         info("Starting reset rabbitmq...")
-        if args.yum is not None:
-            ret = shell_return("zstack-ctl reset_rabbitmq --yum=%s" % args.yum)
-        else:
-            ret = shell_return("zstack-ctl reset_rabbitmq")
-        if ret == 0:
-            info("Reset rabbitMQ successfully")
-            info("Change ip successfully")
-        else:
-            error("Change ip failed")
+
+        if shell_return("zstack-ctl reset_rabbitmq") != 0:
+            error("Reset rabbitMQ failed\n"
+                  "Change ip failed")
+
+        info("Reset rabbitMQ successfully")
+        info("Change ip successfully")
 
 
 class InstallManagementNodeCmd(Command):
