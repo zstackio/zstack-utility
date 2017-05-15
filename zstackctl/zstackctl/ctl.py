@@ -5521,7 +5521,7 @@ class UpgradeManagementNodeCmd(Command):
         if need_download:
             error_if_tool_is_missing('wget')
 
-        upgrade_tmp_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'upgrade', time.strftime('%Y-%m-%d-%H-%M-%S', time.gmtime()))
+        upgrade_tmp_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'upgrade', time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime()))
         shell('mkdir -p %s' % upgrade_tmp_dir)
 
         property_file_backup_path = os.path.join(upgrade_tmp_dir, 'zstack.properties')
@@ -5858,7 +5858,7 @@ class UpgradeDbCmd(Command):
 
             info('start to backup the database ...')
 
-            db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', time.strftime('%Y-%m-%d-%H-%M-%S', time.gmtime()), 'backup.sql')
+            db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime()), 'backup.sql')
             shell('mkdir -p %s' % os.path.dirname(db_backup_path))
             if db_password:
                 shell('mysqldump -u %s -p%s --host %s --port %s zstack > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
@@ -5959,7 +5959,7 @@ class RollbackManagementNodeCmd(Command):
     def run(self, args):
         error_if_tool_is_missing('unzip')
 
-        rollback_tmp_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'rollback', time.strftime('%Y-%m-%d-%H-%M-%S', time.gmtime()))
+        rollback_tmp_dir = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'rollback', time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime()))
         shell('mkdir -p %s' % rollback_tmp_dir)
         need_download = args.war_file.startswith('http')
 
