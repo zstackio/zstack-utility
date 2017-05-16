@@ -1358,18 +1358,6 @@ class CreateRootVolumeTemplateFromVolumeSnapshotAction(inventory.APICreateRootVo
         self.out = evt
         return self.out
 
-class CreateRouteEntryForConnectionRemoteAction(inventory.APICreateRouteEntryForConnectionRemoteMsg):
-    def __init__(self):
-        super(CreateRouteEntryForConnectionRemoteAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateRouteEntryForConnectionRemoteAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class CreateRouterInterfacePairRemoteAction(inventory.APICreateRouterInterfacePairRemoteMsg):
     def __init__(self):
         super(CreateRouterInterfacePairRemoteAction, self).__init__()
@@ -1570,6 +1558,18 @@ class CreateVolumeSnapshotSchedulerAction(inventory.APICreateVolumeSnapshotSched
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateVolumeSnapshotSchedulerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateVpcVirtualRouterEntryRemoteAction(inventory.APICreateVpcVirtualRouterEntryRemoteMsg):
+    def __init__(self):
+        super(CreateVpcVirtualRouterEntryRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVpcVirtualRouterEntryRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
