@@ -1217,13 +1217,13 @@ class APICreateEcsSecurityGroupRuleRemoteMsg(object):
         #valid values: [ingress, egress]
         self.direction = NotNoneField()
         #mandatory field
-        #valid values: [tcp, udp, icmp, gre, all]
+        #valid values: [TCP, UDP, ICMP, GRE, ALL]
         self.protocol = NotNoneField()
         #mandatory field
         self.portRange = NotNoneField()
         self.externalGroupId = None
         self.cidr = None
-        #valid values: [accept, drop]
+        #valid values: [Accept, Drop]
         self.policy = None
         #valid values: [intranet, internet]
         self.nictype = None
@@ -1401,28 +1401,6 @@ class APICreateEcsVpcRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEECSVSWITCHREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APICreateEcsVSwitchRemoteMsg'
-class APICreateEcsVSwitchRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vpc.APICreateEcsVSwitchRemoteMsg'
-    def __init__(self):
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APICREATEECSVPCREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APICreateEcsVpcRemoteMsg'
-class APICreateEcsVpcRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vpc.APICreateEcsVpcRemoteMsg'
-    def __init__(self):
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIDELETEECSVSWITCHINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIDeleteEcsVSwitchInLocalMsg'
 class APIDeleteEcsVSwitchInLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vpc.APIDeleteEcsVSwitchInLocalMsg'
@@ -1565,16 +1543,19 @@ class APISyncEcsVpcFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEROUTEENTRYFORCONNECTIONREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APICreateRouteEntryForConnectionRemoteMsg'
-class APICreateRouteEntryForConnectionRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APICreateRouteEntryForConnectionRemoteMsg'
+APICREATEVPCVIRTUALROUTERENTRYREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APICreateVpcVirtualRouterEntryRemoteMsg'
+class APICreateVpcVirtualRouterEntryRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APICreateVpcVirtualRouterEntryRemoteMsg'
     def __init__(self):
         #mandatory field
         self.vRouterUuid = NotNoneField()
         #mandatory field
         self.destinationCidrBlock = NotNoneField()
         #mandatory field
-        self.vRouterInterfaceUuid = NotNoneField()
+        self.nextHopUuid = NotNoneField()
+        #mandatory field
+        #valid values: [Instance, RouterInterface]
+        self.nextHopType = NotNoneField()
         #mandatory field
         #valid values: [vbr, vrouter]
         self.vRouterType = NotNoneField()
@@ -10478,7 +10459,6 @@ api_names = [
     'APICreateResourcePriceMsg',
     'APICreateRootVolumeTemplateFromRootVolumeMsg',
     'APICreateRootVolumeTemplateFromVolumeSnapshotMsg',
-    'APICreateRouteEntryForConnectionRemoteMsg',
     'APICreateRouterInterfacePairRemoteMsg',
     'APICreateSchedulerMessage',
     'APICreateSearchIndexMsg',
@@ -10496,6 +10476,7 @@ api_names = [
     'APICreateVniRangeMsg',
     'APICreateVolumeSnapshotMsg',
     'APICreateVolumeSnapshotSchedulerMsg',
+    'APICreateVpcVirtualRouterEntryRemoteMsg',
     'APICreateWebhookMsg',
     'APICreateZoneMsg',
     'APIDebugSignalMsg',
@@ -15697,6 +15678,13 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
+class GlobalConfig_OTHERS(object):
+    TEST2 = 'Test2'
+
+    @staticmethod
+    def get_category():
+        return 'Others'
+
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -15730,13 +15718,10 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -15770,6 +15755,17 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
+
+class GlobalConfig_TEST(object):
+    TEST = 'Test'
+    TEST3 = 'Test3'
+    TEST4 = 'Test4'
+    TESTSTRING = 'TestString'
+    TESTBOOLEAN = 'TestBoolean'
+
+    @staticmethod
+    def get_category():
+        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -16895,6 +16891,7 @@ queryMessageInventoryMap = {
      'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
      'APIQueryVirtualRouterVmMsg' : QueryObjectVirtualRouterVmInventory,
      'APIQueryVmInstanceMsg' : QueryObjectVmInstanceInventory,
+     'APIQueryVmNicInSecurityGroupMsg' : QueryObjectVmNicSecurityGroupRefInventory,
      'APIQueryVmNicMsg' : QueryObjectVmNicInventory,
      'APIQueryVniRangeMsg' : QueryObjectVniRangeInventory,
      'APIQueryVolumeMsg' : QueryObjectVolumeInventory,
