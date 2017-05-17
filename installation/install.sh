@@ -92,6 +92,7 @@ CHANGE_HOSTNAME=''
 CHANGE_HOSTS=''
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
+LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
 CONSOLE_PROXY_ADDRESS=''
@@ -517,6 +518,13 @@ do_enable_sudo(){
 
 do_check_system(){
     echo_subtitle "Check System"
+
+    if [ ! -z $LICENSE_PATH ]; then
+      if [ ! -f $LICENSE_PATH ]; then
+        fail "License path ${LICENSE_PATH} does not exists."
+      fi
+    fi
+
     if [ x"$UPGRADE" = x'n' ]; then
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
             echo "stop zstack all services" >>$ZSTACK_INSTALL_LOG
@@ -1366,6 +1374,14 @@ install_zstack(){
     [ -z $ONLY_INSTALL_ZSTACK ] && show_spinner sd_install_dashboard
 
     #install license
+    if [ ! -z $LICENSE_PATH ]; then
+        if [ -f $LICENSE_PATH ]; then
+            zstack-ctl install_license --license $LICENSE_PATH >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            fail "License path ${LICENSE_PATH} does not exists."
+        fi
+    fi
+
     cd $ZSTACK_INSTALL_ROOT
     if [ -f $LICENSE_FILE ]; then
         zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1809,19 +1825,19 @@ start_dashboard(){
 
 sd_install_dashboard(){
     echo_subtitle "Install ${PRODUCT_NAME} Web UI (takes a couple of minutes)"
-    zstack-ctl install_ui --force >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl install_ui >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
-        fail "failed to install zstack-dashboard in $ZSTACK_INSTALL_ROOT"
+        fail "failed to install zstack-ui in $ZSTACK_INSTALL_ROOT"
     fi
     pass
 }
 
 sd_start_dashboard(){
     echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
-    chmod a+x /etc/init.d/zstack-dashboard
+    chmod a+x /etc/init.d/zstack-ui
     cd /
-    /etc/init.d/zstack-dashboard restart >>$ZSTACK_INSTALL_LOG 2>&1
+    /etc/init.d/zstack-ui restart >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to zstack dashboard start"
     pass
 }
@@ -2064,6 +2080,9 @@ Options:
 
   -l    only just install ${PRODUCT_NAME} dependent libraries
 
+  -L LICENSE_PATH
+        path of the license file that needs to be installed automatically.
+
   -m    install monitor. Depends on monitor capability in package.
 
   -M    install monitor when upgrade. Used when upgrade ZStack to Mevoco.
@@ -2152,7 +2171,7 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acC:dDFhiklmMNoOquz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDFhiklmMNoOquz" Option
 do
     case $Option in
         # -a: do not use yum online repo.
@@ -2169,6 +2188,7 @@ do
         I ) MANAGEMENT_INTERFACE=$OPTARG && NEED_SET_MN_IP='y';;
         k ) NEED_KEEP_DB='y';;
         l ) ONLY_INSTALL_LIBS='y';;
+        L ) LICENSE_PATH=$OPTARG;;
         m ) INSTALL_MONITOR='y';;
         M ) UPGRADE_MONITOR='y';;
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
@@ -2299,7 +2319,16 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
 	check_repo_version
 	if [ $? -ne 0 ]; then
 		BIN_VERSION=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
-		if [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
+		if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
+			ISO_NAME="ZStack-x86-64-DVD-${BIN_VERSION}.iso"
+			UPGRADE_WIKI="http://zstack.io/support/tutorials/upgrade/"
+			ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
+			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+				"Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+				"# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+				"# sh zstack-upgrade ${ISO_NAME}\n" \
+				"For more information, see ${UPGRADE_WIKI}"
+		elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
 			ISO_NAME="ZStack-Community-x86-64-DVD-${BIN_VERSION}.iso "
 			UPGRADE_WIKI="http://zstack.io/community/tutorials/ISOupgrade/"
 			ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
@@ -2359,6 +2388,13 @@ if [ x"$UPGRADE" = x'y' ]; then
     fi
     UI_CURRENT_STATUS='n'
     UI_INSTALLATION_STATUS='n'
+    if [ -f /etc/init.d/zstack-ui ]; then
+        UI_INSTALLATION_STATUS='y'
+        /etc/init.d/zstack-ui status | grep -i 'running' > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            UI_CURRENT_STATUS='y'
+        fi
+    fi
     if [ -f /etc/init.d/zstack-dashboard ]; then
         UI_INSTALLATION_STATUS='y'
         /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
@@ -2490,7 +2526,7 @@ if [ -z $NOT_START_ZSTACK ]; then
     start_zstack
 fi
 
-#set http_proxy for install zstack-dashboard if needed.
+#set http_proxy for install zstack-ui if needed.
 if [ ! -z $HTTP_PROXY ]; then
     export http_proxy=$HTTP_PROXY
     export https_proxy=$HTTP_PROXY
