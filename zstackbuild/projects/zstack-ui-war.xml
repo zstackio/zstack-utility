@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack ui war builder" basedir="../">
+    <property name="zstack.ui.bdir" location="${build.dir}/zstack-ui" />
+    <target name="build-zstack-ui-war" >
+        <makeDir dir="${zstack.ui.bdir}" />
+
+        <checkProperty property="zstack.ui.source" />
+        <checkFile file="${zstack.ui.source}/mevoco-ui2" />
+        <checkFile file="${zstack.ui.source}/mevoco-ui-server" />
+
+        <exec executable="git" dir="${zstack.ui.source}/mevoco-ui2" failonerror="true">
+            <arg value="checkout" />
+            <arg value="${mevocoui2.build_version}" />
+        </exec>
+
+        <copy file="${zstack.ui.source}/mevoco-ui2/zstack-ui" tofile="${tools.dir}/zstack-ui" overwrite="true" />
+
+        <exec executable="git" dir="${zstack.ui.source}/mevoco-ui-server" failonerror="true">
+            <arg value="checkout" />
+            <arg value="${mevocouiserver.build_version}" />
+        </exec>
+
+        <exec executable="bash" dir="${zstack.ui.source}" failonerror="true">
+            <arg value="${build.zstack.ui.war.script}" />
+            <arg value="${zstack.ui.source}" />
+        </exec>
+
+        <copy file="${zstack.ui.source}/mevoco-ui-server/build/libs/mevoco-ui-server-2.0.war" tofile="${zstack.ui.bdir}/zstack-ui.war" overwrite="true" />
+    </target>
+
+    <target name="assemble-zstack-ui-war">
+        <copy todir="${tools.dir}">
+            <fileset dir="${zstack.ui.bdir}">
+                <include name="zstack-ui.war" />
+            </fileset>
+        </copy>
+    </target>
+</project>

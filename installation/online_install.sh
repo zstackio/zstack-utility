@@ -265,7 +265,7 @@ check_system(){
 do_check_system(){
     if [ $UPGRADE = 'n' ]; then
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
-            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ZStack. \n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-dashboard stop"
+            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ZStack. \n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n  You might also want to stop zstack related services before deleting: \n\t/etc/init.d/zstack-server stop \n\t/etc/init.d/zstack-ui stop"
         fi
     fi
 
@@ -408,11 +408,11 @@ upgrade_zstack(){
             show_spinner sz_start_zstack
         fi
     fi
-    if [ -f /etc/init.d/zstack-dashboard ]; then
-        /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
+    if [ -f /etc/init.d/zstack-ui ]; then
+        /etc/init.d/zstack-ui status | grep -i 'running' > /dev/null 2>&1
         if [ $? -eq 0 ]; then
             echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-            /etc/init.d/zstack-dashboard stop >>$ZSTACK_INSTALL_LOG 2>&1
+            /etc/init.d/zstack-ui stop >>$ZSTACK_INSTALL_LOG 2>&1
             show_spinner sd_install_dashboard
             echo "start dashboard" >>$ZSTACK_INSTALL_LOG
             show_spinner sd_start_dashboard
@@ -1093,19 +1093,19 @@ start_dashboard(){
 sd_install_dashboard(){
     echo_subtitle "Install ZStack Web UI"
     cd $ZSTACK_INSTALL_ROOT
-    bash $ZSTACK_TOOLS_INSTALLER zstack-dashboard >>$ZSTACK_INSTALL_LOG 2>&1
+    bash $ZSTACK_TOOLS_INSTALLER zstack-ui >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
-        fail "failed to install zstack-dashboard in $ZSTACK_INSTALL_ROOT"
+        fail "failed to install zstack-ui in $ZSTACK_INSTALL_ROOT"
     fi
     pass
 }
 
 sd_start_dashboard(){
     echo_subtitle "Start ZStack Dashboard"
-    chmod a+x /etc/init.d/zstack-dashboard
-    /etc/init.d/zstack-dashboard restart >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "failed to zstack dashboard start"
+    chmod a+x /etc/init.d/zstack-ui
+    /etc/init.d/zstack-ui restart >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "failed to start zstack dashboard"
     pass
 }
 
@@ -1418,7 +1418,7 @@ if [ -z $NOT_START_ZSTACK ]; then
     start_zstack
 fi
 
-#set http_proxy for install zstack-dashboard if needed.
+#set http_proxy for install zstack-ui if needed.
 if [ ! -z $HTTP_PROXY ]; then
     export http_proxy=$HTTP_PROXY
     export https_proxy=$HTTP_PROXY
