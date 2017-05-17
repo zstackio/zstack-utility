@@ -72,7 +72,7 @@
     <import file="${basedir}/projects/zstack-buildvr.xml" optional="false" />
     <import file="${basedir}/projects/zstack-apibinding.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cli.xml" optional="false" />
-    <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-ui-war.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
     <import file="${basedir}/projects/zstack-agent.xml" optional="false" />
     <import file="${basedir}/projects/zstack-store.xml" optional="false" />
@@ -164,13 +164,6 @@
             <arg value="HEAD^..HEAD" />
         </exec>
 
-        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/zstackdashboard-git-commit">
-            <arg value="--git-dir=${zstackdashboard.source}/.git" />
-            <arg value="log" />
-            <arg value="--name-status" />
-            <arg value="HEAD^..HEAD" />
-        </exec>
-
         <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/mevocoui-git-commit">
             <arg value="--git-dir=${mevocoui.source}/.git" />
             <arg value="log" />
@@ -220,7 +213,7 @@
                 <antcall target="build-apibinding"/>
             </sequential>
             <sequential>
-                <antcall target="build-dashboard"/>
+                <antcall target="build-zstack-ui-war"/>
             </sequential>
             <sequential>
                 <antcall target="build-iscsi"/>
@@ -247,7 +240,7 @@
                 <antcall target="build-zstack-vyos"/>
             </sequential>
             <sequential>
-                <antcall target="checkout-zstack-distro"/>
+                <antcall target="check-zstack-distro"/>
             </sequential>
         </parallel>
     </target>
@@ -276,7 +269,7 @@
                 <antcall target="assemble-ctl"/>
             </sequential>
             <sequential>
-                <antcall target="assemble-dashboard"/>
+                <antcall target="assemble-zstack-ui-war"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-cli"/>
