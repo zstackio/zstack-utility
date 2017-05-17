@@ -2954,6 +2954,18 @@ class GetCandidateZonesClustersHostsForCreatingVmAction(inventory.APIGetCandidat
         self.out = evt
         return self.out
 
+class GetConnectionAccessPointFromRemoteAction(inventory.APIGetConnectionAccessPointFromRemoteMsg):
+    def __init__(self):
+        super(GetConnectionAccessPointFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetConnectionAccessPointFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetCpuMemoryCapacityAction(inventory.APIGetCpuMemoryCapacityMsg):
     def __init__(self):
         super(GetCpuMemoryCapacityAction, self).__init__()

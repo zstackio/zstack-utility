@@ -962,9 +962,11 @@ class APICreateRouterInterfacePairRemoteMsg(object):
         #mandatory field
         self.vBorderRouterUuid = NotNoneField()
         self.aDescription = None
-        self.aName = None
+        #mandatory field
+        self.aName = NotNoneField()
         self.bDescription = None
-        self.bName = None
+        #mandatory field
+        self.bName = NotNoneField()
         #mandatory field
         self.ownerName = NotNoneField()
         self.resourceUuid = None
@@ -1027,6 +1029,27 @@ class APIDeleteVirtualBorderRouterLocalMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIGETCONNECTIONACCESSPOINTFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIGetConnectionAccessPointFromRemoteMsg'
+class APIGetConnectionAccessPointFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIGetConnectionAccessPointFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETCONNECTIONACCESSPOINTFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIGetConnectionAccessPointFromRemoteReply'
+class APIGetConnectionAccessPointFromRemoteReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIGetConnectionAccessPointFromRemoteReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
 
 
 APIQUERYCONNECTIONACCESSPOINTFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryConnectionAccessPointFromLocalMsg'
@@ -1177,7 +1200,7 @@ class APIUpdateRouteInterfaceRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.connection.APIUpdateRouteInterfaceRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.riUuid = NotNoneField()
+        self.uuid = NotNoneField()
         #mandatory field
         #valid values: [active, inactive]
         self.op = NotNoneField()
@@ -1569,7 +1592,7 @@ class APICreateVpcVirtualRouterEntryRemoteMsg(object):
         #mandatory field
         self.vRouterUuid = NotNoneField()
         #mandatory field
-        self.destinationCidrBlock = NotNoneField()
+        self.dstCidrBlock = NotNoneField()
         #mandatory field
         self.nextHopUuid = NotNoneField()
         #mandatory field
@@ -1698,7 +1721,6 @@ class APISyncVirtualRouterFromRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.vpcUuid = NotNoneField()
-        self.vRouterUuid = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -10733,6 +10755,8 @@ api_names = [
     'APIGetCandidateZonesClustersHostsForCreatingVmMsg',
     'APIGetCandidateZonesClustersHostsForCreatingVmReply',
     'APIGetClusterReply',
+    'APIGetConnectionAccessPointFromRemoteMsg',
+    'APIGetConnectionAccessPointFromRemoteReply',
     'APIGetCpuMemoryCapacityMsg',
     'APIGetCpuMemoryCapacityReply',
     'APIGetCurrentTimeMsg',
