@@ -223,6 +223,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         elif len(nics) == 1 and interf:
             if nics[0].keys()[0] == interf:
                 rsp.vtepIp = nics[0].values()[0]
+                rsp.success = True
             else:
                 rsp.error = "the interface with cidr [%s] is not the interface [%s] which provided" % (cmd.cidr, interf)
         elif len(nics) == 1:
