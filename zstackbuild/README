@@ -35,9 +35,9 @@ Build all-in-one offline binary installer for CentOS6 and CentOS7 (need to insta
 #ant -Dzstack_build_root=/root/zstackorg/ offline-centos-all
 
 Build all-in-one offline binary installer for CentOS6 and CentOS7, with specific branch version:
-#ant -Dzstack_build_root=/root/zstackorg/ -Dzstackdashboard.build_version=master  offline-centos-all
+#ant -Dzstack_build_root=/root/zstackorg/ offline-centos-all
 
 Build all-in-one package with 1.2.x branch
 -------------
-#ant -Dzstack_build_root=/root/zstackorg/ -Dzstack.build_version=1.2.x -Dzstack-utiltiy.build_version=1.2.x -Dzstackdashboard.build_version=master all-in-one
+#ant -Dzstack_build_root=/root/zstackorg/ -Dzstack.build_version=1.2.x -Dzstack-utiltiy.build_version=1.2.x all-in-one
 
