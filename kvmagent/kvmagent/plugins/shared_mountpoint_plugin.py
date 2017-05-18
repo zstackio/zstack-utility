@@ -19,6 +19,11 @@ class AgentRsp(object):
         self.totalCapacity = None
         self.availableCapacity = None
 
+class ConnectRsp(AgentRsp):
+    def __init__(self):
+        super(ConnectRsp, self).__init__()
+        self.otherUuids = []
+
 class RevertVolumeFromSnapshotRsp(AgentRsp):
     def __init__(self):
         super(RevertVolumeFromSnapshotRsp, self).__init__()
@@ -79,6 +84,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
 
         self.imagestore_client = ImageStoreClient()
+        self.id_file = None
 
     def stop(self):
         pass
@@ -107,9 +113,25 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         if folder_fs_type in none_shared_mount_fs_type:
             raise kvmagent.KvmError('%s filesystem is %s, which is not a shared mount point type.' % (cmd.mountPoint, folder_fs_type))
 
-        rsp = AgentRsp()
+        rsp = ConnectRsp()
+        rsp.otherUuids = self.find_other_id_file(cmd.mountPoint, cmd.uuid)
+
+        if len(rsp.otherUuids) == 0:
+            self.id_file = os.path.join(cmd.mountPoint, "zstack_smp_id_file_%s", cmd.uuid)
+            shell.call("touch %s", self.id_file)
+
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def find_other_id_file(mount_point, uuid):
+        o = shell.ShellCmd("ls %s | grep ^zstack_smp_id_file_ | cut -c20- | grep -v %s | grep \"[0-9a-z]\\{32\\}\""
+                                  % (mount_point, uuid))
+        uuids = o(False).split("\n")
+        for uuid in uuids:
+            if len(uuid) != 32:
+                uuids.remove(uuid)
+        return uuids
 
     @kvmagent.replyerror
     def create_root_volume(self, req):
