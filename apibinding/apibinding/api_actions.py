@@ -3134,6 +3134,18 @@ class GetL3NetworkDhcpIpAddressAction(inventory.APIGetL3NetworkDhcpIpAddressMsg)
         self.out = evt
         return self.out
 
+class GetL3NetworkMtuAction(inventory.APIGetL3NetworkMtuMsg):
+    def __init__(self):
+        super(GetL3NetworkMtuAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetL3NetworkMtuAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetL3NetworkTypesAction(inventory.APIGetL3NetworkTypesMsg):
     def __init__(self):
         super(GetL3NetworkTypesAction, self).__init__()
@@ -3538,6 +3550,18 @@ class GetZoneAction(inventory.APIGetZoneMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetZoneAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class IsOpensourceVersionAction(inventory.APIIsOpensourceVersionMsg):
+    def __init__(self):
+        super(IsOpensourceVersionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[IsOpensourceVersionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5372,6 +5396,18 @@ class SetImageQgaAction(inventory.APISetImageQgaMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetImageQgaAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetL3NetworkMtuAction(inventory.APISetL3NetworkMtuMsg):
+    def __init__(self):
+        super(SetL3NetworkMtuAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetL3NetworkMtuAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

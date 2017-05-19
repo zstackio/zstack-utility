@@ -608,6 +608,9 @@ tag:{{o.tag}},3
 tag:{{o.tag}},6
 {% endif -%}
 tag:{{o.tag}},option:netmask,{{o.netmask}}
+{% if o.mtu -%}
+tag:{{o.tag}},option:mtu,{{o.mtu}}
+{% endif -%}
 {% endfor -%}
     '''
             tmpt = Template(option_conf)
