@@ -549,6 +549,25 @@ class APISetVmInstanceHaLevelMsg(object):
         self.userTags = OptionalList()
 
 
+APIISOPENSOURCEVERSIONMSG_FULL_NAME = 'org.zstack.header.APIIsOpensourceVersionMsg'
+class APIIsOpensourceVersionMsg(object):
+    FULL_NAME='org.zstack.header.APIIsOpensourceVersionMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIISOPENSOURCEVERSIONREPLY_FULL_NAME = 'org.zstack.header.APIIsOpensourceVersionReply'
+class APIIsOpensourceVersionReply(object):
+    FULL_NAME='org.zstack.header.APIIsOpensourceVersionReply'
+    def __init__(self):
+        self.opensource = None
+        self.success = None
+        self.error = None
+
+
 APIADDALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
 class APIAddAliyunKeySecretMsg(object):
     FULL_NAME='org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
@@ -4702,6 +4721,27 @@ class APIGetIpAddressCapacityReply(object):
         self.error = None
 
 
+APIGETL3NETWORKMTUMSG_FULL_NAME = 'org.zstack.header.network.l3.APIGetL3NetworkMtuMsg'
+class APIGetL3NetworkMtuMsg(object):
+    FULL_NAME='org.zstack.header.network.l3.APIGetL3NetworkMtuMsg'
+    def __init__(self):
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETL3NETWORKMTUREPLY_FULL_NAME = 'org.zstack.header.network.l3.APIGetL3NetworkMtuReply'
+class APIGetL3NetworkMtuReply(object):
+    FULL_NAME='org.zstack.header.network.l3.APIGetL3NetworkMtuReply'
+    def __init__(self):
+        self.mtu = None
+        self.success = None
+        self.error = None
+
+
 APIGETL3NETWORKREPLY_FULL_NAME = 'org.zstack.header.network.l3.APIGetL3NetworkReply'
 class APIGetL3NetworkReply(object):
     FULL_NAME='org.zstack.header.network.l3.APIGetL3NetworkReply'
@@ -4831,6 +4871,20 @@ class APISearchL3NetworkReply(object):
         self.content = None
         self.success = None
         self.error = None
+
+
+APISETL3NETWORKMTUMSG_FULL_NAME = 'org.zstack.header.network.l3.APISetL3NetworkMtuMsg'
+class APISetL3NetworkMtuMsg(object):
+    FULL_NAME='org.zstack.header.network.l3.APISetL3NetworkMtuMsg'
+    def __init__(self):
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        #mandatory field
+        self.mtu = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIUPDATEIPRANGEMSG_FULL_NAME = 'org.zstack.header.network.l3.APIUpdateIpRangeMsg'
@@ -5170,6 +5224,8 @@ class APIAddSimulatorPrimaryStorageMsg(object):
     def __init__(self):
         self.totalCapacity = None
         self.availableCapacity = None
+        self.availablePhysicalCapacity = None
+        self.totalPhysicalCapacity = None
         #mandatory field
         self.url = NotNoneField()
         #mandatory field
@@ -10520,6 +10576,8 @@ api_names = [
     'APIGetL2VlanNetworkReply',
     'APIGetL3NetworkDhcpIpAddressMsg',
     'APIGetL3NetworkDhcpIpAddressReply',
+    'APIGetL3NetworkMtuMsg',
+    'APIGetL3NetworkMtuReply',
     'APIGetL3NetworkReply',
     'APIGetL3NetworkTypesMsg',
     'APIGetL3NetworkTypesReply',
@@ -10598,6 +10656,8 @@ api_names = [
     'APIGetVolumeSnapshotTreeReply',
     'APIGetZoneMsg',
     'APIGetZoneReply',
+    'APIIsOpensourceVersionMsg',
+    'APIIsOpensourceVersionReply',
     'APIIsReadyToGoMsg',
     'APIIsReadyToGoReply',
     'APIKvmRunShellMsg',
@@ -10881,6 +10941,7 @@ api_names = [
     'APISearchZoneReply',
     'APISessionMessage',
     'APISetImageQgaMsg',
+    'APISetL3NetworkMtuMsg',
     'APISetNicQosMsg',
     'APISetVmBootOrderMsg',
     'APISetVmConsolePasswordMsg',
@@ -15491,6 +15552,13 @@ class GlobalConfig_LOCALSTORAGEPRIMARYSTORAGE(object):
     def get_category():
         return 'localStoragePrimaryStorage'
 
+class GlobalConfig_LOG(object):
+    ENABLED = 'enabled'
+
+    @staticmethod
+    def get_category():
+        return 'log'
+
 class GlobalConfig_LOGGING(object):
     LOCALE = 'locale'
 
@@ -15543,13 +15611,6 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
-
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -15583,10 +15644,13 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -15620,17 +15684,6 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
-
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
-
-    @staticmethod
-    def get_category():
-        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -16756,6 +16809,7 @@ queryMessageInventoryMap = {
      'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
      'APIQueryVirtualRouterVmMsg' : QueryObjectVirtualRouterVmInventory,
      'APIQueryVmInstanceMsg' : QueryObjectVmInstanceInventory,
+     'APIQueryVmNicInSecurityGroupMsg' : QueryObjectVmNicSecurityGroupRefInventory,
      'APIQueryVmNicMsg' : QueryObjectVmNicInventory,
      'APIQueryVniRangeMsg' : QueryObjectVniRangeInventory,
      'APIQueryVolumeMsg' : QueryObjectVolumeInventory,
