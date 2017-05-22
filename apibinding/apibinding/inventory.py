@@ -3159,6 +3159,432 @@ class APIQueryHybridEipFromLocalReply(object):
         self.error = None
 
 
+APICREATEVPCUSERVPNGATEWAYREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APICreateVpcUserVpnGatewayRemoteMsg'
+class APICreateVpcUserVpnGatewayRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APICreateVpcUserVpnGatewayRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        #mandatory field
+        self.ip = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEVPCVPNCONNECTIONREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APICreateVpcVpnConnectionRemoteMsg'
+class APICreateVpcVpnConnectionRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APICreateVpcVpnConnectionRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.userGatewayUuid = NotNoneField()
+        #mandatory field
+        self.vpnGatewayUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.localCidr = NotNoneField()
+        #mandatory field
+        self.remoteCidr = NotNoneField()
+        #mandatory field
+        self.active = NotNoneField()
+        #mandatory field
+        self.ikeConfUuid = NotNoneField()
+        #mandatory field
+        self.ipsecConfUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEVPNIKECONFIGMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APICreateVpnIkeConfigMsg'
+class APICreateVpnIkeConfigMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APICreateVpnIkeConfigMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.psk = NotNoneField()
+        #valid values: [disabled, group1, group2, group5, group14, group24]
+        self.pfs = None
+        #valid values: [ikev1, ikev2]
+        self.version = None
+        #valid values: [main, aggressive]
+        self.mode = None
+        #valid values: [3des, aes-128, aes-192, aes-256, des]
+        self.encAlg = None
+        #valid values: [md5, sha1]
+        self.authAlg = None
+        self.lifetime = None
+        #mandatory field
+        self.localIp = NotNoneField()
+        #mandatory field
+        self.remoteIp = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEVPNIPSECMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APICreateVpnIpsecMsg'
+class APICreateVpnIpsecMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APICreateVpnIpsecMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #valid values: [disabled, group1, group2, group5, group14, group24]
+        self.pfs = None
+        #valid values: [3des, aes-128, aes-192, aes-256, des]
+        self.encAlg = None
+        #valid values: [md5, sha1]
+        self.authAlg = None
+        self.lifetime = None
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVPCIKECONFIGLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIDeleteVpcIkeConfigLocalMsg'
+class APIDeleteVpcIkeConfigLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIDeleteVpcIkeConfigLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVPCIPSECCONFIGLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIDeleteVpcIpSecConfigLocalMsg'
+class APIDeleteVpcIpSecConfigLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIDeleteVpcIpSecConfigLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVPCUSERVPNGATEWAYLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIDeleteVpcUserVpnGatewayLocalMsg'
+class APIDeleteVpcUserVpnGatewayLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIDeleteVpcUserVpnGatewayLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVPCUSERVPNGATEWAYREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIDeleteVpcUserVpnGatewayRemoteMsg'
+class APIDeleteVpcUserVpnGatewayRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIDeleteVpcUserVpnGatewayRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVPCVPNCONNECTIONLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIDeleteVpcVpnConnectionLocalMsg'
+class APIDeleteVpcVpnConnectionLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIDeleteVpcVpnConnectionLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVPCVPNCONNECTIONREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIDeleteVpcVpnConnectionRemoteMsg'
+class APIDeleteVpcVpnConnectionRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIDeleteVpcVpnConnectionRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVPCVPNGATEWAYLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIDeleteVpcVpnGatewayLocalMsg'
+class APIDeleteVpcVpnGatewayLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIDeleteVpcVpnGatewayLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVPCVPNCONFIGURATIONFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIGetVpcVpnConfigurationFromRemoteMsg'
+class APIGetVpcVpnConfigurationFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIGetVpcVpnConfigurationFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVPCVPNCONFIGURATIONFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIGetVpcVpnConfigurationFromRemoteReply'
+class APIGetVpcVpnConfigurationFromRemoteReply(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIGetVpcVpnConfigurationFromRemoteReply'
+    def __init__(self):
+        self.ikeConf = None
+        self.ipSecConf = None
+        self.localIp = None
+        self.remoteIp = None
+        self.localCidr = None
+        self.remoteCidr = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYVPCIKECONFIGFROMLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcIkeConfigFromLocalMsg'
+class APIQueryVpcIkeConfigFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcIkeConfigFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVPCIKECONFIGFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcIkeConfigFromLocalReply'
+class APIQueryVpcIkeConfigFromLocalReply(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcIkeConfigFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYVPCIPSECCONFIGFROMLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcIpSecConfigFromLocalMsg'
+class APIQueryVpcIpSecConfigFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcIpSecConfigFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVPCIPSECCONFIGFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcIpSecConfigFromLocalReply'
+class APIQueryVpcIpSecConfigFromLocalReply(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcIpSecConfigFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYVPCUSERVPNGATEWAYFROMLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcUserVpnGatewayFromLocalMsg'
+class APIQueryVpcUserVpnGatewayFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcUserVpnGatewayFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVPCUSERVPNGATEWAYFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcUserVpnGatewayFromLocalReply'
+class APIQueryVpcUserVpnGatewayFromLocalReply(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcUserVpnGatewayFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYVPCVPNCONNECTIONFROMLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcVpnConnectionFromLocalMsg'
+class APIQueryVpcVpnConnectionFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcVpnConnectionFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVPCVPNCONNECTIONFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcVpnConnectionFromLocalReply'
+class APIQueryVpcVpnConnectionFromLocalReply(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcVpnConnectionFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYVPCVPNGATEWAYFROMLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcVpnGatewayFromLocalMsg'
+class APIQueryVpcVpnGatewayFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcVpnGatewayFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVPCVPNGATEWAYFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIQueryVpcVpnGatewayFromLocalReply'
+class APIQueryVpcVpnGatewayFromLocalReply(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIQueryVpcVpnGatewayFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APISYNCVPCUSERVPNGATEWAYFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APISyncVpcUserVpnGatewayFromRemoteMsg'
+class APISyncVpcUserVpnGatewayFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APISyncVpcUserVpnGatewayFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCVPCVPNCONNECTIONFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APISyncVpcVpnConnectionFromRemoteMsg'
+class APISyncVpcVpnConnectionFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APISyncVpcVpnConnectionFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCVPCVPNGATEWAYFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APISyncVpcVpnGatewayFromRemoteMsg'
+class APISyncVpcVpnGatewayFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APISyncVpcVpnGatewayFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEVPCVPNCONNECTIONREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIUpdateVpcVpnConnectionRemoteMsg'
+class APIUpdateVpcVpnConnectionRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIUpdateVpcVpnConnectionRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.localCidr = None
+        self.remoteCidr = None
+        self.active = None
+        self.ikeConfUuid = None
+        self.ipsecConfUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDUSERTOGROUPMSG_FULL_NAME = 'org.zstack.header.identity.APIAddUserToGroupMsg'
 class APIAddUserToGroupMsg(object):
     FULL_NAME='org.zstack.header.identity.APIAddUserToGroupMsg'
@@ -10498,7 +10924,11 @@ api_names = [
     'APICreateVniRangeMsg',
     'APICreateVolumeSnapshotMsg',
     'APICreateVolumeSnapshotSchedulerMsg',
+    'APICreateVpcUserVpnGatewayRemoteMsg',
     'APICreateVpcVirtualRouterEntryRemoteMsg',
+    'APICreateVpcVpnConnectionRemoteMsg',
+    'APICreateVpnIkeConfigMsg',
+    'APICreateVpnIpsecMsg',
     'APICreateWebhookMsg',
     'APICreateZoneMsg',
     'APIDebugSignalMsg',
@@ -10573,6 +11003,13 @@ api_names = [
     'APIDeleteVolumeQosMsg',
     'APIDeleteVolumeSnapshotFromBackupStorageMsg',
     'APIDeleteVolumeSnapshotMsg',
+    'APIDeleteVpcIkeConfigLocalMsg',
+    'APIDeleteVpcIpSecConfigLocalMsg',
+    'APIDeleteVpcUserVpnGatewayLocalMsg',
+    'APIDeleteVpcUserVpnGatewayRemoteMsg',
+    'APIDeleteVpcVpnConnectionLocalMsg',
+    'APIDeleteVpcVpnConnectionRemoteMsg',
+    'APIDeleteVpcVpnGatewayLocalMsg',
     'APIDeleteWebhookMsg',
     'APIDeleteZoneMsg',
     'APIDestroyVmInstanceMsg',
@@ -10748,6 +11185,8 @@ api_names = [
     'APIGetVolumeReply',
     'APIGetVolumeSnapshotTreeMsg',
     'APIGetVolumeSnapshotTreeReply',
+    'APIGetVpcVpnConfigurationFromRemoteMsg',
+    'APIGetVpcVpnConfigurationFromRemoteReply',
     'APIGetZoneMsg',
     'APIGetZoneReply',
     'APIIsReadyToGoMsg',
@@ -10972,6 +11411,16 @@ api_names = [
     'APIQueryVolumeSnapshotReply',
     'APIQueryVolumeSnapshotTreeMsg',
     'APIQueryVolumeSnapshotTreeReply',
+    'APIQueryVpcIkeConfigFromLocalMsg',
+    'APIQueryVpcIkeConfigFromLocalReply',
+    'APIQueryVpcIpSecConfigFromLocalMsg',
+    'APIQueryVpcIpSecConfigFromLocalReply',
+    'APIQueryVpcUserVpnGatewayFromLocalMsg',
+    'APIQueryVpcUserVpnGatewayFromLocalReply',
+    'APIQueryVpcVpnConnectionFromLocalMsg',
+    'APIQueryVpcVpnConnectionFromLocalReply',
+    'APIQueryVpcVpnGatewayFromLocalMsg',
+    'APIQueryVpcVpnGatewayFromLocalReply',
     'APIQueryWebhookMsg',
     'APIQueryWebhookReply',
     'APIQueryZoneMsg',
@@ -11062,6 +11511,9 @@ api_names = [
     'APISyncVirtualBorderRouterFromRemoteMsg',
     'APISyncVirtualRouterFromRemoteMsg',
     'APISyncVolumeSizeMsg',
+    'APISyncVpcUserVpnGatewayFromRemoteMsg',
+    'APISyncVpcVpnConnectionFromRemoteMsg',
+    'APISyncVpcVpnGatewayFromRemoteMsg',
     'APITerminateVirtualBorderRouterRemoteMsg',
     'APITriggerGCJobMsg',
     'APIUpdateAccountMsg',
@@ -11106,6 +11558,7 @@ api_names = [
     'APIUpdateVmInstanceMsg',
     'APIUpdateVolumeMsg',
     'APIUpdateVolumeSnapshotMsg',
+    'APIUpdateVpcVpnConnectionRemoteMsg',
     'APIUpdateWebhookMsg',
     'APIUpdateZoneMsg',
     'APIValidateSessionMsg',
@@ -13266,6 +13719,504 @@ class HybridEipAddressInventory(object):
             self.lastOpDate = inv.lastOpDate
         else:
             self.lastOpDate = None
+
+
+
+class VpcUserVpnGatewayInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accountName = None
+        self.dataCenterUuid = None
+        self.type = None
+        self.gatewayId = None
+        self.ip = None
+        self.name = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountName'):
+            self.accountName = inv.accountName
+        else:
+            self.accountName = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'gatewayId'):
+            self.gatewayId = inv.gatewayId
+        else:
+            self.gatewayId = None
+
+        if hasattr(inv, 'ip'):
+            self.ip = inv.ip
+        else:
+            self.ip = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class VpcVpnConnectionInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accountName = None
+        self.type = None
+        self.name = None
+        self.description = None
+        self.connectionId = None
+        self.userGatewayUuid = None
+        self.vpnGatewayUuid = None
+        self.localSubnet = None
+        self.remoteSubnet = None
+        self.ikeConfigUuid = None
+        self.ipsecConfigUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountName'):
+            self.accountName = inv.accountName
+        else:
+            self.accountName = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'connectionId'):
+            self.connectionId = inv.connectionId
+        else:
+            self.connectionId = None
+
+        if hasattr(inv, 'userGatewayUuid'):
+            self.userGatewayUuid = inv.userGatewayUuid
+        else:
+            self.userGatewayUuid = None
+
+        if hasattr(inv, 'vpnGatewayUuid'):
+            self.vpnGatewayUuid = inv.vpnGatewayUuid
+        else:
+            self.vpnGatewayUuid = None
+
+        if hasattr(inv, 'localSubnet'):
+            self.localSubnet = inv.localSubnet
+        else:
+            self.localSubnet = None
+
+        if hasattr(inv, 'remoteSubnet'):
+            self.remoteSubnet = inv.remoteSubnet
+        else:
+            self.remoteSubnet = None
+
+        if hasattr(inv, 'ikeConfigUuid'):
+            self.ikeConfigUuid = inv.ikeConfigUuid
+        else:
+            self.ikeConfigUuid = None
+
+        if hasattr(inv, 'ipsecConfigUuid'):
+            self.ipsecConfigUuid = inv.ipsecConfigUuid
+        else:
+            self.ipsecConfigUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class VpcVpnGatewayInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accountName = None
+        self.type = None
+        self.vpnGatewayId = None
+        self.vSwitchUuid = None
+        self.publicIp = None
+        self.spec = None
+        self.name = None
+        self.description = None
+        self.status = None
+        self.businessStatus = None
+        self.createDate = None
+        self.endDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountName'):
+            self.accountName = inv.accountName
+        else:
+            self.accountName = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'vpnGatewayId'):
+            self.vpnGatewayId = inv.vpnGatewayId
+        else:
+            self.vpnGatewayId = None
+
+        if hasattr(inv, 'vSwitchUuid'):
+            self.vSwitchUuid = inv.vSwitchUuid
+        else:
+            self.vSwitchUuid = None
+
+        if hasattr(inv, 'publicIp'):
+            self.publicIp = inv.publicIp
+        else:
+            self.publicIp = None
+
+        if hasattr(inv, 'spec'):
+            self.spec = inv.spec
+        else:
+            self.spec = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'businessStatus'):
+            self.businessStatus = inv.businessStatus
+        else:
+            self.businessStatus = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'endDate'):
+            self.endDate = inv.endDate
+        else:
+            self.endDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class VpcVpnIkeConfigInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accountName = None
+        self.name = None
+        self.psk = None
+        self.version = None
+        self.mode = None
+        self.encodeAlgorithm = None
+        self.authAlgorithm = None
+        self.pfs = None
+        self.lifetime = None
+        self.localIp = None
+        self.remoteIp = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountName'):
+            self.accountName = inv.accountName
+        else:
+            self.accountName = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'psk'):
+            self.psk = inv.psk
+        else:
+            self.psk = None
+
+        if hasattr(inv, 'version'):
+            self.version = inv.version
+        else:
+            self.version = None
+
+        if hasattr(inv, 'mode'):
+            self.mode = inv.mode
+        else:
+            self.mode = None
+
+        if hasattr(inv, 'encodeAlgorithm'):
+            self.encodeAlgorithm = inv.encodeAlgorithm
+        else:
+            self.encodeAlgorithm = None
+
+        if hasattr(inv, 'authAlgorithm'):
+            self.authAlgorithm = inv.authAlgorithm
+        else:
+            self.authAlgorithm = None
+
+        if hasattr(inv, 'pfs'):
+            self.pfs = inv.pfs
+        else:
+            self.pfs = None
+
+        if hasattr(inv, 'lifetime'):
+            self.lifetime = inv.lifetime
+        else:
+            self.lifetime = None
+
+        if hasattr(inv, 'localIp'):
+            self.localIp = inv.localIp
+        else:
+            self.localIp = None
+
+        if hasattr(inv, 'remoteIp'):
+            self.remoteIp = inv.remoteIp
+        else:
+            self.remoteIp = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class VpcVpnIkeConfigStruct(object):
+    def __init__(self):
+        self.psk = None
+        self.version = None
+        self.mode = None
+        self.encodeAlgorithm = None
+        self.authAlgorithm = None
+        self.pfs = None
+        self.lifetime = None
+        self.localIp = None
+        self.remoteIp = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'psk'):
+            self.psk = inv.psk
+        else:
+            self.psk = None
+
+        if hasattr(inv, 'version'):
+            self.version = inv.version
+        else:
+            self.version = None
+
+        if hasattr(inv, 'mode'):
+            self.mode = inv.mode
+        else:
+            self.mode = None
+
+        if hasattr(inv, 'encodeAlgorithm'):
+            self.encodeAlgorithm = inv.encodeAlgorithm
+        else:
+            self.encodeAlgorithm = None
+
+        if hasattr(inv, 'authAlgorithm'):
+            self.authAlgorithm = inv.authAlgorithm
+        else:
+            self.authAlgorithm = None
+
+        if hasattr(inv, 'pfs'):
+            self.pfs = inv.pfs
+        else:
+            self.pfs = None
+
+        if hasattr(inv, 'lifetime'):
+            self.lifetime = inv.lifetime
+        else:
+            self.lifetime = None
+
+        if hasattr(inv, 'localIp'):
+            self.localIp = inv.localIp
+        else:
+            self.localIp = None
+
+        if hasattr(inv, 'remoteIp'):
+            self.remoteIp = inv.remoteIp
+        else:
+            self.remoteIp = None
+
+
+
+class VpcVpnIpSecConfigInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accountName = None
+        self.name = None
+        self.encodeAlgorithm = None
+        self.authAlgorithm = None
+        self.pfs = None
+        self.lifetime = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accountName'):
+            self.accountName = inv.accountName
+        else:
+            self.accountName = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'encodeAlgorithm'):
+            self.encodeAlgorithm = inv.encodeAlgorithm
+        else:
+            self.encodeAlgorithm = None
+
+        if hasattr(inv, 'authAlgorithm'):
+            self.authAlgorithm = inv.authAlgorithm
+        else:
+            self.authAlgorithm = None
+
+        if hasattr(inv, 'pfs'):
+            self.pfs = inv.pfs
+        else:
+            self.pfs = None
+
+        if hasattr(inv, 'lifetime'):
+            self.lifetime = inv.lifetime
+        else:
+            self.lifetime = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class VpcVpnIpSecConfigStruct(object):
+    def __init__(self):
+        self.encodeAlgorithm = None
+        self.authAlgorithm = None
+        self.pfs = None
+        self.lifetime = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'encodeAlgorithm'):
+            self.encodeAlgorithm = inv.encodeAlgorithm
+        else:
+            self.encodeAlgorithm = None
+
+        if hasattr(inv, 'authAlgorithm'):
+            self.authAlgorithm = inv.authAlgorithm
+        else:
+            self.authAlgorithm = None
+
+        if hasattr(inv, 'pfs'):
+            self.pfs = inv.pfs
+        else:
+            self.pfs = None
+
+        if hasattr(inv, 'lifetime'):
+            self.lifetime = inv.lifetime
+        else:
+            self.lifetime = None
 
 
 
@@ -16795,6 +17746,12 @@ class QueryObjectVolumeSnapshotTreeInventory(object):
         'snapshot' : 'QueryObjectVolumeSnapshotInventory',
      }
 
+class QueryObjectVpcUserVpnGatewayInventory(object):
+     PRIMITIVE_FIELDS = ['accountName','ip','name','lastOpDate','dataCenterUuid','description','type','uuid','gatewayId','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectVpcVirtualRouteEntryInventory(object):
      PRIMITIVE_FIELDS = ['destinationCidrBlock','nextHopVRiUuid','virtualRouterUuid','nextHopType','vRouterType','lastOpDate','type','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -16803,6 +17760,30 @@ class QueryObjectVpcVirtualRouteEntryInventory(object):
 
 class QueryObjectVpcVirtualRouterInventory(object):
      PRIMITIVE_FIELDS = ['vrId','vRouterName','lastOpDate','description','uuid','vpcUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectVpcVpnConnectionInventory(object):
+     PRIMITIVE_FIELDS = ['accountName','remoteSubnet','description','ipsecConfigUuid','type','uuid','vpnGatewayUuid','localSubnet','name','lastOpDate','connectionId','userGatewayUuid','ikeConfigUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectVpcVpnGatewayInventory(object):
+     PRIMITIVE_FIELDS = ['accountName','endDate','description','publicIp','businessStatus','type','vSwitchUuid','uuid','spec','name','lastOpDate','vpnGatewayId','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectVpcVpnIkeConfigInventory(object):
+     PRIMITIVE_FIELDS = ['remoteIp','accountName','authAlgorithm','lifetime','psk','description','uuid','version','mode','name','lastOpDate','localIp','encodeAlgorithm','pfs','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectVpcVpnIpSecConfigInventory(object):
+     PRIMITIVE_FIELDS = ['accountName','name','authAlgorithm','lifetime','lastOpDate','description','encodeAlgorithm','pfs','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -16921,6 +17902,11 @@ queryMessageInventoryMap = {
      'APIQueryVolumeMsg' : QueryObjectVolumeInventory,
      'APIQueryVolumeSnapshotMsg' : QueryObjectVolumeSnapshotInventory,
      'APIQueryVolumeSnapshotTreeMsg' : QueryObjectVolumeSnapshotTreeInventory,
+     'APIQueryVpcIkeConfigFromLocalMsg' : QueryObjectVpcVpnIkeConfigInventory,
+     'APIQueryVpcIpSecConfigFromLocalMsg' : QueryObjectVpcVpnIpSecConfigInventory,
+     'APIQueryVpcUserVpnGatewayFromLocalMsg' : QueryObjectVpcUserVpnGatewayInventory,
+     'APIQueryVpcVpnConnectionFromLocalMsg' : QueryObjectVpcVpnConnectionInventory,
+     'APIQueryVpcVpnGatewayFromLocalMsg' : QueryObjectVpcVpnGatewayInventory,
      'APIQueryWebhookMsg' : QueryObjectWebhookInventory,
      'APIQueryZoneMsg' : QueryObjectZoneInventory,
 }
