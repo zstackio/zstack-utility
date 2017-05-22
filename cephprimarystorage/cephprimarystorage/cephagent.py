@@ -606,7 +606,11 @@ class CephAgent(object):
         if len(o) > 0:
             raise Exception('unable to delete %s; the volume still has snapshots' % cmd.installPath)
 
-        shell.call('rbd rm %s' % path)
+        @linux.retry(times=30, sleep_time=5)
+        def do_deletion():
+            shell.call('rbd rm %s' % path)
+
+        do_deletion()
 
         return jsonobject.dumps(rsp)
 
