@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import argparse
+import hashlib
 import sys
 import os
 import subprocess
@@ -6300,6 +6301,38 @@ class StartUiCmd(Command):
         with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
             fd.write(args.port)
 
+
+class ResetAdminPasswordCmd(Command):
+    SYSTEM_ADMIN_TYPE = 'SystemAdmin'
+
+    def __init__(self):
+        super(ResetAdminPasswordCmd, self).__init__()
+        self.name = "reset_password"
+        self.description = "reset ZStack admin account password, if not set, default is 'password'"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--password', help="the new password of admin. If not set, the default is 'password'")
+
+    def run(self, args):
+        info("start reset password")
+
+        new_password = ['password', args.password][args.password is not None]
+        sha512_pwd = hashlib.sha512(new_password).hexdigest()
+
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        query = MySqlCommandLineQuery()
+        query.host = db_hostname
+        query.port = db_port
+        query.user = db_user
+        query.password = db_password
+        query.table = 'zstack'
+        query.sql = "update AccountVO set password='%s' where type='%s'" % (sha512_pwd, self.SYSTEM_ADMIN_TYPE)
+        query.query()
+
+        info("reset password succeed")
+
+
 def main():
     AddManagementNodeCmd()
     BootstrapCmd()
@@ -6320,6 +6353,7 @@ def main():
     SetEnvironmentVariableCmd()
     RollbackManagementNodeCmd()
     RollbackDatabaseCmd()
+    ResetAdminPasswordCmd()
     ResetRabbitCmd()
     RestoreConfigCmd()
     RestartNodeCmd()
