@@ -68,7 +68,7 @@ def is_need_kill(vmUuid, mountPath, isFileSystem):
         if cmd.return_code != 0 or vm_path == "":
             return True
         elif ps_path in vm_path:
-            info = shell.ShellCmd("rbd info %s" % vm_path)
+            info = shell.ShellCmd("timeout 30 rbd info %s" % vm_path)
             info(False)
             if info.return_code != 0:
                 return True
