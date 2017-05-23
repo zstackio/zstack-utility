@@ -47,7 +47,7 @@ def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
 
 def is_need_kill(vmUuid, mountPath, isFileSystem):
     def vm_match_storage_type(vmUuid, isFileSystem):
-        o = shell.ShellCmd("virsh dumpxml %s | grep \"disk type='file'\"" % vmUuid)
+        o = shell.ShellCmd("virsh dumpxml %s | grep \"disk type='file'\" | grep -v \"device='cdrom'\"" % vmUuid)
         o(False)
         if (o.return_code == 0 and isFileSystem) or (o.return_code != 0 and not isFileSystem):
             return True
