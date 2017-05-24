@@ -32,22 +32,6 @@ def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
     vm_in_process_uuid_list = shell.call("virsh list | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
     logger.debug('vm_in_process_uuid_list:\n' + vm_in_process_uuid_list)
 
-    vm_shut_off_uuid_list = shell.call("virsh list --all | fgrep 'shut off' | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
-    logger.debug('vm_shut_off_uuid_list\n' + vm_shut_off_uuid_list)
-
-    # undefine vm in 'shut off' status
-    for vm_uuid in vm_shut_off_uuid_list.split('\n'):
-        vm_uuid = vm_uuid.strip(' \t\n\r')
-        if not vm_uuid:
-            continue
-
-        undefine_op = shell.ShellCmd("virsh undefine %s" % vm_uuid)
-        undefine_op(False)
-        if undefine_op.return_code == 0:
-            logger.warn("Undefined the vm[uuid:%s] successfully." % vm_uuid)
-        else:
-            logger.warn("Failed to undefine the vm[uuid:%s]." % vm_uuid)
-
     # kill vm's qemu process
     for vm_uuid in vm_in_process_uuid_list.split('\n'):
         vm_uuid = vm_uuid.strip(' \t\n\r')
@@ -68,6 +52,22 @@ def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
+    # get 'shut off' vm
+    vm_shut_off_uuid_list = shell.call("virsh list --all | fgrep 'shut off' | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
+    logger.debug('vm_shut_off_uuid_list\n' + vm_shut_off_uuid_list)
+
+    # undefine vm in 'shut off' status
+    for vm_uuid in vm_shut_off_uuid_list.split('\n'):
+        vm_uuid = vm_uuid.strip(' \t\n\r')
+        if not vm_uuid:
+            continue
+
+        undefine_op = shell.ShellCmd("virsh undefine %s" % vm_uuid)
+        undefine_op(False)
+        if undefine_op.return_code == 0:
+            logger.warn("Undefined the vm[uuid:%s] successfully." % vm_uuid)
+        else:
+            logger.warn("Failed to undefine the vm[uuid:%s]." % vm_uuid)
 
 def is_need_kill(vmUuid, mountPath, isFileSystem):
     def vm_match_storage_type(vmUuid, isFileSystem):
@@ -89,13 +89,9 @@ def is_need_kill(vmUuid, mountPath, isFileSystem):
         cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source protocol\" | head -1 | awk -F \"'\" '{print $4}'" % vm_uuid)
         cmd(False)
         vm_path = cmd.stdout.strip()
-        if cmd.return_code != 0 or vm_path == "":
+        if cmd.return_code != 0 or vm_path == "" or ps_path in vm_path:
             return True
-        elif ps_path in vm_path:
-            info = shell.ShellCmd("timeout 30 rbd info %s" % vm_path)
-            info(False)
-            if info.return_code != 0:
-                return True
+
         return False
 
     if vm_match_storage_type(vmUuid, isFileSystem):
