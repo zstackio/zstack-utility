@@ -1739,6 +1739,19 @@ class APIAttachOssBucketToEcsDataCenterMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEOSSBACKUPBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APICreateOssBackupBucketRemoteMsg'
+class APICreateOssBackupBucketRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APICreateOssBackupBucketRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.regionId = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APICreateOssBucketRemoteMsg'
 class APICreateOssBucketRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.oss.APICreateOssBucketRemoteMsg'
@@ -1808,6 +1821,25 @@ class APIDetachOssBucketToEcsDataCenterMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIGETOSSBACKUPBUCKETFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGetOssBackupBucketFromRemoteMsg'
+class APIGetOssBackupBucketFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIGetOssBackupBucketFromRemoteMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETOSSBACKUPBUCKETFROMREMOTEREPLY_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGetOssBackupBucketFromRemoteReply'
+class APIGetOssBackupBucketFromRemoteReply(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIGetOssBackupBucketFromRemoteReply'
+    def __init__(self):
+        self.buckets = OptionalList()
+        self.success = None
+        self.error = None
 
 
 APIGETOSSBUCKETFILEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGetOssBucketFileFromRemoteMsg'
@@ -3122,6 +3154,57 @@ class APIUpdateHostMsg(object):
         self.name = None
         self.description = None
         self.managementIp = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIBACKUPDATABASETOPUBLICCLOUDMSG_FULL_NAME = 'org.zstack.header.hybrid.backup.APIBackupDatabaseToPublicCloudMsg'
+class APIBackupDatabaseToPublicCloudMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.backup.APIBackupDatabaseToPublicCloudMsg'
+    def __init__(self):
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        #mandatory field
+        self.regionId = NotNoneField()
+        self.local = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEBACKUPFILEINPUBLICMSG_FULL_NAME = 'org.zstack.header.hybrid.backup.APIDeleteBackupFileInPublicMsg'
+class APIDeleteBackupFileInPublicMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.backup.APIDeleteBackupFileInPublicMsg'
+    def __init__(self):
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        #mandatory field
+        self.regionId = NotNoneField()
+        #mandatory field
+        self.file = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDOWNLOADBACKUPFILEFROMPUBLICCLOUDMSG_FULL_NAME = 'org.zstack.header.hybrid.backup.APIDownloadBackupFileFromPublicCloudMsg'
+class APIDownloadBackupFileFromPublicCloudMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.backup.APIDownloadBackupFileFromPublicCloudMsg'
+    def __init__(self):
+        #mandatory field
+        self.regionId = NotNoneField()
+        #mandatory field
+        self.file = NotNoneField()
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -10842,6 +10925,7 @@ api_names = [
     'APIAttachPrimaryStorageToClusterMsg',
     'APIAttachSecurityGroupToL3NetworkMsg',
     'APIBackupDataVolumeMsg',
+    'APIBackupDatabaseToPublicCloudMsg',
     'APIBackupVolumeSnapshotMsg',
     'APICalculateAccountSpendingMsg',
     'APICalculateAccountSpendingReply',
@@ -10900,6 +10984,7 @@ api_names = [
     'APICreateLoadBalancerListenerMsg',
     'APICreateLoadBalancerMsg',
     'APICreateMessage',
+    'APICreateOssBackupBucketRemoteMsg',
     'APICreateOssBucketRemoteMsg',
     'APICreatePolicyMsg',
     'APICreatePortForwardingRuleMsg',
@@ -10935,6 +11020,7 @@ api_names = [
     'APIDeleteAccountMsg',
     'APIDeleteAliyunKeySecretMsg',
     'APIDeleteAllEcsInstancesFromDataCenterMsg',
+    'APIDeleteBackupFileInPublicMsg',
     'APIDeleteBackupStorageMsg',
     'APIDeleteBaremetalChessisMsg',
     'APIDeleteBaremetalHostCfgMsg',
@@ -11029,6 +11115,7 @@ api_names = [
     'APIDetachPortForwardingRuleMsg',
     'APIDetachPrimaryStorageFromClusterMsg',
     'APIDetachSecurityGroupFromL3NetworkMsg',
+    'APIDownloadBackupFileFromPublicCloudMsg',
     'APIExportImageFromBackupStorageMsg',
     'APIExpungeDataVolumeMsg',
     'APIExpungeImageMsg',
@@ -11121,6 +11208,8 @@ api_names = [
     'APIGetNetworkServiceTypesReply',
     'APIGetNicQosMsg',
     'APIGetNicQosReply',
+    'APIGetOssBackupBucketFromRemoteMsg',
+    'APIGetOssBackupBucketFromRemoteReply',
     'APIGetOssBucketFileFromRemoteMsg',
     'APIGetOssBucketFileFromRemoteReply',
     'APIGetOssBucketNameFromRemoteMsg',
@@ -16538,6 +16627,14 @@ class GlobalConfig_HOSTALLOCATOR(object):
     @staticmethod
     def get_category():
         return 'hostAllocator'
+
+class GlobalConfig_HYBRID(object):
+    MAX_BACKUP_PER_REGION = 'max.backup.per.region'
+    MANAGEMENT_TIME_ZONE = 'management.time.zone'
+
+    @staticmethod
+    def get_category():
+        return 'hybrid'
 
 class GlobalConfig_IDENTITY(object):
     SESSION_CLEANUP_INTERVAL = 'session.cleanup.interval'
