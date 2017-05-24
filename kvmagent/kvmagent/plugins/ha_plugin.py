@@ -24,8 +24,32 @@ class ScanRsp(object):
 
 
 def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
-    vm_uuid_list = shell.call("virsh list | grep running | awk '{print $2}'")
-    for vm_uuid in vm_uuid_list.split('\n'):
+    zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
+
+    virsh_list = shell.call("virsh list --all")
+    logger.debug("virsh_list:\n" + virsh_list)
+
+    vm_in_process_uuid_list = shell.call("virsh list | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
+    logger.debug('vm_in_process_uuid_list:\n' + vm_in_process_uuid_list)
+
+    vm_shut_off_uuid_list = shell.call("virsh list --all | fgrep 'shut off' | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
+    logger.debug('vm_shut_off_uuid_list\n' + vm_shut_off_uuid_list)
+
+    # undefine vm in 'shut off' status
+    for vm_uuid in vm_shut_off_uuid_list.split('\n'):
+        vm_uuid = vm_uuid.strip(' \t\n\r')
+        if not vm_uuid:
+            continue
+
+        undefine_op = shell.ShellCmd("virsh undefine %s" % vm_uuid)
+        undefine_op(False)
+        if undefine_op.return_code == 0:
+            logger.warn("Undefined the vm[uuid:%s, pid:%s] successfully." % vm_uuid)
+        else:
+            logger.warn("Failed to undefine the vm[uuid:%s]." % vm_uuid)
+
+    # kill vm's qemu process
+    for vm_uuid in vm_in_process_uuid_list.split('\n'):
         vm_uuid = vm_uuid.strip(' \t\n\r')
         if not vm_uuid:
             continue
@@ -182,6 +206,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
                 logger.debug('stop self-fencer on ceph primary storage')
             except:
+                logger.debug('self-fencer on ceph primary storage stopped abnormally')
                 content = traceback.format_exc()
                 logger.warn(content)
 
