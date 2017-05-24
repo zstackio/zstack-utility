@@ -44,7 +44,7 @@ def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
         undefine_op = shell.ShellCmd("virsh undefine %s" % vm_uuid)
         undefine_op(False)
         if undefine_op.return_code == 0:
-            logger.warn("Undefined the vm[uuid:%s, pid:%s] successfully." % vm_uuid)
+            logger.warn("Undefined the vm[uuid:%s] successfully." % vm_uuid)
         else:
             logger.warn("Failed to undefine the vm[uuid:%s]." % vm_uuid)
 
