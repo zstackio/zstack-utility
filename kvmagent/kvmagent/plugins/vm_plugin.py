@@ -2715,6 +2715,11 @@ class VmPlugin(kvmagent.KvmAgent):
             vm.start(cmd.timeout)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
+            if "Device or resource busy" in str(e.message):
+                raise kvmagent.KvmError(
+                    'unable to start vm[uuid:%s, name:%s], libvirt error: %s' % (
+                    cmd.vmInstanceUuid, cmd.vmName, str(e)))
+
             try:
                 vm = get_vm_by_uuid(cmd.vmInstanceUuid)
                 if vm and vm.state == Vm.VM_STATE_RUNNING:
