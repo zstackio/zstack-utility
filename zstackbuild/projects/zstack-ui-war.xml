@@ -7,14 +7,13 @@
 
         <checkProperty property="zstack.ui.source" />
         <checkFile file="${zstack.ui.source}/mevoco-ui2" />
+        <checkFile file="${zstack.ui.source}/mevoco-ui2/zstack-ui" />
         <checkFile file="${zstack.ui.source}/mevoco-ui-server" />
 
         <exec executable="git" dir="${zstack.ui.source}/mevoco-ui2" failonerror="true">
             <arg value="checkout" />
             <arg value="${mevocoui2.build_version}" />
         </exec>
-
-        <copy file="${zstack.ui.source}/mevoco-ui2/zstack-ui" tofile="${tools.dir}/zstack-ui" overwrite="true" />
 
         <exec executable="git" dir="${zstack.ui.source}/mevoco-ui-server" failonerror="true">
             <arg value="checkout" />
@@ -33,6 +32,11 @@
         <copy todir="${tools.dir}">
             <fileset dir="${zstack.ui.bdir}">
                 <include name="zstack-ui.war" />
+            </fileset>
+        </copy>
+        <copy todir="${tools.dir}">
+            <fileset dir="${zstack.ui.source}/mevoco-ui2">
+                <include name="zstack-ui" />
             </fileset>
         </copy>
     </target>
