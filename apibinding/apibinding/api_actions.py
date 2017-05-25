@@ -614,6 +614,18 @@ class BackupDataVolumeAction(inventory.APIBackupDataVolumeMsg):
         self.out = evt
         return self.out
 
+class BackupDatabaseToPublicCloudAction(inventory.APIBackupDatabaseToPublicCloudMsg):
+    def __init__(self):
+        super(BackupDatabaseToPublicCloudAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[BackupDatabaseToPublicCloudAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class BackupVolumeSnapshotAction(inventory.APIBackupVolumeSnapshotMsg):
     def __init__(self):
         super(BackupVolumeSnapshotAction, self).__init__()
@@ -1274,6 +1286,18 @@ class CreateMessageAction(inventory.APICreateMessage):
         self.out = evt
         return self.out
 
+class CreateOssBackupBucketRemoteAction(inventory.APICreateOssBackupBucketRemoteMsg):
+    def __init__(self):
+        super(CreateOssBackupBucketRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateOssBackupBucketRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateOssBucketRemoteAction(inventory.APICreateOssBucketRemoteMsg):
     def __init__(self):
         super(CreateOssBucketRemoteAction, self).__init__()
@@ -1690,6 +1714,18 @@ class DeleteAllEcsInstancesFromDataCenterAction(inventory.APIDeleteAllEcsInstanc
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteAllEcsInstancesFromDataCenterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteBackupFileInPublicAction(inventory.APIDeleteBackupFileInPublicMsg):
+    def __init__(self):
+        super(DeleteBackupFileInPublicAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteBackupFileInPublicAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2822,6 +2858,18 @@ class DetachSecurityGroupFromL3NetworkAction(inventory.APIDetachSecurityGroupFro
         self.out = evt
         return self.out
 
+class DownloadBackupFileFromPublicCloudAction(inventory.APIDownloadBackupFileFromPublicCloudMsg):
+    def __init__(self):
+        super(DownloadBackupFileFromPublicCloudAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DownloadBackupFileFromPublicCloudAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ExportImageFromBackupStorageAction(inventory.APIExportImageFromBackupStorageMsg):
     def __init__(self):
         super(ExportImageFromBackupStorageAction, self).__init__()
@@ -3382,6 +3430,18 @@ class GetNicQosAction(inventory.APIGetNicQosMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetNicQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetOssBackupBucketFromRemoteAction(inventory.APIGetOssBackupBucketFromRemoteMsg):
+    def __init__(self):
+        super(GetOssBackupBucketFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetOssBackupBucketFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
