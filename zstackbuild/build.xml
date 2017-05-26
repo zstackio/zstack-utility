@@ -178,6 +178,14 @@
         <echo message="successfully build zstack.war at ${war.file}" />
     </target>
 
+    <target name="build-zstack-ui-war-on-condition" if="${build.zstack.ui.war}">
+        <antcall target="build-zstack-ui-war" />
+    </target>
+
+    <target name="assemble-zstack-ui-war-on-condition" if="${build.zstack.ui.war}">
+        <antcall target="assemble-zstack-ui-war" />
+    </target>
+
     <target name="help">
         <echo message="usage: ant [build-war|package|all|build-vr] -Dzstack_build_root=YOUR_ZSTACK_PACKAGE_ROOT" />
         <echo message="[zstack_build_root] default path is /usr/local/zstack/root/, which is defined in build.properties. It should be the same parent folder for zstack-utility and zstack-woodpecker." />
@@ -213,7 +221,7 @@
                 <antcall target="build-apibinding"/>
             </sequential>
             <sequential>
-                <antcall target="build-zstack-ui-war"/>
+                <antcall target="build-zstack-ui-war-on-condition"/>
             </sequential>
             <sequential>
                 <antcall target="build-iscsi"/>
@@ -269,7 +277,7 @@
                 <antcall target="assemble-ctl"/>
             </sequential>
             <sequential>
-                <antcall target="assemble-zstack-ui-war"/>
+                <antcall target="assemble-zstack-ui-war-on-condition"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-cli"/>
