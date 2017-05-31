@@ -72,6 +72,7 @@
     <import file="${basedir}/projects/zstack-buildvr.xml" optional="false" />
     <import file="${basedir}/projects/zstack-apibinding.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cli.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ui-war.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
     <import file="${basedir}/projects/zstack-agent.xml" optional="false" />
@@ -163,7 +164,12 @@
             <arg value="--name-status" />
             <arg value="HEAD^..HEAD" />
         </exec>
-
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/zstackdashboard-git-commit">
+            <arg value="--git-dir=${zstackdashboard.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
         <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/mevocoui-git-commit">
             <arg value="--git-dir=${mevocoui.source}/.git" />
             <arg value="log" />
@@ -178,6 +184,16 @@
         <echo message="successfully build zstack.war at ${war.file}" />
     </target>
 
+    <!-- For UI 1.x -->
+    <target name="build-zstack-dashboard-on-condition" unless="${build.zstack.ui.war}">
+        <antcall target="build-zstack-dashboard" />
+    </target>
+
+    <target name="assemble-zstack-dashboard-on-condition" unless="${build.zstack.ui.war}">
+        <antcall target="assemble-zstack-dashboard" />
+    </target>
+
+    <!-- For UI 2.0 -->
     <target name="build-zstack-ui-war-on-condition" if="${build.zstack.ui.war}">
         <antcall target="build-zstack-ui-war" />
     </target>
@@ -219,6 +235,9 @@
             </sequential>
             <sequential>
                 <antcall target="build-apibinding"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-zstack-dashboard-on-condition"/>
             </sequential>
             <sequential>
                 <antcall target="build-zstack-ui-war-on-condition"/>
@@ -275,6 +294,9 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-ctl"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-dashboard-on-condition"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-ui-war-on-condition"/>

@@ -42,10 +42,12 @@ WEBSITE=${WEBSITE-'zstack.org'}
 ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
 CATALINA_ZSTACK_PATH=apache-tomcat/webapps/zstack
 CATALINA_ZSTACK_CLASSES=$CATALINA_ZSTACK_PATH/WEB-INF/classes
+CATALINA_ZSTACK_LIBS=$CATALINA_ZSTACK_PATH/WEB-INF/libs
 ZSTACK_PROPERTIES=$CATALINA_ZSTACK_CLASSES/zstack.properties
 ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
 ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
+ZSTACK_UI_WAR=$CATALINA_ZSTACK_TOOLS/zstack-ui.war
 zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
@@ -95,6 +97,7 @@ SETUP_EPEL=''
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
+TRIAL_LICENSE_FILE=$LICENSE_FOLDER/'zstack-trial-license'
 CONSOLE_PROXY_ADDRESS=''
 
 #define extra upgrade params
@@ -423,7 +426,7 @@ check_system(){
             fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
         fi
     fi
-    
+
     if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 ]; then
         #only support offline installation for CentoS7.x
         if [ -z "$YUM_ONLINE_REPO" ]; then
@@ -451,7 +454,7 @@ cs_create_repo(){
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
         create_yum_repo
     fi
-    
+
     if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         if [ ! -z $ZSTACK_PKG_MIRROR ]; then
             create_apt_source_list
@@ -594,22 +597,22 @@ You can also add '-q' to installer, then Installer will help you to remove it.
 
 ia_check_ip_hijack(){
     HOSTNAME=`hostname`
-    
+
     pintret=`ping -c 1 -W 2 $HOSTNAME 2>/dev/null | head -n1`
     echo $pintret | grep 'PING' > /dev/null
     if [ $? -eq 0 ]; then
         ip=`echo $pintret | cut -d' ' -f 3 | cut -d'(' -f 2 | cut -d')' -f 1`
         ip_1=`echo $ip | cut -d'.' -f 1`
         [ "127" = "$ip_1" ] && return 0
-        
+
         ip addr | grep $ip > /dev/null
         [ $? -eq 0 ] && return 0
-        
+
         echo "The hostname($HOSTNAME) of your machine is resolved to IP($ip) which is none of IPs of your machine.
         It's likely your DNS server has been hijacking, please try fixing it or add \"$MANAGEMENT_IP $HOSTNAME\" to /etc/hosts by \n\n \`echo \"$MANAGEMENT_IP $HOSTNAME\" >>/etc/hosts\`.
 " >> $ZSTACK_INSTALL_LOG
     fi
-    
+
     echo "$MANAGEMENT_IP $HOSTNAME" >>/etc/hosts
     CHANGE_HOSTS='$MANAGEMENT_IP $HOSTNAME'
 }
@@ -742,15 +745,37 @@ upgrade_zstack(){
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
 
-    if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
-        echo "upgrade dashboard" >>$ZSTACK_INSTALL_LOG
-        show_spinner sd_install_dashboard
+    if [ x"$UI_INSTALLATION_STATUS" = x'y' -o x"$DASHBOARD_INSTALLATION_STATUS"=x'y' ]; then
+        echo "upgrade zstack web ui" >>$ZSTACK_INSTALL_LOG
+        rm -f /etc/init.d/zstack-dashboard
+        rm -f /etc/init.d/zstack-ui
+        show_spinner sd_install_zstack_ui
+    fi
+
+    # Who is the new UI? zstack-dashboard(1.x) or zstack-ui(2.0)
+    if [ -f /etc/init.d/zstack-dashboard ]; then
+      UI_INSTALLATION_STATUS='n'
+      DASHBOARD_INSTALLATION_STATUS='y'
+    elif [ -f /etc/init.d/zstack-ui ]; then
+      UI_INSTALLATION_STATUS='y'
+      DASHBOARD_INSTALLATION_STATUS='n'
+    else
+      fail "failed to upgrade zstack web ui" 
     fi
 
     #check old license folder and copy old license files to new folder.
     if [ -d $ZSTACK_OLD_LICENSE_FOLDER ] && [ ! -d $LICENSE_FOLDER ]; then
         mv $ZSTACK_OLD_LICENSE_FOLDER  $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
         chown -R zstack.zstack $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
+    # check whether needs to install license or not
+    # - If no mevoco.jar found, do not install license
+    # - If both mevoco.jar and license.txt exist, do not install license
+    # - If mevoco-2.*.jar exists but license.txt not exist, do not install license
+    # - If mevoco-1.*.jar exists but license.txt not exists, then install license
+    if [ -f $CATALINA_ZSTACK_LIBS/mevoco-1.*.jar -a ! -f $LICENSE_FOLDER/license.txt -a -f $TRIAL_LICENSE_FILE ]; then
+      zstack-ctl install_license --license $TRIAL_LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     #set zstack upgrade params 
@@ -771,10 +796,17 @@ upgrade_zstack(){
         if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
             show_spinner sz_start_zstack
         fi
-    
-        if [ x"$UI_CURRENT_STATUS" = x'y' ]; then
-            echo "start dashboard" >>$ZSTACK_INSTALL_LOG
-            show_spinner sd_start_dashboard
+
+        if [ x"$UI_CURRENT_STATUS" = x'y' -o x"$DASHBOARD_CURRENT_STATUS" = x'y' ]; then
+          if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
+              echo "start zstack-ui" >>$ZSTACK_INSTALL_LOG
+              show_spinner sd_start_zstack_ui
+          fi
+   
+          if [ x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
+              echo "start dashboard" >>$ZSTACK_INSTALL_LOG
+              show_spinner sd_start_dashboard
+          fi
         fi
     fi
 }
@@ -844,9 +876,9 @@ is_install_general_libs_rh(){
     else
         mysql_pkg='mysql'
     fi
-	
-	# Just install what is not installed
-	deps_list="libselinux-python \
+
+    # Just install what is not installed
+    deps_list="libselinux-python \
             java-1.8.0-openjdk \
             bridge-utils \
             wget \
@@ -879,27 +911,27 @@ is_install_general_libs_rh(){
             python-backports-ssl_match_hostname \
             python-setuptools"
 
-	missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
+    missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
-	[ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
-	if [ ! -z "$missing_list" ]; then
-		if [ ! -z $ZSTACK_YUM_REPOS ]; then
-			yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
-			echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
-			yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
-		else
-			yum clean metadata >/dev/null 2>&1
-			echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
-			yum install -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
-		fi
+    [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
+    if [ ! -z "$missing_list" ]; then
+        if [ ! -z $ZSTACK_YUM_REPOS ]; then
+            yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
+            echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
+            yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            yum clean metadata >/dev/null 2>&1
+            echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
+            yum install -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
 
-		if [ $? -ne 0 ];then
-			#yum clean metadata >/dev/null 2>&1
-			fail "install system libraries failed."
-		fi
-	else
-		echo general libs are already installed... >>$ZSTACK_INSTALL_LOG
-	fi
+        if [ $? -ne 0 ];then
+            #yum clean metadata >/dev/null 2>&1
+            fail "install system libraries failed."
+        fi
+    else
+        echo general libs are already installed... >>$ZSTACK_INSTALL_LOG
+    fi
 
     rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1 || java -version 2>&1 |grep 1.8 >/dev/null
     if [ $? -ne 0 ]; then
@@ -1250,7 +1282,7 @@ uz_upgrade_zstack(){
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ] ; then
         cd /; rm -rf $upgrade_folder
-    
+
         if [ -z $NEED_KEEP_DB ];then
             if [ ! -z $DEBUG ]; then
                 if [ x"$FORCE" = x'n' ];then
@@ -1266,7 +1298,7 @@ uz_upgrade_zstack(){
                 fi
             fi
         fi 
-    
+
         if [ $? -ne 0 ];then
             fail "failed to upgrade database"
         fi
@@ -1371,7 +1403,9 @@ install_zstack(){
     show_spinner iz_chown_install_root
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
-    [ -z $ONLY_INSTALL_ZSTACK ] && show_spinner sd_install_dashboard
+    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+      show_spinner sd_install_zstack_ui
+    fi
 
     #install license
     if [ ! -z $LICENSE_PATH ]; then
@@ -1382,10 +1416,10 @@ install_zstack(){
         fi
     fi
 
-    cd $ZSTACK_INSTALL_ROOT
-    if [ -f $LICENSE_FILE ]; then
-        zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
+    #cd $ZSTACK_INSTALL_ROOT
+    #if [ -f $LICENSE_FILE ]; then
+    #    zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
+    #fi
 }
 
 install_db_msgbus(){
@@ -1511,7 +1545,7 @@ iz_chown_install_root(){
 cs_gen_sshkey(){
     echo_subtitle "Generate Temp SSH Key"
     [ ! -d /root/.ssh ] && mkdir -p /root/.ssh && chmod 700 /root/.ssh
-    
+
     rsa_key_file=$1/id_rsa
     rsa_pub_key_file=$1/id_rsa.pub
     authorized_keys_file=/root/.ssh/authorized_keys
@@ -1814,6 +1848,7 @@ sz_start_zstack(){
     fail "zstack server failed to start in $i seconds"
 }
 
+# For UI 1.x
 start_dashboard(){
     echo_title "Start ${PRODUCT_NAME} Web UI"
     echo ""
@@ -1823,17 +1858,37 @@ start_dashboard(){
     show_spinner sd_start_dashboard
 }
 
-sd_install_dashboard(){
+# For UI 2.0
+start_zstack_ui(){
+    echo_title "Start ${PRODUCT_NAME} Web UI"
+    echo ""
+    cd /
+    show_spinner sd_start_zstack_ui
+}
+
+# For UI 1.x and UI 2.0
+sd_install_zstack_ui(){
     echo_subtitle "Install ${PRODUCT_NAME} Web UI (takes a couple of minutes)"
-    zstack-ctl install_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl install_ui --force >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
-        fail "failed to install zstack-ui in $ZSTACK_INSTALL_ROOT"
+        fail "failed to install ${PRODUCT_NAME} Web UI in $ZSTACK_INSTALL_ROOT"
     fi
     pass
 }
 
+# For UI 1.x
 sd_start_dashboard(){
+    echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
+    chmod a+x /etc/init.d/zstack-dashboard
+    cd /
+    /etc/init.d/zstack-dashboard restart >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "failed to zstack dashboard start"
+    pass
+}
+
+# For UI 2.0
+sd_start_zstack_ui(){
     echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
     chmod a+x /etc/init.d/zstack-ui
     cd /
@@ -2016,10 +2071,10 @@ set_tomcat_config() {
 }
 
 check_repo_version() {
-	[ ! -f ".repo_version" ] && return 1
-	[ ! -f "/opt/zstack-dvd/.repo_version" ] && return 1
-	diff .repo_version /opt/zstack-dvd/.repo_version >/dev/null 2>&1
-	return $?
+    [ ! -f ".repo_version" ] && return 1
+    [ ! -f "/opt/zstack-dvd/.repo_version" ] && return 1
+    diff .repo_version /opt/zstack-dvd/.repo_version >/dev/null 2>&1
+    return $?
 }
 
 help (){
@@ -2176,7 +2231,7 @@ do
     case $Option in
         # -a: do not use yum online repo.
         a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
-		[ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
+        [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
         c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
         C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
         d ) DEBUG='y';;
@@ -2194,26 +2249,26 @@ do
         n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
         # -o: do not use yum online repo
         o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
-		[ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
+        [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
         # -O: use yum online repo
         O ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
-		YUM_ONLINE_REPO='y'
-		ZSTACK_OFFLINE_INSTALL=''
-		else
-		fail2 "$PRODUCT_NAME don't support '-O' option! Please remove '-O' and try again."
-		fi;;
+        YUM_ONLINE_REPO='y'
+        ZSTACK_OFFLINE_INSTALL=''
+        else
+        fail2 "$PRODUCT_NAME don't support '-O' option! Please remove '-O' and try again."
+        fi;;
         P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
         p ) MYSQL_USER_PASSWORD=$OPTARG;;
         q ) QUIET_INSTALLATION='y';;
         r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
         # -R: use yum third party repo
         R ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
-		ZSTACK_PKG_MIRROR=$OPTARG
-		YUM_ONLINE_REPO='y'
-		ZSTACK_OFFLINE_INSTALL=''
-		else
-		fail2 "$PRODUCT_NAME don't support '-R' option! Please remove '-R' and try again."
-		fi;;
+        ZSTACK_PKG_MIRROR=$OPTARG
+        YUM_ONLINE_REPO='y'
+        ZSTACK_OFFLINE_INSTALL=''
+        else
+        fail2 "$PRODUCT_NAME don't support '-R' option! Please remove '-R' and try again."
+        fi;;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
@@ -2316,41 +2371,41 @@ fi
 
 # CHECK_REPO_VERSION
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
-	check_repo_version
-	if [ $? -ne 0 ]; then
-		BIN_VERSION=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
-		if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
-			ISO_NAME="ZStack-x86-64-DVD-${BIN_VERSION}.iso"
-			UPGRADE_WIKI="http://zstack.io/support/tutorials/upgrade/"
-			ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
-			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-				"Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-				"# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-				"# sh zstack-upgrade ${ISO_NAME}\n" \
-				"For more information, see ${UPGRADE_WIKI}"
-		elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
-			ISO_NAME="ZStack-Community-x86-64-DVD-${BIN_VERSION}.iso "
-			UPGRADE_WIKI="http://zstack.io/community/tutorials/ISOupgrade/"
-			ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
-			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-				"Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-				"# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-				"# sh zstack-upgrade ${ISO_NAME}\n" \
-				"For more information, see ${UPGRADE_WIKI}"
-		elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
-			ISO_NAME="ZStack-Enterprise-x86-64-DVD-${BIN_VERSION}.iso"
-			UPGRADE_WIKI="http://zstack.io/support/tutorials/upgrade/"
-			ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
-			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-				"Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-				"# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-				"# sh zstack-upgrade ${ISO_NAME}\n" \
-				"For more information, see ${UPGRADE_WIKI}"
-		else
-			fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-				"Please download proper ISO and upgrade the local repo first."
-		fi
-	fi
+    check_repo_version
+    if [ $? -ne 0 ]; then
+        BIN_VERSION=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
+        if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
+            ISO_NAME="ZStack-x86-64-DVD-${BIN_VERSION}.iso"
+            UPGRADE_WIKI="http://zstack.io/support/tutorials/upgrade/"
+            ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
+            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+                "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+                "# sh zstack-upgrade ${ISO_NAME}\n" \
+                "For more information, see ${UPGRADE_WIKI}"
+        elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
+            ISO_NAME="ZStack-Community-x86-64-DVD-${BIN_VERSION}.iso "
+            UPGRADE_WIKI="http://zstack.io/community/tutorials/ISOupgrade/"
+            ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
+            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+                "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+                "# sh zstack-upgrade ${ISO_NAME}\n" \
+                "For more information, see ${UPGRADE_WIKI}"
+        elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
+            ISO_NAME="ZStack-Enterprise-x86-64-DVD-${BIN_VERSION}.iso"
+            UPGRADE_WIKI="http://zstack.io/support/tutorials/upgrade/"
+            ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
+            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+                "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+                "# sh zstack-upgrade ${ISO_NAME}\n" \
+                "For more information, see ${UPGRADE_WIKI}"
+        else
+            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                "Please download proper ISO and upgrade the local repo first."
+        fi
+    fi
 fi
 
 #set http_proxy if needed
@@ -2386,6 +2441,7 @@ if [ x"$UPGRADE" = x'y' ]; then
             CURRENT_STATUS='n'
         fi
     fi
+
     UI_CURRENT_STATUS='n'
     UI_INSTALLATION_STATUS='n'
     if [ -f /etc/init.d/zstack-ui ]; then
@@ -2395,11 +2451,13 @@ if [ x"$UPGRADE" = x'y' ]; then
             UI_CURRENT_STATUS='y'
         fi
     fi
+    DASHBOARD_CURRENT_STATUS='n'
+    DASHBOARD_INSTALLATION_STATUS='n'
     if [ -f /etc/init.d/zstack-dashboard ]; then
-        UI_INSTALLATION_STATUS='y'
+        DASHBOARD_INSTALLATION_STATUS='y'
         /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
         if [ $? -eq 0 ]; then
-            UI_CURRENT_STATUS='y'
+            DASHBOARD_CURRENT_STATUS='y'
         fi
     fi
 fi
@@ -2447,15 +2505,23 @@ if [ x"$UPGRADE" = x'y' ]; then
     fi
     echo ""
     if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
-        echo -e " $(tput setaf 2)UI has been upgraded.$(tput sgr0)"
+        echo -e " $(tput setaf 2)zstack-ui has been upgraded.$(tput sgr0)"
         echo ""
         if [ x"$UI_CURRENT_STATUS" = x'y' ]; then
-            echo -e " $(tput setaf 2)UI daemon has been started up again.$(tput sgr0)"
+            echo -e " $(tput setaf 2)zstack-ui has been started up again.$(tput sgr0)"
         else
-            echo -e " $(tput setaf 3)UI daemon is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
+            echo -e " $(tput setaf 3)zstack-ui is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
+        fi
+    elif [ x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
+        echo -e " $(tput setaf 2)zstack-dashboard has been upgraded.$(tput sgr0)"
+        echo ""
+        if [ x"$DASHBOARD_CURRENT_STATUS" = x'y' ]; then
+            echo -e " $(tput setaf 2)zstack-dashboard has been started up again.$(tput sgr0)"
+        else
+            echo -e " $(tput setaf 3)zstack-dashboard is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
         fi
     else
-        echo " UI was not upgraded, since there wasn't UI installed before upgrading. You can manually install UI by \`zstack-ctl install_ui\`"
+        echo " ZStack UI was not upgraded, since there wasn't UI installed before upgrading. You can manually install UI by \`zstack-ctl install_ui\`"
     fi
     echo ""
     zstack_home=`eval echo ~zstack`
@@ -2532,9 +2598,13 @@ if [ ! -z $HTTP_PROXY ]; then
     export https_proxy=$HTTP_PROXY
 fi
 
-#Start ${PRODUCT_NAME}-Dashboard
+#Start ${PRODUCT_NAME}-UI
 if [ -z $NOT_START_ZSTACK ]; then
-    start_dashboard
+    if [ -f $ZSTACK_UI_WAR ]; then
+        start_zstack_ui
+    else
+        start_dashboard
+    fi
 fi
 
 if [ -f /bin/systemctl ]; then
