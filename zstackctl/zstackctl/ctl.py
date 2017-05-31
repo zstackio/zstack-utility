@@ -600,7 +600,7 @@ class Ctl(object):
         self.commands[cmd.name] = cmd
         self.command_list.append(cmd)
 
-    def _locate_zstack_home(self):
+    def locate_zstack_home(self):
         env_path = os.path.expanduser(SetEnvironmentVariableCmd.PATH)
         if os.path.isfile(env_path):
             env = PropertyFile(env_path)
@@ -665,7 +665,7 @@ class Ctl(object):
         cmd = self.commands[args.sub_command_name]
 
         if cmd.need_zstack_home():
-            self._locate_zstack_home()
+            self.locate_zstack_home()
 
         if cmd.need_zstack_user():
             check_zstack_user()
@@ -681,7 +681,7 @@ class Ctl(object):
         args_obj, _ = self.main_parser.parse_known_args(params)
 
         if cmd.need_zstack_home():
-            self._locate_zstack_home()
+            self.locate_zstack_home()
 
         if cmd.need_zstack_user():
             check_zstack_user()
@@ -1348,8 +1348,9 @@ class StopAllCmd(Command):
             ctl.internal_run('stop_node')
 
         def stop_ui():
+            virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
             zstackui = '/usr/local/zstack/zstack-ui'
-            if not os.path.exists(zstackui):
+            if not os.path.exists(virtualenv) and not os.path.exists(zstackui):
                 info('skip stopping web UI, it is not installed')
                 return
 
@@ -1380,8 +1381,9 @@ class StartAllCmd(Command):
                 ctl.internal_run('start_node')
 
         def start_ui():
+            virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
             zstackui = '/usr/local/zstack/zstack-ui'
-            if not os.path.exists(zstackui):
+            if not os.path.exists(virtualenv) and not os.path.exists(zstackui):
                 info('skip starting web UI, it is not installed')
                 return
 
@@ -4360,7 +4362,7 @@ class CollectLogCmd(Command):
     ps_log_list = ['ceph-primarystorage.log','fusionstor-primarystorage.log']
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
-                   'zstack-ui.log', 'zstack-ctl.log']
+                   'zstack-dashboard.log', 'zstack-ctl.log']
     collect_lines = 100000
     logger_dir = '/var/log/zstack/'
     logger_file = 'zstack-ctl.log'
@@ -5338,10 +5340,164 @@ class GetEnvironmentVariableCmd(Command):
 
         info('\n'.join(ret))
 
-
-class InstallWebUiCmd(Command):
+# For UI 1.x
+class InstallDashboardCmd(Command):
     def __init__(self):
-        super(InstallWebUiCmd, self).__init__()
+        super(InstallDashboardCmd, self).__init__()
+        self.name = "install_ui"
+        self.description = "install ZStack Web UI"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
+        parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
+        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
+        parser.add_argument('--force', help="delete existing virtualenv and resinstall zstack ui and all dependencies", action="store_true", default=False)
+
+    def _install_to_local(self, args):
+        install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
+        if not os.path.isfile(install_script):
+            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
+
+        info('found installation script at %s, start installing ZStack web UI' % install_script)
+        if args.force:
+            shell('bash %s zstack-dashboard force' % install_script)
+        else:
+            shell('bash %s zstack-dashboard' % install_script)
+
+    def run(self, args):
+        if not args.host:
+            self._install_to_local(args)
+            return
+
+        if not args.yum:
+            args.yum = get_yum_repo_from_property()
+
+        tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
+        if not os.path.isdir(tools_path):
+            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % tools_path)
+
+        ui_binary = None
+        for l in os.listdir(tools_path):
+            if l.startswith('zstack_dashboard'):
+                ui_binary = l
+                break
+
+        if not ui_binary:
+            raise CtlError('cannot find zstack-dashboard package under %s, please make sure you have installed ZStack management node' % tools_path)
+
+        ui_binary_path = os.path.join(tools_path, ui_binary)
+
+        pypi_path = os.path.join(ctl.zstack_home, "static/pypi/")
+        if not os.path.isdir(pypi_path):
+            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % pypi_path)
+
+        pypi_tar_path = os.path.join(ctl.zstack_home, "static/pypi.tar.bz")
+        if not os.path.isfile(pypi_tar_path):
+            static_path = os.path.join(ctl.zstack_home, "static")
+            os.system('cd %s; tar jcf pypi.tar.bz pypi' % static_path)
+
+        yaml = '''---
+- hosts: $host
+  remote_user: root
+
+  vars:
+      virtualenv_root: /var/lib/zstack/virtualenv/zstack-dashboard
+      yum_repo: "$yum_repo"
+
+  tasks:
+    - name: pre-install script
+      when: ansible_os_family == 'RedHat' and yum_repo != 'false'
+      script: $pre_install_script
+
+    - name: install Python pip for RedHat OS from user defined repo
+      when: ansible_os_family == 'RedHat' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf
+
+    - name: install Python pip for RedHat OS from system repo
+      when: ansible_os_family == 'RedHat' and yum_repo == 'false'
+      shell: yum clean metadata; yum --nogpgcheck install -y libselinux-python python-pip bzip2 python-devel gcc autoconf
+
+    - name: copy zstack-dashboard package
+      copy: src=$src dest=$dest
+
+    - name: copy pypi tar file
+      copy: src=$pypi_tar_path dest=$pypi_tar_path_dest
+
+    - name: untar pypi
+      shell: "cd /tmp/; tar jxf $pypi_tar_path_dest"
+
+    - name: install Python pip for Ubuntu
+      when: ansible_os_family == 'Debian'
+      apt: pkg={{item}} update_cache=yes
+      with_items:
+        - python-pip
+        - iptables-persistent
+
+    - name: install pip from local source
+      shell: "cd $pypi_path/simple/pip/; pip install --ignore-installed pip*.tar.gz"
+
+    - shell: virtualenv --version | grep "12.1.1"
+      register: virtualenv_ret
+      ignore_errors: True
+
+    - name: install virtualenv
+      pip: name=virtualenv version=12.1.1 extra_args="--ignore-installed --trusted-host localhost -i file://$pypi_path/simple"
+      when: virtualenv_ret.rc != 0
+
+    - name: create virtualenv
+      shell: "rm -rf {{virtualenv_root}} && virtualenv {{virtualenv_root}}"
+
+    - name: install zstack-dashboard
+      pip: name=$dest extra_args="--trusted-host localhost -i file://$pypi_path/simple" virtualenv="{{virtualenv_root}}"
+
+'''
+
+        pre_script = '''
+if [ -f /etc/redhat-release ] ; then
+
+grep ' 7' /etc/redhat-release
+if [ $? -eq 0 ]; then
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+else
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+fi
+
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+fi
+'''
+        fd, pre_script_path = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write(pre_script)
+
+        def cleanup_prescript():
+            os.remove(pre_script_path)
+
+        self.install_cleanup_routine(cleanup_prescript)
+        t = string.Template(yaml)
+        if args.yum:
+            yum_repo = args.yum
+        else:
+            yum_repo = 'false'
+        yaml = t.substitute({
+            "src": ui_binary_path,
+            "dest": os.path.join('/tmp', ui_binary),
+            "host": args.host,
+            'pre_install_script': pre_script_path,
+            'pypi_tar_path': pypi_tar_path,
+            'pypi_tar_path_dest': '/tmp/pypi.tar.bz',
+            'pypi_path': '/tmp/pypi/',
+            'yum_folder': ctl.zstack_home,
+            'yum_repo': yum_repo
+        })
+
+        ansible(yaml, args.host, ssh_key=args.ssh_key)
+
+# For UI 2.0
+class InstallZstackUiCmd(Command):
+    def __init__(self):
+        super(InstallZstackUiCmd, self).__init__()
         self.name = "install_ui"
         self.description = "install ZStack web UI"
         ctl.register_command(self)
@@ -5382,11 +5538,9 @@ class InstallWebUiCmd(Command):
         yaml = '''---
 - hosts: $host
   remote_user: root
-
   tasks:
     - name: create zstack-ui directory
       shell: "mkdir -p /usr/local/zstack/zstack-ui"
-
     - name: copy zstack-ui package
       copy: src=$src dest=$dest
 '''
@@ -6074,6 +6228,45 @@ class RollbackDatabaseCmd(Command):
 
         info('successfully rollback the database to the dump file %s' % args.db_dump)
 
+# For UI 1.x
+class StopDashboardCmd(Command):
+    def __init__(self):
+        super(StopDashboardCmd, self).__init__()
+        self.name = 'stop_ui'
+        self.description = "stop UI server on the local or remote host"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
+
+    def _remote_stop(self, host):
+        cmd = '/etc/init.d/zstack-dashboard stop'
+        ssh_run_no_pipe(host, cmd)
+
+    def run(self, args):
+        if args.host != 'localhost':
+            self._remote_stop(args.host)
+            return
+
+        pidfile = '/var/run/zstack/zstack-dashboard.pid'
+        if os.path.exists(pidfile):
+            with open(pidfile, 'r') as fd:
+                pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
+                shell('kill %s >/dev/null 2>&1' % pid, is_exception=False)
+
+        def stop_all():
+            pid = find_process_by_cmdline('zstack_dashboard')
+            if pid:
+                shell('kill -9 %s >/dev/null 2>&1' % pid)
+                stop_all()
+            else:
+                return
+
+        stop_all()
+        info('successfully stopped the UI server')
+
+# For UI 2.0
 class StopUiCmd(Command):
     def __init__(self):
         super(StopUiCmd, self).__init__()
@@ -6111,6 +6304,66 @@ class StopUiCmd(Command):
         stop_all()
         info('successfully stopped the UI server')
 
+# For UI 1.x
+class DashboardStatusCmd(Command):
+    def __init__(self):
+        super(DashboardStatusCmd, self).__init__()
+        self.name = "ui_status"
+        self.description = "check the UI server status on the local or remote host."
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
+        parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
+
+    def _remote_status(self, host):
+        cmd = '/etc/init.d/zstack-dashboard status'
+        ssh_run_no_pipe(host, cmd)
+
+    def run(self, args):
+        self.quiet = args.quiet
+        if args.host != 'localhost':
+            self._remote_status(args.host)
+            return
+
+        ha_info_file = '/var/lib/zstack/ha/ha.yaml'
+        pidfile = '/var/run/zstack/zstack-dashboard.pid'
+        portfile = '/var/run/zstack/zstack-dashboard.port'
+        if os.path.exists(pidfile):
+            with open(pidfile, 'r') as fd:
+                pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
+                check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
+                check_pid_cmd(is_exception=False)
+                if check_pid_cmd.return_code == 0:
+                    if os.path.exists(ha_info_file):
+                        with open(ha_info_file, 'r') as fd2:
+                            ha_conf = yaml.load(fd2)
+                            if check_ip_port(ha_conf['vip'], 8888):
+                                info('UI status: %s [PID:%s] http://%s:8888' % (colored('Running', 'green'), pid, ha_conf['vip']))
+                            else:
+                                info('UI status: %s' % colored('Unknown', 'yellow'))
+                            return
+                    default_ip = get_default_ip()
+                    if not default_ip:
+                        info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
+                    else:
+                        if os.path.exists(portfile):
+                            with open(portfile, 'r') as fd2:
+                                port = fd2.readline()
+                                port = port.strip(' \t\n\r')
+                        else:
+                            port = 5000
+                        info('UI status: %s [PID:%s] http://%s:%s' % (colored('Running', 'green'), pid, default_ip, port))
+                    return
+
+        pid = find_process_by_cmdline('zstack_dashboard')
+        if pid:
+            info('UI status: %s [PID: %s]' % (colored('Zombie', 'yellow'), pid))
+        else:
+            info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
+
+# For UI 2.0
 class UiStatusCmd(Command):
     def __init__(self):
         super(UiStatusCmd, self).__init__()
@@ -6167,7 +6420,7 @@ class UiStatusCmd(Command):
         if pid:
             info('UI status: %s [PID: %s]' % (colored('Zombie', 'yellow'), pid))
         else:
-            info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
+            info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))  
 
 class InstallLicenseCmd(Command):
     def __init__(self):
@@ -6202,7 +6455,124 @@ class InstallLicenseCmd(Command):
             shell('''chown zstack:zstack %s/pri.key''' % license_folder)
             info("successfully installed the private key file to %s/pri.key" % license_folder)
 
+# For UI 1.x
+class StartDashboardCmd(Command):
+    PID_FILE = '/var/run/zstack/zstack-dashboard.pid'
 
+    def __init__(self):
+        super(StartDashboardCmd, self).__init__()
+        self.name = "start_ui"
+        self.description = "start UI server on the local or remote host"
+        ctl.register_command(self)
+        if not os.path.exists(os.path.dirname(self.PID_FILE)):
+            shell("mkdir -p %s" % os.path.dirname(self.PID_FILE))
+            shell("mkdir -p /var/log/zstack")
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
+        parser.add_argument('--port', help="UI server port. [DEFAULT] 5000", default='5000')
+
+    def _remote_start(self, host, params):
+        cmd = '/etc/init.d/zstack-dashboard start --rabbitmq %s' % params
+        ssh_run_no_pipe(host, cmd)
+        info('successfully start the UI server on the remote host[%s]' % host)
+
+    def _check_status(self, port):
+        if os.path.exists(self.PID_FILE):
+            with open(self.PID_FILE, 'r') as fd:
+                pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
+                check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
+                check_pid_cmd(is_exception=False)
+                if check_pid_cmd.return_code == 0:
+                    default_ip = get_default_ip()
+                    if not default_ip:
+                        info('UI server is still running[PID:%s]' % pid)
+                    else:
+                        info('UI server is still running[PID:%s], http://%s:%s' % (pid, default_ip, port))
+
+                    return False
+
+        pid = find_process_by_cmdline('zstack_dashboard')
+        if pid:
+            info('found a zombie UI server[PID:%s], kill it and start a new one' % pid)
+            shell('kill -9 %s > /dev/null' % pid)
+
+        return True
+
+    def run(self, args):
+        ips = ctl.read_property_list("UI.vip.")
+
+        if not ips:
+            ips = ctl.read_property_list("CloudBus.serverIp.")
+        if not ips:
+            raise CtlError('no RabbitMQ IPs found in %s. The IPs should be configured as CloudBus.serverIp.0, CloudBus.serverIp.1 ... CloudBus.serverIp.N' % ctl.properties_file_path)
+
+        ips = [v for k, v in ips]
+
+        username = ctl.read_property("CloudBus.rabbitmqUsername")
+        password = ctl.read_property("CloudBus.rabbitmqPassword")
+        if username and not password:
+            raise CtlError('CloudBus.rabbitmqUsername is configured but CloudBus.rabbitmqPassword is not. They must be both set or not set. Check %s' % ctl.properties_file_path)
+        if not username and password:
+            raise CtlError('CloudBus.rabbitmqPassword is configured but CloudBus.rabbitmqUsername is not. They must be both set or not set. Check %s' % ctl.properties_file_path)
+
+        if username and password:
+            urls = ["%s:%s@%s" % (username, password, ip) for ip in ips]
+        else:
+            urls = ips
+
+        param = ','.join(urls)
+
+        if args.host != 'localhost':
+            self._remote_start(args.host, param)
+            return
+
+        virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
+        if not os.path.exists(virtualenv):
+            raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (virtualenv, args.host))
+
+        if not self._check_status(args.port):
+            return
+
+        distro = platform.dist()[0]
+        if distro == 'centos':
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.port)
+        elif distro == 'Ubuntu':
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.port)
+        else:
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.port)
+
+        scmd = '. %s/bin/activate\nZSTACK_DASHBOARD_PORT=%s nohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, args.port, param)
+        script(scmd, no_pipe=True)
+
+        @loop_until_timeout(5, 0.5)
+        def write_pid():
+            pid = find_process_by_cmdline('zstack_dashboard')
+            if pid:
+                with open(self.PID_FILE, 'w') as fd:
+                    fd.write(str(pid))
+                return True
+            else:
+                return False
+
+        write_pid()
+        pid = find_process_by_cmdline('zstack_dashboard')
+        if not pid:
+            info('fail to start UI server on the local host. Use zstack-ctl start_ui to restart it. zstack UI log could be found in /var/log/zstack/zstack-dashboard.log')
+            return False
+
+        default_ip = get_default_ip()
+        if not default_ip:
+            info('successfully started UI server on the local host, PID[%s]' % pid)
+        else:
+            info('successfully started UI server on the local host, PID[%s], http://%s:%s' % (pid, default_ip, args.port))
+
+        os.system('mkdir -p /var/run/zstack/')
+        with open('/var/run/zstack/zstack-dashboard.port', 'w') as fd:
+            fd.write(args.port)
+
+# For UI 2.0
 class StartUiCmd(Command):
     PID_FILE = '/var/run/zstack/zstack-ui.pid'
     PORT_FILE = '/var/run/zstack/zstack-ui.port'
@@ -6301,7 +6671,6 @@ class StartUiCmd(Command):
         with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
             fd.write(args.port)
 
-
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
 
@@ -6332,7 +6701,6 @@ class ResetAdminPasswordCmd(Command):
 
         info("reset password succeed")
 
-
 def main():
     AddManagementNodeCmd()
     BootstrapCmd()
@@ -6343,7 +6711,6 @@ def main():
     ChangeMysqlPasswordCmd()
     DeployDBCmd()
     GetEnvironmentVariableCmd()
-    InstallWebUiCmd()
     InstallHACmd()
     InstallDbCmd()
     InstallRabbitCmd()
@@ -6363,18 +6730,29 @@ def main():
     StartCmd()
     StopCmd()
     SaveConfigCmd()
-    StartUiCmd()
-    StopUiCmd()
     StartAllCmd()
     StopAllCmd()
     TailLogCmd()
-    UiStatusCmd()
     UnsetEnvironmentVariableCmd()
     UpgradeManagementNodeCmd()
     UpgradeMultiManagementNodeCmd()
     UpgradeDbCmd()
     UpgradeCtlCmd()
     UpgradeHACmd()
+
+    # If tools/zstack-ui.war exists, then install zstack-ui
+    # else, install zstack-dashboard
+    ctl.locate_zstack_home()
+    if os.path.exists(ctl.zstack_home + "/WEB-INF/classes/tools/zstack-ui.war"):
+        InstallZstackUiCmd()
+        StartUiCmd()
+        StopUiCmd()
+        UiStatusCmd()
+    else:
+        InstallDashboardCmd()
+        StartDashboardCmd()
+        StopDashboardCmd()
+        DashboardStatusCmd()
 
     try:
         ctl.run()
