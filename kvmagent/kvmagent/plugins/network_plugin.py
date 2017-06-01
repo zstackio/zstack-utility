@@ -233,9 +233,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
             for nic in nics:
                 if nic.keys()[0] == interf:
                     rsp.vtepIp = nics[0].values()[0]
+                    rsp.success = True
             if rsp.vtepIp == None:
                 rsp.error = "no interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr, interf)
-        elif len(nics) == 2 and (linux.is_vif_on_bridge(nics[0], nics[1]) or linux.is_vif_on_bridge(nics[1], nics[0])):
+        elif len(nics) == 2 and (linux.is_vif_on_bridge(nics[0].keys()[0], nics[1].keys()[0]) or linux.is_vif_on_bridge(nics[1].keys()[0], nics[0].keys()[0])):
             # Note(WeiW): This is a work around for case of a interface bound to a bridge and have same ip address,
             # see at zstackio/issues#4056, but note this wont make assurance that routing is true
             rsp.vtepIp = nics[0].values()[0]
