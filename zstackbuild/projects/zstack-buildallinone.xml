@@ -21,6 +21,11 @@
         <copy file="${license.file}" tofile="${target.license.file}" />
     </target>
 
+    <target name="copy-trial-license">
+        <echo message="copy zstack_trial_license to ${allinone.bin.dir}" />
+        <copy file="${zstack.trial.license}" todir="${allinone.bin.dir}" />
+    </target>
+
     <target name="check-repo-version-exists">
         <available file="${zstack.repo.version}"  property="repo.version.exists"/>
     </target>
@@ -54,6 +59,8 @@
             <arg value="${product.version}" />
             <arg value="${allinone.bin.product.title}" />
         </exec>
+
+        <antcall target="copy-trial-license" />
 
         <fail message=".repo_version file does not exists.">
             <condition>

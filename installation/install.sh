@@ -47,10 +47,10 @@ ZSTACK_PROPERTIES=$CATALINA_ZSTACK_CLASSES/zstack.properties
 ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
 ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
-ZSTACK_UI_WAR=$CATALINA_ZSTACK_TOOLS/zstack-ui.war
 zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
+ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 UPGRADE_LOCK=/tmp/zstack_upgrade.lock
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
@@ -97,7 +97,6 @@ SETUP_EPEL=''
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
-TRIAL_LICENSE_FILE=$LICENSE_FOLDER/'zstack-trial-license'
 CONSOLE_PROXY_ADDRESS=''
 
 #define extra upgrade params
@@ -745,7 +744,7 @@ upgrade_zstack(){
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
 
-    if [ x"$UI_INSTALLATION_STATUS" = x'y' -o x"$DASHBOARD_INSTALLATION_STATUS"=x'y' ]; then
+    if [ x"$UI_INSTALLATION_STATUS" = x'y' -o x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
         echo "upgrade zstack web ui" >>$ZSTACK_INSTALL_LOG
         rm -f /etc/init.d/zstack-dashboard
         rm -f /etc/init.d/zstack-ui
@@ -774,8 +773,8 @@ upgrade_zstack(){
     # - If both mevoco.jar and license.txt exist, do not install license
     # - If mevoco-2.*.jar exists but license.txt not exist, do not install license
     # - If mevoco-1.*.jar exists but license.txt not exists, then install license
-    if [ -f $CATALINA_ZSTACK_LIBS/mevoco-1.*.jar -a ! -f $LICENSE_FOLDER/license.txt -a -f $TRIAL_LICENSE_FILE ]; then
-      zstack-ctl install_license --license $TRIAL_LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_LIBS/mevoco-1.*.jar -a ! -f $LICENSE_FOLDER/license.txt -a -f $ZSTACK_TRIAL_LICENSE ]; then
+      zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     #set zstack upgrade params 
@@ -801,9 +800,7 @@ upgrade_zstack(){
           if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
               echo "start zstack-ui" >>$ZSTACK_INSTALL_LOG
               show_spinner sd_start_zstack_ui
-          fi
-   
-          if [ x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
+          elif [ x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
               echo "start dashboard" >>$ZSTACK_INSTALL_LOG
               show_spinner sd_start_dashboard
           fi
@@ -1850,7 +1847,7 @@ sz_start_zstack(){
 
 # For UI 1.x
 start_dashboard(){
-    echo_title "Start ${PRODUCT_NAME} Web UI"
+    echo_title "Start ${PRODUCT_NAME} Dashboard"
     echo ""
     #show_spinner sd_install_dashboard_libs
     #make sure current folder is existed to avoid of possible dashboard start failure. 
@@ -1860,7 +1857,7 @@ start_dashboard(){
 
 # For UI 2.0
 start_zstack_ui(){
-    echo_title "Start ${PRODUCT_NAME} Web UI"
+    echo_title "Start ${PRODUCT_NAME} ZStack UI"
     echo ""
     cd /
     show_spinner sd_start_zstack_ui
@@ -1889,7 +1886,7 @@ sd_start_dashboard(){
 
 # For UI 2.0
 sd_start_zstack_ui(){
-    echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
+    echo_subtitle "Start ${PRODUCT_NAME} ZStack UI"
     chmod a+x /etc/init.d/zstack-ui
     cd /
     /etc/init.d/zstack-ui restart >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2338,6 +2335,11 @@ fi
 
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
+# Copy zstack trial license into /var/lib/zstack/license
+if [ -f $ZSTACK_TRIAL_LICENSE ]; then
+  mkdir -p /var/lib/zstack/license
+  /bin/cp -f $ZSTACK_TRIAL_LICENSE /var/lib/zstack/license
+fi
 
 if [ -f $PRODUCT_TITLE_FILE ]; then
     cat $PRODUCT_TITLE_FILE
@@ -2600,10 +2602,12 @@ fi
 
 #Start ${PRODUCT_NAME}-UI
 if [ -z $NOT_START_ZSTACK ]; then
-    if [ -f $ZSTACK_UI_WAR ]; then
+    if [ -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/zstack-ui.war ]; then
         start_zstack_ui
+        rm -f /etc/init.d/zstack-dashboard
     else
         start_dashboard
+        rm -f /etc/init.d/zstack-ui
     fi
 fi
 

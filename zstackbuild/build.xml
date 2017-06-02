@@ -12,6 +12,7 @@
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="pypi.parent.dir" location="${war.dir}/static/" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
+    <property name="zstack.trial.license" location="${zstackutility.source}/installation/zstack_trial_license" />
     <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.${build.num}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
         <and>
             <isset property="build.num"/>
