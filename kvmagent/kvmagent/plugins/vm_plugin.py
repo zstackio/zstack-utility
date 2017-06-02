@@ -907,6 +907,25 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True):
         err = 'error happened when looking up vm[uuid:%(uuid)s], libvirt error code: %(error_code)s, %(e)s' % locals()
         raise libvirt.libvirtError(err)
 
+def get_vm_by_uuid_no_retry(uuid, exception_if_not_existing=True):
+    try:
+        # do not retry to fix create vm slow issue 4175
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.lookupByName(uuid)
+
+        vm = Vm.from_virt_domain(call_libvirt())
+        return vm
+    except libvirt.libvirtError as e:
+        error_code = e.get_error_code()
+        if error_code == libvirt.VIR_ERR_NO_DOMAIN:
+            if exception_if_not_existing:
+                raise kvmagent.KvmError('unable to find vm[uuid:%s]' % uuid)
+            else:
+                return None
+
+        err = 'error happened when looking up vm[uuid:%(uuid)s], libvirt error code: %(error_code)s, %(e)s' % locals()
+        raise libvirt.libvirtError(err)
 
 def get_active_vm_uuids_states():
     @LibvirtAutoReconnect
@@ -2699,11 +2718,8 @@ class VmPlugin(kvmagent.KvmAgent):
     @lock.lock('libvirt-startvm')
     def _start_vm(self, cmd):
         try:
-            vm = get_vm_by_uuid(cmd.vmInstanceUuid)
-        except kvmagent.KvmError:
-            vm = None
+            vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
 
-        try:
             if vm:
                 if vm.state == Vm.VM_STATE_RUNNING:
                     raise kvmagent.KvmError(
@@ -2722,8 +2738,10 @@ class VmPlugin(kvmagent.KvmAgent):
 
             try:
                 vm = get_vm_by_uuid(cmd.vmInstanceUuid)
-                if vm and vm.state == Vm.VM_STATE_RUNNING:
-                    return
+                if vm and vm.state != Vm.VM_STATE_RUNNING:
+                    raise kvmagent.KvmError(
+                       'vm[uuid:%s, name:%s] is not in running state, libvirt error: %s' % (
+                        cmd.vmInstanceUuid, cmd.vmName, str(e)))
 
             except kvmagent.KvmError:
                 raise kvmagent.KvmError(
