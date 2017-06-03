@@ -50,7 +50,6 @@ ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
-ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 UPGRADE_LOCK=/tmp/zstack_upgrade.lock
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
@@ -63,6 +62,7 @@ ONLY_INSTALL_LIBS=''
 ONLY_INSTALL_ZSTACK=''
 NOT_START_ZSTACK=''
 NEED_SET_MN_IP=''
+INSTALL_ENTERPRISE='n'
 
 MYSQL_ROOT_PASSWORD=''
 MYSQL_NEW_ROOT_PASSWORD='zstack.mysql.password'
@@ -94,10 +94,13 @@ CHANGE_HOSTNAME=''
 CHANGE_HOSTS=''
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
+CONSOLE_PROXY_ADDRESS=''
+
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
-CONSOLE_PROXY_ADDRESS=''
+ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
+ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
 #define extra upgrade params
 #1.0  1.1  1.2  1.3  1.4
@@ -1403,20 +1406,6 @@ install_zstack(){
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
       show_spinner sd_install_zstack_ui
     fi
-
-    #install license
-    if [ ! -z $LICENSE_PATH ]; then
-        if [ -f $LICENSE_PATH ]; then
-            zstack-ctl install_license --license $LICENSE_PATH >>$ZSTACK_INSTALL_LOG 2>&1
-        else
-            fail "License path ${LICENSE_PATH} does not exists."
-        fi
-    fi
-
-    #cd $ZSTACK_INSTALL_ROOT
-    #if [ -f $LICENSE_FILE ]; then
-    #    zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
-    #fi
 }
 
 install_db_msgbus(){
@@ -1437,6 +1426,27 @@ install_db_msgbus(){
     show_spinner cs_install_rabbitmq $ssh_tmp_dir
     cs_clean_ssh_tmp_key $ssh_tmp_dir
     #show_spinner cs_start_rabbitmq
+}
+
+install_license(){
+    echo_title "Install License"
+    echo ""
+    # if -L is set
+    if [ ! -z $LICENSE_PATH ]; then
+        if [ -f $LICENSE_PATH ]; then
+            zstack-ctl install_license --license $LICENSE_PATH >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+            fail "License path ${LICENSE_PATH} does not exists."
+        fi
+    elif [ x"$INSTALL_ENTERPRISE" = x'y' ]; then
+      # if -E is set
+      zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
+    #cd $ZSTACK_INSTALL_ROOT
+    #if [ -f $LICENSE_FILE ]; then
+    #    zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
+    #fi
 }
 
 config_system(){
@@ -2097,6 +2107,8 @@ Options:
   -D    drop previous ${PRODUCT_NAME} database if it exists. An error will be raised
         if a previous ${PRODUCT_NAME} database is detected and no -D or -k option is provided.
 
+  -E    Install ZStack Enterprise version. This option is only valid after ZStack 2.0.
+
   -f LOCAL_PATH_OR_URL_OF_ZSTACK_ALL_IN_ONE_PACKAGE
         file path to ${PRODUCT_NAME} all-in-one package. By default the script
         will download the all-in-one package from ${PRODUCT_NAME} official website.
@@ -2223,7 +2235,7 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDFhiklmMNoOquz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDEFhiklmMNoOquz" Option
 do
     case $Option in
         # -a: do not use yum online repo.
@@ -2233,6 +2245,7 @@ do
         C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
         d ) DEBUG='y';;
         D ) NEED_DROP_DB='y';;
+        E ) INSTALL_ENTERPRISE='y';;
         H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
         f ) ZSTACK_ALL_IN_ONE=$OPTARG;;
         F ) FORCE='y';;
@@ -2466,7 +2479,6 @@ fi
 
 #Set ZSTACK_HOME for zstack-ctl.
 export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
-ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license 
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
@@ -2588,6 +2600,9 @@ if [ ! -z $NEED_SET_MN_IP ];then
         zstack-ctl configure consoleProxyOverriddenIp=${MANAGEMENT_IP}
     fi
 fi
+
+#Install license
+install_license
 
 #Start ${PRODUCT_NAME} 
 if [ -z $NOT_START_ZSTACK ]; then
