@@ -1447,6 +1447,7 @@ install_license(){
     #if [ -f $LICENSE_FILE ]; then
     #    zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
     #fi
+    pass
 }
 
 config_system(){
@@ -2521,7 +2522,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
         echo -e " $(tput setaf 2)zstack-ui has been upgraded.$(tput sgr0)"
         echo ""
-        if [ x"$UI_CURRENT_STATUS" = x'y' ]; then
+        if [ x"$UI_CURRENT_STATUS" = x'y' -o x"$DASHBOARD_CURRENT_STATUS" = x'y' ]; then
             echo -e " $(tput setaf 2)zstack-ui has been started up again.$(tput sgr0)"
         else
             echo -e " $(tput setaf 3)zstack-ui is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
@@ -2529,7 +2530,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     elif [ x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
         echo -e " $(tput setaf 2)zstack-dashboard has been upgraded.$(tput sgr0)"
         echo ""
-        if [ x"$DASHBOARD_CURRENT_STATUS" = x'y' ]; then
+        if [ x"$UI_CURRENT_STATUS" = x'y' -o x"$DASHBOARD_CURRENT_STATUS" = x'y' ]; then
             echo -e " $(tput setaf 2)zstack-dashboard has been started up again.$(tput sgr0)"
         else
             echo -e " $(tput setaf 3)zstack-dashboard is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
