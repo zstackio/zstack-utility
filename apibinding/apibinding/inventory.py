@@ -1827,7 +1827,7 @@ class APICreateBaremetalHostCfgMsg(object):
     FULL_NAME='org.zstack.header.baremetal.host.APICreateBaremetalHostCfgMsg'
     def __init__(self):
         #mandatory field
-        self.chessisUuid = NotNoneField()
+        self.chassisUuid = NotNoneField()
         self.password = None
         #valid values: [true, false]
         self.vnc = None
@@ -1898,16 +1898,16 @@ class APIUpdateBaremetalHostCfgMsg(object):
         #valid values: [true, false]
         self.unattended = None
         self.nicCfgs = OptionalList()
-        self.chessisUuid = None
+        self.chassisUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
 
-APICREATEBAREMETALCHESSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APICreateBaremetalChessisMsg'
-class APICreateBaremetalChessisMsg(object):
-    FULL_NAME='org.zstack.header.baremetal.power.APICreateBaremetalChessisMsg'
+APICREATEBAREMETALCHASSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APICreateBaremetalChassisMsg'
+class APICreateBaremetalChassisMsg(object):
+    FULL_NAME='org.zstack.header.baremetal.power.APICreateBaremetalChassisMsg'
     def __init__(self):
         #mandatory field
         self.ipmiAddress = NotNoneField()
@@ -1922,9 +1922,9 @@ class APICreateBaremetalChessisMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEBAREMETALCHESSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIDeleteBaremetalChessisMsg'
-class APIDeleteBaremetalChessisMsg(object):
-    FULL_NAME='org.zstack.header.baremetal.power.APIDeleteBaremetalChessisMsg'
+APIDELETEBAREMETALCHASSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIDeleteBaremetalChassisMsg'
+class APIDeleteBaremetalChassisMsg(object):
+    FULL_NAME='org.zstack.header.baremetal.power.APIDeleteBaremetalChassisMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -1940,7 +1940,7 @@ class APIPowerOffBaremetalHostMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APIPowerOffBaremetalHostMsg'
     def __init__(self):
         #mandatory field
-        self.chessisUuid = NotNoneField()
+        self.chassisUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1952,7 +1952,7 @@ class APIPowerOnBaremetalHostMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APIPowerOnBaremetalHostMsg'
     def __init__(self):
         #mandatory field
-        self.chessisUuid = NotNoneField()
+        self.chassisUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1964,7 +1964,7 @@ class APIPowerResetBaremetalHostMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APIPowerResetBaremetalHostMsg'
     def __init__(self):
         #mandatory field
-        self.chessisUuid = NotNoneField()
+        self.chassisUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1976,16 +1976,16 @@ class APIProvisionBaremetalHostMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APIProvisionBaremetalHostMsg'
     def __init__(self):
         #mandatory field
-        self.chessisUuid = NotNoneField()
+        self.chassisUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
 
-APIQUERYBAREMETALCHESSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIQueryBaremetalChessisMsg'
-class APIQueryBaremetalChessisMsg(object):
-    FULL_NAME='org.zstack.header.baremetal.power.APIQueryBaremetalChessisMsg'
+APIQUERYBAREMETALCHASSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIQueryBaremetalChassisMsg'
+class APIQueryBaremetalChassisMsg(object):
+    FULL_NAME='org.zstack.header.baremetal.power.APIQueryBaremetalChassisMsg'
     def __init__(self):
         #mandatory field
         self.conditions = NotNoneList()
@@ -2004,9 +2004,9 @@ class APIQueryBaremetalChessisMsg(object):
         self.userTags = OptionalList()
 
 
-APIQUERYBAREMETALCHESSISREPLY_FULL_NAME = 'org.zstack.header.baremetal.power.APIQueryBaremetalChessisReply'
-class APIQueryBaremetalChessisReply(object):
-    FULL_NAME='org.zstack.header.baremetal.power.APIQueryBaremetalChessisReply'
+APIQUERYBAREMETALCHASSISREPLY_FULL_NAME = 'org.zstack.header.baremetal.power.APIQueryBaremetalChassisReply'
+class APIQueryBaremetalChassisReply(object):
+    FULL_NAME='org.zstack.header.baremetal.power.APIQueryBaremetalChassisReply'
     def __init__(self):
         self.inventories = OptionalList()
         self.total = None
@@ -2014,9 +2014,9 @@ class APIQueryBaremetalChessisReply(object):
         self.error = None
 
 
-APIUPDATEBAREMETALCHESSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIUpdateBaremetalChessisMsg'
-class APIUpdateBaremetalChessisMsg(object):
-    FULL_NAME='org.zstack.header.baremetal.power.APIUpdateBaremetalChessisMsg'
+APIUPDATEBAREMETALCHASSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIUpdateBaremetalChassisMsg'
+class APIUpdateBaremetalChassisMsg(object):
+    FULL_NAME='org.zstack.header.baremetal.power.APIUpdateBaremetalChassisMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -7602,6 +7602,21 @@ class APIQueryIPSecConnectionReply(object):
         self.error = None
 
 
+APIUPDATEIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIUpdateIPsecConnectionMsg'
+class APIUpdateIPsecConnectionMsg(object):
+    FULL_NAME='org.zstack.ipsec.APIUpdateIPsecConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDKVMHOSTMSG_FULL_NAME = 'org.zstack.kvm.APIAddKVMHostMsg'
 class APIAddKVMHostMsg(object):
     FULL_NAME='org.zstack.kvm.APIAddKVMHostMsg'
@@ -7992,6 +8007,37 @@ class APIMonitoringPassThroughReply(object):
     FULL_NAME='org.zstack.monitoring.APIMonitoringPassThroughReply'
     def __init__(self):
         self.data = OptionalMap()
+        self.success = None
+        self.error = None
+
+
+APIQUERYVTEPMSG_FULL_NAME = 'org.zstack.network.l2.vxlan.vtep.APIQueryVtepMsg'
+class APIQueryVtepMsg(object):
+    FULL_NAME='org.zstack.network.l2.vxlan.vtep.APIQueryVtepMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVTEPREPLY_FULL_NAME = 'org.zstack.network.l2.vxlan.vtep.APIQueryVtepReply'
+class APIQueryVtepReply(object):
+    FULL_NAME='org.zstack.network.l2.vxlan.vtep.APIQueryVtepReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
         self.success = None
         self.error = None
 
@@ -8766,6 +8812,35 @@ class APIRemoveVmNicFromLoadBalancerMsg(object):
         self.vmNicUuids = NotNoneList()
         #mandatory field
         self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATELOADBALANCERLISTENERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIUpdateLoadBalancerListenerMsg'
+class APIUpdateLoadBalancerListenerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIUpdateLoadBalancerListenerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATELOADBALANCERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIUpdateLoadBalancerMsg'
+class APIUpdateLoadBalancerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIUpdateLoadBalancerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -10358,7 +10433,7 @@ api_names = [
     'APICloneVmInstanceMsg',
     'APICommitVolumeAsImageMsg',
     'APICreateAccountMsg',
-    'APICreateBaremetalChessisMsg',
+    'APICreateBaremetalChassisMsg',
     'APICreateBaremetalHostCfgMsg',
     'APICreateBaremetalPxeServerMsg',
     'APICreateClusterMsg',
@@ -10416,7 +10491,7 @@ api_names = [
     'APIDeleteAliyunKeySecretMsg',
     'APIDeleteAllEcsInstancesFromDataCenterMsg',
     'APIDeleteBackupStorageMsg',
-    'APIDeleteBaremetalChessisMsg',
+    'APIDeleteBaremetalChassisMsg',
     'APIDeleteBaremetalHostCfgMsg',
     'APIDeleteBaremetalPxeServerMsg',
     'APIDeleteCephPrimaryStoragePoolMsg',
@@ -10721,8 +10796,8 @@ api_names = [
     'APIQueryApplianceVmReply',
     'APIQueryBackupStorageMsg',
     'APIQueryBackupStorageReply',
-    'APIQueryBaremetalChessisMsg',
-    'APIQueryBaremetalChessisReply',
+    'APIQueryBaremetalChassisMsg',
+    'APIQueryBaremetalChassisReply',
     'APIQueryBaremetalHostCfgMsg',
     'APIQueryBaremetalHostCfgReply',
     'APIQueryBaremetalPxeServerMsg',
@@ -10880,6 +10955,8 @@ api_names = [
     'APIQueryVolumeSnapshotReply',
     'APIQueryVolumeSnapshotTreeMsg',
     'APIQueryVolumeSnapshotTreeReply',
+    'APIQueryVtepMsg',
+    'APIQueryVtepReply',
     'APIQueryWebhookMsg',
     'APIQueryWebhookReply',
     'APIQueryZoneMsg',
@@ -10974,7 +11051,7 @@ api_names = [
     'APITriggerGCJobMsg',
     'APIUpdateAccountMsg',
     'APIUpdateBackupStorageMsg',
-    'APIUpdateBaremetalChessisMsg',
+    'APIUpdateBaremetalChassisMsg',
     'APIUpdateBaremetalHostCfgMsg',
     'APIUpdateBaremetalPxeServerMsg',
     'APIUpdateCephBackupStorageMonMsg',
@@ -10988,6 +11065,7 @@ api_names = [
     'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIUpdateGlobalConfigMsg',
     'APIUpdateHostMsg',
+    'APIUpdateIPsecConnectionMsg',
     'APIUpdateImageMsg',
     'APIUpdateImageStoreBackupStorageMsg',
     'APIUpdateInstanceOfferingMsg',
@@ -10996,6 +11074,8 @@ api_names = [
     'APIUpdateL2NetworkMsg',
     'APIUpdateL3NetworkMsg',
     'APIUpdateLdapServerMsg',
+    'APIUpdateLoadBalancerListenerMsg',
+    'APIUpdateLoadBalancerMsg',
     'APIUpdateNotificationsStatusMsg',
     'APIUpdatePortForwardingRuleMsg',
     'APIUpdatePrimaryStorageMsg',
@@ -12286,7 +12366,7 @@ class OssBucketInventory(object):
 class BaremetalHostCfgInventory(object):
     def __init__(self):
         self.uuid = None
-        self.chessisUuid = None
+        self.chassisUuid = None
         self.password = None
         self.vnc = None
         self.unattended = None
@@ -12300,10 +12380,10 @@ class BaremetalHostCfgInventory(object):
         else:
             self.uuid = None
 
-        if hasattr(inv, 'chessisUuid'):
-            self.chessisUuid = inv.chessisUuid
+        if hasattr(inv, 'chassisUuid'):
+            self.chassisUuid = inv.chassisUuid
         else:
-            self.chessisUuid = None
+            self.chassisUuid = None
 
         if hasattr(inv, 'password'):
             self.password = inv.password
@@ -12445,7 +12525,7 @@ class BaremetalHostNicCfgStruct(object):
 
 
 
-class BaremetalChessisInventory(object):
+class BaremetalChassisInventory(object):
     def __init__(self):
         self.uuid = None
         self.ipmiAddress = None
@@ -15454,6 +15534,7 @@ class GlobalConfig_HA(object):
     HOST_CHECK_SUCCESSTIMES = 'host.check.successTimes'
     ENABLE = 'enable'
     HOST_CHECK_INTERVAL = 'host.check.interval'
+    NEVERSTOPVM_SCAN_INTERVAL = 'neverStopVm.scan.interval'
     NEVERSTOPVM_RETRY_DELAY = 'neverStopVm.retry.delay'
     HOST_SELFFENCER_STORAGECHECKER_TIMEOUT = 'host.selfFencer.storageChecker.timeout'
     HOST_CHECK_SUCCESSINTERVAL = 'host.check.successInterval'
@@ -15552,13 +15633,6 @@ class GlobalConfig_LOCALSTORAGEPRIMARYSTORAGE(object):
     def get_category():
         return 'localStoragePrimaryStorage'
 
-class GlobalConfig_LOG(object):
-    ENABLED = 'enabled'
-
-    @staticmethod
-    def get_category():
-        return 'log'
-
 class GlobalConfig_LOGGING(object):
     LOCALE = 'locale'
 
@@ -15595,6 +15669,16 @@ class GlobalConfig_MONITOR(object):
     @staticmethod
     def get_category():
         return 'monitor'
+
+class GlobalConfig_NETWORKSERVICE(object):
+    DEFAULTDHCPMTU_DUMMYNETWORK = 'defaultDhcpMtu.dummyNetwork'
+    DEFAULTDHCPMTU_L2VXLANNETWORK = 'defaultDhcpMtu.l2VxlanNetwork'
+    DEFAULTDHCPMTU_L2VLANNETWORK = 'defaultDhcpMtu.l2VlanNetwork'
+    DEFAULTDHCPMTU_L2NOVLANNETWORK = 'defaultDhcpMtu.l2NoVlanNetwork'
+
+    @staticmethod
+    def get_category():
+        return 'networkService'
 
 class GlobalConfig_NFSPRIMARYSTORAGE(object):
     DELETION_GCINTERVAL = 'deletion.gcInterval'
@@ -15802,14 +15886,14 @@ class QueryObjectBackupStorageZoneRefInventory(object):
         'backupStorage' : 'QueryObjectBackupStorageInventory',
      }
 
-class QueryObjectBaremetalChessisInventory(object):
+class QueryObjectBaremetalChassisInventory(object):
      PRIMITIVE_FIELDS = ['provisioned','lastOpDate','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectBaremetalHostCfgInventory(object):
-     PRIMITIVE_FIELDS = ['unattended','chessisUuid','password','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['unattended','password','chassisUuid','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['nicCfgs']
      QUERY_OBJECT_MAP = {
         'nicCfgs' : 'QueryObjectBaremetalHostNicCfgInventory',
@@ -16735,7 +16819,7 @@ queryMessageInventoryMap = {
      'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,
      'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
      'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
-     'APIQueryBaremetalChessisMsg' : QueryObjectBaremetalChessisInventory,
+     'APIQueryBaremetalChassisMsg' : QueryObjectBaremetalChassisInventory,
      'APIQueryBaremetalHostCfgMsg' : QueryObjectBaremetalHostCfgInventory,
      'APIQueryBaremetalPxeServerMsg' : QueryObjectBaremetalPxeServerInventory,
      'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,
@@ -16815,6 +16899,7 @@ queryMessageInventoryMap = {
      'APIQueryVolumeMsg' : QueryObjectVolumeInventory,
      'APIQueryVolumeSnapshotMsg' : QueryObjectVolumeSnapshotInventory,
      'APIQueryVolumeSnapshotTreeMsg' : QueryObjectVolumeSnapshotTreeInventory,
+     'APIQueryVtepMsg' : QueryObjectVtepInventory,
      'APIQueryWebhookMsg' : QueryObjectWebhookInventory,
      'APIQueryZoneMsg' : QueryObjectZoneInventory,
 }
