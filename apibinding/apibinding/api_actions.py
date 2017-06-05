@@ -950,14 +950,14 @@ class CreateAccountAction(inventory.APICreateAccountMsg):
         self.out = evt
         return self.out
 
-class CreateBaremetalChessisAction(inventory.APICreateBaremetalChessisMsg):
+class CreateBaremetalChassisAction(inventory.APICreateBaremetalChassisMsg):
     def __init__(self):
-        super(CreateBaremetalChessisAction, self).__init__()
+        super(CreateBaremetalChassisAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateBaremetalChessisAction] cannot be None')
+            raise Exception('sessionUuid of action[CreateBaremetalChassisAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1646,14 +1646,14 @@ class DeleteBackupStorageAction(inventory.APIDeleteBackupStorageMsg):
         self.out = evt
         return self.out
 
-class DeleteBaremetalChessisAction(inventory.APIDeleteBaremetalChessisMsg):
+class DeleteBaremetalChassisAction(inventory.APIDeleteBaremetalChassisMsg):
     def __init__(self):
-        super(DeleteBaremetalChessisAction, self).__init__()
+        super(DeleteBaremetalChassisAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteBaremetalChessisAction] cannot be None')
+            raise Exception('sessionUuid of action[DeleteBaremetalChassisAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3856,15 +3856,15 @@ class QueryBackupStorageAction(inventory.APIQueryBackupStorageMsg):
         self.out = reply.inventories
         return self.out
 
-class QueryBaremetalChessisAction(inventory.APIQueryBaremetalChessisMsg):
+class QueryBaremetalChassisAction(inventory.APIQueryBaremetalChassisMsg):
     def __init__(self):
-        super(QueryBaremetalChessisAction, self).__init__()
+        super(QueryBaremetalChassisAction, self).__init__()
         self.sessionUuid = None
         self.reply = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryBaremetalChessisAction] cannot be None')
+            raise Exception('sessionUuid of action[QueryBaremetalChassisAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -4990,6 +4990,20 @@ class QueryVolumeSnapshotTreeAction(inventory.APIQueryVolumeSnapshotTreeMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryVtepAction(inventory.APIQueryVtepMsg):
+    def __init__(self):
+        super(QueryVtepAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVtepAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryWebhookAction(inventory.APIQueryWebhookMsg):
     def __init__(self):
         super(QueryWebhookAction, self).__init__()
@@ -5796,14 +5810,14 @@ class UpdateBackupStorageAction(inventory.APIUpdateBackupStorageMsg):
         self.out = evt
         return self.out
 
-class UpdateBaremetalChessisAction(inventory.APIUpdateBaremetalChessisMsg):
+class UpdateBaremetalChassisAction(inventory.APIUpdateBaremetalChassisMsg):
     def __init__(self):
-        super(UpdateBaremetalChessisAction, self).__init__()
+        super(UpdateBaremetalChassisAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateBaremetalChessisAction] cannot be None')
+            raise Exception('sessionUuid of action[UpdateBaremetalChassisAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5964,6 +5978,18 @@ class UpdateHostAction(inventory.APIUpdateHostMsg):
         self.out = evt
         return self.out
 
+class UpdateIPsecConnectionAction(inventory.APIUpdateIPsecConnectionMsg):
+    def __init__(self):
+        super(UpdateIPsecConnectionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateIPsecConnectionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateImageAction(inventory.APIUpdateImageMsg):
     def __init__(self):
         super(UpdateImageAction, self).__init__()
@@ -6056,6 +6082,30 @@ class UpdateLdapServerAction(inventory.APIUpdateLdapServerMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateLdapServerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateLoadBalancerAction(inventory.APIUpdateLoadBalancerMsg):
+    def __init__(self):
+        super(UpdateLoadBalancerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateLoadBalancerListenerAction(inventory.APIUpdateLoadBalancerListenerMsg):
+    def __init__(self):
+        super(UpdateLoadBalancerListenerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateLoadBalancerListenerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
