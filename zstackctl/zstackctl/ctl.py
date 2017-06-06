@@ -6584,14 +6584,14 @@ class StartUiCmd(Command):
         ctl.register_command(self)
         if not os.path.exists(os.path.dirname(self.PID_FILE)):
             shell("mkdir -p %s" % os.path.dirname(self.PID_FILE))
-            shell("mkdir -p /var/log/zstack")
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
         parser.add_argument('--port', help="UI server port. [DEFAULT] 5000", default='5000')
+        parser.add_argument('--log', help="UI log folder. [DEFAULT] /var/log/zstack/", default='/var/log/zstack/')
 
-    def _remote_start(self, host, port):
-        cmd = '/etc/init.d/zstack-ui start %s' % port
+    def _remote_start(self, host, port, log):
+        cmd = '/etc/init.d/zstack-ui start --port %s --log %s' % (port, log)
         ssh_run_no_pipe(host, cmd)
         info('successfully start the UI server on the remote host[%s:%s]' % (host, port))
 
@@ -6623,9 +6623,10 @@ class StartUiCmd(Command):
 
     def run(self, args):
         if args.host != 'localhost':
-            self._remote_start(args.host, args.port)
+            self._remote_start(args.host, args.port, args.log)
             return
 
+        shell("mkdir -p %s", args.log)
         zstackui = '/usr/local/zstack/zstack-ui'
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (zstackui, args.host))
@@ -6642,7 +6643,7 @@ class StartUiCmd(Command):
         else:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.port)
 
-        scmd = 'java -jar -Dserver.port=%s -Dwebhook.port=%s %s/zstack-ui.war >/var/log/zstack/zstack-ui.log 2>&1 &' % (args.port, args.port, zstackui)
+        scmd = 'LOGGING_PATH=%s java -jar -Dserver.port=%s -Dwebhook.port=%s %s/zstack-ui.war >>%s/zstack-ui.log 2>&1 &' % (args.log, args.port, args.port, zstackui, args.log)
         script(scmd, no_pipe=True)
 
         @loop_until_timeout(5, 0.5)
