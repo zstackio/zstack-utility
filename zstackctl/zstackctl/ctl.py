@@ -6626,7 +6626,7 @@ class StartUiCmd(Command):
             self._remote_start(args.host, args.port, args.log)
             return
 
-        shell("mkdir -p %s", args.log)
+        shell("mkdir -p %s" % args.log)
         zstackui = '/usr/local/zstack/zstack-ui'
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (zstackui, args.host))
