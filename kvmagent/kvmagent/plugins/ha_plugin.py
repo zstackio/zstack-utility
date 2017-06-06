@@ -117,8 +117,15 @@ class HaPlugin(kvmagent.KvmAgent):
         self.run_ceph_fencer = True
 
         def ceph_in_error_stat():
-            healthStatus = shell.call('ceph health')
-            return healthStatus.startswith('HEALTH_ERR')
+            # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
+            health = shell.ShellCmd('timeout %s ceph health' % cmd.storageCheckerTimeout)
+            health(False)
+            # If the command times out, then exit with status 124
+            if health.return_code == 124:
+                return True
+
+            health_status = health.stdout
+            return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
 
         def heartbeat_file_exists():
             touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
