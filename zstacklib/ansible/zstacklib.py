@@ -1275,8 +1275,8 @@ def replace_content(dest, args, host_post_info):
 
 def update_file(dest, args, host_post_info):
     '''
-    This module will search a file for a line, and ensure that it is present or absent. This is primarily useful
-    when you want to change a single line in a file only
+    This module will search a file for lines, and ensure that it is present or absent. This is primarily useful
+    when you want to change lines in a file
     '''
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1501,6 +1501,7 @@ def enable_ntp(trusted_host, host_post_info, distro):
         if host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
             if host_post_info.host not in get_ha_mn_list("/var/lib/zstack/ha/ha.yaml"):
                 replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
+                update_file("/etc/ntp.conf", "regexp='#server %s' state=absent" % trusted_host, host_post_info)
                 update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
     replace_content("/etc/ntp.conf", "regexp='restrict default nomodify notrap nopeer noquery'"
                                      " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
