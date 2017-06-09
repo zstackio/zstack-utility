@@ -251,7 +251,7 @@ class IPTables(Node):
     def _create_chain_if_not_exists(self, chain_name, counter_str=None):
         chain = self._current_table.get_child_by_name(chain_name)
         if not chain:
-            chain  = IPTableChain()
+            chain = IPTableChain()
             chain.parent = self._current_table
             chain.name = chain_name
             chain.identity = chain_name
@@ -319,6 +319,20 @@ class IPTables(Node):
                 target = rs[rs.index(r) + 1]
                 
         return target
+
+    @staticmethod
+    def find_ipset_in_rule(rule):
+        if isinstance(rule, IPTableRule):
+            rs = str(rule).split()
+        else:
+            rs = rule.split()
+
+        ipset = None
+        for r in rs:
+            if r == '--match-set':
+                ipset = rs[rs.index(r) + 1]
+                break
+        return ipset
     
     @staticmethod
     def is_target_in_rule(rule, target):
@@ -334,6 +348,32 @@ class IPTables(Node):
             target = None
             
         return target
+
+    def list_used_ipset_name(self):
+        sets_name = []
+        rules = self.list_reference_ipset_rules(None)
+        for r in rules:
+            set_name = self.find_ipset_in_rule(r)
+            if set_name not in sets_name:
+                sets_name.append(set_name)
+
+        return sets_name
+
+    def list_reference_ipset_rules(self, ipsets=None):
+        def walker(rule, data):
+            if not isinstance(rule, IPTableRule):
+                return False
+
+            if ipsets is not None and self.find_ipset_in_rule(rule) in ipsets:
+                return True
+            elif ipsets is None and self.find_ipset_in_rule(rule):
+                return True
+
+            return False
+
+        rules = self.walk_all(walker, None)
+        return rules
+
         
     def _reset(self):
         self.children = []

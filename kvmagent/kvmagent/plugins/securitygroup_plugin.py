@@ -2,6 +2,8 @@
 
 @author: frank
 '''
+from zstacklib.utils import ipset
+
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import jsonobject
@@ -52,20 +54,28 @@ class CleanupUnusedRulesOnHostResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CleanupUnusedRulesOnHostResponse, self).__init__()
 
+class UpdateGroupMemberResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateGroupMemberResponse, self).__init__()
+
 class SecurityGroupPlugin(kvmagent.KvmAgent):
     
     SECURITY_GROUP_APPLY_RULE_PATH = "/securitygroup/applyrules"
     SECURITY_GROUP_REFRESH_RULE_ON_HOST_PATH = "/securitygroup/refreshrulesonhost"
     SECURITY_GROUP_CLEANUP_UNUSED_RULE_ON_HOST_PATH = "/securitygroup/cleanupunusedrules"
+    SECURITY_GROUP_UPDATE_GROUP_MEMBER = "/securitygroup/updategroupmember"
     
     RULE_TYPE_INGRESS = 'Ingress'
     RULE_TYPE_EGRESS = 'Egress'
     PROTOCOL_TCP = 'TCP'
     PROTOCOL_UDP = 'UDP'
     PROTOCOL_ICMP = 'ICMP'
+    PROTOCOL_ALL = 'ALL'
 
     ACTION_CODE_APPLY_RULE = 'applyRule'
     ACTION_CODE_DELETE_CHAIN = 'deleteChain'
+    ACTION_CODE_DELETE_GROUP = 'deleteGroup'
+    ACTION_CODE_UPDATE_GROUP_MEMBER = 'updateGroup'
 
     DEFAULT_POLICY_ACCEPT = 'accept'
     DEFAULT_POLICY_DENY = 'deny'
@@ -73,6 +83,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     WORLD_OPEN_CIDR = '0.0.0.0/0'
     
     ZSTACK_DEFAULT_CHAIN = 'sg-default'
+    ZSTACK_IPSET_NAME_FORMAT = 'zstack-sg'
     
     def _make_in_chain_name(self, vif_name):
         return '%s-in' % vif_name
@@ -91,15 +102,18 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     
     def _end_egress_rule(self, out_chain_name):
         return '-A %s -j DROP' % out_chain_name
-        
-    def _create_rules_using_iprange_match(self, sto):
-        rules = []
+
+    def _make_security_group_ipset_name(self, uuid):
+        # max ipset name is 31 char
+        uuid_part = uuid[0:19]
+        return '%s-%s' % (self.ZSTACK_IPSET_NAME_FORMAT, uuid_part)
+
+    def _create_rule_from_setting(self, sto, ipset_mn):
         vif_name = sto.vmNicInternalName
         in_chain_name = self._make_in_chain_name(vif_name)
-        rules.append(self._start_ingress_rule(vif_name, in_chain_name))
         out_chain_name = self._make_out_chain_name(vif_name)
-        rules.append(self._start_egress_rule(vif_name, out_chain_name))
-
+        empty_in_chain = [True]
+        empty_out_chain = [True]
 
         def make_ingress_rule(rto):
             if rto.protocol == self.PROTOCOL_ICMP:
@@ -107,80 +121,138 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                     icmp_type = 'any'
                 else:
                     icmp_type = '%s/%s' % (rto.startPort, rto.endPort)
-                    
-                tmpt = ' '.join(['-A', in_chain_name, '-p icmp --icmp-type', icmp_type, '-m iprange --src-range %s -j RETURN'])
+
+                tmpt = ' '.join(
+                    ['-A', in_chain_name, '-p icmp --icmp-type', icmp_type, '-m iprange --src-range %s -j RETURN'])
                 cidr_tmpt = ' '.join(['-A', in_chain_name, '-p icmp --icmp-type', icmp_type, '-s %s -j RETURN'])
+            elif rto.protocol == self.PROTOCOL_ALL:
+                tmpt = ' '.join(
+                    ['-A', in_chain_name, '-p all -m state --state NEW -m iprange --src-range %s -j RETURN'])
+                cidr_tmpt = ' '.join(
+                    ['-A', in_chain_name, '-p all -m state --state NEW -s %s -j RETURN'])
             else:
                 protocol = rto.protocol.lower()
                 start_port = rto.startPort
                 end_port = rto.endPort
-                tmpt = ' '.join(['-A', in_chain_name, '-p', protocol, '-m', protocol, '--dport', '%s:%s' % (start_port, end_port), '-m state --state NEW -m iprange --src-range %s -j RETURN'])
-                cidr_tmpt = ' '.join(['-A', in_chain_name, '-p', protocol, '-m', protocol, '--dport', '%s:%s' % (start_port, end_port), '-m state --state NEW -s %s -j RETURN'])
-                        
+                tmpt = ' '.join(
+                    ['-A', in_chain_name, '-p', protocol, '-m', protocol, '--dport', '%s:%s' % (start_port, end_port),
+                     '-m state --state NEW -m iprange --src-range %s -j RETURN'])
+                cidr_tmpt = ' '.join(
+                    ['-A', in_chain_name, '-p', protocol, '-m', protocol, '--dport', '%s:%s' % (start_port, end_port),
+                     '-m state --state NEW -s %s -j RETURN'])
+
             rule = cidr_tmpt % rto.allowedCidr
-            rules.append(rule)
-            
-            if rto.allowedCidr != self.WORLD_OPEN_CIDR:
-                for internal_ip in rto.allowedInternalIpRange:
-                    rule = tmpt % internal_ip
-                    rules.append(rule)
-            
-        
+            return rule
+
         def make_egress_rule(rto):
             if rto.protocol == self.PROTOCOL_ICMP:
                 if rto.startPort == -1:
                     icmp_type = 'any'
                 else:
                     icmp_type = '%s/%s' % (rto.startPort, rto.endPort)
-                    
-                tmpt = ' '.join(['-A', out_chain_name, '-p icmp --icmp-type', icmp_type, '-m iprange --dst-range %s -j RETURN'])
+
+                tmpt = ' '.join(
+                    ['-A', out_chain_name, '-p icmp --icmp-type', icmp_type, '-m iprange --dst-range %s -j RETURN'])
                 cidr_tmpt = ' '.join(['-A', out_chain_name, '-p icmp --icmp-type', icmp_type, '-d %s -j RETURN'])
+            elif rto.protocol == self.PROTOCOL_ALL:
+                tmpt = ' '.join(
+                    ['-A', out_chain_name, '-p all -m state --state NEW -m iprange --dst-range %s -j RETURN'])
+                cidr_tmpt = ' '.join(
+                    ['-A', out_chain_name, '-p all -m state --state NEW -d %s -j RETURN'])
             else:
                 protocol = rto.protocol.lower()
                 start_port = rto.startPort
                 end_port = rto.endPort
-                tmpt = ' '.join(['-A', out_chain_name, '-p', protocol, '-m', protocol, '--dport', '%s:%s' % (start_port, end_port), '-m state --state NEW -m iprange --dst-range %s -j RETURN'])
-                cidr_tmpt = ' '.join(['-A', out_chain_name, '-p', protocol, '-m', protocol, '--dport', '%s:%s' % (start_port, end_port), '-m state --state NEW -d %s -j RETURN'])
-                        
+                tmpt = ' '.join(
+                    ['-A', out_chain_name, '-p', protocol, '-m', protocol, '--dport', '%s:%s' % (start_port, end_port),
+                     '-m state --state NEW -m iprange --dst-range %s -j RETURN'])
+                cidr_tmpt = ' '.join(
+                    ['-A', out_chain_name, '-p', protocol, '-m', protocol, '--dport', '%s:%s' % (start_port, end_port),
+                     '-m state --state NEW -d %s -j RETURN'])
+
             rule = cidr_tmpt % rto.allowedCidr
-            rules.append(rule)
-            if rto.allowedCidr != self.WORLD_OPEN_CIDR:
-                for internal_ip in rto.allowedInternalIpRange:
-                    rule = tmpt % internal_ip
-                    rules.append(rule)
-            
-        empty_in_chain = True
-        empty_out_chain = True
-        for r in sto.rules:
-            if r.type == self.RULE_TYPE_INGRESS:
-                make_ingress_rule(r)
-                empty_in_chain = False
-            elif r.type == self.RULE_TYPE_EGRESS:
-                make_egress_rule(r)
-                empty_out_chain = False
-            else:
-                assert 0, 'unknown rule type[%s]' % r.type
+            return rule
 
-        if empty_in_chain:
-            if sto.ingressDefaultPolicy == self.DEFAULT_POLICY_ACCEPT:
-                rules.append('-A %s -j ACCEPT' % in_chain_name)
-            elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DENY:
-                rules.append('-A %s -j REJECT --reject-with icmp-host-prohibited' % in_chain_name)
-            else:
-                raise Exception('unknown default ingress policy: %s' % sto.ingressDefaultPolicy)
-        else:
-            rules.append(self._end_ingress_rule(in_chain_name))
+        def create_start_rule():
+            starts_rules = []
+            starts_rules.append(self._start_ingress_rule(vif_name, in_chain_name))
+            starts_rules.append(self._start_egress_rule(vif_name, out_chain_name))
+            return starts_rules
 
-        if empty_out_chain:
-            if sto.egressDefaultPolicy == self.DEFAULT_POLICY_ACCEPT:
-                rules.append('-A %s -j RETURN' % out_chain_name)
-            elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DENY:
-                rules.append('-A %s -j DROP' % out_chain_name)
+        def create_tail_rule():
+            tails_rules = []
+
+            if empty_in_chain[0]:
+                if sto.ingressDefaultPolicy == self.DEFAULT_POLICY_ACCEPT:
+                    tails_rules.append('-A %s -j ACCEPT' % in_chain_name)
+                elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DENY:
+                    tails_rules.append('-A %s -j REJECT --reject-with icmp-host-prohibited' % in_chain_name)
+                else:
+                    raise Exception('unknown default ingress policy: %s' % sto.ingressDefaultPolicy)
             else:
-                raise Exception('unknown default egress policy: %s' % sto.egressDefaultPolicy)
-        else:
-            rules.append(self._end_egress_rule(out_chain_name))
-        
+                tails_rules.append(self._end_ingress_rule(in_chain_name))
+
+            if empty_out_chain[0]:
+                if sto.egressDefaultPolicy == self.DEFAULT_POLICY_ACCEPT:
+                    tails_rules.append('-A %s -j RETURN' % out_chain_name)
+                elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DENY:
+                    tails_rules.append('-A %s -j DROP' % out_chain_name)
+                else:
+                    raise Exception('unknown default egress policy: %s' % sto.egressDefaultPolicy)
+            else:
+                tails_rules.append(self._end_egress_rule(out_chain_name))
+
+            return tails_rules
+
+        def create_group_base_rules():
+            group_rules = []
+
+            for r in sto.securityGroupBaseRules:
+                set_name = self._make_security_group_ipset_name(r.remoteGroupUuid)
+                if r.type == self.RULE_TYPE_INGRESS:
+                    rule = make_ingress_rule(r)
+                    grule = ' '.join([rule, '-m set --match-set %s src' % set_name])
+                    group_rules.append(grule)
+                    empty_in_chain[0] = False
+                elif r.type == self.RULE_TYPE_EGRESS:
+                    rule = make_egress_rule(r)
+                    grule = ' '.join([rule, '-m set --match-set %s dst' % set_name])
+                    group_rules.append(grule)
+                    empty_out_chain[0] = False
+                else:
+                    assert 0, 'unknown rule type[%s]' % r.type
+
+                if set_name not in ipset_mn.sets.keys():
+                    ipset_mn.create_set(name=set_name, match_ips=r.remoteGroupVmIps)
+
+            return group_rules
+
+        def create_rules_using_iprange_match():
+            ip_rules = []
+
+            for r in sto.rules:
+                if r.type == self.RULE_TYPE_INGRESS:
+                    rule = make_ingress_rule(r)
+                    empty_in_chain[0] = False
+                elif r.type == self.RULE_TYPE_EGRESS:
+                    rule = make_egress_rule(r)
+                    empty_out_chain[0] = False
+                else:
+                    assert 0, 'unknown rule type[%s]' % r.type
+                ip_rules.append(rule)
+
+            return ip_rules
+
+        start_rules = create_start_rule()
+        group_base_rules = create_group_base_rules()
+        ip_base_rules = create_rules_using_iprange_match()
+        tail_rules = create_tail_rule()
+
+        rules = []
+        rules.extend(start_rules)
+        rules.extend(group_base_rules)
+        rules.extend(ip_base_rules)
+        rules.extend(tail_rules)
         return rules
     
     def _create_default_rules(self, ipt):
@@ -202,13 +274,13 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             default_chain.delete()
             logger.debug('deleted default chain')
     
-    def _apply_rules_on_vnic_chain(self, ipt, rto):
+    def _apply_rules_on_vnic_chain(self, ipt, ipset_mn, rto):
         self._delete_vnic_chain(ipt, rto.vmNicInternalName)
-        
-        rules = self._create_rules_using_iprange_match(rto)
-        
-        for rule in rules:
-            ipt.add_rule(rule)
+
+        rules = self._create_rule_from_setting(rto, ipset_mn)
+
+        for r in rules:
+            ipt.add_rule(r)
             
     def _delete_vnic_in_chain(self, ipt, nic_name):
         in_chain_name = self._make_in_chain_name(nic_name)
@@ -244,11 +316,16 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             return True
         return False
 
-    def _apply_rules_using_iprange_match(self, cmd, iptable=None):
+    def _apply_rules_using_iprange_match(self, cmd, iptable=None, ipset_mn=None):
         if not iptable:
             ipt = iptables.from_iptables_save()
         else:
             ipt = iptable
+
+        if not ipset_mn:
+            ips_mn = ipset.IPSetManager()
+        else:
+            ips_mn = ipset_mn
 
         self._create_default_rules(ipt)
         
@@ -256,16 +333,22 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             if rto.actionCode == self.ACTION_CODE_DELETE_CHAIN:
                 self._delete_vnic_chain(ipt, rto.vmNicInternalName)
             elif rto.actionCode == self.ACTION_CODE_APPLY_RULE:
-                self._apply_rules_on_vnic_chain(ipt, rto)
+                self._apply_rules_on_vnic_chain(ipt, ips_mn, rto)
             else:
                 raise Exception('unknown action code: %s' % rto.actionCode)
-
 
         default_accept_rule = "-A %s -j ACCEPT" % self.ZSTACK_DEFAULT_CHAIN
         ipt.remove_rule(default_accept_rule)
         ipt.add_rule(default_accept_rule)
         self._cleanup_stale_chains(ipt)
+
+        ips_mn.refresh_my_ipsets()
         ipt.iptable_restore()
+        used_ipset = ipt.list_used_ipset_name()
+
+        def match_set_name(name):
+            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
+        ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
         
     def _refresh_rules_on_host_using_iprange_match(self, cmd):
         ipt = iptables.from_iptables_save()
@@ -310,8 +393,41 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         rsp = CleanupUnusedRulesOnHostResponse()
 
         ipt = iptables.from_iptables_save()
+        ips_mn = ipset.IPSetManager()
         self._cleanup_stale_chains(ipt)
         ipt.iptable_restore()
+
+        used_ipset = ipt.list_used_ipset_name()
+
+        def match_set_name(name):
+            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
+
+        ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
+        return jsonobject.dumps(rsp)
+
+    @lock.file_lock('/run/xtables.lock')
+    @kvmagent.replyerror
+    def update_group_member(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UpdateGroupMemberResponse()
+
+        ips_mn = ipset.IPSetManager()
+        ipt = iptables.from_iptables_save()
+        to_del_ipset_names = []
+        for uto in cmd.updateGroupTOs:
+            if uto.actionCode == self.ACTION_CODE_DELETE_GROUP:
+                to_del_ipset_names.append(self._make_security_group_ipset_name(uto.securityGroupUuid))
+            elif uto.actionCode == self.ACTION_CODE_UPDATE_GROUP_MEMBER:
+                set_name = self._make_security_group_ipset_name(uto.securityGroupUuid)
+                ips_mn.create_set(name=set_name, match_ips=uto.securityGroupVmIps)
+
+        ips_mn.refresh_my_ipsets()
+        if len(to_del_ipset_names) > 0:
+            to_del_rules = ipt.list_reference_ipset_rules(to_del_ipset_names)
+            for rule in to_del_rules:
+                ipt.remove_rule(rule)
+            ipt.iptable_restore()
+            ips_mn.clean_ipsets(to_del_ipset_names)
 
         return jsonobject.dumps(rsp)
 
@@ -320,6 +436,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.SECURITY_GROUP_CLEANUP_UNUSED_RULE_ON_HOST_PATH, self.cleanup_unused_rules_on_host)
         http_server.register_async_uri(self.SECURITY_GROUP_APPLY_RULE_PATH, self.apply_rules)
         http_server.register_async_uri(self.SECURITY_GROUP_REFRESH_RULE_ON_HOST_PATH, self.refresh_rules_on_host)
+        http_server.register_async_uri(self.SECURITY_GROUP_UPDATE_GROUP_MEMBER, self.update_group_member)
         
     def stop(self):
         pass
