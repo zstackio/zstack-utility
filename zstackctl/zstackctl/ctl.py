@@ -6586,9 +6586,10 @@ class StartUiCmd(Command):
             shell("mkdir -p %s" % os.path.dirname(self.PID_FILE))
 
     def install_argparse_arguments(self, parser):
+        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
         parser.add_argument('--port', help="UI server port. [DEFAULT] 5000", default='5000')
-        parser.add_argument('--log', help="UI log folder. [DEFAULT] /var/log/zstack/", default='/var/log/zstack/')
+        parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
 
     def _remote_start(self, host, port, log):
         cmd = '/etc/init.d/zstack-ui start --port %s --log %s' % (port, log)
@@ -6659,7 +6660,7 @@ class StartUiCmd(Command):
         write_pid()
         pid = find_process_by_cmdline('zstack-ui')
         if not pid:
-            info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in /var/log/zstack/zstack-ui.log')
+            info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui.log' % args.log)
             return False
 
         default_ip = get_default_ip()
