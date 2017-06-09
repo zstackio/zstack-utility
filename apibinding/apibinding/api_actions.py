@@ -1562,6 +1562,18 @@ class CreateVolumeSnapshotSchedulerAction(inventory.APICreateVolumeSnapshotSched
         self.out = evt
         return self.out
 
+class CreateVpcUserVpnGatewayRemoteAction(inventory.APICreateVpcUserVpnGatewayRemoteMsg):
+    def __init__(self):
+        super(CreateVpcUserVpnGatewayRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVpcUserVpnGatewayRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateVpcVirtualRouterEntryRemoteAction(inventory.APICreateVpcVirtualRouterEntryRemoteMsg):
     def __init__(self):
         super(CreateVpcVirtualRouterEntryRemoteAction, self).__init__()
@@ -1570,6 +1582,42 @@ class CreateVpcVirtualRouterEntryRemoteAction(inventory.APICreateVpcVirtualRoute
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateVpcVirtualRouterEntryRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateVpcVpnConnectionRemoteAction(inventory.APICreateVpcVpnConnectionRemoteMsg):
+    def __init__(self):
+        super(CreateVpcVpnConnectionRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVpcVpnConnectionRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateVpnIkeConfigAction(inventory.APICreateVpnIkeConfigMsg):
+    def __init__(self):
+        super(CreateVpnIkeConfigAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVpnIkeConfigAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateVpnIpsecAction(inventory.APICreateVpnIpsecMsg):
+    def __init__(self):
+        super(CreateVpnIpsecAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVpnIpsecAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2458,6 +2506,90 @@ class DeleteVolumeSnapshotFromBackupStorageAction(inventory.APIDeleteVolumeSnaps
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteVolumeSnapshotFromBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVpcIkeConfigLocalAction(inventory.APIDeleteVpcIkeConfigLocalMsg):
+    def __init__(self):
+        super(DeleteVpcIkeConfigLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVpcIkeConfigLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVpcIpSecConfigLocalAction(inventory.APIDeleteVpcIpSecConfigLocalMsg):
+    def __init__(self):
+        super(DeleteVpcIpSecConfigLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVpcIpSecConfigLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVpcUserVpnGatewayLocalAction(inventory.APIDeleteVpcUserVpnGatewayLocalMsg):
+    def __init__(self):
+        super(DeleteVpcUserVpnGatewayLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVpcUserVpnGatewayLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVpcUserVpnGatewayRemoteAction(inventory.APIDeleteVpcUserVpnGatewayRemoteMsg):
+    def __init__(self):
+        super(DeleteVpcUserVpnGatewayRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVpcUserVpnGatewayRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVpcVpnConnectionLocalAction(inventory.APIDeleteVpcVpnConnectionLocalMsg):
+    def __init__(self):
+        super(DeleteVpcVpnConnectionLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVpcVpnConnectionLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVpcVpnConnectionRemoteAction(inventory.APIDeleteVpcVpnConnectionRemoteMsg):
+    def __init__(self):
+        super(DeleteVpcVpnConnectionRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVpcVpnConnectionRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVpcVpnGatewayLocalAction(inventory.APIDeleteVpcVpnGatewayLocalMsg):
+    def __init__(self):
+        super(DeleteVpcVpnGatewayLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVpcVpnGatewayLocalAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3598,6 +3730,18 @@ class GetVolumeSnapshotTreeAction(inventory.APIGetVolumeSnapshotTreeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVolumeSnapshotTreeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetVpcVpnConfigurationFromRemoteAction(inventory.APIGetVpcVpnConfigurationFromRemoteMsg):
+    def __init__(self):
+        super(GetVpcVpnConfigurationFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVpcVpnConfigurationFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5050,6 +5194,76 @@ class QueryVolumeSnapshotTreeAction(inventory.APIQueryVolumeSnapshotTreeMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryVpcIkeConfigFromLocalAction(inventory.APIQueryVpcIkeConfigFromLocalMsg):
+    def __init__(self):
+        super(QueryVpcIkeConfigFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVpcIkeConfigFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVpcIpSecConfigFromLocalAction(inventory.APIQueryVpcIpSecConfigFromLocalMsg):
+    def __init__(self):
+        super(QueryVpcIpSecConfigFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVpcIpSecConfigFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVpcUserVpnGatewayFromLocalAction(inventory.APIQueryVpcUserVpnGatewayFromLocalMsg):
+    def __init__(self):
+        super(QueryVpcUserVpnGatewayFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVpcUserVpnGatewayFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVpcVpnConnectionFromLocalAction(inventory.APIQueryVpcVpnConnectionFromLocalMsg):
+    def __init__(self):
+        super(QueryVpcVpnConnectionFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVpcVpnConnectionFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVpcVpnGatewayFromLocalAction(inventory.APIQueryVpcVpnGatewayFromLocalMsg):
+    def __init__(self):
+        super(QueryVpcVpnGatewayFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVpcVpnGatewayFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryVtepAction(inventory.APIQueryVtepMsg):
     def __init__(self):
         super(QueryVtepAction, self).__init__()
@@ -5834,6 +6048,42 @@ class SyncVolumeSizeAction(inventory.APISyncVolumeSizeMsg):
         self.out = evt
         return self.out
 
+class SyncVpcUserVpnGatewayFromRemoteAction(inventory.APISyncVpcUserVpnGatewayFromRemoteMsg):
+    def __init__(self):
+        super(SyncVpcUserVpnGatewayFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncVpcUserVpnGatewayFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncVpcVpnConnectionFromRemoteAction(inventory.APISyncVpcVpnConnectionFromRemoteMsg):
+    def __init__(self):
+        super(SyncVpcVpnConnectionFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncVpcVpnConnectionFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncVpcVpnGatewayFromRemoteAction(inventory.APISyncVpcVpnGatewayFromRemoteMsg):
+    def __init__(self):
+        super(SyncVpcVpnGatewayFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncVpcVpnGatewayFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class TerminateVirtualBorderRouterRemoteAction(inventory.APITerminateVirtualBorderRouterRemoteMsg):
     def __init__(self):
         super(TerminateVirtualBorderRouterRemoteAction, self).__init__()
@@ -6394,6 +6644,18 @@ class UpdateVolumeSnapshotAction(inventory.APIUpdateVolumeSnapshotMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateVolumeSnapshotAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateVpcVpnConnectionRemoteAction(inventory.APIUpdateVpcVpnConnectionRemoteMsg):
+    def __init__(self):
+        super(UpdateVpcVpnConnectionRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateVpcVpnConnectionRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
