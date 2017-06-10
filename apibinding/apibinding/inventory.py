@@ -2041,7 +2041,6 @@ class APIUpdateBaremetalHostCfgMsg(object):
         #valid values: [true, false]
         self.unattended = None
         self.nicCfgs = OptionalList()
-        self.chassisUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -17726,10 +17725,12 @@ class QueryObjectVCenterPrimaryStorageInventory(object):
 
 class QueryObjectVipInventory(object):
      PRIMITIVE_FIELDS = ['ip','useFor','description','l3NetworkUuid','uuid','netmask','name','serviceProvider','lastOpDate','peerL3NetworkUuid','state','gateway','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['portForwarding','loadBalancer','eip']
+     EXPANDED_FIELDS = ['portForwarding','l3Network','loadBalancer','peerL3Network','eip']
      QUERY_OBJECT_MAP = {
         'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
+        'l3Network' : 'QueryObjectL3NetworkInventory',
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
+        'peerL3Network' : 'QueryObjectL3NetworkInventory',
         'eip' : 'QueryObjectEipInventory',
      }
 
