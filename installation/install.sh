@@ -42,7 +42,7 @@ WEBSITE=${WEBSITE-'zstack.org'}
 ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
 CATALINA_ZSTACK_PATH=apache-tomcat/webapps/zstack
 CATALINA_ZSTACK_CLASSES=$CATALINA_ZSTACK_PATH/WEB-INF/classes
-CATALINA_ZSTACK_LIBS=$CATALINA_ZSTACK_PATH/WEB-INF/libs
+CATALINA_ZSTACK_LIBS=$CATALINA_ZSTACK_PATH/WEB-INF/lib
 ZSTACK_PROPERTIES=$CATALINA_ZSTACK_CLASSES/zstack.properties
 ZSTACK_DB_DEPLOYER=$CATALINA_ZSTACK_CLASSES/deploydb.sh
 CATALINA_ZSTACK_TOOLS=$CATALINA_ZSTACK_CLASSES/tools
@@ -776,8 +776,12 @@ upgrade_zstack(){
     # - If both mevoco.jar and license.txt exist, do not install license
     # - If mevoco-2.*.jar exists but license.txt not exist, do not install license
     # - If mevoco-1.*.jar exists but license.txt not exists, then install license
-    if [ -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_LIBS/mevoco-1.*.jar -a ! -f $LICENSE_FOLDER/license.txt -a -f $ZSTACK_TRIAL_LICENSE ]; then
-      zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ x"$MEVOCO_1_EXISTS" = x'y' ]; then
+        if [ ! -f $LICENSE_FOLDER/license.txt ]; then
+            if [ -f $LICENSE_FOLDER/zstack_trial_license ]; then
+                zstack-ctl install_license --license $LICENSE_FOLDER/zstack_trial_license >>$ZSTACK_INSTALL_LOG 2>&1
+            fi
+        fi
     fi
 
     #set zstack upgrade params 
@@ -2424,6 +2428,12 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
                 "Please download proper ISO and upgrade the local repo first."
         fi
     fi
+fi
+
+# whether mevoco-1\.*.jar exists
+MEVOCO_1_EXISTS='n'
+if [ -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_LIBS/mevoco-1\.*.jar ]; then
+    MEVOCO_1_EXISTS='y'
 fi
 
 #set http_proxy if needed
