@@ -1435,6 +1435,11 @@ install_db_msgbus(){
 install_license(){
     echo_title "Install License"
     echo ""
+    show_spinner il_install_license
+}
+
+il_install_license(){
+    echo_subtitle "Install License"
     # if -L is set
     if [ ! -z $LICENSE_PATH ]; then
         if [ -f $LICENSE_PATH ]; then
@@ -1872,7 +1877,7 @@ start_dashboard(){
 
 # For UI 2.0
 start_zstack_ui(){
-    echo_title "Start ${PRODUCT_NAME} ZStack UI"
+    echo_title "Start ${PRODUCT_NAME} Web UI"
     echo ""
     cd /
     show_spinner sd_start_zstack_ui
@@ -1903,7 +1908,7 @@ sd_start_dashboard(){
 sd_start_zstack_ui(){
     zstack_home=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
     ui_logging_path=$zstack_home/../../logs/
-    echo_subtitle "Start ${PRODUCT_NAME} ZStack UI"
+    echo_subtitle "Start ${PRODUCT_NAME} Web UI"
     chmod a+x /etc/init.d/zstack-ui
     cd /
     /etc/init.d/zstack-ui restart --log $ui_logging_path >>$ZSTACK_INSTALL_LOG 2>&1
