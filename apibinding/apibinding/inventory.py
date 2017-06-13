@@ -824,6 +824,7 @@ class APISyncEcsInstanceFromRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.dataCenterUuid = NotNoneField()
+        self.onlyZstack = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
