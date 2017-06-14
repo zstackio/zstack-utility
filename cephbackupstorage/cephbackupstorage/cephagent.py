@@ -76,10 +76,6 @@ class CheckImageMetaDataFileExistResponse(AgentResponse):
         self.backupStorageMetaFileName = None
         self.exist = None
 
-class GetLocalFileSizeRsp(AgentResponse):
-    def __init__(self):
-        super(GetLocalFileSizeRsp, self).__init__()
-        self.size = None
 
 def replyerror(func):
     @functools.wraps(func)
@@ -109,7 +105,6 @@ class CephAgent(object):
     DUMP_IMAGE_METADATA_TO_FILE = "/ceph/backupstorage/dumpimagemetadatatofile"
     CHECK_IMAGE_METADATA_FILE_EXIST = "/ceph/backupstorage/checkimagemetadatafileexist"
     CHECK_POOL_PATH = "/ceph/backupstorage/checkpool"
-    GET_LOCAL_FILE_SIZE = "/ceph/backupstorage/getlocalfilesize/"
 
     CEPH_METADATA_FILE = "bs_ceph_info.json"
 
@@ -129,7 +124,6 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DUMP_IMAGE_METADATA_TO_FILE, self.dump_image_metadata_to_file)
         self.http_server.register_async_uri(self.DELETE_IMAGES_METADATA, self.delete_image_metadata_from_file)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
-        self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -549,12 +543,6 @@ class CephAgent(object):
 
         return jsonobject.dumps(AgentResponse())
 
-    @replyerror
-    def get_local_file_size(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetLocalFileSizeRsp()
-        rsp.size = linux.get_local_file_size(cmd.path)
-        return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):
     def __init__(self, pidfile):

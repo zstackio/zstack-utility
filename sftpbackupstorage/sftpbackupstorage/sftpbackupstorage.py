@@ -21,7 +21,6 @@ import stat
 
 logger = log.get_logger(__name__)
 
-
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
@@ -29,44 +28,36 @@ class AgentResponse(object):
         self.totalCapacity = None
         self.availableCapacity = None
 
-
 class AgentCommand(object):
     def __init__(self):
         pass
 
-
 class PingCommand(AgentCommand):
     def __init__(self):
         super(PingCommand, self).__init__()
-
 
 class PingResponse(AgentResponse):
     def __init__(self):
         super(PingResponse, self).__init__()
         self.uuid = None
 
-
 class ConnectCmd(AgentCommand):
     def __init__(self):
         super(ConnectCmd, self).__init__()
         self.storagePath = None
 
-
 class ConnectResponse(AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
-
 
 class DeleteCmd(AgentCommand):
     def __init__(self):
         super(DeleteCmd, self).__init__()
         self.installUrl = None
 
-
 class DeleteResponse(AgentResponse):
     def __init__(self):
         super(DeleteResponse, self).__init__()
-
 
 class DownloadCmd(AgentCommand):
     def __init__(self):
@@ -84,7 +75,6 @@ class DownloadCmd(AgentCommand):
         self.urlScheme = None
         self.installPath = None
 
-
 class DownloadResponse(AgentResponse):
     def __init__(self):
         super(DownloadResponse, self).__init__()
@@ -94,64 +84,53 @@ class DownloadResponse(AgentResponse):
         self.actualSize = None
         self.format = None
 
-
 class DeleteImageMetaDataResponse(AgentResponse):
     def __init__(self):
-        super(DeleteImageMetaDataResponse, self).__init__()
+        super(DeleteImageMetaDataResponse,self).__init__()
         self.ret = None
-
 
 class DeleteImageMetaDataCmd(AgentCommand):
     def __init__(self):
         super(DeleteImageMetaDataCmd, self).__init__()
-        self.uuid = None
-
+        self.uuid= None
 
 class WriteImageMetaDataResponse(AgentResponse):
     def __init__(self):
-        super(WriteImageMetaDataResponse, self).__init__()
-
+        super(WriteImageMetaDataResponse,self).__init__()
 
 class WriteImageMetaDataCmd(AgentCommand):
     def __init__(self):
         super(WriteImageMetaDataCmd, self).__init__()
         self.metaData = None
 
-
 class GetImageMetaDataResponse(AgentResponse):
     def __init__(self):
-        super(GetImageMetaDataResponse, self).__init__()
+        super(GetImageMetaDataResponse,self).__init__()
         self.imagesMetaData = None
-
 
 class GetImageMetaDataCmd(AgentCommand):
     def __init__(self):
         super(GetImageMetaDataCmd, self).__init__()
         self.bsPath = None
 
-
 class DumpImageMetaDataToFileResponse(AgentResponse):
     def __init__(self):
-        super(DumpImageMetaDataToFileResponse, self).__init__()
-
+        super(DumpImageMetaDataToFileResponse,self).__init__()
 
 class DumpImageMetaDataToFileCmd(AgentCommand):
     def __init__(self):
         super(DumpImageMetaDataToFileCmd, self).__init__()
         self.metaData = None
 
-
 class GenerateImageMetaDataFileResponse(AgentResponse):
     def __init__(self):
         super(GenerateImageMetaDataFileResponse, self).__init__()
         self.bsFileName = None
 
-
 class GenerateImageMetaDataFileCmd(AgentCommand):
     def __init__(self):
         super(GenerateImageMetaDataFileCmd, self).__init__()
         self.bsPath = None
-
 
 class CheckImageMetaDataFileExistResponse(AgentResponse):
     def __init__(self):
@@ -159,35 +138,25 @@ class CheckImageMetaDataFileExistResponse(AgentResponse):
         self.backupStorageMetaFileName = None
         self.exist = None
 
-
 class CheckImageMetaDataFileExistCmd(AgentCommand):
     def __init__(self):
         super(CheckImageMetaDataFileExistCmd, self).__init__()
         self.bsPath = None
 
-
 class GetSshKeyCommand(AgentCommand):
     def __init__(self):
         super(GetSshKeyCommand, self).__init__()
-
 
 class GetSshKeyResponse(AgentResponse):
     def __init__(self):
         self.sshKey = None
         super(GetSshKeyResponse, self).__init__()
 
-class GetLocalFileSizeRsp(AgentResponse):
-    def __init__(self):
-        super(GetLocalFileSizeRsp, self).__init__()
-        self.size = None
-
-
 class GetImageSizeRsp(AgentResponse):
     def __init__(self):
         super(GetImageSizeRsp, self).__init__()
         self.actualSize = None
         self.size = None
-
 
 def replyerror(func):
     @functools.wraps(func)
@@ -205,11 +174,11 @@ def replyerror(func):
 
     return wrap
 
-
 class SftpBackupStorageAgent(object):
     '''
     classdocs
     '''
+
 
     CONNECT_PATH = "/sftpbackupstorage/connect"
     DOWNLOAD_IMAGE_PATH = "/sftpbackupstorage/download"
@@ -224,7 +193,6 @@ class SftpBackupStorageAgent(object):
     CHECK_IMAGE_METADATA_FILE_EXIST = "/sftpbackupstorage/checkimagemetadatafileexist"
     GET_IMAGES_METADATA = "/sftpbackupstorage/getimagesmetadata"
     GET_IMAGE_SIZE = "/sftpbackupstorage/getimagesize"
-    GET_LOCAL_FILE_SIZE = "/sftpbackupstorage/getlocalfilesize/"
 
     IMAGE_TEMPLATE = 'template'
     IMAGE_ISO = 'iso'
@@ -256,13 +224,6 @@ class SftpBackupStorageAgent(object):
         return ''
 
     @replyerror
-    def get_local_file_size(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetLocalFileSizeRsp()
-        rsp.size = linux.get_local_file_size(cmd.path)
-        return jsonobject.dumps(rsp)
-
-    @replyerror
     def get_image_size(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetImageSizeRsp()
@@ -279,9 +240,7 @@ class SftpBackupStorageAgent(object):
         if not os.path.exists(self.storage_path):
             os.makedirs(self.storage_path, 0777)
         (total, avail) = self.get_capacity()
-        logger.debug(http.path_msg(self.CONNECT_PATH,
-                                   'connected, [storage path:%s, total capacity: %s bytes, available capacity: %s size]' % (
-                                   self.storage_path, total, avail)))
+        logger.debug(http.path_msg(self.CONNECT_PATH, 'connected, [storage path:%s, total capacity: %s bytes, available capacity: %s size]' % (self.storage_path, total, avail)))
         rsp = ConnectResponse()
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
@@ -307,18 +266,19 @@ class SftpBackupStorageAgent(object):
         rsp = WriteImageMetaDataResponse()
         return jsonobject.dumps(rsp)
 
+
     @in_bash
     def _generate_image_metadata_file(self, bs_path):
         bs_meta_file = bs_path + '/' + self.SFTP_METADATA_FILE
         if os.path.isfile(bs_meta_file) is False:
-            # dir = '/'.join(bs_path.split("/")[:-1])
+            #dir = '/'.join(bs_path.split("/")[:-1])
             if os.path.exists(bs_path) is False:
                 os.makedirs(bs_path)
             ret, output = bash_ro("touch %s" % bs_meta_file)
             if ret == 0:
-                return bs_meta_file
+                return  bs_meta_file
             else:
-                raise Exception('can not create image metadata file %s' % output)
+                raise  Exception('can not create image metadata file %s' % output)
         else:
             return bs_meta_file
 
@@ -368,7 +328,7 @@ class SftpBackupStorageAgent(object):
                     with open(bs_sftp_info_file, 'a') as fd:
                         _write_info_to_metadata_file(fd)
             else:
-                # one image info
+                #one image info
                 if dump_all_metadata is True:
                     with open(bs_sftp_info_file, 'w') as fd:
                         fd.write(content + '\n')
@@ -410,7 +370,7 @@ class SftpBackupStorageAgent(object):
                         continue
                     image_uuid_list.append(image_uuid)
                     ret = bash_r("ls %s" % image_install_path)
-                    if ret == 0:
+                    if ret == 0 :
                         logger.info("Check image %s install path %s successfully!" % (image_uuid, image_install_path))
                         valid_images_info = image_info + '\n' + valid_images_info
                     else:
@@ -423,21 +383,19 @@ class SftpBackupStorageAgent(object):
     @in_bash
     @replyerror
     def download_image(self, req):
-        # TODO: report percentage to mgmt server
+        #TODO: report percentage to mgmt server
         def percentage_callback(percent, url):
             logger.debug('Downloading %s ... %s%%' % (url, percent))
 
         def use_wget(url, name, workdir, timeout):
-            return linux.wget(url, workdir=workdir, rename=name, timeout=timeout, interval=2,
-                              callback=percentage_callback, callback_data=url)
+            return linux.wget(url, workdir=workdir, rename=name, timeout=timeout, interval=2, callback=percentage_callback, callback_data=url)
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DownloadResponse()
         supported_schemes = [self.URL_HTTP, self.URL_HTTPS, self.URL_FILE]
         if cmd.urlScheme not in supported_schemes:
             rsp.success = False
-            rsp.error = 'unsupported url scheme[%s], SimpleSftpBackupStorage only supports %s' % (
-            cmd.urlScheme, supported_schemes)
+            rsp.error = 'unsupported url scheme[%s], SimpleSftpBackupStorage only supports %s' % (cmd.urlScheme, supported_schemes)
             return jsonobject.dumps(rsp)
 
         path = os.path.dirname(cmd.installPath)
@@ -454,8 +412,7 @@ class SftpBackupStorageAgent(object):
                 ret = use_wget(cmd.url, image_name, path, timeout)
                 if ret != 0:
                     rsp.success = False
-                    rsp.error = 'http/https download failed, [wget -O %s %s] returns value %s' % (
-                    image_name, cmd.url, ret)
+                    rsp.error = 'http/https download failed, [wget -O %s %s] returns value %s' % (image_name, cmd.url, ret)
                     return jsonobject.dumps(rsp)
             except linux.LinuxError as e:
                 traceback.format_exc()
@@ -468,12 +425,13 @@ class SftpBackupStorageAgent(object):
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
             logger.debug("src_path is: %s" % src_path)
-            shell.call('yes | cp %s %s' % (src_path, linux.shellquote(install_path)))
+            shell.call('yes | cp %s %s' % (src_path, linux.shellquote(install_path) ))
+
+
 
         os.chmod(cmd.installPath, stat.S_IRUSR + stat.S_IRGRP + stat.S_IROTH)
 
-        image_format = bash_o(
-            "qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % linux.shellquote(install_path)).strip('\n')
+        image_format = bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % linux.shellquote(install_path)).strip('\n')
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
@@ -485,6 +443,7 @@ class SftpBackupStorageAgent(object):
         rsp.availableCapacity = avail
         rsp.format = image_format
         return jsonobject.dumps(rsp)
+
 
     @replyerror
     def delete_image(self, req):
@@ -507,7 +466,7 @@ class SftpBackupStorageAgent(object):
             err = "Cannot find private key of SftpBackupStorageAgent"
             rsp.error = err
             rsp.success = False
-            logger.warn("%s at %s" % (err, self.SSHKEY_PATH))
+            logger.warn("%s at %s" %(err, self.SSHKEY_PATH))
             return jsonobject.dumps(rsp)
 
         with open(path) as fd:
@@ -533,10 +492,8 @@ class SftpBackupStorageAgent(object):
         self.http_server.register_async_uri(self.GET_IMAGES_METADATA, self.get_images_metadata)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE, self.get_image_size)
-        self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
         self.storage_path = None
         self.uuid = None
-
 
 class SftpBackupStorageDaemon(daemon.Daemon):
     def __init__(self, pidfile):
@@ -545,7 +502,6 @@ class SftpBackupStorageDaemon(daemon.Daemon):
     def run(self):
         self.agent = SftpBackupStorageAgent()
         self.agent.http_server.start()
-
 
 def _build_url_for_test(paths):
     builder = http.UriBuilder('http://localhost:%s' % SftpBackupStorageAgent.PORT)

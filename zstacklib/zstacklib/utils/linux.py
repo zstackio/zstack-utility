@@ -237,7 +237,6 @@ def umount_by_url(url):
         umount(p, is_exception=False)
 
 
-
 def get_file_size_by_http_head(url):
     output = shell.ShellCmd('curl --head %s' % url)()
     for l in output.split('\n'):
@@ -364,10 +363,6 @@ def ssh(hostname, sshkey, cmd, user='root', sshPort=22):
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
-
-def get_local_file_size(path):
-    size = os.path.getsize(path)
-    return size
 
 def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root', sshPort=22):
     def create_ssh_key_file():

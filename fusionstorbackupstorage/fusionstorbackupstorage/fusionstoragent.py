@@ -57,11 +57,6 @@ class GetFactsRsp(AgentResponse):
         super(GetFactsRsp, self).__init__()
         self.fsid = None
 
-class GetLocalFileSizeRsp(AgentResponse):
-    def __init__(self):
-        super(GetLocalFileSizeRsp, self).__init__()
-        self.size = None
-
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -85,8 +80,6 @@ class FusionstorAgent(object):
     ECHO_PATH = "/fusionstor/backupstorage/echo"
     GET_IMAGE_SIZE_PATH = "/fusionstor/backupstorage/image/getsize"
     GET_FACTS = "/fusionstor/backupstorage/facts"
-    GET_LOCAL_FILE_SIZE = "/fusionstor/backupstorage/getlocalfilesize"
-
 
     http_server = http.HttpServer(port=7763)
     http_server.logfile_path = log.get_logfile_path()
@@ -99,7 +92,6 @@ class FusionstorAgent(object):
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
-        self.http_server.register_sync_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
 
     def _set_capacity_to_response(self, rsp):
         total, used = lichbd.lichbd_get_capacity()
@@ -247,12 +239,6 @@ class FusionstorAgent(object):
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
-    @replyerror
-    def get_local_file_size(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetLocalFileSizeRsp()
-        rsp.size = linux.get_local_file_size(cmd.path)
-        return jsonobject.dumps(rsp)
 
 class FusionstorDaemon(daemon.Daemon):
     def __init__(self, pidfile):
