@@ -12018,48 +12018,6 @@ class GlobalConfigInventory(object):
 
 
 
-class EcsInstanceConsoleProxyInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.ecsInstanceUuid = None
-        self.vncUrl = None
-        self.vncPassword = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'ecsInstanceUuid'):
-            self.ecsInstanceUuid = inv.ecsInstanceUuid
-        else:
-            self.ecsInstanceUuid = None
-
-        if hasattr(inv, 'vncUrl'):
-            self.vncUrl = inv.vncUrl
-        else:
-            self.vncUrl = None
-
-        if hasattr(inv, 'vncPassword'):
-            self.vncPassword = inv.vncPassword
-        else:
-            self.vncPassword = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
 class EcsInstanceInventory(object):
     def __init__(self):
         self.uuid = None
@@ -17239,12 +17197,6 @@ class QueryObjectEcsImageInventory(object):
 
 class QueryObjectEcsImageMd5SumMappingInventory(object):
      PRIMITIVE_FIELDS = ['rawMd5Sum','lastOpDate','id','ossBucketName','qcow2Md5Sum','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
-     QUERY_OBJECT_MAP = {
-     }
-
-class QueryObjectEcsInstanceConsoleProxyInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceUuid','lastOpDate','vncUrl','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
