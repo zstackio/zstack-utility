@@ -1907,9 +1907,11 @@ sd_start_dashboard(){
 # For UI 2.0
 sd_start_zstack_ui(){
     echo_subtitle "Start ${PRODUCT_NAME} Web UI"
+    zstack_home=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
+    ui_logging_path=$zstack_home/../../logs/
     chmod a+x /etc/init.d/zstack-ui
     cd /
-    /etc/init.d/zstack-ui restart >>$ZSTACK_INSTALL_LOG 2>&1
+    /etc/init.d/zstack-ui restart --log $ui_logging_path >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to zstack dashboard start"
     pass
 }
