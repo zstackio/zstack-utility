@@ -296,6 +296,11 @@ Parse command parameters error:
 
             # '=' will be used for more meanings than 'equal' in Query API
             if apiname.startswith('APIQuery') and apiname not in NOT_QUERY_MYSQL_APIS:
+                for param_str in pairs[1:]:
+                    for param_str in pairs[1:]:
+                        params = param_str.split('=', 1)
+                        if len(params) != 2:
+                            raise CliError('Invalid parameter[%s], the parameter must be split by "="' % param_str)
                 return apiname, pairs[1:]
 
             all_params = {}
