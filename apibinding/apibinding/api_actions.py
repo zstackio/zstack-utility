@@ -278,14 +278,14 @@ class AddNfsPrimaryStorageAction(inventory.APIAddNfsPrimaryStorageMsg):
         self.out = evt
         return self.out
 
-class AddOssFileBucketNameAction(inventory.APIAddOssFileBucketNameMsg):
+class AddOssBucketFromRemoteAction(inventory.APIAddOssBucketFromRemoteMsg):
     def __init__(self):
-        super(AddOssFileBucketNameAction, self).__init__()
+        super(AddOssBucketFromRemoteAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AddOssFileBucketNameAction] cannot be None')
+            raise Exception('sessionUuid of action[AddOssBucketFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2186,6 +2186,18 @@ class DeleteOssBucketFileRemoteAction(inventory.APIDeleteOssBucketFileRemoteMsg)
         self.out = evt
         return self.out
 
+class DeleteOssBucketNameLocalAction(inventory.APIDeleteOssBucketNameLocalMsg):
+    def __init__(self):
+        super(DeleteOssBucketNameLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteOssBucketNameLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteOssBucketRemoteAction(inventory.APIDeleteOssBucketRemoteMsg):
     def __init__(self):
         super(DeleteOssBucketRemoteAction, self).__init__()
@@ -2194,18 +2206,6 @@ class DeleteOssBucketRemoteAction(inventory.APIDeleteOssBucketRemoteMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteOssBucketRemoteAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DeleteOssFileBucketNameInLocalAction(inventory.APIDeleteOssFileBucketNameInLocalMsg):
-    def __init__(self):
-        super(DeleteOssFileBucketNameInLocalAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteOssFileBucketNameInLocalAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

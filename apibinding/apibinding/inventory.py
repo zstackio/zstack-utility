@@ -680,8 +680,6 @@ class APICreateEcsInstanceFromLocalImageMsg(object):
         #valid values: [true, false]
         self.allocatePublicIp = None
         #mandatory field
-        self.identityZoneUuid = NotNoneField()
-        #mandatory field
         self.backupStorageUuid = NotNoneField()
         #mandatory field
         self.imageUuid = NotNoneField()
@@ -1729,12 +1727,12 @@ class APISyncVirtualRouterFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIADDOSSFILEBUCKETNAMEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIAddOssFileBucketNameMsg'
-class APIAddOssFileBucketNameMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIAddOssFileBucketNameMsg'
+APIADDOSSBUCKETFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIAddOssBucketFromRemoteMsg'
+class APIAddOssBucketFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIAddOssBucketFromRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.ossBucketName = NotNoneField()
+        self.bucketName = NotNoneField()
         #mandatory field
         self.regionId = NotNoneField()
         self.description = None
@@ -1803,9 +1801,9 @@ class APIDeleteOssBucketFileRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
-class APIDeleteOssBucketRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
+APIDELETEOSSBUCKETNAMELOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketNameLocalMsg'
+class APIDeleteOssBucketNameLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketNameLocalMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -1816,9 +1814,9 @@ class APIDeleteOssBucketRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEOSSFILEBUCKETNAMEINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssFileBucketNameInLocalMsg'
-class APIDeleteOssFileBucketNameInLocalMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssFileBucketNameInLocalMsg'
+APIDELETEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
+class APIDeleteOssBucketRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -11026,7 +11024,7 @@ api_names = [
     'APIAddMonToFusionstorPrimaryStorageMsg',
     'APIAddNetworkServiceProviderMsg',
     'APIAddNfsPrimaryStorageMsg',
-    'APIAddOssFileBucketNameMsg',
+    'APIAddOssBucketFromRemoteMsg',
     'APIAddSecurityGroupRuleMsg',
     'APIAddSftpBackupStorageMsg',
     'APIAddSharedMountPointPrimaryStorageMsg',
@@ -11188,8 +11186,8 @@ api_names = [
     'APIDeleteNicQosMsg',
     'APIDeleteNotificationsMsg',
     'APIDeleteOssBucketFileRemoteMsg',
+    'APIDeleteOssBucketNameLocalMsg',
     'APIDeleteOssBucketRemoteMsg',
-    'APIDeleteOssFileBucketNameInLocalMsg',
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
@@ -12983,6 +12981,7 @@ class OssBucketInventory(object):
         self.uuid = None
         self.bucketName = None
         self.regionId = None
+        self.regionName = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -13002,6 +13001,11 @@ class OssBucketInventory(object):
             self.regionId = inv.regionId
         else:
             self.regionId = None
+
+        if hasattr(inv, 'regionName'):
+            self.regionName = inv.regionName
+        else:
+            self.regionName = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -17556,7 +17560,7 @@ class QueryObjectOssBucketEcsDataCenterRefInventory(object):
      }
 
 class QueryObjectOssBucketInventory(object):
-     PRIMITIVE_FIELDS = ['bucketName','regionId','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['bucketName','regionId','regionName','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['dataCenter']
      QUERY_OBJECT_MAP = {
         'dataCenter' : 'QueryObjectDataCenterInventory',
