@@ -1260,13 +1260,13 @@ class APICreateEcsSecurityGroupRuleRemoteMsg(object):
         #valid values: [ingress, egress]
         self.direction = NotNoneField()
         #mandatory field
-        #valid values: [TCP, UDP, ICMP, GRE, ALL]
+        #valid values: [TCP, UDP, ICMP, GRE, ALL, tcp, udp, icmp, gre, all]
         self.protocol = NotNoneField()
         #mandatory field
         self.portRange = NotNoneField()
         self.externalGroupId = None
         self.cidr = None
-        #valid values: [Accept, Drop]
+        #valid values: [accept, drop]
         self.policy = None
         #valid values: [intranet, internet]
         self.nictype = None
