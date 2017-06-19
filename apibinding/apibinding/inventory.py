@@ -428,79 +428,6 @@ class APIUpdateNotificationsStatusMsg(object):
         self.userTags = OptionalList()
 
 
-APICHANGESCHEDULERSTATEMSG_FULL_NAME = 'org.zstack.core.scheduler.APIChangeSchedulerStateMsg'
-class APIChangeSchedulerStateMsg(object):
-    FULL_NAME='org.zstack.core.scheduler.APIChangeSchedulerStateMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        #valid values: [enable, disable]
-        self.stateEvent = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIDELETESCHEDULERMSG_FULL_NAME = 'org.zstack.core.scheduler.APIDeleteSchedulerMsg'
-class APIDeleteSchedulerMsg(object):
-    FULL_NAME='org.zstack.core.scheduler.APIDeleteSchedulerMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.deleteMode = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYSCHEDULERMSG_FULL_NAME = 'org.zstack.core.scheduler.APIQuerySchedulerMsg'
-class APIQuerySchedulerMsg(object):
-    FULL_NAME='org.zstack.core.scheduler.APIQuerySchedulerMsg'
-    def __init__(self):
-        #mandatory field
-        self.conditions = NotNoneList()
-        self.limit = None
-        self.start = None
-        self.count = None
-        self.groupBy = None
-        self.replyWithCount = None
-        self.sortBy = None
-        #valid values: [asc, desc]
-        self.sortDirection = None
-        self.fields = OptionalList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYSCHEDULERREPLY_FULL_NAME = 'org.zstack.core.scheduler.APIQuerySchedulerReply'
-class APIQuerySchedulerReply(object):
-    FULL_NAME='org.zstack.core.scheduler.APIQuerySchedulerReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.total = None
-        self.success = None
-        self.error = None
-
-
-APIUPDATESCHEDULERMSG_FULL_NAME = 'org.zstack.core.scheduler.APIUpdateSchedulerMsg'
-class APIUpdateSchedulerMsg(object):
-    FULL_NAME='org.zstack.core.scheduler.APIUpdateSchedulerMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.schedulerName = None
-        self.schedulerDescription = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIDELETEVMINSTANCEHALEVELMSG_FULL_NAME = 'org.zstack.ha.APIDeleteVmInstanceHaLevelMsg'
 class APIDeleteVmInstanceHaLevelMsg(object):
     FULL_NAME='org.zstack.ha.APIDeleteVmInstanceHaLevelMsg'
@@ -679,6 +606,8 @@ class APICreateEcsInstanceFromLocalImageMsg(object):
         self.ecsInstanceName = None
         #valid values: [true, false]
         self.allocatePublicIp = None
+        #mandatory field
+        self.identityZoneUuid = NotNoneField()
         #mandatory field
         self.backupStorageUuid = NotNoneField()
         #mandatory field
@@ -1727,12 +1656,12 @@ class APISyncVirtualRouterFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIADDOSSBUCKETFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIAddOssBucketFromRemoteMsg'
-class APIAddOssBucketFromRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIAddOssBucketFromRemoteMsg'
+APIADDOSSFILEBUCKETNAMEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIAddOssFileBucketNameMsg'
+class APIAddOssFileBucketNameMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIAddOssFileBucketNameMsg'
     def __init__(self):
         #mandatory field
-        self.bucketName = NotNoneField()
+        self.ossBucketName = NotNoneField()
         #mandatory field
         self.regionId = NotNoneField()
         self.description = None
@@ -1801,9 +1730,9 @@ class APIDeleteOssBucketFileRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEOSSBUCKETNAMELOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketNameLocalMsg'
-class APIDeleteOssBucketNameLocalMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketNameLocalMsg'
+APIDELETEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
+class APIDeleteOssBucketRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -1814,9 +1743,9 @@ class APIDeleteOssBucketNameLocalMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
-class APIDeleteOssBucketRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
+APIDELETEOSSFILEBUCKETNAMEINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssFileBucketNameInLocalMsg'
+class APIDeleteOssFileBucketNameInLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssFileBucketNameInLocalMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -2859,27 +2788,6 @@ class APIGetTaskProgressReply(object):
         self.inventories = OptionalList()
         self.success = None
         self.error = None
-
-
-APICREATESCHEDULERMESSAGE_FULL_NAME = 'org.zstack.header.core.scheduler.APICreateSchedulerMessage'
-class APICreateSchedulerMessage(object):
-    FULL_NAME='org.zstack.header.core.scheduler.APICreateSchedulerMessage'
-    def __init__(self):
-        #mandatory field
-        self.schedulerName = NotNoneField()
-        self.schedulerDescription = None
-        #mandatory field
-        #valid values: [simple, cron]
-        self.type = NotNoneField()
-        self.interval = None
-        self.repeatCount = None
-        self.startTime = None
-        self.cron = None
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
 
 
 APICREATEWEBHOOKMSG_FULL_NAME = 'org.zstack.header.core.webhooks.APICreateWebhookMsg'
@@ -6753,77 +6661,6 @@ class APICloneVmInstanceMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEREBOOTVMINSTANCESCHEDULERMSG_FULL_NAME = 'org.zstack.header.vm.APICreateRebootVmInstanceSchedulerMsg'
-class APICreateRebootVmInstanceSchedulerMsg(object):
-    FULL_NAME='org.zstack.header.vm.APICreateRebootVmInstanceSchedulerMsg'
-    def __init__(self):
-        #mandatory field
-        self.vmUuid = NotNoneField()
-        #mandatory field
-        self.schedulerName = NotNoneField()
-        self.schedulerDescription = None
-        #mandatory field
-        #valid values: [simple, cron]
-        self.type = NotNoneField()
-        self.interval = None
-        self.repeatCount = None
-        self.startTime = None
-        self.cron = None
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APICREATESTARTVMINSTANCESCHEDULERMSG_FULL_NAME = 'org.zstack.header.vm.APICreateStartVmInstanceSchedulerMsg'
-class APICreateStartVmInstanceSchedulerMsg(object):
-    FULL_NAME='org.zstack.header.vm.APICreateStartVmInstanceSchedulerMsg'
-    def __init__(self):
-        #mandatory field
-        self.vmUuid = NotNoneField()
-        self.clusterUuid = None
-        self.hostUuid = None
-        #mandatory field
-        self.schedulerName = NotNoneField()
-        self.schedulerDescription = None
-        #mandatory field
-        #valid values: [simple, cron]
-        self.type = NotNoneField()
-        self.interval = None
-        self.repeatCount = None
-        self.startTime = None
-        self.cron = None
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APICREATESTOPVMINSTANCESCHEDULERMSG_FULL_NAME = 'org.zstack.header.vm.APICreateStopVmInstanceSchedulerMsg'
-class APICreateStopVmInstanceSchedulerMsg(object):
-    FULL_NAME='org.zstack.header.vm.APICreateStopVmInstanceSchedulerMsg'
-    def __init__(self):
-        #mandatory field
-        self.vmUuid = NotNoneField()
-        #mandatory field
-        self.schedulerName = NotNoneField()
-        self.schedulerDescription = None
-        #mandatory field
-        #valid values: [simple, cron]
-        self.type = NotNoneField()
-        self.interval = None
-        self.repeatCount = None
-        self.startTime = None
-        self.cron = None
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APICREATEVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APICreateVmInstanceMsg'
 class APICreateVmInstanceMsg(object):
     FULL_NAME='org.zstack.header.vm.APICreateVmInstanceMsg'
@@ -7767,32 +7604,6 @@ class APICreateVolumeSnapshotMsg(object):
         #mandatory field
         self.name = NotNoneField()
         self.description = None
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APICREATEVOLUMESNAPSHOTSCHEDULERMSG_FULL_NAME = 'org.zstack.header.volume.APICreateVolumeSnapshotSchedulerMsg'
-class APICreateVolumeSnapshotSchedulerMsg(object):
-    FULL_NAME='org.zstack.header.volume.APICreateVolumeSnapshotSchedulerMsg'
-    def __init__(self):
-        #mandatory field
-        self.volumeUuid = NotNoneField()
-        #mandatory field
-        self.snapShotName = NotNoneField()
-        self.volumeSnapshotDescription = None
-        #mandatory field
-        self.schedulerName = NotNoneField()
-        self.schedulerDescription = None
-        #mandatory field
-        #valid values: [simple, cron]
-        self.type = NotNoneField()
-        self.interval = None
-        self.repeatCount = None
-        self.startTime = None
-        self.cron = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -10013,6 +9824,217 @@ class APIPrometheusQueryVmMonitoringDataReply(object):
         self.error = None
 
 
+APIADDSCHEDULERJOBTOSCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APIAddSchedulerJobToSchedulerTriggerMsg'
+class APIAddSchedulerJobToSchedulerTriggerMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIAddSchedulerJobToSchedulerTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.schedulerJobUuid = NotNoneField()
+        #mandatory field
+        self.schedulerTriggerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICHANGESCHEDULERSTATEMSG_FULL_NAME = 'org.zstack.scheduler.APIChangeSchedulerStateMsg'
+class APIChangeSchedulerStateMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIChangeSchedulerStateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATESCHEDULERJOBMSG_FULL_NAME = 'org.zstack.scheduler.APICreateSchedulerJobMsg'
+class APICreateSchedulerJobMsg(object):
+    FULL_NAME='org.zstack.scheduler.APICreateSchedulerJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
+        self.targetResourceUuid = NotNoneField()
+        #mandatory field
+        self.type = NotNoneField()
+        self.parameters = OptionalMap()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATESCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APICreateSchedulerTriggerMsg'
+class APICreateSchedulerTriggerMsg(object):
+    FULL_NAME='org.zstack.scheduler.APICreateSchedulerTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.schedulerInterval = None
+        self.repeatCount = None
+        self.startTime = None
+        #mandatory field
+        #valid values: [simple, cron]
+        self.schedulerType = NotNoneField()
+        self.cron = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETESCHEDULERJOBMSG_FULL_NAME = 'org.zstack.scheduler.APIDeleteSchedulerJobMsg'
+class APIDeleteSchedulerJobMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIDeleteSchedulerJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETESCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APIDeleteSchedulerTriggerMsg'
+class APIDeleteSchedulerTriggerMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIDeleteSchedulerTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSCHEDULERJOBMSG_FULL_NAME = 'org.zstack.scheduler.APIQuerySchedulerJobMsg'
+class APIQuerySchedulerJobMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIQuerySchedulerJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSCHEDULERJOBREPLY_FULL_NAME = 'org.zstack.scheduler.APIQuerySchedulerJobReply'
+class APIQuerySchedulerJobReply(object):
+    FULL_NAME='org.zstack.scheduler.APIQuerySchedulerJobReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYSCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APIQuerySchedulerTriggerMsg'
+class APIQuerySchedulerTriggerMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIQuerySchedulerTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSCHEDULERTRIGGERREPLY_FULL_NAME = 'org.zstack.scheduler.APIQuerySchedulerTriggerReply'
+class APIQuerySchedulerTriggerReply(object):
+    FULL_NAME='org.zstack.scheduler.APIQuerySchedulerTriggerReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIREMOVESCHEDULERJOBFROMSCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APIRemoveSchedulerJobFromSchedulerTriggerMsg'
+class APIRemoveSchedulerJobFromSchedulerTriggerMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIRemoveSchedulerJobFromSchedulerTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.schedulerJobUuid = NotNoneField()
+        #mandatory field
+        self.schedulerTriggerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATESCHEDULERJOBMSG_FULL_NAME = 'org.zstack.scheduler.APIUpdateSchedulerJobMsg'
+class APIUpdateSchedulerJobMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIUpdateSchedulerJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATESCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APIUpdateSchedulerTriggerMsg'
+class APIUpdateSchedulerTriggerMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIUpdateSchedulerTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIAddImageStoreBackupStorageMsg'
 class APIAddImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIAddImageStoreBackupStorageMsg'
@@ -11024,7 +11046,8 @@ api_names = [
     'APIAddMonToFusionstorPrimaryStorageMsg',
     'APIAddNetworkServiceProviderMsg',
     'APIAddNfsPrimaryStorageMsg',
-    'APIAddOssBucketFromRemoteMsg',
+    'APIAddOssFileBucketNameMsg',
+    'APIAddSchedulerJobToSchedulerTriggerMsg',
     'APIAddSecurityGroupRuleMsg',
     'APIAddSftpBackupStorageMsg',
     'APIAddSharedMountPointPrimaryStorageMsg',
@@ -11115,16 +11138,14 @@ api_names = [
     'APICreateOssBucketRemoteMsg',
     'APICreatePolicyMsg',
     'APICreatePortForwardingRuleMsg',
-    'APICreateRebootVmInstanceSchedulerMsg',
     'APICreateResourcePriceMsg',
     'APICreateRootVolumeTemplateFromRootVolumeMsg',
     'APICreateRootVolumeTemplateFromVolumeSnapshotMsg',
     'APICreateRouterInterfacePairRemoteMsg',
-    'APICreateSchedulerMessage',
+    'APICreateSchedulerJobMsg',
+    'APICreateSchedulerTriggerMsg',
     'APICreateSearchIndexMsg',
     'APICreateSecurityGroupMsg',
-    'APICreateStartVmInstanceSchedulerMsg',
-    'APICreateStopVmInstanceSchedulerMsg',
     'APICreateSystemTagMsg',
     'APICreateUserGroupMsg',
     'APICreateUserMsg',
@@ -11135,7 +11156,6 @@ api_names = [
     'APICreateVmInstanceMsg',
     'APICreateVniRangeMsg',
     'APICreateVolumeSnapshotMsg',
-    'APICreateVolumeSnapshotSchedulerMsg',
     'APICreateVpcUserVpnGatewayRemoteMsg',
     'APICreateVpcVirtualRouterEntryRemoteMsg',
     'APICreateVpcVpnConnectionRemoteMsg',
@@ -11186,8 +11206,8 @@ api_names = [
     'APIDeleteNicQosMsg',
     'APIDeleteNotificationsMsg',
     'APIDeleteOssBucketFileRemoteMsg',
-    'APIDeleteOssBucketNameLocalMsg',
     'APIDeleteOssBucketRemoteMsg',
+    'APIDeleteOssFileBucketNameInLocalMsg',
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
@@ -11195,7 +11215,8 @@ api_names = [
     'APIDeleteRouteEntryRemoteMsg',
     'APIDeleteRouterInterfaceLocalMsg',
     'APIDeleteRouterInterfaceRemoteMsg',
-    'APIDeleteSchedulerMsg',
+    'APIDeleteSchedulerJobMsg',
+    'APIDeleteSchedulerTriggerMsg',
     'APIDeleteSearchIndexMsg',
     'APIDeleteSecurityGroupMsg',
     'APIDeleteSecurityGroupRuleMsg',
@@ -11575,8 +11596,10 @@ api_names = [
     'APIQueryRouteEntryFromLocalReply',
     'APIQueryRouterInterfaceFromLocalMsg',
     'APIQueryRouterInterfaceFromLocalReply',
-    'APIQuerySchedulerMsg',
-    'APIQuerySchedulerReply',
+    'APIQuerySchedulerJobMsg',
+    'APIQuerySchedulerJobReply',
+    'APIQuerySchedulerTriggerMsg',
+    'APIQuerySchedulerTriggerReply',
     'APIQuerySecurityGroupMsg',
     'APIQuerySecurityGroupReply',
     'APIQuerySecurityGroupRuleMsg',
@@ -11670,6 +11693,7 @@ api_names = [
     'APIRemoveMonFromCephPrimaryStorageMsg',
     'APIRemoveMonFromFusionstorBackupStorageMsg',
     'APIRemoveMonFromFusionstorPrimaryStorageMsg',
+    'APIRemoveSchedulerJobFromSchedulerTriggerMsg',
     'APIRemoveUserFromGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
     'APIReply',
@@ -11771,7 +11795,8 @@ api_names = [
     'APIUpdatePrimaryStorageMsg',
     'APIUpdateQuotaMsg',
     'APIUpdateRouteInterfaceRemoteMsg',
-    'APIUpdateSchedulerMsg',
+    'APIUpdateSchedulerJobMsg',
+    'APIUpdateSchedulerTriggerMsg',
     'APIUpdateSecurityGroupMsg',
     'APIUpdateSftpBackupStorageMsg',
     'APIUpdateSystemTagMsg',
@@ -12981,7 +13006,6 @@ class OssBucketInventory(object):
         self.uuid = None
         self.bucketName = None
         self.regionId = None
-        self.regionName = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -13001,11 +13025,6 @@ class OssBucketInventory(object):
             self.regionId = inv.regionId
         else:
             self.regionId = None
-
-        if hasattr(inv, 'regionName'):
-            self.regionName = inv.regionName
-        else:
-            self.regionName = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -13582,23 +13601,17 @@ class ConsoleProxyInventory(object):
 
 
 
-class SchedulerInventory(object):
+class SchedulerJobInventory(object):
     def __init__(self):
         self.uuid = None
         self.targetResourceUuid = None
-        self.schedulerName = None
-        self.schedulerJob = None
-        self.schedulerType = None
-        self.schedulerInterval = None
-        self.repeatCount = None
-        self.cronScheduler = None
-        self.startTime = None
-        self.stopTime = None
+        self.name = None
+        self.description = None
         self.createDate = None
         self.lastOpDate = None
-        self.jobClassName = None
         self.jobData = None
-        self.state = None
+        self.jobClassName = None
+        self.triggersUuid = None
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -13611,15 +13624,132 @@ class SchedulerInventory(object):
         else:
             self.targetResourceUuid = None
 
-        if hasattr(inv, 'schedulerName'):
-            self.schedulerName = inv.schedulerName
+        if hasattr(inv, 'name'):
+            self.name = inv.name
         else:
-            self.schedulerName = None
+            self.name = None
 
-        if hasattr(inv, 'schedulerJob'):
-            self.schedulerJob = inv.schedulerJob
+        if hasattr(inv, 'description'):
+            self.description = inv.description
         else:
-            self.schedulerJob = None
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'jobData'):
+            self.jobData = inv.jobData
+        else:
+            self.jobData = None
+
+        if hasattr(inv, 'jobClassName'):
+            self.jobClassName = inv.jobClassName
+        else:
+            self.jobClassName = None
+
+        if hasattr(inv, 'triggersUuid'):
+            self.triggersUuid = inv.triggersUuid
+        else:
+            self.triggersUuid = None
+
+
+
+class SchedulerJobSchedulerTriggerInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.schedulerJobUuid = None
+        self.schedulerTriggerUuid = None
+        self.status = None
+        self.state = None
+        self.jobGroup = None
+        self.triggerGroup = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'schedulerJobUuid'):
+            self.schedulerJobUuid = inv.schedulerJobUuid
+        else:
+            self.schedulerJobUuid = None
+
+        if hasattr(inv, 'schedulerTriggerUuid'):
+            self.schedulerTriggerUuid = inv.schedulerTriggerUuid
+        else:
+            self.schedulerTriggerUuid = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'jobGroup'):
+            self.jobGroup = inv.jobGroup
+        else:
+            self.jobGroup = None
+
+        if hasattr(inv, 'triggerGroup'):
+            self.triggerGroup = inv.triggerGroup
+        else:
+            self.triggerGroup = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class SchedulerTriggerInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.schedulerType = None
+        self.schedulerInterval = None
+        self.repeatCount = None
+        self.startTime = None
+        self.stopTime = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.jobsUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'schedulerType'):
             self.schedulerType = inv.schedulerType
@@ -13635,11 +13765,6 @@ class SchedulerInventory(object):
             self.repeatCount = inv.repeatCount
         else:
             self.repeatCount = None
-
-        if hasattr(inv, 'cronScheduler'):
-            self.cronScheduler = inv.cronScheduler
-        else:
-            self.cronScheduler = None
 
         if hasattr(inv, 'startTime'):
             self.startTime = inv.startTime
@@ -13661,20 +13786,10 @@ class SchedulerInventory(object):
         else:
             self.lastOpDate = None
 
-        if hasattr(inv, 'jobClassName'):
-            self.jobClassName = inv.jobClassName
+        if hasattr(inv, 'jobsUuid'):
+            self.jobsUuid = inv.jobsUuid
         else:
-            self.jobClassName = None
-
-        if hasattr(inv, 'jobData'):
-            self.jobData = inv.jobData
-        else:
-            self.jobData = None
-
-        if hasattr(inv, 'state'):
-            self.state = inv.state
-        else:
-            self.state = None
+            self.jobsUuid = None
 
 
 
@@ -16862,13 +16977,6 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
-
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -16900,13 +17008,14 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -16940,17 +17049,6 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
-
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
-
-    @staticmethod
-    def get_category():
-        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -17560,7 +17658,7 @@ class QueryObjectOssBucketEcsDataCenterRefInventory(object):
      }
 
 class QueryObjectOssBucketInventory(object):
-     PRIMITIVE_FIELDS = ['bucketName','regionId','regionName','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['bucketName','regionId','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['dataCenter']
      QUERY_OBJECT_MAP = {
         'dataCenter' : 'QueryObjectDataCenterInventory',
@@ -17632,10 +17730,26 @@ class QueryObjectRootVolumeUsageInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
-class QueryObjectSchedulerInventory(object):
-     PRIMITIVE_FIELDS = ['schedulerInterval','schedulerType','targetResourceUuid','uuid','schedulerJob','cronScheduler','lastOpDate','startTime','stopTime','state','schedulerName','repeatCount','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+class QueryObjectSchedulerJobInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','targetResourceUuid','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['triggers']
      QUERY_OBJECT_MAP = {
+        'triggers' : 'QueryObjectSchedulerTriggerInventory',
+     }
+
+class QueryObjectSchedulerJobSchedulerTriggerInventory(object):
+     PRIMITIVE_FIELDS = ['schedulerJobUuid','triggerGroup','lastOpDate','schedulerTriggerUuid','state','jobGroup','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['jobs','triggers']
+     QUERY_OBJECT_MAP = {
+        'jobs' : 'QueryObjectSchedulerJobInventory',
+        'triggers' : 'QueryObjectSchedulerTriggerInventory',
+     }
+
+class QueryObjectSchedulerTriggerInventory(object):
+     PRIMITIVE_FIELDS = ['schedulerInterval','name','lastOpDate','description','startTime','stopTime','schedulerType','uuid','repeatCount','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['jobs']
+     QUERY_OBJECT_MAP = {
+        'jobs' : 'QueryObjectSchedulerJobInventory',
      }
 
 class QueryObjectSecurityGroupInventory(object):
@@ -18087,7 +18201,8 @@ queryMessageInventoryMap = {
      'APIQueryResourcePriceMsg' : QueryObjectPriceInventory,
      'APIQueryRouteEntryFromLocalMsg' : QueryObjectVpcVirtualRouteEntryInventory,
      'APIQueryRouterInterfaceFromLocalMsg' : QueryObjectVirtualRouterInterfaceInventory,
-     'APIQuerySchedulerMsg' : QueryObjectSchedulerInventory,
+     'APIQuerySchedulerJobMsg' : QueryObjectSchedulerJobInventory,
+     'APIQuerySchedulerTriggerMsg' : QueryObjectSchedulerTriggerInventory,
      'APIQuerySecurityGroupMsg' : QueryObjectSecurityGroupInventory,
      'APIQuerySecurityGroupRuleMsg' : QueryObjectSecurityGroupRuleInventory,
      'APIQuerySftpBackupStorageMsg' : QueryObjectSftpBackupStorageInventory,
