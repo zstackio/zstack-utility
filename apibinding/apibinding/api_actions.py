@@ -2390,6 +2390,18 @@ class DeleteVipAction(inventory.APIDeleteVipMsg):
         self.out = evt
         return self.out
 
+class DeleteVipQosAction(inventory.APIDeleteVipQosMsg):
+    def __init__(self):
+        super(DeleteVipQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVipQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteVirtualBorderRouterLocalAction(inventory.APIDeleteVirtualBorderRouterLocalMsg):
     def __init__(self):
         super(DeleteVirtualBorderRouterLocalAction, self).__init__()
@@ -3574,6 +3586,18 @@ class GetVersionAction(inventory.APIGetVersionMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVersionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetVipQosAction(inventory.APIGetVipQosMsg):
+    def __init__(self):
+        super(GetVipQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVipQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5794,6 +5818,18 @@ class SetNicQosAction(inventory.APISetNicQosMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetNicQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVipQosAction(inventory.APISetVipQosMsg):
+    def __init__(self):
+        super(SetVipQosAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVipQosAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

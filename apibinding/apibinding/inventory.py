@@ -9519,6 +9519,33 @@ class APIDeleteVipMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APIDeleteVipQosMsg'
+class APIDeleteVipQosMsg(object):
+    FULL_NAME='org.zstack.network.service.vip.APIDeleteVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [in, out, all]
+        self.direction = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APIGetVipQosMsg'
+class APIGetVipQosMsg(object):
+    FULL_NAME='org.zstack.network.service.vip.APIGetVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYVIPMSG_FULL_NAME = 'org.zstack.network.service.vip.APIQueryVipMsg'
 class APIQueryVipMsg(object):
     FULL_NAME='org.zstack.network.service.vip.APIQueryVipMsg'
@@ -9548,6 +9575,20 @@ class APIQueryVipReply(object):
         self.total = None
         self.success = None
         self.error = None
+
+
+APISETVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APISetVipQosMsg'
+class APISetVipQosMsg(object):
+    FULL_NAME='org.zstack.network.service.vip.APISetVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.outboundBandwidth = None
+        self.inboundBandwidth = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIUPDATEVIPMSG_FULL_NAME = 'org.zstack.network.service.vip.APIUpdateVipMsg'
@@ -11223,6 +11264,7 @@ api_names = [
     'APIDeleteUserMsg',
     'APIDeleteVCenterMsg',
     'APIDeleteVipMsg',
+    'APIDeleteVipQosMsg',
     'APIDeleteVirtualBorderRouterLocalMsg',
     'APIDeleteVirtualRouterLocalMsg',
     'APIDeleteVmConsolePasswordMsg',
@@ -11385,6 +11427,7 @@ api_names = [
     'APIGetVCenterDVSwitchesReply',
     'APIGetVersionMsg',
     'APIGetVersionReply',
+    'APIGetVipQosMsg',
     'APIGetVirtualRouterOfferingReply',
     'APIGetVmAttachableDataVolumeMsg',
     'APIGetVmAttachableDataVolumeReply',
@@ -11729,6 +11772,7 @@ api_names = [
     'APISetImageQgaMsg',
     'APISetL3NetworkMtuMsg',
     'APISetNicQosMsg',
+    'APISetVipQosMsg',
     'APISetVmBootOrderMsg',
     'APISetVmConsolePasswordMsg',
     'APISetVmHostnameMsg',
@@ -16812,6 +16856,7 @@ class GlobalConfig_HA(object):
     HOST_SELFFENCER_MAXATTEMPTS = 'host.selfFencer.maxAttempts'
     HOST_CHECK_SUCCESSTIMES = 'host.check.successTimes'
     ENABLE = 'enable'
+    NEVERSTOPVM_NOTIFICATION_TIMES = 'neverStopVm.notification.times'
     HOST_CHECK_INTERVAL = 'host.check.interval'
     NEVERSTOPVM_SCAN_INTERVAL = 'neverStopVm.scan.interval'
     NEVERSTOPVM_RETRY_DELAY = 'neverStopVm.retry.delay'
@@ -16982,6 +17027,13 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
+class GlobalConfig_OTHERS(object):
+    TEST2 = 'Test2'
+
+    @staticmethod
+    def get_category():
+        return 'Others'
+
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -17013,6 +17065,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
@@ -17055,6 +17108,17 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     def get_category():
         return 'sharedMountPointPrimaryStorage'
 
+class GlobalConfig_TEST(object):
+    TEST = 'Test'
+    TEST3 = 'Test3'
+    TEST4 = 'Test4'
+    TESTSTRING = 'TestString'
+    TESTBOOLEAN = 'TestBoolean'
+
+    @staticmethod
+    def get_category():
+        return 'Test'
+
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
     SSH_PORT = 'ssh.port'
@@ -17070,6 +17134,7 @@ class GlobalConfig_VIRTUALROUTER(object):
         return 'virtualRouter'
 
 class GlobalConfig_VM(object):
+    AUDIO = 'audio'
     VIDEOTYPE = 'videoType'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
     EXPUNGEPERIOD = 'expungePeriod'
