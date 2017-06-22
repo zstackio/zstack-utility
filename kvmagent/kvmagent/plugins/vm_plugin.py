@@ -2298,7 +2298,7 @@ class Vm(object):
                 e(devices, 'emulator', cmd.addons['qemuPath'])
             else:
                 e(devices, 'emulator', kvmagent.get_qemu_path())
-            e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
+            e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb', 'port': '1'})
             elements['devices'] = devices
 
         def make_cdrom():
@@ -2583,11 +2583,35 @@ class Vm(object):
             e(spice, "zlib", None, {'compression': 'never'})
             e(spice, "playback", None, {'compression': 'off'})
             e(spice, "streaming", None, {'mode': 'filter'})
+            e(spice, "mouse", None, {'mode': 'client'})
+            e(spice, "filetransfer", None, {'enable': 'no'})
+            e(spice, "clipboard", None, {'copypaste': 'no'})
+
+        def make_usb_redirect():
+            devices = elements['devices']
+            e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-ehci1'})
+            e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci1', 'multifunction': 'on'})
+            e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci2'})
+            e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci3'})
+
+            chan = e(devices, 'channel', None, {'type': 'spicevmc'})
+            e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
+            e(chan, 'address', None, {'type': 'virtio-serial'})
+
+            redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev2, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
+            redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev3, 'address', None, {'type': 'usb', 'bus': '0', 'port': '3'})
+            redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev4, 'address', None, {'type': 'usb', 'bus': '0', 'port': '4'})
+            redirdev5 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev5, 'address', None, {'type': 'usb', 'bus': '0', 'port': '6'})
 
         def make_video():
             devices = elements['devices']
             video = e(devices, 'video')
             e(video, 'model', None, {'type': str(cmd.videoType)})
+
 
         def make_audio():
             if cmd.useAudio is True:
@@ -2655,6 +2679,7 @@ class Vm(object):
         make_volumes()
         make_cdrom()
         make_graphic_console()
+        make_usb_redirect()
         make_addons()
         make_balloon_memory()
         make_console()
