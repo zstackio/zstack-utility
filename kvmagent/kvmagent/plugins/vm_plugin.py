@@ -2578,11 +2578,23 @@ class Vm(object):
             devices = elements['devices']
             spice = e(devices, 'graphics', None, {'type': 'spice', 'port': '5900', 'autoport': 'yes'})
             e(spice, "listen", None, {'type': 'address', 'address': '0.0.0.0'})
+            e(spice, "image", None, {'compression': 'auto_glz'})
+            e(spice, "jpeg", None, {'compression': 'always'})
+            e(spice, "zlib", None, {'compression': 'never'})
+            e(spice, "playback", None, {'compression': 'off'})
+            e(spice, "streaming", None, {'mode': 'filter'})
 
         def make_video():
             devices = elements['devices']
             video = e(devices, 'video')
             e(video, 'model', None, {'type': str(cmd.videoType)})
+
+        def make_audio():
+            if cmd.useAudio is True:
+                devices = elements['devices']
+                e(devices, 'sound',None,{'model':'ac97'})
+            else:
+               return
 
         def make_graphic_console():
             if cmd.consoleMode == 'spice':
@@ -2638,6 +2650,7 @@ class Vm(object):
         make_features()
         make_devices()
         make_video()
+        make_audio()
         make_nics()
         make_volumes()
         make_cdrom()
