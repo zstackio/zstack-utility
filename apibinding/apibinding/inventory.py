@@ -2070,7 +2070,6 @@ class APIPowerResetBaremetalHostMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
-
 APIPOWERSTATUSBAREMETALHOSTMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIPowerStatusBaremetalHostMsg'
 class APIPowerStatusBaremetalHostMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APIPowerStatusBaremetalHostMsg'
@@ -11020,6 +11019,210 @@ class APIUpdateVCenterMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDVROUTERROUTEENTRYMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
+class APIAddVRouterRouteEntryMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
+    def __init__(self):
+        self.description = None
+        #valid values: [UserStatic, UserBlackHole]
+        self.type = None
+        #mandatory field
+        self.routeTableUuid = NotNoneField()
+        #mandatory field
+        self.destination = NotNoneField()
+        self.target = None
+        self.distance = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIATTACHVROUTERROUTETABLETOVROUTERMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIAttachVRouterRouteTableToVRouterMsg'
+class APIAttachVRouterRouteTableToVRouterMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIAttachVRouterRouteTableToVRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.routeTableUuid = NotNoneField()
+        #mandatory field
+        self.virtualRouterVmUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEVROUTERROUTETABLEMSG_FULL_NAME = 'org.zstack.vrouterRoute.APICreateVRouterRouteTableMsg'
+class APICreateVRouterRouteTableMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APICreateVRouterRouteTableMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVROUTERROUTEENTRYMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIDeleteVRouterRouteEntryMsg'
+class APIDeleteVRouterRouteEntryMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIDeleteVRouterRouteEntryMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.routeTableUuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEVROUTERROUTETABLEMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIDeleteVRouterRouteTableMsg'
+class APIDeleteVRouterRouteTableMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIDeleteVRouterRouteTableMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHVROUTERROUTETABLEFROMVROUTERMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIDetachVRouterRouteTableFromVRouterMsg'
+class APIDetachVRouterRouteTableFromVRouterMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIDetachVRouterRouteTableFromVRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.routeTableUuid = NotNoneField()
+        #mandatory field
+        self.virtualRouterVmUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVROUTERROUTETABLEMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIGetVRouterRouteTableMsg'
+class APIGetVRouterRouteTableMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIGetVRouterRouteTableMsg'
+    def __init__(self):
+        #mandatory field
+        self.virtualRouterVmUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVROUTERROUTETABLEREPLY_FULL_NAME = 'org.zstack.vrouterRoute.APIGetVRouterRouteTableReply'
+class APIGetVRouterRouteTableReply(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIGetVRouterRouteTableReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYVROUTERROUTEENTRYMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIQueryVRouterRouteEntryMsg'
+class APIQueryVRouterRouteEntryMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIQueryVRouterRouteEntryMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVROUTERROUTEENTRYREPLY_FULL_NAME = 'org.zstack.vrouterRoute.APIQueryVRouterRouteEntryReply'
+class APIQueryVRouterRouteEntryReply(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIQueryVRouterRouteEntryReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYVROUTERROUTETABLEMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIQueryVRouterRouteTableMsg'
+class APIQueryVRouterRouteTableMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIQueryVRouterRouteTableMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVROUTERROUTETABLEREPLY_FULL_NAME = 'org.zstack.vrouterRoute.APIQueryVRouterRouteTableReply'
+class APIQueryVRouterRouteTableReply(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIQueryVRouterRouteTableReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYVIRTUALROUTERVROUTERROUTETABLEREFMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIQueryVirtualRouterVRouterRouteTableRefMsg'
+class APIQueryVirtualRouterVRouterRouteTableRefMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIQueryVirtualRouterVRouterRouteTableRefMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVIRTUALROUTERVROUTERROUTETABLEREFREPLY_FULL_NAME = 'org.zstack.vrouterRoute.APIQueryVirtualRouterVRouterRouteTableRefReply'
+class APIQueryVirtualRouterVRouterRouteTableRefReply(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIQueryVirtualRouterVRouterRouteTableRefReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 api_names = [
     'APIAddAliyunKeySecretMsg',
     'APIAddCephBackupStorageMsg',
@@ -11054,6 +11257,7 @@ api_names = [
     'APIAddSimulatorPrimaryStorageMsg',
     'APIAddUserToGroupMsg',
     'APIAddVCenterMsg',
+    'APIAddVRouterRouteEntryMsg',
     'APIAddVmNicToLoadBalancerMsg',
     'APIAddVmNicToSecurityGroupMsg',
     'APIAttachAliyunKeyMsg',
@@ -11072,6 +11276,7 @@ api_names = [
     'APIAttachPortForwardingRuleMsg',
     'APIAttachPrimaryStorageToClusterMsg',
     'APIAttachSecurityGroupToL3NetworkMsg',
+    'APIAttachVRouterRouteTableToVRouterMsg',
     'APIBackupDataVolumeMsg',
     'APIBackupDatabaseToPublicCloudMsg',
     'APIBackupVolumeSnapshotMsg',
@@ -11148,6 +11353,7 @@ api_names = [
     'APICreateUserGroupMsg',
     'APICreateUserMsg',
     'APICreateUserTagMsg',
+    'APICreateVRouterRouteTableMsg',
     'APICreateVipMsg',
     'APICreateVirtualRouterOfferingMsg',
     'APICreateVirtualRouterVmMsg',
@@ -11222,6 +11428,8 @@ api_names = [
     'APIDeleteUserGroupMsg',
     'APIDeleteUserMsg',
     'APIDeleteVCenterMsg',
+    'APIDeleteVRouterRouteEntryMsg',
+    'APIDeleteVRouterRouteTableMsg',
     'APIDeleteVipMsg',
     'APIDeleteVirtualBorderRouterLocalMsg',
     'APIDeleteVirtualRouterLocalMsg',
@@ -11261,6 +11469,7 @@ api_names = [
     'APIDetachPortForwardingRuleMsg',
     'APIDetachPrimaryStorageFromClusterMsg',
     'APIDetachSecurityGroupFromL3NetworkMsg',
+    'APIDetachVRouterRouteTableFromVRouterMsg',
     'APIDownloadBackupFileFromPublicCloudMsg',
     'APIExportImageFromBackupStorageMsg',
     'APIExpungeDataVolumeMsg',
@@ -11383,6 +11592,8 @@ api_names = [
     'APIGetUserReply',
     'APIGetVCenterDVSwitchesMsg',
     'APIGetVCenterDVSwitchesReply',
+    'APIGetVRouterRouteTableMsg',
+    'APIGetVRouterRouteTableReply',
     'APIGetVersionMsg',
     'APIGetVersionReply',
     'APIGetVirtualRouterOfferingReply',
@@ -11629,6 +11840,10 @@ api_names = [
     'APIQueryVCenterPrimaryStorageMsg',
     'APIQueryVCenterPrimaryStorageReply',
     'APIQueryVCenterReply',
+    'APIQueryVRouterRouteEntryMsg',
+    'APIQueryVRouterRouteEntryReply',
+    'APIQueryVRouterRouteTableMsg',
+    'APIQueryVRouterRouteTableReply',
     'APIQueryVipMsg',
     'APIQueryVipReply',
     'APIQueryVirtualBorderRouterFromLocalMsg',
@@ -11637,6 +11852,8 @@ api_names = [
     'APIQueryVirtualRouterFromLocalReply',
     'APIQueryVirtualRouterOfferingMsg',
     'APIQueryVirtualRouterOfferingReply',
+    'APIQueryVirtualRouterVRouterRouteTableRefMsg',
+    'APIQueryVirtualRouterVRouterRouteTableRefReply',
     'APIQueryVirtualRouterVmMsg',
     'APIQueryVirtualRouterVmReply',
     'APIQueryVmInstanceMsg',
@@ -16582,6 +16799,186 @@ class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
 
 
 
+class VRouterRouteEntryAO(object):
+    def __init__(self):
+        self.destination = None
+        self.target = None
+        self.type = None
+        self.status = None
+        self.distance = None
+        self.uuid = None
+        self.description = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'destination'):
+            self.destination = inv.destination
+        else:
+            self.destination = None
+
+        if hasattr(inv, 'target'):
+            self.target = inv.target
+        else:
+            self.target = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'distance'):
+            self.distance = inv.distance
+        else:
+            self.distance = None
+
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+
+
+class VRouterRouteEntryInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.description = None
+        self.type = None
+        self.routeTableUuid = None
+        self.destination = None
+        self.target = None
+        self.distance = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'routeTableUuid'):
+            self.routeTableUuid = inv.routeTableUuid
+        else:
+            self.routeTableUuid = None
+
+        if hasattr(inv, 'destination'):
+            self.destination = inv.destination
+        else:
+            self.destination = None
+
+        if hasattr(inv, 'target'):
+            self.target = inv.target
+        else:
+            self.target = None
+
+        if hasattr(inv, 'distance'):
+            self.distance = inv.distance
+        else:
+            self.distance = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class VRouterRouteTableInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.type = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.attachedRouterRefs = None
+        self.routeEntries = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'attachedRouterRefs'):
+            self.attachedRouterRefs = inv.attachedRouterRefs
+        else:
+            self.attachedRouterRefs = None
+
+        if hasattr(inv, 'routeEntries'):
+            self.routeEntries = inv.routeEntries
+        else:
+            self.routeEntries = None
+
+
+
+class VirtualRouterVRouterRouteTableRefInventory(object):
+    def __init__(self):
+        self.virtualRouterVmUuid = None
+        self.routeTableUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'virtualRouterVmUuid'):
+            self.virtualRouterVmUuid = inv.virtualRouterVmUuid
+        else:
+            self.virtualRouterVmUuid = None
+
+        if hasattr(inv, 'routeTableUuid'):
+            self.routeTableUuid = inv.routeTableUuid
+        else:
+            self.routeTableUuid = None
+
+
+
 #AccountConstant
 INITIAL_SYSTEM_ADMIN_UUID = '36c27e8ff05c4780bf6d2fa65700f22e'
 INITIAL_SYSTEM_ADMIN_NAME = 'admin'
@@ -16680,6 +17077,9 @@ SIMULATOR_PRIMARY_STORAGE_TYPE = 'SimulatorPrimaryStorage'
 VCENTER_CLUSTER_TYPE = 'vmware'
 VCENTER_BACKUP_STORAGE_TYPE = 'VCenter'
 VCENTER_PRIMARY_STORAGE_TYPE = 'VCenter'
+
+#VRouterRouteConstants
+SERVICE_ID = 'vrouterRoute'
 
 #VirtualRouterConstant
 VIRTUAL_ROUTER_PROVIDER_TYPE = 'VirtualRouter'
@@ -16812,6 +17212,7 @@ class GlobalConfig_HA(object):
     HOST_SELFFENCER_MAXATTEMPTS = 'host.selfFencer.maxAttempts'
     HOST_CHECK_SUCCESSTIMES = 'host.check.successTimes'
     ENABLE = 'enable'
+    NEVERSTOPVM_NOTIFICATION_TIMES = 'neverStopVm.notification.times'
     HOST_CHECK_INTERVAL = 'host.check.interval'
     NEVERSTOPVM_SCAN_INTERVAL = 'neverStopVm.scan.interval'
     NEVERSTOPVM_RETRY_DELAY = 'neverStopVm.retry.delay'
@@ -16982,6 +17383,13 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
+class GlobalConfig_OTHERS(object):
+    TEST2 = 'Test2'
+
+    @staticmethod
+    def get_category():
+        return 'Others'
+
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -17013,6 +17421,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
@@ -17055,6 +17464,17 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     def get_category():
         return 'sharedMountPointPrimaryStorage'
 
+class GlobalConfig_TEST(object):
+    TEST = 'Test'
+    TEST3 = 'Test3'
+    TEST4 = 'Test4'
+    TESTSTRING = 'TestString'
+    TESTBOOLEAN = 'TestBoolean'
+
+    @staticmethod
+    def get_category():
+        return 'Test'
+
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
     SSH_PORT = 'ssh.port'
@@ -17070,6 +17490,7 @@ class GlobalConfig_VIRTUALROUTER(object):
         return 'virtualRouter'
 
 class GlobalConfig_VM(object):
+    AUDIO = 'audio'
     VIDEOTYPE = 'videoType'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
     EXPUNGEPERIOD = 'expungePeriod'
@@ -17905,6 +18326,22 @@ class QueryObjectVCenterPrimaryStorageInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
+class QueryObjectVRouterRouteEntryInventory(object):
+     PRIMITIVE_FIELDS = ['distance','destination','lastOpDate','description','routeTableUuid','type','uuid','target','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vrouterRouteTable']
+     QUERY_OBJECT_MAP = {
+        'vrouterRouteTable' : 'QueryObjectVRouterRouteTableInventory',
+     }
+
+class QueryObjectVRouterRouteTableInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['attachedRouterRefs','routeEntries','attachedRouterRef','routeEntries']
+     QUERY_OBJECT_MAP = {
+        'attachedRouterRefs' : 'QueryObjectVirtualRouterVRouterRouteTableRefInventory',
+        'attachedRouterRef' : 'QueryObjectVirtualRouterVRouterRouteTableRefInventory',
+        'routeEntries' : 'QueryObjectVRouterRouteEntryInventory',
+     }
+
 class QueryObjectVipInventory(object):
      PRIMITIVE_FIELDS = ['ip','useFor','description','l3NetworkUuid','uuid','netmask','name','serviceProvider','lastOpDate','peerL3NetworkUuid','state','gateway','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['portForwarding','l3Network','loadBalancer','peerL3Network','eip']
@@ -17961,6 +18398,14 @@ class QueryObjectVirtualRouterPortForwardingRuleRefInventory(object):
         'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
         'vip' : 'QueryObjectVipInventory',
         'applianceVm' : 'QueryObjectApplianceVmInventory',
+     }
+
+class QueryObjectVirtualRouterVRouterRouteTableRefInventory(object):
+     PRIMITIVE_FIELDS = ['routeTableUuid','virtualRouterVmUuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['virtualRouterVm','vrouterRouteTable']
+     QUERY_OBJECT_MAP = {
+        'virtualRouterVm' : 'QueryObjectVirtualRouterVmInventory',
+        'vrouterRouteTable' : 'QueryObjectVRouterRouteTableInventory',
      }
 
 class QueryObjectVirtualRouterVipInventory(object):
@@ -18222,10 +18667,13 @@ queryMessageInventoryMap = {
      'APIQueryVCenterDatacenterMsg' : QueryObjectVCenterDatacenterInventory,
      'APIQueryVCenterMsg' : QueryObjectVCenterInventory,
      'APIQueryVCenterPrimaryStorageMsg' : QueryObjectVCenterPrimaryStorageInventory,
+     'APIQueryVRouterRouteEntryMsg' : QueryObjectVRouterRouteEntryInventory,
+     'APIQueryVRouterRouteTableMsg' : QueryObjectVRouterRouteTableInventory,
      'APIQueryVipMsg' : QueryObjectVipInventory,
      'APIQueryVirtualBorderRouterFromLocalMsg' : QueryObjectVirtualBorderRouterInventory,
      'APIQueryVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
      'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
+     'APIQueryVirtualRouterVRouterRouteTableRefMsg' : QueryObjectVirtualRouterVRouterRouteTableRefInventory,
      'APIQueryVirtualRouterVmMsg' : QueryObjectVirtualRouterVmInventory,
      'APIQueryVmInstanceMsg' : QueryObjectVmInstanceInventory,
      'APIQueryVmNicInSecurityGroupMsg' : QueryObjectVmNicSecurityGroupRefInventory,

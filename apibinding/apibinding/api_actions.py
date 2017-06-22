@@ -398,6 +398,18 @@ class AddVCenterAction(inventory.APIAddVCenterMsg):
         self.out = evt
         return self.out
 
+class AddVRouterRouteEntryAction(inventory.APIAddVRouterRouteEntryMsg):
+    def __init__(self):
+        super(AddVRouterRouteEntryAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddVRouterRouteEntryAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddVmNicToLoadBalancerAction(inventory.APIAddVmNicToLoadBalancerMsg):
     def __init__(self):
         super(AddVmNicToLoadBalancerAction, self).__init__()
@@ -610,6 +622,18 @@ class AttachSecurityGroupToL3NetworkAction(inventory.APIAttachSecurityGroupToL3N
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AttachSecurityGroupToL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AttachVRouterRouteTableToVRouterAction(inventory.APIAttachVRouterRouteTableToVRouterMsg):
+    def __init__(self):
+        super(AttachVRouterRouteTableToVRouterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachVRouterRouteTableToVRouterAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1486,6 +1510,18 @@ class CreateUserTagAction(inventory.APICreateUserTagMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateUserTagAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateVRouterRouteTableAction(inventory.APICreateVRouterRouteTableMsg):
+    def __init__(self):
+        super(CreateVRouterRouteTableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVRouterRouteTableAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2378,6 +2414,30 @@ class DeleteVCenterAction(inventory.APIDeleteVCenterMsg):
         self.out = evt
         return self.out
 
+class DeleteVRouterRouteEntryAction(inventory.APIDeleteVRouterRouteEntryMsg):
+    def __init__(self):
+        super(DeleteVRouterRouteEntryAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVRouterRouteEntryAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVRouterRouteTableAction(inventory.APIDeleteVRouterRouteTableMsg):
+    def __init__(self):
+        super(DeleteVRouterRouteTableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVRouterRouteTableAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteVipAction(inventory.APIDeleteVipMsg):
     def __init__(self):
         super(DeleteVipAction, self).__init__()
@@ -2842,6 +2902,18 @@ class DetachSecurityGroupFromL3NetworkAction(inventory.APIDetachSecurityGroupFro
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DetachSecurityGroupFromL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DetachVRouterRouteTableFromVRouterAction(inventory.APIDetachVRouterRouteTableFromVRouterMsg):
+    def __init__(self):
+        super(DetachVRouterRouteTableFromVRouterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachVRouterRouteTableFromVRouterAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3562,6 +3634,18 @@ class GetVCenterDVSwitchesAction(inventory.APIGetVCenterDVSwitchesMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVCenterDVSwitchesAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetVRouterRouteTableAction(inventory.APIGetVRouterRouteTableMsg):
+    def __init__(self):
+        super(GetVRouterRouteTableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVRouterRouteTableAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5100,6 +5184,34 @@ class QueryVCenterPrimaryStorageAction(inventory.APIQueryVCenterPrimaryStorageMs
         self.out = reply.inventories
         return self.out
 
+class QueryVRouterRouteEntryAction(inventory.APIQueryVRouterRouteEntryMsg):
+    def __init__(self):
+        super(QueryVRouterRouteEntryAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVRouterRouteEntryAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVRouterRouteTableAction(inventory.APIQueryVRouterRouteTableMsg):
+    def __init__(self):
+        super(QueryVRouterRouteTableAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVRouterRouteTableAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryVipAction(inventory.APIQueryVipMsg):
     def __init__(self):
         super(QueryVipAction, self).__init__()
@@ -5151,6 +5263,20 @@ class QueryVirtualRouterOfferingAction(inventory.APIQueryVirtualRouterOfferingMs
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryVirtualRouterOfferingAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVirtualRouterVRouterRouteTableRefAction(inventory.APIQueryVirtualRouterVRouterRouteTableRefMsg):
+    def __init__(self):
+        super(QueryVirtualRouterVRouterRouteTableRefAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVirtualRouterVRouterRouteTableRefAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -6791,3 +6917,4 @@ class ValidateSessionAction(inventory.APIValidateSessionMsg):
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
+
