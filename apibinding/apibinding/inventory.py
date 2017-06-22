@@ -607,8 +607,6 @@ class APICreateEcsInstanceFromLocalImageMsg(object):
         #valid values: [true, false]
         self.allocatePublicIp = None
         #mandatory field
-        self.identityZoneUuid = NotNoneField()
-        #mandatory field
         self.backupStorageUuid = NotNoneField()
         #mandatory field
         self.imageUuid = NotNoneField()
@@ -1656,12 +1654,12 @@ class APISyncVirtualRouterFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIADDOSSFILEBUCKETNAMEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIAddOssFileBucketNameMsg'
-class APIAddOssFileBucketNameMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIAddOssFileBucketNameMsg'
+APIADDOSSBUCKETFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIAddOssBucketFromRemoteMsg'
+class APIAddOssBucketFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIAddOssBucketFromRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.ossBucketName = NotNoneField()
+        self.bucketName = NotNoneField()
         #mandatory field
         self.regionId = NotNoneField()
         self.description = None
@@ -1730,9 +1728,9 @@ class APIDeleteOssBucketFileRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
-class APIDeleteOssBucketRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
+APIDELETEOSSBUCKETNAMELOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketNameLocalMsg'
+class APIDeleteOssBucketNameLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketNameLocalMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -1743,9 +1741,9 @@ class APIDeleteOssBucketRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEOSSFILEBUCKETNAMEINLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssFileBucketNameInLocalMsg'
-class APIDeleteOssFileBucketNameInLocalMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssFileBucketNameInLocalMsg'
+APIDELETEOSSBUCKETREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
+class APIDeleteOssBucketRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketRemoteMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -2064,6 +2062,18 @@ class APIPowerOnBaremetalHostMsg(object):
 APIPOWERRESETBAREMETALHOSTMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIPowerResetBaremetalHostMsg'
 class APIPowerResetBaremetalHostMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APIPowerResetBaremetalHostMsg'
+    def __init__(self):
+        #mandatory field
+        self.chassisUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIPOWERSTATUSBAREMETALHOSTMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIPowerStatusBaremetalHostMsg'
+class APIPowerStatusBaremetalHostMsg(object):
+    FULL_NAME='org.zstack.header.baremetal.power.APIPowerStatusBaremetalHostMsg'
     def __init__(self):
         #mandatory field
         self.chassisUuid = NotNoneField()
@@ -9976,21 +9986,9 @@ class APIQuerySchedulerTriggerReply(object):
     FULL_NAME='org.zstack.scheduler.APIQuerySchedulerTriggerReply'
     def __init__(self):
         self.inventories = OptionalList()
-        #mandatory field
-        self.conditions = NotNoneList()
-        self.limit = None
-        self.start = None
-        self.count = None
-        self.groupBy = None
-        self.replyWithCount = None
-        self.sortBy = None
-        #valid values: [asc, desc]
-        self.sortDirection = None
-        self.fields = OptionalList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
 
 
 APIREMOVESCHEDULERJOBFROMSCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APIRemoveSchedulerJobFromSchedulerTriggerMsg'
@@ -11046,7 +11044,7 @@ api_names = [
     'APIAddMonToFusionstorPrimaryStorageMsg',
     'APIAddNetworkServiceProviderMsg',
     'APIAddNfsPrimaryStorageMsg',
-    'APIAddOssFileBucketNameMsg',
+    'APIAddOssBucketFromRemoteMsg',
     'APIAddSchedulerJobToSchedulerTriggerMsg',
     'APIAddSecurityGroupRuleMsg',
     'APIAddSftpBackupStorageMsg',
@@ -11206,8 +11204,8 @@ api_names = [
     'APIDeleteNicQosMsg',
     'APIDeleteNotificationsMsg',
     'APIDeleteOssBucketFileRemoteMsg',
+    'APIDeleteOssBucketNameLocalMsg',
     'APIDeleteOssBucketRemoteMsg',
-    'APIDeleteOssFileBucketNameInLocalMsg',
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
@@ -11475,6 +11473,7 @@ api_names = [
     'APIPowerOffBaremetalHostMsg',
     'APIPowerOnBaremetalHostMsg',
     'APIPowerResetBaremetalHostMsg',
+    'APIPowerStatusBaremetalHostMsg',
     'APIPrometheusQueryLabelValuesMsg',
     'APIPrometheusQueryLabelValuesReply',
     'APIPrometheusQueryMetadataMsg',
@@ -13006,6 +13005,7 @@ class OssBucketInventory(object):
         self.uuid = None
         self.bucketName = None
         self.regionId = None
+        self.regionName = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -13025,6 +13025,11 @@ class OssBucketInventory(object):
             self.regionId = inv.regionId
         else:
             self.regionId = None
+
+        if hasattr(inv, 'regionName'):
+            self.regionName = inv.regionName
+        else:
+            self.regionName = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -17658,7 +17663,7 @@ class QueryObjectOssBucketEcsDataCenterRefInventory(object):
      }
 
 class QueryObjectOssBucketInventory(object):
-     PRIMITIVE_FIELDS = ['bucketName','regionId','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['bucketName','regionId','regionName','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['dataCenter']
      QUERY_OBJECT_MAP = {
         'dataCenter' : 'QueryObjectDataCenterInventory',
@@ -17732,24 +17737,24 @@ class QueryObjectRootVolumeUsageInventory(object):
 
 class QueryObjectSchedulerJobInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','targetResourceUuid','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['triggers']
+     EXPANDED_FIELDS = ['trigger']
      QUERY_OBJECT_MAP = {
-        'triggers' : 'QueryObjectSchedulerTriggerInventory',
+        'trigger' : 'QueryObjectSchedulerTriggerInventory',
      }
 
 class QueryObjectSchedulerJobSchedulerTriggerInventory(object):
      PRIMITIVE_FIELDS = ['schedulerJobUuid','triggerGroup','lastOpDate','schedulerTriggerUuid','state','jobGroup','uuid','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['jobs','triggers']
+     EXPANDED_FIELDS = ['trigger','job']
      QUERY_OBJECT_MAP = {
-        'jobs' : 'QueryObjectSchedulerJobInventory',
-        'triggers' : 'QueryObjectSchedulerTriggerInventory',
+        'trigger' : 'QueryObjectSchedulerTriggerInventory',
+        'job' : 'QueryObjectSchedulerJobInventory',
      }
 
 class QueryObjectSchedulerTriggerInventory(object):
      PRIMITIVE_FIELDS = ['schedulerInterval','name','lastOpDate','description','startTime','stopTime','schedulerType','uuid','repeatCount','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['jobs']
+     EXPANDED_FIELDS = ['job']
      QUERY_OBJECT_MAP = {
-        'jobs' : 'QueryObjectSchedulerJobInventory',
+        'job' : 'QueryObjectSchedulerJobInventory',
      }
 
 class QueryObjectSecurityGroupInventory(object):
