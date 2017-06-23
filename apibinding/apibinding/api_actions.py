@@ -422,6 +422,18 @@ class AddVmNicToSecurityGroupAction(inventory.APIAddVmNicToSecurityGroupMsg):
         self.out = evt
         return self.out
 
+class AddZsesPrimaryStorageAction(inventory.APIAddZsesPrimaryStorageMsg):
+    def __init__(self):
+        super(AddZsesPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddZsesPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AttachAliyunKeyAction(inventory.APIAttachAliyunKeyMsg):
     def __init__(self):
         super(AttachAliyunKeyAction, self).__init__()
