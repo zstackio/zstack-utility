@@ -6644,7 +6644,8 @@ class StartUiCmd(Command):
         else:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.port)
 
-        scmd = 'LOGGING_PATH=%s java -jar -Dserver.port=%s -Dwebhook.port=%s %s/zstack-ui.war >>%s/zstack-ui.log 2>&1 &' % (args.log, args.port, args.port, zstackui, args.log)
+        scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar -Dserver.port=%s -Dwebhook.port=%s %s/zstack-ui.war >>%s/zstack-ui.log 2>&1 &'" % (args.log, args.port, args.port, zstackui, args.log)
+
         script(scmd, no_pipe=True)
 
         @loop_until_timeout(5, 0.5)
