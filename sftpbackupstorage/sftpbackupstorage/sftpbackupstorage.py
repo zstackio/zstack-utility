@@ -506,7 +506,7 @@ class SftpBackupStorageAgent(object):
         self.http_server.register_async_uri(self.GET_IMAGES_METADATA, self.get_images_metadata)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE, self.get_image_size)
-        self.http_server.register_sync_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
+        self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
         self.storage_path = None
         self.uuid = None
 
