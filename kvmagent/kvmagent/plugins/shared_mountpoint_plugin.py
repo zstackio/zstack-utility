@@ -1,6 +1,8 @@
 import os.path
 import traceback
 
+from zstacklib.utils import lock
+
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
@@ -18,6 +20,11 @@ class AgentRsp(object):
         self.error = None
         self.totalCapacity = None
         self.availableCapacity = None
+
+class ConnectRsp(AgentRsp):
+    def __init__(self):
+        super(ConnectRsp, self).__init__()
+        self.isFirst = False
 
 class RevertVolumeFromSnapshotRsp(AgentRsp):
     def __init__(self):
@@ -79,6 +86,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
 
         self.imagestore_client = ImageStoreClient()
+        self.id_file = None
 
     def stop(self):
         pass
@@ -100,14 +108,48 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def connect(self, req):
         none_shared_mount_fs_type = ['xfs', 'ext2', 'ext3', 'ext4', 'vfat', 'tmpfs', 'btrfs']
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if not os.path.isdir(cmd.mountPoint):
+        if not linux.timeout_isdir(cmd.mountPoint):
             raise kvmagent.KvmError('%s is not a directory, the mount point seems not setup' % cmd.mountPoint)
 
         folder_fs_type = shell.call("df -T %s|tail -1|awk '{print $2}'" % cmd.mountPoint).strip()
         if folder_fs_type in none_shared_mount_fs_type:
-            raise kvmagent.KvmError('%s filesystem is %s, which is not a shared mount point type.' % (cmd.mountPoint, folder_fs_type))
+            raise kvmagent.KvmError(
+                '%s filesystem is %s, which is not a shared mount point type.' % (cmd.mountPoint, folder_fs_type))
 
-        rsp = AgentRsp()
+        id_dir = os.path.join(cmd.mountPoint, "zstack_smp_id_file")
+        shell.call("mkdir -p %s" % id_dir)
+        lock_file = os.path.join(id_dir, "uuid.lock")
+
+        @lock.file_lock(lock_file)
+        def check_other_smp_and_set_id_file(uuid, existUuids):
+            o = shell.ShellCmd('''
+            ls %s | grep -v %s | grep -o "[0-9a-f]\{8\}[0-9a-f]\{4\}[1-5][0-9a-f]\{3\}[89ab][0-9a-f]\{3\}[0-9a-f]\{12\}"
+            ''' % (id_dir, uuid))
+            o(False)
+            if o.return_code != 0:
+                file_uuids = []
+            else:
+                file_uuids = o.stdout.split("\n")
+
+            for file_uuid in file_uuids:
+                if file_uuid in existUuids:
+                    raise Exception(
+                        "the mount point [%s] has been occupied by other SMP[uuid:%s], Please attach this directly"
+                        % (cmd.mountPoint, file_uuid))
+
+            self.id_file = os.path.join(id_dir, uuid)
+
+            if not os.path.exists(self.id_file):
+                # check if hosts in the same cluster mount the same path but different storages.
+                rsp.isFirst = True
+
+                need_clean_file = os.path.join(id_dir, "*")
+                shell.call("rm -rf %s" % need_clean_file)
+                shell.call("touch %s" % self.id_file)
+
+        rsp = ConnectRsp()
+        check_other_smp_and_set_id_file(cmd.uuid, cmd.existUuids)
+
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 

@@ -1331,15 +1331,12 @@ def populate_vxlan_fdb(interf, ips):
 
     return success
 
-
 def timeout_isdir(path):
-    o = shell.ShellCmd("timeout 10 ls %s" % path)
+    o = shell.ShellCmd("timeout 10 ls -d -l %s" % path)
     o(False)
     if o.return_code == 124:
-        raise Exception('cannot access the mount point[%s]' % path)
-    elif o.stdout.strip() == path or o.return_code != 0 or not path:
+        raise Exception('cannot access the mount point[%s], timeout after 10s' % path)
+    if o.return_code != 0 or o.stdout[0] != 'd' or not path:
         return False
     else:
         return True
-
-
