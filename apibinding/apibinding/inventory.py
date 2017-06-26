@@ -2234,7 +2234,6 @@ class APIUpdateBaremetalPxeServerMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.dhcpInterface = None
         self.dhcpRangeBegin = None
         self.dhcpRangeEnd = None
         self.dhcpRangeNetmask = None
