@@ -6929,4 +6929,3 @@ class ValidateSessionAction(inventory.APIValidateSessionMsg):
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
-

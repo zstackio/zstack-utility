@@ -606,6 +606,8 @@ class APICreateEcsInstanceFromLocalImageMsg(object):
         self.ecsInstanceName = None
         #valid values: [true, false]
         self.allocatePublicIp = None
+        #valid regex values: [a-zA-Z0-9]{6}
+        self.ecsConsolePassword = None
         #mandatory field
         self.backupStorageUuid = NotNoneField()
         #mandatory field
@@ -2069,6 +2071,7 @@ class APIPowerResetBaremetalHostMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
 
 APIPOWERSTATUSBAREMETALHOSTMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APIPowerStatusBaremetalHostMsg'
 class APIPowerStatusBaremetalHostMsg(object):
@@ -13285,6 +13288,72 @@ class OssBucketInventory(object):
 
 
 
+class OssUploadPartsInventory(object):
+    def __init__(self):
+        self.id = None
+        self.uploadId = None
+        self.partNumber = None
+        self.eTag = None
+        self.partSize = None
+        self.partCRC = None
+        self.ossBucketUuid = None
+        self.fileKey = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'uploadId'):
+            self.uploadId = inv.uploadId
+        else:
+            self.uploadId = None
+
+        if hasattr(inv, 'partNumber'):
+            self.partNumber = inv.partNumber
+        else:
+            self.partNumber = None
+
+        if hasattr(inv, 'eTag'):
+            self.eTag = inv.eTag
+        else:
+            self.eTag = None
+
+        if hasattr(inv, 'partSize'):
+            self.partSize = inv.partSize
+        else:
+            self.partSize = None
+
+        if hasattr(inv, 'partCRC'):
+            self.partCRC = inv.partCRC
+        else:
+            self.partCRC = None
+
+        if hasattr(inv, 'ossBucketUuid'):
+            self.ossBucketUuid = inv.ossBucketUuid
+        else:
+            self.ossBucketUuid = None
+
+        if hasattr(inv, 'fileKey'):
+            self.fileKey = inv.fileKey
+        else:
+            self.fileKey = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class BaremetalHostCfgInventory(object):
     def __init__(self):
         self.uuid = None
@@ -13849,6 +13918,7 @@ class SchedulerJobInventory(object):
         self.targetResourceUuid = None
         self.name = None
         self.description = None
+        self.state = None
         self.createDate = None
         self.lastOpDate = None
         self.jobData = None
@@ -13875,6 +13945,11 @@ class SchedulerJobInventory(object):
             self.description = inv.description
         else:
             self.description = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -13908,8 +13983,6 @@ class SchedulerJobSchedulerTriggerInventory(object):
         self.uuid = None
         self.schedulerJobUuid = None
         self.schedulerTriggerUuid = None
-        self.status = None
-        self.state = None
         self.jobGroup = None
         self.triggerGroup = None
         self.createDate = None
@@ -13930,16 +14003,6 @@ class SchedulerJobSchedulerTriggerInventory(object):
             self.schedulerTriggerUuid = inv.schedulerTriggerUuid
         else:
             self.schedulerTriggerUuid = None
-
-        if hasattr(inv, 'status'):
-            self.status = inv.status
-        else:
-            self.status = None
-
-        if hasattr(inv, 'state'):
-            self.state = inv.state
-        else:
-            self.state = None
 
         if hasattr(inv, 'jobGroup'):
             self.jobGroup = inv.jobGroup
@@ -17128,6 +17191,7 @@ EXPUNGING = 'Expunging'
 PAUSING = 'Pausing'
 PAUSED = 'Paused'
 RESUMING = 'Resuming'
+VOLUMEMIGRATING = 'VolumeMigrating'
 ERROR = 'Error'
 UNKNOWN = 'Unknown'
 
@@ -17444,7 +17508,6 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
@@ -18111,6 +18174,12 @@ class QueryObjectOssBucketInventory(object):
         'dataCenter' : 'QueryObjectDataCenterInventory',
      }
 
+class QueryObjectOssUploadPartsInventory(object):
+     PRIMITIVE_FIELDS = ['uploadId','partSize','ossBucketUuid','lastOpDate','partNumber','eTag','fileKey','id','partCRC','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectPolicyInventory(object):
      PRIMITIVE_FIELDS = ['name','accountUuid','uuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['account','user','group']
@@ -18178,14 +18247,14 @@ class QueryObjectRootVolumeUsageInventory(object):
      }
 
 class QueryObjectSchedulerJobInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','targetResourceUuid','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','targetResourceUuid','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['trigger']
      QUERY_OBJECT_MAP = {
         'trigger' : 'QueryObjectSchedulerTriggerInventory',
      }
 
 class QueryObjectSchedulerJobSchedulerTriggerInventory(object):
-     PRIMITIVE_FIELDS = ['schedulerJobUuid','triggerGroup','lastOpDate','schedulerTriggerUuid','state','jobGroup','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['schedulerJobUuid','triggerGroup','lastOpDate','schedulerTriggerUuid','jobGroup','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['trigger','job']
      QUERY_OBJECT_MAP = {
         'trigger' : 'QueryObjectSchedulerTriggerInventory',
