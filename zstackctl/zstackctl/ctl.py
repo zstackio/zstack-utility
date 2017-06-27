@@ -6588,13 +6588,18 @@ class StartUiCmd(Command):
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
-        parser.add_argument('--port', help="UI server port. [DEFAULT] 5000", default='5000')
+        parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1", default='127.0.0.1')
+        parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080", default='8080')
+        parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1", default='127.0.0.1')
+        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000", default='5000')
+        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000", default='5000')
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
 
-    def _remote_start(self, host, port, log):
-        cmd = '/etc/init.d/zstack-ui start --port %s --log %s' % (port, log)
+    def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log):
+        cmd = '/etc/init.d/zstack-ui start --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s' \
+              % (mn_host, mn_port, webhook_host, webhook_port, server_port, log)
         ssh_run_no_pipe(host, cmd)
-        info('successfully start the UI server on the remote host[%s:%s]' % (host, port))
+        info('successfully start the UI server on the remote host[%s:%s]' % (host, server_port))
 
     def _check_status(self):
         port = 5000
@@ -6624,7 +6629,7 @@ class StartUiCmd(Command):
 
     def run(self, args):
         if args.host != 'localhost':
-            self._remote_start(args.host, args.port, args.log)
+            self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log)
             return
 
         shell("mkdir -p %s" % args.log)
@@ -6638,13 +6643,16 @@ class StartUiCmd(Command):
 
         distro = platform.dist()[0]
         if distro == 'centos':
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.webhook_port, args.webhook_port))
         elif distro == 'Ubuntu':
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.webhook_port, args.webhook_port))
         else:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
-        scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar -Dserver.port=%s -Dwebhook.port=%s %s/zstack-ui.war >>%s/zstack-ui.log 2>&1 &'" % (args.log, args.port, args.port, zstackui, args.log)
+        scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar -Dmn.host=%s -Dmn.port=%s -Dwebhook.host=%s -Dwebhook.port=%s -Dserver.port=%s %s/zstack-ui.war >>%s/zstack-ui.log 2>&1 &'" % (args.log, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, zstackui, args.log)
 
         script(scmd, no_pipe=True)
 
@@ -6668,11 +6676,11 @@ class StartUiCmd(Command):
         if not default_ip:
             info('successfully started UI server on the local host, PID[%s]' % pid)
         else:
-            info('successfully started UI server on the local host, PID[%s], http://%s:%s' % (pid, default_ip, args.port))
+            info('successfully started UI server on the local host, PID[%s], http://%s:%s' % (pid, default_ip, args.server_port))
 
         os.system('mkdir -p /var/run/zstack/')
         with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
-            fd.write(args.port)
+            fd.write(args.server_port)
 
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
