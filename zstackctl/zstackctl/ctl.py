@@ -22,6 +22,7 @@ import traceback
 import uuid
 import yaml
 import re
+
 from zstacklib import *
 import jinja2
 import socket
@@ -4868,7 +4869,7 @@ class ChangeIpCmd(Command):
             if old_ip != None:
                 info("Update /etc/hosts, old_ip:%s, new_ip:%s" % (old_ip, args.ip))
             else:
-               info("Update /etc/hosts, new_ip:%s" % args.ip)
+                info("Update /etc/hosts, new_ip:%s" % args.ip)
 
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
@@ -4896,6 +4897,41 @@ class ChangeIpCmd(Command):
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
+
+        # Update iptables
+        mysql_ports = {3306}
+        mq_ports = {4369, 5672, 15672, 25672}
+        ports = mysql_ports | mq_ports
+
+        cmd = "/sbin/iptables-save | grep INPUT | grep '%s'" % '\\|'.join('dport %s ' % port for port in ports)
+        o = ShellCmd(cmd)
+        o(False)
+        if o.return_code == 0:
+            old_rules = o.stdout.splitlines()
+        else:
+            old_rules = []
+
+        iptstrs = shell("/sbin/iptables-save").splitlines()
+        for rule in old_rules:
+            iptstrs.remove(rule)
+
+        (tmp_fd, tmp_path) = tempfile.mkstemp()
+        tmp_fd = os.fdopen(tmp_fd, 'w')
+        tmp_fd.write('\n'.join(iptstrs))
+        tmp_fd.close()
+        shell('/sbin/iptables-restore < %s' % tmp_path)
+        os.remove(tmp_path)
+
+        if mysql_ip != args.ip:
+            ports -= mysql_ports
+        if cloudbus_server_ip != args.ip:
+            ports -= mq_ports
+        for port in ports:
+            shell('iptables -A INPUT -p tcp --dport %s -j REJECT' % port)
+            shell('iptables -I INPUT -p tcp --dport %s -d %s -j ACCEPT' % (port, args.ip))
+            shell('iptables -I INPUT -p tcp --dport %s -d 127.0.0.1 -j ACCEPT' % port)
+
+        info("update iptables rules successfully")
 
         # Reset RabbitMQ
         info("Starting reset rabbitmq...")

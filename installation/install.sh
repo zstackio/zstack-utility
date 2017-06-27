@@ -1673,10 +1673,17 @@ cs_append_iptables(){
     echo_subtitle "Append iptables"
     if [ "$NEED_SET_MN_IP" == "y" ]; then
         management_addr=`ip addr show |grep ${MANAGEMENT_IP}|awk '{print $2}'`
-        iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -j DROP" || iptables -I INPUT -p tcp --dport 3306 -j DROP >>$ZSTACK_INSTALL_LOG 2>&1
-        iptables-save | grep -- "-I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT" || iptables -I INPUT -p tcp --dport 3306 -s $management_addr -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
+        ports=(3306 4369 15672 25672)
+        for port in ${ports[@]}
+        do
+            iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport $port -j REJECT" || iptables -A INPUT -p tcp --dport $port -j REJECT >>$ZSTACK_INSTALL_LOG 2>&1
+            iptables-save | grep -- "-A INPUT -d $management_addr/32 -p tcp -m tcp --dport $port -j ACCEPT" || iptables -I INPUT -p tcp --dport $port -d $management_addr -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
+            iptables-save | grep -- "-A INPUT -d $management_addr/32 -p tcp -m tcp --dport $port -j ACCEPT" || iptables -I INPUT -p tcp --dport $port -d 127.0.0.1 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
+
+        done
         service iptables save >> $ZSTACK_INSTALL_LOG 2>&1
     fi
+
     pass
 }
 cs_install_zstack_service(){
