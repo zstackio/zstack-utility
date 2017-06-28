@@ -2012,6 +2012,9 @@ class APICreateBaremetalChassisMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APICreateBaremetalChassisMsg'
     def __init__(self):
         #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
         self.ipmiAddress = NotNoneField()
         #mandatory field
         self.ipmiUsername = NotNoneField()
@@ -2134,6 +2137,8 @@ class APIUpdateBaremetalChassisMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.ipmiAddress = None
         self.ipmiUsername = None
         self.ipmiPassword = None
@@ -2149,6 +2154,9 @@ APICREATEBAREMETALPXESERVERMSG_FULL_NAME = 'org.zstack.header.baremetal.pxeserve
 class APICreateBaremetalPxeServerMsg(object):
     FULL_NAME='org.zstack.header.baremetal.pxeserver.APICreateBaremetalPxeServerMsg'
     def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
         #mandatory field
         self.dhcpInterface = NotNoneField()
         self.dhcpRangeBegin = None
@@ -2234,6 +2242,8 @@ class APIUpdateBaremetalPxeServerMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.dhcpRangeBegin = None
         self.dhcpRangeEnd = None
         self.dhcpRangeNetmask = None
@@ -13518,6 +13528,8 @@ class BaremetalHostNicCfgStruct(object):
 class BaremetalChassisInventory(object):
     def __init__(self):
         self.uuid = None
+        self.name = None
+        self.description = None
         self.ipmiAddress = None
         self.ipmiUsername = None
         self.ipmiPassword = None
@@ -13530,6 +13542,16 @@ class BaremetalChassisInventory(object):
             self.uuid = inv.uuid
         else:
             self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'ipmiAddress'):
             self.ipmiAddress = inv.ipmiAddress
@@ -13566,6 +13588,8 @@ class BaremetalChassisInventory(object):
 class BaremetalPxeServerInventory(object):
     def __init__(self):
         self.uuid = None
+        self.name = None
+        self.description = None
         self.dhcpInterface = None
         self.dhcpRangeBegin = None
         self.dhcpRangeEnd = None
@@ -13579,6 +13603,16 @@ class BaremetalPxeServerInventory(object):
             self.uuid = inv.uuid
         else:
             self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'dhcpInterface'):
             self.dhcpInterface = inv.dhcpInterface
@@ -17469,13 +17503,6 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
-
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -17508,11 +17535,13 @@ class GlobalConfig_QUOTA(object):
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -17546,17 +17575,6 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
-
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
-
-    @staticmethod
-    def get_category():
-        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -17677,7 +17695,7 @@ class QueryObjectBackupStorageZoneRefInventory(object):
      }
 
 class QueryObjectBaremetalChassisInventory(object):
-     PRIMITIVE_FIELDS = ['provisioned','lastOpDate','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['provisioned','name','lastOpDate','description','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -17697,7 +17715,7 @@ class QueryObjectBaremetalHostNicCfgInventory(object):
      }
 
 class QueryObjectBaremetalPxeServerInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','dhcpRangeNetmask','dhcpInterface','uuid','dhcpRangeBegin','dhcpRangeEnd','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','dhcpRangeNetmask','dhcpInterface','uuid','dhcpRangeBegin','dhcpRangeEnd','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
