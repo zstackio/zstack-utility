@@ -1010,6 +1010,18 @@ class CreateAccountAction(inventory.APICreateAccountMsg):
         self.out = evt
         return self.out
 
+class CreateAliyunVpcVirtualRouterEntryRemoteAction(inventory.APICreateAliyunVpcVirtualRouterEntryRemoteMsg):
+    def __init__(self):
+        super(CreateAliyunVpcVirtualRouterEntryRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateAliyunVpcVirtualRouterEntryRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateBaremetalChassisAction(inventory.APICreateBaremetalChassisMsg):
     def __init__(self):
         super(CreateBaremetalChassisAction, self).__init__()
@@ -1622,18 +1634,6 @@ class CreateVpcUserVpnGatewayRemoteAction(inventory.APICreateVpcUserVpnGatewayRe
         self.out = evt
         return self.out
 
-class CreateVpcVirtualRouterEntryRemoteAction(inventory.APICreateVpcVirtualRouterEntryRemoteMsg):
-    def __init__(self):
-        super(CreateVpcVirtualRouterEntryRemoteAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateVpcVirtualRouterEntryRemoteAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class CreateVpcVpnConnectionRemoteAction(inventory.APICreateVpcVpnConnectionRemoteMsg):
     def __init__(self):
         super(CreateVpcVpnConnectionRemoteAction, self).__init__()
@@ -1726,6 +1726,18 @@ class DeleteAliyunKeySecretAction(inventory.APIDeleteAliyunKeySecretMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteAliyunKeySecretAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAliyunRouteEntryRemoteAction(inventory.APIDeleteAliyunRouteEntryRemoteMsg):
+    def __init__(self):
+        super(DeleteAliyunRouteEntryRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAliyunRouteEntryRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2278,18 +2290,6 @@ class DeleteResourcePriceAction(inventory.APIDeleteResourcePriceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteResourcePriceAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DeleteRouteEntryRemoteAction(inventory.APIDeleteRouteEntryRemoteMsg):
-    def __init__(self):
-        super(DeleteRouteEntryRemoteAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteRouteEntryRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4188,6 +4188,20 @@ class QueryAliyunKeySecretAction(inventory.APIQueryAliyunKeySecretMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryAliyunVirtualRouterFromLocalAction(inventory.APIQueryAliyunVirtualRouterFromLocalMsg):
+    def __init__(self):
+        super(QueryAliyunVirtualRouterFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAliyunVirtualRouterFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryApplianceVmAction(inventory.APIQueryApplianceVmMsg):
     def __init__(self):
         super(QueryApplianceVmAction, self).__init__()
@@ -5252,20 +5266,6 @@ class QueryVirtualBorderRouterFromLocalAction(inventory.APIQueryVirtualBorderRou
         self.out = reply.inventories
         return self.out
 
-class QueryVirtualRouterFromLocalAction(inventory.APIQueryVirtualRouterFromLocalMsg):
-    def __init__(self):
-        super(QueryVirtualRouterFromLocalAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryVirtualRouterFromLocalAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
 class QueryVirtualRouterOfferingAction(inventory.APIQueryVirtualRouterOfferingMsg):
     def __init__(self):
         super(QueryVirtualRouterOfferingAction, self).__init__()
@@ -6116,6 +6116,30 @@ class StopVmInstanceAction(inventory.APIStopVmInstanceMsg):
         self.out = evt
         return self.out
 
+class SyncAliyunRouteEntryFromRemoteAction(inventory.APISyncAliyunRouteEntryFromRemoteMsg):
+    def __init__(self):
+        super(SyncAliyunRouteEntryFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncAliyunRouteEntryFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncAliyunVirtualRouterFromRemoteAction(inventory.APISyncAliyunVirtualRouterFromRemoteMsg):
+    def __init__(self):
+        super(SyncAliyunVirtualRouterFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncAliyunVirtualRouterFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SyncEcsImageFromRemoteAction(inventory.APISyncEcsImageFromRemoteMsg):
     def __init__(self):
         super(SyncEcsImageFromRemoteAction, self).__init__()
@@ -6212,18 +6236,6 @@ class SyncPrimaryStorageCapacityAction(inventory.APISyncPrimaryStorageCapacityMs
         self.out = evt
         return self.out
 
-class SyncRouteEntryFromRemoteAction(inventory.APISyncRouteEntryFromRemoteMsg):
-    def __init__(self):
-        super(SyncRouteEntryFromRemoteAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[SyncRouteEntryFromRemoteAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class SyncRouterInterfaceFromRemoteAction(inventory.APISyncRouterInterfaceFromRemoteMsg):
     def __init__(self):
         super(SyncRouterInterfaceFromRemoteAction, self).__init__()
@@ -6244,18 +6256,6 @@ class SyncVirtualBorderRouterFromRemoteAction(inventory.APISyncVirtualBorderRout
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncVirtualBorderRouterFromRemoteAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class SyncVirtualRouterFromRemoteAction(inventory.APISyncVirtualRouterFromRemoteMsg):
-    def __init__(self):
-        super(SyncVirtualRouterFromRemoteAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[SyncVirtualRouterFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
