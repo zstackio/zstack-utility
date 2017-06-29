@@ -1596,9 +1596,9 @@ class APISyncEcsVpcFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEVPCVIRTUALROUTERENTRYREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APICreateVpcVirtualRouterEntryRemoteMsg'
-class APICreateVpcVirtualRouterEntryRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APICreateVpcVirtualRouterEntryRemoteMsg'
+APICREATEALIYUNVPCVIRTUALROUTERENTRYREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APICreateAliyunVpcVirtualRouterEntryRemoteMsg'
+class APICreateAliyunVpcVirtualRouterEntryRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APICreateAliyunVpcVirtualRouterEntryRemoteMsg'
     def __init__(self):
         #mandatory field
         self.vRouterUuid = NotNoneField()
@@ -1619,9 +1619,9 @@ class APICreateVpcVirtualRouterEntryRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEROUTEENTRYREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIDeleteRouteEntryRemoteMsg'
-class APIDeleteRouteEntryRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIDeleteRouteEntryRemoteMsg'
+APIDELETEALIYUNROUTEENTRYREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIDeleteAliyunRouteEntryRemoteMsg'
+class APIDeleteAliyunRouteEntryRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIDeleteAliyunRouteEntryRemoteMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -1648,6 +1648,47 @@ class APIDeleteVirtualRouterLocalMsg(object):
         self.userTags = OptionalList()
 
 
+APIQUERYALIYUNROUTEENTRYFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIQueryAliyunRouteEntryFromLocalReply'
+class APIQueryAliyunRouteEntryFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIQueryAliyunRouteEntryFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYALIYUNVIRTUALROUTERFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIQueryAliyunVirtualRouterFromLocalMsg'
+class APIQueryAliyunVirtualRouterFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIQueryAliyunVirtualRouterFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNVIRTUALROUTERFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIQueryAliyunVirtualRouterFromLocalReply'
+class APIQueryAliyunVirtualRouterFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIQueryAliyunVirtualRouterFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYROUTEENTRYFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIQueryRouteEntryFromLocalMsg'
 class APIQueryRouteEntryFromLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIQueryRouteEntryFromLocalMsg'
@@ -1669,50 +1710,9 @@ class APIQueryRouteEntryFromLocalMsg(object):
         self.userTags = OptionalList()
 
 
-APIQUERYROUTEENTRYFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIQueryRouteEntryFromLocalReply'
-class APIQueryRouteEntryFromLocalReply(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIQueryRouteEntryFromLocalReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.total = None
-        self.success = None
-        self.error = None
-
-
-APIQUERYVIRTUALROUTERFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIQueryVirtualRouterFromLocalMsg'
-class APIQueryVirtualRouterFromLocalMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIQueryVirtualRouterFromLocalMsg'
-    def __init__(self):
-        #mandatory field
-        self.conditions = NotNoneList()
-        self.limit = None
-        self.start = None
-        self.count = None
-        self.groupBy = None
-        self.replyWithCount = None
-        self.sortBy = None
-        #valid values: [asc, desc]
-        self.sortDirection = None
-        self.fields = OptionalList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYVIRTUALROUTERFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIQueryVirtualRouterFromLocalReply'
-class APIQueryVirtualRouterFromLocalReply(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIQueryVirtualRouterFromLocalReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.total = None
-        self.success = None
-        self.error = None
-
-
-APISYNCROUTEENTRYFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APISyncRouteEntryFromRemoteMsg'
-class APISyncRouteEntryFromRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APISyncRouteEntryFromRemoteMsg'
+APISYNCALIYUNROUTEENTRYFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APISyncAliyunRouteEntryFromRemoteMsg'
+class APISyncAliyunRouteEntryFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APISyncAliyunRouteEntryFromRemoteMsg'
     def __init__(self):
         #mandatory field
         self.vRouterUuid = NotNoneField()
@@ -1726,9 +1726,9 @@ class APISyncRouteEntryFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APISYNCVIRTUALROUTERFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APISyncVirtualRouterFromRemoteMsg'
-class APISyncVirtualRouterFromRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APISyncVirtualRouterFromRemoteMsg'
+APISYNCALIYUNVIRTUALROUTERFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APISyncAliyunVirtualRouterFromRemoteMsg'
+class APISyncAliyunVirtualRouterFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APISyncAliyunVirtualRouterFromRemoteMsg'
     def __init__(self):
         #mandatory field
         self.vpcUuid = NotNoneField()
@@ -2095,9 +2095,6 @@ class APICreateBaremetalChassisMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APICreateBaremetalChassisMsg'
     def __init__(self):
         #mandatory field
-        self.name = NotNoneField()
-        self.description = None
-        #mandatory field
         self.ipmiAddress = NotNoneField()
         #mandatory field
         self.ipmiUsername = NotNoneField()
@@ -2220,8 +2217,6 @@ class APIUpdateBaremetalChassisMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.name = None
-        self.description = None
         self.ipmiAddress = None
         self.ipmiUsername = None
         self.ipmiPassword = None
@@ -2237,9 +2232,6 @@ APICREATEBAREMETALPXESERVERMSG_FULL_NAME = 'org.zstack.header.baremetal.pxeserve
 class APICreateBaremetalPxeServerMsg(object):
     FULL_NAME='org.zstack.header.baremetal.pxeserver.APICreateBaremetalPxeServerMsg'
     def __init__(self):
-        #mandatory field
-        self.name = NotNoneField()
-        self.description = None
         #mandatory field
         self.dhcpInterface = NotNoneField()
         self.dhcpRangeBegin = None
@@ -2325,8 +2317,6 @@ class APIUpdateBaremetalPxeServerMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.name = None
-        self.description = None
         self.dhcpRangeBegin = None
         self.dhcpRangeEnd = None
         self.dhcpRangeNetmask = None
@@ -11425,6 +11415,7 @@ api_names = [
     'APICloneVmInstanceMsg',
     'APICommitVolumeAsImageMsg',
     'APICreateAccountMsg',
+    'APICreateAliyunVpcVirtualRouterEntryRemoteMsg',
     'APICreateBaremetalChassisMsg',
     'APICreateBaremetalHostCfgMsg',
     'APICreateBaremetalPxeServerMsg',
@@ -11477,7 +11468,6 @@ api_names = [
     'APICreateVniRangeMsg',
     'APICreateVolumeSnapshotMsg',
     'APICreateVpcUserVpnGatewayRemoteMsg',
-    'APICreateVpcVirtualRouterEntryRemoteMsg',
     'APICreateVpcVpnConnectionRemoteMsg',
     'APICreateVpnIkeConfigMsg',
     'APICreateVpnIpsecMsg',
@@ -11486,6 +11476,7 @@ api_names = [
     'APIDebugSignalMsg',
     'APIDeleteAccountMsg',
     'APIDeleteAliyunKeySecretMsg',
+    'APIDeleteAliyunRouteEntryRemoteMsg',
     'APIDeleteAllEcsInstancesFromDataCenterMsg',
     'APIDeleteBackupFileInPublicMsg',
     'APIDeleteBackupStorageMsg',
@@ -11533,7 +11524,6 @@ api_names = [
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
     'APIDeleteResourcePriceMsg',
-    'APIDeleteRouteEntryRemoteMsg',
     'APIDeleteRouterInterfaceLocalMsg',
     'APIDeleteRouterInterfaceRemoteMsg',
     'APIDeleteSchedulerJobMsg',
@@ -11818,6 +11808,9 @@ api_names = [
     'APIQueryAccountResourceRefReply',
     'APIQueryAliyunKeySecretMsg',
     'APIQueryAliyunKeySecretReply',
+    'APIQueryAliyunRouteEntryFromLocalReply',
+    'APIQueryAliyunVirtualRouterFromLocalMsg',
+    'APIQueryAliyunVirtualRouterFromLocalReply',
     'APIQueryApplianceVmMsg',
     'APIQueryApplianceVmReply',
     'APIQueryBackupStorageMsg',
@@ -11922,7 +11915,6 @@ api_names = [
     'APIQueryResourcePriceMsg',
     'APIQueryResourcePriceReply',
     'APIQueryRouteEntryFromLocalMsg',
-    'APIQueryRouteEntryFromLocalReply',
     'APIQueryRouterInterfaceFromLocalMsg',
     'APIQueryRouterInterfaceFromLocalReply',
     'APIQuerySchedulerJobMsg',
@@ -11967,8 +11959,6 @@ api_names = [
     'APIQueryVipReply',
     'APIQueryVirtualBorderRouterFromLocalMsg',
     'APIQueryVirtualBorderRouterFromLocalReply',
-    'APIQueryVirtualRouterFromLocalMsg',
-    'APIQueryVirtualRouterFromLocalReply',
     'APIQueryVirtualRouterOfferingMsg',
     'APIQueryVirtualRouterOfferingReply',
     'APIQueryVirtualRouterVRouterRouteTableRefMsg',
@@ -12080,6 +12070,8 @@ api_names = [
     'APIStopBaremetalPxeServerMsg',
     'APIStopEcsInstanceMsg',
     'APIStopVmInstanceMsg',
+    'APISyncAliyunRouteEntryFromRemoteMsg',
+    'APISyncAliyunVirtualRouterFromRemoteMsg',
     'APISyncEcsImageFromRemoteMsg',
     'APISyncEcsInstanceFromRemoteMsg',
     'APISyncEcsSecurityGroupFromRemoteMsg',
@@ -12088,10 +12080,8 @@ api_names = [
     'APISyncEcsVpcFromRemoteMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
-    'APISyncRouteEntryFromRemoteMsg',
     'APISyncRouterInterfaceFromRemoteMsg',
     'APISyncVirtualBorderRouterFromRemoteMsg',
-    'APISyncVirtualRouterFromRemoteMsg',
     'APISyncVolumeSizeMsg',
     'APISyncVpcUserVpnGatewayFromRemoteMsg',
     'APISyncVpcVpnConnectionFromRemoteMsg',
@@ -13712,8 +13702,6 @@ class BaremetalHostNicCfgStruct(object):
 class BaremetalChassisInventory(object):
     def __init__(self):
         self.uuid = None
-        self.name = None
-        self.description = None
         self.ipmiAddress = None
         self.ipmiUsername = None
         self.ipmiPassword = None
@@ -13726,16 +13714,6 @@ class BaremetalChassisInventory(object):
             self.uuid = inv.uuid
         else:
             self.uuid = None
-
-        if hasattr(inv, 'name'):
-            self.name = inv.name
-        else:
-            self.name = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
 
         if hasattr(inv, 'ipmiAddress'):
             self.ipmiAddress = inv.ipmiAddress
@@ -13772,8 +13750,6 @@ class BaremetalChassisInventory(object):
 class BaremetalPxeServerInventory(object):
     def __init__(self):
         self.uuid = None
-        self.name = None
-        self.description = None
         self.dhcpInterface = None
         self.dhcpRangeBegin = None
         self.dhcpRangeEnd = None
@@ -13787,16 +13763,6 @@ class BaremetalPxeServerInventory(object):
             self.uuid = inv.uuid
         else:
             self.uuid = None
-
-        if hasattr(inv, 'name'):
-            self.name = inv.name
-        else:
-            self.name = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
 
         if hasattr(inv, 'dhcpInterface'):
             self.dhcpInterface = inv.dhcpInterface
@@ -15269,60 +15235,6 @@ class UserInventory(object):
             self.name = inv.name
         else:
             self.name = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
-class AvailableIdentityZonesInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.accountUuid = None
-        self.zoneId = None
-        self.type = None
-        self.dataCenterUuid = None
-        self.description = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'accountUuid'):
-            self.accountUuid = inv.accountUuid
-        else:
-            self.accountUuid = None
-
-        if hasattr(inv, 'zoneId'):
-            self.zoneId = inv.zoneId
-        else:
-            self.zoneId = None
-
-        if hasattr(inv, 'type'):
-            self.type = inv.type
-        else:
-            self.type = None
-
-        if hasattr(inv, 'dataCenterUuid'):
-            self.dataCenterUuid = inv.dataCenterUuid
-        else:
-            self.dataCenterUuid = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -17865,12 +17777,6 @@ class QueryObjectApplianceVmInventory(object):
         'eip' : 'QueryObjectEipInventory',
      }
 
-class QueryObjectAvailableIdentityZonesInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','accountUuid','zoneId','dataCenterUuid','description','type','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
-     QUERY_OBJECT_MAP = {
-     }
-
 class QueryObjectAvailableInstanceTypeInventory(object):
      PRIMITIVE_FIELDS = ['izUuid','diskCategories','instanceType','lastOpDate','accountUuid','description','uuid','resourceType','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -17895,7 +17801,7 @@ class QueryObjectBackupStorageZoneRefInventory(object):
      }
 
 class QueryObjectBaremetalChassisInventory(object):
-     PRIMITIVE_FIELDS = ['provisioned','name','lastOpDate','description','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['provisioned','lastOpDate','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -17915,7 +17821,7 @@ class QueryObjectBaremetalHostNicCfgInventory(object):
      }
 
 class QueryObjectBaremetalPxeServerInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','dhcpRangeNetmask','dhcpInterface','uuid','dhcpRangeBegin','dhcpRangeEnd','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['lastOpDate','dhcpRangeNetmask','dhcpInterface','uuid','dhcpRangeBegin','dhcpRangeEnd','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -18915,6 +18821,7 @@ queryMessageInventoryMap = {
      'APIQueryAccountMsg' : QueryObjectAccountInventory,
      'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
      'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,
+     'APIQueryAliyunVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
      'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
      'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
      'APIQueryBaremetalChassisMsg' : QueryObjectBaremetalChassisInventory,
@@ -18990,7 +18897,6 @@ queryMessageInventoryMap = {
      'APIQueryVRouterRouteTableMsg' : QueryObjectVRouterRouteTableInventory,
      'APIQueryVipMsg' : QueryObjectVipInventory,
      'APIQueryVirtualBorderRouterFromLocalMsg' : QueryObjectVirtualBorderRouterInventory,
-     'APIQueryVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
      'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
      'APIQueryVirtualRouterVRouterRouteTableRefMsg' : QueryObjectVirtualRouterVRouterRouteTableRefInventory,
      'APIQueryVirtualRouterVmMsg' : QueryObjectVirtualRouterVmInventory,
