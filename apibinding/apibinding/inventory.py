@@ -1573,7 +1573,7 @@ class APISyncEcsVSwitchFromRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vpc.APISyncEcsVSwitchFromRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.identityZoneUuid = NotNoneField()
+        self.dataCenterUuid = NotNoneField()
         self.vSwitchId = None
         self.resourceUuid = None
         self.session = None
@@ -2095,6 +2095,9 @@ class APICreateBaremetalChassisMsg(object):
     FULL_NAME='org.zstack.header.baremetal.power.APICreateBaremetalChassisMsg'
     def __init__(self):
         #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
         self.ipmiAddress = NotNoneField()
         #mandatory field
         self.ipmiUsername = NotNoneField()
@@ -2217,6 +2220,8 @@ class APIUpdateBaremetalChassisMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.ipmiAddress = None
         self.ipmiUsername = None
         self.ipmiPassword = None
@@ -2232,6 +2237,9 @@ APICREATEBAREMETALPXESERVERMSG_FULL_NAME = 'org.zstack.header.baremetal.pxeserve
 class APICreateBaremetalPxeServerMsg(object):
     FULL_NAME='org.zstack.header.baremetal.pxeserver.APICreateBaremetalPxeServerMsg'
     def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
         #mandatory field
         self.dhcpInterface = NotNoneField()
         self.dhcpRangeBegin = None
@@ -2317,6 +2325,8 @@ class APIUpdateBaremetalPxeServerMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.dhcpRangeBegin = None
         self.dhcpRangeEnd = None
         self.dhcpRangeNetmask = None
@@ -13702,6 +13712,8 @@ class BaremetalHostNicCfgStruct(object):
 class BaremetalChassisInventory(object):
     def __init__(self):
         self.uuid = None
+        self.name = None
+        self.description = None
         self.ipmiAddress = None
         self.ipmiUsername = None
         self.ipmiPassword = None
@@ -13714,6 +13726,16 @@ class BaremetalChassisInventory(object):
             self.uuid = inv.uuid
         else:
             self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'ipmiAddress'):
             self.ipmiAddress = inv.ipmiAddress
@@ -13750,6 +13772,8 @@ class BaremetalChassisInventory(object):
 class BaremetalPxeServerInventory(object):
     def __init__(self):
         self.uuid = None
+        self.name = None
+        self.description = None
         self.dhcpInterface = None
         self.dhcpRangeBegin = None
         self.dhcpRangeEnd = None
@@ -13763,6 +13787,16 @@ class BaremetalPxeServerInventory(object):
             self.uuid = inv.uuid
         else:
             self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
 
         if hasattr(inv, 'dhcpInterface'):
             self.dhcpInterface = inv.dhcpInterface
@@ -17801,7 +17835,7 @@ class QueryObjectBackupStorageZoneRefInventory(object):
      }
 
 class QueryObjectBaremetalChassisInventory(object):
-     PRIMITIVE_FIELDS = ['provisioned','lastOpDate','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['provisioned','name','lastOpDate','description','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -17821,7 +17855,7 @@ class QueryObjectBaremetalHostNicCfgInventory(object):
      }
 
 class QueryObjectBaremetalPxeServerInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','dhcpRangeNetmask','dhcpInterface','uuid','dhcpRangeBegin','dhcpRangeEnd','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','dhcpRangeNetmask','dhcpInterface','uuid','dhcpRangeBegin','dhcpRangeEnd','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
