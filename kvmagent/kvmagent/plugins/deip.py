@@ -248,7 +248,7 @@ class DEip(kvmagent.KvmAgent):
         set_ip_to_idev_if_needed(PRI_IDEV, NIC_GATEWAY, NIC_NETMASK)
 
         # ping VIP gateway
-        bash_r('eval {{NS}} arping -q -U -c 1 -I {{PUB_IDEV}} {{VIP_GW}} > /dev/null')
+        bash_r('eval {{NS}} arping -q -A -w 2.5 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
 
         set_gateway_arp_if_needed()
         set_eip_rules()
