@@ -13010,7 +13010,7 @@ class EcsSecurityGroupInventory(object):
         self.uuid = None
         self.ecsVpcUuid = None
         self.securityGroupId = None
-        self.securityGroupName = None
+        self.name = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -13031,10 +13031,10 @@ class EcsSecurityGroupInventory(object):
         else:
             self.securityGroupId = None
 
-        if hasattr(inv, 'securityGroupName'):
-            self.securityGroupName = inv.securityGroupName
+        if hasattr(inv, 'name'):
+            self.name = inv.name
         else:
-            self.securityGroupName = None
+            self.name = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -13145,7 +13145,7 @@ class EcsVSwitchInventory(object):
         self.cidrBlock = None
         self.availableIpAddressCount = None
         self.description = None
-        self.vSwitchName = None
+        self.name = None
         self.ecsVpcUuid = None
         self.identityZoneUuid = None
         self.createDate = None
@@ -13182,10 +13182,10 @@ class EcsVSwitchInventory(object):
         else:
             self.description = None
 
-        if hasattr(inv, 'vSwitchName'):
-            self.vSwitchName = inv.vSwitchName
+        if hasattr(inv, 'name'):
+            self.name = inv.name
         else:
-            self.vSwitchName = None
+            self.name = None
 
         if hasattr(inv, 'ecsVpcUuid'):
             self.ecsVpcUuid = inv.ecsVpcUuid
@@ -13216,7 +13216,7 @@ class EcsVpcInventory(object):
         self.dataCenterUuid = None
         self.status = None
         self.deleted = None
-        self.vpcName = None
+        self.name = None
         self.cidrBlock = None
         self.vRouterId = None
         self.description = None
@@ -13249,10 +13249,10 @@ class EcsVpcInventory(object):
         else:
             self.deleted = None
 
-        if hasattr(inv, 'vpcName'):
-            self.vpcName = inv.vpcName
+        if hasattr(inv, 'name'):
+            self.name = inv.name
         else:
-            self.vpcName = None
+            self.name = None
 
         if hasattr(inv, 'cidrBlock'):
             self.cidrBlock = inv.cidrBlock
@@ -13352,7 +13352,7 @@ class VpcVirtualRouterInventory(object):
         self.uuid = None
         self.vrId = None
         self.vpcUuid = None
-        self.vRouterName = None
+        self.name = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -13373,10 +13373,10 @@ class VpcVirtualRouterInventory(object):
         else:
             self.vpcUuid = None
 
-        if hasattr(inv, 'vRouterName'):
-            self.vRouterName = inv.vRouterName
+        if hasattr(inv, 'name'):
+            self.name = inv.name
         else:
-            self.vRouterName = None
+            self.name = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -14485,6 +14485,7 @@ class HybridEipAddressInventory(object):
         self.status = None
         self.eipAddress = None
         self.eipType = None
+        self.name = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -14529,6 +14530,11 @@ class HybridEipAddressInventory(object):
             self.eipType = inv.eipType
         else:
             self.eipType = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -17981,7 +17987,7 @@ class QueryObjectEcsInstanceInventory(object):
      }
 
 class QueryObjectEcsSecurityGroupInventory(object):
-     PRIMITIVE_FIELDS = ['securityGroupId','securityGroupName','ecsVpcUuid','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['securityGroupId','ecsVpcUuid','name','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -17993,13 +17999,13 @@ class QueryObjectEcsSecurityGroupRuleInventory(object):
      }
 
 class QueryObjectEcsVSwitchInventory(object):
-     PRIMITIVE_FIELDS = ['vSwitchName','availableIpAddressCount','vSwitchId','ecsVpcUuid','cidrBlock','identityZoneUuid','lastOpDate','description','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableIpAddressCount','vSwitchId','ecsVpcUuid','cidrBlock','name','identityZoneUuid','lastOpDate','description','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectEcsVpcInventory(object):
-     PRIMITIVE_FIELDS = ['ecsVpcId','vpcName','vRouterId','deleted','cidrBlock','lastOpDate','dataCenterUuid','description','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsVpcId','vRouterId','deleted','cidrBlock','name','lastOpDate','dataCenterUuid','description','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -18085,7 +18091,7 @@ class QueryObjectHybridConnectionRefInventory(object):
      }
 
 class QueryObjectHybridEipAddressInventory(object):
-     PRIMITIVE_FIELDS = ['bandWidth','allocateResourceType','eipType','allocateResourceUuid','eipAddress','eipId','lastOpDate','description','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['bandWidth','allocateResourceType','eipType','allocateResourceUuid','eipAddress','eipId','name','lastOpDate','description','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['ecs']
      QUERY_OBJECT_MAP = {
         'ecs' : 'QueryObjectEcsInstanceInventory',
@@ -18792,7 +18798,7 @@ class QueryObjectVpcVirtualRouteEntryInventory(object):
      }
 
 class QueryObjectVpcVirtualRouterInventory(object):
-     PRIMITIVE_FIELDS = ['vrId','vRouterName','lastOpDate','description','uuid','vpcUuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['vrId','name','lastOpDate','description','uuid','vpcUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
