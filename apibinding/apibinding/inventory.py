@@ -608,8 +608,7 @@ class APICreateEcsInstanceFromLocalImageMsg(object):
         self.allocatePublicIp = None
         #valid regex values: [a-zA-Z0-9]{6}
         self.ecsConsolePassword = None
-        #mandatory field
-        self.backupStorageUuid = NotNoneField()
+        self.backupStorageUuid = None
         #mandatory field
         self.imageUuid = NotNoneField()
         #mandatory field
@@ -782,8 +781,7 @@ class APICreateEcsImageFromLocalImageMsg(object):
         self.imageUuid = NotNoneField()
         #mandatory field
         self.dataCenterUuid = NotNoneField()
-        #mandatory field
-        self.backupStorageUuid = NotNoneField()
+        self.backupStorageUuid = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
