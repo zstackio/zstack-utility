@@ -4224,6 +4224,20 @@ class QueryAliyunKeySecretAction(inventory.APIQueryAliyunKeySecretMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryAliyunRouteEntryFromLocalAction(inventory.APIQueryAliyunRouteEntryFromLocalMsg):
+    def __init__(self):
+        super(QueryAliyunRouteEntryFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAliyunRouteEntryFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryAliyunVirtualRouterFromLocalAction(inventory.APIQueryAliyunVirtualRouterFromLocalMsg):
     def __init__(self):
         super(QueryAliyunVirtualRouterFromLocalAction, self).__init__()
@@ -4975,20 +4989,6 @@ class QueryResourcePriceAction(inventory.APIQueryResourcePriceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryResourcePriceAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class QueryRouteEntryFromLocalAction(inventory.APIQueryRouteEntryFromLocalMsg):
-    def __init__(self):
-        super(QueryRouteEntryFromLocalAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryRouteEntryFromLocalAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
