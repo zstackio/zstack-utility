@@ -8504,72 +8504,363 @@ class APIQueryShareableVolumeVmInstanceRefReply(object):
         self.error = None
 
 
-APIGETHOSTMONITORINGDATAMSG_FULL_NAME = 'org.zstack.monitoring.APIGetHostMonitoringDataMsg'
-class APIGetHostMonitoringDataMsg(object):
-    FULL_NAME='org.zstack.monitoring.APIGetHostMonitoringDataMsg'
+APIATTACHMONITORTRIGGERACTIONTOTRIGGERMSG_FULL_NAME = 'org.zstack.monitoring.APIAttachMonitorTriggerActionToTriggerMsg'
+class APIAttachMonitorTriggerActionToTriggerMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIAttachMonitorTriggerActionToTriggerMsg'
     def __init__(self):
-        self.hostUuid = None
         #mandatory field
-        self.query = NotNoneMap()
+        self.triggerUuid = NotNoneField()
+        #mandatory field
+        self.actionUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
 
-APIGETHOSTMONITORINGDATAREPLY_FULL_NAME = 'org.zstack.monitoring.APIGetHostMonitoringDataReply'
-class APIGetHostMonitoringDataReply(object):
-    FULL_NAME='org.zstack.monitoring.APIGetHostMonitoringDataReply'
+APICHANGEMONITORTRIGGERSTATEMSG_FULL_NAME = 'org.zstack.monitoring.APIChangeMonitorTriggerStateMsg'
+class APIChangeMonitorTriggerStateMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIChangeMonitorTriggerStateMsg'
     def __init__(self):
-        self.data = OptionalMap()
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEMONITORTRIGGERMSG_FULL_NAME = 'org.zstack.monitoring.APICreateMonitorTriggerMsg'
+class APICreateMonitorTriggerMsg(object):
+    FULL_NAME='org.zstack.monitoring.APICreateMonitorTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.expression = NotNoneField()
+        #mandatory field
+        self.duration = NotNoneField()
+        self.recoveryExpression = None
+        self.description = None
+        #mandatory field
+        self.targetResourceUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALERTMSG_FULL_NAME = 'org.zstack.monitoring.APIDeleteAlertMsg'
+class APIDeleteAlertMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIDeleteAlertMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuids = NotNoneList()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEMONITORTRIGGERMSG_FULL_NAME = 'org.zstack.monitoring.APIDeleteMonitorTriggerMsg'
+class APIDeleteMonitorTriggerMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIDeleteMonitorTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHMONITORTRIGGERACTIONFROMTRIGGERMSG_FULL_NAME = 'org.zstack.monitoring.APIDetachMonitorTriggerActionFromTriggerMsg'
+class APIDetachMonitorTriggerActionFromTriggerMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIDetachMonitorTriggerActionFromTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.triggerUuid = NotNoneField()
+        #mandatory field
+        self.actionUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETMONITORITEMMSG_FULL_NAME = 'org.zstack.monitoring.APIGetMonitorItemMsg'
+class APIGetMonitorItemMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIGetMonitorItemMsg'
+    def __init__(self):
+        #mandatory field
+        self.resourceType = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETMONITORITEMREPLY_FULL_NAME = 'org.zstack.monitoring.APIGetMonitorItemReply'
+class APIGetMonitorItemReply(object):
+    FULL_NAME='org.zstack.monitoring.APIGetMonitorItemReply'
+    def __init__(self):
+        self.inventories = OptionalList()
         self.success = None
         self.error = None
 
 
-APIGETVMMONITORINGDATAMSG_FULL_NAME = 'org.zstack.monitoring.APIGetVmMonitoringDataMsg'
-class APIGetVmMonitoringDataMsg(object):
-    FULL_NAME='org.zstack.monitoring.APIGetVmMonitoringDataMsg'
+APIQUERYALERTMSG_FULL_NAME = 'org.zstack.monitoring.APIQueryAlertMsg'
+class APIQueryAlertMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIQueryAlertMsg'
     def __init__(self):
-        self.vmInstanceUuid = None
         #mandatory field
-        self.query = NotNoneMap()
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
 
-APIGETVMMONITORINGDATAREPLY_FULL_NAME = 'org.zstack.monitoring.APIGetVmMonitoringDataReply'
-class APIGetVmMonitoringDataReply(object):
-    FULL_NAME='org.zstack.monitoring.APIGetVmMonitoringDataReply'
+APIQUERYALERTREPLY_FULL_NAME = 'org.zstack.monitoring.APIQueryAlertReply'
+class APIQueryAlertReply(object):
+    FULL_NAME='org.zstack.monitoring.APIQueryAlertReply'
     def __init__(self):
-        self.data = OptionalMap()
+        self.inventories = OptionalList()
+        self.total = None
         self.success = None
         self.error = None
 
 
-APIMONITORINGPASSTHROUGHMSG_FULL_NAME = 'org.zstack.monitoring.APIMonitoringPassThroughMsg'
-class APIMonitoringPassThroughMsg(object):
-    FULL_NAME='org.zstack.monitoring.APIMonitoringPassThroughMsg'
+APIQUERYMONITORTRIGGERMSG_FULL_NAME = 'org.zstack.monitoring.APIQueryMonitorTriggerMsg'
+class APIQueryMonitorTriggerMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIQueryMonitorTriggerMsg'
     def __init__(self):
         #mandatory field
-        self.apiPath = NotNoneField()
-        self.query = OptionalMap()
-        #valid values: [GET, POST, DELETE, PUT, HEAD]
-        self.httpMethod = None
-        self.httpHeaders = OptionalList()
-        self.successStatusCodes = OptionalList()
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
 
-APIMONITORINGPASSTHROUGHREPLY_FULL_NAME = 'org.zstack.monitoring.APIMonitoringPassThroughReply'
-class APIMonitoringPassThroughReply(object):
-    FULL_NAME='org.zstack.monitoring.APIMonitoringPassThroughReply'
+APIQUERYMONITORTRIGGERREPLY_FULL_NAME = 'org.zstack.monitoring.APIQueryMonitorTriggerReply'
+class APIQueryMonitorTriggerReply(object):
+    FULL_NAME='org.zstack.monitoring.APIQueryMonitorTriggerReply'
     def __init__(self):
-        self.data = OptionalMap()
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIUPDATEMONITORTRIGGERMSG_FULL_NAME = 'org.zstack.monitoring.APIUpdateMonitorTriggerMsg'
+class APIUpdateMonitorTriggerMsg(object):
+    FULL_NAME='org.zstack.monitoring.APIUpdateMonitorTriggerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.expression = None
+        self.duration = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICHANGEMONITORTRIGGERACTIONSTATEMSG_FULL_NAME = 'org.zstack.monitoring.actions.APIChangeMonitorTriggerActionStateMsg'
+class APIChangeMonitorTriggerActionStateMsg(object):
+    FULL_NAME='org.zstack.monitoring.actions.APIChangeMonitorTriggerActionStateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEMONITORTRIGGERACTIONMSG_FULL_NAME = 'org.zstack.monitoring.actions.APICreateMonitorTriggerActionMsg'
+class APICreateMonitorTriggerActionMsg(object):
+    FULL_NAME='org.zstack.monitoring.actions.APICreateMonitorTriggerActionMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.postScript = None
+        #mandatory field
+        self.mediaUuids = NotNoneList()
+        self.triggerUuids = OptionalList()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEMONITORTRIGGERACTIONMSG_FULL_NAME = 'org.zstack.monitoring.actions.APIDeleteMonitorTriggerActionMsg'
+class APIDeleteMonitorTriggerActionMsg(object):
+    FULL_NAME='org.zstack.monitoring.actions.APIDeleteMonitorTriggerActionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYMONITORTRIGGERACTIONMSG_FULL_NAME = 'org.zstack.monitoring.actions.APIQueryMonitorTriggerActionMsg'
+class APIQueryMonitorTriggerActionMsg(object):
+    FULL_NAME='org.zstack.monitoring.actions.APIQueryMonitorTriggerActionMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYMONITORTRIGGERACTIONREPLY_FULL_NAME = 'org.zstack.monitoring.actions.APIQueryMonitorTriggerActionReply'
+class APIQueryMonitorTriggerActionReply(object):
+    FULL_NAME='org.zstack.monitoring.actions.APIQueryMonitorTriggerActionReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APICHANGEMEDIASTATEMSG_FULL_NAME = 'org.zstack.monitoring.media.APIChangeMediaStateMsg'
+class APIChangeMediaStateMsg(object):
+    FULL_NAME='org.zstack.monitoring.media.APIChangeMediaStateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEEMAILMEDIAMSG_FULL_NAME = 'org.zstack.monitoring.media.APICreateEmailMediaMsg'
+class APICreateEmailMediaMsg(object):
+    FULL_NAME='org.zstack.monitoring.media.APICreateEmailMediaMsg'
+    def __init__(self):
+        #mandatory field
+        self.smtpServer = NotNoneField()
+        #mandatory field
+        self.smtpPort = NotNoneField()
+        #mandatory field
+        self.emailAddress = NotNoneField()
+        self.username = None
+        self.password = None
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATENOTIFICATIONMEDIAMSG_FULL_NAME = 'org.zstack.monitoring.media.APICreateNotificationMediaMsg'
+class APICreateNotificationMediaMsg(object):
+    FULL_NAME='org.zstack.monitoring.media.APICreateNotificationMediaMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEMEDIAMSG_FULL_NAME = 'org.zstack.monitoring.media.APIDeleteMediaMsg'
+class APIDeleteMediaMsg(object):
+    FULL_NAME='org.zstack.monitoring.media.APIDeleteMediaMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYMEDIAMSG_FULL_NAME = 'org.zstack.monitoring.media.APIQueryMediaMsg'
+class APIQueryMediaMsg(object):
+    FULL_NAME='org.zstack.monitoring.media.APIQueryMediaMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYMEDIAREPLY_FULL_NAME = 'org.zstack.monitoring.media.APIQueryMediaReply'
+class APIQueryMediaReply(object):
+    FULL_NAME='org.zstack.monitoring.media.APIQueryMediaReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
         self.success = None
         self.error = None
 
@@ -11380,6 +11671,7 @@ api_names = [
     'APIAttachIsoToVmInstanceMsg',
     'APIAttachL2NetworkToClusterMsg',
     'APIAttachL3NetworkToVmMsg',
+    'APIAttachMonitorTriggerActionToTriggerMsg',
     'APIAttachNetworkServiceProviderToL2NetworkMsg',
     'APIAttachNetworkServiceToL3NetworkMsg',
     'APIAttachOssBucketToEcsDataCenterMsg',
@@ -11404,6 +11696,9 @@ api_names = [
     'APIChangeInstanceOfferingMsg',
     'APIChangeInstanceOfferingStateMsg',
     'APIChangeL3NetworkStateMsg',
+    'APIChangeMediaStateMsg',
+    'APIChangeMonitorTriggerActionStateMsg',
+    'APIChangeMonitorTriggerStateMsg',
     'APIChangePortForwardingRuleStateMsg',
     'APIChangePrimaryStorageStateMsg',
     'APIChangeResourceOwnerMsg',
@@ -11441,6 +11736,7 @@ api_names = [
     'APICreateEcsVSwitchRemoteMsg',
     'APICreateEcsVpcRemoteMsg',
     'APICreateEipMsg',
+    'APICreateEmailMediaMsg',
     'APICreateIPsecConnectionMsg',
     'APICreateInstanceOfferingMsg',
     'APICreateL2NoVlanNetworkMsg',
@@ -11452,6 +11748,9 @@ api_names = [
     'APICreateLoadBalancerListenerMsg',
     'APICreateLoadBalancerMsg',
     'APICreateMessage',
+    'APICreateMonitorTriggerActionMsg',
+    'APICreateMonitorTriggerMsg',
+    'APICreateNotificationMediaMsg',
     'APICreateOssBackupBucketRemoteMsg',
     'APICreateOssBucketRemoteMsg',
     'APICreatePolicyMsg',
@@ -11483,6 +11782,7 @@ api_names = [
     'APICreateZoneMsg',
     'APIDebugSignalMsg',
     'APIDeleteAccountMsg',
+    'APIDeleteAlertMsg',
     'APIDeleteAliyunKeySecretMsg',
     'APIDeleteAliyunRouteEntryRemoteMsg',
     'APIDeleteAllEcsInstancesFromDataCenterMsg',
@@ -11523,6 +11823,9 @@ api_names = [
     'APIDeleteLdapServerMsg',
     'APIDeleteLoadBalancerListenerMsg',
     'APIDeleteLoadBalancerMsg',
+    'APIDeleteMediaMsg',
+    'APIDeleteMonitorTriggerActionMsg',
+    'APIDeleteMonitorTriggerMsg',
     'APIDeleteNicQosMsg',
     'APIDeleteNotificationsMsg',
     'APIDeleteOssBucketFileRemoteMsg',
@@ -11575,6 +11878,7 @@ api_names = [
     'APIDetachIsoFromVmInstanceMsg',
     'APIDetachL2NetworkFromClusterMsg',
     'APIDetachL3NetworkFromVmMsg',
+    'APIDetachMonitorTriggerActionFromTriggerMsg',
     'APIDetachNetworkServiceFromL3NetworkMsg',
     'APIDetachNetworkServiceProviderFromL2NetworkMsg',
     'APIDetachOssBucketToEcsDataCenterMsg',
@@ -11645,8 +11949,6 @@ api_names = [
     'APIGetGlobalPropertyReply',
     'APIGetHostAllocatorStrategiesMsg',
     'APIGetHostAllocatorStrategiesReply',
-    'APIGetHostMonitoringDataMsg',
-    'APIGetHostMonitoringDataReply',
     'APIGetHostReply',
     'APIGetHypervisorTypesMsg',
     'APIGetHypervisorTypesReply',
@@ -11677,6 +11979,8 @@ api_names = [
     'APIGetLicenseInfoReply',
     'APIGetLocalStorageHostDiskCapacityMsg',
     'APIGetLocalStorageHostDiskCapacityReply',
+    'APIGetMonitorItemMsg',
+    'APIGetMonitorItemReply',
     'APIGetNetworkServiceProviderReply',
     'APIGetNetworkServiceTypesMsg',
     'APIGetNetworkServiceTypesReply',
@@ -11733,8 +12037,6 @@ api_names = [
     'APIGetVmInstanceReply',
     'APIGetVmMigrationCandidateHostsMsg',
     'APIGetVmMigrationCandidateHostsReply',
-    'APIGetVmMonitoringDataMsg',
-    'APIGetVmMonitoringDataReply',
     'APIGetVmQgaMsg',
     'APIGetVmQgaReply',
     'APIGetVmSshKeyMsg',
@@ -11795,8 +12097,6 @@ api_names = [
     'APILogOutMsg',
     'APILogOutReply',
     'APIMigrateVmMsg',
-    'APIMonitoringPassThroughMsg',
-    'APIMonitoringPassThroughReply',
     'APIPauseVmInstanceMsg',
     'APIPowerOffBaremetalHostMsg',
     'APIPowerOnBaremetalHostMsg',
@@ -11814,6 +12114,8 @@ api_names = [
     'APIQueryAccountReply',
     'APIQueryAccountResourceRefMsg',
     'APIQueryAccountResourceRefReply',
+    'APIQueryAlertMsg',
+    'APIQueryAlertReply',
     'APIQueryAliyunKeySecretMsg',
     'APIQueryAliyunKeySecretReply',
     'APIQueryAliyunRouteEntryFromLocalMsg',
@@ -11902,6 +12204,12 @@ api_names = [
     'APIQueryLocalStorageResourceRefReply',
     'APIQueryManagementNodeMsg',
     'APIQueryManagementNodeReply',
+    'APIQueryMediaMsg',
+    'APIQueryMediaReply',
+    'APIQueryMonitorTriggerActionMsg',
+    'APIQueryMonitorTriggerActionReply',
+    'APIQueryMonitorTriggerMsg',
+    'APIQueryMonitorTriggerReply',
     'APIQueryNetworkServiceL3NetworkRefMsg',
     'APIQueryNetworkServiceL3NetworkRefReply',
     'APIQueryNetworkServiceProviderMsg',
@@ -12124,6 +12432,7 @@ api_names = [
     'APIUpdateLdapServerMsg',
     'APIUpdateLoadBalancerListenerMsg',
     'APIUpdateLoadBalancerMsg',
+    'APIUpdateMonitorTriggerMsg',
     'APIUpdateNotificationsStatusMsg',
     'APIUpdatePortForwardingRuleMsg',
     'APIUpdatePrimaryStorageMsg',
@@ -14389,6 +14698,7 @@ class HostInventory(object):
         self.cpuSockets = None
         self.totalMemoryCapacity = None
         self.availableMemoryCapacity = None
+        self.cpuNum = None
         self.createDate = None
         self.lastOpDate = None
 
@@ -14462,6 +14772,11 @@ class HostInventory(object):
             self.availableMemoryCapacity = inv.availableMemoryCapacity
         else:
             self.availableMemoryCapacity = None
+
+        if hasattr(inv, 'cpuNum'):
+            self.cpuNum = inv.cpuNum
+        else:
+            self.cpuNum = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -17604,13 +17919,12 @@ class GlobalConfig_MEVOCO(object):
     def get_category():
         return 'mevoco'
 
-class GlobalConfig_MONITOR(object):
-    HOST_INTERVAL = 'host.interval'
-    VM_INTERVAL = 'vm.interval'
+class GlobalConfig_MONITORING(object):
+    TRIGGER_RECOVERY_CHECKER_INTERVAL = 'trigger.recovery.checker.interval'
 
     @staticmethod
     def get_category():
-        return 'monitor'
+        return 'monitoring'
 
 class GlobalConfig_NETWORKSERVICE(object):
     DEFAULTDHCPMTU_DUMMYNETWORK = 'defaultDhcpMtu.dummyNetwork'
@@ -17792,6 +18106,12 @@ class QueryObjectAccountResourceRefInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectAlertInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','triggerUuid','targetResourceUuid','uuid','content','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectApplianceVmFirewallRuleInventory(object):
      PRIMITIVE_FIELDS = ['startPort','destIp','protocol','applianceVmUuid','sourceIp','lastOpDate','allowCidr','l3NetworkUuid','endPort','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -17960,7 +18280,7 @@ class QueryObjectDiskOfferingInventory(object):
      }
 
 class QueryObjectESXHostInventory(object):
-     PRIMITIVE_FIELDS = ['clusterUuid','morval','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','managementIp','name','lastOpDate','vCenterUuid','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['clusterUuid','morval','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','cpuNum','managementIp','name','lastOpDate','vCenterUuid','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['cluster','vmInstance','zone']
      QUERY_OBJECT_MAP = {
         'cluster' : 'QueryObjectClusterInventory',
@@ -18018,6 +18338,12 @@ class QueryObjectEipInventory(object):
         'vip' : 'QueryObjectVipInventory',
      }
 
+class QueryObjectEmailMediaInventory(object):
+     PRIMITIVE_FIELDS = ['password','emailAddress','smtpServer','smtpPort','name','lastOpDate','description','state','type','uuid','username','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectFusionstorBackupStorageInventory(object):
      PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['mons','mons','image','volumeSnapshot','zone']
@@ -18070,7 +18396,7 @@ class QueryObjectHostCapacityInventory(object):
      }
 
 class QueryObjectHostInventory(object):
-     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','cpuNum','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['cluster','vmInstance','zone']
      QUERY_OBJECT_MAP = {
         'cluster' : 'QueryObjectClusterInventory',
@@ -18165,7 +18491,7 @@ class QueryObjectIpUseInventory(object):
      }
 
 class QueryObjectKVMHostInventory(object):
-     PRIMITIVE_FIELDS = ['sshPort','clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','username','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['sshPort','clusterUuid','zoneUuid','availableCpuCapacity','description','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','cpuNum','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','username','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['cluster','vmInstance','zone']
      QUERY_OBJECT_MAP = {
         'cluster' : 'QueryObjectClusterInventory',
@@ -18290,6 +18616,24 @@ class QueryObjectLocalStorageResourceRefInventory(object):
 
 class QueryObjectManagementNodeInventory(object):
      PRIMITIVE_FIELDS = ['hostName','joinDate','heartBeat','uuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectMediaInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectMonitorTriggerActionInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','postScript','state','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectMonitorTriggerInventory(object):
+     PRIMITIVE_FIELDS = ['duration','expression','lastStatusChangeTime','name','recoveryExpression','lastOpDate','description','state','targetResourceUuid','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -18487,7 +18831,7 @@ class QueryObjectSharedResourceInventory(object):
      }
 
 class QueryObjectSimulatorHostInventory(object):
-     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','cpuCapacity','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','memoryCapacity','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','cpuCapacity','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','cpuNum','memoryCapacity','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -18858,6 +19202,7 @@ class QueryObjectZoneInventory(object):
 queryMessageInventoryMap = {
      'APIQueryAccountMsg' : QueryObjectAccountInventory,
      'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
+     'APIQueryAlertMsg' : QueryObjectAlertInventory,
      'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,
      'APIQueryAliyunRouteEntryFromLocalMsg' : QueryObjectVpcVirtualRouteEntryInventory,
      'APIQueryAliyunVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
@@ -18904,6 +19249,9 @@ queryMessageInventoryMap = {
      'APIQueryLoadBalancerMsg' : QueryObjectLoadBalancerInventory,
      'APIQueryLocalStorageResourceRefMsg' : QueryObjectLocalStorageResourceRefInventory,
      'APIQueryManagementNodeMsg' : QueryObjectManagementNodeInventory,
+     'APIQueryMediaMsg' : QueryObjectMediaInventory,
+     'APIQueryMonitorTriggerActionMsg' : QueryObjectMonitorTriggerActionInventory,
+     'APIQueryMonitorTriggerMsg' : QueryObjectMonitorTriggerInventory,
      'APIQueryNetworkServiceL3NetworkRefMsg' : QueryObjectNetworkServiceL3NetworkRefInventory,
      'APIQueryNetworkServiceProviderMsg' : QueryObjectNetworkServiceProviderInventory,
      'APIQueryNotificationMsg' : QueryObjectNotificationInventory,
