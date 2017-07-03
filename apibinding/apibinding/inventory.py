@@ -12699,7 +12699,7 @@ class EcsInstanceInventory(object):
         self.ecsRootVolumeId = None
         self.ecsRootVolumeCategory = None
         self.ecsRootVolumeSize = None
-        self.privateIpAddresse = None
+        self.privateIpAddress = None
         self.ecsEipUuid = None
         self.ecsVpcUuid = None
         self.ecsVSwitchUuid = None
@@ -12776,10 +12776,10 @@ class EcsInstanceInventory(object):
         else:
             self.ecsRootVolumeSize = None
 
-        if hasattr(inv, 'privateIpAddresse'):
-            self.privateIpAddresse = inv.privateIpAddresse
+        if hasattr(inv, 'privateIpAddress'):
+            self.privateIpAddress = inv.privateIpAddress
         else:
-            self.privateIpAddresse = None
+            self.privateIpAddress = None
 
         if hasattr(inv, 'ecsEipUuid'):
             self.ecsEipUuid = inv.ecsEipUuid
@@ -18301,7 +18301,7 @@ class QueryObjectEcsImageMd5SumMappingInventory(object):
      }
 
 class QueryObjectEcsInstanceInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsVpcUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddresse','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','ecsEipUuid','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsVpcUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','ecsEipUuid','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
