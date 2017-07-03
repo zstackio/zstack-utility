@@ -2582,7 +2582,7 @@ class Vm(object):
             e(spice, "jpeg", None, {'compression': 'always'})
             e(spice, "zlib", None, {'compression': 'never'})
             e(spice, "playback", None, {'compression': 'off'})
-            e(spice, "streaming", None, {'mode': 'filter'})
+            e(spice, "streaming", None, {'mode': 'off'})
             e(spice, "mouse", None, {'mode': 'client'})
             e(spice, "filetransfer", None, {'enable': 'no'})
             e(spice, "clipboard", None, {'copypaste': 'no'})
