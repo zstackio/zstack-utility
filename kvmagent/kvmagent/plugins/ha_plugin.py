@@ -29,7 +29,7 @@ class ReportPsStatusCmd(object):
         self.psStatus = None
 
 
-def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
+def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
     zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
 
     virsh_list = shell.call("virsh list --all")
@@ -44,8 +44,8 @@ def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
         if not vm_uuid:
             continue
 
-        if mountPath and isFileSystem is not None \
-                and not is_need_kill(vm_uuid, mountPath, isFileSystem):
+        if mountPaths and isFileSystem is not None \
+                and not is_need_kill(vm_uuid, mountPaths, isFileSystem):
             continue
 
         vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
@@ -59,7 +59,7 @@ def kill_vm(maxAttempts, mountPath = None, isFileSystem = None):
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
 
-def is_need_kill(vmUuid, mountPath, isFileSystem):
+def is_need_kill(vmUuid, mountPaths, isFileSystem):
     def vm_match_storage_type(vmUuid, isFileSystem):
         o = shell.ShellCmd("virsh dumpxml %s | grep \"disk type='file'\" | grep -v \"device='cdrom'\"" % vmUuid)
         o(False)
@@ -67,26 +67,31 @@ def is_need_kill(vmUuid, mountPath, isFileSystem):
             return True
         return False
 
-    def vm_in_this_file_system_storage(vm_uuid, ps_path):
+    def vm_in_this_file_system_storage(vm_uuid, ps_paths):
         cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source file=\" | head -1 |awk -F \"'\" '{print $2}'" % vm_uuid)
         cmd(False)
         vm_path = cmd.stdout.strip()
-        if cmd.return_code != 0 or vm_path == "" or ps_path in vm_path:
+        if cmd.return_code != 0 or vm_in_storage_list(vm_path, ps_paths):
             return True
         return False
 
-    def vm_in_this_distributed_storage(vm_uuid, ps_path):
+    def vm_in_this_distributed_storage(vm_uuid, ps_paths):
         cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source protocol\" | head -1 | awk -F \"'\" '{print $4}'" % vm_uuid)
         cmd(False)
         vm_path = cmd.stdout.strip()
-        if cmd.return_code != 0 or vm_path == "" or ps_path in vm_path:
+        if cmd.return_code != 0 or vm_in_storage_list(vm_path, ps_paths):
+            return True
+        return False
+
+    def vm_in_storage_list(vm_path, storage_paths):
+        if vm_path == "" or any([vm_path.startswith(ps_path) for ps_path in storage_paths]):
             return True
         return False
 
     if vm_match_storage_type(vmUuid, isFileSystem):
-        if isFileSystem and vm_in_this_file_system_storage(vmUuid, mountPath):
+        if isFileSystem and vm_in_this_file_system_storage(vmUuid, mountPaths):
             return True
-        elif not isFileSystem and vm_in_this_distributed_storage(vmUuid, mountPath):
+        elif not isFileSystem and vm_in_this_distributed_storage(vmUuid, mountPaths):
             return True
 
     return False
@@ -181,7 +186,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
                         if ceph_in_error_stat():
                             path = (os.path.split(cmd.heartbeatImagePath))[0]
-                            kill_vm(cmd.maxAttempts, path, False)
+                            kill_vm(cmd.maxAttempts, [path], False)
                         else:
                             delete_heartbeat_file()
 
@@ -205,7 +210,8 @@ class HaPlugin(kvmagent.KvmAgent):
         self.run_filesystem_fencer = True
 
         @thread.AsyncThread
-        def heartbeat_file_fencer(heartbeat_file_path, ps_uuid):
+        def heartbeat_file_fencer(mount_path, ps_uuid):
+            heartbeat_file_path = os.path.join(mount_path, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
             try:
                 failure = 0
 
@@ -224,9 +230,8 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
-                        mountPath = (os.path.split(heartbeat_file_path))[0]
                         self.report_storage_status([ps_uuid], 'Disconnected')
-                        kill_vm(cmd.maxAttempts, mountPath, True)
+                        kill_vm(cmd.maxAttempts, [mount_path], True)
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
             except:
@@ -258,7 +263,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
                                     'shutdown ourselves' % (gw, cmd.maxAttempts))
                         self.report_storage_status(cmd.psUuids, 'Disconnected')
-                        kill_vm(cmd.maxAttempts)
+                        kill_vm(cmd.maxAttempts, cmd.mountPoints, True)
 
                 logger.debug('stop gateway[%s] fencer for filesystem self-fencer' % gw)
             except:
@@ -269,8 +274,7 @@ class HaPlugin(kvmagent.KvmAgent):
             if not linux.timeout_isdir(mount_point):
                 raise Exception('the mount point[%s] is not a directory' % mount_point)
 
-            hb_file = os.path.join(mount_point, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
-            heartbeat_file_fencer(hb_file, uuid)
+            heartbeat_file_fencer(mount_point, uuid)
 
         if gateway:
             storage_gateway_fencer(gateway)
