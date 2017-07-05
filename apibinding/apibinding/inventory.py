@@ -642,6 +642,19 @@ class APIDeleteAllEcsInstancesFromDataCenterMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEECSINSTANCELOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIDeleteEcsInstanceLocalMsg'
+class APIDeleteEcsInstanceLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteEcsInstanceLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDELETEECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIDeleteEcsInstanceMsg'
 class APIDeleteEcsInstanceMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteEcsInstanceMsg'
@@ -1250,6 +1263,7 @@ class APICreateEcsSecurityGroupRemoteMsg(object):
         self.description = None
         #mandatory field
         self.name = NotNoneField()
+        #valid values: [security, all]
         self.strategy = None
         self.resourceUuid = None
         self.session = None
@@ -3232,6 +3246,22 @@ class APIDownloadBackupFileFromPublicCloudMsg(object):
         #mandatory field
         #valid values: [aliyun]
         self.type = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEHYBRIDEIPFROMLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIDeleteHybridEipFromLocalMsg'
+class APIDeleteHybridEipFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIDeleteHybridEipFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11800,6 +11830,7 @@ api_names = [
     'APIDeleteDiskOfferingMsg',
     'APIDeleteEcsImageLocalMsg',
     'APIDeleteEcsImageRemoteMsg',
+    'APIDeleteEcsInstanceLocalMsg',
     'APIDeleteEcsInstanceMsg',
     'APIDeleteEcsSecurityGroupInLocalMsg',
     'APIDeleteEcsSecurityGroupRemoteMsg',
@@ -11812,6 +11843,7 @@ api_names = [
     'APIDeleteExportedImageFromBackupStorageMsg',
     'APIDeleteGCJobMsg',
     'APIDeleteHostMsg',
+    'APIDeleteHybridEipFromLocalMsg',
     'APIDeleteIPsecConnectionMsg',
     'APIDeleteIdentityZoneInLocalMsg',
     'APIDeleteImageMsg',
@@ -12701,7 +12733,6 @@ class EcsInstanceInventory(object):
         self.ecsRootVolumeSize = None
         self.privateIpAddress = None
         self.ecsEipUuid = None
-        self.ecsVpcUuid = None
         self.ecsVSwitchUuid = None
         self.ecsImageUuid = None
         self.ecsSecurityGroupUuid = None
@@ -12785,11 +12816,6 @@ class EcsInstanceInventory(object):
             self.ecsEipUuid = inv.ecsEipUuid
         else:
             self.ecsEipUuid = None
-
-        if hasattr(inv, 'ecsVpcUuid'):
-            self.ecsVpcUuid = inv.ecsVpcUuid
-        else:
-            self.ecsVpcUuid = None
 
         if hasattr(inv, 'ecsVSwitchUuid'):
             self.ecsVSwitchUuid = inv.ecsVSwitchUuid
@@ -14789,13 +14815,16 @@ class HybridEipAddressInventory(object):
         self.uuid = None
         self.eipId = None
         self.bandWidth = None
+        self.dataCenterUuid = None
         self.allocateResourceUuid = None
         self.allocateResourceType = None
         self.status = None
         self.eipAddress = None
         self.eipType = None
         self.name = None
+        self.chargeType = None
         self.description = None
+        self.allocateTime = None
         self.createDate = None
         self.lastOpDate = None
 
@@ -14814,6 +14843,11 @@ class HybridEipAddressInventory(object):
             self.bandWidth = inv.bandWidth
         else:
             self.bandWidth = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
 
         if hasattr(inv, 'allocateResourceUuid'):
             self.allocateResourceUuid = inv.allocateResourceUuid
@@ -14845,10 +14879,20 @@ class HybridEipAddressInventory(object):
         else:
             self.name = None
 
+        if hasattr(inv, 'chargeType'):
+            self.chargeType = inv.chargeType
+        else:
+            self.chargeType = None
+
         if hasattr(inv, 'description'):
             self.description = inv.description
         else:
             self.description = None
+
+        if hasattr(inv, 'allocateTime'):
+            self.allocateTime = inv.allocateTime
+        else:
+            self.allocateTime = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -18295,7 +18339,7 @@ class QueryObjectEcsImageMd5SumMappingInventory(object):
      }
 
 class QueryObjectEcsInstanceInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsVpcUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','ecsEipUuid','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','ecsEipUuid','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -18411,7 +18455,7 @@ class QueryObjectHybridConnectionRefInventory(object):
      }
 
 class QueryObjectHybridEipAddressInventory(object):
-     PRIMITIVE_FIELDS = ['bandWidth','allocateResourceType','eipType','allocateResourceUuid','eipAddress','eipId','name','lastOpDate','description','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['bandWidth','allocateResourceType','allocateResourceUuid','allocateTime','eipId','chargeType','description','uuid','eipType','eipAddress','name','lastOpDate','dataCenterUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['ecs']
      QUERY_OBJECT_MAP = {
         'ecs' : 'QueryObjectEcsInstanceInventory',
