@@ -2054,6 +2054,18 @@ class DeleteEcsInstanceAction(inventory.APIDeleteEcsInstanceMsg):
         self.out = evt
         return self.out
 
+class DeleteEcsInstanceLocalAction(inventory.APIDeleteEcsInstanceLocalMsg):
+    def __init__(self):
+        super(DeleteEcsInstanceLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteEcsInstanceLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteEcsSecurityGroupInLocalAction(inventory.APIDeleteEcsSecurityGroupInLocalMsg):
     def __init__(self):
         super(DeleteEcsSecurityGroupInLocalAction, self).__init__()
@@ -2182,6 +2194,18 @@ class DeleteHostAction(inventory.APIDeleteHostMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteHybridEipFromLocalAction(inventory.APIDeleteHybridEipFromLocalMsg):
+    def __init__(self):
+        super(DeleteHybridEipFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteHybridEipFromLocalAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
