@@ -3299,6 +3299,22 @@ class APIQueryHybridEipFromLocalReply(object):
         self.error = None
 
 
+APISYNCHYBRIDEIPFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APISyncHybridEipFromRemoteMsg'
+class APISyncHybridEipFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APISyncHybridEipFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEVPCUSERVPNGATEWAYREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APICreateVpcUserVpnGatewayRemoteMsg'
 class APICreateVpcUserVpnGatewayRemoteMsg(object):
     FULL_NAME='org.zstack.header.hybrid.network.vpn.APICreateVpcUserVpnGatewayRemoteMsg'
@@ -12426,6 +12442,7 @@ api_names = [
     'APISyncEcsSecurityGroupRuleFromRemoteMsg',
     'APISyncEcsVSwitchFromRemoteMsg',
     'APISyncEcsVpcFromRemoteMsg',
+    'APISyncHybridEipFromRemoteMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncRouterInterfaceFromRemoteMsg',
