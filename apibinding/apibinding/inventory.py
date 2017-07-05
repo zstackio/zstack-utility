@@ -1272,8 +1272,8 @@ class APICreateEcsSecurityGroupRuleRemoteMsg(object):
         self.protocol = NotNoneField()
         #mandatory field
         self.portRange = NotNoneField()
-        self.externalGroupId = None
-        self.cidr = None
+        #mandatory field
+        self.cidr = NotNoneField()
         #valid values: [accept, drop]
         self.policy = None
         #valid values: [intranet, internet]
@@ -13373,7 +13373,6 @@ class EcsSecurityGroupRuleInventory(object):
         self.direction = None
         self.nicType = None
         self.policy = None
-        self.externalGroupId = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -13423,11 +13422,6 @@ class EcsSecurityGroupRuleInventory(object):
             self.policy = inv.policy
         else:
             self.policy = None
-
-        if hasattr(inv, 'externalGroupId'):
-            self.externalGroupId = inv.externalGroupId
-        else:
-            self.externalGroupId = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -18313,7 +18307,7 @@ class QueryObjectEcsSecurityGroupInventory(object):
      }
 
 class QueryObjectEcsSecurityGroupRuleInventory(object):
-     PRIMITIVE_FIELDS = ['portRange','description','externalGroupId','priority','uuid','protocol','nicType','lastOpDate','ecsSecurityGroupUuid','cidrIp','direction','policy','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['portRange','protocol','nicType','lastOpDate','description','priority','uuid','ecsSecurityGroupUuid','cidrIp','direction','policy','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
