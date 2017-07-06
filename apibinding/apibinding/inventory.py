@@ -1263,7 +1263,7 @@ class APICreateEcsSecurityGroupRemoteMsg(object):
         self.description = None
         #mandatory field
         self.name = NotNoneField()
-        #valid values: [security, all]
+        #valid values: [all, security, basic]
         self.strategy = None
         self.resourceUuid = None
         self.session = None
@@ -3391,9 +3391,9 @@ class APICreateVpnIkeConfigMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEVPNIPSECMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APICreateVpnIpsecMsg'
-class APICreateVpnIpsecMsg(object):
-    FULL_NAME='org.zstack.header.hybrid.network.vpn.APICreateVpnIpsecMsg'
+APICREATEVPNIPSECCONFIGMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APICreateVpnIpsecConfigMsg'
+class APICreateVpnIpsecConfigMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APICreateVpnIpsecConfigMsg'
     def __init__(self):
         #mandatory field
         self.name = NotNoneField()
@@ -11864,7 +11864,7 @@ api_names = [
     'APICreateVpcUserVpnGatewayRemoteMsg',
     'APICreateVpcVpnConnectionRemoteMsg',
     'APICreateVpnIkeConfigMsg',
-    'APICreateVpnIpsecMsg',
+    'APICreateVpnIpsecConfigMsg',
     'APICreateWebhookMsg',
     'APICreateZoneMsg',
     'APIDebugSignalMsg',
