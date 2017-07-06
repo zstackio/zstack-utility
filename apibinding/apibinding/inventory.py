@@ -1282,7 +1282,7 @@ class APICreateEcsSecurityGroupRuleRemoteMsg(object):
         #valid values: [ingress, egress]
         self.direction = NotNoneField()
         #mandatory field
-        #valid values: [TCP, UDP, ICMP, GRE, ALL, tcp, udp, icmp, gre, all]
+        #valid values: [tcp, udp, icmp, gre, all]
         self.protocol = NotNoneField()
         #mandatory field
         self.portRange = NotNoneField()
@@ -15837,6 +15837,7 @@ class ImageInventory(object):
         self.name = None
         self.description = None
         self.exportUrl = None
+        self.exportMd5Sum = None
         self.state = None
         self.status = None
         self.size = None
@@ -15873,6 +15874,11 @@ class ImageInventory(object):
             self.exportUrl = inv.exportUrl
         else:
             self.exportUrl = None
+
+        if hasattr(inv, 'exportMd5Sum'):
+            self.exportMd5Sum = inv.exportMd5Sum
+        else:
+            self.exportMd5Sum = None
 
         if hasattr(inv, 'state'):
             self.state = inv.state
@@ -18088,7 +18094,6 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
@@ -18155,7 +18160,6 @@ class GlobalConfig_VIRTUALROUTER(object):
         return 'virtualRouter'
 
 class GlobalConfig_VM(object):
-    AUDIO = 'audio'
     VIDEOTYPE = 'videoType'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
     EXPUNGEPERIOD = 'expungePeriod'
@@ -18553,7 +18557,7 @@ class QueryObjectImageBackupStorageRefInventory(object):
      }
 
 class QueryObjectImageInventory(object):
-     PRIMITIVE_FIELDS = ['actualSize','format','description','mediaType','type','uuid','url','platform','guestOsType','system','size','exportUrl','md5Sum','name','lastOpDate','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['actualSize','format','description','mediaType','type','uuid','url','platform','guestOsType','exportMd5Sum','system','size','exportUrl','md5Sum','name','lastOpDate','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['backupStorageRefs','volume','backupStorage']
      QUERY_OBJECT_MAP = {
         'volume' : 'QueryObjectVolumeInventory',
