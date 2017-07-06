@@ -2614,7 +2614,7 @@ class Vm(object):
 
 
         def make_audio():
-            if cmd.useAudio is True:
+            if cmd.consoleMode == 'spice':
                 devices = elements['devices']
                 e(devices, 'sound',None,{'model':'ac97'})
             else:
