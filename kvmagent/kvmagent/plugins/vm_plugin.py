@@ -2588,24 +2588,27 @@ class Vm(object):
             e(spice, "clipboard", None, {'copypaste': 'no'})
 
         def make_usb_redirect():
-            devices = elements['devices']
-            e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-ehci1'})
-            e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci1', 'multifunction': 'on'})
-            e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci2'})
-            e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci3'})
+            if cmd.usbRedirect == "true":
+                devices = elements['devices']
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-ehci1'})
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci1', 'multifunction': 'on'})
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci2'})
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci3'})
 
-            chan = e(devices, 'channel', None, {'type': 'spicevmc'})
-            e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
-            e(chan, 'address', None, {'type': 'virtio-serial'})
+                chan = e(devices, 'channel', None, {'type': 'spicevmc'})
+                e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
+                e(chan, 'address', None, {'type': 'virtio-serial'})
 
-            redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-            e(redirdev2, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
-            redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-            e(redirdev3, 'address', None, {'type': 'usb', 'bus': '0', 'port': '3'})
-            redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-            e(redirdev4, 'address', None, {'type': 'usb', 'bus': '0', 'port': '4'})
-            redirdev5 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-            e(redirdev5, 'address', None, {'type': 'usb', 'bus': '0', 'port': '6'})
+                redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+                e(redirdev2, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
+                redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+                e(redirdev3, 'address', None, {'type': 'usb', 'bus': '0', 'port': '3'})
+                redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+                e(redirdev4, 'address', None, {'type': 'usb', 'bus': '0', 'port': '4'})
+                redirdev5 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+                e(redirdev5, 'address', None, {'type': 'usb', 'bus': '0', 'port': '6'})
+            else:
+                return
 
         def make_video():
             devices = elements['devices']
