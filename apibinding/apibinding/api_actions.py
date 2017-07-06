@@ -1766,14 +1766,14 @@ class CreateVpnIkeConfigAction(inventory.APICreateVpnIkeConfigMsg):
         self.out = evt
         return self.out
 
-class CreateVpnIpsecAction(inventory.APICreateVpnIpsecMsg):
+class CreateVpnIpsecConfigAction(inventory.APICreateVpnIpsecConfigMsg):
     def __init__(self):
-        super(CreateVpnIpsecAction, self).__init__()
+        super(CreateVpnIpsecConfigAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateVpnIpsecAction] cannot be None')
+            raise Exception('sessionUuid of action[CreateVpnIpsecConfigAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
