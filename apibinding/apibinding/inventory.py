@@ -1263,7 +1263,7 @@ class APICreateEcsSecurityGroupRemoteMsg(object):
         self.description = None
         #mandatory field
         self.name = NotNoneField()
-        #valid values: [security, all]
+        #valid values: [all, security, basic]
         self.strategy = None
         self.resourceUuid = None
         self.session = None
