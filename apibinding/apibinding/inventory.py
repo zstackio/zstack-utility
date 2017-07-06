@@ -9948,6 +9948,33 @@ class APIDeleteVipMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APIDeleteVipQosMsg'
+class APIDeleteVipQosMsg(object):
+    FULL_NAME='org.zstack.network.service.vip.APIDeleteVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [in, out, all]
+        self.direction = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APIGetVipQosMsg'
+class APIGetVipQosMsg(object):
+    FULL_NAME='org.zstack.network.service.vip.APIGetVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYVIPMSG_FULL_NAME = 'org.zstack.network.service.vip.APIQueryVipMsg'
 class APIQueryVipMsg(object):
     FULL_NAME='org.zstack.network.service.vip.APIQueryVipMsg'
@@ -9977,6 +10004,20 @@ class APIQueryVipReply(object):
         self.total = None
         self.success = None
         self.error = None
+
+
+APISETVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APISetVipQosMsg'
+class APISetVipQosMsg(object):
+    FULL_NAME='org.zstack.network.service.vip.APISetVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.outboundBandwidth = None
+        self.inboundBandwidth = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIUPDATEVIPMSG_FULL_NAME = 'org.zstack.network.service.vip.APIUpdateVipMsg'
@@ -11897,6 +11938,7 @@ api_names = [
     'APIDeleteVRouterRouteEntryMsg',
     'APIDeleteVRouterRouteTableMsg',
     'APIDeleteVipMsg',
+    'APIDeleteVipQosMsg',
     'APIDeleteVirtualBorderRouterLocalMsg',
     'APIDeleteVirtualRouterLocalMsg',
     'APIDeleteVmConsolePasswordMsg',
@@ -12065,6 +12107,7 @@ api_names = [
     'APIGetVRouterRouteTableReply',
     'APIGetVersionMsg',
     'APIGetVersionReply',
+    'APIGetVipQosMsg',
     'APIGetVirtualRouterOfferingReply',
     'APIGetVmAttachableDataVolumeMsg',
     'APIGetVmAttachableDataVolumeReply',
@@ -12419,6 +12462,7 @@ api_names = [
     'APISetImageQgaMsg',
     'APISetL3NetworkMtuMsg',
     'APISetNicQosMsg',
+    'APISetVipQosMsg',
     'APISetVmBootOrderMsg',
     'APISetVmConsolePasswordMsg',
     'APISetVmHostnameMsg',
@@ -18044,6 +18088,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
