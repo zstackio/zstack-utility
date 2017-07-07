@@ -1826,14 +1826,14 @@ class CreateVpnIkeConfigAction(inventory.APICreateVpnIkeConfigMsg):
         self.out = evt
         return self.out
 
-class CreateVpnIpsecConfigAction(inventory.APICreateVpnIpsecConfigMsg):
+class CreateVpnIpsecAction(inventory.APICreateVpnIpsecMsg):
     def __init__(self):
-        super(CreateVpnIpsecConfigAction, self).__init__()
+        super(CreateVpnIpsecAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateVpnIpsecConfigAction] cannot be None')
+            raise Exception('sessionUuid of action[CreateVpnIpsecAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4150,6 +4150,18 @@ class GetVmStartingCandidateClustersHostsAction(inventory.APIGetVmStartingCandid
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVmStartingCandidateClustersHostsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetVmUsbRedirectAction(inventory.APIGetVmUsbRedirectMsg):
+    def __init__(self):
+        super(GetVmUsbRedirectAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmUsbRedirectAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -6522,6 +6534,18 @@ class SetVmStaticIpAction(inventory.APISetVmStaticIpMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetVmStaticIpAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVmUsbRedirectAction(inventory.APISetVmUsbRedirectMsg):
+    def __init__(self):
+        super(SetVmUsbRedirectAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmUsbRedirectAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
