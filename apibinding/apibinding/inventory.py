@@ -9114,6 +9114,7 @@ class APIAddSecurityGroupRuleMsg(object):
         self.securityGroupUuid = NotNoneField()
         #mandatory field
         self.rules = NotNoneList()
+        self.remoteSecurityGroupUuids = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
