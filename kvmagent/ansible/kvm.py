@@ -135,7 +135,7 @@ if distro == "RedHat" or distro == "CentOS":
         command = ("yum --enablerepo=%s clean metadata && "
                    "pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils sed "
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
-                   "libguestfs-winsupport libguestfs-tools pv ipset"
+                   "libguestfs-winsupport libguestfs-tools pv ipset "
                    "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                    "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, qemu_pkg, zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
