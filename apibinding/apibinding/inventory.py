@@ -8754,16 +8754,17 @@ class APIChangeMonitorTriggerActionStateMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEMONITORTRIGGERACTIONMSG_FULL_NAME = 'org.zstack.monitoring.actions.APICreateMonitorTriggerActionMsg'
-class APICreateMonitorTriggerActionMsg(object):
-    FULL_NAME='org.zstack.monitoring.actions.APICreateMonitorTriggerActionMsg'
+APICREATEEMAILMONITORTRIGGERACTIONMSG_FULL_NAME = 'org.zstack.monitoring.actions.APICreateEmailMonitorTriggerActionMsg'
+class APICreateEmailMonitorTriggerActionMsg(object):
+    FULL_NAME='org.zstack.monitoring.actions.APICreateEmailMonitorTriggerActionMsg'
     def __init__(self):
+        #mandatory field
+        self.email = NotNoneField()
+        #mandatory field
+        self.mediaUuid = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
         self.description = None
-        self.postScript = None
-        #mandatory field
-        self.mediaUuids = NotNoneList()
         self.triggerUuids = OptionalList()
         self.resourceUuid = None
         self.session = None
@@ -8779,6 +8780,27 @@ class APIDeleteMonitorTriggerActionMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYEMAILTRIGGERACTIONMSG_FULL_NAME = 'org.zstack.monitoring.actions.APIQueryEmailTriggerActionMsg'
+class APIQueryEmailTriggerActionMsg(object):
+    FULL_NAME='org.zstack.monitoring.actions.APIQueryEmailTriggerActionMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8839,24 +8861,8 @@ class APICreateEmailMediaMsg(object):
         self.smtpServer = NotNoneField()
         #mandatory field
         self.smtpPort = NotNoneField()
-        #mandatory field
-        self.emailAddress = NotNoneField()
         self.username = None
         self.password = None
-        #mandatory field
-        self.name = NotNoneField()
-        self.description = None
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APICREATENOTIFICATIONMEDIAMSG_FULL_NAME = 'org.zstack.monitoring.media.APICreateNotificationMediaMsg'
-class APICreateNotificationMediaMsg(object):
-    FULL_NAME='org.zstack.monitoring.media.APICreateNotificationMediaMsg'
-    def __init__(self):
         #mandatory field
         self.name = NotNoneField()
         self.description = None
@@ -8909,6 +8915,22 @@ class APIQueryMediaReply(object):
         self.total = None
         self.success = None
         self.error = None
+
+
+APIUPDATEEMAILMEDIAMSG_FULL_NAME = 'org.zstack.monitoring.media.APIUpdateEmailMediaMsg'
+class APIUpdateEmailMediaMsg(object):
+    FULL_NAME='org.zstack.monitoring.media.APIUpdateEmailMediaMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.smtpServer = None
+        self.smtpPort = None
+        self.username = None
+        self.password = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIQUERYVTEPMSG_FULL_NAME = 'org.zstack.network.l2.vxlan.vtep.APIQueryVtepMsg'
@@ -9114,7 +9136,6 @@ class APIAddSecurityGroupRuleMsg(object):
         self.securityGroupUuid = NotNoneField()
         #mandatory field
         self.rules = NotNoneList()
-        self.remoteSecurityGroupUuids = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11825,6 +11846,7 @@ api_names = [
     'APICreateEcsVpcRemoteMsg',
     'APICreateEipMsg',
     'APICreateEmailMediaMsg',
+    'APICreateEmailMonitorTriggerActionMsg',
     'APICreateIPsecConnectionMsg',
     'APICreateInstanceOfferingMsg',
     'APICreateL2NoVlanNetworkMsg',
@@ -11836,9 +11858,7 @@ api_names = [
     'APICreateLoadBalancerListenerMsg',
     'APICreateLoadBalancerMsg',
     'APICreateMessage',
-    'APICreateMonitorTriggerActionMsg',
     'APICreateMonitorTriggerMsg',
-    'APICreateNotificationMediaMsg',
     'APICreateOssBackupBucketRemoteMsg',
     'APICreateOssBucketRemoteMsg',
     'APICreatePolicyMsg',
@@ -12252,6 +12272,7 @@ api_names = [
     'APIQueryEcsVpcFromLocalReply',
     'APIQueryEipMsg',
     'APIQueryEipReply',
+    'APIQueryEmailTriggerActionMsg',
     'APIQueryFusionstorBackupStorageMsg',
     'APIQueryFusionstorPrimaryStorageMsg',
     'APIQueryGCJobMsg',
@@ -12510,6 +12531,7 @@ api_names = [
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEcsInstanceVncPasswordMsg',
     'APIUpdateEipMsg',
+    'APIUpdateEmailMediaMsg',
     'APIUpdateEncryptKeyMsg',
     'APIUpdateFusionstorBackupStorageMonMsg',
     'APIUpdateFusionstorPrimaryStorageMonMsg',
@@ -18444,7 +18466,13 @@ class QueryObjectEipInventory(object):
      }
 
 class QueryObjectEmailMediaInventory(object):
-     PRIMITIVE_FIELDS = ['password','emailAddress','smtpServer','smtpPort','name','lastOpDate','description','state','type','uuid','username','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['password','smtpServer','smtpPort','name','lastOpDate','description','state','type','uuid','username','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectEmailTriggerActionInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','mediaUuid','state','uuid','email','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -18732,7 +18760,7 @@ class QueryObjectMediaInventory(object):
      }
 
 class QueryObjectMonitorTriggerActionInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','postScript','state','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19331,6 +19359,7 @@ queryMessageInventoryMap = {
      'APIQueryEcsVSwitchFromLocalMsg' : QueryObjectEcsVSwitchInventory,
      'APIQueryEcsVpcFromLocalMsg' : QueryObjectEcsVpcInventory,
      'APIQueryEipMsg' : QueryObjectEipInventory,
+     'APIQueryEmailTriggerActionMsg' : QueryObjectEmailTriggerActionInventory,
      'APIQueryFusionstorBackupStorageMsg' : QueryObjectFusionstorBackupStorageInventory,
      'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
      'APIQueryGCJobMsg' : QueryObjectGarbageCollectorInventory,
