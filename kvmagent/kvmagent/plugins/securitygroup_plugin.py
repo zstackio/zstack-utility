@@ -218,7 +218,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                     rule = make_egress_rule(r)
                     grule = ' '.join([rule, '-m set --match-set %s dst' % set_name])
                     group_rules.append(grule)
-                    empty_out_chain[0] = False
+                    if r.securityGroupUuid != r.remoteGroupUuid or r.protocol != self.PROTOCOL_ALL or r.allowedCidr != '0.0.0.0/0':
+                        empty_out_chain[0] = False
                 else:
                     assert 0, 'unknown rule type[%s]' % r.type
 
