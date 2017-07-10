@@ -23,6 +23,21 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
+
+def update_libvritd_config(host_post_info):
+    command = "grep -i ^host_uuid %s" % libvirtd_conf_file
+    status, output = run_remote_command(command, host_post_info, True, True)
+    # name: copy libvirtd conf
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/libvirtd.conf" % file_root
+    copy_arg.dest =  libvirtd_conf_file
+    file_changed_flag = copy(copy_arg, host_post_info)
+    if status is True:
+        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='%s' backup=yes" % output, host_post_info)
+
+    return file_changed_flag
+
 
 def check_nested_kvm(host_post_info):
     enabled_nested_flag = False
@@ -275,11 +290,7 @@ host_post_info.post_label = "ansible.shell.virsh.destroy.bridge"
 host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
 
-# name: copy libvirtd conf
-copy_arg = CopyArg()
-copy_arg.src = "%s/libvirtd.conf" % file_root
-copy_arg.dest = "/etc/libvirt/libvirtd.conf"
-libvirtd_conf_status = copy(copy_arg, host_post_info)
+libvirtd_conf_status = update_libvritd_config(host_post_info)
 
 # name: copy qemu conf
 copy_arg = CopyArg()
