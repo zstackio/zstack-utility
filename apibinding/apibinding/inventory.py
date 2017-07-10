@@ -2020,6 +2020,37 @@ class APIIsReadyToGoReply(object):
         self.error = None
 
 
+APIQUERYBAREMETALHARDWAREINFOMSG_FULL_NAME = 'org.zstack.header.baremetal.hardwareinfo.APIQueryBaremetalHardwareInfoMsg'
+class APIQueryBaremetalHardwareInfoMsg(object):
+    FULL_NAME='org.zstack.header.baremetal.hardwareinfo.APIQueryBaremetalHardwareInfoMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYBAREMETALHARDWAREINFOREPLY_FULL_NAME = 'org.zstack.header.baremetal.hardwareinfo.APIQueryBaremetalHardwareInfoReply'
+class APIQueryBaremetalHardwareInfoReply(object):
+    FULL_NAME='org.zstack.header.baremetal.hardwareinfo.APIQueryBaremetalHardwareInfoReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APICREATEBAREMETALHOSTCFGMSG_FULL_NAME = 'org.zstack.header.baremetal.host.APICreateBaremetalHostCfgMsg'
 class APICreateBaremetalHostCfgMsg(object):
     FULL_NAME='org.zstack.header.baremetal.host.APICreateBaremetalHostCfgMsg'
@@ -2032,7 +2063,7 @@ class APICreateBaremetalHostCfgMsg(object):
         #valid values: [true, false]
         self.unattended = None
         #mandatory field
-        self.nicCfgs = NotNoneList()
+        self.cfgItems = NotNoneMap()
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -2082,24 +2113,6 @@ class APIQueryBaremetalHostCfgReply(object):
         self.total = None
         self.success = None
         self.error = None
-
-
-APIUPDATEBAREMETALHOSTCFGMSG_FULL_NAME = 'org.zstack.header.baremetal.host.APIUpdateBaremetalHostCfgMsg'
-class APIUpdateBaremetalHostCfgMsg(object):
-    FULL_NAME='org.zstack.header.baremetal.host.APIUpdateBaremetalHostCfgMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.password = None
-        #valid values: [true, false]
-        self.vnc = None
-        #valid values: [true, false]
-        self.unattended = None
-        self.nicCfgs = OptionalList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
 
 
 APICREATEBAREMETALCHASSISMSG_FULL_NAME = 'org.zstack.header.baremetal.power.APICreateBaremetalChassisMsg'
@@ -8923,6 +8936,8 @@ class APIUpdateEmailMediaMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.smtpServer = None
         self.smtpPort = None
         self.username = None
@@ -9136,6 +9151,7 @@ class APIAddSecurityGroupRuleMsg(object):
         self.securityGroupUuid = NotNoneField()
         #mandatory field
         self.rules = NotNoneList()
+        self.remoteSecurityGroupUuids = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11282,6 +11298,303 @@ class APIAddSharedMountPointPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEOSSPROTECTIONSITEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteMsg'
+class APICreateOSSProtectionSiteMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        #mandatory field
+        self.hybridAccountUuid = NotNoneField()
+        #mandatory field
+        self.accessUrl = NotNoneField()
+        #mandatory field
+        self.bucketName = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEOSSPROTECTIONSITEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteReply'
+class APICreateOSSProtectionSiteReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
+
+
+APICREATEPROTECTIONGATEWAYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGatewayMsg'
+class APICreateProtectionGatewayMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGatewayMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.protectionHostId = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEPROTECTIONGATEWAYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGatewayReply'
+class APICreateProtectionGatewayReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGatewayReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
+
+
+APICREATEPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGroupMsg'
+class APICreateProtectionGroupMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.policyId = None
+        self.volumeIds = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGroupReply'
+class APICreateProtectionGroupReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGroupReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
+
+
+APICREATEPROTECTIONPOLICYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionPolicyMsg'
+class APICreateProtectionPolicyMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionPolicyMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.siteId = None
+        self.gatewayId = None
+        self.backupIntervalInHour = None
+        self.backupRetainedDays = None
+        self.fullBackupIntervalTimes = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEPROTECTIONPOLICYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionPolicyReply'
+class APICreateProtectionPolicyReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionPolicyReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
+
+
+APIDELETEPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIDeleteProtectionGroupMsg'
+class APIDeleteProtectionGroupMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIDeleteProtectionGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.groupId = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIDeleteProtectionGroupReply'
+class APIDeleteProtectionGroupReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIDeleteProtectionGroupReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
+
+
+APILISTOSSPROTECTIONSITEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListOSSProtectionSiteMsg'
+class APIListOSSProtectionSiteMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListOSSProtectionSiteMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTOSSPROTECTIONSITEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListOSSProtectionSiteReply'
+class APIListOSSProtectionSiteReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListOSSProtectionSiteReply'
+    def __init__(self):
+        self.sites = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APILISTPROTECTIONGATEWAYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGatewayMsg'
+class APIListProtectionGatewayMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGatewayMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTPROTECTIONGATEWAYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGatewayReply'
+class APIListProtectionGatewayReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGatewayReply'
+    def __init__(self):
+        self.gateways = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APILISTPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGroupMsg'
+class APIListProtectionGroupMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGroupReply'
+class APIListProtectionGroupReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGroupReply'
+    def __init__(self):
+        self.groups = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APILISTPROTECTIONHOSTMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionHostMsg'
+class APIListProtectionHostMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionHostMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTPROTECTIONHOSTREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionHostReply'
+class APIListProtectionHostReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionHostReply'
+    def __init__(self):
+        self.hosts = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APILISTPROTECTIONPOLICYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionPolicyMsg'
+class APIListProtectionPolicyMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPolicyMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTPROTECTIONPOLICYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionPolicyReply'
+class APIListProtectionPolicyReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPolicyReply'
+    def __init__(self):
+        self.policies = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APILISTPROTECTIONPOOLMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionPoolMsg'
+class APIListProtectionPoolMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPoolMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTPROTECTIONPOOLREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionPoolReply'
+class APIListProtectionPoolReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPoolReply'
+    def __init__(self):
+        self.pools = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APILISTPROTECTIONVOLUMEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionVolumeMsg'
+class APIListProtectionVolumeMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionVolumeMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.limit = None
+        self.offset = None
+        self.poolId = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTPROTECTIONVOLUMEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionVolumeReply'
+class APIListProtectionVolumeReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionVolumeReply'
+    def __init__(self):
+        self.volumes = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIADDZSESPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.primary.zses.APIAddZsesPrimaryStorageMsg'
 class APIAddZsesPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.primary.zses.APIAddZsesPrimaryStorageMsg'
@@ -11859,10 +12172,18 @@ api_names = [
     'APICreateLoadBalancerMsg',
     'APICreateMessage',
     'APICreateMonitorTriggerMsg',
+    'APICreateOSSProtectionSiteMsg',
+    'APICreateOSSProtectionSiteReply',
     'APICreateOssBackupBucketRemoteMsg',
     'APICreateOssBucketRemoteMsg',
     'APICreatePolicyMsg',
     'APICreatePortForwardingRuleMsg',
+    'APICreateProtectionGatewayMsg',
+    'APICreateProtectionGatewayReply',
+    'APICreateProtectionGroupMsg',
+    'APICreateProtectionGroupReply',
+    'APICreateProtectionPolicyMsg',
+    'APICreateProtectionPolicyReply',
     'APICreateResourcePriceMsg',
     'APICreateRootVolumeTemplateFromRootVolumeMsg',
     'APICreateRootVolumeTemplateFromVolumeSnapshotMsg',
@@ -11944,6 +12265,8 @@ api_names = [
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
+    'APIDeleteProtectionGroupMsg',
+    'APIDeleteProtectionGroupReply',
     'APIDeleteResourcePriceMsg',
     'APIDeleteRouterInterfaceLocalMsg',
     'APIDeleteRouterInterfaceRemoteMsg',
@@ -12188,9 +12511,23 @@ api_names = [
     'APIListL3NetworkReply',
     'APIListManagementNodeReply',
     'APIListNetworkServiceProviderReply',
+    'APIListOSSProtectionSiteMsg',
+    'APIListOSSProtectionSiteReply',
     'APIListPolicyReply',
     'APIListPortForwardingRuleReply',
     'APIListPrimaryStorageReply',
+    'APIListProtectionGatewayMsg',
+    'APIListProtectionGatewayReply',
+    'APIListProtectionGroupMsg',
+    'APIListProtectionGroupReply',
+    'APIListProtectionHostMsg',
+    'APIListProtectionHostReply',
+    'APIListProtectionPolicyMsg',
+    'APIListProtectionPolicyReply',
+    'APIListProtectionPoolMsg',
+    'APIListProtectionPoolReply',
+    'APIListProtectionVolumeMsg',
+    'APIListProtectionVolumeReply',
     'APIListSecurityGroupReply',
     'APIListUserReply',
     'APIListVmInstanceReply',
@@ -12240,6 +12577,8 @@ api_names = [
     'APIQueryBackupStorageReply',
     'APIQueryBaremetalChassisMsg',
     'APIQueryBaremetalChassisReply',
+    'APIQueryBaremetalHardwareInfoMsg',
+    'APIQueryBaremetalHardwareInfoReply',
     'APIQueryBaremetalHostCfgMsg',
     'APIQueryBaremetalHostCfgReply',
     'APIQueryBaremetalPxeServerMsg',
@@ -12522,7 +12861,6 @@ api_names = [
     'APIUpdateAccountMsg',
     'APIUpdateBackupStorageMsg',
     'APIUpdateBaremetalChassisMsg',
-    'APIUpdateBaremetalHostCfgMsg',
     'APIUpdateBaremetalPxeServerMsg',
     'APIUpdateCephBackupStorageMonMsg',
     'APIUpdateCephPrimaryStorageMonMsg',
@@ -13958,6 +14296,48 @@ class OssUploadPartsInventory(object):
 
 
 
+class BaremetalHardwareInfoInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.ipmiAddress = None
+        self.type = None
+        self.content = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'ipmiAddress'):
+            self.ipmiAddress = inv.ipmiAddress
+        else:
+            self.ipmiAddress = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'content'):
+            self.content = inv.content
+        else:
+            self.content = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class BaremetalHostCfgInventory(object):
     def __init__(self):
         self.uuid = None
@@ -13968,6 +14348,7 @@ class BaremetalHostCfgInventory(object):
         self.createDate = None
         self.lastOpDate = None
         self.nicCfgs = None
+        self.bondings = None
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -14009,6 +14390,83 @@ class BaremetalHostCfgInventory(object):
             self.nicCfgs = inv.nicCfgs
         else:
             self.nicCfgs = None
+
+        if hasattr(inv, 'bondings'):
+            self.bondings = inv.bondings
+        else:
+            self.bondings = None
+
+
+
+class BaremetalHostBondingInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.hostCfgUuid = None
+        self.name = None
+        self.slaves = None
+        self.mode = None
+        self.ip = None
+        self.netmask = None
+        self.gateway = None
+        self.dns = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'hostCfgUuid'):
+            self.hostCfgUuid = inv.hostCfgUuid
+        else:
+            self.hostCfgUuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'slaves'):
+            self.slaves = inv.slaves
+        else:
+            self.slaves = None
+
+        if hasattr(inv, 'mode'):
+            self.mode = inv.mode
+        else:
+            self.mode = None
+
+        if hasattr(inv, 'ip'):
+            self.ip = inv.ip
+        else:
+            self.ip = None
+
+        if hasattr(inv, 'netmask'):
+            self.netmask = inv.netmask
+        else:
+            self.netmask = None
+
+        if hasattr(inv, 'gateway'):
+            self.gateway = inv.gateway
+        else:
+            self.gateway = None
+
+        if hasattr(inv, 'dns'):
+            self.dns = inv.dns
+        else:
+            self.dns = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
 
 
 
@@ -14075,48 +14533,6 @@ class BaremetalHostNicCfgInventory(object):
             self.lastOpDate = inv.lastOpDate
         else:
             self.lastOpDate = None
-
-
-
-class BaremetalHostNicCfgStruct(object):
-    def __init__(self):
-        self.mac = None
-        self.ip = None
-        self.netmask = None
-        self.gateway = None
-        self.dns = None
-        self.pxe = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'mac'):
-            self.mac = inv.mac
-        else:
-            self.mac = None
-
-        if hasattr(inv, 'ip'):
-            self.ip = inv.ip
-        else:
-            self.ip = None
-
-        if hasattr(inv, 'netmask'):
-            self.netmask = inv.netmask
-        else:
-            self.netmask = None
-
-        if hasattr(inv, 'gateway'):
-            self.gateway = inv.gateway
-        else:
-            self.gateway = None
-
-        if hasattr(inv, 'dns'):
-            self.dns = inv.dns
-        else:
-            self.dns = None
-
-        if hasattr(inv, 'pxe'):
-            self.pxe = inv.pxe
-        else:
-            self.pxe = None
 
 
 
@@ -17108,6 +17524,7 @@ class SecurityGroupRuleInventory(object):
         self.protocol = None
         self.state = None
         self.allowedCidr = None
+        self.remoteSecurityGroupUuid = None
         self.createDate = None
         self.lastOpDate = None
 
@@ -17151,6 +17568,11 @@ class SecurityGroupRuleInventory(object):
             self.allowedCidr = inv.allowedCidr
         else:
             self.allowedCidr = None
+
+        if hasattr(inv, 'remoteSecurityGroupUuid'):
+            self.remoteSecurityGroupUuid = inv.remoteSecurityGroupUuid
+        else:
+            self.remoteSecurityGroupUuid = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -17749,6 +18171,7 @@ OR_NOT_IN = 'OR_NOT_IN'
 TCP = 'TCP'
 UDP = 'UDP'
 ICMP = 'ICMP'
+ALL = 'ALL'
 
 #SecurityGroupRuleType
 INGRESS = 'Ingress'
@@ -18112,25 +18535,6 @@ class GlobalConfig_PROGRESS(object):
     def get_category():
         return 'progress'
 
-class GlobalConfig_QUOTA(object):
-    IMAGE_SIZE = 'image.size'
-    VOLUME_DATA_NUM = 'volume.data.num'
-    L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
-    VM_MEMORYSIZE = 'vm.memorySize'
-    EIP_NUM = 'eip.num'
-    IMAGE_NUM = 'image.num'
-    VM_CPUNUM = 'vm.cpuNum'
-    VM_TOTALNUM = 'vm.totalNum'
-    SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
-    VM_NUM = 'vm.num'
-    VOLUME_CAPACITY = 'volume.capacity'
-
-    @staticmethod
-    def get_category():
-        return 'quota'
-
 class GlobalConfig_REST(object):
     COMPLETEDAPI_EXPIREDPERIOD = 'completedApi.expiredPeriod'
     EXPIREDAPI_SCANINTERVAL = 'expiredApi.scanInterval'
@@ -18291,18 +18695,30 @@ class QueryObjectBaremetalChassisInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectBaremetalHardwareInfoInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','ipmiAddress','type','uuid','content','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectBaremetalHostBondingInventory(object):
+     PRIMITIVE_FIELDS = ['mode','slaves','netmask','ip','name','dns','lastOpDate','uuid','hostCfgUuid','gateway','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectBaremetalHostCfgInventory(object):
      PRIMITIVE_FIELDS = ['unattended','password','chassisUuid','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['nicCfgs']
+     EXPANDED_FIELDS = ['nicCfgs','bondings','nicCfgs','bondings']
      QUERY_OBJECT_MAP = {
         'nicCfgs' : 'QueryObjectBaremetalHostNicCfgInventory',
+        'bondings' : 'QueryObjectBaremetalHostBondingInventory',
      }
 
 class QueryObjectBaremetalHostNicCfgInventory(object):
      PRIMITIVE_FIELDS = ['netmask','ip','dns','lastOpDate','pxe','uuid','hostCfgUuid','mac','gateway','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['hostCfg']
+     EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
-        'hostCfg' : 'QueryObjectBaremetalHostCfgInventory',
      }
 
 class QueryObjectBaremetalPxeServerInventory(object):
@@ -18936,7 +19352,7 @@ class QueryObjectSecurityGroupL3NetworkRefInventory(object):
      }
 
 class QueryObjectSecurityGroupRuleInventory(object):
-     PRIMITIVE_FIELDS = ['startPort','protocol','securityGroupUuid','allowedCidr','lastOpDate','state','type','uuid','endPort','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['startPort','protocol','securityGroupUuid','allowedCidr','lastOpDate','state','type','uuid','endPort','remoteSecurityGroupUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['securityGroup']
      QUERY_OBJECT_MAP = {
         'securityGroup' : 'QueryObjectSecurityGroupInventory',
@@ -19342,6 +19758,7 @@ queryMessageInventoryMap = {
      'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
      'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
      'APIQueryBaremetalChassisMsg' : QueryObjectBaremetalChassisInventory,
+     'APIQueryBaremetalHardwareInfoMsg' : QueryObjectBaremetalHardwareInfoInventory,
      'APIQueryBaremetalHostCfgMsg' : QueryObjectBaremetalHostCfgInventory,
      'APIQueryBaremetalPxeServerMsg' : QueryObjectBaremetalPxeServerInventory,
      'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,

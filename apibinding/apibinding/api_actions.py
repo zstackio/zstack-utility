@@ -1442,6 +1442,18 @@ class CreateMonitorTriggerAction(inventory.APICreateMonitorTriggerMsg):
         self.out = evt
         return self.out
 
+class CreateOSSProtectionSiteAction(inventory.APICreateOSSProtectionSiteMsg):
+    def __init__(self):
+        super(CreateOSSProtectionSiteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateOSSProtectionSiteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateOssBackupBucketRemoteAction(inventory.APICreateOssBackupBucketRemoteMsg):
     def __init__(self):
         super(CreateOssBackupBucketRemoteAction, self).__init__()
@@ -1486,6 +1498,42 @@ class CreatePortForwardingRuleAction(inventory.APICreatePortForwardingRuleMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreatePortForwardingRuleAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateProtectionGatewayAction(inventory.APICreateProtectionGatewayMsg):
+    def __init__(self):
+        super(CreateProtectionGatewayAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateProtectionGatewayAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateProtectionGroupAction(inventory.APICreateProtectionGroupMsg):
+    def __init__(self):
+        super(CreateProtectionGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateProtectionGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateProtectionPolicyAction(inventory.APICreateProtectionPolicyMsg):
+    def __init__(self):
+        super(CreateProtectionPolicyAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateProtectionPolicyAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2458,6 +2506,18 @@ class DeletePrimaryStorageAction(inventory.APIDeletePrimaryStorageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeletePrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteProtectionGroupAction(inventory.APIDeleteProtectionGroupMsg):
+    def __init__(self):
+        super(DeleteProtectionGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteProtectionGroupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4154,6 +4214,90 @@ class KvmRunShellAction(inventory.APIKvmRunShellMsg):
         self.out = evt
         return self.out
 
+class ListOSSProtectionSiteAction(inventory.APIListOSSProtectionSiteMsg):
+    def __init__(self):
+        super(ListOSSProtectionSiteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListOSSProtectionSiteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ListProtectionGatewayAction(inventory.APIListProtectionGatewayMsg):
+    def __init__(self):
+        super(ListProtectionGatewayAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListProtectionGatewayAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ListProtectionGroupAction(inventory.APIListProtectionGroupMsg):
+    def __init__(self):
+        super(ListProtectionGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListProtectionGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ListProtectionHostAction(inventory.APIListProtectionHostMsg):
+    def __init__(self):
+        super(ListProtectionHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListProtectionHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ListProtectionPolicyAction(inventory.APIListProtectionPolicyMsg):
+    def __init__(self):
+        super(ListProtectionPolicyAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListProtectionPolicyAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ListProtectionPoolAction(inventory.APIListProtectionPoolMsg):
+    def __init__(self):
+        super(ListProtectionPoolAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListProtectionPoolAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ListProtectionVolumeAction(inventory.APIListProtectionVolumeMsg):
+    def __init__(self):
+        super(ListProtectionVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListProtectionVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class LocalStorageGetVolumeMigratableHostsAction(inventory.APILocalStorageGetVolumeMigratableHostsMsg):
     def __init__(self):
         super(LocalStorageGetVolumeMigratableHostsAction, self).__init__()
@@ -4471,6 +4615,20 @@ class QueryBaremetalChassisAction(inventory.APIQueryBaremetalChassisMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryBaremetalChassisAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryBaremetalHardwareInfoAction(inventory.APIQueryBaremetalHardwareInfoMsg):
+    def __init__(self):
+        super(QueryBaremetalHardwareInfoAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryBaremetalHardwareInfoAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -6662,18 +6820,6 @@ class UpdateBaremetalChassisAction(inventory.APIUpdateBaremetalChassisMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateBaremetalChassisAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UpdateBaremetalHostCfgAction(inventory.APIUpdateBaremetalHostCfgMsg):
-    def __init__(self):
-        super(UpdateBaremetalHostCfgAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateBaremetalHostCfgAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
