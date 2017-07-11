@@ -2270,6 +2270,18 @@ class DeleteHybridEipFromLocalAction(inventory.APIDeleteHybridEipFromLocalMsg):
         self.out = evt
         return self.out
 
+class DeleteHybridEipRemoteAction(inventory.APIDeleteHybridEipRemoteMsg):
+    def __init__(self):
+        super(DeleteHybridEipRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteHybridEipRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteIPsecConnectionAction(inventory.APIDeleteIPsecConnectionMsg):
     def __init__(self):
         super(DeleteIPsecConnectionAction, self).__init__()
