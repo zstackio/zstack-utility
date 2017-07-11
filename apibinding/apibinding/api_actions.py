@@ -494,6 +494,18 @@ class AttachEipAction(inventory.APIAttachEipMsg):
         self.out = evt
         return self.out
 
+class AttachEipToEcsAction(inventory.APIAttachEipToEcsMsg):
+    def __init__(self):
+        super(AttachEipToEcsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachEipToEcsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AttachIsoToVmInstanceAction(inventory.APIAttachIsoToVmInstanceMsg):
     def __init__(self):
         super(AttachIsoToVmInstanceAction, self).__init__()
@@ -1186,6 +1198,18 @@ class CreateDiskOfferingAction(inventory.APICreateDiskOfferingMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateDiskOfferingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsEipAction(inventory.APICreateEcsEipMsg):
+    def __init__(self):
+        super(CreateEcsEipAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsEipAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3026,6 +3050,18 @@ class DetachEipAction(inventory.APIDetachEipMsg):
         self.out = evt
         return self.out
 
+class DetachEipFromEcsAction(inventory.APIDetachEipFromEcsMsg):
+    def __init__(self):
+        super(DetachEipFromEcsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachEipFromEcsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DetachIsoFromVmInstanceAction(inventory.APIDetachIsoFromVmInstanceMsg):
     def __init__(self):
         super(DetachIsoFromVmInstanceAction, self).__init__()
@@ -4214,18 +4250,6 @@ class KvmRunShellAction(inventory.APIKvmRunShellMsg):
         self.out = evt
         return self.out
 
-class ListOSSProtectionSiteAction(inventory.APIListOSSProtectionSiteMsg):
-    def __init__(self):
-        super(ListOSSProtectionSiteAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ListOSSProtectionSiteAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class ListProtectionGatewayAction(inventory.APIListProtectionGatewayMsg):
     def __init__(self):
         super(ListProtectionGatewayAction, self).__init__()
@@ -4282,6 +4306,18 @@ class ListProtectionPoolAction(inventory.APIListProtectionPoolMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[ListProtectionPoolAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ListProtectionSiteAction(inventory.APIListProtectionSiteMsg):
+    def __init__(self):
+        super(ListProtectionSiteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListProtectionSiteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4867,6 +4903,20 @@ class QueryEipAction(inventory.APIQueryEipMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryEipAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryEmailMediaAction(inventory.APIQueryEmailMediaMsg):
+    def __init__(self):
+        super(QueryEmailMediaAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryEmailMediaAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories

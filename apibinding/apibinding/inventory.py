@@ -3265,6 +3265,47 @@ class APIDownloadBackupFileFromPublicCloudMsg(object):
         self.userTags = OptionalList()
 
 
+APIATTACHEIPTOECSMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIAttachEipToEcsMsg'
+class APIAttachEipToEcsMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIAttachEipToEcsMsg'
+    def __init__(self):
+        #mandatory field
+        self.eipUuid = NotNoneField()
+        #mandatory field
+        self.ecsUuid = NotNoneField()
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEECSEIPMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APICreateEcsEipMsg'
+class APICreateEcsEipMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APICreateEcsEipMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
+        self.bandWidthMb = NotNoneField()
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        #mandatory field
+        #valid values: [PayByTraffic]
+        self.chargeType = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDELETEHYBRIDEIPFROMLOCALMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIDeleteHybridEipFromLocalMsg'
 class APIDeleteHybridEipFromLocalMsg(object):
     FULL_NAME='org.zstack.header.hybrid.network.eip.APIDeleteHybridEipFromLocalMsg'
@@ -3275,6 +3316,23 @@ class APIDeleteHybridEipFromLocalMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHEIPFROMECSMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIDetachEipFromEcsMsg'
+class APIDetachEipFromEcsMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIDetachEipFromEcsMsg'
+    def __init__(self):
+        #mandatory field
+        self.eipUuid = NotNoneField()
+        #mandatory field
+        self.ecsUuid = NotNoneField()
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8899,6 +8957,27 @@ class APIDeleteMediaMsg(object):
         self.userTags = OptionalList()
 
 
+APIQUERYEMAILMEDIAMSG_FULL_NAME = 'org.zstack.monitoring.media.APIQueryEmailMediaMsg'
+class APIQueryEmailMediaMsg(object):
+    FULL_NAME='org.zstack.monitoring.media.APIQueryEmailMediaMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYMEDIAMSG_FULL_NAME = 'org.zstack.monitoring.media.APIQueryMediaMsg'
 class APIQueryMediaMsg(object):
     FULL_NAME='org.zstack.monitoring.media.APIQueryMediaMsg'
@@ -11431,29 +11510,6 @@ class APIDeleteProtectionGroupReply(object):
         self.error = None
 
 
-APILISTOSSPROTECTIONSITEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListOSSProtectionSiteMsg'
-class APIListOSSProtectionSiteMsg(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListOSSProtectionSiteMsg'
-    def __init__(self):
-        #mandatory field
-        self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APILISTOSSPROTECTIONSITEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListOSSProtectionSiteReply'
-class APIListOSSProtectionSiteReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListOSSProtectionSiteReply'
-    def __init__(self):
-        self.sites = OptionalList()
-        self.success = None
-        self.error = None
-
-
 APILISTPROTECTIONGATEWAYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGatewayMsg'
 class APIListProtectionGatewayMsg(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGatewayMsg'
@@ -11565,6 +11621,29 @@ class APIListProtectionPoolReply(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPoolReply'
     def __init__(self):
         self.pools = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APILISTPROTECTIONSITEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionSiteMsg'
+class APIListProtectionSiteMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionSiteMsg'
+    def __init__(self):
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.accessToken = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTPROTECTIONSITEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionSiteReply'
+class APIListProtectionSiteReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionSiteReply'
+    def __init__(self):
+        self.sites = OptionalList()
         self.success = None
         self.error = None
 
@@ -12090,6 +12169,7 @@ api_names = [
     'APIAttachBackupStorageToZoneMsg',
     'APIAttachDataVolumeToVmMsg',
     'APIAttachEipMsg',
+    'APIAttachEipToEcsMsg',
     'APIAttachIsoToVmInstanceMsg',
     'APIAttachL2NetworkToClusterMsg',
     'APIAttachL3NetworkToVmMsg',
@@ -12151,6 +12231,7 @@ api_names = [
     'APICreateDataVolumeMsg',
     'APICreateDataVolumeTemplateFromVolumeMsg',
     'APICreateDiskOfferingMsg',
+    'APICreateEcsEipMsg',
     'APICreateEcsImageFromLocalImageMsg',
     'APICreateEcsInstanceFromLocalImageMsg',
     'APICreateEcsSecurityGroupRemoteMsg',
@@ -12308,6 +12389,7 @@ api_names = [
     'APIDetachAliyunKeyMsg',
     'APIDetachBackupStorageFromZoneMsg',
     'APIDetachDataVolumeFromVmMsg',
+    'APIDetachEipFromEcsMsg',
     'APIDetachEipMsg',
     'APIDetachIsoFromVmInstanceMsg',
     'APIDetachL2NetworkFromClusterMsg',
@@ -12511,8 +12593,6 @@ api_names = [
     'APIListL3NetworkReply',
     'APIListManagementNodeReply',
     'APIListNetworkServiceProviderReply',
-    'APIListOSSProtectionSiteMsg',
-    'APIListOSSProtectionSiteReply',
     'APIListPolicyReply',
     'APIListPortForwardingRuleReply',
     'APIListPrimaryStorageReply',
@@ -12526,6 +12606,8 @@ api_names = [
     'APIListProtectionPolicyReply',
     'APIListProtectionPoolMsg',
     'APIListProtectionPoolReply',
+    'APIListProtectionSiteMsg',
+    'APIListProtectionSiteReply',
     'APIListProtectionVolumeMsg',
     'APIListProtectionVolumeReply',
     'APIListSecurityGroupReply',
@@ -12611,6 +12693,7 @@ api_names = [
     'APIQueryEcsVpcFromLocalReply',
     'APIQueryEipMsg',
     'APIQueryEipReply',
+    'APIQueryEmailMediaMsg',
     'APIQueryEmailTriggerActionMsg',
     'APIQueryFusionstorBackupStorageMsg',
     'APIQueryFusionstorPrimaryStorageMsg',
@@ -18502,13 +18585,6 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
-
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -18535,6 +18611,27 @@ class GlobalConfig_PROGRESS(object):
     def get_category():
         return 'progress'
 
+class GlobalConfig_QUOTA(object):
+    IMAGE_SIZE = 'image.size'
+    VOLUME_DATA_NUM = 'volume.data.num'
+    L3_NUM = 'l3.num'
+    SECURITYGROUP_NUM = 'securityGroup.num'
+    VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
+    EIP_NUM = 'eip.num'
+    IMAGE_NUM = 'image.num'
+    VM_CPUNUM = 'vm.cpuNum'
+    VM_TOTALNUM = 'vm.totalNum'
+    SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
+    VIP_NUM = 'vip.num'
+    VM_NUM = 'vm.num'
+    VOLUME_CAPACITY = 'volume.capacity'
+
+    @staticmethod
+    def get_category():
+        return 'quota'
+
 class GlobalConfig_REST(object):
     COMPLETEDAPI_EXPIREDPERIOD = 'completedApi.expiredPeriod'
     EXPIREDAPI_SCANINTERVAL = 'expiredApi.scanInterval'
@@ -18560,17 +18657,6 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
-
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
-
-    @staticmethod
-    def get_category():
-        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -19776,6 +19862,7 @@ queryMessageInventoryMap = {
      'APIQueryEcsVSwitchFromLocalMsg' : QueryObjectEcsVSwitchInventory,
      'APIQueryEcsVpcFromLocalMsg' : QueryObjectEcsVpcInventory,
      'APIQueryEipMsg' : QueryObjectEipInventory,
+     'APIQueryEmailMediaMsg' : QueryObjectEmailMediaInventory,
      'APIQueryEmailTriggerActionMsg' : QueryObjectEmailTriggerActionInventory,
      'APIQueryFusionstorBackupStorageMsg' : QueryObjectFusionstorBackupStorageInventory,
      'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
