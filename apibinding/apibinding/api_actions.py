@@ -494,14 +494,14 @@ class AttachEipAction(inventory.APIAttachEipMsg):
         self.out = evt
         return self.out
 
-class AttachEipToEcsAction(inventory.APIAttachEipToEcsMsg):
+class AttachHybridEipToEcsAction(inventory.APIAttachHybridEipToEcsMsg):
     def __init__(self):
-        super(AttachEipToEcsAction, self).__init__()
+        super(AttachHybridEipToEcsAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AttachEipToEcsAction] cannot be None')
+            raise Exception('sessionUuid of action[AttachHybridEipToEcsAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1202,18 +1202,6 @@ class CreateDiskOfferingAction(inventory.APICreateDiskOfferingMsg):
         self.out = evt
         return self.out
 
-class CreateEcsEipAction(inventory.APICreateEcsEipMsg):
-    def __init__(self):
-        super(CreateEcsEipAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateEcsEipAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class CreateEcsImageFromLocalImageAction(inventory.APICreateEcsImageFromLocalImageMsg):
     def __init__(self):
         super(CreateEcsImageFromLocalImageAction, self).__init__()
@@ -1318,6 +1306,18 @@ class CreateEmailMonitorTriggerActionAction(inventory.APICreateEmailMonitorTrigg
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateEmailMonitorTriggerActionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateHybridEipAction(inventory.APICreateHybridEipMsg):
+    def __init__(self):
+        super(CreateHybridEipAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateHybridEipAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3062,14 +3062,14 @@ class DetachEipAction(inventory.APIDetachEipMsg):
         self.out = evt
         return self.out
 
-class DetachEipFromEcsAction(inventory.APIDetachEipFromEcsMsg):
+class DetachHybridEipFromEcsAction(inventory.APIDetachHybridEipFromEcsMsg):
     def __init__(self):
-        super(DetachEipFromEcsAction, self).__init__()
+        super(DetachHybridEipFromEcsAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DetachEipFromEcsAction] cannot be None')
+            raise Exception('sessionUuid of action[DetachHybridEipFromEcsAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3146,14 +3146,14 @@ class DetachNetworkServiceProviderFromL2NetworkAction(inventory.APIDetachNetwork
         self.out = evt
         return self.out
 
-class DetachOssBucketToEcsDataCenterAction(inventory.APIDetachOssBucketToEcsDataCenterMsg):
+class DetachOssBucketFromEcsDataCenterAction(inventory.APIDetachOssBucketFromEcsDataCenterMsg):
     def __init__(self):
-        super(DetachOssBucketToEcsDataCenterAction, self).__init__()
+        super(DetachOssBucketFromEcsDataCenterAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DetachOssBucketToEcsDataCenterAction] cannot be None')
+            raise Exception('sessionUuid of action[DetachOssBucketFromEcsDataCenterAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

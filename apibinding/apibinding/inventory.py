@@ -1851,9 +1851,9 @@ class APIDeleteOssBucketRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIDETACHOSSBUCKETTOECSDATACENTERMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDetachOssBucketToEcsDataCenterMsg'
-class APIDetachOssBucketToEcsDataCenterMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.oss.APIDetachOssBucketToEcsDataCenterMsg'
+APIDETACHOSSBUCKETFROMECSDATACENTERMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIDetachOssBucketFromEcsDataCenterMsg'
+class APIDetachOssBucketFromEcsDataCenterMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIDetachOssBucketFromEcsDataCenterMsg'
     def __init__(self):
         #mandatory field
         self.ossBucketUuid = NotNoneField()
@@ -3265,9 +3265,9 @@ class APIDownloadBackupFileFromPublicCloudMsg(object):
         self.userTags = OptionalList()
 
 
-APIATTACHEIPTOECSMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIAttachEipToEcsMsg'
-class APIAttachEipToEcsMsg(object):
-    FULL_NAME='org.zstack.header.hybrid.network.eip.APIAttachEipToEcsMsg'
+APIATTACHHYBRIDEIPTOECSMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIAttachHybridEipToEcsMsg'
+class APIAttachHybridEipToEcsMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIAttachHybridEipToEcsMsg'
     def __init__(self):
         #mandatory field
         self.eipUuid = NotNoneField()
@@ -3282,9 +3282,9 @@ class APIAttachEipToEcsMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEECSEIPMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APICreateEcsEipMsg'
-class APICreateEcsEipMsg(object):
-    FULL_NAME='org.zstack.header.hybrid.network.eip.APICreateEcsEipMsg'
+APICREATEHYBRIDEIPMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APICreateHybridEipMsg'
+class APICreateHybridEipMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APICreateHybridEipMsg'
     def __init__(self):
         #mandatory field
         self.name = NotNoneField()
@@ -3338,9 +3338,9 @@ class APIDeleteHybridEipRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIDETACHEIPFROMECSMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIDetachEipFromEcsMsg'
-class APIDetachEipFromEcsMsg(object):
-    FULL_NAME='org.zstack.header.hybrid.network.eip.APIDetachEipFromEcsMsg'
+APIDETACHHYBRIDEIPFROMECSMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIDetachHybridEipFromEcsMsg'
+class APIDetachHybridEipFromEcsMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIDetachHybridEipFromEcsMsg'
     def __init__(self):
         #mandatory field
         self.eipUuid = NotNoneField()
@@ -12185,7 +12185,7 @@ api_names = [
     'APIAttachBackupStorageToZoneMsg',
     'APIAttachDataVolumeToVmMsg',
     'APIAttachEipMsg',
-    'APIAttachEipToEcsMsg',
+    'APIAttachHybridEipToEcsMsg',
     'APIAttachIsoToVmInstanceMsg',
     'APIAttachL2NetworkToClusterMsg',
     'APIAttachL3NetworkToVmMsg',
@@ -12247,7 +12247,6 @@ api_names = [
     'APICreateDataVolumeMsg',
     'APICreateDataVolumeTemplateFromVolumeMsg',
     'APICreateDiskOfferingMsg',
-    'APICreateEcsEipMsg',
     'APICreateEcsImageFromLocalImageMsg',
     'APICreateEcsInstanceFromLocalImageMsg',
     'APICreateEcsSecurityGroupRemoteMsg',
@@ -12257,6 +12256,7 @@ api_names = [
     'APICreateEipMsg',
     'APICreateEmailMediaMsg',
     'APICreateEmailMonitorTriggerActionMsg',
+    'APICreateHybridEipMsg',
     'APICreateIPsecConnectionMsg',
     'APICreateInstanceOfferingMsg',
     'APICreateL2NoVlanNetworkMsg',
@@ -12406,15 +12406,15 @@ api_names = [
     'APIDetachAliyunKeyMsg',
     'APIDetachBackupStorageFromZoneMsg',
     'APIDetachDataVolumeFromVmMsg',
-    'APIDetachEipFromEcsMsg',
     'APIDetachEipMsg',
+    'APIDetachHybridEipFromEcsMsg',
     'APIDetachIsoFromVmInstanceMsg',
     'APIDetachL2NetworkFromClusterMsg',
     'APIDetachL3NetworkFromVmMsg',
     'APIDetachMonitorTriggerActionFromTriggerMsg',
     'APIDetachNetworkServiceFromL3NetworkMsg',
     'APIDetachNetworkServiceProviderFromL2NetworkMsg',
-    'APIDetachOssBucketToEcsDataCenterMsg',
+    'APIDetachOssBucketFromEcsDataCenterMsg',
     'APIDetachPoliciesFromUserMsg',
     'APIDetachPolicyFromUserGroupMsg',
     'APIDetachPolicyFromUserMsg',
