@@ -3345,8 +3345,6 @@ class APIDetachHybridEipFromEcsMsg(object):
         #mandatory field
         self.eipUuid = NotNoneField()
         #mandatory field
-        self.ecsUuid = NotNoneField()
-        #mandatory field
         #valid values: [aliyun]
         self.type = NotNoneField()
         self.session = None
