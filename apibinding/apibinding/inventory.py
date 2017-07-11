@@ -3322,6 +3322,22 @@ class APIDeleteHybridEipFromLocalMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEHYBRIDEIPREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIDeleteHybridEipRemoteMsg'
+class APIDeleteHybridEipRemoteMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIDeleteHybridEipRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIDETACHEIPFROMECSMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIDetachEipFromEcsMsg'
 class APIDetachEipFromEcsMsg(object):
     FULL_NAME='org.zstack.header.hybrid.network.eip.APIDetachEipFromEcsMsg'
@@ -12324,6 +12340,7 @@ api_names = [
     'APIDeleteGCJobMsg',
     'APIDeleteHostMsg',
     'APIDeleteHybridEipFromLocalMsg',
+    'APIDeleteHybridEipRemoteMsg',
     'APIDeleteIPsecConnectionMsg',
     'APIDeleteIdentityZoneInLocalMsg',
     'APIDeleteImageMsg',
@@ -13237,7 +13254,6 @@ class EcsInstanceInventory(object):
         self.ecsRootVolumeCategory = None
         self.ecsRootVolumeSize = None
         self.privateIpAddress = None
-        self.ecsEipUuid = None
         self.ecsVSwitchUuid = None
         self.ecsImageUuid = None
         self.ecsSecurityGroupUuid = None
@@ -13316,11 +13332,6 @@ class EcsInstanceInventory(object):
             self.privateIpAddress = inv.privateIpAddress
         else:
             self.privateIpAddress = None
-
-        if hasattr(inv, 'ecsEipUuid'):
-            self.ecsEipUuid = inv.ecsEipUuid
-        else:
-            self.ecsEipUuid = None
 
         if hasattr(inv, 'ecsVSwitchUuid'):
             self.ecsVSwitchUuid = inv.ecsVSwitchUuid
@@ -18585,6 +18596,13 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
+class GlobalConfig_OTHERS(object):
+    TEST2 = 'Test2'
+
+    @staticmethod
+    def get_category():
+        return 'Others'
+
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -18617,13 +18635,11 @@ class GlobalConfig_QUOTA(object):
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -18657,6 +18673,17 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
+
+class GlobalConfig_TEST(object):
+    TEST = 'Test'
+    TEST3 = 'Test3'
+    TEST4 = 'Test4'
+    TESTSTRING = 'TestString'
+    TESTBOOLEAN = 'TestBoolean'
+
+    @staticmethod
+    def get_category():
+        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -18930,7 +18957,7 @@ class QueryObjectEcsImageMd5SumMappingInventory(object):
      }
 
 class QueryObjectEcsInstanceInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','ecsEipUuid','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19053,9 +19080,8 @@ class QueryObjectHybridConnectionRefInventory(object):
 
 class QueryObjectHybridEipAddressInventory(object):
      PRIMITIVE_FIELDS = ['bandWidth','allocateResourceType','allocateResourceUuid','allocateTime','eipId','chargeType','description','uuid','eipType','eipAddress','name','lastOpDate','dataCenterUuid','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['ecs']
+     EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
-        'ecs' : 'QueryObjectEcsInstanceInventory',
      }
 
 class QueryObjectIPsecConnectionInventory(object):
