@@ -732,6 +732,7 @@ upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
 
+    show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
@@ -1187,6 +1188,26 @@ uz_stop_zstack(){
     if [ $? -eq 0 ];then
         fail "Stop zstack failed!"
     fi
+    pass
+}
+
+uz_upgrade_tomcat(){
+    echo_subtitle "Upgrade apache-tomcat"
+    ZSTACK_HOME=`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`
+    ZSTACK_HOME=${ZSTACK_HOME:-"/usr/local/zstack/apache-tomcat/webapps/zstack/"}
+    TOMCAT_PATH=${ZSTACK_HOME%/apache-tomcat*}
+
+    cd $upgrade_folder
+    unzip -o -d $TOMCAT_PATH apache-tomcat*.zip >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to unzip Tomcat package: $upgrade_folder/apache-tomcat*.zip."
+    fi
+
+    chmod a+x $TOMCAT_PATH/apache-tomcat/bin/*
+    if [ $? -ne 0 ];then
+       fail "chmod failed in: $TOMCAT_PATH/apache-tomcat/bin/*."
+    fi
+
     pass
 }
 
