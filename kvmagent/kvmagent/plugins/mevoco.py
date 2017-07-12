@@ -47,6 +47,32 @@ class ResetGatewayRsp(kvmagent.AgentResponse):
 class DeleteNamespaceRsp(kvmagent.AgentResponse):
     pass
 
+class SetForwardDnsCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SetForwardDnsCmd, self).__init__()
+        self.dns = None
+        self.mac = None
+        self.bridgeName = None
+        self.nameSpace = None
+        self.wrongDns = None
+
+class SetForwardDnsRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetForwardDnsRsp, self).__init__()
+
+
+class RemoveForwardDnsCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(RemoveForwardDnsCmd, self).__init__()
+        self.dns = None
+        self.mac = None
+        self.bridgeName = None
+        self.nameSpace = None
+
+class RemoveForwardDnsRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(RemoveForwardDnsRsp, self).__init__()
+
 class DhcpEnv(object):
     def __init__(self):
         self.bridge_name = None
@@ -158,6 +184,9 @@ class Mevoco(kvmagent.KvmAgent):
     BATCH_APPLY_USER_DATA = "/flatnetworkprovider/userdata/batchapply"
     DHCP_DELETE_NAMESPACE_PATH = "/flatnetworkprovider/dhcp/deletenamespace"
     CLEANUP_USER_DATA = "/flatnetworkprovider/userdata/cleanup"
+    SET_DNS_FORWARD_PATH = '/dns/forward/set'
+    REMOVE_DNS_FORWARD_PATH = '/dns/forward/remove'
+
 
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
 
@@ -179,9 +208,71 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESET_DEFAULT_GATEWAY_PATH, self.reset_default_gateway)
         http_server.register_async_uri(self.DHCP_DELETE_NAMESPACE_PATH, self.delete_dhcp_namespace)
         http_server.register_async_uri(self.CLEANUP_USER_DATA, self.cleanup_userdata)
+        http_server.register_async_uri(self.SET_DNS_FORWARD_PATH, self.setup_dns_forward)
+        http_server.register_async_uri(self.REMOVE_DNS_FORWARD_PATH, self.remove_dns_forward)
 
     def stop(self):
         pass
+
+    @lock.lock('dnsmasq')
+    @kvmagent.replyerror
+    def remove_dns_forward(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = RemoveForwardDnsRsp()
+
+        conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(cmd.namespaceName)
+        self._remove_dns_forward(cmd.mac, option_path)
+        self._restart_dnsmasq(cmd.nameSpace, conf_file_path)
+
+        return jsonobject.dumps(rsp)
+
+    def _remove_dns_forward(self, mac, option_path):
+        TAG = mac.replace(':', '')
+        OPTION = option_path
+
+        bash_errorout('''\
+sed -i '/{{TAG}},/d' {{OPTION}};
+sed -i '/^$/d' {{OPTION}};
+''')
+
+
+    @lock.lock('dnsmasq')
+    @kvmagent.replyerror
+    def setup_dns_forward(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetForwardDnsRsp()
+
+        self._apply_dns_forward(cmd)
+
+        return jsonobject.dumps(rsp)
+
+    def _apply_dns_forward(self, cmd):
+        conf_file_path, dhcp_path, dns_path, option_path, log_path = self._make_conf_path(cmd.nameSpace)
+
+        TAG = cmd.mac.replace(':', '')
+        OPTION = option_path
+        DNS = cmd.wrongDns
+
+        for dns in cmd.wrongDns:
+            DNS = dns
+            bash_errorout('''\
+            sed -i '/{{TAG}},option:dns-server,{{DNS}}/d' {{OPTION}};
+            sed -i '/^$/d' {{OPTION}};
+            ''')
+
+        DNS = cmd.dns
+        option_conf = '''\
+tag:{{TAG}},option:dns-server,{{DNS}}
+
+'''
+        tmpt = Template(option_conf)
+        option_conf = tmpt.render({'TAG': TAG, 'DNS': DNS})
+        mode = 'a+'
+        with open(option_path, mode) as fd:
+            fd.write(option_conf)
+
+        self._restart_dnsmasq(cmd.nameSpace, conf_file_path)
+
 
     @kvmagent.replyerror
     @in_bash
