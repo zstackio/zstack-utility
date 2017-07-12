@@ -11942,7 +11942,6 @@ class APIAddVRouterRouteEntryMsg(object):
     FULL_NAME='org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
     def __init__(self):
         self.description = None
-        #valid values: [UserStatic, UserBlackHole]
         self.type = None
         #mandatory field
         self.routeTableUuid = NotNoneField()
@@ -18999,7 +18998,7 @@ class QueryObjectEmailMediaInventory(object):
      }
 
 class QueryObjectEmailTriggerActionInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','mediaUuid','state','uuid','email','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','mediaUuid','state','type','uuid','email','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19286,7 +19285,7 @@ class QueryObjectMediaInventory(object):
      }
 
 class QueryObjectMonitorTriggerActionInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
