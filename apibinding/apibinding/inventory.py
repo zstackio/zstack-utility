@@ -11391,6 +11391,29 @@ class APIAddSharedMountPointPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDXSKYPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIAddXSkyPrimaryStorageMsg'
+class APIAddXSkyPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIAddXSkyPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.monUrls = NotNoneList()
+        self.rootVolumePoolName = None
+        self.dataVolumePoolName = None
+        self.imageCachePoolName = None
+        self.url = None
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.type = None
+        #mandatory field
+        self.zoneUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEOSSPROTECTIONSITEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteMsg'
 class APICreateOSSProtectionSiteMsg(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteMsg'
@@ -11942,7 +11965,6 @@ class APIAddVRouterRouteEntryMsg(object):
     FULL_NAME='org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
     def __init__(self):
         self.description = None
-        #valid values: [UserStatic, UserBlackHole]
         self.type = None
         #mandatory field
         self.routeTableUuid = NotNoneField()
@@ -12178,6 +12200,7 @@ api_names = [
     'APIAddVRouterRouteEntryMsg',
     'APIAddVmNicToLoadBalancerMsg',
     'APIAddVmNicToSecurityGroupMsg',
+    'APIAddXSkyPrimaryStorageMsg',
     'APIAddZsesPrimaryStorageMsg',
     'APIAttachAliyunKeyMsg',
     'APIAttachBackupStorageToZoneMsg',
@@ -18329,6 +18352,10 @@ RANDOM_VNI_ALLOCATOR_STRATEGY = 'RandomVniAllocatorStrategy'
 VXLAN_PORT = '4789'
 KVM_VXLAN_TYPE = 'KVM_HOST_VXLAN'
 
+#XSkyConstants
+XSKY_BACKUP_STORAGE_TYPE = 'XSky'
+XSKY_PRIMARY_STORAGE_TYPE = 'XSky'
+
 #ZsesConstants
 PRIMARY_STORAGE_TYPE = 'ZSES'
 
@@ -18562,6 +18589,14 @@ class GlobalConfig_MEVOCO(object):
     def get_category():
         return 'mevoco'
 
+class GlobalConfig_MONITOR(object):
+    HOST_INTERVAL = 'host.interval'
+    VM_INTERVAL = 'vm.interval'
+
+    @staticmethod
+    def get_category():
+        return 'monitor'
+
 class GlobalConfig_MONITORING(object):
     TRIGGER_RECOVERY_CHECKER_INTERVAL = 'trigger.recovery.checker.interval'
 
@@ -18632,6 +18667,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
@@ -18698,6 +18734,7 @@ class GlobalConfig_VIRTUALROUTER(object):
         return 'virtualRouter'
 
 class GlobalConfig_VM(object):
+    AUDIO = 'audio'
     VIDEOTYPE = 'videoType'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
     EXPUNGEPERIOD = 'expungePeriod'
@@ -18999,7 +19036,7 @@ class QueryObjectEmailMediaInventory(object):
      }
 
 class QueryObjectEmailTriggerActionInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','mediaUuid','state','uuid','email','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','mediaUuid','state','type','uuid','email','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19286,7 +19323,7 @@ class QueryObjectMediaInventory(object):
      }
 
 class QueryObjectMonitorTriggerActionInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
