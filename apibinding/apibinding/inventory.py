@@ -7402,6 +7402,27 @@ class APIGetVmStartingCandidateClustersHostsReply(object):
         self.error = None
 
 
+APIGETVMUSBREDIRECTMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmUsbRedirectMsg'
+class APIGetVmUsbRedirectMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmUsbRedirectMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVMUSBREDIRECTREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmUsbRedirectReply'
+class APIGetVmUsbRedirectReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmUsbRedirectReply'
+    def __init__(self):
+        self.enable = None
+        self.success = None
+        self.error = None
+
+
 APILISTVMINSTANCEREPLY_FULL_NAME = 'org.zstack.header.vm.APIListVmInstanceReply'
 class APIListVmInstanceReply(object):
     FULL_NAME='org.zstack.header.vm.APIListVmInstanceReply'
@@ -7657,6 +7678,20 @@ class APISetVmStaticIpMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.ip = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISETVMUSBREDIRECTMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmUsbRedirectMsg'
+class APISetVmUsbRedirectMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetVmUsbRedirectMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.enable = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12598,6 +12633,8 @@ api_names = [
     'APIGetVmSshKeyReply',
     'APIGetVmStartingCandidateClustersHostsMsg',
     'APIGetVmStartingCandidateClustersHostsReply',
+    'APIGetVmUsbRedirectMsg',
+    'APIGetVmUsbRedirectReply',
     'APIGetVolumeCapabilitiesMsg',
     'APIGetVolumeCapabilitiesReply',
     'APIGetVolumeFormatMsg',
@@ -12952,6 +12989,7 @@ api_names = [
     'APISetVmQgaMsg',
     'APISetVmSshKeyMsg',
     'APISetVmStaticIpMsg',
+    'APISetVmUsbRedirectMsg',
     'APISetVolumeQosMsg',
     'APIShareResourceMsg',
     'APIStartBaremetalPxeServerMsg',
@@ -18589,14 +18627,6 @@ class GlobalConfig_MEVOCO(object):
     def get_category():
         return 'mevoco'
 
-class GlobalConfig_MONITOR(object):
-    HOST_INTERVAL = 'host.interval'
-    VM_INTERVAL = 'vm.interval'
-
-    @staticmethod
-    def get_category():
-        return 'monitor'
-
 class GlobalConfig_MONITORING(object):
     TRIGGER_RECOVERY_CHECKER_INTERVAL = 'trigger.recovery.checker.interval'
 
@@ -18667,7 +18697,6 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
@@ -18734,7 +18763,6 @@ class GlobalConfig_VIRTUALROUTER(object):
         return 'virtualRouter'
 
 class GlobalConfig_VM(object):
-    AUDIO = 'audio'
     VIDEOTYPE = 'videoType'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
     EXPUNGEPERIOD = 'expungePeriod'
