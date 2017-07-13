@@ -865,6 +865,8 @@ class APISyncEcsImageFromRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.dataCenterUuid = NotNoneField()
+        #valid values: [system, custom]
+        self.type = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
