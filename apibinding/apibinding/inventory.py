@@ -1758,7 +1758,7 @@ class APIAddOssBucketFromRemoteMsg(object):
         #mandatory field
         self.bucketName = NotNoneField()
         #mandatory field
-        self.regionId = NotNoneField()
+        self.dataCenterUuid = NotNoneField()
         self.description = None
         self.resourceUuid = None
         self.session = None
@@ -1773,8 +1773,6 @@ class APIAttachOssBucketToEcsDataCenterMsg(object):
     def __init__(self):
         #mandatory field
         self.ossBucketUuid = NotNoneField()
-        #mandatory field
-        self.dataCenterUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1799,7 +1797,7 @@ class APICreateOssBucketRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.oss.APICreateOssBucketRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.regionId = NotNoneField()
+        self.dataCenterUuid = NotNoneField()
         #mandatory field
         self.bucketName = NotNoneField()
         self.description = None
@@ -1857,8 +1855,6 @@ class APIDetachOssBucketFromEcsDataCenterMsg(object):
     def __init__(self):
         #mandatory field
         self.ossBucketUuid = NotNoneField()
-        #mandatory field
-        self.dataCenterUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1909,6 +1905,8 @@ APIGETOSSBUCKETNAMEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIGe
 class APIGetOssBucketNameFromRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.oss.APIGetOssBucketNameFromRemoteMsg'
     def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -14299,47 +14297,12 @@ class VpcVirtualRouterInventory(object):
 
 
 
-class OssBucketEcsDataCenterRefInventory(object):
-    def __init__(self):
-        self.id = None
-        self.ossBucketUuid = None
-        self.dataCenterUuid = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'id'):
-            self.id = inv.id
-        else:
-            self.id = None
-
-        if hasattr(inv, 'ossBucketUuid'):
-            self.ossBucketUuid = inv.ossBucketUuid
-        else:
-            self.ossBucketUuid = None
-
-        if hasattr(inv, 'dataCenterUuid'):
-            self.dataCenterUuid = inv.dataCenterUuid
-        else:
-            self.dataCenterUuid = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
 class OssBucketInventory(object):
     def __init__(self):
         self.uuid = None
         self.bucketName = None
-        self.regionId = None
+        self.dataCenterUuid = None
+        self.current = None
         self.regionName = None
         self.description = None
         self.createDate = None
@@ -14356,10 +14319,15 @@ class OssBucketInventory(object):
         else:
             self.bucketName = None
 
-        if hasattr(inv, 'regionId'):
-            self.regionId = inv.regionId
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
         else:
-            self.regionId = None
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'current'):
+            self.current = inv.current
+        else:
+            self.current = None
 
         if hasattr(inv, 'regionName'):
             self.regionName = inv.regionName
@@ -18980,9 +18948,8 @@ class QueryObjectConsoleProxyInventory(object):
 
 class QueryObjectDataCenterInventory(object):
      PRIMITIVE_FIELDS = ['deleted','regionId','dcType','regionName','lastOpDate','description','defaultVpc','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['ossBucket']
+     EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
-        'ossBucket' : 'QueryObjectOssBucketInventory',
      }
 
 class QueryObjectDataVolumeUsageInventory(object):
@@ -19400,19 +19367,10 @@ class QueryObjectNotificationSubscriptionInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
-class QueryObjectOssBucketEcsDataCenterRefInventory(object):
-     PRIMITIVE_FIELDS = ['ossBucketUuid','lastOpDate','dataCenterUuid','id','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['dataCenter','ossBucket']
-     QUERY_OBJECT_MAP = {
-        'dataCenter' : 'QueryObjectDataCenterInventory',
-        'ossBucket' : 'QueryObjectOssBucketInventory',
-     }
-
 class QueryObjectOssBucketInventory(object):
-     PRIMITIVE_FIELDS = ['bucketName','regionId','regionName','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['dataCenter']
+     PRIMITIVE_FIELDS = ['bucketName','current','regionName','lastOpDate','dataCenterUuid','description','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
-        'dataCenter' : 'QueryObjectDataCenterInventory',
      }
 
 class QueryObjectOssUploadPartsInventory(object):
