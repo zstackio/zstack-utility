@@ -6340,6 +6340,33 @@ class StopUiCmd(Command):
         stop_all()
         info('successfully stopped the UI server')
 
+# For VDI UI 2.1
+class StopVDIUiCmd(Command):
+    def __init__(self):
+        super(StopVDIUiCmd, self).__init__()
+        self.name = 'stop_vdi'
+        self.description = "stop VDI server on the local host"
+        ctl.register_command(self)
+
+    def run(self, args):
+        pidfile = '/var/run/zstack/zstack-vdi.pid'
+        if os.path.exists(pidfile):
+            with open(pidfile, 'r') as fd:
+                pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
+                shell('kill %s >/dev/null 2>&1' % pid, is_exception=False)
+
+        def stop_all():
+            pid = find_process_by_cmdline('zstack-vdi')
+            if pid:
+                shell('kill -9 %s >/dev/null 2>&1' % pid)
+                stop_all()
+            else:
+                return
+
+        stop_all()
+        info('successfully stopped the VDI server')
+
 # For UI 1.x
 class DashboardStatusCmd(Command):
     def __init__(self):
@@ -6456,7 +6483,47 @@ class UiStatusCmd(Command):
         if pid:
             info('UI status: %s [PID: %s]' % (colored('Zombie', 'yellow'), pid))
         else:
-            info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))  
+            info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
+
+# For VDI UI 2.1
+class VDIUiStatusCmd(Command):
+    def __init__(self):
+        super(VDIUiStatusCmd, self).__init__()
+        self.name = "vdi_status"
+        self.description = "check the VDI server status on the local host."
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
+
+    def run(self, args):
+        self.quiet = args.quiet
+        pidfile = '/var/run/zstack/zstack-vdi.pid'
+        portfile = '/var/run/zstack/zstack-vdi.port'
+        port = 9000
+        if os.path.exists(pidfile):
+            with open(pidfile, 'r') as fd:
+                pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
+                check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
+                check_pid_cmd(is_exception=False)
+                if check_pid_cmd.return_code == 0:
+                    default_ip = get_default_ip()
+                    if not default_ip:
+                        info('VDI status: %s [PID:%s] http://%s:%s' % (colored('Running', 'green'), pid, default_ip,port))
+                    else:
+                        if os.path.exists(portfile):
+                            with open(portfile, 'r') as fd2:
+                                port = fd2.readline()
+                                port = port.strip(' \t\n\r')
+                        info('VDI UI status: %s [PID:%s] http://%s:%s' % (colored('Running', 'green'), pid, default_ip,port))
+                    return
+
+        pid = find_process_by_cmdline('zstack-vdi')
+        if pid:
+            info('VDI UI status: %s [PID: %s]' % (colored('Zombie', 'yellow'), pid))
+        else:
+            info('VDI UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
 class InstallLicenseCmd(Command):
     def __init__(self):
@@ -6718,6 +6785,107 @@ class StartUiCmd(Command):
         with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
             fd.write(args.server_port)
 
+
+
+# For VDI PORTAL 2.1
+class StartVDIUICmd(Command):
+    PID_FILE = '/var/run/zstack/zstack-vdi.pid'
+    PORT_FILE = '/var/run/zstack/zstack-vdi.port'
+
+    def __init__(self):
+        super(StartVDIUICmd, self).__init__()
+        self.name = "start_vdi"
+        self.description = "start VDI UI server on the local host"
+        ctl.register_command(self)
+        if not os.path.exists(os.path.dirname(self.PID_FILE)):
+            shell("mkdir -p %s" % os.path.dirname(self.PID_FILE))
+
+    def install_argparse_arguments(self, parser):
+        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
+        parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080", default='8080')
+        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000", default='9000')
+        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000", default='9000')
+        parser.add_argument('--vdi-path', help="VDI path. [DEFAULT] /opt/zstack-dvd/zstack-vdi.war", default='/opt/zstack-dvd/zstack-vdi.war')
+        parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
+
+    def _check_status(self):
+        VDI_UI_PORT = 9000
+        if os.path.exists(self.PORT_FILE):
+            with open(self.PORT_FILE, 'r') as fd:
+                VDI_UI_PORT = fd.readline()
+                VDI_UI_PORT = VDI_UI_PORT.strip(' \t\n\r')
+        if os.path.exists(self.PID_FILE):
+            with open(self.PID_FILE, 'r') as fd:
+                pid = fd.readline()
+                pid = pid.strip(' \t\n\r')
+                check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
+                check_pid_cmd(is_exception=False)
+                if check_pid_cmd.return_code == 0:
+                    default_ip = get_default_ip()
+                    if not default_ip:
+                        info('VDI UI is still running[PID:%s]' % pid)
+                    else:
+                        info('VDI UI is still running[PID:%s], http://%s:%s' % (pid, default_ip, VDI_UI_PORT))
+                    return False
+
+        pid = find_process_by_cmdline('zstack-vdi')
+        if pid:
+            info('found a zombie VDI UI server[PID:%s], kill it and start a new one' % pid)
+            shell('kill -9 %s > /dev/null' % pid)
+        return True
+
+    def run(self, args):
+        shell("mkdir -p %s" % args.log)
+        zstack_vdi =  args.vdi_path
+        if not os.path.exists(zstack_vdi):
+            raise CtlError('%s not found. Are you sure the VDI UI server is installed ?' % (zstack_vdi))
+
+        # vdi ui still running
+        if not self._check_status():
+            return
+
+        distro = platform.dist()[0]
+        if distro == 'centos':
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.webhook_port, args.webhook_port))
+        elif distro == 'Ubuntu':
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.webhook_port, args.webhook_port))
+        else:
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
+
+        scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar -Dmn.port=%s -Dwebhook.port=%s -Dserver.port=%s %s >>%s/zstack-vdi.log 2>&1 &'" % (args.log, args.mn_port, args.webhook_port, args.server_port, args.vdi_path, args.log)
+
+        script(scmd, no_pipe=True)
+
+        @loop_until_timeout(5, 0.5)
+        def write_pid():
+            pid = find_process_by_cmdline('zstack-vdi')
+            if pid:
+                with open(self.PID_FILE, 'w') as fd:
+                    fd.write(str(pid))
+                return True
+            else:
+                return False
+
+        write_pid()
+        pid = find_process_by_cmdline('zstack-vdi')
+        if not pid:
+            info('fail to start VDI UI server on the localhost. Use zstack-ctl start_vdi to restart it. zstack UI log could be found in %s/zstack-vdi.log' % args.log)
+            return False
+
+        default_ip = get_default_ip()
+        if not default_ip:
+            info('successfully started VDI UI server on the local host, PID[%s]' % pid)
+        else:
+            info('successfully started VDI UI server on the local host, PID[%s], http://%s:%s' % (pid, default_ip, args.server_port))
+
+        os.system('mkdir -p /var/run/zstack/')
+        with open('/var/run/zstack/zstack-vdi.port', 'w') as fd:
+            fd.write(args.server_port)
+
+
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
 
@@ -6786,6 +6954,9 @@ def main():
     UpgradeDbCmd()
     UpgradeCtlCmd()
     UpgradeHACmd()
+    StartVDIUICmd()
+    StopVDIUiCmd()
+    VDIUiStatusCmd()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard
