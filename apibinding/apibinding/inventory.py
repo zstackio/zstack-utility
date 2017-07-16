@@ -10383,6 +10383,173 @@ class APIUpdateVirtualRouterOfferingMsg(object):
         self.userTags = OptionalList()
 
 
+APIATTACHPCIDEVICETOVMMSG_FULL_NAME = 'org.zstack.pciDevice.APIAttachPciDeviceToVmMsg'
+class APIAttachPciDeviceToVmMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIAttachPciDeviceToVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.pciDeviceUuid = NotNoneField()
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEPCIDEVICEOFFERINGMSG_FULL_NAME = 'org.zstack.pciDevice.APICreatePciDeviceOfferingMsg'
+class APICreatePciDeviceOfferingMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APICreatePciDeviceOfferingMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.type = None
+        #mandatory field
+        self.vendorId = NotNoneField()
+        #mandatory field
+        self.deviceId = NotNoneField()
+        self.subvendorId = None
+        self.subdeviceId = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEPCIDEVICEMSG_FULL_NAME = 'org.zstack.pciDevice.APIDeletePciDeviceMsg'
+class APIDeletePciDeviceMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIDeletePciDeviceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEPCIDEVICEOFFERINGMSG_FULL_NAME = 'org.zstack.pciDevice.APIDeletePciDeviceOfferingMsg'
+class APIDeletePciDeviceOfferingMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIDeletePciDeviceOfferingMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHPCIDEVICEFROMVMMSG_FULL_NAME = 'org.zstack.pciDevice.APIDetachPciDeviceFromVmMsg'
+class APIDetachPciDeviceFromVmMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIDetachPciDeviceFromVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.pciDeviceUuid = NotNoneField()
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYPCIDEVICEMSG_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDeviceMsg'
+class APIQueryPciDeviceMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIQueryPciDeviceMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYPCIDEVICEOFFERINGMSG_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDeviceOfferingMsg'
+class APIQueryPciDeviceOfferingMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIQueryPciDeviceOfferingMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYPCIDEVICEOFFERINGREPLY_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDeviceOfferingReply'
+class APIQueryPciDeviceOfferingReply(object):
+    FULL_NAME='org.zstack.pciDevice.APIQueryPciDeviceOfferingReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYPCIDEVICEPCIDEVICEOFFERINGMSG_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDevicePciDeviceOfferingMsg'
+class APIQueryPciDevicePciDeviceOfferingMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIQueryPciDevicePciDeviceOfferingMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYPCIDEVICEPCIDEVICEOFFERINGREPLY_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDevicePciDeviceOfferingReply'
+class APIQueryPciDevicePciDeviceOfferingReply(object):
+    FULL_NAME='org.zstack.pciDevice.APIQueryPciDevicePciDeviceOfferingReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYPCIDEVICEREPLY_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDeviceReply'
+class APIQueryPciDeviceReply(object):
+    FULL_NAME='org.zstack.pciDevice.APIQueryPciDeviceReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIPROMETHEUSQUERYLABELVALUESMSG_FULL_NAME = 'org.zstack.prometheus.APIPrometheusQueryLabelValuesMsg'
 class APIPrometheusQueryLabelValuesMsg(object):
     FULL_NAME='org.zstack.prometheus.APIPrometheusQueryLabelValuesMsg'
@@ -12249,6 +12416,7 @@ api_names = [
     'APIAttachNetworkServiceProviderToL2NetworkMsg',
     'APIAttachNetworkServiceToL3NetworkMsg',
     'APIAttachOssBucketToEcsDataCenterMsg',
+    'APIAttachPciDeviceToVmMsg',
     'APIAttachPoliciesToUserMsg',
     'APIAttachPolicyToUserGroupMsg',
     'APIAttachPolicyToUserMsg',
@@ -12329,6 +12497,7 @@ api_names = [
     'APICreateOSSProtectionSiteReply',
     'APICreateOssBackupBucketRemoteMsg',
     'APICreateOssBucketRemoteMsg',
+    'APICreatePciDeviceOfferingMsg',
     'APICreatePolicyMsg',
     'APICreatePortForwardingRuleMsg',
     'APICreateProtectionGatewayMsg',
@@ -12416,6 +12585,8 @@ api_names = [
     'APIDeleteOssBucketFileRemoteMsg',
     'APIDeleteOssBucketNameLocalMsg',
     'APIDeleteOssBucketRemoteMsg',
+    'APIDeletePciDeviceMsg',
+    'APIDeletePciDeviceOfferingMsg',
     'APIDeletePolicyMsg',
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
@@ -12471,6 +12642,7 @@ api_names = [
     'APIDetachNetworkServiceFromL3NetworkMsg',
     'APIDetachNetworkServiceProviderFromL2NetworkMsg',
     'APIDetachOssBucketFromEcsDataCenterMsg',
+    'APIDetachPciDeviceFromVmMsg',
     'APIDetachPoliciesFromUserMsg',
     'APIDetachPolicyFromUserGroupMsg',
     'APIDetachPolicyFromUserMsg',
@@ -12830,6 +13002,12 @@ api_names = [
     'APIQueryNotificationSubscriptionReply',
     'APIQueryOssBucketFileNameMsg',
     'APIQueryOssBucketFileNameReply',
+    'APIQueryPciDeviceMsg',
+    'APIQueryPciDeviceOfferingMsg',
+    'APIQueryPciDeviceOfferingReply',
+    'APIQueryPciDevicePciDeviceOfferingMsg',
+    'APIQueryPciDevicePciDeviceOfferingReply',
+    'APIQueryPciDeviceReply',
     'APIQueryPolicyMsg',
     'APIQueryPolicyReply',
     'APIQueryPortForwardingRuleMsg',
@@ -17803,6 +17981,240 @@ class VirtualRouterVmInventory(ApplianceVmInventory):
 
 
 
+class PciDeviceInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.description = None
+        self.hostUuid = None
+        self.vmInstanceUuid = None
+        self.status = None
+        self.type = None
+        self.vendorId = None
+        self.deviceId = None
+        self.subvendorId = None
+        self.subdeviceId = None
+        self.metaData = None
+        self.pciDeviceAddress = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.matchedPciDeviceOfferingRef = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'hostUuid'):
+            self.hostUuid = inv.hostUuid
+        else:
+            self.hostUuid = None
+
+        if hasattr(inv, 'vmInstanceUuid'):
+            self.vmInstanceUuid = inv.vmInstanceUuid
+        else:
+            self.vmInstanceUuid = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'vendorId'):
+            self.vendorId = inv.vendorId
+        else:
+            self.vendorId = None
+
+        if hasattr(inv, 'deviceId'):
+            self.deviceId = inv.deviceId
+        else:
+            self.deviceId = None
+
+        if hasattr(inv, 'subvendorId'):
+            self.subvendorId = inv.subvendorId
+        else:
+            self.subvendorId = None
+
+        if hasattr(inv, 'subdeviceId'):
+            self.subdeviceId = inv.subdeviceId
+        else:
+            self.subdeviceId = None
+
+        if hasattr(inv, 'metaData'):
+            self.metaData = inv.metaData
+        else:
+            self.metaData = None
+
+        if hasattr(inv, 'pciDeviceAddress'):
+            self.pciDeviceAddress = inv.pciDeviceAddress
+        else:
+            self.pciDeviceAddress = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'matchedPciDeviceOfferingRef'):
+            self.matchedPciDeviceOfferingRef = inv.matchedPciDeviceOfferingRef
+        else:
+            self.matchedPciDeviceOfferingRef = None
+
+
+
+class PciDeviceOfferingInstanceOfferingRefInventory(object):
+    def __init__(self):
+        self.id = None
+        self.instanceOfferingUuid = None
+        self.pciDeviceOfferingUuid = None
+        self.metadata = None
+        self.pciDeviceCount = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'instanceOfferingUuid'):
+            self.instanceOfferingUuid = inv.instanceOfferingUuid
+        else:
+            self.instanceOfferingUuid = None
+
+        if hasattr(inv, 'pciDeviceOfferingUuid'):
+            self.pciDeviceOfferingUuid = inv.pciDeviceOfferingUuid
+        else:
+            self.pciDeviceOfferingUuid = None
+
+        if hasattr(inv, 'metadata'):
+            self.metadata = inv.metadata
+        else:
+            self.metadata = None
+
+        if hasattr(inv, 'pciDeviceCount'):
+            self.pciDeviceCount = inv.pciDeviceCount
+        else:
+            self.pciDeviceCount = None
+
+
+
+class PciDeviceOfferingInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.type = None
+        self.vendorId = None
+        self.deviceId = None
+        self.subvendorId = None
+        self.subdeviceId = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.attachedInstanceOfferings = None
+        self.matchedPciDevices = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'vendorId'):
+            self.vendorId = inv.vendorId
+        else:
+            self.vendorId = None
+
+        if hasattr(inv, 'deviceId'):
+            self.deviceId = inv.deviceId
+        else:
+            self.deviceId = None
+
+        if hasattr(inv, 'subvendorId'):
+            self.subvendorId = inv.subvendorId
+        else:
+            self.subvendorId = None
+
+        if hasattr(inv, 'subdeviceId'):
+            self.subdeviceId = inv.subdeviceId
+        else:
+            self.subdeviceId = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'attachedInstanceOfferings'):
+            self.attachedInstanceOfferings = inv.attachedInstanceOfferings
+        else:
+            self.attachedInstanceOfferings = None
+
+        if hasattr(inv, 'matchedPciDevices'):
+            self.matchedPciDevices = inv.matchedPciDevices
+        else:
+            self.matchedPciDevices = None
+
+
+
+class PciDevicePciDeviceOfferingRefInventory(object):
+    def __init__(self):
+        self.id = None
+        self.pciDeviceUuid = None
+        self.pciDeviceOfferingUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'pciDeviceUuid'):
+            self.pciDeviceUuid = inv.pciDeviceUuid
+        else:
+            self.pciDeviceUuid = None
+
+        if hasattr(inv, 'pciDeviceOfferingUuid'):
+            self.pciDeviceOfferingUuid = inv.pciDeviceOfferingUuid
+        else:
+            self.pciDeviceOfferingUuid = None
+
+
+
 class ImageStoreBackupStorageInventory(BackupStorageInventory):
     def __init__(self):
         super(ImageStoreBackupStorageInventory, self).__init__()
@@ -19381,6 +19793,42 @@ class QueryObjectOssUploadPartsInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectPciDeviceInventory(object):
+     PRIMITIVE_FIELDS = ['pciDeviceAddress','description','vendorId','subvendorId','type','uuid','deviceId','subdeviceId','metaData','hostUuid','lastOpDate','vmInstanceUuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['matchedPciDeviceOfferingRef','vmInstance','host','matchedPciDeviceOffering']
+     QUERY_OBJECT_MAP = {
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'host' : 'QueryObjectHostInventory',
+        'matchedPciDeviceOfferingRef' : 'QueryObjectPciDevicePciDeviceOfferingRefInventory',
+        'matchedPciDeviceOffering' : 'QueryObjectPciDevicePciDeviceOfferingRefInventory',
+     }
+
+class QueryObjectPciDeviceOfferingInstanceOfferingRefInventory(object):
+     PRIMITIVE_FIELDS = ['metadata','pciDeviceCount','pciDeviceOfferingUuid','instanceOfferingUuid','id','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['pciDeviceOffering','instanceOffering']
+     QUERY_OBJECT_MAP = {
+        'pciDeviceOffering' : 'QueryObjectPciDeviceOfferingInventory',
+        'instanceOffering' : 'QueryObjectInstanceOfferingInventory',
+     }
+
+class QueryObjectPciDeviceOfferingInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','vendorId','subvendorId','type','uuid','deviceId','subdeviceId','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['attachedInstanceOfferings','matchedPciDevices','attachedInstanceOfferingRef','matchedPciDevice']
+     QUERY_OBJECT_MAP = {
+        'attachedInstanceOfferingRef' : 'QueryObjectPciDeviceOfferingInstanceOfferingRefInventory',
+        'attachedInstanceOfferings' : 'QueryObjectPciDeviceOfferingInstanceOfferingRefInventory',
+        'matchedPciDevices' : 'QueryObjectPciDevicePciDeviceOfferingRefInventory',
+        'matchedPciDevice' : 'QueryObjectPciDevicePciDeviceOfferingRefInventory',
+     }
+
+class QueryObjectPciDevicePciDeviceOfferingRefInventory(object):
+     PRIMITIVE_FIELDS = ['pciDeviceUuid','pciDeviceOfferingUuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['pciDeviceOffering','pciDevice']
+     QUERY_OBJECT_MAP = {
+        'pciDeviceOffering' : 'QueryObjectPciDeviceOfferingInventory',
+        'pciDevice' : 'QueryObjectPciDeviceInventory',
+     }
+
 class QueryObjectPolicyInventory(object):
      PRIMITIVE_FIELDS = ['name','accountUuid','uuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['account','user','group']
@@ -19944,6 +20392,9 @@ queryMessageInventoryMap = {
      'APIQueryNotificationMsg' : QueryObjectNotificationInventory,
      'APIQueryNotificationSubscriptionMsg' : QueryObjectNotificationSubscriptionInventory,
      'APIQueryOssBucketFileNameMsg' : QueryObjectOssBucketInventory,
+     'APIQueryPciDeviceMsg' : QueryObjectPciDeviceInventory,
+     'APIQueryPciDeviceOfferingMsg' : QueryObjectPciDeviceOfferingInventory,
+     'APIQueryPciDevicePciDeviceOfferingMsg' : QueryObjectPciDevicePciDeviceOfferingRefInventory,
      'APIQueryPolicyMsg' : QueryObjectPolicyInventory,
      'APIQueryPortForwardingRuleMsg' : QueryObjectPortForwardingRuleInventory,
      'APIQueryPrimaryStorageMsg' : QueryObjectPrimaryStorageInventory,
