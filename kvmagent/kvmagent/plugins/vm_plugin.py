@@ -12,6 +12,7 @@ import libvirt
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
+from zstacklib.utils import bash
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lichbd
@@ -243,6 +244,36 @@ class ReconnectMeCmd(object):
     def __init__(self):
         self.hostUuid = None
         self.reason = None
+
+class GetPciDevicesCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetPciDevicesCmd, self).__init__()
+        self.filterString = None
+
+class GetPciDevicesResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetPciDevicesResponse, self).__init__()
+        self.pciDevicesInfo = None
+
+class HotPlugPciDeviceCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(HotPlugPciDeviceCommand, self).__init__()
+        self.pciDeviceAddress = None
+        self.vmUuid = None
+
+class HotPlugPciDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(HotPlugPciDeviceRsp, self).__init__()
+
+class HotUnplugPciDeviceCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(HotUnplugPciDeviceCommand, self).__init__()
+        self.pciDeviceAddress = None
+        self.vmUuid = None
+
+class HotUnplugPciDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(HotUnplugPciDeviceRsp, self).__init__()
 
 
 class VncPortIptableRule(object):
@@ -2648,6 +2679,30 @@ class Vm(object):
                 if cephSecretUuid:
                     VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
 
+            pciDevices = cmd.addons['pciDevice']
+            if pciDevices:
+                make_pci_device(pciDevices)
+
+        def make_pci_device(addresses):
+            devices = elements['devices']
+            for addr in addresses:
+                if match_pci_device(addr):
+                    hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'pci', 'managed': 'yes'})
+                    e(hostdev, "driver", None, {'name': 'vfio'})
+                    source = e(hostdev, "source")
+                    e(source, "address", None, {
+                        "domain": hex(0) if len(addr.split(":")) == 2 else hex(int(addr.split(":")[0], 16)),
+                        "bus": hex(int(addr.split(":")[-2], 16)),
+                        "slot": hex(int(addr.split(":")[-1].split(".")[0], 16)),
+                        "function": hex(int(addr.split(":")[-1].split(".")[1], 16))
+                    })
+                else:
+                    raise kvmagent.KvmError(
+                       'can not find pci device for address %s' % addr)
+
+        # TODO(WeiW) Validate here
+        def match_pci_device(addr):
+            return True
 
         def make_balloon_memory():
             devices = elements['devices']
@@ -2731,6 +2786,9 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_GET_NIC_QOS = "/get/nic/qos"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
+    GET_PCI_DEVICES = "/pcidevice/get"
+    HOT_PLUG_PCI_DEVICE = "/pcidevice/hotplug"
+    HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -3377,6 +3435,61 @@ class VmPlugin(kvmagent.KvmAgent):
         finally:
             os.remove(spath)
 
+    @kvmagent.replyerror
+    def get_pci_info(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetPciDevicesResponse
+        rsp.pciDevicesInfo = shell.call("lspci -nnv | egrep %s" % cmd.filterString)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def hot_plug_pci_device(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = HotPlugPciDeviceRsp
+        addr = cmd.pciDeviceAddress
+        domain = hex(0) if len(addr.split(":")) == 2 else hex(int(addr.split(":")[0], 16))
+        bus = hex(int(addr.split(":")[-2], 16))
+        slot = hex(int(addr.split(":")[-1].split(".")[0], 16))
+        function = hex(int(addr.split(":")[-1].split(".")[1], 16))
+        content = '''
+        <hostdev mode='subsystem' type='pci' managed='yes'>
+     <driver name='vfio'/>
+     <source>
+       <address type='pci' domain='%s' bus='%s' slot='%s' function='%s'/>
+     </source>
+</hostdev>''' % (domain, bus, slot, function)
+        spath = linux.write_to_temp_file(content)
+        r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
+        if r!= 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        else:
+            return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def hot_unplug_pci_device(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = HotUnplugPciDeviceRsp
+        addr = cmd.pciDeviceAddress
+        domain = hex(0) if len(addr.split(":")) == 2 else hex(int(addr.split(":")[0], 16))
+        bus = hex(int(addr.split(":")[-2], 16))
+        slot = hex(int(addr.split(":")[-1].split(".")[0], 16))
+        function = hex(int(addr.split(":")[-1].split(".")[1], 16))
+        content = '''
+        <hostdev mode='subsystem' type='pci' managed='yes'>
+     <driver name='vfio'/>
+     <source>
+       <address type='pci' domain='%s' bus='%s' slot='%s' function='%s'/>
+     </source>
+</hostdev>''' % (domain, bus, slot, function)
+        spath = linux.write_to_temp_file(content)
+        r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
+        if r!= 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        else:
+            return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -3411,6 +3524,9 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_GET_NIC_QOS, self.get_nic_qos)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
+        http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
+        http_server.register_async_uri(self.HOT_PLUG_PCI_DEVICE, self.hot_plug_pci_device)
+        http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
 
         self.register_libvirt_event()
 

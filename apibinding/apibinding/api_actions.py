@@ -602,6 +602,18 @@ class AttachOssBucketToEcsDataCenterAction(inventory.APIAttachOssBucketToEcsData
         self.out = evt
         return self.out
 
+class AttachPciDeviceToVmAction(inventory.APIAttachPciDeviceToVmMsg):
+    def __init__(self):
+        super(AttachPciDeviceToVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachPciDeviceToVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AttachPoliciesToUserAction(inventory.APIAttachPoliciesToUserMsg):
     def __init__(self):
         super(AttachPoliciesToUserAction, self).__init__()
@@ -1510,6 +1522,18 @@ class CreateOssBucketRemoteAction(inventory.APICreateOssBucketRemoteMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateOssBucketRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreatePciDeviceOfferingAction(inventory.APICreatePciDeviceOfferingMsg):
+    def __init__(self):
+        super(CreatePciDeviceOfferingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreatePciDeviceOfferingAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2522,6 +2546,30 @@ class DeleteOssBucketRemoteAction(inventory.APIDeleteOssBucketRemoteMsg):
         self.out = evt
         return self.out
 
+class DeletePciDeviceAction(inventory.APIDeletePciDeviceMsg):
+    def __init__(self):
+        super(DeletePciDeviceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeletePciDeviceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeletePciDeviceOfferingAction(inventory.APIDeletePciDeviceOfferingMsg):
+    def __init__(self):
+        super(DeletePciDeviceOfferingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeletePciDeviceOfferingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeletePolicyAction(inventory.APIDeletePolicyMsg):
     def __init__(self):
         super(DeletePolicyAction, self).__init__()
@@ -3166,6 +3214,18 @@ class DetachOssBucketFromEcsDataCenterAction(inventory.APIDetachOssBucketFromEcs
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DetachOssBucketFromEcsDataCenterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DetachPciDeviceFromVmAction(inventory.APIDetachPciDeviceFromVmMsg):
+    def __init__(self):
+        super(DetachPciDeviceFromVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachPciDeviceFromVmAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5401,6 +5461,48 @@ class QueryOssBucketFileNameAction(inventory.APIQueryOssBucketFileNameMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryOssBucketFileNameAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryPciDeviceAction(inventory.APIQueryPciDeviceMsg):
+    def __init__(self):
+        super(QueryPciDeviceAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryPciDeviceAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryPciDeviceOfferingAction(inventory.APIQueryPciDeviceOfferingMsg):
+    def __init__(self):
+        super(QueryPciDeviceOfferingAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryPciDeviceOfferingAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryPciDevicePciDeviceOfferingAction(inventory.APIQueryPciDevicePciDeviceOfferingMsg):
+    def __init__(self):
+        super(QueryPciDevicePciDeviceOfferingAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryPciDevicePciDeviceOfferingAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
