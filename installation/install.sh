@@ -6,6 +6,7 @@ PRODUCT_NAME=${PRODUCT_NAME:-"ZStack"}
 SS100='SS100'
 SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
+VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 
 OS=''
@@ -2124,6 +2125,194 @@ check_repo_version() {
     return $?
 }
 
+upgrade_local_repos() {
+echo_subtitle "Upgrade zstack local repos (takes a couple of minutes)"
+BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
+
+echo "re-create repo files" >>$ZSTACK_INSTALL_LOG
+mkdir -p /opt/zstack-dvd/
+cat > /etc/yum.repos.d/zstack-local.repo << EOF
+[zstack-local]
+name=zstack-local
+baseurl=file:///opt/zstack-dvd/
+gpgcheck=0
+enabled=1
+EOF
+
+mkdir -p /opt/zstack-dvd/Extra/ceph
+cat > /etc/yum.repos.d/ceph.repo << EOF
+[ceph-hammer]
+name=Ceph Hammer
+baseurl=file:///opt/zstack-dvd/Extra/ceph
+gpgcheck=0
+enabled=0
+EOF
+
+mkdir -p /opt/zstack-dvd/Extra/uek4
+cat > /etc/yum.repos.d/uek4-ocfs2.repo << EOF
+[uek4-ocfs2]
+name=UEK4-OCFS2
+baseurl=file:///opt/zstack-dvd/Extra/uek4
+gpgcheck=0
+enabled=0
+EOF
+
+mkdir -p /opt/zstack-dvd/Extra/galera
+cat > /etc/yum.repos.d/galera.repo << EOF
+[mariadb]
+name = MariaDB
+baseurl=file:///opt/zstack-dvd/Extra/galera
+gpgcheck=0
+enabled=0
+EOF
+
+mkdir -p /opt/zstack-dvd/Extra/gluster
+cat > /etc/yum.repos.d/gluster.repo << EOF
+[gluster]
+name=Gluster 3.7
+baseurl=file:///opt/zstack-dvd/Extra/gluster
+gpgcheck=0
+enabled=0
+EOF
+
+mkdir -p /opt/zstack-dvd/Extra/moosefs
+cat > /etc/yum.repos.d/moosefs.repo << EOF
+[moosefs]
+name=moosefs
+baseurl=file:///opt/zstack-dvd/Extra/moosefs
+gpgcheck=0
+enabled=0
+EOF
+
+mkdir -p /opt/zstack-dvd/Extra/qemu-kvm-ev
+cat > /etc/yum.repos.d/qemu-kvm-ev.repo << EOF
+[qemu-kvm-ev]
+name=Qemu KVM EV
+baseurl=file:///opt/zstack-dvd/Extra/qemu-kvm-ev
+gpgcheck=0
+enabled=0
+EOF
+
+mkdir -p /opt/zstack-dvd/Extra/virtio-win
+cat > /etc/yum.repos.d/virtio-win.repo << EOF
+[virtio-win]
+name=virtio-win
+baseurl=file:///opt/zstack-dvd/Extra/virtio-win
+gpgcheck=0
+enabled=0
+EOF
+
+echo "create zstack-online repos based on zstack version" >>$ZSTACK_INSTALL_LOG
+cat > /etc/yum.repos.d/zstack-online-base.repo << EOF
+[zstack-online-base]
+name=zstack-online-base
+baseurl=${BASEURL}
+gpgcheck=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-ceph.repo << EOF
+[zstack-online-ceph]
+name=zstack-online-ceph
+baseurl=${BASEURL}/Extra/ceph
+gpgcheck=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-uek4.repo << EOF
+[zstack-online-uek4]
+name=zstack-online-uek4
+baseurl=${BASEURL}/Extra/uek4
+gpgcheck=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-galera.repo << EOF
+[zstack-online-galera]
+name=zstack-online-galera
+baseurl=${BASEURL}/Extra/galera
+gpgcheck=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-gluster.repo << EOF
+[zstack-online-gluster]
+name=zstack-online-gluster
+baseurl=${BASEURL}/Extra/gluster
+gpgcheck=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-moosefs.repo << EOF
+[zstack-online-moosefs]
+name=zstack-online-moosefs
+baseurl=${BASEURL}/Extra/moosefs
+gpgcheck=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
+[zstack-online-qemu-kvm-ev]
+name=zstack-online-qemu-kvm-ev
+baseurl=${BASEURL}/Extra/qemu-kvm-ev
+gpgcheck=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-virtio-win.repo << EOF
+[zstack-online-virtio-win]
+name=zstack-online-virtio-win
+baseurl=${BASEURL}/Extra/virtio-win
+gpgcheck=0
+EOF
+
+# install necessary packages
+yum -y install createrepo curl yum-utils >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+
+# test network
+curl ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+
+# sync from zstack-online
+reposync -r zstack-online-base -p /opt/zstack-dvd --norepopath -m >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+reposync -r zstack-online-gluster -p /opt/zstack-dvd/Extra/gluster --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+reposync -r zstack-online-moosefs -p /opt/zstack-dvd/Extra/moosefs --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && return $?
+
+echo "update repodatas" >>$ZSTACK_INSTALL_LOG
+createrepo -g /opt/zstack-dvd/comps.xml /opt/zstack-dvd/Packages/ >/dev/null 2>&1
+[ $? -ne 0 ] && return $?
+rm -rf /opt/zstack-dvd/repodata && mv /opt/zstack-dvd/Packages/repodata /opt/zstack-dvd/
+createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1
+[ $? -ne 0 ] && return $?
+createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1
+[ $? -ne 0 ] && return $?
+createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1
+[ $? -ne 0 ] && return $?
+createrepo /opt/zstack-dvd/Extra/gluster >/dev/null 2>&1
+[ $? -ne 0 ] && return $?
+createrepo /opt/zstack-dvd/Extra/moosefs >/dev/null 2>&1
+[ $? -ne 0 ] && return $?
+createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
+[ $? -ne 0 ] && return $?
+createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1
+[ $? -ne 0 ] && return $?
+
+echo "update .repo_version" >>$ZSTACK_INSTALL_LOG
+cat .repo_version > /opt/zstack-dvd/.repo_version
+
+echo "cleanup" >>$ZSTACK_INSTALL_LOG
+rm -f /etc/yum.repos.d/zstack-online-*.repo
+rm -f /opt/zstack-dvd/comps.xml
+yum clean all >/dev/null 2>&1
+}
+
 help (){
     echo "
 ${PRODUCT_NAME} Installer.
@@ -2425,40 +2614,44 @@ echo ""
 fi
 
 # CHECK_REPO_VERSION
+echo_title "Check Repo Version"
+echo ""
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     check_repo_version
     if [ $? -ne 0 ]; then
-        BIN_VERSION=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
-        if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
-            ISO_NAME="ZStack-x86-64-DVD-${BIN_VERSION}.iso"
-            UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
-            ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
-            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-                "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-                "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-                "# sh zstack-upgrade ${ISO_NAME}\n" \
-                "For more information, see ${UPGRADE_WIKI}"
-        elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
-            ISO_NAME="ZStack-Community-x86-64-DVD-${BIN_VERSION}.iso "
-            UPGRADE_WIKI="http://www.zstack.io/community/tutorials/ISOupgrade/"
-            ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
-            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-                "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-                "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-                "# sh zstack-upgrade ${ISO_NAME}\n" \
-                "For more information, see ${UPGRADE_WIKI}"
-        elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
-            ISO_NAME="ZStack-Enterprise-x86-64-DVD-${BIN_VERSION}.iso"
-            UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
-            ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
-            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-                "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-                "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-                "# sh zstack-upgrade ${ISO_NAME}\n" \
-                "For more information, see ${UPGRADE_WIKI}"
-        else
-            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-                "Please download proper ISO and upgrade the local repo first."
+        show_spinner upgrade_local_repos
+        if [ $? -ne 0 ]; then
+            if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
+                ISO_NAME="ZStack-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
+                UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
+                ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
+                fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                    "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+                    "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+                    "# sh zstack-upgrade ${ISO_NAME}\n" \
+                    "For more information, see ${UPGRADE_WIKI}"
+            elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
+                ISO_NAME="ZStack-Community-x86-64-DVD-${VERSION_RELEASE_NR}.iso "
+                UPGRADE_WIKI="http://www.zstack.io/community/tutorials/ISOupgrade/"
+                ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
+                fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                    "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+                    "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+                    "# sh zstack-upgrade ${ISO_NAME}\n" \
+                    "For more information, see ${UPGRADE_WIKI}"
+            elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
+                ISO_NAME="ZStack-Enterprise-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
+                UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
+                ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
+                fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                    "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+                    "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+                    "# sh zstack-upgrade ${ISO_NAME}\n" \
+                    "For more information, see ${UPGRADE_WIKI}"
+            else
+                fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                    "Please download proper ISO and upgrade the local repo first."
+            fi
         fi
     fi
 fi
@@ -2535,6 +2728,7 @@ download_zstack
 if [ x"$UPGRADE" = x'y' ]; then
     PRE_MAJOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
     PRE_MINOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
+
     #only upgrade zstack
     upgrade_zstack
 
