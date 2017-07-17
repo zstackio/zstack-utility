@@ -11749,9 +11749,9 @@ class APIDeleteProtectionGroupReply(object):
         self.error = None
 
 
-APILISTPROTECTIONGATEWAYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGatewayMsg'
-class APIListProtectionGatewayMsg(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGatewayMsg'
+APIGETPROTECTIONGATEWAYSMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionGatewaysMsg'
+class APIGetProtectionGatewaysMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionGatewaysMsg'
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
@@ -11763,18 +11763,18 @@ class APIListProtectionGatewayMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTPROTECTIONGATEWAYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGatewayReply'
-class APIListProtectionGatewayReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGatewayReply'
+APIGETPROTECTIONGATEWAYSREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionGatewaysReply'
+class APIGetProtectionGatewaysReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionGatewaysReply'
     def __init__(self):
         self.gateways = OptionalList()
         self.success = None
         self.error = None
 
 
-APILISTPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGroupMsg'
-class APIListProtectionGroupMsg(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGroupMsg'
+APIGETPROTECTIONGROUPSMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionGroupsMsg'
+class APIGetProtectionGroupsMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionGroupsMsg'
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
@@ -11786,18 +11786,18 @@ class APIListProtectionGroupMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionGroupReply'
-class APIListProtectionGroupReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionGroupReply'
+APIGETPROTECTIONGROUPSREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionGroupsReply'
+class APIGetProtectionGroupsReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionGroupsReply'
     def __init__(self):
         self.groups = OptionalList()
         self.success = None
         self.error = None
 
 
-APILISTPROTECTIONHOSTMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionHostMsg'
-class APIListProtectionHostMsg(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionHostMsg'
+APIGETPROTECTIONHOSTSMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionHostsMsg'
+class APIGetProtectionHostsMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionHostsMsg'
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
@@ -11809,18 +11809,18 @@ class APIListProtectionHostMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTPROTECTIONHOSTREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionHostReply'
-class APIListProtectionHostReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionHostReply'
+APIGETPROTECTIONHOSTSREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionHostsReply'
+class APIGetProtectionHostsReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionHostsReply'
     def __init__(self):
         self.hosts = OptionalList()
         self.success = None
         self.error = None
 
 
-APILISTPROTECTIONPOLICYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionPolicyMsg'
-class APIListProtectionPolicyMsg(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPolicyMsg'
+APIGETPROTECTIONPOLICIESMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionPoliciesMsg'
+class APIGetProtectionPoliciesMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionPoliciesMsg'
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
@@ -11832,18 +11832,18 @@ class APIListProtectionPolicyMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTPROTECTIONPOLICYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionPolicyReply'
-class APIListProtectionPolicyReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPolicyReply'
+APIGETPROTECTIONPOLICIESREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionPoliciesReply'
+class APIGetProtectionPoliciesReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionPoliciesReply'
     def __init__(self):
         self.policies = OptionalList()
         self.success = None
         self.error = None
 
 
-APILISTPROTECTIONPOOLMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionPoolMsg'
-class APIListProtectionPoolMsg(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPoolMsg'
+APIGETPROTECTIONPOOLSMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionPoolsMsg'
+class APIGetProtectionPoolsMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionPoolsMsg'
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
@@ -11855,18 +11855,18 @@ class APIListProtectionPoolMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTPROTECTIONPOOLREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionPoolReply'
-class APIListProtectionPoolReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionPoolReply'
+APIGETPROTECTIONPOOLSREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionPoolsReply'
+class APIGetProtectionPoolsReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionPoolsReply'
     def __init__(self):
         self.pools = OptionalList()
         self.success = None
         self.error = None
 
 
-APILISTPROTECTIONSITEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionSiteMsg'
-class APIListProtectionSiteMsg(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionSiteMsg'
+APIGETPROTECTIONSITESMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionSitesMsg'
+class APIGetProtectionSitesMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionSitesMsg'
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
@@ -11878,18 +11878,18 @@ class APIListProtectionSiteMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTPROTECTIONSITEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionSiteReply'
-class APIListProtectionSiteReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionSiteReply'
+APIGETPROTECTIONSITESREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionSitesReply'
+class APIGetProtectionSitesReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionSitesReply'
     def __init__(self):
         self.sites = OptionalList()
         self.success = None
         self.error = None
 
 
-APILISTPROTECTIONVOLUMEMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionVolumeMsg'
-class APIListProtectionVolumeMsg(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionVolumeMsg'
+APIGETPROTECTIONVOLUMESMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionVolumesMsg'
+class APIGetProtectionVolumesMsg(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionVolumesMsg'
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
@@ -11904,9 +11904,9 @@ class APIListProtectionVolumeMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTPROTECTIONVOLUMEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIListProtectionVolumeReply'
-class APIListProtectionVolumeReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIListProtectionVolumeReply'
+APIGETPROTECTIONVOLUMESREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionVolumesReply'
+class APIGetProtectionVolumesReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIGetProtectionVolumesReply'
     def __init__(self):
         self.volumes = OptionalList()
         self.success = None
@@ -12763,6 +12763,20 @@ api_names = [
     'APIGetPrimaryStorageReply',
     'APIGetPrimaryStorageTypesMsg',
     'APIGetPrimaryStorageTypesReply',
+    'APIGetProtectionGatewaysMsg',
+    'APIGetProtectionGatewaysReply',
+    'APIGetProtectionGroupsMsg',
+    'APIGetProtectionGroupsReply',
+    'APIGetProtectionHostsMsg',
+    'APIGetProtectionHostsReply',
+    'APIGetProtectionPoliciesMsg',
+    'APIGetProtectionPoliciesReply',
+    'APIGetProtectionPoolsMsg',
+    'APIGetProtectionPoolsReply',
+    'APIGetProtectionSitesMsg',
+    'APIGetProtectionSitesReply',
+    'APIGetProtectionVolumesMsg',
+    'APIGetProtectionVolumesReply',
     'APIGetResourceAccountMsg',
     'APIGetResourceAccountReply',
     'APIGetResourceNamesMsg',
@@ -12843,20 +12857,6 @@ api_names = [
     'APIListPolicyReply',
     'APIListPortForwardingRuleReply',
     'APIListPrimaryStorageReply',
-    'APIListProtectionGatewayMsg',
-    'APIListProtectionGatewayReply',
-    'APIListProtectionGroupMsg',
-    'APIListProtectionGroupReply',
-    'APIListProtectionHostMsg',
-    'APIListProtectionHostReply',
-    'APIListProtectionPolicyMsg',
-    'APIListProtectionPolicyReply',
-    'APIListProtectionPoolMsg',
-    'APIListProtectionPoolReply',
-    'APIListProtectionSiteMsg',
-    'APIListProtectionSiteReply',
-    'APIListProtectionVolumeMsg',
-    'APIListProtectionVolumeReply',
     'APIListSecurityGroupReply',
     'APIListUserReply',
     'APIListVmInstanceReply',
@@ -15257,192 +15257,6 @@ class ConsoleProxyInventory(object):
 
 
 
-class SchedulerJobInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.targetResourceUuid = None
-        self.name = None
-        self.description = None
-        self.state = None
-        self.createDate = None
-        self.lastOpDate = None
-        self.jobData = None
-        self.jobClassName = None
-        self.triggersUuid = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'targetResourceUuid'):
-            self.targetResourceUuid = inv.targetResourceUuid
-        else:
-            self.targetResourceUuid = None
-
-        if hasattr(inv, 'name'):
-            self.name = inv.name
-        else:
-            self.name = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
-
-        if hasattr(inv, 'state'):
-            self.state = inv.state
-        else:
-            self.state = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-        if hasattr(inv, 'jobData'):
-            self.jobData = inv.jobData
-        else:
-            self.jobData = None
-
-        if hasattr(inv, 'jobClassName'):
-            self.jobClassName = inv.jobClassName
-        else:
-            self.jobClassName = None
-
-        if hasattr(inv, 'triggersUuid'):
-            self.triggersUuid = inv.triggersUuid
-        else:
-            self.triggersUuid = None
-
-
-
-class SchedulerJobSchedulerTriggerInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.schedulerJobUuid = None
-        self.schedulerTriggerUuid = None
-        self.jobGroup = None
-        self.triggerGroup = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'schedulerJobUuid'):
-            self.schedulerJobUuid = inv.schedulerJobUuid
-        else:
-            self.schedulerJobUuid = None
-
-        if hasattr(inv, 'schedulerTriggerUuid'):
-            self.schedulerTriggerUuid = inv.schedulerTriggerUuid
-        else:
-            self.schedulerTriggerUuid = None
-
-        if hasattr(inv, 'jobGroup'):
-            self.jobGroup = inv.jobGroup
-        else:
-            self.jobGroup = None
-
-        if hasattr(inv, 'triggerGroup'):
-            self.triggerGroup = inv.triggerGroup
-        else:
-            self.triggerGroup = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
-class SchedulerTriggerInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.name = None
-        self.description = None
-        self.schedulerType = None
-        self.schedulerInterval = None
-        self.repeatCount = None
-        self.startTime = None
-        self.stopTime = None
-        self.createDate = None
-        self.lastOpDate = None
-        self.jobsUuid = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'name'):
-            self.name = inv.name
-        else:
-            self.name = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
-
-        if hasattr(inv, 'schedulerType'):
-            self.schedulerType = inv.schedulerType
-        else:
-            self.schedulerType = None
-
-        if hasattr(inv, 'schedulerInterval'):
-            self.schedulerInterval = inv.schedulerInterval
-        else:
-            self.schedulerInterval = None
-
-        if hasattr(inv, 'repeatCount'):
-            self.repeatCount = inv.repeatCount
-        else:
-            self.repeatCount = None
-
-        if hasattr(inv, 'startTime'):
-            self.startTime = inv.startTime
-        else:
-            self.startTime = None
-
-        if hasattr(inv, 'stopTime'):
-            self.stopTime = inv.stopTime
-        else:
-            self.stopTime = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-        if hasattr(inv, 'jobsUuid'):
-            self.jobsUuid = inv.jobsUuid
-        else:
-            self.jobsUuid = None
-
-
-
 class DataCenterInventory(object):
     def __init__(self):
         self.uuid = None
@@ -16960,6 +16774,192 @@ class L3NetworkInventory(object):
             self.networkServices = inv.networkServices
         else:
             self.networkServices = None
+
+
+
+class SchedulerJobInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.targetResourceUuid = None
+        self.name = None
+        self.description = None
+        self.state = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.jobData = None
+        self.jobClassName = None
+        self.triggersUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'targetResourceUuid'):
+            self.targetResourceUuid = inv.targetResourceUuid
+        else:
+            self.targetResourceUuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'jobData'):
+            self.jobData = inv.jobData
+        else:
+            self.jobData = None
+
+        if hasattr(inv, 'jobClassName'):
+            self.jobClassName = inv.jobClassName
+        else:
+            self.jobClassName = None
+
+        if hasattr(inv, 'triggersUuid'):
+            self.triggersUuid = inv.triggersUuid
+        else:
+            self.triggersUuid = None
+
+
+
+class SchedulerJobSchedulerTriggerInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.schedulerJobUuid = None
+        self.schedulerTriggerUuid = None
+        self.jobGroup = None
+        self.triggerGroup = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'schedulerJobUuid'):
+            self.schedulerJobUuid = inv.schedulerJobUuid
+        else:
+            self.schedulerJobUuid = None
+
+        if hasattr(inv, 'schedulerTriggerUuid'):
+            self.schedulerTriggerUuid = inv.schedulerTriggerUuid
+        else:
+            self.schedulerTriggerUuid = None
+
+        if hasattr(inv, 'jobGroup'):
+            self.jobGroup = inv.jobGroup
+        else:
+            self.jobGroup = None
+
+        if hasattr(inv, 'triggerGroup'):
+            self.triggerGroup = inv.triggerGroup
+        else:
+            self.triggerGroup = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class SchedulerTriggerInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.schedulerType = None
+        self.schedulerInterval = None
+        self.repeatCount = None
+        self.startTime = None
+        self.stopTime = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.jobsUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'schedulerType'):
+            self.schedulerType = inv.schedulerType
+        else:
+            self.schedulerType = None
+
+        if hasattr(inv, 'schedulerInterval'):
+            self.schedulerInterval = inv.schedulerInterval
+        else:
+            self.schedulerInterval = None
+
+        if hasattr(inv, 'repeatCount'):
+            self.repeatCount = inv.repeatCount
+        else:
+            self.repeatCount = None
+
+        if hasattr(inv, 'startTime'):
+            self.startTime = inv.startTime
+        else:
+            self.startTime = None
+
+        if hasattr(inv, 'stopTime'):
+            self.stopTime = inv.stopTime
+        else:
+            self.stopTime = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'jobsUuid'):
+            self.jobsUuid = inv.jobsUuid
+        else:
+            self.jobsUuid = None
 
 
 
@@ -19078,14 +19078,11 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
