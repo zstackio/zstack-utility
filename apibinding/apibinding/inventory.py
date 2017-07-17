@@ -592,6 +592,43 @@ class APICloneEcsInstanceFromLocalVmMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEECSINSTANCEFROMECSIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromEcsImageMsg'
+class APICreateEcsInstanceFromEcsImageMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromEcsImageMsg'
+    def __init__(self):
+        #valid values: [cloud, cloud_efficiency, cloud_ssd, ephemeral_ssd]
+        self.ecsRootVolumeType = None
+        self.description = None
+        self.ecsRootVolumeGBSize = None
+        #valid values: [atomic, permissive]
+        self.createMode = None
+        self.privateIpAddress = None
+        #valid values: [true, false]
+        self.allocatePublicIp = None
+        #valid regex values: [a-zA-Z0-9]{6}
+        self.ecsConsolePassword = None
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.ecsImageUuid = NotNoneField()
+        #mandatory field
+        self.instanceOfferingUuid = NotNoneField()
+        #mandatory field
+        self.ecsVSwitchUuid = NotNoneField()
+        #mandatory field
+        self.ecsSecurityGroupUuid = NotNoneField()
+        #mandatory field
+        #valid regex values: ^[a-zA-Z][\w\W]{7,17}$
+        self.ecsRootPassword = NotNoneField()
+        #mandatory field
+        self.ecsBandWidth = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEECSINSTANCEFROMLOCALIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
 class APICreateEcsInstanceFromLocalImageMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
@@ -603,11 +640,12 @@ class APICreateEcsInstanceFromLocalImageMsg(object):
         #valid values: [atomic, permissive]
         self.createMode = None
         self.privateIpAddress = None
-        self.ecsInstanceName = None
         #valid values: [true, false]
         self.allocatePublicIp = None
         #valid regex values: [a-zA-Z0-9]{6}
         self.ecsConsolePassword = None
+        #mandatory field
+        self.name = NotNoneField()
         self.backupStorageUuid = None
         #mandatory field
         self.imageUuid = NotNoneField()
@@ -795,6 +833,9 @@ class APICreateEcsImageFromLocalImageMsg(object):
         #mandatory field
         self.dataCenterUuid = NotNoneField()
         self.backupStorageUuid = None
+        self.description = None
+        #mandatory field
+        self.name = NotNoneField()
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -12472,6 +12513,7 @@ api_names = [
     'APICreateDataVolumeTemplateFromVolumeMsg',
     'APICreateDiskOfferingMsg',
     'APICreateEcsImageFromLocalImageMsg',
+    'APICreateEcsInstanceFromEcsImageMsg',
     'APICreateEcsInstanceFromLocalImageMsg',
     'APICreateEcsSecurityGroupRemoteMsg',
     'APICreateEcsSecurityGroupRuleRemoteMsg',
