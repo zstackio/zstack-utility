@@ -592,6 +592,43 @@ class APICloneEcsInstanceFromLocalVmMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEECSINSTANCEFROMECSIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromEcsImageMsg'
+class APICreateEcsInstanceFromEcsImageMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromEcsImageMsg'
+    def __init__(self):
+        #valid values: [cloud, cloud_efficiency, cloud_ssd, ephemeral_ssd]
+        self.ecsRootVolumeType = None
+        self.description = None
+        self.ecsRootVolumeGBSize = None
+        #valid values: [atomic, permissive]
+        self.createMode = None
+        self.privateIpAddress = None
+        #valid values: [true, false]
+        self.allocatePublicIp = None
+        #valid regex values: [a-zA-Z0-9]{6}
+        self.ecsConsolePassword = None
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.ecsImageUuid = NotNoneField()
+        #mandatory field
+        self.instanceOfferingUuid = NotNoneField()
+        #mandatory field
+        self.ecsVSwitchUuid = NotNoneField()
+        #mandatory field
+        self.ecsSecurityGroupUuid = NotNoneField()
+        #mandatory field
+        #valid regex values: ^[a-zA-Z][\w\W]{7,17}$
+        self.ecsRootPassword = NotNoneField()
+        #mandatory field
+        self.ecsBandWidth = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEECSINSTANCEFROMLOCALIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
 class APICreateEcsInstanceFromLocalImageMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
@@ -603,11 +640,12 @@ class APICreateEcsInstanceFromLocalImageMsg(object):
         #valid values: [atomic, permissive]
         self.createMode = None
         self.privateIpAddress = None
-        self.ecsInstanceName = None
         #valid values: [true, false]
         self.allocatePublicIp = None
         #valid regex values: [a-zA-Z0-9]{6}
         self.ecsConsolePassword = None
+        #mandatory field
+        self.name = NotNoneField()
         self.backupStorageUuid = None
         #mandatory field
         self.imageUuid = NotNoneField()
@@ -795,6 +833,9 @@ class APICreateEcsImageFromLocalImageMsg(object):
         #mandatory field
         self.dataCenterUuid = NotNoneField()
         self.backupStorageUuid = None
+        self.description = None
+        #mandatory field
+        self.name = NotNoneField()
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -12472,6 +12513,7 @@ api_names = [
     'APICreateDataVolumeTemplateFromVolumeMsg',
     'APICreateDiskOfferingMsg',
     'APICreateEcsImageFromLocalImageMsg',
+    'APICreateEcsInstanceFromEcsImageMsg',
     'APICreateEcsInstanceFromLocalImageMsg',
     'APICreateEcsSecurityGroupRemoteMsg',
     'APICreateEcsSecurityGroupRuleRemoteMsg',
@@ -15257,192 +15299,6 @@ class ConsoleProxyInventory(object):
 
 
 
-class SchedulerJobInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.targetResourceUuid = None
-        self.name = None
-        self.description = None
-        self.state = None
-        self.createDate = None
-        self.lastOpDate = None
-        self.jobData = None
-        self.jobClassName = None
-        self.triggersUuid = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'targetResourceUuid'):
-            self.targetResourceUuid = inv.targetResourceUuid
-        else:
-            self.targetResourceUuid = None
-
-        if hasattr(inv, 'name'):
-            self.name = inv.name
-        else:
-            self.name = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
-
-        if hasattr(inv, 'state'):
-            self.state = inv.state
-        else:
-            self.state = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-        if hasattr(inv, 'jobData'):
-            self.jobData = inv.jobData
-        else:
-            self.jobData = None
-
-        if hasattr(inv, 'jobClassName'):
-            self.jobClassName = inv.jobClassName
-        else:
-            self.jobClassName = None
-
-        if hasattr(inv, 'triggersUuid'):
-            self.triggersUuid = inv.triggersUuid
-        else:
-            self.triggersUuid = None
-
-
-
-class SchedulerJobSchedulerTriggerInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.schedulerJobUuid = None
-        self.schedulerTriggerUuid = None
-        self.jobGroup = None
-        self.triggerGroup = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'schedulerJobUuid'):
-            self.schedulerJobUuid = inv.schedulerJobUuid
-        else:
-            self.schedulerJobUuid = None
-
-        if hasattr(inv, 'schedulerTriggerUuid'):
-            self.schedulerTriggerUuid = inv.schedulerTriggerUuid
-        else:
-            self.schedulerTriggerUuid = None
-
-        if hasattr(inv, 'jobGroup'):
-            self.jobGroup = inv.jobGroup
-        else:
-            self.jobGroup = None
-
-        if hasattr(inv, 'triggerGroup'):
-            self.triggerGroup = inv.triggerGroup
-        else:
-            self.triggerGroup = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
-class SchedulerTriggerInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.name = None
-        self.description = None
-        self.schedulerType = None
-        self.schedulerInterval = None
-        self.repeatCount = None
-        self.startTime = None
-        self.stopTime = None
-        self.createDate = None
-        self.lastOpDate = None
-        self.jobsUuid = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'name'):
-            self.name = inv.name
-        else:
-            self.name = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
-
-        if hasattr(inv, 'schedulerType'):
-            self.schedulerType = inv.schedulerType
-        else:
-            self.schedulerType = None
-
-        if hasattr(inv, 'schedulerInterval'):
-            self.schedulerInterval = inv.schedulerInterval
-        else:
-            self.schedulerInterval = None
-
-        if hasattr(inv, 'repeatCount'):
-            self.repeatCount = inv.repeatCount
-        else:
-            self.repeatCount = None
-
-        if hasattr(inv, 'startTime'):
-            self.startTime = inv.startTime
-        else:
-            self.startTime = None
-
-        if hasattr(inv, 'stopTime'):
-            self.stopTime = inv.stopTime
-        else:
-            self.stopTime = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-        if hasattr(inv, 'jobsUuid'):
-            self.jobsUuid = inv.jobsUuid
-        else:
-            self.jobsUuid = None
-
-
-
 class DataCenterInventory(object):
     def __init__(self):
         self.uuid = None
@@ -16960,6 +16816,192 @@ class L3NetworkInventory(object):
             self.networkServices = inv.networkServices
         else:
             self.networkServices = None
+
+
+
+class SchedulerJobInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.targetResourceUuid = None
+        self.name = None
+        self.description = None
+        self.state = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.jobData = None
+        self.jobClassName = None
+        self.triggersUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'targetResourceUuid'):
+            self.targetResourceUuid = inv.targetResourceUuid
+        else:
+            self.targetResourceUuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'jobData'):
+            self.jobData = inv.jobData
+        else:
+            self.jobData = None
+
+        if hasattr(inv, 'jobClassName'):
+            self.jobClassName = inv.jobClassName
+        else:
+            self.jobClassName = None
+
+        if hasattr(inv, 'triggersUuid'):
+            self.triggersUuid = inv.triggersUuid
+        else:
+            self.triggersUuid = None
+
+
+
+class SchedulerJobSchedulerTriggerInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.schedulerJobUuid = None
+        self.schedulerTriggerUuid = None
+        self.jobGroup = None
+        self.triggerGroup = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'schedulerJobUuid'):
+            self.schedulerJobUuid = inv.schedulerJobUuid
+        else:
+            self.schedulerJobUuid = None
+
+        if hasattr(inv, 'schedulerTriggerUuid'):
+            self.schedulerTriggerUuid = inv.schedulerTriggerUuid
+        else:
+            self.schedulerTriggerUuid = None
+
+        if hasattr(inv, 'jobGroup'):
+            self.jobGroup = inv.jobGroup
+        else:
+            self.jobGroup = None
+
+        if hasattr(inv, 'triggerGroup'):
+            self.triggerGroup = inv.triggerGroup
+        else:
+            self.triggerGroup = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class SchedulerTriggerInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.schedulerType = None
+        self.schedulerInterval = None
+        self.repeatCount = None
+        self.startTime = None
+        self.stopTime = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.jobsUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'schedulerType'):
+            self.schedulerType = inv.schedulerType
+        else:
+            self.schedulerType = None
+
+        if hasattr(inv, 'schedulerInterval'):
+            self.schedulerInterval = inv.schedulerInterval
+        else:
+            self.schedulerInterval = None
+
+        if hasattr(inv, 'repeatCount'):
+            self.repeatCount = inv.repeatCount
+        else:
+            self.repeatCount = None
+
+        if hasattr(inv, 'startTime'):
+            self.startTime = inv.startTime
+        else:
+            self.startTime = None
+
+        if hasattr(inv, 'stopTime'):
+            self.stopTime = inv.stopTime
+        else:
+            self.stopTime = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'jobsUuid'):
+            self.jobsUuid = inv.jobsUuid
+        else:
+            self.jobsUuid = None
 
 
 

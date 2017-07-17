@@ -1238,6 +1238,18 @@ class CreateEcsImageFromLocalImageAction(inventory.APICreateEcsImageFromLocalIma
         self.out = evt
         return self.out
 
+class CreateEcsInstanceFromEcsImageAction(inventory.APICreateEcsInstanceFromEcsImageMsg):
+    def __init__(self):
+        super(CreateEcsInstanceFromEcsImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsInstanceFromEcsImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateEcsInstanceFromLocalImageAction(inventory.APICreateEcsInstanceFromLocalImageMsg):
     def __init__(self):
         super(CreateEcsInstanceFromLocalImageAction, self).__init__()
