@@ -3439,7 +3439,12 @@ class VmPlugin(kvmagent.KvmAgent):
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse
-        rsp.pciDevicesInfo = shell.call("lspci -nnv | egrep %s" % cmd.filterString)
+        r, o, e = bash.bash_roe("lspci -nnv | grep -E %s" % cmd.filterString)
+        if r!= 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        else:
+            rsp.pciDevicesInfo = o
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -3463,8 +3468,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if r!= 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
-        else:
-            return jsonobject.dumps(rsp)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def hot_unplug_pci_device(self, req):
@@ -3487,8 +3491,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if r!= 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
-        else:
-            return jsonobject.dumps(rsp)
+        return jsonobject.dumps(rsp)
 
     def start(self):
         http_server = kvmagent.get_http_server()
