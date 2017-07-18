@@ -53,6 +53,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.timeout = None
         self.dataIsoPaths = None
         self.addons = None
+        self.useBootMenu = True
 
 
 class StartVmResponse(kvmagent.AgentResponse):
@@ -2314,7 +2315,8 @@ class Vm(object):
                 for boot_dev in cmd.bootDev:
                     e(os, 'boot', None, {'dev': boot_dev})
 
-            e(os, 'bootmenu', attrib={'enable': 'yes'})
+            if cmd.useBootMenu:
+                e(os, 'bootmenu', attrib={'enable': 'yes'})
 
         def make_features():
             root = elements['root']
@@ -2535,7 +2537,7 @@ class Vm(object):
 
                 assert vol is not None, 'vol cannot be None'
                 # set boot order for root volume when boot from hd
-                if v.deviceId == 0 and cmd.bootDev[0] == 'hd':
+                if v.deviceId == 0 and cmd.bootDev[0] == 'hd' and cmd.useBootMenu:
                     e(vol, 'boot', None, {'order': '1'})
                 volume_qos(vol)
                 devices.append(vol)
