@@ -19120,11 +19120,14 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
+    SECURITYGROUP_NUM = 'securityGroup.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
@@ -19485,8 +19488,9 @@ class QueryObjectEmailMediaInventory(object):
 
 class QueryObjectEmailTriggerActionInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','mediaUuid','state','type','uuid','email','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['trigger']
      QUERY_OBJECT_MAP = {
+        'trigger' : 'QueryObjectMonitorTriggerInventory',
      }
 
 class QueryObjectFusionstorBackupStorageInventory(object):
@@ -19772,14 +19776,24 @@ class QueryObjectMediaInventory(object):
 
 class QueryObjectMonitorTriggerActionInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','type','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['trigger']
      QUERY_OBJECT_MAP = {
+        'trigger' : 'QueryObjectMonitorTriggerInventory',
+     }
+
+class QueryObjectMonitorTriggerActionRefInventory(object):
+     PRIMITIVE_FIELDS = ['actionUuid','lastOpDate','triggerUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['action','trigger']
+     QUERY_OBJECT_MAP = {
+        'action' : 'QueryObjectMonitorTriggerActionInventory',
+        'trigger' : 'QueryObjectMonitorTriggerInventory',
      }
 
 class QueryObjectMonitorTriggerInventory(object):
      PRIMITIVE_FIELDS = ['duration','expression','lastStatusChangeTime','name','recoveryExpression','lastOpDate','description','state','targetResourceUuid','uuid','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['action']
      QUERY_OBJECT_MAP = {
+        'action' : 'QueryObjectMonitorTriggerActionInventory',
      }
 
 class QueryObjectNetworkServiceL3NetworkRefInventory(object):
