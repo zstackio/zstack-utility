@@ -19488,8 +19488,9 @@ class QueryObjectEmailMediaInventory(object):
 
 class QueryObjectEmailTriggerActionInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','mediaUuid','state','type','uuid','email','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['trigger']
      QUERY_OBJECT_MAP = {
+        'trigger' : 'QueryObjectMonitorTriggerInventory',
      }
 
 class QueryObjectFusionstorBackupStorageInventory(object):
@@ -19775,14 +19776,24 @@ class QueryObjectMediaInventory(object):
 
 class QueryObjectMonitorTriggerActionInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','type','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['trigger']
      QUERY_OBJECT_MAP = {
+        'trigger' : 'QueryObjectMonitorTriggerInventory',
+     }
+
+class QueryObjectMonitorTriggerActionRefInventory(object):
+     PRIMITIVE_FIELDS = ['actionUuid','lastOpDate','triggerUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['action','trigger']
+     QUERY_OBJECT_MAP = {
+        'action' : 'QueryObjectMonitorTriggerActionInventory',
+        'trigger' : 'QueryObjectMonitorTriggerInventory',
      }
 
 class QueryObjectMonitorTriggerInventory(object):
      PRIMITIVE_FIELDS = ['duration','expression','lastStatusChangeTime','name','recoveryExpression','lastOpDate','description','state','targetResourceUuid','uuid','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['action']
      QUERY_OBJECT_MAP = {
+        'action' : 'QueryObjectMonitorTriggerActionInventory',
      }
 
 class QueryObjectNetworkServiceL3NetworkRefInventory(object):
