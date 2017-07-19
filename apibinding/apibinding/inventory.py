@@ -629,44 +629,6 @@ class APICreateEcsInstanceFromEcsImageMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEECSINSTANCEFROMLOCALIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
-class APICreateEcsInstanceFromLocalImageMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
-    def __init__(self):
-        #valid values: [cloud, cloud_efficiency, cloud_ssd, ephemeral_ssd]
-        self.ecsRootVolumeType = None
-        self.description = None
-        self.ecsRootVolumeGBSize = None
-        #valid values: [atomic, permissive]
-        self.createMode = None
-        self.privateIpAddress = None
-        #valid values: [true, false]
-        self.allocatePublicIp = None
-        #valid regex values: [a-zA-Z0-9]{6}
-        self.ecsConsolePassword = None
-        #mandatory field
-        self.name = NotNoneField()
-        self.backupStorageUuid = None
-        #mandatory field
-        self.imageUuid = NotNoneField()
-        #mandatory field
-        self.instanceOfferingUuid = NotNoneField()
-        #mandatory field
-        self.ecsVSwitchUuid = NotNoneField()
-        #mandatory field
-        self.ecsSecurityGroupUuid = NotNoneField()
-        #mandatory field
-        #valid regex values: ^[a-zA-Z][\w\W]{7,17}$
-        self.ecsRootPassword = NotNoneField()
-        #mandatory field
-        self.ecsBandWidth = NotNoneField()
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIDELETEALLECSINSTANCESFROMDATACENTERMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
 class APIDeleteAllEcsInstancesFromDataCenterMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
@@ -947,8 +909,6 @@ class APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
         self.vbrUuid = NotNoneField()
         #mandatory field
         self.cpeIp = NotNoneField()
-        #mandatory field
-        self.cpeRiId = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
         self.description = None
@@ -1679,7 +1639,7 @@ class APICreateAliyunVpcVirtualRouterEntryRemoteMsg(object):
         #mandatory field
         self.nextHopUuid = NotNoneField()
         #mandatory field
-        #valid values: [Instance, RouterInterface]
+        #valid values: [Instance, RouterInterface, Tunnel]
         self.nextHopType = NotNoneField()
         #mandatory field
         #valid values: [vbr, vrouter]
@@ -12531,7 +12491,6 @@ api_names = [
     'APICreateDiskOfferingMsg',
     'APICreateEcsImageFromLocalImageMsg',
     'APICreateEcsInstanceFromEcsImageMsg',
-    'APICreateEcsInstanceFromLocalImageMsg',
     'APICreateEcsSecurityGroupRemoteMsg',
     'APICreateEcsSecurityGroupRuleRemoteMsg',
     'APICreateEcsVSwitchRemoteMsg',
