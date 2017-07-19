@@ -190,10 +190,11 @@ class HaPlugin(kvmagent.KvmAgent):
             hb_file = os.path.join(mount_point, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
             heartbeat_file_fencer(hb_file)
 
-        if gateway:
-            storage_gateway_fencer(gateway)
-        else:
-            logger.warn('cannot find storage gateway, unable to setup storage gateway fencer')
+        # don't use storage gateway 2.x fix
+        #if gateway:
+        #    storage_gateway_fencer(gateway)
+        #else:
+        #    logger.warn('cannot find storage gateway, unable to setup storage gateway fencer')
 
         return jsonobject.dumps(AgentRsp())
 
