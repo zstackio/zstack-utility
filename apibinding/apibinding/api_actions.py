@@ -6796,6 +6796,18 @@ class SyncAliyunVirtualRouterFromRemoteAction(inventory.APISyncAliyunVirtualRout
         self.out = evt
         return self.out
 
+class SyncConnectionAccessPointFromRemoteAction(inventory.APISyncConnectionAccessPointFromRemoteMsg):
+    def __init__(self):
+        super(SyncConnectionAccessPointFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncConnectionAccessPointFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SyncEcsImageFromRemoteAction(inventory.APISyncEcsImageFromRemoteMsg):
     def __init__(self):
         super(SyncEcsImageFromRemoteAction, self).__init__()

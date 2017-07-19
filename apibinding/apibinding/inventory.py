@@ -921,6 +921,8 @@ class APIAddConnectionAccessPointFromRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.dataCenterUuid = NotNoneField()
+        #mandatory field
+        self.accessPointId = NotNoneField()
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -1202,6 +1204,20 @@ class APIRecoveryVirtualBorderRouterRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCCONNECTIONACCESSPOINTFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APISyncConnectionAccessPointFromRemoteMsg'
+class APISyncConnectionAccessPointFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APISyncConnectionAccessPointFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.accessPointId = None
+        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -13220,6 +13236,7 @@ api_names = [
     'APIStopVmInstanceMsg',
     'APISyncAliyunRouteEntryFromRemoteMsg',
     'APISyncAliyunVirtualRouterFromRemoteMsg',
+    'APISyncConnectionAccessPointFromRemoteMsg',
     'APISyncEcsImageFromRemoteMsg',
     'APISyncEcsInstanceFromRemoteMsg',
     'APISyncEcsSecurityGroupFromRemoteMsg',
@@ -19189,6 +19206,7 @@ class GlobalConfig_VIRTUALROUTER(object):
 class GlobalConfig_VM(object):
     VIDEOTYPE = 'videoType'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
+    BOOTMENU = 'bootMenu'
     EXPUNGEPERIOD = 'expungePeriod'
     DELETIONPOLICY = 'deletionPolicy'
     NUMA = 'numa'
