@@ -629,44 +629,6 @@ class APICreateEcsInstanceFromEcsImageMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEECSINSTANCEFROMLOCALIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
-class APICreateEcsInstanceFromLocalImageMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromLocalImageMsg'
-    def __init__(self):
-        #valid values: [cloud, cloud_efficiency, cloud_ssd, ephemeral_ssd]
-        self.ecsRootVolumeType = None
-        self.description = None
-        self.ecsRootVolumeGBSize = None
-        #valid values: [atomic, permissive]
-        self.createMode = None
-        self.privateIpAddress = None
-        #valid values: [true, false]
-        self.allocatePublicIp = None
-        #valid regex values: [a-zA-Z0-9]{6}
-        self.ecsConsolePassword = None
-        #mandatory field
-        self.name = NotNoneField()
-        self.backupStorageUuid = None
-        #mandatory field
-        self.imageUuid = NotNoneField()
-        #mandatory field
-        self.instanceOfferingUuid = NotNoneField()
-        #mandatory field
-        self.ecsVSwitchUuid = NotNoneField()
-        #mandatory field
-        self.ecsSecurityGroupUuid = NotNoneField()
-        #mandatory field
-        #valid regex values: ^[a-zA-Z][\w\W]{7,17}$
-        self.ecsRootPassword = NotNoneField()
-        #mandatory field
-        self.ecsBandWidth = NotNoneField()
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIDELETEALLECSINSTANCESFROMDATACENTERMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
 class APIDeleteAllEcsInstancesFromDataCenterMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
@@ -948,8 +910,6 @@ class APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
         #mandatory field
         self.cpeIp = NotNoneField()
         #mandatory field
-        self.cpeRiId = NotNoneField()
-        #mandatory field
         self.name = NotNoneField()
         self.description = None
         #mandatory field
@@ -1130,6 +1090,37 @@ class APIQueryConnectionAccessPointFromLocalMsg(object):
 APIQUERYCONNECTIONACCESSPOINTFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryConnectionAccessPointFromLocalReply'
 class APIQueryConnectionAccessPointFromLocalReply(object):
     FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryConnectionAccessPointFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYCONNECTIONBETWEENL3NETWORKANDALIYUNVSWITCHMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg'
+class APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYCONNECTIONBETWEENL3NETWORKANDALIYUNVSWITCHREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply'
+class APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply'
     def __init__(self):
         self.inventories = OptionalList()
         self.total = None
@@ -1679,7 +1670,7 @@ class APICreateAliyunVpcVirtualRouterEntryRemoteMsg(object):
         #mandatory field
         self.nextHopUuid = NotNoneField()
         #mandatory field
-        #valid values: [Instance, RouterInterface]
+        #valid values: [Instance, RouterInterface, Tunnel]
         self.nextHopType = NotNoneField()
         #mandatory field
         #valid values: [vbr, vrouter]
@@ -12531,7 +12522,6 @@ api_names = [
     'APICreateDiskOfferingMsg',
     'APICreateEcsImageFromLocalImageMsg',
     'APICreateEcsInstanceFromEcsImageMsg',
-    'APICreateEcsInstanceFromLocalImageMsg',
     'APICreateEcsSecurityGroupRemoteMsg',
     'APICreateEcsSecurityGroupRuleRemoteMsg',
     'APICreateEcsVSwitchRemoteMsg',
@@ -12979,6 +12969,8 @@ api_names = [
     'APIQueryClusterReply',
     'APIQueryConnectionAccessPointFromLocalMsg',
     'APIQueryConnectionAccessPointFromLocalReply',
+    'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg',
+    'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply',
     'APIQueryConsoleProxyAgentMsg',
     'APIQueryConsoleProxyAgentReply',
     'APIQueryDataCenterFromLocalMsg',
@@ -13904,6 +13896,7 @@ class ConnectionRelationShipInventory(object):
 class HybridConnectionRefInventory(object):
     def __init__(self):
         self.uuid = None
+        self.resourceUuid = None
         self.resourceType = None
         self.accountUuid = None
         self.connectionType = None
@@ -13917,6 +13910,11 @@ class HybridConnectionRefInventory(object):
             self.uuid = inv.uuid
         else:
             self.uuid = None
+
+        if hasattr(inv, 'resourceUuid'):
+            self.resourceUuid = inv.resourceUuid
+        else:
+            self.resourceUuid = None
 
         if hasattr(inv, 'resourceType'):
             self.resourceType = inv.resourceType
@@ -19126,14 +19124,11 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
@@ -19567,7 +19562,7 @@ class QueryObjectHybridAccountInventory(object):
      }
 
 class QueryObjectHybridConnectionRefInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','accountUuid','uuid','connectionType','resourceType','connectionUuid','direction','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['lastOpDate','accountUuid','uuid','connectionType','resourceUuid','resourceType','connectionUuid','direction','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -20409,6 +20404,7 @@ queryMessageInventoryMap = {
      'APIQueryCephPrimaryStoragePoolMsg' : QueryObjectCephPrimaryStoragePoolInventory,
      'APIQueryClusterMsg' : QueryObjectClusterInventory,
      'APIQueryConnectionAccessPointFromLocalMsg' : QueryObjectConnectionAccessPointInventory,
+     'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg' : QueryObjectConnectionRelationShipInventory,
      'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
      'APIQueryDataCenterFromLocalMsg' : QueryObjectDataCenterInventory,
      'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,

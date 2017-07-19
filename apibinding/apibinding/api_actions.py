@@ -1250,18 +1250,6 @@ class CreateEcsInstanceFromEcsImageAction(inventory.APICreateEcsInstanceFromEcsI
         self.out = evt
         return self.out
 
-class CreateEcsInstanceFromLocalImageAction(inventory.APICreateEcsInstanceFromLocalImageMsg):
-    def __init__(self):
-        super(CreateEcsInstanceFromLocalImageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateEcsInstanceFromLocalImageAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class CreateEcsSecurityGroupRemoteAction(inventory.APICreateEcsSecurityGroupRemoteMsg):
     def __init__(self):
         super(CreateEcsSecurityGroupRemoteAction, self).__init__()
@@ -4871,6 +4859,20 @@ class QueryConnectionAccessPointFromLocalAction(inventory.APIQueryConnectionAcce
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryConnectionAccessPointFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryConnectionBetweenL3NetworkAndAliyunVSwitchAction(inventory.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg):
+    def __init__(self):
+        super(QueryConnectionBetweenL3NetworkAndAliyunVSwitchAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryConnectionBetweenL3NetworkAndAliyunVSwitchAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
