@@ -835,6 +835,7 @@ class APICreateEcsImageFromLocalImageMsg(object):
         self.backupStorageUuid = None
         self.description = None
         #mandatory field
+        #valid regex values: [A-Za-z\u4e00-\u9fa5]{1}[A-Za-z0-9-_\u4e00-\u9fa5]{1,127}
         self.name = NotNoneField()
         self.resourceUuid = None
         self.session = None
@@ -15323,7 +15324,6 @@ class DataCenterInventory(object):
         self.regionName = None
         self.dcType = None
         self.regionId = None
-        self.defaultVpc = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -15353,11 +15353,6 @@ class DataCenterInventory(object):
             self.regionId = inv.regionId
         else:
             self.regionId = None
-
-        if hasattr(inv, 'defaultVpc'):
-            self.defaultVpc = inv.defaultVpc
-        else:
-            self.defaultVpc = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -16386,7 +16381,6 @@ class IdentityZoneInventory(object):
         self.zoneId = None
         self.type = None
         self.zoneName = None
-        self.defaultVSwitch = None
         self.description = None
         self.createDate = None
         self.lastOpDate = None
@@ -16421,11 +16415,6 @@ class IdentityZoneInventory(object):
             self.zoneName = inv.zoneName
         else:
             self.zoneName = None
-
-        if hasattr(inv, 'defaultVSwitch'):
-            self.defaultVSwitch = inv.defaultVSwitch
-        else:
-            self.defaultVSwitch = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -19421,7 +19410,7 @@ class QueryObjectConsoleProxyInventory(object):
      }
 
 class QueryObjectDataCenterInventory(object):
-     PRIMITIVE_FIELDS = ['deleted','regionId','dcType','regionName','lastOpDate','description','defaultVpc','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['deleted','regionId','dcType','regionName','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19605,7 +19594,7 @@ class QueryObjectIPsecPeerCidrInventory(object):
      }
 
 class QueryObjectIdentityZoneInventory(object):
-     PRIMITIVE_FIELDS = ['deleted','lastOpDate','dataCenterUuid','zoneId','description','zoneName','type','uuid','defaultVSwitch','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['deleted','lastOpDate','dataCenterUuid','zoneId','description','zoneName','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
