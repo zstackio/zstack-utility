@@ -251,7 +251,7 @@ fail2(){
     cleanup_function
     tput cub 6
     echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-    echo -e "$(tput setaf 1)  Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    echo -e "$(tput setaf 1) Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
     echo "-------------"
@@ -2126,10 +2126,9 @@ check_repo_version() {
 }
 
 upgrade_local_repos() {
-echo_subtitle "Upgrade zstack local repos (takes a couple of minutes)"
 BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
 
-echo "re-create repo files" >>$ZSTACK_INSTALL_LOG
+echo "    Prepare repo files for syncing: ..."
 mkdir -p /opt/zstack-dvd/
 cat > /etc/yum.repos.d/zstack-local.repo << EOF
 [zstack-local]
@@ -2202,12 +2201,12 @@ gpgcheck=0
 enabled=0
 EOF
 
-echo "create zstack-online repos based on zstack version" >>$ZSTACK_INSTALL_LOG
 cat > /etc/yum.repos.d/zstack-online-base.repo << EOF
 [zstack-online-base]
 name=zstack-online-base
 baseurl=${BASEURL}
 gpgcheck=0
+enabled=0
 EOF
 
 cat > /etc/yum.repos.d/zstack-online-ceph.repo << EOF
@@ -2215,6 +2214,7 @@ cat > /etc/yum.repos.d/zstack-online-ceph.repo << EOF
 name=zstack-online-ceph
 baseurl=${BASEURL}/Extra/ceph
 gpgcheck=0
+enabled=0
 EOF
 
 cat > /etc/yum.repos.d/zstack-online-uek4.repo << EOF
@@ -2222,6 +2222,7 @@ cat > /etc/yum.repos.d/zstack-online-uek4.repo << EOF
 name=zstack-online-uek4
 baseurl=${BASEURL}/Extra/uek4
 gpgcheck=0
+enabled=0
 EOF
 
 cat > /etc/yum.repos.d/zstack-online-galera.repo << EOF
@@ -2229,6 +2230,7 @@ cat > /etc/yum.repos.d/zstack-online-galera.repo << EOF
 name=zstack-online-galera
 baseurl=${BASEURL}/Extra/galera
 gpgcheck=0
+enabled=0
 EOF
 
 cat > /etc/yum.repos.d/zstack-online-gluster.repo << EOF
@@ -2236,6 +2238,7 @@ cat > /etc/yum.repos.d/zstack-online-gluster.repo << EOF
 name=zstack-online-gluster
 baseurl=${BASEURL}/Extra/gluster
 gpgcheck=0
+enabled=0
 EOF
 
 cat > /etc/yum.repos.d/zstack-online-moosefs.repo << EOF
@@ -2243,6 +2246,7 @@ cat > /etc/yum.repos.d/zstack-online-moosefs.repo << EOF
 name=zstack-online-moosefs
 baseurl=${BASEURL}/Extra/moosefs
 gpgcheck=0
+enabled=0
 EOF
 
 cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
@@ -2250,6 +2254,7 @@ cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
 name=zstack-online-qemu-kvm-ev
 baseurl=${BASEURL}/Extra/qemu-kvm-ev
 gpgcheck=0
+enabled=0
 EOF
 
 cat > /etc/yum.repos.d/zstack-online-virtio-win.repo << EOF
@@ -2257,57 +2262,49 @@ cat > /etc/yum.repos.d/zstack-online-virtio-win.repo << EOF
 name=zstack-online-virtio-win
 baseurl=${BASEURL}/Extra/virtio-win
 gpgcheck=0
+enabled=0
 EOF
 
-# install necessary packages
-yum -y install createrepo curl yum-utils >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
+echo "    Install necessary packages: ..."
+pkg_list="createrepo curl yum-utils"
+missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
+[ -z "$missing_list" ] || yum -y install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
 
-# test network
-curl ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
+echo "    Test network connection: ..."
+BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
+curl ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
 
-# sync from zstack-online
-reposync -r zstack-online-base -p /opt/zstack-dvd --norepopath -m >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
-reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
-reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
-reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
-reposync -r zstack-online-gluster -p /opt/zstack-dvd/Extra/gluster --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
-reposync -r zstack-online-moosefs -p /opt/zstack-dvd/Extra/moosefs --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
-reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
-reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath >>$ZSTACK_INSTALL_LOG 2>&1
-[ $? -ne 0 ] && return $?
+echo "    Sync from repo.zstack.io: ..."
+# FIXME
+rm -f /opt/zstack-dvd/Packages/pprof*.rpm
+rm -f /opt/zstack-dvd/Packages/sgabios-bin*.rpm
+rm -f /opt/zstack-dvd/Packages/gperftools*.rpm
 
-echo "update repodatas" >>$ZSTACK_INSTALL_LOG
-createrepo -g /opt/zstack-dvd/comps.xml /opt/zstack-dvd/Packages/ >/dev/null 2>&1
-[ $? -ne 0 ] && return $?
+yum clean all >/dev/null 2>&1
+reposync -r zstack-online-base -p /opt/zstack-dvd --norepopath -m -d
+reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
+reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
+reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
+reposync -r zstack-online-gluster -p /opt/zstack-dvd/Extra/gluster --norepopath -d
+reposync -r zstack-online-moosefs -p /opt/zstack-dvd/Extra/moosefs --norepopath -d
+reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
+reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
+
+echo "    Update metadata: ..."
+createrepo -g /opt/zstack-dvd/comps.xml /opt/zstack-dvd/Packages/ >/dev/null 2>&1 || return 1
 rm -rf /opt/zstack-dvd/repodata && mv /opt/zstack-dvd/Packages/repodata /opt/zstack-dvd/
-createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1
-[ $? -ne 0 ] && return $?
-createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1
-[ $? -ne 0 ] && return $?
-createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1
-[ $? -ne 0 ] && return $?
-createrepo /opt/zstack-dvd/Extra/gluster >/dev/null 2>&1
-[ $? -ne 0 ] && return $?
-createrepo /opt/zstack-dvd/Extra/moosefs >/dev/null 2>&1
-[ $? -ne 0 ] && return $?
-createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-[ $? -ne 0 ] && return $?
-createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1
-[ $? -ne 0 ] && return $?
+createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || return 1
+createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1 || return 1
+createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1 || return 1
+createrepo /opt/zstack-dvd/Extra/gluster >/dev/null 2>&1 || return 1
+createrepo /opt/zstack-dvd/Extra/moosefs >/dev/null 2>&1 || return 1
+createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || return 1
+createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || return 1
 
-echo "update .repo_version" >>$ZSTACK_INSTALL_LOG
+echo "    Update /opt/zstack-dvd/.repo_version: ..."
 cat .repo_version > /opt/zstack-dvd/.repo_version
 
-echo "cleanup" >>$ZSTACK_INSTALL_LOG
+echo "    Cleanup: ..."
 rm -f /etc/yum.repos.d/zstack-online-*.repo
 rm -f /opt/zstack-dvd/comps.xml
 yum clean all >/dev/null 2>&1
@@ -2619,13 +2616,14 @@ echo ""
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     check_repo_version
     if [ $? -ne 0 ]; then
-        show_spinner upgrade_local_repos
+        upgrade_local_repos
         if [ $? -ne 0 ]; then
             if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
                 ISO_NAME="ZStack-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
                 UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
                 ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
                 fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                    "Syncing local repo with repo.zstack.io has been failed too.\n" \
                     "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
                     "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
                     "# sh zstack-upgrade ${ISO_NAME}\n" \
@@ -2635,6 +2633,7 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
                 UPGRADE_WIKI="http://www.zstack.io/community/tutorials/ISOupgrade/"
                 ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
                 fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                    "Syncing local repo with repo.zstack.io has been failed too.\n" \
                     "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
                     "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
                     "# sh zstack-upgrade ${ISO_NAME}\n" \
@@ -2644,12 +2643,14 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
                 UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
                 ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
                 fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                    "Syncing local repo with repo.zstack.io has been failed too.\n" \
                     "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
                     "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
                     "# sh zstack-upgrade ${ISO_NAME}\n" \
                     "For more information, see ${UPGRADE_WIKI}"
             else
                 fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                    "Syncing local repo with repo.zstack.io has been failed too.\n" \
                     "Please download proper ISO and upgrade the local repo first."
             fi
         fi
