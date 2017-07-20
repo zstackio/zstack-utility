@@ -4864,6 +4864,20 @@ class QueryConnectionAccessPointFromLocalAction(inventory.APIQueryConnectionAcce
         self.out = reply.inventories
         return self.out
 
+class QueryConnectionBetweenL3NetworkAndAliyunVSwitchAction(inventory.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg):
+    def __init__(self):
+        super(QueryConnectionBetweenL3NetworkAndAliyunVSwitchAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryConnectionBetweenL3NetworkAndAliyunVSwitchAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryConsoleProxyAgentAction(inventory.APIQueryConsoleProxyAgentMsg):
     def __init__(self):
         super(QueryConsoleProxyAgentAction, self).__init__()

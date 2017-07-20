@@ -1097,6 +1097,37 @@ class APIQueryConnectionAccessPointFromLocalReply(object):
         self.error = None
 
 
+APIQUERYCONNECTIONBETWEENL3NETWORKANDALIYUNVSWITCHMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg'
+class APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYCONNECTIONBETWEENL3NETWORKANDALIYUNVSWITCHREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply'
+class APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYROUTERINTERFACEFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryRouterInterfaceFromLocalMsg'
 class APIQueryRouterInterfaceFromLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryRouterInterfaceFromLocalMsg'
@@ -12938,6 +12969,8 @@ api_names = [
     'APIQueryClusterReply',
     'APIQueryConnectionAccessPointFromLocalMsg',
     'APIQueryConnectionAccessPointFromLocalReply',
+    'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg',
+    'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply',
     'APIQueryConsoleProxyAgentMsg',
     'APIQueryConsoleProxyAgentReply',
     'APIQueryDataCenterFromLocalMsg',
@@ -13863,6 +13896,7 @@ class ConnectionRelationShipInventory(object):
 class HybridConnectionRefInventory(object):
     def __init__(self):
         self.uuid = None
+        self.resourceUuid = None
         self.resourceType = None
         self.accountUuid = None
         self.connectionType = None
@@ -13876,6 +13910,11 @@ class HybridConnectionRefInventory(object):
             self.uuid = inv.uuid
         else:
             self.uuid = None
+
+        if hasattr(inv, 'resourceUuid'):
+            self.resourceUuid = inv.resourceUuid
+        else:
+            self.resourceUuid = None
 
         if hasattr(inv, 'resourceType'):
             self.resourceType = inv.resourceType
@@ -19085,14 +19124,11 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
@@ -19526,7 +19562,7 @@ class QueryObjectHybridAccountInventory(object):
      }
 
 class QueryObjectHybridConnectionRefInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','accountUuid','uuid','connectionType','resourceType','connectionUuid','direction','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['lastOpDate','accountUuid','uuid','connectionType','resourceUuid','resourceType','connectionUuid','direction','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -20368,6 +20404,7 @@ queryMessageInventoryMap = {
      'APIQueryCephPrimaryStoragePoolMsg' : QueryObjectCephPrimaryStoragePoolInventory,
      'APIQueryClusterMsg' : QueryObjectClusterInventory,
      'APIQueryConnectionAccessPointFromLocalMsg' : QueryObjectConnectionAccessPointInventory,
+     'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg' : QueryObjectConnectionRelationShipInventory,
      'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
      'APIQueryDataCenterFromLocalMsg' : QueryObjectDataCenterInventory,
      'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
