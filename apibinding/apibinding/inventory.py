@@ -1670,7 +1670,7 @@ class APICreateAliyunVpcVirtualRouterEntryRemoteMsg(object):
         #mandatory field
         self.nextHopUuid = NotNoneField()
         #mandatory field
-        #valid values: [Instance, RouterInterface, Tunnel]
+        #valid values: [Instance, RouterInterface, VpnGateway]
         self.nextHopType = NotNoneField()
         #mandatory field
         #valid values: [vbr, vrouter]
@@ -14428,7 +14428,7 @@ class VpcVirtualRouteEntryInventory(object):
         self.vRouterType = None
         self.status = None
         self.destinationCidrBlock = None
-        self.nextHopVRiUuid = None
+        self.nextHopUuid = None
         self.virtualRouterUuid = None
         self.nextHopType = None
         self.createDate = None
@@ -14460,10 +14460,10 @@ class VpcVirtualRouteEntryInventory(object):
         else:
             self.destinationCidrBlock = None
 
-        if hasattr(inv, 'nextHopVRiUuid'):
-            self.nextHopVRiUuid = inv.nextHopVRiUuid
+        if hasattr(inv, 'nextHopUuid'):
+            self.nextHopUuid = inv.nextHopUuid
         else:
-            self.nextHopVRiUuid = None
+            self.nextHopUuid = None
 
         if hasattr(inv, 'virtualRouterUuid'):
             self.virtualRouterUuid = inv.virtualRouterUuid
@@ -19125,6 +19125,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
@@ -20326,7 +20327,7 @@ class QueryObjectVpcUserVpnGatewayInventory(object):
      }
 
 class QueryObjectVpcVirtualRouteEntryInventory(object):
-     PRIMITIVE_FIELDS = ['destinationCidrBlock','nextHopVRiUuid','virtualRouterUuid','nextHopType','vRouterType','lastOpDate','type','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['destinationCidrBlock','virtualRouterUuid','nextHopType','vRouterType','lastOpDate','nextHopUuid','type','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
