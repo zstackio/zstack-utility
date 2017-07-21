@@ -2269,7 +2269,7 @@ EOF
 echo "    Install necessary packages: ..."
 pkg_list="createrepo curl yum-utils"
 missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
-[ -z "$missing_list" ] || yum -y install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
+[ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
 
 echo "    Test network connection: ..."
 BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
