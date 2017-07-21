@@ -2119,13 +2119,14 @@ set_tomcat_config() {
 }
 
 check_repo_version() {
-    [ ! -f ".repo_version" ] && return 1
-    [ ! -f "/opt/zstack-dvd/.repo_version" ] && return 1
-    diff .repo_version /opt/zstack-dvd/.repo_version >/dev/null 2>&1
-    return $?
+    [ -f ".repo_version" ] || return 1
+    [ -f "/opt/zstack-dvd/.repo_version" ] || return 1
+    diff .repo_version /opt/zstack-dvd/.repo_version >/dev/null 2>&1 || return 1
 }
 
 upgrade_local_repos() {
+[ -f "/opt/zstack-dvd/.repo_version" ] || return 1
+
 BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
 
 echo "    Prepare repo files for syncing: ..."
