@@ -2173,6 +2173,7 @@ class APICreateBaremetalChassisMsg(object):
         self.description = None
         #mandatory field
         self.ipmiAddress = NotNoneField()
+        self.ipmiPort = None
         #mandatory field
         self.ipmiUsername = NotNoneField()
         #mandatory field
@@ -2297,6 +2298,7 @@ class APIUpdateBaremetalChassisMsg(object):
         self.name = None
         self.description = None
         self.ipmiAddress = None
+        self.ipmiPort = None
         self.ipmiUsername = None
         self.ipmiPassword = None
         #valid values: [true, false]
@@ -14901,6 +14903,7 @@ class BaremetalChassisInventory(object):
         self.name = None
         self.description = None
         self.ipmiAddress = None
+        self.ipmiPort = None
         self.ipmiUsername = None
         self.ipmiPassword = None
         self.provisioned = None
@@ -14927,6 +14930,11 @@ class BaremetalChassisInventory(object):
             self.ipmiAddress = inv.ipmiAddress
         else:
             self.ipmiAddress = None
+
+        if hasattr(inv, 'ipmiPort'):
+            self.ipmiPort = inv.ipmiPort
+        else:
+            self.ipmiPort = None
 
         if hasattr(inv, 'ipmiUsername'):
             self.ipmiUsername = inv.ipmiUsername
@@ -19296,7 +19304,7 @@ class QueryObjectBackupStorageZoneRefInventory(object):
      }
 
 class QueryObjectBaremetalChassisInventory(object):
-     PRIMITIVE_FIELDS = ['provisioned','name','lastOpDate','description','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['provisioned','ipmiPort','name','lastOpDate','description','ipmiPassword','ipmiAddress','ipmiUsername','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
