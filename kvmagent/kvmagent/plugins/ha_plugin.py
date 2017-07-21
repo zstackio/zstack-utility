@@ -262,8 +262,8 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
                                     'shutdown ourselves' % (gw, cmd.maxAttempts))
-                        self.report_storage_status(cmd.psUuids, 'Disconnected')
                         kill_vm(cmd.maxAttempts, cmd.mountPoints, True)
+                        self.report_storage_status(cmd.psUuids, 'Disconnected')
 
                 logger.debug('stop gateway[%s] fencer for filesystem self-fencer' % gw)
             except:
