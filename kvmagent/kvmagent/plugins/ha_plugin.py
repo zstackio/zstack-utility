@@ -262,8 +262,14 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
                                     'shutdown ourselves' % (gw, cmd.maxAttempts))
-                        kill_vm(cmd.maxAttempts, cmd.mountPoints, True)
+                        # there might be a race condition with very small probabilities because report action is async,
+                        # cause vm ha slow because starting vm might select this broken host
+                        # due to ps-report arriving later than vm-report.
+                        # a sure card is to modify it to sync action with try-except
+                        # but if http post fail to retry too many times, kill vm will be too late.
+                        # so for ha efficiency, that's it..
                         self.report_storage_status(cmd.psUuids, 'Disconnected')
+                        kill_vm(cmd.maxAttempts, cmd.mountPoints, True)
 
                 logger.debug('stop gateway[%s] fencer for filesystem self-fencer' % gw)
             except:
@@ -334,6 +340,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def configure(self, config):
         self.config = config
 
+    @thread.AsyncThread
     def report_storage_status(self, ps_uuids, ps_status):
         url = self.config.get(kvmagent.SEND_COMMAND_URL)
         if not url:
