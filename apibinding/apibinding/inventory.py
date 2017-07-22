@@ -620,8 +620,7 @@ class APICreateEcsInstanceFromEcsImageMsg(object):
         #mandatory field
         #valid regex values: ^[a-zA-Z][\w\W]{7,17}$
         self.ecsRootPassword = NotNoneField()
-        #mandatory field
-        self.ecsBandWidth = NotNoneField()
+        self.ecsBandWidth = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -3865,7 +3864,8 @@ class APIUpdateVpcVpnConnectionRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.name = None
+        #mandatory field
+        self.name = NotNoneField()
         self.localCidr = None
         self.remoteCidr = None
         self.active = None
