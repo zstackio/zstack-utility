@@ -10601,6 +10601,22 @@ class APIQueryPciDeviceReply(object):
         self.error = None
 
 
+APIUPDATEPCIDEVICEMSG_FULL_NAME = 'org.zstack.pciDevice.APIUpdatePciDeviceMsg'
+class APIUpdatePciDeviceMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIUpdatePciDeviceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #valid values: [Enabled, Disabled]
+        self.state = None
+        self.description = None
+        self.metaData = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIPROMETHEUSQUERYLABELVALUESMSG_FULL_NAME = 'org.zstack.prometheus.APIPrometheusQueryLabelValuesMsg'
 class APIPrometheusQueryLabelValuesMsg(object):
     FULL_NAME='org.zstack.prometheus.APIPrometheusQueryLabelValuesMsg'
@@ -13279,6 +13295,7 @@ api_names = [
     'APIUpdateLoadBalancerMsg',
     'APIUpdateMonitorTriggerMsg',
     'APIUpdateNotificationsStatusMsg',
+    'APIUpdatePciDeviceMsg',
     'APIUpdatePortForwardingRuleMsg',
     'APIUpdatePrimaryStorageMsg',
     'APIUpdateQuotaMsg',
@@ -18042,6 +18059,7 @@ class PciDeviceInventory(object):
         self.hostUuid = None
         self.vmInstanceUuid = None
         self.status = None
+        self.state = None
         self.type = None
         self.vendorId = None
         self.deviceId = None
@@ -18078,6 +18096,11 @@ class PciDeviceInventory(object):
             self.status = inv.status
         else:
             self.status = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
 
         if hasattr(inv, 'type'):
             self.type = inv.type
@@ -19861,7 +19884,7 @@ class QueryObjectOssUploadPartsInventory(object):
      }
 
 class QueryObjectPciDeviceInventory(object):
-     PRIMITIVE_FIELDS = ['pciDeviceAddress','description','vendorId','subvendorId','type','uuid','deviceId','subdeviceId','metaData','hostUuid','lastOpDate','vmInstanceUuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['pciDeviceAddress','description','vendorId','subvendorId','type','uuid','deviceId','subdeviceId','metaData','hostUuid','lastOpDate','state','vmInstanceUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['matchedPciDeviceOfferingRef','vmInstance','host','matchedPciDeviceOffering']
      QUERY_OBJECT_MAP = {
         'vmInstance' : 'QueryObjectVmInstanceInventory',

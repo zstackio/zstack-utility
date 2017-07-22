@@ -7374,6 +7374,18 @@ class UpdateNotificationsStatusAction(inventory.APIUpdateNotificationsStatusMsg)
         self.out = evt
         return self.out
 
+class UpdatePciDeviceAction(inventory.APIUpdatePciDeviceMsg):
+    def __init__(self):
+        super(UpdatePciDeviceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdatePciDeviceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdatePortForwardingRuleAction(inventory.APIUpdatePortForwardingRuleMsg):
     def __init__(self):
         super(UpdatePortForwardingRuleAction, self).__init__()
