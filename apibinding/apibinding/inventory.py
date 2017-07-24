@@ -10508,6 +10508,48 @@ class APIDetachPciDeviceFromVmMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETHOSTIOMMUSTATEMSG_FULL_NAME = 'org.zstack.pciDevice.APIGetHostIommuStateMsg'
+class APIGetHostIommuStateMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetHostIommuStateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETHOSTIOMMUSTATEREPLY_FULL_NAME = 'org.zstack.pciDevice.APIGetHostIommuStateReply'
+class APIGetHostIommuStateReply(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetHostIommuStateReply'
+    def __init__(self):
+        self.state = None
+        self.success = None
+        self.error = None
+
+
+APIGETHOSTIOMMUSTATUSMSG_FULL_NAME = 'org.zstack.pciDevice.APIGetHostIommuStatusMsg'
+class APIGetHostIommuStatusMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetHostIommuStatusMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETHOSTIOMMUSTATUSREPLY_FULL_NAME = 'org.zstack.pciDevice.APIGetHostIommuStatusReply'
+class APIGetHostIommuStatusReply(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetHostIommuStatusReply'
+    def __init__(self):
+        self.status = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYPCIDEVICEMSG_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDeviceMsg'
 class APIQueryPciDeviceMsg(object):
     FULL_NAME='org.zstack.pciDevice.APIQueryPciDeviceMsg'
@@ -12777,6 +12819,10 @@ api_names = [
     'APIGetGlobalPropertyReply',
     'APIGetHostAllocatorStrategiesMsg',
     'APIGetHostAllocatorStrategiesReply',
+    'APIGetHostIommuStateMsg',
+    'APIGetHostIommuStateReply',
+    'APIGetHostIommuStatusMsg',
+    'APIGetHostIommuStatusReply',
     'APIGetHostReply',
     'APIGetHypervisorTypesMsg',
     'APIGetHypervisorTypesReply',
