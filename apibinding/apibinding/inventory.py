@@ -13762,48 +13762,6 @@ class EcsImageInventory(object):
 
 
 
-class EcsImageMd5SumMappingInventory(object):
-    def __init__(self):
-        self.id = None
-        self.qcow2Md5Sum = None
-        self.rawMd5Sum = None
-        self.ossBucketName = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'id'):
-            self.id = inv.id
-        else:
-            self.id = None
-
-        if hasattr(inv, 'qcow2Md5Sum'):
-            self.qcow2Md5Sum = inv.qcow2Md5Sum
-        else:
-            self.qcow2Md5Sum = None
-
-        if hasattr(inv, 'rawMd5Sum'):
-            self.rawMd5Sum = inv.rawMd5Sum
-        else:
-            self.rawMd5Sum = None
-
-        if hasattr(inv, 'ossBucketName'):
-            self.ossBucketName = inv.ossBucketName
-        else:
-            self.ossBucketName = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
 class ConnectionAccessPointInventory(object):
     def __init__(self):
         self.uuid = None
@@ -19469,12 +19427,6 @@ class QueryObjectESXHostInventory(object):
 
 class QueryObjectEcsImageInventory(object):
      PRIMITIVE_FIELDS = ['ossMd5Sum','ecsImageId','format','description','type','uuid','platform','name','ecsImageSize','lastOpDate','localImageUuid','dataCenterUuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
-     QUERY_OBJECT_MAP = {
-     }
-
-class QueryObjectEcsImageMd5SumMappingInventory(object):
-     PRIMITIVE_FIELDS = ['rawMd5Sum','lastOpDate','id','ossBucketName','qcow2Md5Sum','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
