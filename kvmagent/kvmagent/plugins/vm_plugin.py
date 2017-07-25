@@ -255,6 +255,7 @@ class GetPciDevicesResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(GetPciDevicesResponse, self).__init__()
         self.pciDevicesInfo = None
+        self.hostIommuStatus = False
 
 class HotPlugPciDeviceCommand(kvmagent.AgentCommand):
     def __init__(self):
@@ -3441,6 +3442,28 @@ class VmPlugin(kvmagent.KvmAgent):
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse
+        r, o, e = bash.bash_roe("grep -E 'intel_iommu(\ )*=(\ )*on' /etc/default/grub")
+        if r!= 0:
+            r, o, e = bash.bash_roe("sed '/GRUB_CMDLINE_LINUX/s/\"$/intel_iommu=on\"/g' /etc/default/grub")
+            if e != '':
+                rsp.success = False
+                rsp.error = "%s %s" % (e, o)
+                return jsonobject.dumps(rsp)
+            r, o, e = bash.bash_roe("grub2-mkconfig -o /boot/grub2/grub.cfg")
+            if e != '':
+                rsp.success = False
+                rsp.error = "%s %s" % (e, o)
+                return jsonobject.dumps(rsp)
+            r, o, e = bash.bash_roe("modprobe vfio && modprobe vfio-pci")
+            if e != '':
+                rsp.success = False
+                rsp.error = "%s %s" % (e, o)
+                return jsonobject.dumps(rsp)
+        r, o, e = bash.bash_roe("find /sys -iname dmar*")
+        if o != '':
+            rsp.hostIommuStatus = True
+        else:
+            rsp.hostIommuStatus = False
         r, o, e = bash.bash_roe("lspci -nnv | grep -E %s" % cmd.filterString)
         if r!= 0:
             rsp.success = False

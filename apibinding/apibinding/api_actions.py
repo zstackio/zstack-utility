@@ -3734,6 +3734,30 @@ class GetHostAllocatorStrategiesAction(inventory.APIGetHostAllocatorStrategiesMs
         self.out = evt
         return self.out
 
+class GetHostIommuStateAction(inventory.APIGetHostIommuStateMsg):
+    def __init__(self):
+        super(GetHostIommuStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetHostIommuStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetHostIommuStatusAction(inventory.APIGetHostIommuStatusMsg):
+    def __init__(self):
+        super(GetHostIommuStatusAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetHostIommuStatusAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetHypervisorTypesAction(inventory.APIGetHypervisorTypesMsg):
     def __init__(self):
         super(GetHypervisorTypesAction, self).__init__()
