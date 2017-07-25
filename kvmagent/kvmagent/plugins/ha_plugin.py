@@ -58,6 +58,37 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
+    if isFileSystem :
+        for mp in mountPaths:
+            kill_and_umount(mp)
+        shell.ShellCmd("systemctl start nfs-client.target")(False)
+
+
+@linux.retry(times=8, sleep_time=2)
+def kill_and_umount(mount_path):
+    kill_progresses_using_mount_path(mount_path)
+    if umount_fs(mount_path) != 0:
+        raise Exception('failed to umount %s' % mount_path)
+
+def umount_fs(mount_path):
+    shell.ShellCmd("systemctl stop nfs-client.target")(False)
+    o = shell.ShellCmd("sleep 2; umount -f %s" % mount_path)
+    o(False)
+    return o.return_code
+
+
+def kill_progresses_using_mount_path(mount_path):
+    list_ps = []
+    ip = shell.call("mount | grep -e '%s' | awk -F : '{print $1}'" % mount_path).strip()
+    o = shell.ShellCmd("ps aux | grep '%s\\|%s' | grep -v grep | awk '{print $2}'" % (mount_path, ip))
+    o(False)
+    if o.return_code == 0:
+        list_ps = o.stdout.splitlines()
+
+    logger.warn('kill the progresses[pids:%s] with mount path: %s' % (list_ps, mount_path))
+    for ps_id in list_ps:
+        shell.ShellCmd("kill -9 %s || true" % ps_id)
+
 
 def is_need_kill(vmUuid, mountPaths, isFileSystem):
     def vm_match_storage_type(vmUuid, isFileSystem):
@@ -232,6 +263,7 @@ class HaPlugin(kvmagent.KvmAgent):
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
                         kill_vm(cmd.maxAttempts, [mount_path], True)
+                        break
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
             except:
