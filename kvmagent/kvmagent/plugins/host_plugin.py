@@ -155,8 +155,10 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp = HostFactResponse()
         qemu_img_version = shell.call("qemu-img --version| grep 'qemu-img version' | cut -d ' ' -f 3")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
+        ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '{print $2}' | cut -d/ -f1")
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
+        rsp.ipAddresses = ipV4Addrs.splitlines()
 
         cmd = shell.ShellCmd('cat /proc/cpuinfo | grep vmx')
         cmd(False)
