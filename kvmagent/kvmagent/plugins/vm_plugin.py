@@ -3444,18 +3444,18 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = GetPciDevicesResponse
         r, o, e = bash.bash_roe("grep -E 'intel_iommu(\ )*=(\ )*on' /etc/default/grub")
         if r!= 0:
-            r, o, e = bash.bash_roe("sed '/GRUB_CMDLINE_LINUX/s/\"$/intel_iommu=on\"/g' /etc/default/grub")
-            if e != '':
+            r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on\"/g' /etc/default/grub")
+            if r != 0:
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
             r, o, e = bash.bash_roe("grub2-mkconfig -o /boot/grub2/grub.cfg")
-            if e != '':
+            if r != 0:
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
             r, o, e = bash.bash_roe("modprobe vfio && modprobe vfio-pci")
-            if e != '':
+            if r != 0:
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
