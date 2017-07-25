@@ -3626,6 +3626,18 @@ class GetCpuMemoryCapacityAction(inventory.APIGetCpuMemoryCapacityMsg):
         self.out = evt
         return self.out
 
+class GetCreateEcsImageProgressAction(inventory.APIGetCreateEcsImageProgressMsg):
+    def __init__(self):
+        super(GetCreateEcsImageProgressAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetCreateEcsImageProgressAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetCurrentTimeAction(inventory.APIGetCurrentTimeMsg):
     def __init__(self):
         super(GetCurrentTimeAction, self).__init__()

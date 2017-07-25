@@ -831,6 +831,29 @@ class APIDeleteEcsImageRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETCREATEECSIMAGEPROGRESSMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APIGetCreateEcsImageProgressMsg'
+class APIGetCreateEcsImageProgressMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APIGetCreateEcsImageProgressMsg'
+    def __init__(self):
+        #mandatory field
+        self.imageUuid = NotNoneField()
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETCREATEECSIMAGEPROGRESSREPLY_FULL_NAME = 'org.zstack.header.aliyun.image.APIGetCreateEcsImageProgressReply'
+class APIGetCreateEcsImageProgressReply(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APIGetCreateEcsImageProgressReply'
+    def __init__(self):
+        self.progress = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYECSIMAGEFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APIQueryEcsImageFromLocalMsg'
 class APIQueryEcsImageFromLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.image.APIQueryEcsImageFromLocalMsg'
@@ -12800,6 +12823,8 @@ api_names = [
     'APIGetConnectionBetweenL3NetworkAndAliyunVSwitchReply',
     'APIGetCpuMemoryCapacityMsg',
     'APIGetCpuMemoryCapacityReply',
+    'APIGetCreateEcsImageProgressMsg',
+    'APIGetCreateEcsImageProgressReply',
     'APIGetCurrentTimeMsg',
     'APIGetCurrentTimeReply',
     'APIGetDataCenterFromRemoteMsg',
@@ -14617,6 +14642,7 @@ class OssUploadPartsInventory(object):
         self.id = None
         self.uploadId = None
         self.partNumber = None
+        self.total = None
         self.eTag = None
         self.partSize = None
         self.partCRC = None
@@ -14640,6 +14666,11 @@ class OssUploadPartsInventory(object):
             self.partNumber = inv.partNumber
         else:
             self.partNumber = None
+
+        if hasattr(inv, 'total'):
+            self.total = inv.total
+        else:
+            self.total = None
 
         if hasattr(inv, 'eTag'):
             self.eTag = inv.eTag
@@ -19882,7 +19913,7 @@ class QueryObjectOssBucketInventory(object):
      }
 
 class QueryObjectOssUploadPartsInventory(object):
-     PRIMITIVE_FIELDS = ['uploadId','partSize','ossBucketUuid','lastOpDate','partNumber','eTag','fileKey','id','partCRC','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['total','uploadId','partSize','ossBucketUuid','lastOpDate','partNumber','eTag','fileKey','id','partCRC','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
