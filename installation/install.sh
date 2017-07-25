@@ -2276,13 +2276,11 @@ BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
 curl ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
 
 echo "    Sync from repo.zstack.io: ..."
-# FIXME
-rm -f /opt/zstack-dvd/Packages/pprof*.rpm
-rm -f /opt/zstack-dvd/Packages/sgabios-bin*.rpm
-rm -f /opt/zstack-dvd/Packages/gperftools*.rpm
-
 yum clean all >/dev/null 2>&1
-reposync -r zstack-online-base -p /opt/zstack-dvd --norepopath -m -d
+
+mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
+mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
+reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
 reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
 reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
 reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
@@ -2292,8 +2290,10 @@ reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --nor
 reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
 
 echo "    Update metadata: ..."
-createrepo -g /opt/zstack-dvd/comps.xml /opt/zstack-dvd/Packages/ >/dev/null 2>&1 || return 1
-rm -rf /opt/zstack-dvd/repodata && mv /opt/zstack-dvd/Packages/repodata /opt/zstack-dvd/
+createrepo -g /opt/zstack-dvd/Base/comps.xml /opt/zstack-dvd/Base/ >/dev/null 2>&1 || return 1
+rm -rf /opt/zstack-dvd/repodata >/dev/null 2>&1
+mv /opt/zstack-dvd/Base/* /opt/zstack-dvd/ >/dev/null 2>&1
+rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
 createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1 || return 1
