@@ -22,7 +22,7 @@ class ScanRsp(object):
         super(ScanRsp, self).__init__()
         self.result = None
 
-def kill_vm(maxAttempts):
+def kill_vm(maxAttempts, mountPaths=None, isFileSystem=False):
     vm_uuid_list = shell.call("virsh list | grep running | awk '{print $2}'")
     for vm_uuid in vm_uuid_list.split('\n'):
         vm_uuid = vm_uuid.strip(' \t\n\r')
@@ -38,6 +38,38 @@ def kill_vm(maxAttempts):
                         'failed to read the heartbeat file %s times' % (vm_uuid, vm_pid, maxAttempts))
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
+
+    if isFileSystem :
+        for mp in mountPaths:
+            kill_and_umount(mp)
+        shell.ShellCmd("systemctl start nfs-client.target")(False)
+
+
+@linux.retry(times=8, sleep_time=2)
+def kill_and_umount(mount_path):
+    kill_progresses_using_mount_path(mount_path)
+    if umount_fs(mount_path) != 0:
+        raise Exception('failed to umount %s' % mount_path)
+
+def umount_fs(mount_path):
+    shell.ShellCmd("systemctl stop nfs-client.target")(False)
+    o = shell.ShellCmd("sleep 2; umount -f %s" % mount_path)
+    o(False)
+    return o.return_code
+
+
+def kill_progresses_using_mount_path(mount_path):
+    list_ps = []
+    ip = shell.call("mount | grep -e '%s' | awk -F : '{print $1}'" % mount_path).strip()
+    o = shell.ShellCmd("ps aux | grep '%s\\|%s' | grep -v grep | awk '{print $2}'" % (mount_path, ip))
+    o(False)
+    if o.return_code == 0:
+        list_ps = o.stdout.splitlines()
+
+    logger.warn('kill the progresses[pids:%s] with mount path: %s' % (list_ps, mount_path))
+    for ps_id in list_ps:
+        shell.ShellCmd("kill -9 %s || true" % ps_id)
+
 
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
@@ -145,7 +177,8 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
-                        kill_vm(cmd.maxAttempts)
+                        kill_vm(cmd.maxAttempts, [os.path.dirname(heartbeat_file_path)], True)
+                        break
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
             except:
