@@ -14682,6 +14682,7 @@ class BaremetalHardwareInfoInventory(object):
     def __init__(self):
         self.uuid = None
         self.ipmiAddress = None
+        self.ipmiPort = None
         self.type = None
         self.content = None
         self.createDate = None
@@ -14697,6 +14698,11 @@ class BaremetalHardwareInfoInventory(object):
             self.ipmiAddress = inv.ipmiAddress
         else:
             self.ipmiAddress = None
+
+        if hasattr(inv, 'ipmiPort'):
+            self.ipmiPort = inv.ipmiPort
+        else:
+            self.ipmiPort = None
 
         if hasattr(inv, 'type'):
             self.type = inv.type
@@ -19337,7 +19343,7 @@ class QueryObjectBaremetalChassisInventory(object):
      }
 
 class QueryObjectBaremetalHardwareInfoInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','ipmiAddress','type','uuid','content','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ipmiPort','lastOpDate','ipmiAddress','type','uuid','content','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
