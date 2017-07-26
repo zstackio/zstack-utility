@@ -60,32 +60,37 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
 
     if isFileSystem :
         for mp in mountPaths:
-            kill_and_umount(mp)
-        shell.ShellCmd("systemctl start nfs-client.target")(False)
+            kill_and_umount(mp, mount_path_is_nfs(mp))
+
+def mount_path_is_nfs(mount_path):
+    typ = shell.call("mount | grep '%s' | awk '{print $5}'" % mount_path)
+    return typ.startswith('nfs')
 
 
 @linux.retry(times=8, sleep_time=2)
-def kill_and_umount(mount_path):
+def do_kill_and_umount(mount_path, is_nfs):
     kill_progresses_using_mount_path(mount_path)
-    if umount_fs(mount_path) != 0:
-        raise Exception('failed to umount %s' % mount_path)
+    umount_fs(mount_path, is_nfs)
 
-def umount_fs(mount_path):
-    shell.ShellCmd("systemctl stop nfs-client.target")(False)
-    o = shell.ShellCmd("sleep 2; umount -f %s" % mount_path)
-    o(False)
-    return o.return_code
+def kill_and_umount(mount_path, is_nfs):
+    do_kill_and_umount(mount_path, is_nfs)
+    if is_nfs:
+        shell.ShellCmd("systemctl start nfs-client.target")(False)
+
+def umount_fs(mount_path, is_nfs):
+    if is_nfs:
+        shell.ShellCmd("systemctl stop nfs-client.target")(False)
+    shell.call("sleep 2; umount -f %s" % mount_path)
 
 
 def kill_progresses_using_mount_path(mount_path):
     list_ps = []
-    ip = shell.call("mount | grep -e '%s' | awk -F : '{print $1}'" % mount_path).strip()
-    o = shell.ShellCmd("ps aux | grep '%s\\|%s' | grep -v grep | awk '{print $2}'" % (mount_path, ip))
+    o = shell.ShellCmd("ps aux | grep '%s' | awk '{print $2}'" % mount_path)
     o(False)
     if o.return_code == 0:
         list_ps = o.stdout.splitlines()
 
-    logger.warn('kill the progresses[pids:%s] with mount path: %s' % (list_ps, mount_path))
+    logger.warn('kill the progresses, pids:%s with mount path: %s' % (list_ps, mount_path))
     for ps_id in list_ps:
         shell.ShellCmd("kill -9 %s || true" % ps_id)
 
