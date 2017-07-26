@@ -2277,6 +2277,7 @@ curl ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_
 
 echo "    Sync from repo.zstack.io: ..."
 yum clean all >/dev/null 2>&1
+sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
 
 mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
 mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
