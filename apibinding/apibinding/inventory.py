@@ -1481,6 +1481,7 @@ class APISyncEcsSecurityGroupFromRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.ecsVpcUuid = NotNoneField()
+        self.securityGroupId = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
