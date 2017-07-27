@@ -2118,18 +2118,20 @@ set_tomcat_config() {
     sed -i 's/redirectPort="8443" \/>/redirectPort="8443" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>/' $tomcat_config_path/server.xml
 }
 
-check_repo_version() {
-    [ -f ".repo_version" ] || return 1
-    [ -f "/opt/zstack-dvd/.repo_version" ] || return 1
-    diff .repo_version /opt/zstack-dvd/.repo_version >/dev/null 2>&1 || return 1
-}
-
-upgrade_local_repos() {
+check_upgrade_local_repos() {
+echo_subtitle "Check local repo version"
+[ -f ".repo_version" ] || return 1
 [ -f "/opt/zstack-dvd/.repo_version" ] || return 1
+cmp -s .repo_version /opt/zstack-dvd/.repo_version
+if [ $? -eq 0 ]; then
+    echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    return 0
+else
+    echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
+fi
 
 BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
-
-echo "    Prepare repo files for syncing: ..."
+echo_subtitle "Prepare repo files for syncing"
 mkdir -p /opt/zstack-dvd/
 cat > /etc/yum.repos.d/zstack-local.repo << EOF
 [zstack-local]
@@ -2265,17 +2267,19 @@ baseurl=${BASEURL}/Extra/virtio-win
 gpgcheck=0
 enabled=0
 EOF
+echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo "    Install necessary packages: ..."
+echo_subtitle "Install necessary packages"
 pkg_list="createrepo curl yum-utils"
 missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
+echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo "    Test network connection: ..."
+echo_subtitle "Test network connection"
 BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
 curl ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
+echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo "    Sync from repo.zstack.io: ..."
 yum clean all >/dev/null 2>&1
 sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
 
@@ -2289,8 +2293,10 @@ reposync -r zstack-online-gluster -p /opt/zstack-dvd/Extra/gluster --norepopath 
 reposync -r zstack-online-moosefs -p /opt/zstack-dvd/Extra/moosefs --norepopath -d
 reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
 reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
+echo_subtitle "Sync from repo.zstack.io"
+echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo "    Update metadata: ..."
+echo_subtitle "Update metadata"
 createrepo -g /opt/zstack-dvd/Base/comps.xml /opt/zstack-dvd/Base/ >/dev/null 2>&1 || return 1
 rm -rf /opt/zstack-dvd/repodata >/dev/null 2>&1
 mv /opt/zstack-dvd/Base/* /opt/zstack-dvd/ >/dev/null 2>&1
@@ -2302,14 +2308,17 @@ createrepo /opt/zstack-dvd/Extra/gluster >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/moosefs >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || return 1
+echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo "    Update /opt/zstack-dvd/.repo_version: ..."
+echo_subtitle "Update /opt/zstack-dvd/.repo_version"
 cat .repo_version > /opt/zstack-dvd/.repo_version
+echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo "    Cleanup: ..."
+echo_subtitle "Cleanup"
 rm -f /etc/yum.repos.d/zstack-online-*.repo
 rm -f /opt/zstack-dvd/comps.xml
 yum clean all >/dev/null 2>&1
+echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 }
 
 help (){
@@ -2612,49 +2621,45 @@ sleep 0.3
 echo ""
 fi
 
+echo_hints_to_upgrade_iso()
+{
+    ISO_NAME=$1
+    UPGRADE_WIKI=$2
+    ISO_DOWNLOAD_LINK=$3
+    echo
+    fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+        "Syncing local repo with repo.zstack.io has been failed too.\n" \
+        "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
+        "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
+        "# sh zstack-upgrade ${ISO_NAME}\n" \
+        "For more information, see ${UPGRADE_WIKI}"
+}
+
 # CHECK_REPO_VERSION
-echo_title "Check Repo Version"
-echo ""
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
-    check_repo_version
+    echo_title "Check Repo Version"
+    echo
+    check_upgrade_local_repos
     if [ $? -ne 0 ]; then
-        upgrade_local_repos
-        if [ $? -ne 0 ]; then
-            if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
-                ISO_NAME="ZStack-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
-                UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
-                ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
-                fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-                    "Syncing local repo with repo.zstack.io has been failed too.\n" \
-                    "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-                    "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-                    "# sh zstack-upgrade ${ISO_NAME}\n" \
-                    "For more information, see ${UPGRADE_WIKI}"
-            elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
-                ISO_NAME="ZStack-Community-x86-64-DVD-${VERSION_RELEASE_NR}.iso "
-                UPGRADE_WIKI="http://www.zstack.io/community/tutorials/ISOupgrade/"
-                ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
-                fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-                    "Syncing local repo with repo.zstack.io has been failed too.\n" \
-                    "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-                    "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-                    "# sh zstack-upgrade ${ISO_NAME}\n" \
-                    "For more information, see ${UPGRADE_WIKI}"
-            elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
-                ISO_NAME="ZStack-Enterprise-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
-                UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
-                ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
-                fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-                    "Syncing local repo with repo.zstack.io has been failed too.\n" \
-                    "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-                    "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-                    "# sh zstack-upgrade ${ISO_NAME}\n" \
-                    "For more information, see ${UPGRADE_WIKI}"
-            else
-                fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-                    "Syncing local repo with repo.zstack.io has been failed too.\n" \
-                    "Please download proper ISO and upgrade the local repo first."
-            fi
+        if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
+            ISO_NAME="ZStack-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
+            UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
+            ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
+            echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
+        elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
+            ISO_NAME="ZStack-Community-x86-64-DVD-${VERSION_RELEASE_NR}.iso "
+            UPGRADE_WIKI="http://www.zstack.io/community/tutorials/ISOupgrade/"
+            ISO_DOWNLOAD_LINK="http://www.zstack.io/community/downloads/"
+            echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
+        elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
+            ISO_NAME="ZStack-Enterprise-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
+            UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
+            ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
+            echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
+        else
+            fail2 "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
+                "Syncing local repo with repo.zstack.io has been failed too.\n" \
+                "Please download proper ISO and upgrade the local repo first."
         fi
     fi
 fi
