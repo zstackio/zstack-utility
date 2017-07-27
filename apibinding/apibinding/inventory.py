@@ -1533,6 +1533,9 @@ class APICreateEcsVpcRemoteMsg(object):
         #mandatory field
         self.name = NotNoneField()
         self.description = None
+        #mandatory field
+        #valid regex values: [A-Za-z]{1}[A-Za-z0-9-_]{1,127}
+        self.vRouterName = NotNoneField()
         self.resourceUuid = None
         self.session = None
         self.timeout = None
