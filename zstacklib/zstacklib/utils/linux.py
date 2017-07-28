@@ -510,7 +510,7 @@ def qcow2_size_and_actual_size(file_path):
     return virtual_size, actual_size
 
 def get_img_fmt(src):
-    fmt = shell.call("/usr/bin/qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % src)
+    fmt = shell.call("set -o pipefail; /usr/bin/qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % src)
     fmt = fmt.strip(' \t\r\n')
     if fmt != 'raw' and fmt != 'qcow2':
         logger.debug("/usr/bin/qemu-img info %s" % src)
