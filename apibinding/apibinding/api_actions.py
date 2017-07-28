@@ -7254,6 +7254,18 @@ class UpdateHostAction(inventory.APIUpdateHostMsg):
         self.out = evt
         return self.out
 
+class UpdateHostIommuStateAction(inventory.APIUpdateHostIommuStateMsg):
+    def __init__(self):
+        super(UpdateHostIommuStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateHostIommuStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateIPsecConnectionAction(inventory.APIUpdateIPsecConnectionMsg):
     def __init__(self):
         super(UpdateIPsecConnectionAction, self).__init__()

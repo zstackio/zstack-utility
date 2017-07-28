@@ -1714,9 +1714,6 @@ class APIDeleteAliyunRouteEntryRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        #mandatory field
-        #valid values: [vbr, vrouter]
-        self.type = NotNoneField()
         self.deleteMode = None
         self.session = None
         self.timeout = None
@@ -10670,6 +10667,21 @@ class APIQueryPciDeviceReply(object):
         self.error = None
 
 
+APIUPDATEHOSTIOMMUSTATEMSG_FULL_NAME = 'org.zstack.pciDevice.APIUpdateHostIommuStateMsg'
+class APIUpdateHostIommuStateMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIUpdateHostIommuStateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [Enabled, Disabled]
+        self.state = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIUPDATEPCIDEVICEMSG_FULL_NAME = 'org.zstack.pciDevice.APIUpdatePciDeviceMsg'
 class APIUpdatePciDeviceMsg(object):
     FULL_NAME='org.zstack.pciDevice.APIUpdatePciDeviceMsg'
@@ -13356,6 +13368,7 @@ api_names = [
     'APIUpdateFusionstorBackupStorageMonMsg',
     'APIUpdateFusionstorPrimaryStorageMonMsg',
     'APIUpdateGlobalConfigMsg',
+    'APIUpdateHostIommuStateMsg',
     'APIUpdateHostMsg',
     'APIUpdateIPsecConnectionMsg',
     'APIUpdateImageMsg',
@@ -16964,8 +16977,6 @@ class SchedulerJobSchedulerTriggerInventory(object):
         self.uuid = None
         self.schedulerJobUuid = None
         self.schedulerTriggerUuid = None
-        self.jobGroup = None
-        self.triggerGroup = None
         self.createDate = None
         self.lastOpDate = None
 
@@ -16984,16 +16995,6 @@ class SchedulerJobSchedulerTriggerInventory(object):
             self.schedulerTriggerUuid = inv.schedulerTriggerUuid
         else:
             self.schedulerTriggerUuid = None
-
-        if hasattr(inv, 'jobGroup'):
-            self.jobGroup = inv.jobGroup
-        else:
-            self.jobGroup = None
-
-        if hasattr(inv, 'triggerGroup'):
-            self.triggerGroup = inv.triggerGroup
-        else:
-            self.triggerGroup = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -19070,7 +19071,6 @@ class GlobalConfig_KVM(object):
     VM_CACHEMODE = 'vm.cacheMode'
     HOST_DNSCHECK163 = 'host.DNSCheck163'
     RESERVEDCPU = 'reservedCpu'
-    VM_CONSOLEMODE = 'vm.consoleMode'
     DATAVOLUME_MAXNUM = 'dataVolume.maxNum'
     HOST_DNSCHECKLIST = 'host.DNSCheckList'
     VMSYNCONHOSTPING = 'vmSyncOnHostPing'
@@ -19124,6 +19124,7 @@ class GlobalConfig_MEVOCO(object):
     OVERPROVISIONING_MEMORY = 'overProvisioning.memory'
     DISTRIBUTEIMAGE = 'distributeImage'
     THRESHOLD_PRIMARYSTORAGE_PHYSICALCAPACITY = 'threshold.primaryStorage.physicalCapacity'
+    VM_CONSOLEMODE = 'vm.consoleMode'
     HOSTALLOCATORSTRATEGY = 'hostAllocatorStrategy'
     OVERPROVISIONING_PRIMARYSTORAGE = 'overProvisioning.primaryStorage'
 
@@ -20032,7 +20033,7 @@ class QueryObjectSchedulerJobInventory(object):
      }
 
 class QueryObjectSchedulerJobSchedulerTriggerInventory(object):
-     PRIMITIVE_FIELDS = ['schedulerJobUuid','triggerGroup','lastOpDate','schedulerTriggerUuid','jobGroup','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['schedulerJobUuid','lastOpDate','schedulerTriggerUuid','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['trigger','job']
      QUERY_OBJECT_MAP = {
         'trigger' : 'QueryObjectSchedulerTriggerInventory',
