@@ -99,7 +99,7 @@ class FusionstorAgent(object):
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
-        self.http_server.register_sync_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
+        self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
 
     def _set_capacity_to_response(self, rsp):
         total, used = lichbd.lichbd_get_capacity()
