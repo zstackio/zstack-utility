@@ -1503,6 +1503,8 @@ def enable_ntp(trusted_host, host_post_info, distro):
                 replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
                 update_file("/etc/ntp.conf", "regexp='#server %s' state=absent" % trusted_host, host_post_info)
                 update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
+                # delete all tmp files
+                run_remote_command("rm -rf /etc/ntp.conf.*~", host_post_info)
     replace_content("/etc/ntp.conf", "regexp='restrict default nomodify notrap nopeer noquery'"
                                      " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
     if distro == "CentOS" or distro == "RedHat":
