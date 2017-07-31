@@ -165,6 +165,11 @@ class HaPlugin(kvmagent.KvmAgent):
 
         self.run_ceph_fencer = True
 
+        def get_ceph_qemu_img_args():
+            if cmd.userKey is None:
+                return 'rbd:%s:mon_host=%s' % (cmd.heartbeatImagePath, mon_url)
+            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (cmd.heartbeatImagePath, cmd.userKey, mon_url)
+
         def ceph_in_error_stat():
             # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
             health = shell.ShellCmd('timeout %s ceph health' % cmd.storageCheckerTimeout)
@@ -177,8 +182,8 @@ class HaPlugin(kvmagent.KvmAgent):
             return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
 
         def heartbeat_file_exists():
-            touch = shell.ShellCmd('timeout %s qemu-img info rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' %
-                                   (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
+            touch = shell.ShellCmd('timeout %s qemu-img info %s' %
+                                   (cmd.storageCheckerTimeout, get_ceph_qemu_img_args())
             touch(False)
 
             if touch.return_code == 0:
