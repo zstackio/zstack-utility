@@ -3441,10 +3441,10 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetPciDevicesResponse
+        rsp = GetPciDevicesResponse()
         r, o, e = bash.bash_roe("grep -E 'intel_iommu(\ )*=(\ )*on' /etc/default/grub")
         if r!= 0:
-            r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on\"/g' /etc/default/grub")
+            r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,radeon\"/g' /etc/default/grub")
             if r != 0:
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
@@ -3475,14 +3475,14 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def hot_plug_pci_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = HotPlugPciDeviceRsp
+        rsp = HotPlugPciDeviceRsp()
         addr = cmd.pciDeviceAddress
         domain = hex(0) if len(addr.split(":")) == 2 else hex(int(addr.split(":")[0], 16))
         bus = hex(int(addr.split(":")[-2], 16))
         slot = hex(int(addr.split(":")[-1].split(".")[0], 16))
         function = hex(int(addr.split(":")[-1].split(".")[1], 16))
         content = '''
-        <hostdev mode='subsystem' type='pci' managed='yes'>
+<hostdev mode='subsystem' type='pci' managed='yes'>
      <driver name='vfio'/>
      <source>
        <address type='pci' domain='%s' bus='%s' slot='%s' function='%s'/>
@@ -3490,6 +3490,8 @@ class VmPlugin(kvmagent.KvmAgent):
 </hostdev>''' % (domain, bus, slot, function)
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
+        logger.debug("attach %s to %s finished, %s, %s" % (
+            spath, cmd.vmUuid, o, e))
         if r!= 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
@@ -3498,7 +3500,7 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def hot_unplug_pci_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = HotUnplugPciDeviceRsp
+        rsp = HotUnplugPciDeviceRsp()
         addr = cmd.pciDeviceAddress
         domain = hex(0) if len(addr.split(":")) == 2 else hex(int(addr.split(":")[0], 16))
         bus = hex(int(addr.split(":")[-2], 16))
@@ -3513,6 +3515,8 @@ class VmPlugin(kvmagent.KvmAgent):
 </hostdev>''' % (domain, bus, slot, function)
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
+        logger.debug("detach %s to %s finished, %s, %s" % (
+            spath, cmd.vmUuid, o, e))
         if r!= 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
