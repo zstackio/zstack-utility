@@ -942,11 +942,7 @@ class APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
         #mandatory field
         self.l3networkUuid = NotNoneField()
         #mandatory field
-        self.vSwitchUuid = NotNoneField()
-        #mandatory field
-        self.vpcRiuuid = NotNoneField()
-        #mandatory field
-        self.vbrRiUuid = NotNoneField()
+        self.vpcUuid = NotNoneField()
         #mandatory field
         self.vbrUuid = NotNoneField()
         #mandatory field
@@ -1090,7 +1086,7 @@ class APIGetConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         #mandatory field
-        #valid values: [vswitch, l3network, vroutervm, vbr, vpc]
+        #valid values: [l3network, vroutervm, vbr, vpc]
         self.resourceType = NotNoneField()
         self.session = None
         self.timeout = None
