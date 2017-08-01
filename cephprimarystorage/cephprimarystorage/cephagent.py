@@ -477,13 +477,15 @@ class CephAgent(object):
             elif pool.name not in existing_pools:
                 shell.call('ceph osd pool create %s 100' % pool.name)
 
-        o = shell.call("ceph -f json auth get-or-create client.zstack mon 'allow r' osd 'allow *' 2>/dev/null").strip(
-            ' \n\r\t')
-        o = jsonobject.loads(o)
-
         rsp = InitRsp()
+
+        if cmd.nocephx is False:
+            o = shell.call("ceph -f json auth get-or-create client.zstack mon 'allow r' osd 'allow *' 2>/dev/null").strip(
+                ' \n\r\t')
+            o = jsonobject.loads(o)
+            rsp.userKey = o[0].key_
+
         rsp.fsid = fsid
-        rsp.userKey = o[0].key_
         self._set_capacity_to_response(rsp)
 
         return jsonobject.dumps(rsp)
