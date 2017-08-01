@@ -5,4 +5,4 @@ if [ ! -d ${VIRTUAL_ENV} ]; then
     exit 1
 fi
 . ${VIRTUAL_ENV}/bin/activate
-python -c "from zstackcli import cli; cli.main()" $@
+python -c "from zstackcli import cli; cli.main()" "$@"
