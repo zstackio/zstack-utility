@@ -249,7 +249,7 @@ class Cli(object):
         except IndexError:
             return None
 
-    def do_command(self, line):
+    def do_command(self, args):
         def check_session(apiname):
             if not self.session_uuid and apiname not in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME,
                                                          self.LOGIN_BY_LDAP_MESSAGE_NAME]:
@@ -282,7 +282,7 @@ Parse command parameters error:
                     self.print_error(err_msg)
                     raise e
 
-            pairs = shlex.split(line)
+            pairs = args
             if pairs[0] in self.cli_cmd:
                 cmd = pairs[0]
                 if len(pairs) > 1:
@@ -459,7 +459,7 @@ Parse command parameters error:
             self.user_name = None
             open(SESSION_FILE, 'w+').close()
 
-        if line.startswith('#'):
+        if args[0].startswith('#'):
             return
 
         (apiname, all_params) = build_params()
@@ -556,7 +556,8 @@ Parse command parameters error:
                 else:
                     line = raw_input(self.get_prompt_with_account_info())
                     if line:
-                        self.do_command(line)
+                        pairs = shlex.split(line)
+                        self.do_command(pairs)
             except CliError as cli_err:
                 self.print_error(str(cli_err))
                 exit_code = 1
@@ -1125,7 +1126,6 @@ def main():
         help="[Optional] if setting -s, will save password information in command history. ")
 
     (options, args) = parser.parse_args()
-    cmd = ' '.join(args)
 
     os.environ['ZSTACK_BUILT_IN_HTTP_SERVER_IP'] = options.host
     os.environ['ZSTACK_BUILT_IN_HTTP_SERVER_PORT'] = options.port
@@ -1150,7 +1150,7 @@ def main():
 
     else:
         cli = Cli(options)
-        cli.main(cmd)
+        cli.main(args)
 
 
 if __name__ == '__main__':
