@@ -596,7 +596,6 @@ APICREATEECSINSTANCEFROMECSIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.AP
 class APICreateEcsInstanceFromEcsImageMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APICreateEcsInstanceFromEcsImageMsg'
     def __init__(self):
-        #valid values: [cloud, cloud_efficiency, cloud_ssd, ephemeral_ssd]
         self.ecsRootVolumeType = None
         self.description = None
         self.ecsRootVolumeGBSize = None
@@ -611,8 +610,8 @@ class APICreateEcsInstanceFromEcsImageMsg(object):
         self.name = NotNoneField()
         #mandatory field
         self.ecsImageUuid = NotNoneField()
-        #mandatory field
-        self.instanceOfferingUuid = NotNoneField()
+        self.instanceOfferingUuid = None
+        self.instanceType = None
         #mandatory field
         self.ecsVSwitchUuid = NotNoneField()
         #mandatory field
@@ -665,6 +664,27 @@ class APIDeleteEcsInstanceMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIGETECSINSTANCETYPEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIGetEcsInstanceTypeMsg'
+class APIGetEcsInstanceTypeMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIGetEcsInstanceTypeMsg'
+    def __init__(self):
+        #mandatory field
+        self.identityZoneUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETECSINSTANCETYPEREPLY_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIGetEcsInstanceTypeReply'
+class APIGetEcsInstanceTypeReply(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIGetEcsInstanceTypeReply'
+    def __init__(self):
+        self.types = OptionalList()
+        self.success = None
+        self.error = None
 
 
 APIGETECSINSTANCEVNCURLMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIGetEcsInstanceVncUrlMsg'
@@ -12848,6 +12868,8 @@ api_names = [
     'APIGetDataVolumeAttachableVmMsg',
     'APIGetDataVolumeAttachableVmReply',
     'APIGetDiskOfferingReply',
+    'APIGetEcsInstanceTypeMsg',
+    'APIGetEcsInstanceTypeReply',
     'APIGetEcsInstanceVncUrlMsg',
     'APIGetEcsInstanceVncUrlReply',
     'APIGetEipAttachableVmNicsMsg',
