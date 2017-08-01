@@ -3674,6 +3674,18 @@ class GetDataVolumeAttachableVmAction(inventory.APIGetDataVolumeAttachableVmMsg)
         self.out = evt
         return self.out
 
+class GetEcsInstanceTypeAction(inventory.APIGetEcsInstanceTypeMsg):
+    def __init__(self):
+        super(GetEcsInstanceTypeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetEcsInstanceTypeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetEcsInstanceVncUrlAction(inventory.APIGetEcsInstanceVncUrlMsg):
     def __init__(self):
         super(GetEcsInstanceVncUrlAction, self).__init__()
