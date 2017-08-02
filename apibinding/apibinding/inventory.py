@@ -2108,6 +2108,18 @@ class APIIsReadyToGoReply(object):
         self.error = None
 
 
+APIREQUESTBAREMETALCONSOLEACCESSMSG_FULL_NAME = 'org.zstack.header.baremetal.console.APIRequestBaremetalConsoleAccessMsg'
+class APIRequestBaremetalConsoleAccessMsg(object):
+    FULL_NAME='org.zstack.header.baremetal.console.APIRequestBaremetalConsoleAccessMsg'
+    def __init__(self):
+        #mandatory field
+        self.chassisUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYBAREMETALHARDWAREINFOMSG_FULL_NAME = 'org.zstack.header.baremetal.hardwareinfo.APIQueryBaremetalHardwareInfoMsg'
 class APIQueryBaremetalHardwareInfoMsg(object):
     FULL_NAME='org.zstack.header.baremetal.hardwareinfo.APIQueryBaremetalHardwareInfoMsg'
@@ -13326,6 +13338,7 @@ api_names = [
     'APIRemoveUserFromGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
     'APIReply',
+    'APIRequestBaremetalConsoleAccessMsg',
     'APIRequestConsoleAccessMsg',
     'APIResumeVmInstanceMsg',
     'APIRevertVolumeFromSnapshotMsg',
@@ -14769,6 +14782,30 @@ class OssUploadPartsInventory(object):
             self.lastOpDate = inv.lastOpDate
         else:
             self.lastOpDate = None
+
+
+
+class BaremetalConsoleProxyInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.chassisUuid = None
+        self.token = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'chassisUuid'):
+            self.chassisUuid = inv.chassisUuid
+        else:
+            self.chassisUuid = None
+
+        if hasattr(inv, 'token'):
+            self.token = inv.token
+        else:
+            self.token = None
 
 
 
@@ -19414,6 +19451,12 @@ class QueryObjectBackupStorageZoneRefInventory(object):
 
 class QueryObjectBaremetalChassisInventory(object):
      PRIMITIVE_FIELDS = ['ipmiPort','name','lastOpDate','description','ipmiPassword','ipmiAddress','ipmiUsername','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectBaremetalConsoleProxyInventory(object):
+     PRIMITIVE_FIELDS = ['chassisUuid','uuid','token','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
