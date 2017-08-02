@@ -6858,6 +6858,18 @@ class SyncConnectionAccessPointFromRemoteAction(inventory.APISyncConnectionAcces
         self.out = evt
         return self.out
 
+class SyncDataCenterFromRemoteAction(inventory.APISyncDataCenterFromRemoteMsg):
+    def __init__(self):
+        super(SyncDataCenterFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncDataCenterFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SyncEcsImageFromRemoteAction(inventory.APISyncEcsImageFromRemoteMsg):
     def __init__(self):
         super(SyncEcsImageFromRemoteAction, self).__init__()
@@ -6938,6 +6950,18 @@ class SyncHybridEipFromRemoteAction(inventory.APISyncHybridEipFromRemoteMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncHybridEipFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncIdentityFromRemoteAction(inventory.APISyncIdentityFromRemoteMsg):
+    def __init__(self):
+        super(SyncIdentityFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncIdentityFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
