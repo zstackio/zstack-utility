@@ -165,7 +165,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         self.run_ceph_fencer = True
 
-        def get_ceph_qemu_img_args():
+        def get_ceph_rbd_args():
             if cmd.userKey is None:
                 return 'rbd:%s:mon_host=%s' % (cmd.heartbeatImagePath, mon_url)
             return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (cmd.heartbeatImagePath, cmd.userKey, mon_url)
@@ -183,7 +183,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         def heartbeat_file_exists():
             touch = shell.ShellCmd('timeout %s qemu-img info %s' %
-                                   (cmd.storageCheckerTimeout, get_ceph_qemu_img_args())
+                                   (cmd.storageCheckerTimeout, get_ceph_rbd_args()))
             touch(False)
 
             if touch.return_code == 0:
@@ -193,8 +193,8 @@ class HaPlugin(kvmagent.KvmAgent):
             return False
 
         def create_heartbeat_file():
-            create = shell.ShellCmd('timeout %s qemu-img create -f raw rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s 1' %
-                                        (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, cmd.userKey, mon_url))
+            create = shell.ShellCmd('timeout %s qemu-img create -f raw %s 1' %
+                                        (cmd.storageCheckerTimeout, get_ceph_rbd_args()))
             create(False)
 
             if create.return_code == 0 or "File exists" in create.stderr:
