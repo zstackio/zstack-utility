@@ -6500,6 +6500,18 @@ class RemoveVmNicFromLoadBalancerAction(inventory.APIRemoveVmNicFromLoadBalancer
         self.out = evt
         return self.out
 
+class RequestBaremetalConsoleAccessAction(inventory.APIRequestBaremetalConsoleAccessMsg):
+    def __init__(self):
+        super(RequestBaremetalConsoleAccessAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RequestBaremetalConsoleAccessAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RequestConsoleAccessAction(inventory.APIRequestConsoleAccessMsg):
     def __init__(self):
         super(RequestConsoleAccessAction, self).__init__()
