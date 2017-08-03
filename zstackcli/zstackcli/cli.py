@@ -525,14 +525,14 @@ Parse command parameters error:
             result = '\n'.join(result2)
             print '%s\n' % result
             # print 'Time costing: %fs' % (end_time - start_time)
-            self.write_more(line, result)
+            self.write_more(args, result)
         except urllib3.exceptions.MaxRetryError as url_err:
             self.print_error('Is %s reachable? Please make sure the management node is running.' % self.api.api_url)
             self.print_error(str(url_err))
             raise ("Server: %s is not reachable" % self.hostname)
         except Exception as e:
             self.print_error(str(e))
-            self.write_more(line, str(e), False)
+            self.write_more(args, str(e), False)
             if 'Session expired' in str(e):
                 clear_session()
             raise e
@@ -730,10 +730,9 @@ Parse command parameters error:
 
         result_file = '%s%d' % (CLI_RESULT_FILE, start_value)
         open(result_file, 'w').write(result)
-        if not self.no_secure and 'password=' in cmd:
-            cmds = cmd.split()
+        if not self.no_secure and 'password=' in ' '.join(cmd):
             cmds2 = []
-            for cmd2 in cmds:
+            for cmd2 in cmd:
                 if not 'password=' in cmd2:
                     cmds2.append(cmd2)
                 else:
