@@ -3172,6 +3172,19 @@ class APIQueryDataCenterFromLocalReply(object):
         self.error = None
 
 
+APISYNCDATACENTERFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.datacenter.APISyncDataCenterFromRemoteMsg'
+class APISyncDataCenterFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.datacenter.APISyncDataCenterFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICHANGEHOSTSTATEMSG_FULL_NAME = 'org.zstack.header.host.APIChangeHostStateMsg'
 class APIChangeHostStateMsg(object):
     FULL_NAME='org.zstack.header.host.APIChangeHostStateMsg'
@@ -4798,6 +4811,19 @@ class APIQueryIdentityZoneFromLocalReply(object):
         self.total = None
         self.success = None
         self.error = None
+
+
+APISYNCIDENTITYFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.identityzone.APISyncIdentityFromRemoteMsg'
+class APISyncIdentityFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.identityzone.APISyncIdentityFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIADDIMAGEMSG_FULL_NAME = 'org.zstack.header.image.APIAddImageMsg'
@@ -13353,6 +13379,7 @@ api_names = [
     'APISyncAliyunRouteEntryFromRemoteMsg',
     'APISyncAliyunVirtualRouterFromRemoteMsg',
     'APISyncConnectionAccessPointFromRemoteMsg',
+    'APISyncDataCenterFromRemoteMsg',
     'APISyncEcsImageFromRemoteMsg',
     'APISyncEcsInstanceFromRemoteMsg',
     'APISyncEcsSecurityGroupFromRemoteMsg',
@@ -13360,6 +13387,7 @@ api_names = [
     'APISyncEcsVSwitchFromRemoteMsg',
     'APISyncEcsVpcFromRemoteMsg',
     'APISyncHybridEipFromRemoteMsg',
+    'APISyncIdentityFromRemoteMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncRouterInterfaceFromRemoteMsg',
@@ -14511,7 +14539,7 @@ class VpcVirtualRouteEntryInventory(object):
         self.vRouterType = None
         self.status = None
         self.destinationCidrBlock = None
-        self.nextHopUuid = None
+        self.nextHopId = None
         self.virtualRouterUuid = None
         self.nextHopType = None
         self.createDate = None
@@ -14543,10 +14571,10 @@ class VpcVirtualRouteEntryInventory(object):
         else:
             self.destinationCidrBlock = None
 
-        if hasattr(inv, 'nextHopUuid'):
-            self.nextHopUuid = inv.nextHopUuid
+        if hasattr(inv, 'nextHopId'):
+            self.nextHopId = inv.nextHopId
         else:
-            self.nextHopUuid = None
+            self.nextHopId = None
 
         if hasattr(inv, 'virtualRouterUuid'):
             self.virtualRouterUuid = inv.virtualRouterUuid
@@ -19222,6 +19250,7 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
@@ -19409,7 +19438,7 @@ class QueryObjectBaremetalHostBondingInventory(object):
      }
 
 class QueryObjectBaremetalHostCfgInventory(object):
-     PRIMITIVE_FIELDS = ['unattended','password','chassisUuid','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['unattended','chassisUuid','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['nicCfgs','bondings','nicCfgs','bondings']
      QUERY_OBJECT_MAP = {
         'nicCfgs' : 'QueryObjectBaremetalHostNicCfgInventory',
@@ -19576,7 +19605,7 @@ class QueryObjectEipInventory(object):
      }
 
 class QueryObjectEmailMediaInventory(object):
-     PRIMITIVE_FIELDS = ['password','smtpServer','smtpPort','name','lastOpDate','description','state','type','uuid','username','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['smtpServer','smtpPort','name','lastOpDate','description','state','type','uuid','username','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19818,7 +19847,7 @@ class QueryObjectLdapAccountRefInventory(object):
      }
 
 class QueryObjectLdapServerInventory(object):
-     PRIMITIVE_FIELDS = ['password','encryption','name','lastOpDate','description','uuid','url','base','username','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['encryption','name','lastOpDate','description','uuid','url','base','username','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -20416,7 +20445,7 @@ class QueryObjectVpcUserVpnGatewayInventory(object):
      }
 
 class QueryObjectVpcVirtualRouteEntryInventory(object):
-     PRIMITIVE_FIELDS = ['destinationCidrBlock','virtualRouterUuid','nextHopType','vRouterType','lastOpDate','nextHopUuid','type','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['destinationCidrBlock','nextHopId','virtualRouterUuid','nextHopType','vRouterType','lastOpDate','type','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
