@@ -14775,8 +14775,7 @@ class OssUploadPartsInventory(object):
 class BaremetalHardwareInfoInventory(object):
     def __init__(self):
         self.uuid = None
-        self.ipmiAddress = None
-        self.ipmiPort = None
+        self.chassisUuid = None
         self.type = None
         self.content = None
         self.createDate = None
@@ -14788,15 +14787,10 @@ class BaremetalHardwareInfoInventory(object):
         else:
             self.uuid = None
 
-        if hasattr(inv, 'ipmiAddress'):
-            self.ipmiAddress = inv.ipmiAddress
+        if hasattr(inv, 'chassisUuid'):
+            self.chassisUuid = inv.chassisUuid
         else:
-            self.ipmiAddress = None
-
-        if hasattr(inv, 'ipmiPort'):
-            self.ipmiPort = inv.ipmiPort
-        else:
-            self.ipmiPort = None
+            self.chassisUuid = None
 
         if hasattr(inv, 'type'):
             self.type = inv.type
@@ -19250,7 +19244,6 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
@@ -19426,7 +19419,7 @@ class QueryObjectBaremetalChassisInventory(object):
      }
 
 class QueryObjectBaremetalHardwareInfoInventory(object):
-     PRIMITIVE_FIELDS = ['ipmiPort','lastOpDate','ipmiAddress','type','uuid','content','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['chassisUuid','lastOpDate','type','uuid','content','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
