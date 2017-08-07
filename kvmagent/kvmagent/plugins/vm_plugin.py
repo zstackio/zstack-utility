@@ -2324,6 +2324,9 @@ class Vm(object):
             features = e(root, 'features')
             for f in ['acpi', 'apic', 'pae']:
                 e(features, f)
+            if cmd.kvmHiddenState == False:
+                kvm = e(features, "kvm")
+                e(kvm, 'hidden', None, {'state': 'on'})
 
         def make_devices():
             root = elements['root']
@@ -3459,7 +3462,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
-        r, o, e = bash.bash_roe("find /sys -iname dmar*")
+        r, o, e = bash.bash_roe("find /sys -iname dmar* && cat /proc/cmdline | grep 'intel_iommu=on'")
         if o != '':
             rsp.hostIommuStatus = True
         else:
