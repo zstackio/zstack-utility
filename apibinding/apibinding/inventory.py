@@ -2108,6 +2108,18 @@ class APIIsReadyToGoReply(object):
         self.error = None
 
 
+APIREQUESTBAREMETALCONSOLEACCESSMSG_FULL_NAME = 'org.zstack.header.baremetal.console.APIRequestBaremetalConsoleAccessMsg'
+class APIRequestBaremetalConsoleAccessMsg(object):
+    FULL_NAME='org.zstack.header.baremetal.console.APIRequestBaremetalConsoleAccessMsg'
+    def __init__(self):
+        #mandatory field
+        self.chassisUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYBAREMETALHARDWAREINFOMSG_FULL_NAME = 'org.zstack.header.baremetal.hardwareinfo.APIQueryBaremetalHardwareInfoMsg'
 class APIQueryBaremetalHardwareInfoMsg(object):
     FULL_NAME='org.zstack.header.baremetal.hardwareinfo.APIQueryBaremetalHardwareInfoMsg'
@@ -13326,6 +13338,7 @@ api_names = [
     'APIRemoveUserFromGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
     'APIReply',
+    'APIRequestBaremetalConsoleAccessMsg',
     'APIRequestConsoleAccessMsg',
     'APIResumeVmInstanceMsg',
     'APIRevertVolumeFromSnapshotMsg',
@@ -14772,11 +14785,34 @@ class OssUploadPartsInventory(object):
 
 
 
+class BaremetalConsoleProxyInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.chassisUuid = None
+        self.token = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'chassisUuid'):
+            self.chassisUuid = inv.chassisUuid
+        else:
+            self.chassisUuid = None
+
+        if hasattr(inv, 'token'):
+            self.token = inv.token
+        else:
+            self.token = None
+
+
+
 class BaremetalHardwareInfoInventory(object):
     def __init__(self):
         self.uuid = None
-        self.ipmiAddress = None
-        self.ipmiPort = None
+        self.chassisUuid = None
         self.type = None
         self.content = None
         self.createDate = None
@@ -14788,15 +14824,10 @@ class BaremetalHardwareInfoInventory(object):
         else:
             self.uuid = None
 
-        if hasattr(inv, 'ipmiAddress'):
-            self.ipmiAddress = inv.ipmiAddress
+        if hasattr(inv, 'chassisUuid'):
+            self.chassisUuid = inv.chassisUuid
         else:
-            self.ipmiAddress = None
-
-        if hasattr(inv, 'ipmiPort'):
-            self.ipmiPort = inv.ipmiPort
-        else:
-            self.ipmiPort = None
+            self.chassisUuid = None
 
         if hasattr(inv, 'type'):
             self.type = inv.type
@@ -19250,7 +19281,6 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
@@ -19425,8 +19455,14 @@ class QueryObjectBaremetalChassisInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectBaremetalConsoleProxyInventory(object):
+     PRIMITIVE_FIELDS = ['chassisUuid','uuid','token','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectBaremetalHardwareInfoInventory(object):
-     PRIMITIVE_FIELDS = ['ipmiPort','lastOpDate','ipmiAddress','type','uuid','content','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['chassisUuid','lastOpDate','type','uuid','content','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
