@@ -2324,7 +2324,7 @@ class Vm(object):
             features = e(root, 'features')
             for f in ['acpi', 'apic', 'pae']:
                 e(features, f)
-            if cmd.kvmHiddenState == False:
+            if cmd.kvmHiddenState == True:
                 kvm = e(features, "kvm")
                 e(kvm, 'hidden', None, {'state': 'on'})
 
