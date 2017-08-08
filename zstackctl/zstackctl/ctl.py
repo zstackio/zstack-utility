@@ -4738,6 +4738,43 @@ class CollectLogCmd(Command):
                 host_post_info.private_key = InstallHACmd.conf_dir + 'ha_key'
                 self.get_management_node_log(collect_dir, host_post_info, args.full)
 
+        #collect bs log
+        sftp_bs_vo = get_host_list("SftpBackupStorageVO")
+        for bs in sftp_bs_vo:
+            bs_ip = bs['hostname']
+            self.get_storage_log(self.generate_host_post_info(bs_ip, "sftp_bs"), collect_dir, "sftp_bs")
+
+        ceph_bs_vo = get_host_list("CephBackupStorageMonVO")
+        for bs in ceph_bs_vo:
+            bs_ip = bs['hostname']
+            self.get_storage_log(self.generate_host_post_info(bs_ip, "ceph_bs"), collect_dir, "ceph_bs")
+
+        fusionStor_bs_vo = get_host_list("FusionstorBackupStorageMonVO")
+        for bs in fusionStor_bs_vo:
+            bs_ip = bs['hostname']
+            self.get_storage_log(self.generate_host_post_info(bs_ip, "fusionStor_bs"), collect_dir, "fusionStor_bs")
+
+        imageStore_bs_vo = get_host_list("ImageStoreBackupStorageVO")
+        for bs in imageStore_bs_vo:
+            bs_ip = bs['hostname']
+            self.get_storage_log(self.generate_host_post_info(bs_ip, "imageStore_bs"), collect_dir, "imageStore_bs")
+
+        #collect ps log
+        ceph_ps_vo = get_host_list("CephPrimaryStorageMonVO")
+        for ps in ceph_ps_vo:
+            ps_ip = ps['hostname']
+            self.get_storage_log(self.generate_host_post_info(ps_ip,"ceph_ps"), collect_dir, "ceph_ps")
+
+        fusionStor_ps_vo = get_host_list("FusionstorPrimaryStorageMonVO")
+        for ps in fusionStor_ps_vo:
+            ps_ip = ps['hostname']
+            self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
+
+        #collect vrouter log
+        vrouter_ip_list = get_vrouter_list()
+        for vrouter_ip in vrouter_ip_list:
+            self.get_vrouter_log(self.generate_host_post_info(vrouter_ip, "vrouter"),collect_dir)
+
         if args.db is True:
             self.get_db(collect_dir)
         if args.mn_only is not True:
@@ -4757,45 +4794,6 @@ class CollectLogCmd(Command):
                     warn("host %s is not a KVM host, skip..." % host_ip)
                 if args.host is not None:
                     break
-
-            #collect vrouter log
-            vrouter_ip_list = get_vrouter_list()
-            for vrouter_ip in vrouter_ip_list:
-                self.get_vrouter_log(self.generate_host_post_info(vrouter_ip, "vrouter"),collect_dir)
-
-            #collect bs log
-            sftp_bs_vo = get_host_list("SftpBackupStorageVO")
-            for bs in sftp_bs_vo:
-                bs_ip = bs['hostname']
-                self.get_storage_log(self.generate_host_post_info(bs_ip, "sftp_bs"), collect_dir, "sftp_bs")
-
-            ceph_bs_vo = get_host_list("CephBackupStorageMonVO")
-            for bs in ceph_bs_vo:
-                bs_ip = bs['hostname']
-                self.get_storage_log(self.generate_host_post_info(bs_ip, "ceph_bs"), collect_dir, "ceph_bs")
-
-            fusionStor_bs_vo = get_host_list("FusionstorBackupStorageMonVO")
-            for bs in fusionStor_bs_vo:
-                bs_ip = bs['hostname']
-                self.get_storage_log(self.generate_host_post_info(bs_ip, "fusionStor_bs"), collect_dir, "fusionStor_bs")
-
-            imageStore_bs_vo = get_host_list("ImageStoreBackupStorageVO")
-            for bs in imageStore_bs_vo:
-                bs_ip = bs['hostname']
-                self.get_storage_log(self.generate_host_post_info(bs_ip, "imageStore_bs"), collect_dir, "imageStore_bs")
-
-            #collect ps log
-            ceph_ps_vo = get_host_list("CephPrimaryStorageMonVO")
-            for ps in ceph_ps_vo:
-                ps_ip = ps['hostname']
-                self.get_storage_log(self.generate_host_post_info(ps_ip,"ceph_ps"), collect_dir, "ceph_ps")
-
-            fusionStor_ps_vo = get_host_list("FusionstorPrimaryStorageMonVO")
-            for ps in fusionStor_ps_vo:
-                ps_ip = ps['hostname']
-                self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
-
-
 
         self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
         if CollectLogCmd.failed_flag is True:
