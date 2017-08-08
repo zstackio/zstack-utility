@@ -1281,7 +1281,11 @@ uz_upgrade_zstack(){
         fi
         if [ $? -ne 0 ];then
             cd /; rm -rf $upgrade_folder
-            fail "Database upgrading dry-run failed. You probably should check SQL file conflict, or use -F option to force upgrade."
+            if [ x"$FORCE" = x'n' ]; then
+                fail "Database upgrading dry-run failed. You probably should check SQL file conflict, or use -F option to force upgrade."
+            else
+                fail "Database upgrading dry-run failed. You probably should check SQL file conflict."
+            fi
         fi
     fi
 
