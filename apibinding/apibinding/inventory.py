@@ -16077,61 +16077,61 @@ class VpcVpnIkeConfigInventory(object):
 
 class VpcVpnIkeConfigStruct(object):
     def __init__(self):
-        self.psk = None
-        self.version = None
-        self.mode = None
-        self.encodeAlgorithm = None
-        self.authAlgorithm = None
-        self.pfs = None
-        self.lifetime = None
-        self.localIp = None
-        self.remoteIp = None
+        self.Psk = None
+        self.IkeVersion = None
+        self.IkeMode = None
+        self.IkeEncAlg = None
+        self.IkeAuthAlg = None
+        self.IkePfs = None
+        self.IkeLifetime = None
+        self.LocalId = None
+        self.RemoteId = None
 
     def evaluate(self, inv):
-        if hasattr(inv, 'psk'):
-            self.psk = inv.psk
+        if hasattr(inv, 'Psk'):
+            self.Psk = inv.Psk
         else:
-            self.psk = None
+            self.Psk = None
 
-        if hasattr(inv, 'version'):
-            self.version = inv.version
+        if hasattr(inv, 'IkeVersion'):
+            self.IkeVersion = inv.IkeVersion
         else:
-            self.version = None
+            self.IkeVersion = None
 
-        if hasattr(inv, 'mode'):
-            self.mode = inv.mode
+        if hasattr(inv, 'IkeMode'):
+            self.IkeMode = inv.IkeMode
         else:
-            self.mode = None
+            self.IkeMode = None
 
-        if hasattr(inv, 'encodeAlgorithm'):
-            self.encodeAlgorithm = inv.encodeAlgorithm
+        if hasattr(inv, 'IkeEncAlg'):
+            self.IkeEncAlg = inv.IkeEncAlg
         else:
-            self.encodeAlgorithm = None
+            self.IkeEncAlg = None
 
-        if hasattr(inv, 'authAlgorithm'):
-            self.authAlgorithm = inv.authAlgorithm
+        if hasattr(inv, 'IkeAuthAlg'):
+            self.IkeAuthAlg = inv.IkeAuthAlg
         else:
-            self.authAlgorithm = None
+            self.IkeAuthAlg = None
 
-        if hasattr(inv, 'pfs'):
-            self.pfs = inv.pfs
+        if hasattr(inv, 'IkePfs'):
+            self.IkePfs = inv.IkePfs
         else:
-            self.pfs = None
+            self.IkePfs = None
 
-        if hasattr(inv, 'lifetime'):
-            self.lifetime = inv.lifetime
+        if hasattr(inv, 'IkeLifetime'):
+            self.IkeLifetime = inv.IkeLifetime
         else:
-            self.lifetime = None
+            self.IkeLifetime = None
 
-        if hasattr(inv, 'localIp'):
-            self.localIp = inv.localIp
+        if hasattr(inv, 'LocalId'):
+            self.LocalId = inv.LocalId
         else:
-            self.localIp = None
+            self.LocalId = None
 
-        if hasattr(inv, 'remoteIp'):
-            self.remoteIp = inv.remoteIp
+        if hasattr(inv, 'RemoteId'):
+            self.RemoteId = inv.RemoteId
         else:
-            self.remoteIp = None
+            self.RemoteId = None
 
 
 
@@ -16203,31 +16203,31 @@ class VpcVpnIpSecConfigInventory(object):
 
 class VpcVpnIpSecConfigStruct(object):
     def __init__(self):
-        self.encodeAlgorithm = None
-        self.authAlgorithm = None
-        self.pfs = None
-        self.lifetime = None
+        self.IpsecEncAlg = None
+        self.IpsecAuthAlg = None
+        self.IpsecPfs = None
+        self.IpsecLifetime = None
 
     def evaluate(self, inv):
-        if hasattr(inv, 'encodeAlgorithm'):
-            self.encodeAlgorithm = inv.encodeAlgorithm
+        if hasattr(inv, 'IpsecEncAlg'):
+            self.IpsecEncAlg = inv.IpsecEncAlg
         else:
-            self.encodeAlgorithm = None
+            self.IpsecEncAlg = None
 
-        if hasattr(inv, 'authAlgorithm'):
-            self.authAlgorithm = inv.authAlgorithm
+        if hasattr(inv, 'IpsecAuthAlg'):
+            self.IpsecAuthAlg = inv.IpsecAuthAlg
         else:
-            self.authAlgorithm = None
+            self.IpsecAuthAlg = None
 
-        if hasattr(inv, 'pfs'):
-            self.pfs = inv.pfs
+        if hasattr(inv, 'IpsecPfs'):
+            self.IpsecPfs = inv.IpsecPfs
         else:
-            self.pfs = None
+            self.IpsecPfs = None
 
-        if hasattr(inv, 'lifetime'):
-            self.lifetime = inv.lifetime
+        if hasattr(inv, 'IpsecLifetime'):
+            self.IpsecLifetime = inv.IpsecLifetime
         else:
-            self.lifetime = None
+            self.IpsecLifetime = None
 
 
 
@@ -19281,6 +19281,7 @@ class GlobalConfig_QUOTA(object):
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
