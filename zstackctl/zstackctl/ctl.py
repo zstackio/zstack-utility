@@ -6801,8 +6801,8 @@ class StartVDIUICmd(Command):
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080", default='8080')
-        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000", default='9000')
-        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000", default='9000')
+        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 9000", default='9000')
+        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 9000", default='9000')
         parser.add_argument('--vdi-path', help="VDI path. [DEFAULT] /opt/zstack-dvd/zstack-vdi.war", default='/opt/zstack-dvd/zstack-vdi.war')
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
 
@@ -6870,7 +6870,7 @@ class StartVDIUICmd(Command):
         write_pid()
         pid = find_process_by_cmdline('zstack-vdi')
         if not pid:
-            info('fail to start VDI UI server on the localhost. Use zstack-ctl start_vdi to restart it. zstack UI log could be found in %s/zstack-vdi.log' % args.log)
+            info('fail to start VDI UI server on the localhost. Use zstack-ctl start_vdi to restart it. zstack VDI portal log could be found in %s/zstack-vdi.log' % args.log)
             return False
 
         default_ip = get_default_ip()
