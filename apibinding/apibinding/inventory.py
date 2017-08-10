@@ -604,7 +604,7 @@ class APICreateEcsInstanceFromEcsImageMsg(object):
         self.privateIpAddress = None
         #valid values: [true, false]
         self.allocatePublicIp = None
-        #valid regex values: [a-zA-Z0-9]{6}
+        #valid regex values: [A-Za-z0-9]{6}
         self.ecsConsolePassword = None
         #mandatory field
         self.name = NotNoneField()
@@ -617,7 +617,6 @@ class APICreateEcsInstanceFromEcsImageMsg(object):
         #mandatory field
         self.ecsSecurityGroupUuid = NotNoneField()
         #mandatory field
-        #valid regex values: ^[a-zA-Z][\w\W]{7,17}$
         self.ecsRootPassword = NotNoneField()
         self.ecsBandWidth = None
         self.resourceUuid = None
@@ -632,7 +631,7 @@ class APIDeleteAllEcsInstancesFromDataCenterMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
     def __init__(self):
         #mandatory field
-        self.dataCenterUuid = NotNoneField()
+        self.uuid = NotNoneField()
         self.deleteMode = None
         self.session = None
         self.timeout = None
@@ -1903,7 +1902,7 @@ class APIDeleteOssBucketFileRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketFileRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.bucketUuid = NotNoneField()
+        self.uuid = NotNoneField()
         #mandatory field
         self.fileName = NotNoneField()
         self.deleteMode = None
@@ -19274,27 +19273,6 @@ class GlobalConfig_PROGRESS(object):
     def get_category():
         return 'progress'
 
-class GlobalConfig_QUOTA(object):
-    IMAGE_SIZE = 'image.size'
-    VOLUME_DATA_NUM = 'volume.data.num'
-    L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
-    VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
-    IMAGE_NUM = 'image.num'
-    VM_CPUNUM = 'vm.cpuNum'
-    VM_TOTALNUM = 'vm.totalNum'
-    SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
-    VM_NUM = 'vm.num'
-    VOLUME_CAPACITY = 'volume.capacity'
-
-    @staticmethod
-    def get_category():
-        return 'quota'
-
 class GlobalConfig_REST(object):
     COMPLETEDAPI_EXPIREDPERIOD = 'completedApi.expiredPeriod'
     EXPIREDAPI_SCANINTERVAL = 'expiredApi.scanInterval'
@@ -19350,6 +19328,7 @@ class GlobalConfig_VM(object):
     VIDEOTYPE = 'videoType'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
     BOOTMENU = 'bootMenu'
+    KVMHIDDENSTATE = 'kvmHiddenState'
     EXPUNGEPERIOD = 'expungePeriod'
     DELETIONPOLICY = 'deletionPolicy'
     NUMA = 'numa'
@@ -19599,8 +19578,9 @@ class QueryObjectESXHostInventory(object):
 
 class QueryObjectEcsImageInventory(object):
      PRIMITIVE_FIELDS = ['ossMd5Sum','ecsImageId','format','description','type','uuid','platform','name','ecsImageSize','lastOpDate','localImageUuid','dataCenterUuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['datacenter']
      QUERY_OBJECT_MAP = {
+        'datacenter' : 'QueryObjectDataCenterInventory',
      }
 
 class QueryObjectEcsInstanceInventory(object):
