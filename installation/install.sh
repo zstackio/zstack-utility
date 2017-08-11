@@ -2314,6 +2314,18 @@ createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
+# Update non-rpm archives
+# - update squashfs.img if .repo_version < 170704
+REMOTESQUASHFS=${BASEURL}/LiveOS/squashfs.img
+LOCALSQUASHFS=/opt/zstack-dvd/LiveOS/squashfs.img
+REPOVERSION=`cat /opt/zstack-dvd/.repo_version`
+if [ $REPOVERSION -lt 170704 ]; then
+	rm -f $LOCALSQUASHFS
+	wget -c $REMOTESQUASHFS -O $LOCALSQUASHFS || return 1
+fi
+echo_subtitle "Update non-rpm archives"
+echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+
 echo_subtitle "Update /opt/zstack-dvd/.repo_version"
 cat .repo_version > /opt/zstack-dvd/.repo_version
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
