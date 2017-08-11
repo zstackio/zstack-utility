@@ -3462,8 +3462,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
-        r, o, e = bash.bash_roe("find /sys -iname dmar* && cat /proc/cmdline | grep 'intel_iommu=on'")
-        if r == 0:
+        r_bios, o_bios, e_bios = bash.bash_roe("find /sys -iname dmar*")
+        r_kernel, o_kernel, e_kernel = bash.bash_roe("cat /proc/cmdline | grep 'intel_iommu=on'")
+        if o_bios != '' and r_kernel == 0:
             rsp.hostIommuStatus = True
         else:
             rsp.hostIommuStatus = False
