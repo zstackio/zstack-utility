@@ -17512,6 +17512,8 @@ class HybridAccountInventory(object):
         self.userUuid = None
         self.type = None
         self.akey = None
+        self.aliyunAccountId = None
+        self.aliyunUserId = None
         self.secret = None
         self.current = None
         self.description = None
@@ -17548,6 +17550,16 @@ class HybridAccountInventory(object):
             self.akey = inv.akey
         else:
             self.akey = None
+
+        if hasattr(inv, 'aliyunAccountId'):
+            self.aliyunAccountId = inv.aliyunAccountId
+        else:
+            self.aliyunAccountId = None
+
+        if hasattr(inv, 'aliyunUserId'):
+            self.aliyunUserId = inv.aliyunUserId
+        else:
+            self.aliyunUserId = None
 
         if hasattr(inv, 'secret'):
             self.secret = inv.secret
@@ -19716,7 +19728,7 @@ class QueryObjectHostInventory(object):
      }
 
 class QueryObjectHybridAccountInventory(object):
-     PRIMITIVE_FIELDS = ['current','akey','name','userUuid','lastOpDate','accountUuid','description','type','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['accountUuid','description','type','uuid','aliyunUserId','current','akey','name','userUuid','lastOpDate','aliyunAccountId','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
