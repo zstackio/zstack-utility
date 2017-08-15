@@ -2653,12 +2653,12 @@ class Vm(object):
             e(video, 'model', None, {'type': str(cmd.videoType)})
 
 
-        def make_audio():
+        def make_audio_microphone():
             if cmd.consoleMode == 'spice':
                 devices = elements['devices']
-                e(devices, 'sound',None,{'model':'ac97'})
+                e(devices, 'sound',None,{'model':'ich6'})
             else:
-               return
+                return
 
         def make_graphic_console():
             if cmd.consoleMode == 'spice':
@@ -2738,7 +2738,7 @@ class Vm(object):
         make_features()
         make_devices()
         make_video()
-        make_audio()
+        make_audio_microphone()
         make_nics()
         make_volumes()
         make_cdrom()
