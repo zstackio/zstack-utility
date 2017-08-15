@@ -16533,7 +16533,7 @@ class AvailableInstanceTypeInventory(object):
 class IdentityZoneInventory(object):
     def __init__(self):
         self.uuid = None
-        self.deleted = None
+        self.closed = None
         self.dataCenterUuid = None
         self.zoneId = None
         self.type = None
@@ -16548,10 +16548,10 @@ class IdentityZoneInventory(object):
         else:
             self.uuid = None
 
-        if hasattr(inv, 'deleted'):
-            self.deleted = inv.deleted
+        if hasattr(inv, 'closed'):
+            self.closed = inv.closed
         else:
-            self.deleted = None
+            self.closed = None
 
         if hasattr(inv, 'dataCenterUuid'):
             self.dataCenterUuid = inv.dataCenterUuid
@@ -19273,6 +19273,27 @@ class GlobalConfig_PROGRESS(object):
     def get_category():
         return 'progress'
 
+class GlobalConfig_QUOTA(object):
+    IMAGE_SIZE = 'image.size'
+    VOLUME_DATA_NUM = 'volume.data.num'
+    L3_NUM = 'l3.num'
+    SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
+    VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
+    EIP_NUM = 'eip.num'
+    IMAGE_NUM = 'image.num'
+    VM_CPUNUM = 'vm.cpuNum'
+    VM_TOTALNUM = 'vm.totalNum'
+    SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    VIP_NUM = 'vip.num'
+    VM_NUM = 'vm.num'
+    VOLUME_CAPACITY = 'volume.capacity'
+
+    @staticmethod
+    def get_category():
+        return 'quota'
+
 class GlobalConfig_REST(object):
     COMPLETEDAPI_EXPIREDPERIOD = 'completedApi.expiredPeriod'
     EXPIREDAPI_SCANINTERVAL = 'expiredApi.scanInterval'
@@ -19728,7 +19749,7 @@ class QueryObjectIPsecPeerCidrInventory(object):
      }
 
 class QueryObjectIdentityZoneInventory(object):
-     PRIMITIVE_FIELDS = ['deleted','lastOpDate','dataCenterUuid','zoneId','description','zoneName','type','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['lastOpDate','closed','dataCenterUuid','zoneId','description','zoneName','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
