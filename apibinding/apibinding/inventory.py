@@ -11854,14 +11854,6 @@ class APICreateOSSProtectionSiteMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEOSSPROTECTIONSITEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteReply'
-class APICreateOSSProtectionSiteReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
-
-
 APICREATEPROTECTIONGATEWAYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGatewayMsg'
 class APICreateProtectionGatewayMsg(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGatewayMsg'
@@ -11877,14 +11869,6 @@ class APICreateProtectionGatewayMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
-
-
-APICREATEPROTECTIONGATEWAYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGatewayReply'
-class APICreateProtectionGatewayReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGatewayReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
 
 
 APICREATEPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGroupMsg'
@@ -11903,14 +11887,6 @@ class APICreateProtectionGroupMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
-
-
-APICREATEPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGroupReply'
-class APICreateProtectionGroupReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGroupReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
 
 
 APICREATEPROTECTIONPOLICYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionPolicyMsg'
@@ -11934,14 +11910,6 @@ class APICreateProtectionPolicyMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEPROTECTIONPOLICYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionPolicyReply'
-class APICreateProtectionPolicyReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionPolicyReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
-
-
 APIDELETEPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIDeleteProtectionGroupMsg'
 class APIDeleteProtectionGroupMsg(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APIDeleteProtectionGroupMsg'
@@ -11955,14 +11923,6 @@ class APIDeleteProtectionGroupMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
-
-
-APIDELETEPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIDeleteProtectionGroupReply'
-class APIDeleteProtectionGroupReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIDeleteProtectionGroupReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
 
 
 APIGETPROTECTIONGATEWAYSMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionGatewaysMsg'
@@ -12710,18 +12670,14 @@ api_names = [
     'APICreateMessage',
     'APICreateMonitorTriggerMsg',
     'APICreateOSSProtectionSiteMsg',
-    'APICreateOSSProtectionSiteReply',
     'APICreateOssBackupBucketRemoteMsg',
     'APICreateOssBucketRemoteMsg',
     'APICreatePciDeviceOfferingMsg',
     'APICreatePolicyMsg',
     'APICreatePortForwardingRuleMsg',
     'APICreateProtectionGatewayMsg',
-    'APICreateProtectionGatewayReply',
     'APICreateProtectionGroupMsg',
-    'APICreateProtectionGroupReply',
     'APICreateProtectionPolicyMsg',
-    'APICreateProtectionPolicyReply',
     'APICreateResourcePriceMsg',
     'APICreateRootVolumeTemplateFromRootVolumeMsg',
     'APICreateRootVolumeTemplateFromVolumeSnapshotMsg',
@@ -12807,7 +12763,6 @@ api_names = [
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
     'APIDeleteProtectionGroupMsg',
-    'APIDeleteProtectionGroupReply',
     'APIDeleteResourcePriceMsg',
     'APIDeleteRouterInterfaceLocalMsg',
     'APIDeleteRouterInterfaceRemoteMsg',
@@ -19318,10 +19273,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
