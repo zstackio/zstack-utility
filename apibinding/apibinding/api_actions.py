@@ -7206,6 +7206,18 @@ class UpdateDiskOfferingAction(inventory.APIUpdateDiskOfferingMsg):
         self.out = evt
         return self.out
 
+class UpdateEcsInstanceAction(inventory.APIUpdateEcsInstanceMsg):
+    def __init__(self):
+        super(UpdateEcsInstanceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEcsInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateEcsInstanceVncPasswordAction(inventory.APIUpdateEcsInstanceVncPasswordMsg):
     def __init__(self):
         super(UpdateEcsInstanceVncPasswordAction, self).__init__()

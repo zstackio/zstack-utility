@@ -789,6 +789,21 @@ class APISyncEcsInstanceFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceMsg'
+class APIUpdateEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.password = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIUPDATEECSINSTANCEVNCPASSWORDMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceVncPasswordMsg'
 class APIUpdateEcsInstanceVncPasswordMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceVncPasswordMsg'
@@ -13419,6 +13434,7 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
     'APIUpdateDiskOfferingMsg',
+    'APIUpdateEcsInstanceMsg',
     'APIUpdateEcsInstanceVncPasswordMsg',
     'APIUpdateEipMsg',
     'APIUpdateEmailMediaMsg',
