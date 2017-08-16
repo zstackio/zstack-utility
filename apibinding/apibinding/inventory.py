@@ -13712,6 +13712,8 @@ class EcsInstanceInventory(object):
         self.ecsImageUuid = None
         self.ecsSecurityGroupUuid = None
         self.identityZoneUuid = None
+        self.chargeType = None
+        self.expireDate = None
         self.createDate = None
         self.lastOpDate = None
         self.description = None
@@ -13806,6 +13808,16 @@ class EcsInstanceInventory(object):
             self.identityZoneUuid = inv.identityZoneUuid
         else:
             self.identityZoneUuid = None
+
+        if hasattr(inv, 'chargeType'):
+            self.chargeType = inv.chargeType
+        else:
+            self.chargeType = None
+
+        if hasattr(inv, 'expireDate'):
+            self.expireDate = inv.expireDate
+        else:
+            self.expireDate = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -19617,7 +19629,7 @@ class QueryObjectEcsImageInventory(object):
      }
 
 class QueryObjectEcsInstanceInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','chargeType','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','expireDate','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
