@@ -4334,6 +4334,18 @@ class GetVmQgaAction(inventory.APIGetVmQgaMsg):
         self.out = evt
         return self.out
 
+class GetVmRDPAction(inventory.APIGetVmRDPMsg):
+    def __init__(self):
+        super(GetVmRDPAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmRDPAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVmSshKeyAction(inventory.APIGetVmSshKeyMsg):
     def __init__(self):
         super(GetVmSshKeyAction, self).__init__()
@@ -6702,6 +6714,18 @@ class SetVmQgaAction(inventory.APISetVmQgaMsg):
         self.out = evt
         return self.out
 
+class SetVmRDPAction(inventory.APISetVmRDPMsg):
+    def __init__(self):
+        super(SetVmRDPAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmRDPAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SetVmSshKeyAction(inventory.APISetVmSshKeyMsg):
     def __init__(self):
         super(SetVmSshKeyAction, self).__init__()
@@ -7202,18 +7226,6 @@ class UpdateDiskOfferingAction(inventory.APIUpdateDiskOfferingMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateDiskOfferingAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UpdateEcsInstanceAction(inventory.APIUpdateEcsInstanceMsg):
-    def __init__(self):
-        super(UpdateEcsInstanceAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateEcsInstanceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
