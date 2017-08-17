@@ -278,17 +278,21 @@ echo_subtitle(){
 cs_check_hostname(){
     which hostname &>/dev/null
     [ $? -ne 0 ] && return 
+
     current_hostname=`hostname`
+    CHANGE_HOSTNAME=`echo $MANAGEMENT_IP | sed 's/\./-/g'`
+    HOSTS_ITEM="$MANAGEMENT_IP $CHANGE_HOSTNAME"
+
+    # insert into /etc/hosts if $HOSTS_ITEM not exists
+    grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
+
+    # current hostname is localhost
     if [ "localhost" = $current_hostname ] || [ "localhost.localdomain" = $current_hostname ] ; then
-        CHANGE_HOSTNAME=`echo $MANAGEMENT_IP|sed 's/\./-/g'`
-        CHANGE_HOSTS="$MANAGEMENT_IP $CHANGE_HOSTNAME"
         which hostnamectl >>/dev/null 2>&1
         if [ $? -ne 0 ]; then
             hostname $CHANGE_HOSTNAME
-            echo "$MANAGEMENT_IP $CHANGE_HOSTNAME"  >>/etc/hosts
         else
             hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
-            echo "$MANAGEMENT_IP $CHANGE_HOSTNAME"  >>/etc/hosts
         fi
         echo "Your OS hostname is set as $current_hostname, which will block vm live migration. You can set a special hostname, or directly use $CHANGE_HOSTNAME by running following commands in CentOS6:
 
@@ -303,8 +307,11 @@ or following commands in CentOS7:
         return 0
     fi
 
+    # current hostname is not same with IP
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
     [ $? -ne 0 ] && return 0
+
+    # current hostname is same with IP
     echo "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
 Please fix it by running following commands in CentOS7:
 
@@ -316,8 +323,6 @@ Then restart installation.
 
 You can also add '-q' to installer, then Installer will help you to set one.
 " >> $ZSTACK_INSTALL_LOG
-    CHANGE_HOSTNAME=`echo $MANAGEMENT_IP|sed 's/\./-/g'`
-    CHANGE_HOSTS="$current_hostname $CHANGE_HOSTNAME"
     which hostnamectl >>/dev/null 2>&1
     if [ $? -ne 0 ]; then
         hostname $CHANGE_HOSTNAME
