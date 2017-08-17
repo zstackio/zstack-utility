@@ -631,7 +631,7 @@ class APIDeleteAllEcsInstancesFromDataCenterMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
     def __init__(self):
         #mandatory field
-        self.uuid = NotNoneField()
+        self.dataCenterUuid = NotNoneField()
         self.deleteMode = None
         self.session = None
         self.timeout = None
@@ -783,21 +783,6 @@ class APISyncEcsInstanceFromRemoteMsg(object):
         self.dataCenterUuid = NotNoneField()
         self.onlyZstack = None
         self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIUPDATEECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceMsg'
-class APIUpdateEcsInstanceMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.name = None
-        self.description = None
-        self.password = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1917,7 +1902,7 @@ class APIDeleteOssBucketFileRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketFileRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.uuid = NotNoneField()
+        self.bucketUuid = NotNoneField()
         #mandatory field
         self.fileName = NotNoneField()
         self.deleteMode = None
@@ -7502,6 +7487,27 @@ class APIGetVmQgaReply(object):
         self.error = None
 
 
+APIGETVMRDPMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmRDPMsg'
+class APIGetVmRDPMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmRDPMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVMRDPREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmRDPReply'
+class APIGetVmRDPReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmRDPReply'
+    def __init__(self):
+        self.enable = None
+        self.success = None
+        self.error = None
+
+
 APIGETVMSSHKEYMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmSshKeyMsg'
 class APIGetVmSshKeyMsg(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmSshKeyMsg'
@@ -7786,6 +7792,20 @@ class APISetVmHostnameMsg(object):
 APISETVMQGAMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmQgaMsg'
 class APISetVmQgaMsg(object):
     FULL_NAME='org.zstack.header.vm.APISetVmQgaMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.enable = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISETVMRDPMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmRDPMsg'
+class APISetVmRDPMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetVmRDPMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -11854,6 +11874,14 @@ class APICreateOSSProtectionSiteMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEOSSPROTECTIONSITEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteReply'
+class APICreateOSSProtectionSiteReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
+
+
 APICREATEPROTECTIONGATEWAYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGatewayMsg'
 class APICreateProtectionGatewayMsg(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGatewayMsg'
@@ -11870,6 +11898,14 @@ class APICreateProtectionGatewayMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APICREATEPROTECTIONGATEWAYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGatewayReply'
+class APICreateProtectionGatewayReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGatewayReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
 
 
 APICREATEPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGroupMsg'
@@ -11890,6 +11926,14 @@ class APICreateProtectionGroupMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APICREATEPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGroupReply'
+class APICreateProtectionGroupReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGroupReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
 
 
 APICREATEPROTECTIONPOLICYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionPolicyMsg'
@@ -11918,6 +11962,14 @@ class APICreateProtectionPolicyMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEPROTECTIONPOLICYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionPolicyReply'
+class APICreateProtectionPolicyReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionPolicyReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
+
+
 APIDELETEPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIDeleteProtectionGroupMsg'
 class APIDeleteProtectionGroupMsg(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APIDeleteProtectionGroupMsg'
@@ -11932,6 +11984,14 @@ class APIDeleteProtectionGroupMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIDELETEPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIDeleteProtectionGroupReply'
+class APIDeleteProtectionGroupReply(object):
+    FULL_NAME='org.zstack.storage.primary.xsky.APIDeleteProtectionGroupReply'
+    def __init__(self):
+        self.success = None
+        self.error = None
 
 
 APIGETPROTECTIONGATEWAYSMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionGatewaysMsg'
@@ -12679,14 +12739,18 @@ api_names = [
     'APICreateMessage',
     'APICreateMonitorTriggerMsg',
     'APICreateOSSProtectionSiteMsg',
+    'APICreateOSSProtectionSiteReply',
     'APICreateOssBackupBucketRemoteMsg',
     'APICreateOssBucketRemoteMsg',
     'APICreatePciDeviceOfferingMsg',
     'APICreatePolicyMsg',
     'APICreatePortForwardingRuleMsg',
     'APICreateProtectionGatewayMsg',
+    'APICreateProtectionGatewayReply',
     'APICreateProtectionGroupMsg',
+    'APICreateProtectionGroupReply',
     'APICreateProtectionPolicyMsg',
+    'APICreateProtectionPolicyReply',
     'APICreateResourcePriceMsg',
     'APICreateRootVolumeTemplateFromRootVolumeMsg',
     'APICreateRootVolumeTemplateFromVolumeSnapshotMsg',
@@ -12772,6 +12836,7 @@ api_names = [
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
     'APIDeleteProtectionGroupMsg',
+    'APIDeleteProtectionGroupReply',
     'APIDeleteResourcePriceMsg',
     'APIDeleteRouterInterfaceLocalMsg',
     'APIDeleteRouterInterfaceRemoteMsg',
@@ -13003,6 +13068,8 @@ api_names = [
     'APIGetVmMigrationCandidateHostsReply',
     'APIGetVmQgaMsg',
     'APIGetVmQgaReply',
+    'APIGetVmRDPMsg',
+    'APIGetVmRDPReply',
     'APIGetVmSshKeyMsg',
     'APIGetVmSshKeyReply',
     'APIGetVmStartingCandidateClustersHostsMsg',
@@ -13356,6 +13423,7 @@ api_names = [
     'APISetVmHostnameMsg',
     'APISetVmInstanceHaLevelMsg',
     'APISetVmQgaMsg',
+    'APISetVmRDPMsg',
     'APISetVmSshKeyMsg',
     'APISetVmStaticIpMsg',
     'APISetVmUsbRedirectMsg',
@@ -13398,7 +13466,6 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
     'APIUpdateDiskOfferingMsg',
-    'APIUpdateEcsInstanceMsg',
     'APIUpdateEcsInstanceVncPasswordMsg',
     'APIUpdateEipMsg',
     'APIUpdateEmailMediaMsg',
@@ -13692,8 +13759,6 @@ class EcsInstanceInventory(object):
         self.ecsImageUuid = None
         self.ecsSecurityGroupUuid = None
         self.identityZoneUuid = None
-        self.chargeType = None
-        self.expireDate = None
         self.createDate = None
         self.lastOpDate = None
         self.description = None
@@ -13788,16 +13853,6 @@ class EcsInstanceInventory(object):
             self.identityZoneUuid = inv.identityZoneUuid
         else:
             self.identityZoneUuid = None
-
-        if hasattr(inv, 'chargeType'):
-            self.chargeType = inv.chargeType
-        else:
-            self.chargeType = None
-
-        if hasattr(inv, 'expireDate'):
-            self.expireDate = inv.expireDate
-        else:
-            self.expireDate = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -16525,7 +16580,7 @@ class AvailableInstanceTypeInventory(object):
 class IdentityZoneInventory(object):
     def __init__(self):
         self.uuid = None
-        self.closed = None
+        self.deleted = None
         self.dataCenterUuid = None
         self.zoneId = None
         self.type = None
@@ -16540,10 +16595,10 @@ class IdentityZoneInventory(object):
         else:
             self.uuid = None
 
-        if hasattr(inv, 'closed'):
-            self.closed = inv.closed
+        if hasattr(inv, 'deleted'):
+            self.deleted = inv.deleted
         else:
-            self.closed = None
+            self.deleted = None
 
         if hasattr(inv, 'dataCenterUuid'):
             self.dataCenterUuid = inv.dataCenterUuid
@@ -17504,8 +17559,6 @@ class HybridAccountInventory(object):
         self.userUuid = None
         self.type = None
         self.akey = None
-        self.aliyunAccountId = None
-        self.aliyunUserId = None
         self.secret = None
         self.current = None
         self.description = None
@@ -17542,16 +17595,6 @@ class HybridAccountInventory(object):
             self.akey = inv.akey
         else:
             self.akey = None
-
-        if hasattr(inv, 'aliyunAccountId'):
-            self.aliyunAccountId = inv.aliyunAccountId
-        else:
-            self.aliyunAccountId = None
-
-        if hasattr(inv, 'aliyunUserId'):
-            self.aliyunUserId = inv.aliyunUserId
-        else:
-            self.aliyunUserId = None
 
         if hasattr(inv, 'secret'):
             self.secret = inv.secret
@@ -19282,7 +19325,10 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
@@ -19606,7 +19652,7 @@ class QueryObjectEcsImageInventory(object):
      }
 
 class QueryObjectEcsInstanceInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','chargeType','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','expireDate','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19717,7 +19763,7 @@ class QueryObjectHostInventory(object):
      }
 
 class QueryObjectHybridAccountInventory(object):
-     PRIMITIVE_FIELDS = ['accountUuid','description','type','uuid','aliyunUserId','current','akey','name','userUuid','lastOpDate','aliyunAccountId','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['current','akey','name','userUuid','lastOpDate','accountUuid','description','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19750,7 +19796,7 @@ class QueryObjectIPsecPeerCidrInventory(object):
      }
 
 class QueryObjectIdentityZoneInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','closed','dataCenterUuid','zoneId','description','zoneName','type','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['deleted','lastOpDate','dataCenterUuid','zoneId','description','zoneName','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
