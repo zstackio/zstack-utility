@@ -11864,7 +11864,8 @@ class APICreateProtectionGatewayMsg(object):
         self.name = NotNoneField()
         #mandatory field
         self.accessToken = NotNoneField()
-        self.protectionHostId = None
+        #mandatory field
+        self.protectionHostId = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11881,8 +11882,10 @@ class APICreateProtectionGroupMsg(object):
         self.name = NotNoneField()
         #mandatory field
         self.accessToken = NotNoneField()
-        self.policyId = None
-        self.volumeIds = OptionalList()
+        #mandatory field
+        self.policyId = NotNoneField()
+        #mandatory field
+        self.volumeIds = NotNoneList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11899,11 +11902,16 @@ class APICreateProtectionPolicyMsg(object):
         self.name = NotNoneField()
         #mandatory field
         self.accessToken = NotNoneField()
-        self.siteId = None
-        self.gatewayId = None
-        self.backupIntervalInHour = None
-        self.backupRetainedDays = None
-        self.fullBackupIntervalTimes = None
+        #mandatory field
+        self.siteId = NotNoneField()
+        #mandatory field
+        self.gatewayId = NotNoneField()
+        #mandatory field
+        self.backupIntervalInHour = NotNoneField()
+        #mandatory field
+        self.backupRetainedDays = NotNoneField()
+        #mandatory field
+        self.fullBackupIntervalTimes = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11918,7 +11926,8 @@ class APIDeleteProtectionGroupMsg(object):
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
         self.accessToken = NotNoneField()
-        self.groupId = None
+        #mandatory field
+        self.groupId = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
