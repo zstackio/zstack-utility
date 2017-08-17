@@ -3468,7 +3468,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.hostIommuStatus = True
         else:
             rsp.hostIommuStatus = False
-        r, o, e = bash.bash_roe("lspci -nnv | grep -E %s" % cmd.filterString)
+        r, o, e = bash.bash_roe("lspci -mmnnv")
         if r!= 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
