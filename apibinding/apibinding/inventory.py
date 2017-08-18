@@ -582,6 +582,20 @@ class APIQueryAliyunKeySecretReply(object):
         self.error = None
 
 
+APIUPDATEALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIUpdateAliyunKeySecretMsg'
+class APIUpdateAliyunKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.account.APIUpdateAliyunKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICLONEECSINSTANCEFROMLOCALVMMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICloneEcsInstanceFromLocalVmMsg'
 class APICloneEcsInstanceFromLocalVmMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APICloneEcsInstanceFromLocalVmMsg'
@@ -631,7 +645,7 @@ class APIDeleteAllEcsInstancesFromDataCenterMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APIDeleteAllEcsInstancesFromDataCenterMsg'
     def __init__(self):
         #mandatory field
-        self.dataCenterUuid = NotNoneField()
+        self.uuid = NotNoneField()
         self.deleteMode = None
         self.session = None
         self.timeout = None
@@ -783,6 +797,21 @@ class APISyncEcsInstanceFromRemoteMsg(object):
         self.dataCenterUuid = NotNoneField()
         self.onlyZstack = None
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEECSINSTANCEMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceMsg'
+class APIUpdateEcsInstanceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.ecs.APIUpdateEcsInstanceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.password = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1902,7 +1931,7 @@ class APIDeleteOssBucketFileRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.oss.APIDeleteOssBucketFileRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.bucketUuid = NotNoneField()
+        self.uuid = NotNoneField()
         #mandatory field
         self.fileName = NotNoneField()
         self.deleteMode = None
@@ -11874,14 +11903,6 @@ class APICreateOSSProtectionSiteMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEOSSPROTECTIONSITEREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteReply'
-class APICreateOSSProtectionSiteReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APICreateOSSProtectionSiteReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
-
-
 APICREATEPROTECTIONGATEWAYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGatewayMsg'
 class APICreateProtectionGatewayMsg(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGatewayMsg'
@@ -11898,14 +11919,6 @@ class APICreateProtectionGatewayMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
-
-
-APICREATEPROTECTIONGATEWAYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGatewayReply'
-class APICreateProtectionGatewayReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGatewayReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
 
 
 APICREATEPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGroupMsg'
@@ -11926,14 +11939,6 @@ class APICreateProtectionGroupMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
-
-
-APICREATEPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionGroupReply'
-class APICreateProtectionGroupReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionGroupReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
 
 
 APICREATEPROTECTIONPOLICYMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionPolicyMsg'
@@ -11962,14 +11967,6 @@ class APICreateProtectionPolicyMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEPROTECTIONPOLICYREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APICreateProtectionPolicyReply'
-class APICreateProtectionPolicyReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APICreateProtectionPolicyReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
-
-
 APIDELETEPROTECTIONGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIDeleteProtectionGroupMsg'
 class APIDeleteProtectionGroupMsg(object):
     FULL_NAME='org.zstack.storage.primary.xsky.APIDeleteProtectionGroupMsg'
@@ -11984,14 +11981,6 @@ class APIDeleteProtectionGroupMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
-
-
-APIDELETEPROTECTIONGROUPREPLY_FULL_NAME = 'org.zstack.storage.primary.xsky.APIDeleteProtectionGroupReply'
-class APIDeleteProtectionGroupReply(object):
-    FULL_NAME='org.zstack.storage.primary.xsky.APIDeleteProtectionGroupReply'
-    def __init__(self):
-        self.success = None
-        self.error = None
 
 
 APIGETPROTECTIONGATEWAYSMSG_FULL_NAME = 'org.zstack.storage.primary.xsky.APIGetProtectionGatewaysMsg'
@@ -12739,18 +12728,14 @@ api_names = [
     'APICreateMessage',
     'APICreateMonitorTriggerMsg',
     'APICreateOSSProtectionSiteMsg',
-    'APICreateOSSProtectionSiteReply',
     'APICreateOssBackupBucketRemoteMsg',
     'APICreateOssBucketRemoteMsg',
     'APICreatePciDeviceOfferingMsg',
     'APICreatePolicyMsg',
     'APICreatePortForwardingRuleMsg',
     'APICreateProtectionGatewayMsg',
-    'APICreateProtectionGatewayReply',
     'APICreateProtectionGroupMsg',
-    'APICreateProtectionGroupReply',
     'APICreateProtectionPolicyMsg',
-    'APICreateProtectionPolicyReply',
     'APICreateResourcePriceMsg',
     'APICreateRootVolumeTemplateFromRootVolumeMsg',
     'APICreateRootVolumeTemplateFromVolumeSnapshotMsg',
@@ -12836,7 +12821,6 @@ api_names = [
     'APIDeletePortForwardingRuleMsg',
     'APIDeletePrimaryStorageMsg',
     'APIDeleteProtectionGroupMsg',
-    'APIDeleteProtectionGroupReply',
     'APIDeleteResourcePriceMsg',
     'APIDeleteRouterInterfaceLocalMsg',
     'APIDeleteRouterInterfaceRemoteMsg',
@@ -13458,6 +13442,7 @@ api_names = [
     'APITerminateVirtualBorderRouterRemoteMsg',
     'APITriggerGCJobMsg',
     'APIUpdateAccountMsg',
+    'APIUpdateAliyunKeySecretMsg',
     'APIUpdateBackupStorageMsg',
     'APIUpdateBaremetalChassisMsg',
     'APIUpdateBaremetalPxeServerMsg',
@@ -13466,6 +13451,7 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
     'APIUpdateDiskOfferingMsg',
+    'APIUpdateEcsInstanceMsg',
     'APIUpdateEcsInstanceVncPasswordMsg',
     'APIUpdateEipMsg',
     'APIUpdateEmailMediaMsg',
@@ -13759,6 +13745,8 @@ class EcsInstanceInventory(object):
         self.ecsImageUuid = None
         self.ecsSecurityGroupUuid = None
         self.identityZoneUuid = None
+        self.chargeType = None
+        self.expireDate = None
         self.createDate = None
         self.lastOpDate = None
         self.description = None
@@ -13853,6 +13841,16 @@ class EcsInstanceInventory(object):
             self.identityZoneUuid = inv.identityZoneUuid
         else:
             self.identityZoneUuid = None
+
+        if hasattr(inv, 'chargeType'):
+            self.chargeType = inv.chargeType
+        else:
+            self.chargeType = None
+
+        if hasattr(inv, 'expireDate'):
+            self.expireDate = inv.expireDate
+        else:
+            self.expireDate = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -16580,7 +16578,7 @@ class AvailableInstanceTypeInventory(object):
 class IdentityZoneInventory(object):
     def __init__(self):
         self.uuid = None
-        self.deleted = None
+        self.closed = None
         self.dataCenterUuid = None
         self.zoneId = None
         self.type = None
@@ -16595,10 +16593,10 @@ class IdentityZoneInventory(object):
         else:
             self.uuid = None
 
-        if hasattr(inv, 'deleted'):
-            self.deleted = inv.deleted
+        if hasattr(inv, 'closed'):
+            self.closed = inv.closed
         else:
-            self.deleted = None
+            self.closed = None
 
         if hasattr(inv, 'dataCenterUuid'):
             self.dataCenterUuid = inv.dataCenterUuid
@@ -17559,6 +17557,9 @@ class HybridAccountInventory(object):
         self.userUuid = None
         self.type = None
         self.akey = None
+        self.hybridAccountId = None
+        self.hybridUserId = None
+        self.hybridUserName = None
         self.secret = None
         self.current = None
         self.description = None
@@ -17595,6 +17596,21 @@ class HybridAccountInventory(object):
             self.akey = inv.akey
         else:
             self.akey = None
+
+        if hasattr(inv, 'hybridAccountId'):
+            self.hybridAccountId = inv.hybridAccountId
+        else:
+            self.hybridAccountId = None
+
+        if hasattr(inv, 'hybridUserId'):
+            self.hybridUserId = inv.hybridUserId
+        else:
+            self.hybridUserId = None
+
+        if hasattr(inv, 'hybridUserName'):
+            self.hybridUserName = inv.hybridUserName
+        else:
+            self.hybridUserName = None
 
         if hasattr(inv, 'secret'):
             self.secret = inv.secret
@@ -19652,7 +19668,7 @@ class QueryObjectEcsImageInventory(object):
      }
 
 class QueryObjectEcsInstanceInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','chargeType','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','expireDate','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19763,7 +19779,7 @@ class QueryObjectHostInventory(object):
      }
 
 class QueryObjectHybridAccountInventory(object):
-     PRIMITIVE_FIELDS = ['current','akey','name','userUuid','lastOpDate','accountUuid','description','type','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['hybridUserName','hybridAccountId','accountUuid','description','type','uuid','current','akey','hybridUserId','name','userUuid','lastOpDate','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19796,7 +19812,7 @@ class QueryObjectIPsecPeerCidrInventory(object):
      }
 
 class QueryObjectIdentityZoneInventory(object):
-     PRIMITIVE_FIELDS = ['deleted','lastOpDate','dataCenterUuid','zoneId','description','zoneName','type','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['lastOpDate','closed','dataCenterUuid','zoneId','description','zoneName','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
