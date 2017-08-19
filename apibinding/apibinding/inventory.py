@@ -582,20 +582,6 @@ class APIQueryAliyunKeySecretReply(object):
         self.error = None
 
 
-APIUPDATEALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIUpdateAliyunKeySecretMsg'
-class APIUpdateAliyunKeySecretMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.account.APIUpdateAliyunKeySecretMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.name = None
-        self.description = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APICLONEECSINSTANCEFROMLOCALVMMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICloneEcsInstanceFromLocalVmMsg'
 class APICloneEcsInstanceFromLocalVmMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APICloneEcsInstanceFromLocalVmMsg'
@@ -7495,6 +7481,27 @@ class APIGetVmMigrationCandidateHostsReply(object):
         self.error = None
 
 
+APIGETVMMONITORNUMBERMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmMonitorNumberMsg'
+class APIGetVmMonitorNumberMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmMonitorNumberMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVMMONITORNUMBERREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetVmMonitorNumberReply'
+class APIGetVmMonitorNumberReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetVmMonitorNumberReply'
+    def __init__(self):
+        self.monitorNumber = None
+        self.success = None
+        self.error = None
+
+
 APIGETVMQGAMSG_FULL_NAME = 'org.zstack.header.vm.APIGetVmQgaMsg'
 class APIGetVmQgaMsg(object):
     FULL_NAME='org.zstack.header.vm.APIGetVmQgaMsg'
@@ -7812,6 +7819,20 @@ class APISetVmHostnameMsg(object):
         self.uuid = NotNoneField()
         #mandatory field
         self.hostname = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISETVMMONITORNUMBERMSG_FULL_NAME = 'org.zstack.header.vm.APISetVmMonitorNumberMsg'
+class APISetVmMonitorNumberMsg(object):
+    FULL_NAME='org.zstack.header.vm.APISetVmMonitorNumberMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.monitorNumber = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -13050,6 +13071,8 @@ api_names = [
     'APIGetVmInstanceReply',
     'APIGetVmMigrationCandidateHostsMsg',
     'APIGetVmMigrationCandidateHostsReply',
+    'APIGetVmMonitorNumberMsg',
+    'APIGetVmMonitorNumberReply',
     'APIGetVmQgaMsg',
     'APIGetVmQgaReply',
     'APIGetVmRDPMsg',
@@ -13406,6 +13429,7 @@ api_names = [
     'APISetVmConsolePasswordMsg',
     'APISetVmHostnameMsg',
     'APISetVmInstanceHaLevelMsg',
+    'APISetVmMonitorNumberMsg',
     'APISetVmQgaMsg',
     'APISetVmRDPMsg',
     'APISetVmSshKeyMsg',
@@ -13442,7 +13466,6 @@ api_names = [
     'APITerminateVirtualBorderRouterRemoteMsg',
     'APITriggerGCJobMsg',
     'APIUpdateAccountMsg',
-    'APIUpdateAliyunKeySecretMsg',
     'APIUpdateBackupStorageMsg',
     'APIUpdateBaremetalChassisMsg',
     'APIUpdateBaremetalPxeServerMsg',
@@ -17557,9 +17580,8 @@ class HybridAccountInventory(object):
         self.userUuid = None
         self.type = None
         self.akey = None
-        self.hybridAccountId = None
-        self.hybridUserId = None
-        self.hybridUserName = None
+        self.aliyunAccountId = None
+        self.aliyunUserId = None
         self.secret = None
         self.current = None
         self.description = None
@@ -17597,20 +17619,15 @@ class HybridAccountInventory(object):
         else:
             self.akey = None
 
-        if hasattr(inv, 'hybridAccountId'):
-            self.hybridAccountId = inv.hybridAccountId
+        if hasattr(inv, 'aliyunAccountId'):
+            self.aliyunAccountId = inv.aliyunAccountId
         else:
-            self.hybridAccountId = None
+            self.aliyunAccountId = None
 
-        if hasattr(inv, 'hybridUserId'):
-            self.hybridUserId = inv.hybridUserId
+        if hasattr(inv, 'aliyunUserId'):
+            self.aliyunUserId = inv.aliyunUserId
         else:
-            self.hybridUserId = None
-
-        if hasattr(inv, 'hybridUserName'):
-            self.hybridUserName = inv.hybridUserName
-        else:
-            self.hybridUserName = None
+            self.aliyunUserId = None
 
         if hasattr(inv, 'secret'):
             self.secret = inv.secret
@@ -19779,7 +19796,7 @@ class QueryObjectHostInventory(object):
      }
 
 class QueryObjectHybridAccountInventory(object):
-     PRIMITIVE_FIELDS = ['hybridUserName','hybridAccountId','accountUuid','description','type','uuid','current','akey','hybridUserId','name','userUuid','lastOpDate','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['accountUuid','description','type','uuid','aliyunUserId','current','akey','name','userUuid','lastOpDate','aliyunAccountId','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }

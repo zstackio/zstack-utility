@@ -4322,6 +4322,18 @@ class GetVmMigrationCandidateHostsAction(inventory.APIGetVmMigrationCandidateHos
         self.out = evt
         return self.out
 
+class GetVmMonitorNumberAction(inventory.APIGetVmMonitorNumberMsg):
+    def __init__(self):
+        super(GetVmMonitorNumberAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVmMonitorNumberAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVmQgaAction(inventory.APIGetVmQgaMsg):
     def __init__(self):
         super(GetVmQgaAction, self).__init__()
@@ -6702,6 +6714,18 @@ class SetVmInstanceHaLevelAction(inventory.APISetVmInstanceHaLevelMsg):
         self.out = evt
         return self.out
 
+class SetVmMonitorNumberAction(inventory.APISetVmMonitorNumberMsg):
+    def __init__(self):
+        super(SetVmMonitorNumberAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVmMonitorNumberAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SetVmQgaAction(inventory.APISetVmQgaMsg):
     def __init__(self):
         super(SetVmQgaAction, self).__init__()
@@ -7130,18 +7154,6 @@ class UpdateAccountAction(inventory.APIUpdateAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateAccountAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UpdateAliyunKeySecretAction(inventory.APIUpdateAliyunKeySecretMsg):
-    def __init__(self):
-        super(UpdateAliyunKeySecretAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateAliyunKeySecretAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
