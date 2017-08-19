@@ -4953,13 +4953,20 @@ class InstallManagementNodeCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack management node to a remote machine', required=True)
+        parser.add_argument('--host', help='target host IP user and password, for example, root:password@192.168.0.212, to install ZStack management node to a remote machine', required=True)
         parser.add_argument('--install-path', help='the path on remote machine where Apache Tomcat will be installed, which must be an absolute path; [DEFAULT]: /usr/local/zstack', default='/usr/local/zstack')
         parser.add_argument('--source-dir', help='the source folder containing Apache Tomcat package and zstack.war, if omitted, it will default to a path related to $ZSTACK_HOME')
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
         parser.add_argument('--force-reinstall', help="delete existing Apache Tomcat and resinstall ZStack", action="store_true", default=False)
         parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
+
+    def add_public_key_to_host(self, key_path, host_info):
+        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+                 ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            error("Copy public key '%s' to host: '%s' failed:\n %s" % (key_path, host_info.host,  output))
 
     def run(self, args):
         if not os.path.isabs(args.install_path):
@@ -4973,6 +4980,20 @@ class InstallManagementNodeCmd(Command):
 
         if not args.yum:
             args.yum = get_yum_repo_from_property()
+
+        if args.ssh_key is None:
+            ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
+        private_key = ssh_key.split('.')[0]
+
+        inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
+        host_info = HostPostInfo()
+        host_info.private_key = private_key
+        host_info.host_inventory =  inventory_file
+        (host_info.remote_user, host_info.remote_pass, host_info.host, host_info.remote_port) = check_host_info_format(args.host)
+
+        check_host_password(host_info.remote_pass, host_info.host)
+        
+        self.add_public_key_to_host(ssh_key, host_info)
 
         apache_tomcat = None
         zstack = None
@@ -5260,7 +5281,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
         else:
             yum_repo = 'false'
         yaml = t.substitute({
-            'host': args.host,
+            'host': host_info.host,
             'install_path': args.install_path,
             'apache_path': apache_tomcat,
             'zstack_path': zstack,
@@ -5277,8 +5298,9 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'setup_account': setup_account_path
         })
 
-        ansible(yaml, args.host, args.debug, args.ssh_key)
-        info('successfully installed new management node on machine(%s)' % args.host)
+        
+        ansible(yaml, host_info.host, args.debug, private_key)
+        info('successfully installed new management node on machine(%s)' % host_info.host)
 
 class ShowConfiguration(Command):
     def __init__(self):
@@ -5616,7 +5638,7 @@ class UpgradeManagementNodeCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='IP or DNS name of the machine to upgrade the management node', default=None)
+        parser.add_argument('--host', help='IP or DNS name of the machine to upgrade the management node, for example, zstack-ctl upgrade_management_node --host=192.168.0.212 --war-file=/usr/local/zstack/zstack.war, to upgrade ZStack management node to a remote machine', default=None)
         parser.add_argument('--war-file', help='path to zstack.war. A HTTP/HTTPS url or a path to a local zstack.war', required=True)
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
@@ -5780,7 +5802,12 @@ fi
             })
 
             info('start to upgrade the remote management node; the process may cost several minutes ...')
-            ansible(yaml, args.host, args.debug, ssh_key=args.ssh_key)
+
+            if args.ssh_key is None:
+                ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
+            private_key = ssh_key.split('.')[0]
+
+            ansible(yaml, args.host, args.debug, ssh_key=private_key)
             info('upgraded the remote management node successfully')
 
 
