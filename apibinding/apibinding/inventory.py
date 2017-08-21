@@ -7216,6 +7216,35 @@ class APIGetCandidateIsoForAttachingVmReply(object):
         self.error = None
 
 
+APIGETCANDIDATEPRIMARYSTORAGESFORCREATINGVMMSG_FULL_NAME = 'org.zstack.header.vm.APIGetCandidatePrimaryStoragesForCreatingVmMsg'
+class APIGetCandidatePrimaryStoragesForCreatingVmMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetCandidatePrimaryStoragesForCreatingVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.imageUuid = NotNoneField()
+        #mandatory field
+        self.l3NetworkUuids = NotNoneList()
+        self.rootDiskOfferingUuid = None
+        self.dataDiskOfferingUuids = OptionalList()
+        self.zoneUuid = None
+        self.clusterUuid = None
+        self.defaultL3NetworkUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETCANDIDATEPRIMARYSTORAGESFORCREATINGVMREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetCandidatePrimaryStoragesForCreatingVmReply'
+class APIGetCandidatePrimaryStoragesForCreatingVmReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetCandidatePrimaryStoragesForCreatingVmReply'
+    def __init__(self):
+        self.rootVolumePrimaryStorages = OptionalList()
+        self.dataVolumePrimaryStorages = OptionalMap()
+        self.success = None
+        self.error = None
+
+
 APIGETCANDIDATEVMFORATTACHINGISOMSG_FULL_NAME = 'org.zstack.header.vm.APIGetCandidateVmForAttachingIsoMsg'
 class APIGetCandidateVmForAttachingIsoMsg(object):
     FULL_NAME='org.zstack.header.vm.APIGetCandidateVmForAttachingIsoMsg'
@@ -12938,6 +12967,8 @@ api_names = [
     'APIGetCandidateBackupStorageForCreatingImageReply',
     'APIGetCandidateIsoForAttachingVmMsg',
     'APIGetCandidateIsoForAttachingVmReply',
+    'APIGetCandidatePrimaryStoragesForCreatingVmMsg',
+    'APIGetCandidatePrimaryStoragesForCreatingVmReply',
     'APIGetCandidateVmForAttachingIsoMsg',
     'APIGetCandidateVmForAttachingIsoReply',
     'APIGetCandidateVmNicForSecurityGroupMsg',
@@ -19377,10 +19408,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
