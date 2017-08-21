@@ -998,7 +998,7 @@ class APICreateRouterInterfacePairRemoteMsg(object):
         self.accessPointUuid = NotNoneField()
         #mandatory field
         #valid values: [Small.1, Small.2, Small.5, Middle.1, Middle.2, Middle.5, Large.1, Large.2]
-        self.Spec = NotNoneField()
+        self.spec = NotNoneField()
         #mandatory field
         self.vRouterUuid = NotNoneField()
         #mandatory field
@@ -1009,8 +1009,6 @@ class APICreateRouterInterfacePairRemoteMsg(object):
         self.bDescription = None
         #mandatory field
         self.bName = NotNoneField()
-        #mandatory field
-        self.ownerName = NotNoneField()
         self.resourceUuid = None
         self.session = None
         self.timeout = None
