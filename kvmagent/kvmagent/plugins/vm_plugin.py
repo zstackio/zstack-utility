@@ -2649,8 +2649,13 @@ class Vm(object):
 
         def make_video():
             devices = elements['devices']
-            video = e(devices, 'video')
-            e(video, 'model', None, {'type': str(cmd.videoType)})
+            if cmd.videoType != "qxl":
+                video = e(devices, 'video')
+                e(video, 'model', None, {'type': str(cmd.videoType)})
+            else:
+                for monitor in range(cmd.VDIMonitorNumber):
+                    video = e(devices, 'video')
+                    e(video, 'model', None, {'type': str(cmd.videoType)})
 
 
         def make_audio_microphone():
