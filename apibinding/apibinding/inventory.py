@@ -582,6 +582,20 @@ class APIQueryAliyunKeySecretReply(object):
         self.error = None
 
 
+APIUPDATEALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIUpdateAliyunKeySecretMsg'
+class APIUpdateAliyunKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.account.APIUpdateAliyunKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICLONEECSINSTANCEFROMLOCALVMMSG_FULL_NAME = 'org.zstack.header.aliyun.ecs.APICloneEcsInstanceFromLocalVmMsg'
 class APICloneEcsInstanceFromLocalVmMsg(object):
     FULL_NAME='org.zstack.header.aliyun.ecs.APICloneEcsInstanceFromLocalVmMsg'
@@ -13466,6 +13480,7 @@ api_names = [
     'APITerminateVirtualBorderRouterRemoteMsg',
     'APITriggerGCJobMsg',
     'APIUpdateAccountMsg',
+    'APIUpdateAliyunKeySecretMsg',
     'APIUpdateBackupStorageMsg',
     'APIUpdateBaremetalChassisMsg',
     'APIUpdateBaremetalPxeServerMsg',
@@ -17580,8 +17595,9 @@ class HybridAccountInventory(object):
         self.userUuid = None
         self.type = None
         self.akey = None
-        self.aliyunAccountId = None
-        self.aliyunUserId = None
+        self.hybridAccountId = None
+        self.hybridUserId = None
+        self.hybridUserName = None
         self.secret = None
         self.current = None
         self.description = None
@@ -17619,15 +17635,20 @@ class HybridAccountInventory(object):
         else:
             self.akey = None
 
-        if hasattr(inv, 'aliyunAccountId'):
-            self.aliyunAccountId = inv.aliyunAccountId
+        if hasattr(inv, 'hybridAccountId'):
+            self.hybridAccountId = inv.hybridAccountId
         else:
-            self.aliyunAccountId = None
+            self.hybridAccountId = None
 
-        if hasattr(inv, 'aliyunUserId'):
-            self.aliyunUserId = inv.aliyunUserId
+        if hasattr(inv, 'hybridUserId'):
+            self.hybridUserId = inv.hybridUserId
         else:
-            self.aliyunUserId = None
+            self.hybridUserId = None
+
+        if hasattr(inv, 'hybridUserName'):
+            self.hybridUserName = inv.hybridUserName
+        else:
+            self.hybridUserName = None
 
         if hasattr(inv, 'secret'):
             self.secret = inv.secret
@@ -19796,7 +19817,7 @@ class QueryObjectHostInventory(object):
      }
 
 class QueryObjectHybridAccountInventory(object):
-     PRIMITIVE_FIELDS = ['accountUuid','description','type','uuid','aliyunUserId','current','akey','name','userUuid','lastOpDate','aliyunAccountId','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['hybridUserName','hybridAccountId','accountUuid','description','type','uuid','current','akey','hybridUserId','name','userUuid','lastOpDate','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }

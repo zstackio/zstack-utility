@@ -7158,6 +7158,18 @@ class UpdateAccountAction(inventory.APIUpdateAccountMsg):
         self.out = evt
         return self.out
 
+class UpdateAliyunKeySecretAction(inventory.APIUpdateAliyunKeySecretMsg):
+    def __init__(self):
+        super(UpdateAliyunKeySecretAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAliyunKeySecretAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateBackupStorageAction(inventory.APIUpdateBackupStorageMsg):
     def __init__(self):
         super(UpdateBackupStorageAction, self).__init__()
