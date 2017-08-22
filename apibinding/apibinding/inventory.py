@@ -5697,6 +5697,27 @@ class APIGetL3NetworkReply(object):
         self.error = None
 
 
+APIGETL3NETWORKROUTERINTERFACEIPMSG_FULL_NAME = 'org.zstack.header.network.l3.APIGetL3NetworkRouterInterfaceIpMsg'
+class APIGetL3NetworkRouterInterfaceIpMsg(object):
+    FULL_NAME='org.zstack.header.network.l3.APIGetL3NetworkRouterInterfaceIpMsg'
+    def __init__(self):
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETL3NETWORKROUTERINTERFACEIPREPLY_FULL_NAME = 'org.zstack.header.network.l3.APIGetL3NetworkRouterInterfaceIpReply'
+class APIGetL3NetworkRouterInterfaceIpReply(object):
+    FULL_NAME='org.zstack.header.network.l3.APIGetL3NetworkRouterInterfaceIpReply'
+    def __init__(self):
+        self.routerInterfaceIp = None
+        self.success = None
+        self.error = None
+
+
 APIGETL3NETWORKTYPESMSG_FULL_NAME = 'org.zstack.header.network.l3.APIGetL3NetworkTypesMsg'
 class APIGetL3NetworkTypesMsg(object):
     FULL_NAME='org.zstack.header.network.l3.APIGetL3NetworkTypesMsg'
@@ -5827,6 +5848,20 @@ class APISetL3NetworkMtuMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.mtu = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISETL3NETWORKROUTERINTERFACEIPMSG_FULL_NAME = 'org.zstack.header.network.l3.APISetL3NetworkRouterInterfaceIpMsg'
+class APISetL3NetworkRouterInterfaceIpMsg(object):
+    FULL_NAME='org.zstack.header.network.l3.APISetL3NetworkRouterInterfaceIpMsg'
+    def __init__(self):
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        #mandatory field
+        self.routerInterfaceIp = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7212,35 +7247,6 @@ class APIGetCandidateIsoForAttachingVmReply(object):
     FULL_NAME='org.zstack.header.vm.APIGetCandidateIsoForAttachingVmReply'
     def __init__(self):
         self.inventories = OptionalList()
-        self.success = None
-        self.error = None
-
-
-APIGETCANDIDATEPRIMARYSTORAGESFORCREATINGVMMSG_FULL_NAME = 'org.zstack.header.vm.APIGetCandidatePrimaryStoragesForCreatingVmMsg'
-class APIGetCandidatePrimaryStoragesForCreatingVmMsg(object):
-    FULL_NAME='org.zstack.header.vm.APIGetCandidatePrimaryStoragesForCreatingVmMsg'
-    def __init__(self):
-        #mandatory field
-        self.imageUuid = NotNoneField()
-        #mandatory field
-        self.l3NetworkUuids = NotNoneList()
-        self.rootDiskOfferingUuid = None
-        self.dataDiskOfferingUuids = OptionalList()
-        self.zoneUuid = None
-        self.clusterUuid = None
-        self.defaultL3NetworkUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIGETCANDIDATEPRIMARYSTORAGESFORCREATINGVMREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetCandidatePrimaryStoragesForCreatingVmReply'
-class APIGetCandidatePrimaryStoragesForCreatingVmReply(object):
-    FULL_NAME='org.zstack.header.vm.APIGetCandidatePrimaryStoragesForCreatingVmReply'
-    def __init__(self):
-        self.rootVolumePrimaryStorages = OptionalList()
-        self.dataVolumePrimaryStorages = OptionalMap()
         self.success = None
         self.error = None
 
@@ -12967,8 +12973,6 @@ api_names = [
     'APIGetCandidateBackupStorageForCreatingImageReply',
     'APIGetCandidateIsoForAttachingVmMsg',
     'APIGetCandidateIsoForAttachingVmReply',
-    'APIGetCandidatePrimaryStoragesForCreatingVmMsg',
-    'APIGetCandidatePrimaryStoragesForCreatingVmReply',
     'APIGetCandidateVmForAttachingIsoMsg',
     'APIGetCandidateVmForAttachingIsoReply',
     'APIGetCandidateVmNicForSecurityGroupMsg',
@@ -13033,6 +13037,8 @@ api_names = [
     'APIGetL3NetworkMtuMsg',
     'APIGetL3NetworkMtuReply',
     'APIGetL3NetworkReply',
+    'APIGetL3NetworkRouterInterfaceIpMsg',
+    'APIGetL3NetworkRouterInterfaceIpReply',
     'APIGetL3NetworkTypesMsg',
     'APIGetL3NetworkTypesReply',
     'APIGetLicenseCapabilitiesMsg',
@@ -13466,6 +13472,7 @@ api_names = [
     'APISessionMessage',
     'APISetImageQgaMsg',
     'APISetL3NetworkMtuMsg',
+    'APISetL3NetworkRouterInterfaceIpMsg',
     'APISetNicQosMsg',
     'APISetVipQosMsg',
     'APISetVmBootOrderMsg',
