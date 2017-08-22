@@ -4411,6 +4411,10 @@ class CollectLogCmd(Command):
         run_remote_command(command, host_post_info, True, True)
         command = "cp /var/log/dmesg* /var/log/messages %s" % tmp_log_dir
         run_remote_command(command, host_post_info)
+        command = "route -n > %s/route_table" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+        command = "iptables-save > %s/iptables_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
 
     def get_pkg_list(self, host_post_info, tmp_log_dir):
         command = "rpm -qa | sort > %s/pkg_list" % tmp_log_dir
