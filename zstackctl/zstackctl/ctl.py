@@ -5804,8 +5804,8 @@ fi
             info('start to upgrade the remote management node; the process may cost several minutes ...')
 
             if args.ssh_key is None:
-                ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
-            private_key = ssh_key.split('.')[0]
+                args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
+            private_key = args.ssh_key.split('.')[0]
 
             ansible(yaml, args.host, args.debug, ssh_key=private_key)
             info('upgraded the remote management node successfully')
