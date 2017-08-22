@@ -2211,7 +2211,7 @@ class AddManagementNodeCmd(Command):
         ctl.register_command(self)
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host-list','--hosts',nargs='+',
-                            help="All hosts connect info follow below format: 'root:passwd1@host1_ip root:passwd2@host2_ip ...' ",
+                            help="All hosts connect info follow below format, example: 'zstack-ctl add_multi_management --hosts root:passwd1@host1_ip root:passwd2@host2_ip ...' ",
                             required=True)
         parser.add_argument('--force-reinstall','-f',action="store_true", default=False)
         parser.add_argument('--ssh-key',
@@ -2228,9 +2228,9 @@ class AddManagementNodeCmd(Command):
 
     def deploy_mn_on_host(self,args, host_info, key):
         if args.force_reinstall is True:
-            command = 'zstack-ctl install_management_node --host=%s --ssh-key="%s" --force-reinstall' % (host_info.host, key)
+            command = 'zstack-ctl install_management_node --host=%s --ssh-key="%s" --force-reinstall' % (host_info.remote_user+':'+host_info.remote_pass+'@'+host_info.host, key)
         else:
-            command = 'zstack-ctl install_management_node --host=%s --ssh-key="%s"' % (host_info.host, key)
+            command = 'zstack-ctl install_management_node --host=%s --ssh-key="%s"' % (host_info.remote_user+':'+host_info.remote_pass+'@'+host_info.host, key)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
             error("deploy mn on host %s failed:\n %s" % (host_info.host, output))
@@ -4982,8 +4982,8 @@ class InstallManagementNodeCmd(Command):
             args.yum = get_yum_repo_from_property()
 
         if args.ssh_key is None:
-            ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
-        private_key = ssh_key.split('.')[0]
+            args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
+        private_key = args.ssh_key.split('.')[0]
 
         inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
         host_info = HostPostInfo()
@@ -4993,7 +4993,7 @@ class InstallManagementNodeCmd(Command):
 
         check_host_password(host_info.remote_pass, host_info.host)
         
-        self.add_public_key_to_host(ssh_key, host_info)
+        self.add_public_key_to_host(args.ssh_key, host_info)
 
         apache_tomcat = None
         zstack = None
