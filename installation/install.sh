@@ -1190,7 +1190,7 @@ iz_unpack_zstack(){
 uz_stop_zstack(){
     echo_subtitle "Stop ${PRODUCT_NAME}"
     zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
-    ps axu | grep java | grep zstack >>$ZSTACK_INSTALL_LOG 2>&1
+    ps axu | grep java | grep zstack | grep -v vdi >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ];then
         fail "Stop zstack failed!"
     fi
