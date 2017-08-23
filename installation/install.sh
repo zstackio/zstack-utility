@@ -2135,6 +2135,9 @@ cmp -s .repo_version /opt/zstack-dvd/.repo_version
 if [ $? -eq 0 ]; then
     echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     return 0
+elif [ x"$SKIP_SYNC" = x'y' ]; then
+    echo " ... $(tput setaf 1)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
+    return 1
 else
     echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
 fi
@@ -2493,7 +2496,7 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDEFhiklmMNoOquz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDEFhiklmMNoOqsuz" Option
 do
     case $Option in
         # -a: do not use yum online repo.
@@ -2537,6 +2540,8 @@ do
         else
         fail2 "$PRODUCT_NAME don't support '-R' option! Please remove '-R' and try again."
         fi;;
+        # -s: skip syncing from repo.zstack.io
+        s ) SKIP_SYNC='y';;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
