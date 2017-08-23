@@ -3542,18 +3542,6 @@ class GetCandidateIsoForAttachingVmAction(inventory.APIGetCandidateIsoForAttachi
         self.out = evt
         return self.out
 
-class GetCandidatePrimaryStoragesForCreatingVmAction(inventory.APIGetCandidatePrimaryStoragesForCreatingVmMsg):
-    def __init__(self):
-        super(GetCandidatePrimaryStoragesForCreatingVmAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetCandidatePrimaryStoragesForCreatingVmAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class GetCandidateVmForAttachingIsoAction(inventory.APIGetCandidateVmForAttachingIsoMsg):
     def __init__(self):
         super(GetCandidateVmForAttachingIsoAction, self).__init__()
@@ -3886,6 +3874,18 @@ class GetL3NetworkMtuAction(inventory.APIGetL3NetworkMtuMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetL3NetworkMtuAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetL3NetworkRouterInterfaceIpAction(inventory.APIGetL3NetworkRouterInterfaceIpMsg):
+    def __init__(self):
+        super(GetL3NetworkRouterInterfaceIpAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetL3NetworkRouterInterfaceIpAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -6650,6 +6650,18 @@ class SetL3NetworkMtuAction(inventory.APISetL3NetworkMtuMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetL3NetworkMtuAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetL3NetworkRouterInterfaceIpAction(inventory.APISetL3NetworkRouterInterfaceIpMsg):
+    def __init__(self):
+        super(SetL3NetworkRouterInterfaceIpAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetL3NetworkRouterInterfaceIpAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
