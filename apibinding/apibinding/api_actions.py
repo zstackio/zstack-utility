@@ -3542,6 +3542,18 @@ class GetCandidateIsoForAttachingVmAction(inventory.APIGetCandidateIsoForAttachi
         self.out = evt
         return self.out
 
+class GetCandidatePrimaryStoragesForCreatingVmAction(inventory.APIGetCandidatePrimaryStoragesForCreatingVmMsg):
+    def __init__(self):
+        super(GetCandidatePrimaryStoragesForCreatingVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetCandidatePrimaryStoragesForCreatingVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetCandidateVmForAttachingIsoAction(inventory.APIGetCandidateVmForAttachingIsoMsg):
     def __init__(self):
         super(GetCandidateVmForAttachingIsoAction, self).__init__()
@@ -7334,6 +7346,18 @@ class UpdateEmailMediaAction(inventory.APIUpdateEmailMediaMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateEmailMediaAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateEmailMonitorTriggerActionAction(inventory.APIUpdateEmailMonitorTriggerActionMsg):
+    def __init__(self):
+        super(UpdateEmailMonitorTriggerActionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEmailMonitorTriggerActionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
