@@ -2,7 +2,7 @@
 
 import sys, os, time, atexit
 import traceback
-import signal
+from signal import SIGTERM,SIGKILL 
 from zstacklib.utils import log
 from zstacklib.utils import shell
 
@@ -66,9 +66,6 @@ class Daemon(object):
             sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
             sys.exit(1) 
     
-        # reap child automatically
-        signal.signal(signal.SIGCHLD, signal.SIG_IGN)
-
         # redirect standard file descriptors
         sys.stdout.flush()
         sys.stderr.flush()
@@ -146,9 +143,9 @@ class Daemon(object):
             if os.path.exists('/proc/' + str(pid)):
                 curr_time = time.time()
                 if (curr_time - start_time) > wait_stop:
-                    os.kill(pid, signal.SIGKILL)
+                    os.kill(pid, SIGKILL)
                 else:
-                    os.kill(pid, signal.SIGTERM)
+                    os.kill(pid, SIGTERM)
                 time.sleep(0.3)
             else:
                 if os.path.exists(self.pidfile):
