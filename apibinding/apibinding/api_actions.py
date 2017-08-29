@@ -458,6 +458,18 @@ class AddZsesPrimaryStorageAction(inventory.APIAddZsesPrimaryStorageMsg):
         self.out = evt
         return self.out
 
+class AttachAliyunDiskToEcsAction(inventory.APIAttachAliyunDiskToEcsMsg):
+    def __init__(self):
+        super(AttachAliyunDiskToEcsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachAliyunDiskToEcsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AttachAliyunKeyAction(inventory.APIAttachAliyunKeyMsg):
     def __init__(self):
         super(AttachAliyunKeyAction, self).__init__()
@@ -1094,6 +1106,30 @@ class CreateAccountAction(inventory.APICreateAccountMsg):
         self.out = evt
         return self.out
 
+class CreateAliyunDiskFromRemoteAction(inventory.APICreateAliyunDiskFromRemoteMsg):
+    def __init__(self):
+        super(CreateAliyunDiskFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateAliyunDiskFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateAliyunSnapshotRemoteAction(inventory.APICreateAliyunSnapshotRemoteMsg):
+    def __init__(self):
+        super(CreateAliyunSnapshotRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateAliyunSnapshotRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateAliyunVpcVirtualRouterEntryRemoteAction(inventory.APICreateAliyunVpcVirtualRouterEntryRemoteMsg):
     def __init__(self):
         super(CreateAliyunVpcVirtualRouterEntryRemoteAction, self).__init__()
@@ -1222,6 +1258,18 @@ class CreateDiskOfferingAction(inventory.APICreateDiskOfferingMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateDiskOfferingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEcsImageFromEcsSnapshotAction(inventory.APICreateEcsImageFromEcsSnapshotMsg):
+    def __init__(self):
+        super(CreateEcsImageFromEcsSnapshotAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEcsImageFromEcsSnapshotAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1934,6 +1982,30 @@ class DeleteAlertAction(inventory.APIDeleteAlertMsg):
         self.out = evt
         return self.out
 
+class DeleteAliyunDiskFromLocalAction(inventory.APIDeleteAliyunDiskFromLocalMsg):
+    def __init__(self):
+        super(DeleteAliyunDiskFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAliyunDiskFromLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAliyunDiskFromRemoteAction(inventory.APIDeleteAliyunDiskFromRemoteMsg):
+    def __init__(self):
+        super(DeleteAliyunDiskFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAliyunDiskFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteAliyunKeySecretAction(inventory.APIDeleteAliyunKeySecretMsg):
     def __init__(self):
         super(DeleteAliyunKeySecretAction, self).__init__()
@@ -1954,6 +2026,30 @@ class DeleteAliyunRouteEntryRemoteAction(inventory.APIDeleteAliyunRouteEntryRemo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteAliyunRouteEntryRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAliyunSnapshotFromLocalAction(inventory.APIDeleteAliyunSnapshotFromLocalMsg):
+    def __init__(self):
+        super(DeleteAliyunSnapshotFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAliyunSnapshotFromLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAliyunSnapshotFromRemoteAction(inventory.APIDeleteAliyunSnapshotFromRemoteMsg):
+    def __init__(self):
+        super(DeleteAliyunSnapshotFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAliyunSnapshotFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3074,6 +3170,18 @@ class DestroyVmInstanceAction(inventory.APIDestroyVmInstanceMsg):
         self.out = evt
         return self.out
 
+class DetachAliyunDiskFromEcsAction(inventory.APIDetachAliyunDiskFromEcsMsg):
+    def __init__(self):
+        super(DetachAliyunDiskFromEcsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachAliyunDiskFromEcsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DetachAliyunKeyAction(inventory.APIDetachAliyunKeyMsg):
     def __init__(self):
         super(DetachAliyunKeyAction, self).__init__()
@@ -3370,6 +3478,18 @@ class ExpungeVmInstanceAction(inventory.APIExpungeVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[ExpungeVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GCAliyunSnapshotRemoteAction(inventory.APIGCAliyunSnapshotRemoteMsg):
+    def __init__(self):
+        super(GCAliyunSnapshotRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GCAliyunSnapshotRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4764,6 +4884,20 @@ class QueryAlertAction(inventory.APIQueryAlertMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryAliyunDiskFromLocalAction(inventory.APIQueryAliyunDiskFromLocalMsg):
+    def __init__(self):
+        super(QueryAliyunDiskFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAliyunDiskFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryAliyunKeySecretAction(inventory.APIQueryAliyunKeySecretMsg):
     def __init__(self):
         super(QueryAliyunKeySecretAction, self).__init__()
@@ -4787,6 +4921,20 @@ class QueryAliyunRouteEntryFromLocalAction(inventory.APIQueryAliyunRouteEntryFro
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryAliyunRouteEntryFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryAliyunSnapshotFromLocalAction(inventory.APIQueryAliyunSnapshotFromLocalMsg):
+    def __init__(self):
+        super(QueryAliyunSnapshotFromLocalAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAliyunSnapshotFromLocalAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -6930,6 +7078,18 @@ class SyncAliyunRouteEntryFromRemoteAction(inventory.APISyncAliyunRouteEntryFrom
         self.out = evt
         return self.out
 
+class SyncAliyunSnapshotRemoteAction(inventory.APISyncAliyunSnapshotRemoteMsg):
+    def __init__(self):
+        super(SyncAliyunSnapshotRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncAliyunSnapshotRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SyncAliyunVirtualRouterFromRemoteAction(inventory.APISyncAliyunVirtualRouterFromRemoteMsg):
     def __init__(self):
         super(SyncAliyunVirtualRouterFromRemoteAction, self).__init__()
@@ -6962,6 +7122,18 @@ class SyncDataCenterFromRemoteAction(inventory.APISyncDataCenterFromRemoteMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncDataCenterFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncDiskFromAliyunFromRemoteAction(inventory.APISyncDiskFromAliyunFromRemoteMsg):
+    def __init__(self):
+        super(SyncDiskFromAliyunFromRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncDiskFromAliyunFromRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -7190,6 +7362,18 @@ class UpdateAccountAction(inventory.APIUpdateAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateAliyunDiskAction(inventory.APIUpdateAliyunDiskMsg):
+    def __init__(self):
+        super(UpdateAliyunDiskAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAliyunDiskAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
