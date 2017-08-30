@@ -6192,6 +6192,7 @@ class APIAddSimulatorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11232,6 +11233,7 @@ class APIAddImageStoreBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11330,6 +11332,7 @@ class APIAddSftpBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11429,6 +11432,7 @@ class APIAddCephBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11664,6 +11668,7 @@ class APIAddFusionstorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
