@@ -10571,6 +10571,27 @@ class APICreateVirtualRouterVmMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETATTACHABLEPUBLICL3FORVROUTERMSG_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetAttachablePublicL3ForVRouterMsg'
+class APIGetAttachablePublicL3ForVRouterMsg(object):
+    FULL_NAME='org.zstack.network.service.virtualrouter.APIGetAttachablePublicL3ForVRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETATTACHABLEPUBLICL3FORVROUTERREPLY_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetAttachablePublicL3ForVRouterReply'
+class APIGetAttachablePublicL3ForVRouterReply(object):
+    FULL_NAME='org.zstack.network.service.virtualrouter.APIGetAttachablePublicL3ForVRouterReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIGETVIRTUALROUTEROFFERINGREPLY_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetVirtualRouterOfferingReply'
 class APIGetVirtualRouterOfferingReply(object):
     FULL_NAME='org.zstack.network.service.virtualrouter.APIGetVirtualRouterOfferingReply'
@@ -13009,6 +13030,8 @@ api_names = [
     'APIGetAccountQuotaUsageMsg',
     'APIGetAccountQuotaUsageReply',
     'APIGetAccountReply',
+    'APIGetAttachablePublicL3ForVRouterMsg',
+    'APIGetAttachablePublicL3ForVRouterReply',
     'APIGetBackupStorageCapacityMsg',
     'APIGetBackupStorageCapacityReply',
     'APIGetBackupStorageReply',
@@ -15971,7 +15994,6 @@ class VpcVpnConnectionInventory(object):
         self.accountName = None
         self.type = None
         self.name = None
-        self.status = None
         self.description = None
         self.connectionId = None
         self.userGatewayUuid = None
@@ -16003,11 +16025,6 @@ class VpcVpnConnectionInventory(object):
             self.name = inv.name
         else:
             self.name = None
-
-        if hasattr(inv, 'status'):
-            self.status = inv.status
-        else:
-            self.status = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -19131,6 +19148,7 @@ VIRTUAL_ROUTER_OFFERING_TYPE = 'VirtualRouter'
 VR_PUBLIC_NIC_META = '1'
 VR_MANAGEMENT_NIC_META = '2'
 VR_MANAGEMENT_AND_PUBLIC_NIC_META = '3'
+VR_ADDITIONAL_PUBLIC_NIC_META = '8'
 
 #VmInstanceConstant
 USER_VM_TYPE = 'UserVm'
@@ -19469,7 +19487,6 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
@@ -19477,6 +19494,7 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -20686,7 +20704,7 @@ class QueryObjectVpcVirtualRouterInventory(object):
      }
 
 class QueryObjectVpcVpnConnectionInventory(object):
-     PRIMITIVE_FIELDS = ['accountName','remoteSubnet','description','ipsecConfigUuid','type','uuid','vpnGatewayUuid','localSubnet','name','lastOpDate','connectionId','userGatewayUuid','ikeConfigUuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['accountName','remoteSubnet','description','ipsecConfigUuid','type','uuid','vpnGatewayUuid','localSubnet','name','lastOpDate','connectionId','userGatewayUuid','ikeConfigUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
