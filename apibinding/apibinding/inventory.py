@@ -15971,6 +15971,7 @@ class VpcVpnConnectionInventory(object):
         self.accountName = None
         self.type = None
         self.name = None
+        self.status = None
         self.description = None
         self.connectionId = None
         self.userGatewayUuid = None
@@ -16002,6 +16003,11 @@ class VpcVpnConnectionInventory(object):
             self.name = inv.name
         else:
             self.name = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -20680,7 +20686,7 @@ class QueryObjectVpcVirtualRouterInventory(object):
      }
 
 class QueryObjectVpcVpnConnectionInventory(object):
-     PRIMITIVE_FIELDS = ['accountName','remoteSubnet','description','ipsecConfigUuid','type','uuid','vpnGatewayUuid','localSubnet','name','lastOpDate','connectionId','userGatewayUuid','ikeConfigUuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['accountName','remoteSubnet','description','ipsecConfigUuid','type','uuid','vpnGatewayUuid','localSubnet','name','lastOpDate','connectionId','userGatewayUuid','ikeConfigUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
