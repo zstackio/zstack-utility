@@ -1500,15 +1500,17 @@ class Vm(object):
                 vc = VirtioFusionstor()
                 vc.volume = volume
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
-                volume_qos(vc)
-                return etree.tostring(vc.to_xmlobject())
+                xml_obj = vc.to_xmlobject()
+                volume_qos(xml_obj)
+                return etree.tostring(xml_obj)
 
             def blk_fusionstor():
                 ic = IdeFusionstor()
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
-                volume_qos(ic)
-                return etree.tostring(ic.to_xmlobject())
+                xml_obj = ic.to_xmlobject()
+                volume_qos(xml_obj)
+                return etree.tostring(xml_obj)
 
             def virtio_scsi_fusionstor():
                 vsc = VirtioSCSIFusionstor()
