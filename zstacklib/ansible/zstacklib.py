@@ -1271,6 +1271,7 @@ def replace_content(dest, args, host_post_info):
         else:
             details = "SUCC: replace file %s content successfully" % dest
             handle_ansible_info(details, host_post_info, "INFO")
+            command = "rm -rf %s"
             return True
 
 def update_file(dest, args, host_post_info):
@@ -1500,11 +1501,9 @@ def enable_ntp(trusted_host, host_post_info, distro):
     if trusted_host != host_post_info.host:
         if host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
             if host_post_info.host not in get_ha_mn_list("/var/lib/zstack/ha/ha.yaml"):
-                replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server ' backup=yes", host_post_info)
+                replace_content("/etc/ntp.conf", "regexp='^server ' replace='#server '", host_post_info)
                 update_file("/etc/ntp.conf", "regexp='#server %s' state=absent" % trusted_host, host_post_info)
                 update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
-                # delete all tmp files
-                run_remote_command("rm -rf /etc/ntp.conf.*~", host_post_info)
     replace_content("/etc/ntp.conf", "regexp='restrict default nomodify notrap nopeer noquery'"
                                      " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
     if distro == "CentOS" or distro == "RedHat":
