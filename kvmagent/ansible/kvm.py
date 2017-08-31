@@ -34,11 +34,11 @@ def update_libvritd_config(host_post_info):
     copy_arg.dest =  libvirtd_conf_file
     file_changed_flag = copy(copy_arg, host_post_info)
     if status is True:
-        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='%s' backup=yes" % output, host_post_info)
+        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='%s'" % output, host_post_info)
     else:
         command = "uuidgen"
         status, output = run_remote_command(command, host_post_info, True, True)
-        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"' backup=yes" % output , host_post_info)
+        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % output , host_post_info)
 
 
     return file_changed_flag
