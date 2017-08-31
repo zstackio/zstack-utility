@@ -285,7 +285,7 @@ def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callba
 
     is_support_file_size, filesize = get_file_size(url)
     if is_support_file_size:
-        process = subprocess.Popen(cmd, shell=True, executable='/bin/sh', cwd=workdir)
+        process = subprocess.Popen(cmd, shell=True, executable='/bin/sh', cwd=workdir, close_fds=True)
         is_timeout = False
         count = 0
         logger.debug('start to download %s, total size: %s' % (url, filesize))
@@ -441,7 +441,7 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
         keyfile_path = create_ssh_key_file()
         batch_file_path = write_to_temp_file('get %s %s' % (filename, download_to))
         cmd = '/usr/bin/sftp -o StrictHostKeyChecking=no -o IdentityFile=%s -b %s %s' % (keyfile_path, batch_file_path, hostname)
-        process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, executable='/bin/sh', universal_newlines=True)
+        process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, executable='/bin/sh', universal_newlines=True, close_fds=True)
         is_timeout = False
         count = 0
         while process.poll() is None:
