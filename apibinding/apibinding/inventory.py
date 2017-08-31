@@ -11521,6 +11521,27 @@ class APIAddImageStoreBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APILISTIMAGESFROMIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIListImagesFromImageStoreBackupStorageMsg'
+class APIListImagesFromImageStoreBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APIListImagesFromImageStoreBackupStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APILISTIMAGESFROMIMAGESTOREBACKUPSTORAGEREPLY_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIListImagesFromImageStoreBackupStorageReply'
+class APIListImagesFromImageStoreBackupStorageReply(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APIListImagesFromImageStoreBackupStorageReply'
+    def __init__(self):
+        self.infos = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIQUERYIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIQueryImageStoreBackupStorageMsg'
 class APIQueryImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIQueryImageStoreBackupStorageMsg'
@@ -13478,6 +13499,8 @@ api_names = [
     'APIListGlobalConfigReply',
     'APIListHostReply',
     'APIListImageReply',
+    'APIListImagesFromImageStoreBackupStorageMsg',
+    'APIListImagesFromImageStoreBackupStorageReply',
     'APIListInstanceOfferingReply',
     'APIListIpRangeReply',
     'APIListL2NetworkReply',
@@ -16443,6 +16466,7 @@ class VpcVpnConnectionInventory(object):
         self.accountName = None
         self.type = None
         self.name = None
+        self.status = None
         self.description = None
         self.connectionId = None
         self.userGatewayUuid = None
@@ -16474,6 +16498,11 @@ class VpcVpnConnectionInventory(object):
             self.name = inv.name
         else:
             self.name = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
 
         if hasattr(inv, 'description'):
             self.description = inv.description
@@ -19898,6 +19927,13 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
+class GlobalConfig_OTHERS(object):
+    TEST2 = 'Test2'
+
+    @staticmethod
+    def get_category():
+        return 'Others'
+
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -19929,6 +19965,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
@@ -19936,7 +19973,6 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -19970,6 +20006,17 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
+
+class GlobalConfig_TEST(object):
+    TEST = 'Test'
+    TEST3 = 'Test3'
+    TEST4 = 'Test4'
+    TESTSTRING = 'TestString'
+    TESTBOOLEAN = 'TestBoolean'
+
+    @staticmethod
+    def get_category():
+        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -20164,13 +20211,14 @@ class QueryObjectCephBackupStorageMonInventory(object):
 
 class QueryObjectCephPrimaryStorageInventory(object):
      PRIMITIVE_FIELDS = ['availableCapacity','mountPath','imageCachePoolName','zoneUuid','description','rootVolumePoolName','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','fsid','name','lastOpDate','state','dataVolumePoolName','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['mons','volume','volumeSnapshot','mons','zone','cluster']
+     EXPANDED_FIELDS = ['tags','mons','volume','volumeSnapshot','mons','zone','tags','cluster']
      QUERY_OBJECT_MAP = {
         'volume' : 'QueryObjectVolumeInventory',
         'cluster' : 'QueryObjectClusterInventory',
         'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
         'mons' : 'QueryObjectCephPrimaryStorageMonInventory',
         'zone' : 'QueryObjectZoneInventory',
+        'tags' : 'QueryObjectSystemTagInventory',
      }
 
 class QueryObjectCephPrimaryStorageMonInventory(object):
@@ -21153,7 +21201,7 @@ class QueryObjectVpcVirtualRouterInventory(object):
      }
 
 class QueryObjectVpcVpnConnectionInventory(object):
-     PRIMITIVE_FIELDS = ['accountName','remoteSubnet','description','ipsecConfigUuid','type','uuid','vpnGatewayUuid','localSubnet','name','lastOpDate','connectionId','userGatewayUuid','ikeConfigUuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['accountName','remoteSubnet','description','ipsecConfigUuid','type','uuid','vpnGatewayUuid','localSubnet','name','lastOpDate','connectionId','userGatewayUuid','ikeConfigUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
