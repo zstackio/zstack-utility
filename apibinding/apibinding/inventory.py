@@ -1555,6 +1555,7 @@ class APICreateEcsVSwitchRemoteMsg(object):
         #mandatory field
         self.cidrBlock = NotNoneField()
         #mandatory field
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
@@ -3550,6 +3551,7 @@ class APICreateVpcUserVpnGatewayRemoteMsg(object):
         #mandatory field
         self.ip = NotNoneField()
         #mandatory field
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
@@ -12008,8 +12010,6 @@ class APICreateOSSProtectionSiteMsg(object):
         #mandatory field
         self.name = NotNoneField()
         #mandatory field
-        self.accessToken = NotNoneField()
-        #mandatory field
         self.hybridAccountUuid = NotNoneField()
         #mandatory field
         self.accessUrl = NotNoneField()
@@ -12030,8 +12030,6 @@ class APICreateProtectionGatewayMsg(object):
         #mandatory field
         self.name = NotNoneField()
         #mandatory field
-        self.accessToken = NotNoneField()
-        #mandatory field
         self.protectionHostId = NotNoneField()
         self.session = None
         self.timeout = None
@@ -12047,8 +12045,6 @@ class APICreateProtectionGroupMsg(object):
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         #mandatory field
         self.policyId = NotNoneField()
         #mandatory field
@@ -12067,8 +12063,6 @@ class APICreateProtectionPolicyMsg(object):
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         #mandatory field
         self.siteId = NotNoneField()
         #mandatory field
@@ -12092,8 +12086,6 @@ class APIDeleteProtectionGroupMsg(object):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
-        self.accessToken = NotNoneField()
-        #mandatory field
         self.groupId = NotNoneField()
         self.session = None
         self.timeout = None
@@ -12107,8 +12099,6 @@ class APIGetProtectionGatewaysMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12130,8 +12120,6 @@ class APIGetProtectionGroupsMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12153,8 +12141,6 @@ class APIGetProtectionHostsMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12176,8 +12162,6 @@ class APIGetProtectionPoliciesMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12199,8 +12183,6 @@ class APIGetProtectionPoolsMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12222,8 +12204,6 @@ class APIGetProtectionSitesMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12245,8 +12225,6 @@ class APIGetProtectionVolumesMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.limit = None
         self.offset = None
         self.poolId = None
