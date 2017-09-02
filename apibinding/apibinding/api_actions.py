@@ -7542,6 +7542,18 @@ class UpdateLdapServerAction(inventory.APIUpdateLdapServerMsg):
         self.out = evt
         return self.out
 
+class UpdateLicenseAction(inventory.APIUpdateLicenseMsg):
+    def __init__(self):
+        super(UpdateLicenseAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateLicenseAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateLoadBalancerAction(inventory.APIUpdateLoadBalancerMsg):
     def __init__(self):
         super(UpdateLoadBalancerAction, self).__init__()

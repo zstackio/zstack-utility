@@ -1555,6 +1555,7 @@ class APICreateEcsVSwitchRemoteMsg(object):
         #mandatory field
         self.cidrBlock = NotNoneField()
         #mandatory field
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
@@ -3550,6 +3551,7 @@ class APICreateVpcUserVpnGatewayRemoteMsg(object):
         #mandatory field
         self.ip = NotNoneField()
         #mandatory field
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
@@ -8929,6 +8931,29 @@ class APIReloadLicenseReply(object):
         self.error = None
 
 
+APIUPDATELICENSEMSG_FULL_NAME = 'org.zstack.license.APIUpdateLicenseMsg'
+class APIUpdateLicenseMsg(object):
+    FULL_NAME='org.zstack.license.APIUpdateLicenseMsg'
+    def __init__(self):
+        #mandatory field
+        self.managementNodeUuid = NotNoneField()
+        #mandatory field
+        self.license = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATELICENSEREPLY_FULL_NAME = 'org.zstack.license.APIUpdateLicenseReply'
+class APIUpdateLicenseReply(object):
+    FULL_NAME='org.zstack.license.APIUpdateLicenseReply'
+    def __init__(self):
+        self.inventory = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYSHAREABLEVOLUMEVMINSTANCEREFMSG_FULL_NAME = 'org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefMsg'
 class APIQueryShareableVolumeVmInstanceRefMsg(object):
     FULL_NAME='org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefMsg'
@@ -12008,8 +12033,6 @@ class APICreateOSSProtectionSiteMsg(object):
         #mandatory field
         self.name = NotNoneField()
         #mandatory field
-        self.accessToken = NotNoneField()
-        #mandatory field
         self.hybridAccountUuid = NotNoneField()
         #mandatory field
         self.accessUrl = NotNoneField()
@@ -12030,8 +12053,6 @@ class APICreateProtectionGatewayMsg(object):
         #mandatory field
         self.name = NotNoneField()
         #mandatory field
-        self.accessToken = NotNoneField()
-        #mandatory field
         self.protectionHostId = NotNoneField()
         self.session = None
         self.timeout = None
@@ -12047,8 +12068,6 @@ class APICreateProtectionGroupMsg(object):
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         #mandatory field
         self.policyId = NotNoneField()
         #mandatory field
@@ -12067,8 +12086,6 @@ class APICreateProtectionPolicyMsg(object):
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         #mandatory field
         self.siteId = NotNoneField()
         #mandatory field
@@ -12092,8 +12109,6 @@ class APIDeleteProtectionGroupMsg(object):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
-        self.accessToken = NotNoneField()
-        #mandatory field
         self.groupId = NotNoneField()
         self.session = None
         self.timeout = None
@@ -12107,8 +12122,6 @@ class APIGetProtectionGatewaysMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12130,8 +12143,6 @@ class APIGetProtectionGroupsMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12153,8 +12164,6 @@ class APIGetProtectionHostsMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12176,8 +12185,6 @@ class APIGetProtectionPoliciesMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12199,8 +12206,6 @@ class APIGetProtectionPoolsMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12222,8 +12227,6 @@ class APIGetProtectionSitesMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12245,8 +12248,6 @@ class APIGetProtectionVolumesMsg(object):
     def __init__(self):
         #mandatory field
         self.primaryStorageUuid = NotNoneField()
-        #mandatory field
-        self.accessToken = NotNoneField()
         self.limit = None
         self.offset = None
         self.poolId = None
@@ -13597,6 +13598,8 @@ api_names = [
     'APIUpdateL2NetworkMsg',
     'APIUpdateL3NetworkMsg',
     'APIUpdateLdapServerMsg',
+    'APIUpdateLicenseMsg',
+    'APIUpdateLicenseReply',
     'APIUpdateLoadBalancerListenerMsg',
     'APIUpdateLoadBalancerMsg',
     'APIUpdateMonitorTriggerMsg',
@@ -19436,13 +19439,6 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
-
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -19482,6 +19478,7 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -19515,17 +19512,6 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
-
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
-
-    @staticmethod
-    def get_category():
-        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -19708,13 +19694,14 @@ class QueryObjectCephBackupStorageMonInventory(object):
 
 class QueryObjectCephPrimaryStorageInventory(object):
      PRIMITIVE_FIELDS = ['availableCapacity','mountPath','imageCachePoolName','zoneUuid','description','rootVolumePoolName','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','fsid','name','lastOpDate','state','dataVolumePoolName','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['mons','volume','volumeSnapshot','mons','zone','cluster']
+     EXPANDED_FIELDS = ['tags','mons','volume','volumeSnapshot','mons','zone','tags','cluster']
      QUERY_OBJECT_MAP = {
         'volume' : 'QueryObjectVolumeInventory',
         'cluster' : 'QueryObjectClusterInventory',
         'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
         'mons' : 'QueryObjectCephPrimaryStorageMonInventory',
         'zone' : 'QueryObjectZoneInventory',
+        'tags' : 'QueryObjectSystemTagInventory',
      }
 
 class QueryObjectCephPrimaryStorageMonInventory(object):
