@@ -9188,6 +9188,29 @@ class APIReloadLicenseReply(object):
         self.error = None
 
 
+APIUPDATELICENSEMSG_FULL_NAME = 'org.zstack.license.APIUpdateLicenseMsg'
+class APIUpdateLicenseMsg(object):
+    FULL_NAME='org.zstack.license.APIUpdateLicenseMsg'
+    def __init__(self):
+        #mandatory field
+        self.managementNodeUuid = NotNoneField()
+        #mandatory field
+        self.license = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATELICENSEREPLY_FULL_NAME = 'org.zstack.license.APIUpdateLicenseReply'
+class APIUpdateLicenseReply(object):
+    FULL_NAME='org.zstack.license.APIUpdateLicenseReply'
+    def __init__(self):
+        self.inventory = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYSHAREABLEVOLUMEVMINSTANCEREFMSG_FULL_NAME = 'org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefMsg'
 class APIQueryShareableVolumeVmInstanceRefMsg(object):
     FULL_NAME='org.zstack.mevoco.APIQueryShareableVolumeVmInstanceRefMsg'
@@ -13895,6 +13918,8 @@ api_names = [
     'APIUpdateL2NetworkMsg',
     'APIUpdateL3NetworkMsg',
     'APIUpdateLdapServerMsg',
+    'APIUpdateLicenseMsg',
+    'APIUpdateLicenseReply',
     'APIUpdateLoadBalancerListenerMsg',
     'APIUpdateLoadBalancerMsg',
     'APIUpdateMonitorTriggerMsg',
@@ -19927,13 +19952,6 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
-
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -19973,6 +19991,7 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -20006,17 +20025,6 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
-
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
-
-    @staticmethod
-    def get_category():
-        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
