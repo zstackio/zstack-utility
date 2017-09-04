@@ -3494,6 +3494,18 @@ class GetAccountQuotaUsageAction(inventory.APIGetAccountQuotaUsageMsg):
         self.out = evt
         return self.out
 
+class GetAttachablePublicL3ForVRouterAction(inventory.APIGetAttachablePublicL3ForVRouterMsg):
+    def __init__(self):
+        super(GetAttachablePublicL3ForVRouterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAttachablePublicL3ForVRouterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetBackupStorageCapacityAction(inventory.APIGetBackupStorageCapacityMsg):
     def __init__(self):
         super(GetBackupStorageCapacityAction, self).__init__()
@@ -7166,6 +7178,18 @@ class UpdateCephPrimaryStorageMonAction(inventory.APIUpdateCephPrimaryStorageMon
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateCephPrimaryStorageMonAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateCephPrimaryStoragePoolAction(inventory.APIUpdateCephPrimaryStoragePoolMsg):
+    def __init__(self):
+        super(UpdateCephPrimaryStoragePoolAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateCephPrimaryStoragePoolAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
