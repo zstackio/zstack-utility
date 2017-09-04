@@ -4658,6 +4658,18 @@ class KvmRunShellAction(inventory.APIKvmRunShellMsg):
         self.out = evt
         return self.out
 
+class ListImagesFromImageStoreBackupStorageAction(inventory.APIListImagesFromImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(ListImagesFromImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ListImagesFromImageStoreBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class LocalStorageGetVolumeMigratableHostsAction(inventory.APILocalStorageGetVolumeMigratableHostsMsg):
     def __init__(self):
         super(LocalStorageGetVolumeMigratableHostsAction, self).__init__()
