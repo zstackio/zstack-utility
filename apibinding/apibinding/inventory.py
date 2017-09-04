@@ -833,6 +833,23 @@ class APIUpdateEcsInstanceVncPasswordMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEECSIMAGEFROMECSSNAPSHOTMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APICreateEcsImageFromEcsSnapshotMsg'
+class APICreateEcsImageFromEcsSnapshotMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APICreateEcsImageFromEcsSnapshotMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9.-]+$
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEECSIMAGEFROMLOCALIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APICreateEcsImageFromLocalImageMsg'
 class APICreateEcsImageFromLocalImageMsg(object):
     FULL_NAME='org.zstack.header.aliyun.image.APICreateEcsImageFromLocalImageMsg'
@@ -2068,6 +2085,246 @@ class APIQueryOssBucketFileNameReply(object):
         self.total = None
         self.success = None
         self.error = None
+
+
+APIATTACHALIYUNDISKTOECSMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APIAttachAliyunDiskToEcsMsg'
+class APIAttachAliyunDiskToEcsMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APIAttachAliyunDiskToEcsMsg'
+    def __init__(self):
+        #mandatory field
+        self.ecsUuid = NotNoneField()
+        #mandatory field
+        self.diskUuid = NotNoneField()
+        self.deleteWithInstance = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEALIYUNDISKFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APICreateAliyunDiskFromRemoteMsg'
+class APICreateAliyunDiskFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APICreateAliyunDiskFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.identityUuid = NotNoneField()
+        #mandatory field
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9.-]+$
+        self.name = NotNoneField()
+        self.sizeWithGB = None
+        self.description = None
+        #valid values: [cloud_efficiency, cloud_ssd]
+        self.diskCategory = None
+        self.snapshotUuid = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALIYUNDISKFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APIDeleteAliyunDiskFromLocalMsg'
+class APIDeleteAliyunDiskFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APIDeleteAliyunDiskFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALIYUNDISKFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APIDeleteAliyunDiskFromRemoteMsg'
+class APIDeleteAliyunDiskFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APIDeleteAliyunDiskFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHALIYUNDISKFROMECSMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APIDetachAliyunDiskFromEcsMsg'
+class APIDetachAliyunDiskFromEcsMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APIDetachAliyunDiskFromEcsMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNDISKFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APIQueryAliyunDiskFromLocalMsg'
+class APIQueryAliyunDiskFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APIQueryAliyunDiskFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNDISKFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APIQueryAliyunDiskFromLocalReply'
+class APIQueryAliyunDiskFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APIQueryAliyunDiskFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APISYNCDISKFROMALIYUNFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APISyncDiskFromAliyunFromRemoteMsg'
+class APISyncDiskFromAliyunFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APISyncDiskFromAliyunFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.identityUuid = NotNoneField()
+        self.diskId = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEALIYUNDISKMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APIUpdateAliyunDiskMsg'
+class APIUpdateAliyunDiskMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.disk.APIUpdateAliyunDiskMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9.-]+$
+        self.name = None
+        self.description = None
+        self.deleteWithInstance = None
+        self.deleteAutoSnapshot = None
+        self.enableAutoSnapshot = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEALIYUNSNAPSHOTREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.snapshot.APICreateAliyunSnapshotRemoteMsg'
+class APICreateAliyunSnapshotRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APICreateAliyunSnapshotRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9.-]+$
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALIYUNSNAPSHOTFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.snapshot.APIDeleteAliyunSnapshotFromLocalMsg'
+class APIDeleteAliyunSnapshotFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APIDeleteAliyunSnapshotFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALIYUNSNAPSHOTFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.snapshot.APIDeleteAliyunSnapshotFromRemoteMsg'
+class APIDeleteAliyunSnapshotFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APIDeleteAliyunSnapshotFromRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGCALIYUNSNAPSHOTREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.snapshot.APIGCAliyunSnapshotRemoteMsg'
+class APIGCAliyunSnapshotRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APIGCAliyunSnapshotRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNSNAPSHOTFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.snapshot.APIQueryAliyunSnapshotFromLocalMsg'
+class APIQueryAliyunSnapshotFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APIQueryAliyunSnapshotFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNSNAPSHOTFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.storage.snapshot.APIQueryAliyunSnapshotFromLocalReply'
+class APIQueryAliyunSnapshotFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APIQueryAliyunSnapshotFromLocalReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APISYNCALIYUNSNAPSHOTREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.snapshot.APISyncAliyunSnapshotRemoteMsg'
+class APISyncAliyunSnapshotRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APISyncAliyunSnapshotRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.snapshotId = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIGETCPUMEMORYCAPACITYMSG_FULL_NAME = 'org.zstack.header.allocator.APIGetCpuMemoryCapacityMsg'
@@ -12755,6 +13012,7 @@ api_names = [
     'APIAddVmNicToSecurityGroupMsg',
     'APIAddXSkyPrimaryStorageMsg',
     'APIAddZsesPrimaryStorageMsg',
+    'APIAttachAliyunDiskToEcsMsg',
     'APIAttachAliyunKeyMsg',
     'APIAttachBackupStorageToZoneMsg',
     'APIAttachDataVolumeToVmMsg',
@@ -12811,6 +13069,8 @@ api_names = [
     'APICloneVmInstanceMsg',
     'APICommitVolumeAsImageMsg',
     'APICreateAccountMsg',
+    'APICreateAliyunDiskFromRemoteMsg',
+    'APICreateAliyunSnapshotRemoteMsg',
     'APICreateAliyunVpcVirtualRouterEntryRemoteMsg',
     'APICreateBaremetalChassisMsg',
     'APICreateBaremetalHostCfgMsg',
@@ -12822,6 +13082,7 @@ api_names = [
     'APICreateDataVolumeMsg',
     'APICreateDataVolumeTemplateFromVolumeMsg',
     'APICreateDiskOfferingMsg',
+    'APICreateEcsImageFromEcsSnapshotMsg',
     'APICreateEcsImageFromLocalImageMsg',
     'APICreateEcsInstanceFromEcsImageMsg',
     'APICreateEcsSecurityGroupRemoteMsg',
@@ -12881,8 +13142,12 @@ api_names = [
     'APIDebugSignalMsg',
     'APIDeleteAccountMsg',
     'APIDeleteAlertMsg',
+    'APIDeleteAliyunDiskFromLocalMsg',
+    'APIDeleteAliyunDiskFromRemoteMsg',
     'APIDeleteAliyunKeySecretMsg',
     'APIDeleteAliyunRouteEntryRemoteMsg',
+    'APIDeleteAliyunSnapshotFromLocalMsg',
+    'APIDeleteAliyunSnapshotFromRemoteMsg',
     'APIDeleteAllEcsInstancesFromDataCenterMsg',
     'APIDeleteBackupFileInPublicMsg',
     'APIDeleteBackupStorageMsg',
@@ -12976,6 +13241,7 @@ api_names = [
     'APIDeleteWebhookMsg',
     'APIDeleteZoneMsg',
     'APIDestroyVmInstanceMsg',
+    'APIDetachAliyunDiskFromEcsMsg',
     'APIDetachAliyunKeyMsg',
     'APIDetachBackupStorageFromZoneMsg',
     'APIDetachDataVolumeFromVmMsg',
@@ -13001,6 +13267,7 @@ api_names = [
     'APIExpungeDataVolumeMsg',
     'APIExpungeImageMsg',
     'APIExpungeVmInstanceMsg',
+    'APIGCAliyunSnapshotRemoteMsg',
     'APIGenerateApiJsonTemplateMsg',
     'APIGenerateApiTypeScriptDefinitionMsg',
     'APIGenerateGroovyClassMsg',
@@ -13258,10 +13525,14 @@ api_names = [
     'APIQueryAccountResourceRefReply',
     'APIQueryAlertMsg',
     'APIQueryAlertReply',
+    'APIQueryAliyunDiskFromLocalMsg',
+    'APIQueryAliyunDiskFromLocalReply',
     'APIQueryAliyunKeySecretMsg',
     'APIQueryAliyunKeySecretReply',
     'APIQueryAliyunRouteEntryFromLocalMsg',
     'APIQueryAliyunRouteEntryFromLocalReply',
+    'APIQueryAliyunSnapshotFromLocalMsg',
+    'APIQueryAliyunSnapshotFromLocalReply',
     'APIQueryAliyunVirtualRouterFromLocalMsg',
     'APIQueryAliyunVirtualRouterFromLocalReply',
     'APIQueryApplianceVmMsg',
@@ -13547,9 +13818,11 @@ api_names = [
     'APIStopEcsInstanceMsg',
     'APIStopVmInstanceMsg',
     'APISyncAliyunRouteEntryFromRemoteMsg',
+    'APISyncAliyunSnapshotRemoteMsg',
     'APISyncAliyunVirtualRouterFromRemoteMsg',
     'APISyncConnectionAccessPointFromRemoteMsg',
     'APISyncDataCenterFromRemoteMsg',
+    'APISyncDiskFromAliyunFromRemoteMsg',
     'APISyncEcsImageFromRemoteMsg',
     'APISyncEcsInstanceFromRemoteMsg',
     'APISyncEcsSecurityGroupFromRemoteMsg',
@@ -13569,6 +13842,7 @@ api_names = [
     'APITerminateVirtualBorderRouterRemoteMsg',
     'APITriggerGCJobMsg',
     'APIUpdateAccountMsg',
+    'APIUpdateAliyunDiskMsg',
     'APIUpdateAliyunKeySecretMsg',
     'APIUpdateBackupStorageMsg',
     'APIUpdateBaremetalChassisMsg',
@@ -14068,6 +14342,42 @@ class EcsImageInventory(object):
             self.format = inv.format
         else:
             self.format = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class EcsImageUsageInventory(object):
+    def __init__(self):
+        self.id = None
+        self.ecsImageUuid = None
+        self.snapshotUuidOfCreatedImage = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'ecsImageUuid'):
+            self.ecsImageUuid = inv.ecsImageUuid
+        else:
+            self.ecsImageUuid = None
+
+        if hasattr(inv, 'snapshotUuidOfCreatedImage'):
+            self.snapshotUuidOfCreatedImage = inv.snapshotUuidOfCreatedImage
+        else:
+            self.snapshotUuidOfCreatedImage = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -14944,6 +15254,162 @@ class OssUploadPartsInventory(object):
             self.fileKey = inv.fileKey
         else:
             self.fileKey = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class AliyunDiskInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.diskId = None
+        self.name = None
+        self.description = None
+        self.identityZoneUuid = None
+        self.ecsInstanceUuid = None
+        self.diskCategory = None
+        self.diskType = None
+        self.diskChargeType = None
+        self.status = None
+        self.sizeWithGB = None
+        self.deviceInfo = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'diskId'):
+            self.diskId = inv.diskId
+        else:
+            self.diskId = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'identityZoneUuid'):
+            self.identityZoneUuid = inv.identityZoneUuid
+        else:
+            self.identityZoneUuid = None
+
+        if hasattr(inv, 'ecsInstanceUuid'):
+            self.ecsInstanceUuid = inv.ecsInstanceUuid
+        else:
+            self.ecsInstanceUuid = None
+
+        if hasattr(inv, 'diskCategory'):
+            self.diskCategory = inv.diskCategory
+        else:
+            self.diskCategory = None
+
+        if hasattr(inv, 'diskType'):
+            self.diskType = inv.diskType
+        else:
+            self.diskType = None
+
+        if hasattr(inv, 'diskChargeType'):
+            self.diskChargeType = inv.diskChargeType
+        else:
+            self.diskChargeType = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'sizeWithGB'):
+            self.sizeWithGB = inv.sizeWithGB
+        else:
+            self.sizeWithGB = None
+
+        if hasattr(inv, 'deviceInfo'):
+            self.deviceInfo = inv.deviceInfo
+        else:
+            self.deviceInfo = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class AliyunSnapshotInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.snapshotId = None
+        self.name = None
+        self.description = None
+        self.dataCenterUuid = None
+        self.diskUuid = None
+        self.status = None
+        self.aliyunSnapshotUsage = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'snapshotId'):
+            self.snapshotId = inv.snapshotId
+        else:
+            self.snapshotId = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'diskUuid'):
+            self.diskUuid = inv.diskUuid
+        else:
+            self.diskUuid = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'aliyunSnapshotUsage'):
+            self.aliyunSnapshotUsage = inv.aliyunSnapshotUsage
+        else:
+            self.aliyunSnapshotUsage = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -19432,13 +19898,6 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
-
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -19512,17 +19971,6 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     def get_category():
         return 'sharedMountPointPrimaryStorage'
 
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
-
-    @staticmethod
-    def get_category():
-        return 'Test'
-
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
     SSH_PORT = 'ssh.port'
@@ -19592,6 +20040,18 @@ class QueryObjectAccountResourceRefInventory(object):
 
 class QueryObjectAlertInventory(object):
      PRIMITIVE_FIELDS = ['lastOpDate','triggerUuid','targetResourceUuid','uuid','content','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectAliyunDiskInventory(object):
+     PRIMITIVE_FIELDS = ['ecsInstanceUuid','sizeWithGB','identityZoneUuid','description','uuid','deviceInfo','diskChargeType','name','lastOpDate','diskId','diskType','diskCategory','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectAliyunSnapshotInventory(object):
+     PRIMITIVE_FIELDS = ['snapshotId','diskUuid','name','lastOpDate','description','dataCenterUuid','uuid','aliyunSnapshotUsage','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -19794,6 +20254,12 @@ class QueryObjectEcsImageInventory(object):
      EXPANDED_FIELDS = ['datacenter']
      QUERY_OBJECT_MAP = {
         'datacenter' : 'QueryObjectDataCenterInventory',
+     }
+
+class QueryObjectEcsImageUsageInventory(object):
+     PRIMITIVE_FIELDS = ['ecsImageUuid','snapshotUuidOfCreatedImage','lastOpDate','id','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectEcsInstanceInventory(object):
@@ -20742,8 +21208,10 @@ queryMessageInventoryMap = {
      'APIQueryAccountMsg' : QueryObjectAccountInventory,
      'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
      'APIQueryAlertMsg' : QueryObjectAlertInventory,
+     'APIQueryAliyunDiskFromLocalMsg' : QueryObjectAliyunDiskInventory,
      'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,
      'APIQueryAliyunRouteEntryFromLocalMsg' : QueryObjectVpcVirtualRouteEntryInventory,
+     'APIQueryAliyunSnapshotFromLocalMsg' : QueryObjectAliyunSnapshotInventory,
      'APIQueryAliyunVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
      'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
      'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
