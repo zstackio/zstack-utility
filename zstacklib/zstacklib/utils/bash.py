@@ -96,7 +96,8 @@ def bash_progress_1(cmd, func):
     watch_thread = WatchThread_1(func)
     try:
         watch_thread.start()
-        return bash_roe(cmd, errorout=True)
+        r, o, _ = bash_roe(cmd, errorout=True)
+        return r, o, None
     except Exception as ex:
         logger.debug(linux.get_exception_stacktrace())
         return None, None, ex
