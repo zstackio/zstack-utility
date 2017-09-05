@@ -4154,6 +4154,18 @@ class GetOssBucketNameFromRemoteAction(inventory.APIGetOssBucketNameFromRemoteMs
         self.out = evt
         return self.out
 
+class GetPciDeviceCandidatesForAttachingVmAction(inventory.APIGetPciDeviceCandidatesForAttachingVmMsg):
+    def __init__(self):
+        super(GetPciDeviceCandidatesForAttachingVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetPciDeviceCandidatesForAttachingVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetPortForwardingAttachableVmNicsAction(inventory.APIGetPortForwardingAttachableVmNicsMsg):
     def __init__(self):
         super(GetPortForwardingAttachableVmNicsAction, self).__init__()
