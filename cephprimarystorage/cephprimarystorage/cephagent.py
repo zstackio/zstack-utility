@@ -443,8 +443,11 @@ class CephAgent(object):
         pool_names = existing_pools.split("\n")
 
         realname = eval('u"' + cmd.poolName + '"').encode('utf-8')
-        if cmd.errorIfNotExist and realname not in pool_names:
+        if not cmd.isCreate and realname not in pool_names:
             raise Exception('cannot find the pool[%s] in the ceph cluster, you must create it manually' % realname)
+
+        if cmd.isCreate and realname in pool_names:
+            raise Exception('have pool named[%s] in the ceph cluster, can\'t create new pool with same name' % realname)
 
         if realname not in pool_names:
             shell.call('ceph osd pool create %s 100' % realname)
