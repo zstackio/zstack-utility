@@ -11884,7 +11884,7 @@ class APIAddCephPrimaryStoragePoolMsg(object):
         self.poolName = NotNoneField()
         self.aliasName = None
         self.description = None
-        self.errorIfNotExist = None
+        self.isCreate = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -19898,6 +19898,7 @@ class GlobalConfig_KVM(object):
     VM_CACHEMODE = 'vm.cacheMode'
     HOST_DNSCHECK163 = 'host.DNSCheck163'
     RESERVEDCPU = 'reservedCpu'
+    VM_CONSOLEMODE = 'vm.consoleMode'
     DATAVOLUME_MAXNUM = 'dataVolume.maxNum'
     HOST_DNSCHECKLIST = 'host.DNSCheckList'
     VMSYNCONHOSTPING = 'vmSyncOnHostPing'
@@ -19929,6 +19930,13 @@ class GlobalConfig_LOCALSTORAGEPRIMARYSTORAGE(object):
     def get_category():
         return 'localStoragePrimaryStorage'
 
+class GlobalConfig_LOG(object):
+    ENABLED = 'enabled'
+
+    @staticmethod
+    def get_category():
+        return 'log'
+
 class GlobalConfig_LOGGING(object):
     LOCALE = 'locale'
 
@@ -19958,6 +19966,14 @@ class GlobalConfig_MEVOCO(object):
     @staticmethod
     def get_category():
         return 'mevoco'
+
+class GlobalConfig_MONITOR(object):
+    HOST_INTERVAL = 'host.interval'
+    VM_INTERVAL = 'vm.interval'
+
+    @staticmethod
+    def get_category():
+        return 'monitor'
 
 class GlobalConfig_MONITORING(object):
     TRIGGER_RECOVERY_CHECKER_INTERVAL = 'trigger.recovery.checker.interval'
@@ -19990,13 +20006,6 @@ class GlobalConfig_NOTIFICATION(object):
     @staticmethod
     def get_category():
         return 'notification'
-
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
 
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
@@ -20037,6 +20046,7 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -20070,17 +20080,6 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
-
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
-
-    @staticmethod
-    def get_category():
-        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
