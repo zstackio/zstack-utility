@@ -11861,6 +11861,7 @@ class APIAddCephPrimaryStoragePoolMsg(object):
         self.primaryStorageUuid = NotNoneField()
         #mandatory field
         self.poolName = NotNoneField()
+        self.aliasName = None
         self.description = None
         self.errorIfNotExist = None
         self.resourceUuid = None
@@ -11973,6 +11974,20 @@ class APIUpdateCephPrimaryStorageMonMsg(object):
         self.sshPassword = None
         self.sshPort = None
         self.monPort = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATECEPHPRIMARYSTORAGEPOOLMSG_FULL_NAME = 'org.zstack.storage.ceph.primary.APIUpdateCephPrimaryStoragePoolMsg'
+class APIUpdateCephPrimaryStoragePoolMsg(object):
+    FULL_NAME='org.zstack.storage.ceph.primary.APIUpdateCephPrimaryStoragePoolMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.aliasName = None
+        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -13895,6 +13910,7 @@ api_names = [
     'APIUpdateBaremetalPxeServerMsg',
     'APIUpdateCephBackupStorageMonMsg',
     'APIUpdateCephPrimaryStorageMonMsg',
+    'APIUpdateCephPrimaryStoragePoolMsg',
     'APIUpdateClusterMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
     'APIUpdateDiskOfferingMsg',
@@ -19952,6 +19968,13 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
+class GlobalConfig_OTHERS(object):
+    TEST2 = 'Test2'
+
+    @staticmethod
+    def get_category():
+        return 'Others'
+
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -19991,7 +20014,6 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -20025,6 +20047,17 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
+
+class GlobalConfig_TEST(object):
+    TEST = 'Test'
+    TEST3 = 'Test3'
+    TEST4 = 'Test4'
+    TESTSTRING = 'TestString'
+    TESTBOOLEAN = 'TestBoolean'
+
+    @staticmethod
+    def get_category():
+        return 'Test'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
@@ -20218,15 +20251,15 @@ class QueryObjectCephBackupStorageMonInventory(object):
      }
 
 class QueryObjectCephPrimaryStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','imageCachePoolName','zoneUuid','description','rootVolumePoolName','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','fsid','name','lastOpDate','state','dataVolumePoolName','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['tags','mons','volume','volumeSnapshot','mons','zone','tags','cluster']
+     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','zoneUuid','description','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','fsid','name','lastOpDate','state','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['pools','mons','volume','volumeSnapshot','mons','zone','pools','cluster']
      QUERY_OBJECT_MAP = {
         'volume' : 'QueryObjectVolumeInventory',
         'cluster' : 'QueryObjectClusterInventory',
         'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
         'mons' : 'QueryObjectCephPrimaryStorageMonInventory',
         'zone' : 'QueryObjectZoneInventory',
-        'tags' : 'QueryObjectSystemTagInventory',
+        'pools' : 'QueryObjectCephPrimaryStoragePoolInventory',
      }
 
 class QueryObjectCephPrimaryStorageMonInventory(object):
@@ -20236,7 +20269,7 @@ class QueryObjectCephPrimaryStorageMonInventory(object):
      }
 
 class QueryObjectCephPrimaryStoragePoolInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','description','primaryStorageUuid','uuid','poolName','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['aliasName','lastOpDate','description','primaryStorageUuid','type','uuid','poolName','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
