@@ -79,7 +79,7 @@ class ImageStoreClient(object):
                 req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.imageName, fpath)
 
         logger.debug('adding %s to local image store' % fpath)
-        shell.call(cmdstr)
+        shell.call(cmdstr.encode(encoding="utf-8"))
         logger.debug('%s added to local image store' % fpath)
 
         name, imageid = self._get_image_reference(fpath)
