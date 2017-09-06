@@ -11108,6 +11108,27 @@ class APIGetHostIommuStatusReply(object):
         self.error = None
 
 
+APIGETPCIDEVICECANDIDATESFORATTACHINGVMMSG_FULL_NAME = 'org.zstack.pciDevice.APIGetPciDeviceCandidatesForAttachingVmMsg'
+class APIGetPciDeviceCandidatesForAttachingVmMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetPciDeviceCandidatesForAttachingVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETPCIDEVICECANDIDATESFORATTACHINGVMREPLY_FULL_NAME = 'org.zstack.pciDevice.APIGetPciDeviceCandidatesForAttachingVmReply'
+class APIGetPciDeviceCandidatesForAttachingVmReply(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetPciDeviceCandidatesForAttachingVmReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIQUERYPCIDEVICEMSG_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDeviceMsg'
 class APIQueryPciDeviceMsg(object):
     FULL_NAME='org.zstack.pciDevice.APIQueryPciDeviceMsg'
@@ -13439,6 +13460,8 @@ api_names = [
     'APIGetOssBucketFileFromRemoteReply',
     'APIGetOssBucketNameFromRemoteMsg',
     'APIGetOssBucketNameFromRemoteReply',
+    'APIGetPciDeviceCandidatesForAttachingVmMsg',
+    'APIGetPciDeviceCandidatesForAttachingVmReply',
     'APIGetPolicyReply',
     'APIGetPortForwardingAttachableVmNicsMsg',
     'APIGetPortForwardingAttachableVmNicsReply',
