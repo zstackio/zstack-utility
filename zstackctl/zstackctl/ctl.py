@@ -1598,7 +1598,7 @@ class StartCmd(Command):
                         raise CtlError('the management server fails to boot; details can be found in the log[%s],'
                                        'here is a brief of the error:\n%s' % (log_path, fd.read()))
 
-                cmd = create_check_mgmt_node_command(1)
+                cmd = create_check_mgmt_node_command(1, 'localhost')
                 cmd(False)
                 return cmd.return_code == 0
 
