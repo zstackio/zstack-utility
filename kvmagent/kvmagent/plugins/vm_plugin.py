@@ -3464,6 +3464,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
+            r, o, e = bash.bash_roe("grub2-mkconfig -o /etc/grub2-efi.cfg")
+            if r != 0:
+                rsp.success = False
+                rsp.error = "%s %s" % (e, o)
+                return jsonobject.dumps(rsp)
             r, o, e = bash.bash_roe("modprobe vfio && modprobe vfio-pci")
             if r != 0:
                 rsp.success = False
