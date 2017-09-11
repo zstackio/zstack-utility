@@ -81,6 +81,11 @@ class GetLocalFileSizeRsp(AgentResponse):
         super(GetLocalFileSizeRsp, self).__init__()
         self.size = None
 
+class MigrateImageResponse(object):
+    def __init__(self):
+        self.success = True
+        self.error = ''
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -110,6 +115,7 @@ class CephAgent(object):
     CHECK_IMAGE_METADATA_FILE_EXIST = "/ceph/backupstorage/checkimagemetadatafileexist"
     CHECK_POOL_PATH = "/ceph/backupstorage/checkpool"
     GET_LOCAL_FILE_SIZE = "/ceph/backupstorage/getlocalfilesize/"
+    MIGRATE_IMAGE_PATH = "/ceph/backupstorage/image/migrate"
 
     CEPH_METADATA_FILE = "bs_ceph_info.json"
 
@@ -130,6 +136,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DELETE_IMAGES_METADATA, self.delete_image_metadata_from_file)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
+        self.http_server.register_sync_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image)
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -554,6 +561,21 @@ class CephAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetLocalFileSizeRsp()
         rsp.size = linux.get_local_file_size(cmd.path)
+        return jsonobject.dumps(rsp)
+
+    def _migrate_image(self, src_install_path, src_image_size, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port, dst_pool_name, dst_image_uuid):
+        return shell.run('rbd export %s - | pv -n -s %s 2>/tmp/%s | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'rbd import - %s/%s\'' % (src_install_path, src_image_size, dst_image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, dst_pool_name, dst_image_uuid))
+
+    @replyerror
+    def migrate_image(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = MigrateImageResponse()
+        rst = self._migrate_image(cmd.srcInstallPath, cmd.srcImageSize, cmd.dstMonHostname, cmd.dstMonSshUsername,
+                                   cmd.dstMonSshPassword, cmd.dstMonSshPort, cmd.dstPoolName, cmd.dstImageUuid)
+        if rst != 0:
+            rsp.success = False
+            rsp.error = "Failed to migrate image from one ceph backup storage to another."
+        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):

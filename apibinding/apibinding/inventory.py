@@ -39,6 +39,7 @@ class APIMessage(object):
         super(APIMessage, self).__init__()
         self.timeout = None
         self.session = None
+        self.apiParams = None
 
 
 APIDELETEMESSAGE_FULL_NAME = 'org.zstack.header.message.APIDeleteMessage'
@@ -12440,6 +12441,50 @@ class APIUpdateFusionstorPrimaryStorageMonMsg(object):
         self.userTags = OptionalList()
 
 
+APIBACKUPSTORAGEMIGRATEIMAGEMSG_FULL_NAME = 'org.zstack.storage.migration.backup.APIBackupStorageMigrateImageMsg'
+class APIBackupStorageMigrateImageMsg(object):
+    FULL_NAME='org.zstack.storage.migration.backup.APIBackupStorageMigrateImageMsg'
+    def __init__(self):
+        #mandatory field
+        self.imageUuid = NotNoneField()
+        #mandatory field
+        self.srcBackupStorageUuid = NotNoneField()
+        #mandatory field
+        self.dstBackupStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIPRIMARYSTORAGEMIGRATEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
+class APIPrimaryStorageMigrateDataVolumeMsg(object):
+    FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
+    def __init__(self):
+        #mandatory field
+        self.volumeUuid = NotNoneField()
+        #mandatory field
+        self.dstPrimaryStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIPRIMARYSTORAGEMIGRATEROOTVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateRootVolumeMsg'
+class APIPrimaryStorageMigrateRootVolumeMsg(object):
+    FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateRootVolumeMsg'
+    def __init__(self):
+        #mandatory field
+        self.volumeUuid = NotNoneField()
+        #mandatory field
+        self.dstPrimaryStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDLOCALPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.primary.local.APIAddLocalPrimaryStorageMsg'
 class APIAddLocalPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.primary.local.APIAddLocalPrimaryStorageMsg'
@@ -13365,6 +13410,7 @@ api_names = [
     'APIAttachVRouterRouteTableToVRouterMsg',
     'APIBackupDataVolumeMsg',
     'APIBackupDatabaseToPublicCloudMsg',
+    'APIBackupStorageMigrateImageMsg',
     'APIBackupVolumeSnapshotMsg',
     'APICalculateAccountSpendingMsg',
     'APICalculateAccountSpendingReply',
@@ -13847,6 +13893,8 @@ api_names = [
     'APIPowerOnBaremetalHostMsg',
     'APIPowerResetBaremetalHostMsg',
     'APIPowerStatusBaremetalHostMsg',
+    'APIPrimaryStorageMigrateDataVolumeMsg',
+    'APIPrimaryStorageMigrateRootVolumeMsg',
     'APIPrometheusQueryLabelValuesMsg',
     'APIPrometheusQueryLabelValuesReply',
     'APIPrometheusQueryMetadataMsg',
@@ -19944,6 +19992,8 @@ SIMULATOR_HYPERVISOR_TYPE = 'Simulator'
 #SimulatorPrimaryStorageConstant
 SIMULATOR_PRIMARY_STORAGE_TYPE = 'SimulatorPrimaryStorage'
 
+#StorageMigrationConstant
+
 #VCenterConstant
 VCENTER_CLUSTER_TYPE = 'vmware'
 VCENTER_BACKUP_STORAGE_TYPE = 'VCenter'
@@ -20592,7 +20642,7 @@ class QueryObjectConnectionRelationShipInventory(object):
      }
 
 class QueryObjectConsoleProxyAgentInventory(object):
-     PRIMITIVE_FIELDS = ['managementIp','lastOpDate','description','state','type','uuid','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['managementIp','lastOpDate','description','state','consoleProxyOverriddenIp','type','uuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
