@@ -5143,6 +5143,13 @@ class InstallManagementNodeCmd(Command):
     - name: copy zstack.properties
       copy: src=$properties_file dest={{root}}/apache-tomcat/webapps/zstack/WEB-INF/classes/zstack.properties
 
+    - name: mount zstack-dvd
+      file:
+        src: /opt/zstack-dvd
+        dest: $install_path/apache-tomcat/webapps/zstack/static/zstack-dvd
+        state: link
+        force: yes
+
     - name: setup zstack account
       script: $setup_account
 '''
