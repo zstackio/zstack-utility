@@ -1811,7 +1811,7 @@ cs_setup_http(){
     if [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
         chkconfig httpd on >>$ZSTACK_INSTALL_LOG 2>&1
         cat > /etc/httpd/conf.d/zstack-http.conf <<EOF
-Alias /image/ "$HTTP_FOLDER/"
+Alias /image "$HTTP_FOLDER/"
 <Directory $HTTP_FOLDER/>
     AllowOverride FileInfo AuthConfig Limit
     Options MultiViews Indexes SymLinksIfOwnerMatch IncludesNoExec
@@ -1823,7 +1823,7 @@ EOF
     elif [ $OS = $CENTOS6 ]; then
         chkconfig httpd on >>$ZSTACK_INSTALL_LOG 2>&1
         cat > /etc/httpd/conf.d/zstack-http.conf <<EOF
-Alias /image/ "$HTTP_FOLDER/"
+Alias /image "$HTTP_FOLDER/"
 <Directory $HTTP_FOLDER/>
     AllowOverride FileInfo AuthConfig Limit
     Options MultiViews Indexes SymLinksIfOwnerMatch IncludesNoExec
@@ -1833,7 +1833,7 @@ EOF
         service httpd restart >>$ZSTACK_INSTALL_LOG 2>&1
     else
         cat > /etc/apache2/conf-enabled/zstack-http.conf <<EOF
-Alias /image/ "$HTTP_FOLDER/"
+Alias /image "$HTTP_FOLDER/"
 <Directory $HTTP_FOLDER/>
     AllowOverride FileInfo AuthConfig Limit
     Options MultiViews Indexes SymLinksIfOwnerMatch IncludesNoExec
