@@ -24,6 +24,7 @@ class RevertVolumeFromSnapshotRsp(AgentResponse):
     def __init__(self):
         super(RevertVolumeFromSnapshotRsp, self).__init__()
         self.newVolumeInstallPath = None
+        self.size = None
 
 class MergeSnapshotRsp(AgentResponse):
     def __init__(self):
@@ -69,6 +70,11 @@ class GetQCOW2ReferenceRsp(AgentResponse):
         super(GetQCOW2ReferenceRsp, self).__init__()
         self.referencePaths = None
 
+class ResizeVolumeRsp(AgentResponse):
+    def __init__(self):
+        super(ResizeVolumeRsp, self).__init__()
+        self.size = None
+
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
@@ -99,6 +105,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_BASE_IMAGE_PATH = "/localstorage/volume/getbaseimagepath"
     GET_QCOW2_REFERENCE = "/localstorage/getqcow2reference"
     CONVERT_QCOW2_TO_RAW = "/localstorage/imagestore/convert/raw"
+    RESIZE_VOLUME_PATH = "/localstorage/volume/resize"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -132,11 +139,23 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
         http_server.register_async_uri(self.CONVERT_QCOW2_TO_RAW, self.convert_qcow2_to_raw)
+        http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
 
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def resize_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        install_path = cmd.install_path
+        rsp = ResizeVolumeRsp()
+        shell.call("qemu-img resize %s %s" % (install_path, cmd.size))
+        ret = linux.qcow2_virtualsize(install_path)
+        rsp.size = ret
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def convert_qcow2_to_raw(self, req):
@@ -430,7 +449,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         install_path = cmd.snapshotInstallPath
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone(install_path, new_volume_path)
+        size = linux.qcow2_virtualsize(new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
+        rsp.size = size
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

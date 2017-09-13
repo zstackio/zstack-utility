@@ -6756,6 +6756,18 @@ class RequestConsoleAccessAction(inventory.APIRequestConsoleAccessMsg):
         self.out = evt
         return self.out
 
+class ResizeRootVolumeAction(inventory.APIResizeRootVolumeMsg):
+    def __init__(self):
+        super(ResizeRootVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ResizeRootVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ResumeVmInstanceAction(inventory.APIResumeVmInstanceMsg):
     def __init__(self):
         super(ResumeVmInstanceAction, self).__init__()

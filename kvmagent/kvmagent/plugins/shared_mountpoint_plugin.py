@@ -30,6 +30,7 @@ class RevertVolumeFromSnapshotRsp(AgentRsp):
     def __init__(self):
         super(RevertVolumeFromSnapshotRsp, self).__init__()
         self.newVolumeInstallPath = None
+        self.size = None
 
 class MergeSnapshotRsp(AgentRsp):
     def __init__(self):
@@ -48,6 +49,10 @@ class GetVolumeSizeRsp(AgentRsp):
         self.size = None
         self.actualSize = None
 
+class ResizeVolumeRsp(AgentRsp):
+    def __init__(self):
+        super(ResizeVolumeRsp, self).__init__()
+        self.size = None
 
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
@@ -66,6 +71,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CREATE_EMPTY_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/createempty"
     CHECK_BITS_PATH = "/sharedmountpointprimarystorage/bits/check"
     GET_VOLUME_SIZE_PATH = "/sharedmountpointprimarystorage/volume/getsize"
+    RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -84,12 +90,24 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
 
         self.imagestore_client = ImageStoreClient()
         self.id_file = None
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def resize_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        install_path = cmd.installPath
+        rsp = ResizeVolumeRsp()
+        shell.call("qemu-img resize %s +%s" % (install_path, cmd.size))
+        ret = linux.qcow2_virtualsize(install_path)
+        rsp.size = ret
+        return jsonobject.dumps(rsp)
 
     @staticmethod
     def _get_disk_capacity(mount_point):
@@ -245,7 +263,9 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         install_path = cmd.snapshotInstallPath
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone(install_path, new_volume_path)
+        size = linux.qcow2_virtualsize(new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
+        rsp.size = size
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
