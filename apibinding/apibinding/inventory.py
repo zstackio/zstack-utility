@@ -39,7 +39,6 @@ class APIMessage(object):
         super(APIMessage, self).__init__()
         self.timeout = None
         self.session = None
-        self.apiParams = None
 
 
 APIDELETEMESSAGE_FULL_NAME = 'org.zstack.header.message.APIDeleteMessage'
@@ -11643,6 +11642,38 @@ class APIReconnectImageStoreBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIRECOVERYIMAGEFROMIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIRecoveryImageFromImageStoreBackupStorageMsg'
+class APIRecoveryImageFromImageStoreBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APIRecoveryImageFromImageStoreBackupStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.srcBackupStorageUuid = NotNoneField()
+        #mandatory field
+        self.dstBackupStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCIMAGEFROMIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APISyncImageFromImageStoreBackupStorageMsg'
+class APISyncImageFromImageStoreBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APISyncImageFromImageStoreBackupStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.srcBackupStorageUuid = NotNoneField()
+        #mandatory field
+        self.dstBackupStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIUPDATEIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIUpdateImageStoreBackupStorageMsg'
 class APIUpdateImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIUpdateImageStoreBackupStorageMsg'
@@ -13835,6 +13866,7 @@ api_names = [
     'APIRecoverDataVolumeMsg',
     'APIRecoverImageMsg',
     'APIRecoverVmInstanceMsg',
+    'APIRecoveryImageFromImageStoreBackupStorageMsg',
     'APIRecoveryVirtualBorderRouterRemoteMsg',
     'APIRefreshLoadBalancerMsg',
     'APIReimageVmInstanceMsg',
@@ -13917,6 +13949,7 @@ api_names = [
     'APISyncEcsVpcFromRemoteMsg',
     'APISyncHybridEipFromRemoteMsg',
     'APISyncIdentityFromRemoteMsg',
+    'APISyncImageFromImageStoreBackupStorageMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncRouterInterfaceFromRemoteMsg',
@@ -17642,7 +17675,6 @@ class L3NetworkInventory(object):
         self.dns = None
         self.ipRanges = None
         self.networkServices = None
-        self.tags = None
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -17714,11 +17746,6 @@ class L3NetworkInventory(object):
             self.networkServices = inv.networkServices
         else:
             self.networkServices = None
-
-        if hasattr(inv, 'tags'):
-            self.tags = inv.tags
-        else:
-            self.tags = None
 
 
 
@@ -20646,7 +20673,7 @@ class QueryObjectL3NetworkDnsInventory(object):
 
 class QueryObjectL3NetworkInventory(object):
      PRIMITIVE_FIELDS = ['zoneUuid','description','type','uuid','dnsDomain','system','l2NetworkUuid','name','lastOpDate','state','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['networkServices','tags','ipRanges','vmNic','zone','l2Network','tags','serviceProvider']
+     EXPANDED_FIELDS = ['networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
      QUERY_OBJECT_MAP = {
         'ipRanges' : 'QueryObjectIpRangeInventory',
         'vmNic' : 'QueryObjectVmNicInventory',
@@ -20654,7 +20681,6 @@ class QueryObjectL3NetworkInventory(object):
         'serviceProvider' : 'QueryObjectNetworkServiceProviderInventory',
         'l2Network' : 'QueryObjectL2NetworkInventory',
         'networkServices' : 'QueryObjectNetworkServiceL3NetworkRefInventory',
-        'tags' : 'QueryObjectSystemTagInventory',
      }
 
 class QueryObjectLdapAccountRefInventory(object):

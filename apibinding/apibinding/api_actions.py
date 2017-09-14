@@ -6588,6 +6588,18 @@ class RecoverVmInstanceAction(inventory.APIRecoverVmInstanceMsg):
         self.out = evt
         return self.out
 
+class RecoveryImageFromImageStoreBackupStorageAction(inventory.APIRecoveryImageFromImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(RecoveryImageFromImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoveryImageFromImageStoreBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RecoveryVirtualBorderRouterRemoteAction(inventory.APIRecoveryVirtualBorderRouterRemoteMsg):
     def __init__(self):
         super(RecoveryVirtualBorderRouterRemoteAction, self).__init__()
@@ -7266,6 +7278,18 @@ class SyncIdentityFromRemoteAction(inventory.APISyncIdentityFromRemoteMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncIdentityFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncImageFromImageStoreBackupStorageAction(inventory.APISyncImageFromImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(SyncImageFromImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncImageFromImageStoreBackupStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
