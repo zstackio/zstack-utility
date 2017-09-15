@@ -74,6 +74,18 @@ class AddDataCenterFromRemoteAction(inventory.APIAddDataCenterFromRemoteMsg):
         self.out = evt
         return self.out
 
+class AddDisasterImageStoreBackupStorageAction(inventory.APIAddDisasterImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(AddDisasterImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddDisasterImageStoreBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddDnsToL3NetworkAction(inventory.APIAddDnsToL3NetworkMsg):
     def __init__(self):
         super(AddDnsToL3NetworkAction, self).__init__()
@@ -3622,6 +3634,18 @@ class GetAttachablePublicL3ForVRouterAction(inventory.APIGetAttachablePublicL3Fo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetAttachablePublicL3ForVRouterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetAvailableTriggersAction(inventory.APIGetAvailableTriggersMsg):
+    def __init__(self):
+        super(GetAvailableTriggersAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAvailableTriggersAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

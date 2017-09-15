@@ -76,7 +76,7 @@ class ImageStoreClient(object):
 
         # Add the image to registry
         cmdstr = '%s -json  -callbackurl %s -taskid %s -imageUuid %s add -desc \'%s\' -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
-                req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.imageName, fpath)
+                req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.description, fpath)
 
         logger.debug('adding %s to local image store' % fpath)
         shell.call(cmdstr.encode(encoding="utf-8"))

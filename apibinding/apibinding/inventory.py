@@ -6451,7 +6451,6 @@ class APIAddSimulatorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11436,6 +11435,25 @@ class APIDeleteSchedulerTriggerMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETAVAILABLETRIGGERSMSG_FULL_NAME = 'org.zstack.scheduler.APIGetAvailableTriggersMsg'
+class APIGetAvailableTriggersMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIGetAvailableTriggersMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETAVAILABLETRIGGERSREPLY_FULL_NAME = 'org.zstack.scheduler.APIGetAvailableTriggersReply'
+class APIGetAvailableTriggersReply(object):
+    FULL_NAME='org.zstack.scheduler.APIGetAvailableTriggersReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIQUERYSCHEDULERJOBMSG_FULL_NAME = 'org.zstack.scheduler.APIQuerySchedulerJobMsg'
 class APIQuerySchedulerJobMsg(object):
     FULL_NAME='org.zstack.scheduler.APIQuerySchedulerJobMsg'
@@ -11540,6 +11558,33 @@ class APIUpdateSchedulerTriggerMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDDISASTERIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
+class APIAddDisasterImageStoreBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
+    def __init__(self):
+        self.attachPoint = None
+        self.endPoint = None
+        #mandatory field
+        self.hostname = NotNoneField()
+        #mandatory field
+        self.username = NotNoneField()
+        #mandatory field
+        self.password = NotNoneField()
+        self.sshPort = None
+        #mandatory field
+        self.url = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.type = None
+        self.importImages = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIAddImageStoreBackupStorageMsg'
 class APIAddImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIAddImageStoreBackupStorageMsg'
@@ -11558,7 +11603,6 @@ class APIAddImageStoreBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11710,7 +11754,6 @@ class APIAddSftpBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11810,7 +11853,6 @@ class APIAddCephBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -12061,7 +12103,6 @@ class APIAddFusionstorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -13093,6 +13134,7 @@ api_names = [
     'APIAddCephPrimaryStoragePoolMsg',
     'APIAddConnectionAccessPointFromRemoteMsg',
     'APIAddDataCenterFromRemoteMsg',
+    'APIAddDisasterImageStoreBackupStorageMsg',
     'APIAddDnsToL3NetworkMsg',
     'APIAddFusionstorBackupStorageMsg',
     'APIAddFusionstorPrimaryStorageMsg',
@@ -13395,6 +13437,8 @@ api_names = [
     'APIGetAccountReply',
     'APIGetAttachablePublicL3ForVRouterMsg',
     'APIGetAttachablePublicL3ForVRouterReply',
+    'APIGetAvailableTriggersMsg',
+    'APIGetAvailableTriggersReply',
     'APIGetBackupStorageCapacityMsg',
     'APIGetBackupStorageCapacityReply',
     'APIGetBackupStorageReply',
@@ -17675,6 +17719,7 @@ class L3NetworkInventory(object):
         self.dns = None
         self.ipRanges = None
         self.networkServices = None
+        self.tags = None
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -17746,6 +17791,11 @@ class L3NetworkInventory(object):
             self.networkServices = inv.networkServices
         else:
             self.networkServices = None
+
+        if hasattr(inv, 'tags'):
+            self.tags = inv.tags
+        else:
+            self.tags = None
 
 
 
@@ -20673,7 +20723,7 @@ class QueryObjectL3NetworkDnsInventory(object):
 
 class QueryObjectL3NetworkInventory(object):
      PRIMITIVE_FIELDS = ['zoneUuid','description','type','uuid','dnsDomain','system','l2NetworkUuid','name','lastOpDate','state','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
+     EXPANDED_FIELDS = ['networkServices','tags','ipRanges','vmNic','zone','l2Network','tags','serviceProvider']
      QUERY_OBJECT_MAP = {
         'ipRanges' : 'QueryObjectIpRangeInventory',
         'vmNic' : 'QueryObjectVmNicInventory',
@@ -20681,6 +20731,7 @@ class QueryObjectL3NetworkInventory(object):
         'serviceProvider' : 'QueryObjectNetworkServiceProviderInventory',
         'l2Network' : 'QueryObjectL2NetworkInventory',
         'networkServices' : 'QueryObjectNetworkServiceL3NetworkRefInventory',
+        'tags' : 'QueryObjectSystemTagInventory',
      }
 
 class QueryObjectLdapAccountRefInventory(object):
