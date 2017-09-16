@@ -133,12 +133,15 @@ LoadPlugin virt
                 bash_errorout('kill -9 %s' % pid)
                 bash_errorout('collectd -C %s' % conf_path)
 
-        pid = linux.find_process_by_cmdline(['collectd_exporter'])
+        pid = linux.find_process_by_cmdline([cmd.binaryPath])
         if not pid:
             EXPORTER_PATH = cmd.binaryPath
-            LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), 'collectd_exporter.log')
+            LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
+            ARGUMENTS  = cmd.startupArguments
+            if not ARGUMENTS:
+                ARGUMENTS = ""
             bash_errorout('chmod +x {{EXPORTER_PATH}}')
-            bash_errorout("nohup {{EXPORTER_PATH}} -collectd.listen-address :25826 >{{LOG_FILE}} 2>&1 < /dev/null &\ndisown")
+            bash_errorout("nohup {{EXPORTER_PATH}} {{ARGUMENTS}} >{{LOG_FILE}} 2>&1 < /dev/null &\ndisown")
 
         return jsonobject.dumps(rsp)
 

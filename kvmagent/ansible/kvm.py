@@ -103,6 +103,8 @@ dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
 dnsmasq_local_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % kvm_root
 collectd_pkg = "%s/collectd_exporter" % file_root
 collectd_local_pkg = "%s/collectd_exporter" % workplace
+node_collectd_pkg = "%s/node_exporter" % file_root
+node_collectd_local_pkg = "%s/node_exporter" % workplace
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -191,6 +193,12 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg = CopyArg()
     copy_arg.src = collectd_pkg
     copy_arg.dest = collectd_local_pkg
+    copy(copy_arg, host_post_info)
+
+    # copy prometheus node_exporter
+    copy_arg = CopyArg()
+    copy_arg.src = node_collectd_pkg
+    copy_arg.dest = node_collectd_local_pkg
     copy(copy_arg, host_post_info)
 
     # handle distro version specific task
