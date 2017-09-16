@@ -2852,8 +2852,8 @@ class VmPlugin(kvmagent.KvmAgent):
                 vm = get_vm_by_uuid(cmd.vmInstanceUuid)
                 if vm and vm.state != Vm.VM_STATE_RUNNING:
                     raise kvmagent.KvmError(
-                       'vm[uuid:%s, name:%s] is not in running state, libvirt error: %s' % (
-                        cmd.vmInstanceUuid, cmd.vmName, str(e)))
+                       'vm[uuid:%s, name:%s, state:%s] is not in running state, libvirt error: %s' % (
+                        cmd.vmInstanceUuid, cmd.vmName, vm.state, str(e)))
 
             except kvmagent.KvmError:
                 raise kvmagent.KvmError(
