@@ -965,6 +965,22 @@ class APISyncEcsImageFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEECSIMAGEMSG_FULL_NAME = 'org.zstack.header.aliyun.image.APIUpdateEcsImageMsg'
+class APIUpdateEcsImageMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.image.APIUpdateEcsImageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.description = None
+        #valid regex values: [A-Za-z\u4e00-\u9fa5]{1}[A-Za-z0-9-_\u4e00-\u9fa5]{1,127}
+        self.name = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDCONNECTIONACCESSPOINTFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIAddConnectionAccessPointFromRemoteMsg'
 class APIAddConnectionAccessPointFromRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.connection.APIAddConnectionAccessPointFromRemoteMsg'
@@ -1561,6 +1577,21 @@ class APISyncEcsSecurityGroupRuleFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEECSSECURITYGROUPMSG_FULL_NAME = 'org.zstack.header.aliyun.network.group.APIUpdateEcsSecurityGroupMsg'
+class APIUpdateEcsSecurityGroupMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.group.APIUpdateEcsSecurityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.description = None
+        self.name = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEECSVSWITCHREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APICreateEcsVSwitchRemoteMsg'
 class APICreateEcsVSwitchRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vpc.APICreateEcsVSwitchRemoteMsg'
@@ -1745,6 +1776,37 @@ class APISyncEcsVpcFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEECSVSWITCHMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIUpdateEcsVSwitchMsg'
+class APIUpdateEcsVSwitchMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIUpdateEcsVSwitchMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9-]+$
+        self.name = None
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEECSVPCMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vpc.APIUpdateEcsVpcMsg'
+class APIUpdateEcsVpcMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vpc.APIUpdateEcsVpcMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEALIYUNVPCVIRTUALROUTERENTRYREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APICreateAliyunVpcVirtualRouterEntryRemoteMsg'
 class APICreateAliyunVpcVirtualRouterEntryRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.vrouter.APICreateAliyunVpcVirtualRouterEntryRemoteMsg'
@@ -1878,6 +1940,22 @@ class APISyncAliyunVirtualRouterFromRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.vpcUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEALIYUNVIRTUALROUTERMSG_FULL_NAME = 'org.zstack.header.aliyun.network.vrouter.APIUpdateAliyunVirtualRouterMsg'
+class APIUpdateAliyunVirtualRouterMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.vrouter.APIUpdateAliyunVirtualRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
+        self.name = None
+        self.description = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -2085,6 +2163,21 @@ class APIQueryOssBucketFileNameReply(object):
         self.total = None
         self.success = None
         self.error = None
+
+
+APIUPDATEOSSBUCKETMSG_FULL_NAME = 'org.zstack.header.aliyun.oss.APIUpdateOssBucketMsg'
+class APIUpdateOssBucketMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.oss.APIUpdateOssBucketMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIATTACHALIYUNDISKTOECSMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.disk.APIAttachAliyunDiskToEcsMsg'
@@ -2320,6 +2413,22 @@ class APISyncAliyunSnapshotRemoteMsg(object):
         #mandatory field
         self.dataCenterUuid = NotNoneField()
         self.snapshotId = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEALIYUNSNAPSHOTMSG_FULL_NAME = 'org.zstack.header.aliyun.storage.snapshot.APIUpdateAliyunSnapshotMsg'
+class APIUpdateAliyunSnapshotMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APIUpdateAliyunSnapshotMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9.-]+$
+        self.name = None
+        self.description = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -3799,6 +3908,24 @@ class APISyncHybridEipFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEHYBRIDEIPMSG_FULL_NAME = 'org.zstack.header.hybrid.network.eip.APIUpdateHybridEipMsg'
+class APIUpdateHybridEipMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.eip.APIUpdateHybridEipMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        #mandatory field
+        #valid values: [aliyun]
+        self.type = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEVPCUSERVPNGATEWAYREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APICreateVpcUserVpnGatewayRemoteMsg'
 class APICreateVpcUserVpnGatewayRemoteMsg(object):
     FULL_NAME='org.zstack.header.hybrid.network.vpn.APICreateVpcUserVpnGatewayRemoteMsg'
@@ -4208,6 +4335,23 @@ class APISyncVpcVpnGatewayFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEVPCUSERVPNGATEWAYMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIUpdateVpcUserVpnGatewayMsg'
+class APIUpdateVpcUserVpnGatewayMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIUpdateVpcUserVpnGatewayMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIUPDATEVPCVPNCONNECTIONREMOTEMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIUpdateVpcVpnConnectionRemoteMsg'
 class APIUpdateVpcVpnConnectionRemoteMsg(object):
     FULL_NAME='org.zstack.header.hybrid.network.vpn.APIUpdateVpcVpnConnectionRemoteMsg'
@@ -4221,6 +4365,21 @@ class APIUpdateVpcVpnConnectionRemoteMsg(object):
         self.active = None
         self.ikeConfUuid = None
         self.ipsecConfUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEVPCVPNGATEWAYMSG_FULL_NAME = 'org.zstack.header.hybrid.network.vpn.APIUpdateVpcVpnGatewayMsg'
+class APIUpdateVpcVpnGatewayMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.network.vpn.APIUpdateVpcVpnGatewayMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -6451,6 +6610,7 @@ class APIAddSimulatorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11434,7 +11594,6 @@ class APIDeleteSchedulerTriggerMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
-
 APIGETAVAILABLETRIGGERSMSG_FULL_NAME = 'org.zstack.scheduler.APIGetAvailableTriggersMsg'
 class APIGetAvailableTriggersMsg(object):
     FULL_NAME='org.zstack.scheduler.APIGetAvailableTriggersMsg'
@@ -11452,7 +11611,6 @@ class APIGetAvailableTriggersReply(object):
         self.inventories = OptionalList()
         self.success = None
         self.error = None
-
 
 APIQUERYSCHEDULERJOBMSG_FULL_NAME = 'org.zstack.scheduler.APIQuerySchedulerJobMsg'
 class APIQuerySchedulerJobMsg(object):
@@ -11557,7 +11715,6 @@ class APIUpdateSchedulerTriggerMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
-
 APIADDDISASTERIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
 class APIAddDisasterImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
@@ -11603,6 +11760,7 @@ class APIAddImageStoreBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11754,6 +11912,7 @@ class APIAddSftpBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11853,6 +12012,7 @@ class APIAddCephBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -12103,6 +12263,7 @@ class APIAddFusionstorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
+        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -14007,6 +14168,8 @@ api_names = [
     'APIUpdateAccountMsg',
     'APIUpdateAliyunDiskMsg',
     'APIUpdateAliyunKeySecretMsg',
+    'APIUpdateAliyunSnapshotMsg',
+    'APIUpdateAliyunVirtualRouterMsg',
     'APIUpdateBackupStorageMsg',
     'APIUpdateBaremetalChassisMsg',
     'APIUpdateBaremetalPxeServerMsg',
@@ -14016,8 +14179,12 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
     'APIUpdateDiskOfferingMsg',
+    'APIUpdateEcsImageMsg',
     'APIUpdateEcsInstanceMsg',
     'APIUpdateEcsInstanceVncPasswordMsg',
+    'APIUpdateEcsSecurityGroupMsg',
+    'APIUpdateEcsVSwitchMsg',
+    'APIUpdateEcsVpcMsg',
     'APIUpdateEipMsg',
     'APIUpdateEmailMediaMsg',
     'APIUpdateEmailMonitorTriggerActionMsg',
@@ -14027,6 +14194,7 @@ api_names = [
     'APIUpdateGlobalConfigMsg',
     'APIUpdateHostIommuStateMsg',
     'APIUpdateHostMsg',
+    'APIUpdateHybridEipMsg',
     'APIUpdateIPsecConnectionMsg',
     'APIUpdateImageMsg',
     'APIUpdateImageStoreBackupStorageMsg',
@@ -14042,6 +14210,7 @@ api_names = [
     'APIUpdateLoadBalancerMsg',
     'APIUpdateMonitorTriggerMsg',
     'APIUpdateNotificationsStatusMsg',
+    'APIUpdateOssBucketMsg',
     'APIUpdatePciDeviceMsg',
     'APIUpdatePortForwardingRuleMsg',
     'APIUpdatePrimaryStorageMsg',
@@ -14061,7 +14230,9 @@ api_names = [
     'APIUpdateVmInstanceMsg',
     'APIUpdateVolumeMsg',
     'APIUpdateVolumeSnapshotMsg',
+    'APIUpdateVpcUserVpnGatewayMsg',
     'APIUpdateVpcVpnConnectionRemoteMsg',
+    'APIUpdateVpcVpnGatewayMsg',
     'APIUpdateWebhookMsg',
     'APIUpdateZoneMsg',
     'APIValidateSessionMsg',
