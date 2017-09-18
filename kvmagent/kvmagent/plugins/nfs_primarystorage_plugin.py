@@ -44,6 +44,7 @@ class RevertVolumeFromSnapshotResponse(NfsResponse):
     def __init__(self):
         super(RevertVolumeFromSnapshotResponse, self).__init__()
         self.newVolumeInstallPath = None
+        self.size = None
 
 
 class NfsError(Exception):
@@ -129,6 +130,11 @@ class GetVolumeBaseImagePathRsp(NfsResponse):
         super(GetVolumeBaseImagePathRsp, self).__init__()
         self.path = None
 
+class ResizeVolumeRsp(NfsResponse):
+    def __init__(self):
+        super(ResizeVolumeRsp, self).__init__()
+        self.size = None
+
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -157,6 +163,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     PING_PATH = "/nfsprimarystorage/ping"
     GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
+    RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
     
@@ -185,13 +192,25 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.PING_PATH, self.ping)
         http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.update_mount_point)
+        http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         self.mount_path = {}
         self.image_cache = None
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
-    
+
+    @kvmagent.replyerror
+    def resize_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        install_path = cmd.installPath
+        rsp = ResizeVolumeRsp()
+        shell.call("qemu-img resize %s %s" % (install_path, cmd.size))
+        ret = linux.qcow2_virtualsize(install_path)
+        rsp.size = ret
+        return jsonobject.dumps(rsp)
+
     def _get_disk_capacity(self, uuid):
         path = self.mount_path.get(uuid)
         if not path:
@@ -385,6 +404,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone(install_path, new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
+        size = linux.qcow2_virtualsize(new_volume_path)
+        rsp.size = size
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 

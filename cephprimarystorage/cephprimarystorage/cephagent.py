@@ -63,6 +63,10 @@ class CreateSnapshotRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class RollbackSnapshotRsp(AgentResponse):
+    def __init__(self):
+        super(RollbackSnapshotRsp, self).__init__()
+        self.size = None
 
 class GetVolumeSizeRsp(AgentResponse):
     def __init__(self):
@@ -83,6 +87,10 @@ class GetFactsRsp(AgentResponse):
         self.fsid = None
         self.monAddr = None
 
+class ResizeVolumeRsp(AgentResponse):
+    def __init__(self):
+        super(ResizeVolumeRsp, self).__init__()
+        self.size = None
 
 def replyerror(func):
     @functools.wraps(func)
@@ -125,6 +133,7 @@ class CephAgent(object):
     DELETE_IMAGE_CACHE = "/ceph/primarystorage/deleteimagecache"
     ADD_POOL_PATH = "/ceph/primarystorage/addpool"
     CHECK_POOL_PATH = "/ceph/primarystorage/checkpool"
+    RESIZE_VOLUME_PATH = "/ceph/primarystorage/volume/resize"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -152,6 +161,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
         self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
+        self.http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
 
     def _set_capacity_to_response(self, rsp):
@@ -180,6 +190,19 @@ class CephAgent(object):
         o = jsonobject.loads(o)
         return long(o.size_)
 
+    @replyerror
+    @in_bash
+    def resize_volume(self, req):
+        rsp = ResizeVolumeRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        pool, image_name = self._parse_install_path(cmd.installPath)
+        path = self._normalize_install_path(cmd.installPath)
+
+        shell.call("qemu-img resize -f raw rbd:%s/%s %s" % (pool, image_name, cmd.size))
+        rsp.size = self._get_file_size(path)
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     @in_bash
@@ -307,7 +330,8 @@ class CephAgent(object):
         spath = self._normalize_install_path(cmd.snapshotPath)
 
         shell.call('rbd snap rollback %s' % spath)
-        rsp = AgentResponse()
+        rsp = RollbackSnapshotRsp()
+        rsp.size = self._get_file_size(spath)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
