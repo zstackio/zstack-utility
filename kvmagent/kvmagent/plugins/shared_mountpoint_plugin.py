@@ -161,8 +161,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                 # check if hosts in the same cluster mount the same path but different storages.
                 rsp.isFirst = True
 
-                need_clean_file = os.path.join(id_dir, "*")
-                shell.call("rm -rf %s" % need_clean_file)
+                for file_uuid in file_uuids:
+                    shell.call("rm -rf %s" % os.path.join(id_dir, file_uuid))
                 shell.call("touch %s" % self.id_file)
 
         rsp = ConnectRsp()
