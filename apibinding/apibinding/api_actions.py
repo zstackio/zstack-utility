@@ -3650,6 +3650,7 @@ class GetAvailableTriggersAction(inventory.APIGetAvailableTriggersMsg):
         self.out = evt
         return self.out
 
+
 class GetBackupStorageCapacityAction(inventory.APIGetBackupStorageCapacityMsg):
     def __init__(self):
         super(GetBackupStorageCapacityAction, self).__init__()
@@ -7486,6 +7487,30 @@ class UpdateAliyunKeySecretAction(inventory.APIUpdateAliyunKeySecretMsg):
         self.out = evt
         return self.out
 
+class UpdateAliyunSnapshotAction(inventory.APIUpdateAliyunSnapshotMsg):
+    def __init__(self):
+        super(UpdateAliyunSnapshotAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAliyunSnapshotAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateAliyunVirtualRouterAction(inventory.APIUpdateAliyunVirtualRouterMsg):
+    def __init__(self):
+        super(UpdateAliyunVirtualRouterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAliyunVirtualRouterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateBackupStorageAction(inventory.APIUpdateBackupStorageMsg):
     def __init__(self):
         super(UpdateBackupStorageAction, self).__init__()
@@ -7594,6 +7619,18 @@ class UpdateDiskOfferingAction(inventory.APIUpdateDiskOfferingMsg):
         self.out = evt
         return self.out
 
+class UpdateEcsImageAction(inventory.APIUpdateEcsImageMsg):
+    def __init__(self):
+        super(UpdateEcsImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEcsImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateEcsInstanceAction(inventory.APIUpdateEcsInstanceMsg):
     def __init__(self):
         super(UpdateEcsInstanceAction, self).__init__()
@@ -7614,6 +7651,42 @@ class UpdateEcsInstanceVncPasswordAction(inventory.APIUpdateEcsInstanceVncPasswo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateEcsInstanceVncPasswordAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateEcsSecurityGroupAction(inventory.APIUpdateEcsSecurityGroupMsg):
+    def __init__(self):
+        super(UpdateEcsSecurityGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEcsSecurityGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateEcsVSwitchAction(inventory.APIUpdateEcsVSwitchMsg):
+    def __init__(self):
+        super(UpdateEcsVSwitchAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEcsVSwitchAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateEcsVpcAction(inventory.APIUpdateEcsVpcMsg):
+    def __init__(self):
+        super(UpdateEcsVpcAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEcsVpcAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -7722,6 +7795,18 @@ class UpdateHostIommuStateAction(inventory.APIUpdateHostIommuStateMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateHostIommuStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateHybridEipAction(inventory.APIUpdateHybridEipMsg):
+    def __init__(self):
+        super(UpdateHybridEipAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateHybridEipAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -7890,6 +7975,18 @@ class UpdateNotificationsStatusAction(inventory.APIUpdateNotificationsStatusMsg)
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateNotificationsStatusAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateOssBucketAction(inventory.APIUpdateOssBucketMsg):
+    def __init__(self):
+        super(UpdateOssBucketAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateOssBucketAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -8122,6 +8219,18 @@ class UpdateVolumeSnapshotAction(inventory.APIUpdateVolumeSnapshotMsg):
         self.out = evt
         return self.out
 
+class UpdateVpcUserVpnGatewayAction(inventory.APIUpdateVpcUserVpnGatewayMsg):
+    def __init__(self):
+        super(UpdateVpcUserVpnGatewayAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateVpcUserVpnGatewayAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateVpcVpnConnectionRemoteAction(inventory.APIUpdateVpcVpnConnectionRemoteMsg):
     def __init__(self):
         super(UpdateVpcVpnConnectionRemoteAction, self).__init__()
@@ -8130,6 +8239,18 @@ class UpdateVpcVpnConnectionRemoteAction(inventory.APIUpdateVpcVpnConnectionRemo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateVpcVpnConnectionRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateVpcVpnGatewayAction(inventory.APIUpdateVpcVpnGatewayMsg):
+    def __init__(self):
+        super(UpdateVpcVpnGatewayAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateVpcVpnGatewayAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
