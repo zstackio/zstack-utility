@@ -2443,11 +2443,8 @@ class APICreateBaremetalHostCfgMsg(object):
         #mandatory field
         self.chassisUuid = NotNoneField()
         self.password = None
-        #valid values: [true, false]
         self.vnc = None
-        #valid values: [true, false]
         self.unattended = None
-        #valid values: [true, false]
         self.cloneIso = None
         #mandatory field
         self.cfgItems = NotNoneMap()
