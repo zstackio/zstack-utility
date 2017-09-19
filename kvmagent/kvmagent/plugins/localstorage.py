@@ -150,7 +150,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     def resize_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        install_path = cmd.install_path
+        install_path = cmd.installPath
         rsp = ResizeVolumeRsp()
         shell.call("qemu-img resize %s %s" % (install_path, cmd.size))
         ret = linux.qcow2_virtualsize(install_path)
