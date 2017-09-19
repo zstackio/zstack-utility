@@ -71,7 +71,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CREATE_EMPTY_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/createempty"
     CHECK_BITS_PATH = "/sharedmountpointprimarystorage/bits/check"
     GET_VOLUME_SIZE_PATH = "/sharedmountpointprimarystorage/volume/getsize"
-    RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
+    RESIZE_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/resize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -104,7 +104,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.installPath
         rsp = ResizeVolumeRsp()
-        shell.call("qemu-img resize %s +%s" % (install_path, cmd.size))
+        shell.call("qemu-img resize %s %s" % (install_path, cmd.size))
         ret = linux.qcow2_virtualsize(install_path)
         rsp.size = ret
         return jsonobject.dumps(rsp)
