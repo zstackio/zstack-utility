@@ -40,6 +40,8 @@ fi
 if [ "$@" = "status" ]; then
 	check_status
 else
+	ulimit -Hn 16384
+	ulimit -Sn 16384
 	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" $@
 fi
 
