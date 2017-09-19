@@ -170,11 +170,11 @@ def is_mounted(path=None, url=None):
         url = url.rstrip('/')
 
     if url and path:
-        cmdstr = "mount | grep -w '%s' | grep '%s'" % (url, path)
+        cmdstr = "mount | grep '%s on ' | grep '%s ' " % (url, path)
     elif not url:
-        cmdstr = "mount | grep -w '%s'" % path
+        cmdstr = "mount | grep '%s '" % path
     elif not path:
-        cmdstr = "mount | grep -w '%s'" % url
+        cmdstr = "mount | grep '%s on '" % url
     else:
         raise Exception('path and url cannot both be None')
 
