@@ -3650,7 +3650,6 @@ class GetAvailableTriggersAction(inventory.APIGetAvailableTriggersMsg):
         self.out = evt
         return self.out
 
-
 class GetBackupStorageCapacityAction(inventory.APIGetBackupStorageCapacityMsg):
     def __init__(self):
         super(GetBackupStorageCapacityAction, self).__init__()

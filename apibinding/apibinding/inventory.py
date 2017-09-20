@@ -2172,7 +2172,6 @@ class APIUpdateOssBucketMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.name = None
         self.description = None
         self.resourceUuid = None
         self.session = None
@@ -2552,9 +2551,10 @@ class APICreateBaremetalHostCfgMsg(object):
         #mandatory field
         self.chassisUuid = NotNoneField()
         self.password = None
+        #valid values: [true, false]
         self.vnc = None
+        #valid values: [true, false]
         self.unattended = None
-        self.cloneIso = None
         #mandatory field
         self.cfgItems = NotNoneMap()
         self.resourceUuid = None
@@ -6003,6 +6003,8 @@ class APICreateL3NetworkMsg(object):
         self.type = None
         #mandatory field
         self.l2NetworkUuid = NotNoneField()
+        #valid values: [Public, Private, System]
+        self.category = None
         self.system = None
         self.dnsDomain = None
         self.resourceUuid = None
@@ -6308,6 +6310,8 @@ class APIUpdateL3NetworkMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        #valid values: [Public, Private, System]
+        self.category = None
         self.system = None
         self.session = None
         self.timeout = None
@@ -6610,7 +6614,6 @@ class APIAddSimulatorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11608,6 +11611,7 @@ class APIDeleteSchedulerTriggerMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+
 APIGETAVAILABLETRIGGERSMSG_FULL_NAME = 'org.zstack.scheduler.APIGetAvailableTriggersMsg'
 class APIGetAvailableTriggersMsg(object):
     FULL_NAME='org.zstack.scheduler.APIGetAvailableTriggersMsg'
@@ -11625,6 +11629,7 @@ class APIGetAvailableTriggersReply(object):
         self.inventories = OptionalList()
         self.success = None
         self.error = None
+
 
 APIQUERYSCHEDULERJOBMSG_FULL_NAME = 'org.zstack.scheduler.APIQuerySchedulerJobMsg'
 class APIQuerySchedulerJobMsg(object):
@@ -11729,6 +11734,7 @@ class APIUpdateSchedulerTriggerMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+
 APIADDDISASTERIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
 class APIAddDisasterImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
@@ -11774,7 +11780,6 @@ class APIAddImageStoreBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11926,7 +11931,6 @@ class APIAddSftpBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -12026,7 +12030,6 @@ class APIAddCephBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -12277,7 +12280,6 @@ class APIAddFusionstorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -15848,7 +15850,6 @@ class BaremetalHostCfgInventory(object):
         self.password = None
         self.vnc = None
         self.unattended = None
-        self.cloneIso = None
         self.createDate = None
         self.lastOpDate = None
         self.nicCfgs = None
@@ -15879,11 +15880,6 @@ class BaremetalHostCfgInventory(object):
             self.unattended = inv.unattended
         else:
             self.unattended = None
-
-        if hasattr(inv, 'cloneIso'):
-            self.cloneIso = inv.cloneIso
-        else:
-            self.cloneIso = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -17906,12 +17902,12 @@ class L3NetworkInventory(object):
         self.state = None
         self.dnsDomain = None
         self.system = None
+        self.category = None
         self.createDate = None
         self.lastOpDate = None
         self.dns = None
         self.ipRanges = None
         self.networkServices = None
-        self.tags = None
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -17959,6 +17955,11 @@ class L3NetworkInventory(object):
         else:
             self.system = None
 
+        if hasattr(inv, 'category'):
+            self.category = inv.category
+        else:
+            self.category = None
+
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
         else:
@@ -17983,11 +17984,6 @@ class L3NetworkInventory(object):
             self.networkServices = inv.networkServices
         else:
             self.networkServices = None
-
-        if hasattr(inv, 'tags'):
-            self.tags = inv.tags
-        else:
-            self.tags = None
 
 
 
@@ -20306,10 +20302,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
@@ -20515,7 +20508,7 @@ class QueryObjectBaremetalHostBondingInventory(object):
      }
 
 class QueryObjectBaremetalHostCfgInventory(object):
-     PRIMITIVE_FIELDS = ['unattended','chassisUuid','cloneIso','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['unattended','chassisUuid','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['nicCfgs','bondings','nicCfgs','bondings']
      QUERY_OBJECT_MAP = {
         'nicCfgs' : 'QueryObjectBaremetalHostNicCfgInventory',
@@ -20914,8 +20907,8 @@ class QueryObjectL3NetworkDnsInventory(object):
      }
 
 class QueryObjectL3NetworkInventory(object):
-     PRIMITIVE_FIELDS = ['zoneUuid','description','type','uuid','dnsDomain','system','l2NetworkUuid','name','lastOpDate','state','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['networkServices','tags','ipRanges','vmNic','zone','l2Network','tags','serviceProvider']
+     PRIMITIVE_FIELDS = ['zoneUuid','description','type','uuid','dnsDomain','system','l2NetworkUuid','name','lastOpDate','state','category','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
      QUERY_OBJECT_MAP = {
         'ipRanges' : 'QueryObjectIpRangeInventory',
         'vmNic' : 'QueryObjectVmNicInventory',
@@ -20923,7 +20916,6 @@ class QueryObjectL3NetworkInventory(object):
         'serviceProvider' : 'QueryObjectNetworkServiceProviderInventory',
         'l2Network' : 'QueryObjectL2NetworkInventory',
         'networkServices' : 'QueryObjectNetworkServiceL3NetworkRefInventory',
-        'tags' : 'QueryObjectSystemTagInventory',
      }
 
 class QueryObjectLdapAccountRefInventory(object):
