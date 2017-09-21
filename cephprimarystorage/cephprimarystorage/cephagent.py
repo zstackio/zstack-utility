@@ -92,6 +92,11 @@ class ResizeVolumeRsp(AgentResponse):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
+class MigrateVolumeResponse(object):
+    def __init__(self):
+        self.success = True
+        self.error = ''
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -134,6 +139,7 @@ class CephAgent(object):
     ADD_POOL_PATH = "/ceph/primarystorage/addpool"
     CHECK_POOL_PATH = "/ceph/primarystorage/checkpool"
     RESIZE_VOLUME_PATH = "/ceph/primarystorage/volume/resize"
+    MIGRATE_VOLUME_PATH = "/ceph/primarystorage/volume/migrate"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -163,6 +169,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         self.http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
+        self.http_server.register_sync_uri(self.MIGRATE_VOLUME_PATH, self.migrate_volume)
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -643,6 +650,20 @@ class CephAgent(object):
 
         return jsonobject.dumps(rsp)
 
+    def _migrate_volume(self, src_install_path, src_volume_size, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port, dst_pool_name, dst_volume_uuid):
+        return shell.run('rbd export %s - | pv -n -s %s 2>/tmp/%s | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'rbd import - %s/%s\'' % (src_install_path, src_volume_size, dst_volume_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, dst_pool_name, dst_volume_uuid))
+
+    @replyerror
+    def migrate_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = MigrateVolumeResponse()
+        rst = self._migrate_volume(cmd.srcInstallPath, cmd.srcVolumeSize, cmd.dstMonHostname, cmd.dstMonSshUsername,
+                cmd.dstMonSshPassword, cmd.dstMonSshPort, cmd.dstPoolName, cmd.dstVolumeUuid)
+        if rst != 0:
+            rsp.success = False
+            rsp.error = "Failed to migrate volume from one ceph primary storage to another."
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):
     def __init__(self, pidfile):

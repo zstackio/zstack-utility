@@ -746,6 +746,18 @@ class BackupDatabaseToPublicCloudAction(inventory.APIBackupDatabaseToPublicCloud
         self.out = evt
         return self.out
 
+class BackupStorageMigrateImageAction(inventory.APIBackupStorageMigrateImageMsg):
+    def __init__(self):
+        super(BackupStorageMigrateImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[BackupStorageMigrateImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class BackupVolumeSnapshotAction(inventory.APIBackupVolumeSnapshotMsg):
     def __init__(self):
         super(BackupVolumeSnapshotAction, self).__init__()
@@ -4838,6 +4850,30 @@ class PowerStatusBaremetalHostAction(inventory.APIPowerStatusBaremetalHostMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[PowerStatusBaremetalHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrimaryStorageMigrateDataVolumeAction(inventory.APIPrimaryStorageMigrateDataVolumeMsg):
+    def __init__(self):
+        super(PrimaryStorageMigrateDataVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrimaryStorageMigrateDataVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrimaryStorageMigrateRootVolumeAction(inventory.APIPrimaryStorageMigrateRootVolumeMsg):
+    def __init__(self):
+        super(PrimaryStorageMigrateRootVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrimaryStorageMigrateRootVolumeAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
