@@ -145,46 +145,12 @@ class FusionstorPlugin(kvmagent.KvmAgent):
                 logger.warn(content)
 
 
-        gateway = cmd.storageGateway
-        if not gateway:
-            gateway = linux.get_gateway_by_default_route()
-
-        @thread.AsyncThread
-        def storage_gateway_fencer(gw):
-            failure = 0
-
-            try:
-                while True:
-                    time.sleep(cmd.interval)
-
-                    ping = shell.ShellCmd("nmap -sP -PI %s | grep 'Host is up'" % gw)
-                    ping(False)
-                    if ping.return_code == 0:
-                        failure = 0
-                        continue
-
-                    logger.warn('unable to ping the storage gateway[%s], %s %s' % (gw, ping.stderr, ping.stdout))
-                    failure += 1
-
-                    if failure == cmd.maxAttempts:
-                        logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
-                                    'shutdown ourselves' % (gw, cmd.maxAttempts))
-                        kill_vm(cmd.maxAttempts)
-            except:
-                content = traceback.format_exc()
-                logger.warn(content)
-
         for mount_point in cmd.mountPoints:
             if not os.path.isdir(mount_point):
                 raise Exception('the mount point[%s] is not a directory' % mount_point)
 
             hb_file = os.path.join(mount_point, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
             heartbeat_file_fencer(hb_file)
-
-        if gateway:
-            storage_gateway_fencer(gateway)
-        else:
-            logger.warn('cannot find storage gateway, unable to setup storage gateway fencer')
 
         return jsonobject.dumps(AgentRsp())
 

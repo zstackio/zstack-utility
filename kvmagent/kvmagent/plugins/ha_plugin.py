@@ -280,54 +280,11 @@ class HaPlugin(kvmagent.KvmAgent):
                 content = traceback.format_exc()
                 logger.warn(content)
 
-        gateway = cmd.storageGateway
-        if not gateway:
-            gateway = linux.get_gateway_by_default_route()
-
-        @thread.AsyncThread
-        def storage_gateway_fencer(gw):
-            failure = 0
-
-            try:
-                while self.run_filesystem_fencer:
-                    time.sleep(cmd.interval)
-
-                    ping = shell.ShellCmd("nmap -sP -PI %s | grep 'Host is up'" % gw)
-                    ping(False)
-                    if ping.return_code == 0:
-                        failure = 0
-                        continue
-
-                    logger.warn('unable to ping the storage gateway[%s], %s %s' % (gw, ping.stderr, ping.stdout))
-                    failure += 1
-
-                    if failure == cmd.maxAttempts:
-                        logger.warn('failed to ping storage gateway[%s] %s times, we lost connection to the storage,'
-                                    'shutdown ourselves' % (gw, cmd.maxAttempts))
-                        # there might be a race condition with very small probabilities because report action is async,
-                        # cause vm ha slow because starting vm might select this broken host
-                        # due to ps-report arriving later than vm-report.
-                        # a sure card is to modify it to sync action with try-except
-                        # but if http post fail to retry too many times, kill vm will be too late.
-                        # so for ha efficiency, that's it..
-                        self.report_storage_status(cmd.psUuids, 'Disconnected')
-                        kill_vm(cmd.maxAttempts, cmd.mountPoints, True)
-
-                logger.debug('stop gateway[%s] fencer for filesystem self-fencer' % gw)
-            except:
-                content = traceback.format_exc()
-                logger.warn(content)
-
         for mount_point, uuid in zip(cmd.mountPoints, cmd.uuids):
             if not linux.timeout_isdir(mount_point):
                 raise Exception('the mount point[%s] is not a directory' % mount_point)
 
             heartbeat_file_fencer(mount_point, uuid)
-
-        if gateway:
-            storage_gateway_fencer(gateway)
-        else:
-            logger.warn('cannot find storage gateway, unable to setup storage gateway fencer')
 
         return jsonobject.dumps(AgentRsp())
 
