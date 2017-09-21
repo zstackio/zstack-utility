@@ -2172,7 +2172,6 @@ class APIUpdateOssBucketMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.name = None
         self.description = None
         self.resourceUuid = None
         self.session = None
@@ -6610,7 +6609,6 @@ class APIAddSimulatorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11608,6 +11606,7 @@ class APIDeleteSchedulerTriggerMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+
 APIGETAVAILABLETRIGGERSMSG_FULL_NAME = 'org.zstack.scheduler.APIGetAvailableTriggersMsg'
 class APIGetAvailableTriggersMsg(object):
     FULL_NAME='org.zstack.scheduler.APIGetAvailableTriggersMsg'
@@ -11625,6 +11624,7 @@ class APIGetAvailableTriggersReply(object):
         self.inventories = OptionalList()
         self.success = None
         self.error = None
+
 
 APIQUERYSCHEDULERJOBMSG_FULL_NAME = 'org.zstack.scheduler.APIQuerySchedulerJobMsg'
 class APIQuerySchedulerJobMsg(object):
@@ -11729,6 +11729,7 @@ class APIUpdateSchedulerTriggerMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+
 APIADDDISASTERIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
 class APIAddDisasterImageStoreBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
@@ -11774,7 +11775,6 @@ class APIAddImageStoreBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11926,7 +11926,6 @@ class APIAddSftpBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -12026,7 +12025,6 @@ class APIAddCephBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -12277,7 +12275,6 @@ class APIAddFusionstorBackupStorageMsg(object):
         self.description = None
         self.type = None
         self.importImages = None
-        self.outside = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
