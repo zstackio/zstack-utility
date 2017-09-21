@@ -8968,6 +8968,21 @@ class APIUpdateZoneMsg(object):
         self.userTags = OptionalList()
 
 
+APICHANGEIPSECCONNECTIONSTATEMSG_FULL_NAME = 'org.zstack.ipsec.APIChangeIPSecConnectionStateMsg'
+class APIChangeIPSecConnectionStateMsg(object):
+    FULL_NAME='org.zstack.ipsec.APIChangeIPSecConnectionStateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APICreateIPsecConnectionMsg'
 class APICreateIPsecConnectionMsg(object):
     FULL_NAME='org.zstack.ipsec.APICreateIPsecConnectionMsg'
@@ -9061,7 +9076,6 @@ class APIUpdateIPsecConnectionMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
-        self.deleteMode = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -13373,6 +13387,7 @@ api_names = [
     'APIChangeDiskOfferingStateMsg',
     'APIChangeEipStateMsg',
     'APIChangeHostStateMsg',
+    'APIChangeIPSecConnectionStateMsg',
     'APIChangeImageStateMsg',
     'APIChangeInstanceOfferingMsg',
     'APIChangeInstanceOfferingStateMsg',
