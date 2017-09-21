@@ -839,9 +839,9 @@ class APICreateEcsImageFromEcsSnapshotMsg(object):
     FULL_NAME='org.zstack.header.aliyun.image.APICreateEcsImageFromEcsSnapshotMsg'
     def __init__(self):
         #mandatory field
-        self.uuid = NotNoneField()
+        self.snapshotUuid = NotNoneField()
         #mandatory field
-        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9.-]+$
+        #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9.-]+$
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
@@ -975,7 +975,6 @@ class APIUpdateEcsImageMsg(object):
         self.description = None
         #valid regex values: [A-Za-z\u4e00-\u9fa5]{1}[A-Za-z0-9-_\u4e00-\u9fa5]{1,127}
         self.name = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1586,7 +1585,6 @@ class APIUpdateEcsSecurityGroupMsg(object):
         self.uuid = NotNoneField()
         self.description = None
         self.name = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1604,7 +1602,7 @@ class APICreateEcsVSwitchRemoteMsg(object):
         #mandatory field
         self.cidrBlock = NotNoneField()
         #mandatory field
-        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
+        #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9-]+$
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
@@ -1786,7 +1784,6 @@ class APIUpdateEcsVSwitchMsg(object):
         #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9-]+$
         self.name = None
         self.description = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1801,7 +1798,6 @@ class APIUpdateEcsVpcMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1957,7 +1953,6 @@ class APIUpdateAliyunVirtualRouterMsg(object):
         #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
         self.name = None
         self.description = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -2173,7 +2168,6 @@ class APIUpdateOssBucketMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.description = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -2203,7 +2197,7 @@ class APICreateAliyunDiskFromRemoteMsg(object):
         #mandatory field
         self.identityUuid = NotNoneField()
         #mandatory field
-        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9.-]+$
+        #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9.-]+$
         self.name = NotNoneField()
         self.sizeWithGB = None
         self.description = None
@@ -2307,7 +2301,7 @@ class APIUpdateAliyunDiskMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9.-]+$
+        #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9.-]+$
         self.name = None
         self.description = None
         self.deleteWithInstance = None
@@ -2324,9 +2318,9 @@ class APICreateAliyunSnapshotRemoteMsg(object):
     FULL_NAME='org.zstack.header.aliyun.storage.snapshot.APICreateAliyunSnapshotRemoteMsg'
     def __init__(self):
         #mandatory field
-        self.uuid = NotNoneField()
+        self.diskUuid = NotNoneField()
         #mandatory field
-        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9.-]+$
+        #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9.-]+$
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
@@ -2429,7 +2423,6 @@ class APIUpdateAliyunSnapshotMsg(object):
         #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9.-]+$
         self.name = None
         self.description = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -3919,7 +3912,6 @@ class APIUpdateHybridEipMsg(object):
         #mandatory field
         #valid values: [aliyun]
         self.type = NotNoneField()
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -3935,7 +3927,7 @@ class APICreateVpcUserVpnGatewayRemoteMsg(object):
         #mandatory field
         self.ip = NotNoneField()
         #mandatory field
-        #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
+        #valid regex values: ^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5_a-zA-Z0-9-]+$
         self.name = NotNoneField()
         self.description = None
         self.resourceUuid = None
@@ -4341,11 +4333,9 @@ class APIUpdateVpcUserVpnGatewayMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        #mandatory field
         #valid regex values: ^[\\u4e00-\\u9fa5a-zA-Z][\\u4e00-\\u9fa5_a-zA-Z0-9-]+$
-        self.name = NotNoneField()
+        self.name = None
         self.description = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -4379,7 +4369,6 @@ class APIUpdateVpcVpnGatewayMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -20482,8 +20471,10 @@ class QueryObjectAliyunDiskInventory(object):
 
 class QueryObjectAliyunSnapshotInventory(object):
      PRIMITIVE_FIELDS = ['snapshotId','diskUuid','name','lastOpDate','description','dataCenterUuid','uuid','aliyunSnapshotUsage','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['imageRef','aliyunSnapshot']
      QUERY_OBJECT_MAP = {
+        'imageRef' : 'QueryObjectEcsImageUsageInventory',
+        'aliyunSnapshot' : 'QueryObjectEcsImageInventory',
      }
 
 class QueryObjectApplianceVmFirewallRuleInventory(object):
@@ -20682,15 +20673,18 @@ class QueryObjectESXHostInventory(object):
 
 class QueryObjectEcsImageInventory(object):
      PRIMITIVE_FIELDS = ['ossMd5Sum','ecsImageId','format','description','type','uuid','platform','name','ecsImageSize','lastOpDate','localImageUuid','dataCenterUuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['datacenter']
+     EXPANDED_FIELDS = ['snapshotRef','ecsImage']
      QUERY_OBJECT_MAP = {
-        'datacenter' : 'QueryObjectDataCenterInventory',
+        'ecsImage' : 'QueryObjectAliyunSnapshotInventory',
+        'snapshotRef' : 'QueryObjectEcsImageUsageInventory',
      }
 
 class QueryObjectEcsImageUsageInventory(object):
      PRIMITIVE_FIELDS = ['ecsImageUuid','snapshotUuidOfCreatedImage','lastOpDate','id','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['ecsImage','aliyunSnapshot']
      QUERY_OBJECT_MAP = {
+        'ecsImage' : 'QueryObjectEcsImageInventory',
+        'aliyunSnapshot' : 'QueryObjectAliyunSnapshotInventory',
      }
 
 class QueryObjectEcsInstanceInventory(object):
