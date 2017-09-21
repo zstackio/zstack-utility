@@ -114,17 +114,17 @@ class DEip(kvmagent.KvmAgent):
         dev_base_name = eip.nicName.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
         PUB_BR = eip.publicBridgeName
+        EIP_UUID = eip.eipUuid[-9:]
 
-        OLD_PUB_ODEV= "%s_eo" % dev_base_name
-        OLD_PUB_IDEV= "%s_ei" % dev_base_name
-        OLD_PRI_ODEV= "%s_o" % dev_base_name
-        OLD_PRI_IDEV= "%s_i" % dev_base_name
+        OLD_PUB_ODEVS = ["%s_eo" % dev_base_name, "%s_eo_%s" % (dev_base_name, EIP_UUID)]
+        OLD_PUB_IDEVS = ["%s_ei" % dev_base_name, "%s_ei_%s" % (dev_base_name, EIP_UUID)]
+        OLD_PRI_ODEVS = ["%s_o" % dev_base_name, "%s_o_%s" % (dev_base_name, EIP_UUID)]
+        OLD_PRI_IDEVS = ["%s_i" % dev_base_name, "%s_i_%s" % (dev_base_name, EIP_UUID)]
 
-        EIP_UUID = eip.eipUuid[-5:]
-        PUB_ODEV = "%s_eo_%s" % (dev_base_name,EIP_UUID)
-        PUB_IDEV = "%s_ei_%s" % (dev_base_name,EIP_UUID)
-        PRI_ODEV = "%s_o_%s" % (dev_base_name,EIP_UUID)
-        PRI_IDEV = "%s_i_%s" % (dev_base_name,EIP_UUID)
+        PUB_ODEV = "%s_eo" % (EIP_UUID)
+        PUB_IDEV = "%s_ei" % (EIP_UUID)
+        PRI_ODEV = "%s_o" % (EIP_UUID)
+        PRI_IDEV = "%s_i" % (EIP_UUID)
 
         PRI_BR= eip.vmBridgeName
         VIP= eip.vip
@@ -139,6 +139,8 @@ class DEip(kvmagent.KvmAgent):
         EBTABLE_CHAIN_NAME= eip.vmBridgeName
         PRI_BR_PHY_DEV= eip.vmBridgeName.replace('br_', '', 1)
 
+        EIP_DESC = "eip:%s,eip_addr:%s,vnic:%s,vnic_ip:%s,vm:%s" % (eip.eipUuid, VIP, eip.nicName, NIC_IP, eip.vmUuid)
+
         NS = "ip netns exec {{NS_NAME}}"
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
@@ -148,9 +150,11 @@ class DEip(kvmagent.KvmAgent):
                 # ignore error
                 bash_r('ip link del {{outer_dev}} &> /dev/null')
 
-        def create_dev_if_needed(outer_dev, inner_dev):
+        def create_dev_if_needed(outer_dev, outer_dev_desc, inner_dev, inner_dev_desc):
             if bash_r('ip link | grep -w {{outer_dev}} > /dev/null ') != 0:
                 bash_errorout('ip link add {{outer_dev}} type veth peer name {{inner_dev}}')
+                bash_errorout('ip link set {{outer_dev}} alias {{outer_dev_desc}}')
+                bash_errorout('ip link set {{inner_dev}} alias {{inner_dev_desc}}')
 
             bash_errorout('ip link set {{outer_dev}} up')
 
@@ -229,14 +233,15 @@ class DEip(kvmagent.KvmAgent):
             bash_errorout('ip netns add {{NS_NAME}}')
 
         # To be compatibled with old Oversion
-        delete_orphan_outer_dev(OLD_PUB_IDEV, OLD_PUB_ODEV)
-        delete_orphan_outer_dev(OLD_PRI_IDEV, OLD_PRI_ODEV)
+        for i in range(len(OLD_PUB_IDEVS)):
+            delete_orphan_outer_dev(OLD_PUB_IDEVS[i], OLD_PUB_ODEVS[i])
+            delete_orphan_outer_dev(OLD_PRI_IDEVS[i], OLD_PRI_ODEVS[i])
 
         delete_orphan_outer_dev(PUB_IDEV, PUB_ODEV)
         delete_orphan_outer_dev(PRI_IDEV, PRI_ODEV)
 
-        create_dev_if_needed(PUB_ODEV, PUB_IDEV)
-        create_dev_if_needed(PRI_ODEV, PRI_IDEV)
+        create_dev_if_needed(PUB_ODEV, EIP_DESC, PUB_IDEV, EIP_DESC)
+        create_dev_if_needed(PRI_ODEV, EIP_DESC, PRI_IDEV, EIP_DESC)
 
         add_dev_to_br_if_needed(PUB_BR, PUB_ODEV)
         add_dev_to_br_if_needed(PRI_BR, PRI_ODEV)
