@@ -2551,10 +2551,9 @@ class APICreateBaremetalHostCfgMsg(object):
         #mandatory field
         self.chassisUuid = NotNoneField()
         self.password = None
-        #valid values: [true, false]
         self.vnc = None
-        #valid values: [true, false]
         self.unattended = None
+        self.cloneIso = None
         #mandatory field
         self.cfgItems = NotNoneMap()
         self.resourceUuid = None
@@ -12458,6 +12457,48 @@ class APIBackupStorageMigrateImageMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETBACKUPSTORAGECANDIDATESFORIMAGEMIGRATIONMSG_FULL_NAME = 'org.zstack.storage.migration.backup.APIGetBackupStorageCandidatesForImageMigrationMsg'
+class APIGetBackupStorageCandidatesForImageMigrationMsg(object):
+    FULL_NAME='org.zstack.storage.migration.backup.APIGetBackupStorageCandidatesForImageMigrationMsg'
+    def __init__(self):
+        #mandatory field
+        self.srcBackupStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETBACKUPSTORAGECANDIDATESFORIMAGEMIGRATIONREPLY_FULL_NAME = 'org.zstack.storage.migration.backup.APIGetBackupStorageCandidatesForImageMigrationReply'
+class APIGetBackupStorageCandidatesForImageMigrationReply(object):
+    FULL_NAME='org.zstack.storage.migration.backup.APIGetBackupStorageCandidatesForImageMigrationReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETPRIMARYSTORAGECANDIDATESFORVOLUMEMIGRATIONMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIGetPrimaryStorageCandidatesForVolumeMigrationMsg'
+class APIGetPrimaryStorageCandidatesForVolumeMigrationMsg(object):
+    FULL_NAME='org.zstack.storage.migration.primary.APIGetPrimaryStorageCandidatesForVolumeMigrationMsg'
+    def __init__(self):
+        #mandatory field
+        self.volumeUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETPRIMARYSTORAGECANDIDATESFORVOLUMEMIGRATIONREPLY_FULL_NAME = 'org.zstack.storage.migration.primary.APIGetPrimaryStorageCandidatesForVolumeMigrationReply'
+class APIGetPrimaryStorageCandidatesForVolumeMigrationReply(object):
+    FULL_NAME='org.zstack.storage.migration.primary.APIGetPrimaryStorageCandidatesForVolumeMigrationReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIPRIMARYSTORAGEMIGRATEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
 class APIPrimaryStorageMigrateDataVolumeMsg(object):
     FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
@@ -13661,6 +13702,8 @@ api_names = [
     'APIGetAttachablePublicL3ForVRouterReply',
     'APIGetAvailableTriggersMsg',
     'APIGetAvailableTriggersReply',
+    'APIGetBackupStorageCandidatesForImageMigrationMsg',
+    'APIGetBackupStorageCandidatesForImageMigrationReply',
     'APIGetBackupStorageCapacityMsg',
     'APIGetBackupStorageCapacityReply',
     'APIGetBackupStorageReply',
@@ -13766,6 +13809,8 @@ api_names = [
     'APIGetPortForwardingAttachableVmNicsReply',
     'APIGetPrimaryStorageAllocatorStrategiesMsg',
     'APIGetPrimaryStorageAllocatorStrategiesReply',
+    'APIGetPrimaryStorageCandidatesForVolumeMigrationMsg',
+    'APIGetPrimaryStorageCandidatesForVolumeMigrationReply',
     'APIGetPrimaryStorageCapacityMsg',
     'APIGetPrimaryStorageCapacityReply',
     'APIGetPrimaryStorageReply',
@@ -15897,6 +15942,7 @@ class BaremetalHostCfgInventory(object):
         self.password = None
         self.vnc = None
         self.unattended = None
+        self.cloneIso = None
         self.createDate = None
         self.lastOpDate = None
         self.nicCfgs = None
@@ -15927,6 +15973,11 @@ class BaremetalHostCfgInventory(object):
             self.unattended = inv.unattended
         else:
             self.unattended = None
+
+        if hasattr(inv, 'cloneIso'):
+            self.cloneIso = inv.cloneIso
+        else:
+            self.cloneIso = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -20351,7 +20402,10 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
@@ -20557,7 +20611,7 @@ class QueryObjectBaremetalHostBondingInventory(object):
      }
 
 class QueryObjectBaremetalHostCfgInventory(object):
-     PRIMITIVE_FIELDS = ['unattended','chassisUuid','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['unattended','chassisUuid','cloneIso','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['nicCfgs','bondings','nicCfgs','bondings']
      QUERY_OBJECT_MAP = {
         'nicCfgs' : 'QueryObjectBaremetalHostNicCfgInventory',
