@@ -390,7 +390,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(self.mount_path.get(cmd.uuid), cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        mount_path = self.mount_path.get(cmd.uuid)
+        self.check_nfs_mounted(mount_path)
+        self.imagestore_client.download_from_imagestore(mount_path, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = kvmagent.AgentResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
@@ -531,9 +533,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         logger.debug('successfully created template[%s] from root volume[%s]' % (cmd.installPath, cmd.rootVolumePath))
         return jsonobject.dumps(rsp)
     
+    def check_nfs_mounted(self, mount_path):
+        if not linux.is_mounted(mount_path):
+            raise Exception('NFS not mounted on: %s' % mount_path)
+
     @kvmagent.replyerror
     def download_from_sftp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.check_nfs_mounted(self.mount_path.get(cmd.uuid))
         rsp = DownloadBitsFromSftpBackupStorageResponse()
         try:
             linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.username, cmd.sshPort)
