@@ -2544,10 +2544,9 @@ class APICreateBaremetalHostCfgMsg(object):
         #mandatory field
         self.chassisUuid = NotNoneField()
         self.password = None
-        #valid values: [true, false]
         self.vnc = None
-        #valid values: [true, false]
         self.unattended = None
+        self.cloneIso = None
         #mandatory field
         self.cfgItems = NotNoneMap()
         self.resourceUuid = None
@@ -15886,6 +15885,7 @@ class BaremetalHostCfgInventory(object):
         self.password = None
         self.vnc = None
         self.unattended = None
+        self.cloneIso = None
         self.createDate = None
         self.lastOpDate = None
         self.nicCfgs = None
@@ -15916,6 +15916,11 @@ class BaremetalHostCfgInventory(object):
             self.unattended = inv.unattended
         else:
             self.unattended = None
+
+        if hasattr(inv, 'cloneIso'):
+            self.cloneIso = inv.cloneIso
+        else:
+            self.cloneIso = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -16928,7 +16933,7 @@ class VpcVpnGatewayInventory(object):
         self.uuid = None
         self.accountName = None
         self.type = None
-        self.vpnGatewayId = None
+        self.gatewayId = None
         self.vSwitchUuid = None
         self.publicIp = None
         self.spec = None
@@ -16956,10 +16961,10 @@ class VpcVpnGatewayInventory(object):
         else:
             self.type = None
 
-        if hasattr(inv, 'vpnGatewayId'):
-            self.vpnGatewayId = inv.vpnGatewayId
+        if hasattr(inv, 'gatewayId'):
+            self.gatewayId = inv.gatewayId
         else:
-            self.vpnGatewayId = None
+            self.gatewayId = None
 
         if hasattr(inv, 'vSwitchUuid'):
             self.vSwitchUuid = inv.vSwitchUuid
@@ -20340,7 +20345,10 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
@@ -20548,7 +20556,7 @@ class QueryObjectBaremetalHostBondingInventory(object):
      }
 
 class QueryObjectBaremetalHostCfgInventory(object):
-     PRIMITIVE_FIELDS = ['unattended','chassisUuid','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['unattended','chassisUuid','cloneIso','lastOpDate','vnc','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['nicCfgs','bondings','nicCfgs','bondings']
      QUERY_OBJECT_MAP = {
         'nicCfgs' : 'QueryObjectBaremetalHostNicCfgInventory',
@@ -21584,7 +21592,7 @@ class QueryObjectVpcVpnConnectionInventory(object):
      }
 
 class QueryObjectVpcVpnGatewayInventory(object):
-     PRIMITIVE_FIELDS = ['accountName','endDate','description','publicIp','businessStatus','type','vSwitchUuid','uuid','spec','name','lastOpDate','vpnGatewayId','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['accountName','endDate','description','publicIp','businessStatus','type','vSwitchUuid','uuid','spec','name','lastOpDate','gatewayId','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
