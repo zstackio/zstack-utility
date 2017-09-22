@@ -355,10 +355,12 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     def _apply_userdata(self, to):
         # set VIP
         NS_NAME = to.namespaceName
-        DHCP_IP = to.dhcpServerIp
-        INNER_DEV = bash_errorout("ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
-        if not INNER_DEV:
-            raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
+        if to.hasattr("dhcpServerIp"):
+            DHCP_IP = to.dhcpServerIp
+            INNER_DEV = bash_errorout(
+                "ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
+            if not INNER_DEV:
+                raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
 
         ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
         if ret != 0:
@@ -470,7 +472,6 @@ mimetype.assign = (
         tmpt = Template(conf)
         conf = tmpt.render({
             'http_root': http_root,
-            'dhcp_server_ip': to.dhcpServerIp,
             'port': to.port
         })
 
