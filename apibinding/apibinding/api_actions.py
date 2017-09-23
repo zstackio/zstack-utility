@@ -3998,6 +3998,18 @@ class GetImageQgaAction(inventory.APIGetImageQgaMsg):
         self.out = evt
         return self.out
 
+class GetImagesFromImageStoreBackupStorageAction(inventory.APIGetImagesFromImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(GetImagesFromImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetImagesFromImageStoreBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetInterdependentL3NetworksImagesAction(inventory.APIGetInterdependentL3NetworksImagesMsg):
     def __init__(self):
         super(GetInterdependentL3NetworksImagesAction, self).__init__()
@@ -4702,18 +4714,6 @@ class KvmRunShellAction(inventory.APIKvmRunShellMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[KvmRunShellAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class ListImagesFromImageStoreBackupStorageAction(inventory.APIListImagesFromImageStoreBackupStorageMsg):
-    def __init__(self):
-        super(ListImagesFromImageStoreBackupStorageAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ListImagesFromImageStoreBackupStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
