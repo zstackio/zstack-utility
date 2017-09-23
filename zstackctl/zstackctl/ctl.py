@@ -1397,6 +1397,7 @@ class StartAllCmd(Command):
 class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
     SET_ENV_SCRIPT = '../../bin/setenv.sh'
+    BEAN_CONTEXT_REF_XML = "WEB-INF/classes/beanRefContext.xml"
     MINIMAL_CPU_NUMBER = 4
     #MINIMAL_MEM_SIZE unit is KB, here is 6GB, in linxu, 6GB is 5946428 KB
     #Save some memory for kdump etc. The actual limitation is 5000000KB
@@ -1412,6 +1413,7 @@ class StartCmd(Command):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to start the management node on a remote machine')
         parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 300 seconds.', default=300)
         parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
+        parser.add_argument('--simulator', help='Start Zstack in simulator mode.', action='store_true', default=False)
 
     def _start_remote(self, args):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
@@ -1605,6 +1607,15 @@ class StartCmd(Command):
             if not check():
                 raise CtlError('no management-node-ready message received within %s seconds, please check error in log file %s' % (timeout, log_path))
 
+        def prepareBeanRefContextXml():
+            if args.simulator:
+                beanXml = "simulator/zstack-simulator2.xml"
+                info("--simulator is set, ZStack will start in simulator mode")
+            else:
+                beanXml = "zstack.xml"
+
+            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
+
         user = getpass.getuser()
         if user != 'root':
             raise CtlError('please use sudo or root user')
@@ -1616,6 +1627,7 @@ class StartCmd(Command):
         check_rabbitmq()
         prepare_setenv()
         open_iptables_port('udp',['123'])
+        prepareBeanRefContextXml()
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quickly
         time.sleep(5)
