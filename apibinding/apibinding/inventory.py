@@ -11775,9 +11775,9 @@ class APIAddImageStoreBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTIMAGESFROMIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIListImagesFromImageStoreBackupStorageMsg'
-class APIListImagesFromImageStoreBackupStorageMsg(object):
-    FULL_NAME='org.zstack.storage.backup.imagestore.APIListImagesFromImageStoreBackupStorageMsg'
+APIGETIMAGESFROMIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIGetImagesFromImageStoreBackupStorageMsg'
+class APIGetImagesFromImageStoreBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APIGetImagesFromImageStoreBackupStorageMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -11787,9 +11787,9 @@ class APIListImagesFromImageStoreBackupStorageMsg(object):
         self.userTags = OptionalList()
 
 
-APILISTIMAGESFROMIMAGESTOREBACKUPSTORAGEREPLY_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIListImagesFromImageStoreBackupStorageReply'
-class APIListImagesFromImageStoreBackupStorageReply(object):
-    FULL_NAME='org.zstack.storage.backup.imagestore.APIListImagesFromImageStoreBackupStorageReply'
+APIGETIMAGESFROMIMAGESTOREBACKUPSTORAGEREPLY_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIGetImagesFromImageStoreBackupStorageReply'
+class APIGetImagesFromImageStoreBackupStorageReply(object):
+    FULL_NAME='org.zstack.storage.backup.imagestore.APIGetImagesFromImageStoreBackupStorageReply'
     def __init__(self):
         self.infos = OptionalList()
         self.success = None
@@ -13710,6 +13710,8 @@ api_names = [
     'APIGetImageQgaMsg',
     'APIGetImageQgaReply',
     'APIGetImageReply',
+    'APIGetImagesFromImageStoreBackupStorageMsg',
+    'APIGetImagesFromImageStoreBackupStorageReply',
     'APIGetInstanceOfferingReply',
     'APIGetInterdependentL3NetworkImageReply',
     'APIGetInterdependentL3NetworksImagesMsg',
@@ -13847,8 +13849,6 @@ api_names = [
     'APIListGlobalConfigReply',
     'APIListHostReply',
     'APIListImageReply',
-    'APIListImagesFromImageStoreBackupStorageMsg',
-    'APIListImagesFromImageStoreBackupStorageReply',
     'APIListInstanceOfferingReply',
     'APIListIpRangeReply',
     'APIListL2NetworkReply',
