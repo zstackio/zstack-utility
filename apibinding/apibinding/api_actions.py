@@ -3662,6 +3662,18 @@ class GetAvailableTriggersAction(inventory.APIGetAvailableTriggersMsg):
         self.out = evt
         return self.out
 
+class GetBackupStorageCandidatesForImageMigrationAction(inventory.APIGetBackupStorageCandidatesForImageMigrationMsg):
+    def __init__(self):
+        super(GetBackupStorageCandidatesForImageMigrationAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetBackupStorageCandidatesForImageMigrationAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetBackupStorageCapacityAction(inventory.APIGetBackupStorageCapacityMsg):
     def __init__(self):
         super(GetBackupStorageCapacityAction, self).__init__()
@@ -4234,6 +4246,18 @@ class GetPrimaryStorageAllocatorStrategiesAction(inventory.APIGetPrimaryStorageA
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetPrimaryStorageAllocatorStrategiesAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetPrimaryStorageCandidatesForVolumeMigrationAction(inventory.APIGetPrimaryStorageCandidatesForVolumeMigrationMsg):
+    def __init__(self):
+        super(GetPrimaryStorageCandidatesForVolumeMigrationAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetPrimaryStorageCandidatesForVolumeMigrationAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

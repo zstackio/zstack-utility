@@ -12446,6 +12446,48 @@ class APIBackupStorageMigrateImageMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETBACKUPSTORAGECANDIDATESFORIMAGEMIGRATIONMSG_FULL_NAME = 'org.zstack.storage.migration.backup.APIGetBackupStorageCandidatesForImageMigrationMsg'
+class APIGetBackupStorageCandidatesForImageMigrationMsg(object):
+    FULL_NAME='org.zstack.storage.migration.backup.APIGetBackupStorageCandidatesForImageMigrationMsg'
+    def __init__(self):
+        #mandatory field
+        self.srcBackupStorageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETBACKUPSTORAGECANDIDATESFORIMAGEMIGRATIONREPLY_FULL_NAME = 'org.zstack.storage.migration.backup.APIGetBackupStorageCandidatesForImageMigrationReply'
+class APIGetBackupStorageCandidatesForImageMigrationReply(object):
+    FULL_NAME='org.zstack.storage.migration.backup.APIGetBackupStorageCandidatesForImageMigrationReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETPRIMARYSTORAGECANDIDATESFORVOLUMEMIGRATIONMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIGetPrimaryStorageCandidatesForVolumeMigrationMsg'
+class APIGetPrimaryStorageCandidatesForVolumeMigrationMsg(object):
+    FULL_NAME='org.zstack.storage.migration.primary.APIGetPrimaryStorageCandidatesForVolumeMigrationMsg'
+    def __init__(self):
+        #mandatory field
+        self.volumeUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETPRIMARYSTORAGECANDIDATESFORVOLUMEMIGRATIONREPLY_FULL_NAME = 'org.zstack.storage.migration.primary.APIGetPrimaryStorageCandidatesForVolumeMigrationReply'
+class APIGetPrimaryStorageCandidatesForVolumeMigrationReply(object):
+    FULL_NAME='org.zstack.storage.migration.primary.APIGetPrimaryStorageCandidatesForVolumeMigrationReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIPRIMARYSTORAGEMIGRATEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
 class APIPrimaryStorageMigrateDataVolumeMsg(object):
     FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
@@ -13649,6 +13691,8 @@ api_names = [
     'APIGetAttachablePublicL3ForVRouterReply',
     'APIGetAvailableTriggersMsg',
     'APIGetAvailableTriggersReply',
+    'APIGetBackupStorageCandidatesForImageMigrationMsg',
+    'APIGetBackupStorageCandidatesForImageMigrationReply',
     'APIGetBackupStorageCapacityMsg',
     'APIGetBackupStorageCapacityReply',
     'APIGetBackupStorageReply',
@@ -13756,6 +13800,8 @@ api_names = [
     'APIGetPortForwardingAttachableVmNicsReply',
     'APIGetPrimaryStorageAllocatorStrategiesMsg',
     'APIGetPrimaryStorageAllocatorStrategiesReply',
+    'APIGetPrimaryStorageCandidatesForVolumeMigrationMsg',
+    'APIGetPrimaryStorageCandidatesForVolumeMigrationReply',
     'APIGetPrimaryStorageCapacityMsg',
     'APIGetPrimaryStorageCapacityReply',
     'APIGetPrimaryStorageReply',
