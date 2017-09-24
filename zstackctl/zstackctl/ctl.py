@@ -2254,6 +2254,8 @@ class AddManagementNodeCmd(Command):
             error("deploy ui on host %s failed:\n %s" % (host_info.host, output))
 
     def config_mn_on_host(self, key, host_info):
+        command = "mkdir -p %s/../" % ctl.properties_file_path
+        run_remote_command(command, host_info)
         command = "scp -i %s %s root@%s:%s" % (key, ctl.properties_file_path, host_info.host, ctl.properties_file_path)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
