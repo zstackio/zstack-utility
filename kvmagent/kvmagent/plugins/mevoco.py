@@ -73,6 +73,66 @@ class RemoveForwardDnsRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(RemoveForwardDnsRsp, self).__init__()
 
+
+class UserDataEnv(object):
+    def __init__(self, bridge_name, namespace_name):
+        self.bridge_name = bridge_name
+        self.namespace_name = namespace_name
+        self.outer_dev = None
+        self.inner_dev = None
+
+    @lock.lock('prepare_dhcp_namespace')
+    @lock.file_lock('/run/xtables.lock')
+    @in_bash
+    def prepare(self):
+        NAMESPACE_ID = None
+
+        NAMESPACE_NAME = self.namespace_name
+        out = bash_errorout("ip netns list-id | grep -w {{NAMESPACE_NAME}} | awk '{print $2}'").strip(' \t\n\r')
+        if not out:
+            out = bash_errorout("ip netns list-id | tail -n 1 | awk '{print $2}'").strip(' \t\r\n')
+            if not out:
+                NAMESPACE_ID = 0
+            else:
+                NAMESPACE_ID = int(out) + 1
+        else:
+            NAMESPACE_ID = int(out)
+
+        logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
+
+        BR_NAME = self.bridge_name
+        BR_PHY_DEV = self.bridge_name.replace('br_', '', 1).replace('_', '.', 1)
+        self.outer_dev = OUTER_DEV = "outer%s" % NAMESPACE_ID
+        self.inner_dev = INNER_DEV = "inner%s" % NAMESPACE_ID
+
+        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
+        if ret != 0:
+            bash_errorout('ip netns add {{NAMESPACE_NAME}}')
+            bash_errorout('ip netns set {{NAMESPACE_NAME}} {{NAMESPACE_ID}}')
+
+        # in case the namespace deleted and the orphan outer link leaves in the system,
+        # deleting the orphan link and recreate it
+        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link | grep -w {{INNER_DEV}} > /dev/null')
+        if ret != 0:
+            bash_r('ip link del {{OUTER_DEV}} &> /dev/null')
+
+        ret = bash_r('ip link | grep -w {{OUTER_DEV}} > /dev/null')
+        if ret != 0:
+            bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
+
+        bash_errorout('ip link set {{OUTER_DEV}} up')
+
+        ret = bash_r('brctl show {{BR_NAME}} | grep -w {{OUTER_DEV}} > /dev/null')
+        if ret != 0:
+            bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
+
+        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link | grep -w {{INNER_DEV}} > /dev/null')
+        if ret != 0:
+            bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
+
+        bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
+
+
 class DhcpEnv(object):
     def __init__(self):
         self.bridge_name = None
@@ -353,18 +413,27 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     @lock.file_lock('/run/xtables.lock')
     @in_bash
     def _apply_userdata(self, to):
-        # set VIP
+        p = UserDataEnv(to.bridgeName, to.namespaceName)
+        INNER_DEV = None
+        DHCP_IP = None
         NS_NAME = to.namespaceName
-        if to.hasattr("dhcpServerIp"):
+
+        if not to.hasattr("dhcpServerIp"):
+            p.prepare()
+            INNER_DEV = p.inner_dev
+        else:
             DHCP_IP = to.dhcpServerIp
             INNER_DEV = bash_errorout(
                 "ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
-            if not INNER_DEV:
-                raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
+        if not INNER_DEV:
+            raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
 
         ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
-        if ret != 0:
+        if (ret != 0 and INNER_DEV != None):
             bash_errorout('ip netns exec {{NS_NAME}} ip addr add 169.254.169.254 dev {{INNER_DEV}}')
+
+        if not to.hasattr("dhcpServerIp"):
+            bash_errorout('ip netns exec {{NS_NAME}} ip r add default dev {{INNER_DEV}}')
 
         # set ebtables
         BR_NAME = to.bridgeName
