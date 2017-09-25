@@ -584,6 +584,8 @@ class Ctl(object):
     LAST_ALIVE_MYSQL_PORT = "MYSQL_LATEST_PORT"
     LOGGER_DIR = "/var/log/zstack/"
     LOGGER_FILE = "zstack-ctl.log"
+    ZSTACK_UI_HOME = '/usr/local/zstack/zstack-ui/'
+    ZSTACK_UI_CFG_FILE = ZSTACK_UI_HOME + 'zstack_ui.cfg'
 
     def __init__(self):
         self.commands = {}
@@ -1350,8 +1352,7 @@ class StopAllCmd(Command):
 
         def stop_ui():
             virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
-            zstackui = '/usr/local/zstack/zstack-ui'
-            if not os.path.exists(virtualenv) and not os.path.exists(zstackui):
+            if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME):
                 info('skip stopping web UI, it is not installed')
                 return
 
@@ -1383,8 +1384,7 @@ class StartAllCmd(Command):
 
         def start_ui():
             virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
-            zstackui = '/usr/local/zstack/zstack-ui'
-            if not os.path.exists(virtualenv) and not os.path.exists(zstackui):
+            if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME):
                 info('skip starting web UI, it is not installed')
                 return
 
@@ -6781,12 +6781,37 @@ class StartUiCmd(Command):
         return True
 
     def run(self, args):
+        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         if args.host != 'localhost':
             self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log)
             return
 
+        # combine with zstack_ui.cfg
+        zstackui = ctl.ZSTACK_UI_HOME
+        zstackuicfg = ctl.ZSTACK_UI_CFG_FILE
+        if os.path.exists(zstackuicfg):
+            with open(zstackuicfg, 'r') as fd:
+                _, cfg_mn_host = fd.readline().split(':')
+                _, cfg_mn_port = fd.readline().split(':')
+                _, cfg_webhook_host = fd.readline().split(':')
+                _, cfg_webhook_port = fd.readline().split(':')
+                _, cfg_server_port = fd.readline().split(':')
+                _, cfg_log = fd.readline().split(':')
+
+            if args.mn_host == '127.0.0.1':
+                args.mn_host = cfg_mn_host.strip('\n')
+            if args.mn_port == "8080":
+                args.mn_port = cfg_mn_port.strip('\n')
+            if args.webhook_host == "127.0.0.1":
+                args.webhook_host = cfg_webhook_host.strip('\n')
+            if args.webhook_port == "5000":
+                args.webhook_port = cfg_webhook_port.strip('\n')
+            if args.server_port == "5000":
+                args.server_port = cfg_server_port.strip('\n')
+            if args.log == ui_logging_path:
+                args.log = cfg_log.strip('\n')
+
         shell("mkdir -p %s" % args.log)
-        zstackui = '/usr/local/zstack/zstack-ui'
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (zstackui, args.host))
 
@@ -6835,7 +6860,64 @@ class StartUiCmd(Command):
         with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
             fd.write(args.server_port)
 
+# For UI 2.0
+class ConfigUiCmd(Command):
+    def __init__(self):
+        super(ConfigUiCmd, self).__init__()
+        self.name = "config_ui"
+        self.description = "configure UI host and ports etc."
+        ctl.register_command(self)
 
+    def install_argparse_arguments(self, parser):
+        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
+        parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1", default='127.0.0.1')
+        parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080", default='8080')
+        parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1", default='127.0.0.1')
+        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000", default='5000')
+        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000", default='5000')
+        parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
+
+    def run(self, args):
+        zstackui = ctl.ZSTACK_UI_HOME
+        zstackuicfg = ctl.ZSTACK_UI_CFG_FILE
+
+        if not os.path.exists(zstackui):
+            raise CtlError('%s not found. Are you sure the UI server is installed?' % zstackui)
+
+        if not os.path.exists(zstackuicfg):
+            os.mknod(zstackuicfg)
+
+        with open(zstackuicfg, 'w') as fd:
+            fd.write("mn-host:" + args.mn_host + "\n")
+            fd.write("mn-port:" + args.mn_port + "\n")
+            fd.write("webhook-host:" + args.webhook_host + "\n")
+            fd.write("webhook-port:" + args.webhook_port + "\n")
+            fd.write("server-port:" + args.server_port + "\n")
+            fd.write("log-folder:" + args.log)
+
+# For UI 2.0
+class ShowUiCfgCmd(Command):
+    def __init__(self):
+        super(ShowUiCfgCmd, self).__init__()
+        self.name = "show_ui_config"
+        self.description = "Show UI configuration, like server_port etc."
+        ctl.register_command(self)
+
+    def run(self, args):
+        zstackui = ctl.ZSTACK_UI_HOME
+        zstackuicfg = ctl.ZSTACK_UI_CFG_FILE
+
+        if not os.path.exists(zstackui):
+            raise CtlError('%s not found. Are you sure the UI server is installed?' % zstackui)
+
+        if not os.path.exists(zstackuicfg):
+            error('There is no UI configuration now.')
+
+        with open(zstackuicfg, 'r') as fd:
+            for line in fd.readlines():
+                key, value = line.split(':')
+                sys.stdout.write("%s: %s" % (key, value))
+            sys.stdout.write("\n")
 
 # For VDI PORTAL 2.1
 class StartVDIUICmd(Command):
@@ -7016,6 +7098,8 @@ def main():
         StartUiCmd()
         StopUiCmd()
         UiStatusCmd()
+        ConfigUiCmd()
+        ShowUiCfgCmd()
     else:
         InstallDashboardCmd()
         StartDashboardCmd()
