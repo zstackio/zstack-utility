@@ -432,7 +432,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if (ret != 0 and INNER_DEV != None):
             bash_errorout('ip netns exec {{NS_NAME}} ip addr add 169.254.169.254 dev {{INNER_DEV}}')
 
-        if not to.hasattr("dhcpServerIp"):
+        r, o = bash_ro('ip netns exec {{NS_NAME}} ip r | wc -l')
+        if not to.hasattr("dhcpServerIp") and int(o) == 0:
             bash_errorout('ip netns exec {{NS_NAME}} ip r add default dev {{INNER_DEV}}')
 
         # set ebtables
