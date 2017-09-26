@@ -11863,8 +11863,7 @@ class APIRecoveryImageFromImageStoreBackupStorageMsg(object):
         self.dstBackupStorageUuid = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.description = NotNoneField()
+        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11883,8 +11882,7 @@ class APISyncImageFromImageStoreBackupStorageMsg(object):
         self.dstBackupStorageUuid = NotNoneField()
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.description = NotNoneField()
+        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
