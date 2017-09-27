@@ -4347,8 +4347,7 @@ class APIUpdateVpcVpnConnectionRemoteMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        #mandatory field
-        self.name = NotNoneField()
+        self.name = None
         self.localCidr = None
         self.remoteCidr = None
         self.active = None
@@ -11861,9 +11860,6 @@ class APIRecoveryImageFromImageStoreBackupStorageMsg(object):
         self.srcBackupStorageUuid = NotNoneField()
         #mandatory field
         self.dstBackupStorageUuid = NotNoneField()
-        #mandatory field
-        self.name = NotNoneField()
-        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11880,9 +11876,6 @@ class APISyncImageFromImageStoreBackupStorageMsg(object):
         self.srcBackupStorageUuid = NotNoneField()
         #mandatory field
         self.dstBackupStorageUuid = NotNoneField()
-        #mandatory field
-        self.name = NotNoneField()
-        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
