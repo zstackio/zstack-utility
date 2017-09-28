@@ -11860,6 +11860,9 @@ class APIRecoveryImageFromImageStoreBackupStorageMsg(object):
         self.srcBackupStorageUuid = NotNoneField()
         #mandatory field
         self.dstBackupStorageUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11876,6 +11879,9 @@ class APISyncImageFromImageStoreBackupStorageMsg(object):
         self.srcBackupStorageUuid = NotNoneField()
         #mandatory field
         self.dstBackupStorageUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -14776,42 +14782,6 @@ class EcsImageInventory(object):
             self.format = inv.format
         else:
             self.format = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
-class EcsImageUsageInventory(object):
-    def __init__(self):
-        self.id = None
-        self.ecsImageUuid = None
-        self.snapshotUuidOfCreatedImage = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'id'):
-            self.id = inv.id
-        else:
-            self.id = None
-
-        if hasattr(inv, 'ecsImageUuid'):
-            self.ecsImageUuid = inv.ecsImageUuid
-        else:
-            self.ecsImageUuid = None
-
-        if hasattr(inv, 'snapshotUuidOfCreatedImage'):
-            self.snapshotUuidOfCreatedImage = inv.snapshotUuidOfCreatedImage
-        else:
-            self.snapshotUuidOfCreatedImage = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -20524,10 +20494,9 @@ class QueryObjectAliyunDiskInventory(object):
 
 class QueryObjectAliyunSnapshotInventory(object):
      PRIMITIVE_FIELDS = ['snapshotId','diskUuid','name','lastOpDate','description','dataCenterUuid','uuid','aliyunSnapshotUsage','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['imageRef','aliyunSnapshot']
+     EXPANDED_FIELDS = ['imageRef']
      QUERY_OBJECT_MAP = {
-        'imageRef' : 'QueryObjectEcsImageUsageInventory',
-        'aliyunSnapshot' : 'QueryObjectEcsImageInventory',
+        'imageRef' : 'QueryObjectEcsImageInventory',
      }
 
 class QueryObjectApplianceVmFirewallRuleInventory(object):
@@ -20726,10 +20695,9 @@ class QueryObjectESXHostInventory(object):
 
 class QueryObjectEcsImageInventory(object):
      PRIMITIVE_FIELDS = ['ossMd5Sum','ecsImageId','format','description','type','uuid','platform','name','ecsImageSize','lastOpDate','localImageUuid','dataCenterUuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['snapshotRef','ecsImage']
+     EXPANDED_FIELDS = ['snapshotRef']
      QUERY_OBJECT_MAP = {
-        'ecsImage' : 'QueryObjectAliyunSnapshotInventory',
-        'snapshotRef' : 'QueryObjectEcsImageUsageInventory',
+        'snapshotRef' : 'QueryObjectAliyunSnapshotInventory',
      }
 
 class QueryObjectEcsImageUsageInventory(object):
