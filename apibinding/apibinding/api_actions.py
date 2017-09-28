@@ -842,6 +842,18 @@ class ChangeHostStateAction(inventory.APIChangeHostStateMsg):
         self.out = evt
         return self.out
 
+class ChangeIPSecConnectionStateAction(inventory.APIChangeIPSecConnectionStateMsg):
+    def __init__(self):
+        super(ChangeIPSecConnectionStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeIPSecConnectionStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeImageStateAction(inventory.APIChangeImageStateMsg):
     def __init__(self):
         super(ChangeImageStateAction, self).__init__()
