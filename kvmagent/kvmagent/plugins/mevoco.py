@@ -194,11 +194,15 @@ class DhcpEnv(object):
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP_IP}} > /dev/null')
-        if ret != 0:
+        if ret != 0 and DHCP_IP != None and DHCP_NETMASK != None:
             bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr flush dev {{INNER_DEV}}')
             bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{DHCP_NETMASK}} dev {{INNER_DEV}}')
 
         bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
+
+        if DHCP_IP is None or DHCP_NETMASK is None:
+            logger.debug("no dhcp ip[{{DHCP_IP}}] or netmask[{{DHCP_NETMASK}}] for {{INNER_DEV}} in {{NAMESPACE_NAME}}, skip ebtables/iptables config")
+            return
 
         ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
         if ret != 0:
