@@ -4348,6 +4348,7 @@ class APIUpdateVpcVpnConnectionRemoteMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.name = None
+        self.description = None
         self.localCidr = None
         self.remoteCidr = None
         self.active = None
