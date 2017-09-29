@@ -1922,6 +1922,18 @@ class CreateVpcUserVpnGatewayRemoteAction(inventory.APICreateVpcUserVpnGatewayRe
         self.out = evt
         return self.out
 
+class CreateVpcVRouterAction(inventory.APICreateVpcVRouterMsg):
+    def __init__(self):
+        super(CreateVpcVRouterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVpcVRouterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateVpcVpnConnectionRemoteAction(inventory.APICreateVpcVpnConnectionRemoteMsg):
     def __init__(self):
         super(CreateVpcVpnConnectionRemoteAction, self).__init__()
