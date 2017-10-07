@@ -5,6 +5,7 @@
 import os
 import socket
 import subprocess
+import datetime
 import time
 import tempfile
 import traceback
@@ -65,6 +66,15 @@ def retry(times=3, sleep_time=3):
 
         return inner
     return wrap
+
+def get_current_timestamp():
+    return time.mktime(datetime.datetime.now().timetuple())
+
+def rm_file_force(fpath):
+    try:
+        os.remove(fpath)
+    except:
+        pass
 
 def cidr_to_netmask(cidr):
     cidr = int(cidr)
