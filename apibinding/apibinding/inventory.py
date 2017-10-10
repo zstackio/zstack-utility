@@ -13195,6 +13195,22 @@ class APIUpdateVCenterMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEVPCVROUTERMSG_FULL_NAME = 'org.zstack.vpc.APICreateVpcVRouterMsg'
+class APICreateVpcVRouterMsg(object):
+    FULL_NAME='org.zstack.vpc.APICreateVpcVRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.virtualRouterOfferingUuid = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDVROUTERROUTEENTRYMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
 class APIAddVRouterRouteEntryMsg(object):
     FULL_NAME='org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
@@ -13562,6 +13578,7 @@ api_names = [
     'APICreateVniRangeMsg',
     'APICreateVolumeSnapshotMsg',
     'APICreateVpcUserVpnGatewayRemoteMsg',
+    'APICreateVpcVRouterMsg',
     'APICreateVpcVpnConnectionRemoteMsg',
     'APICreateVpnIkeConfigMsg',
     'APICreateVpnIpsecConfigMsg',
@@ -20059,6 +20076,11 @@ RESUMING = 'Resuming'
 VOLUMEMIGRATING = 'VolumeMigrating'
 ERROR = 'Error'
 UNKNOWN = 'Unknown'
+
+#VpcConstants
+VPC_VROUTER_VM_TYPE = 'vpcvrouter'
+VPC_L3_NETWORK_TYPE = 'L3VpcNetwork'
+SERVICE_ID = 'vpc'
 
 #VxlanNetworkConstant
 VXLAN_NETWORK_TYPE = 'VxlanNetwork'
