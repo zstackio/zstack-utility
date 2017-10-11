@@ -3,13 +3,17 @@ __author__ = 'frank'
 import os
 import os.path
 import pprint
+import re
 import traceback
 import urllib2
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
+from zstacklib.utils import lock
+from zstacklib.utils import linux
 from zstacklib.utils import log
+from zstacklib.utils import thread
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
 from zstacklib.utils import shell
@@ -34,6 +38,15 @@ class DownloadRsp(AgentResponse):
         super(DownloadRsp, self).__init__()
         self.size = None
         self.actualSize = None
+
+class UploadProgressRsp(AgentResponse):
+    def __init__(self):
+        super(UploadProgressRsp, self).__init__()
+        self.completed = False
+        self.progress = 0
+        self.size = 0
+        self.actualSize = 0
+        self.installPath = None
 
 class GetImageSizeRsp(AgentResponse):
     def __init__(self):
@@ -101,9 +114,187 @@ def replyerror(func):
             return jsonobject.dumps(rsp)
     return wrap
 
+class UploadTask(object):
+
+    def __init__(self, imageUuid, installPath, dstPath, tmpPath):
+        self.completed = False
+        self.imageUuid = imageUuid
+        self.installPath = installPath
+        self.dstPath = dstPath # without 'ceph://'
+        self.tmpPath = tmpPath # where image firstly imported to
+        self.expectedSize = 0
+        self.progress = 0
+        self.lastError = None
+        self.lastOpTime = linux.get_current_timestamp()
+
+    def fail(self, reason):
+        self.completed = True
+        self.lastError = reason
+        self.lastOpTime = linux.get_current_timestamp()
+        logger.info('task failed for %s: %s' % (self.imageUuid, reason))
+
+    def success(self):
+        self.completed = True
+        self.lastOpTime = linux.get_current_timestamp()
+
+    def is_started(self):
+        return self.progress > 0
+
+    def is_running(self):
+        return not(self.completed or self.is_started())
+
+class UploadTasks(object):
+    MAX_RECORDS = 80
+
+    def __init__(self):
+        self.tasks = {}
+
+    def _expunge_oldest_task(self):
+        key, ts = '',  linux.get_current_timestamp()
+        for k in self.tasks:
+            task = self.tasks[k]
+
+            if task.is_running():
+                continue
+
+            if task.lastOpTime < ts:
+                key, ts = k, task.lastOpTime
+
+        if key != '': del(self.tasks[key])
+
+
+    @lock.lock('ceph-upload-task')
+    def add_task(self, t):
+        if len(self.tasks) > self.MAX_RECORDS:
+            self._expunge_oldest_task()
+        self.tasks[t.imageUuid] = t
+
+    @lock.lock('ceph-upload-task')
+    def get_task(self, imageUuid):
+        return self.tasks.get(imageUuid)
+
+# ------------------------------------------------------------------ #
+
+class ProgressedFileWriter(object):
+    wfd = None
+    pfunc = None
+    bytesWritten = 0
+
+    def __init__(wfd, pfunc):
+        self.wfd = wfd
+        self.pfunc = pfunc
+
+    def write(s):
+        self.wfd.write(s)
+        self.bytesWritten += len(s)
+        self.pfunc(self.bytesWritten)
+
+    def seek(offset, whence=None):
+        pass
+
+import cherrypy
+class CustomPart(cherrypy._cpreqbody.Part):
+    """A customized multipart"""
+    maxrambytes = 0
+    fifopath = None
+    wfd = None
+    pfunc = None
+
+    def __init__(self, fp, headers, boundary, fifopath, pfunc):
+        cherrypy._cpreqbody.Part.__init__(self, fp, headers, boundary)
+        self.file = None
+        self.value = None
+        self.fifopath = fifopath
+        self.pfunc = pfunc
+
+    def make_file(self):
+        self.wfd = open(self.fifopath, 'w')
+        return ProgressedFileWriter(self.wfd, self.pfunc)
+
+def get_boundary(entity):
+    ib = ""
+    if 'boundary' in entity.content_type.params:
+        # http://tools.ietf.org/html/rfc2046#section-5.1.1
+        # "The grammar for parameters on the Content-type field is such that it
+        # is often necessary to enclose the boundary parameter values in quotes
+        # on the Content-type line"
+        ib = entity.content_type.params['boundary'].strip('"')
+
+    if not re.match("^[ -~]{0,200}[!-~]$", ib):
+        raise ValueError('Invalid boundary in multipart form: %r' % (ib,))
+
+    ib = ('--' + ib).encode('ascii')
+
+    # Find the first marker
+    while True:
+        b = entity.readline()
+        if not b:
+            return
+
+        b = b.strip()
+        if b == ib:
+            break
+
+    return ib
+
+def stream_body(task, fpath, entity):
+    def _progress_consumer(total):
+        task.progress = int(total * 90 / task.expectedSize)
+
+    @thread.AsyncThread
+    def _do_import(task, fpath):
+        shell.call("rbd import --image-format 2 %s %s" % (fpath, task.tmpPath))
+
+    while True:
+        headers = cherrypy._cpreqbody.Part.read_headers(entity.fp)
+        p = CustomPart(entity.fp, headers, ib, fifopath, _progress_consumer)
+        if not p.filename:
+            continue
+
+        # start consumer
+        _do_import(task, fpath)
+        try:
+            p.process()
+        except:
+            pass
+        finally:
+            if p.wfd is not None:
+                p.wfd.close()
+        break
+
+    o = shell.call('rbd info --format=json %s' % task.tmpPath)
+    info = jsonobject.loads(o)
+    if o.size != task.expectedSize:
+        task.fail('incomplete upload, got %d, expect %d' % (o.size, task.expectedSize))
+        shell.call('rbd rm %s' % task.tmpPath)
+        return
+
+    file_format = linux.get_img_fmt('rbd:'+task.tmpPath)
+    if file_format == 'qcow2':
+        conf_path = None
+        try:
+            with open('/etc/ceph/ceph.conf', 'r') as fd:
+                conf = fd.read()
+                conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
+                conf_path = linux.write_to_temp_file(conf)
+
+            shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % (task.tmpPath, task.dstPath, conf_path))
+            shell.call('rbd rm %s' % (pool, task.tmpPath))
+        finally:
+            if conf_path:
+                os.remove(conf_path)
+    else:
+        shell.call('rbd mv %s %s' % (pool, task.tmpPath, task.dstPath))
+
+    task.success()
+
+# ------------------------------------------------------------------ #
+
 class CephAgent(object):
     INIT_PATH = "/ceph/backupstorage/init"
     DOWNLOAD_IMAGE_PATH = "/ceph/backupstorage/image/download"
+    UPLOAD_IMAGE_PATH = "/ceph/backupstorage/image/upload"
+    UPLOAD_PROGRESS_PATH = "/ceph/backupstorage/image/progress"
     DELETE_IMAGE_PATH = "/ceph/backupstorage/image/delete"
     PING_PATH = "/ceph/backupstorage/ping"
     ECHO_PATH = "/ceph/backupstorage/echo"
@@ -118,13 +309,18 @@ class CephAgent(object):
     MIGRATE_IMAGE_PATH = "/ceph/backupstorage/image/migrate"
 
     CEPH_METADATA_FILE = "bs_ceph_info.json"
+    UPLOAD_PROTO = "upload://"
+    LENGTH_OF_UUID = 32
 
     http_server = http.HttpServer(port=7761)
     http_server.logfile_path = log.get_logfile_path()
+    upload_tasks = UploadTasks()
 
     def __init__(self):
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
+        self.http_server.register_raw_uri(self.UPLOAD_IMAGE_PATH, self.upload)
+        self.http_server.register_sync_uri(self.UPLOAD_PROGRESS_PATH, self.get_upload_progress)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
@@ -138,7 +334,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
         self.http_server.register_sync_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image)
 
-    def _set_capacity_to_response(self, rsp):
+    def _get_capacity(self):
         o = shell.call('ceph df -f json')
         df = jsonobject.loads(o)
 
@@ -155,6 +351,11 @@ class CephAgent(object):
             avail = long(df.stats.total_avail_) * 1024
         else:
             raise Exception('unknown ceph df output: %s' % o)
+
+        return total, avail
+
+    def _set_capacity_to_response(self, rsp):
+        total, avail = self._get_capacity()
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
@@ -184,7 +385,6 @@ class CephAgent(object):
     @in_bash
     @replyerror
     def get_images_metadata(self, req):
-        logger.debug("meilei: get images metadata")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool_name = cmd.poolName
         bs_uuid = pool_name.split("-")[-1]
@@ -349,6 +549,82 @@ class CephAgent(object):
     def _parse_install_path(self, path):
         return path.lstrip('ceph:').lstrip('//').split('/')
 
+    def _fail_task(task, reason):
+        task.fail(reason)
+        raise Exception(reason)
+
+    def _get_fifopath(uu):
+        d = tempfile.gettempdir()
+        return os.path.join(d, uu)
+
+    # handler for multipart upload, requires:
+    # - header X-IMAGE-UUID
+    # - header X-IMAGE-SIZE
+    def upload(self, req):
+        imageUuid = req.headers['X-IMAGE-UUID']
+        imageSize = req.headers['X-IMAGE-SIZE']
+
+        task = self.upload_tasks.get_task(imageUuid)
+        if task is None:
+            raise Exception('image not found %s' % imageUuid)
+
+        task.expectedSize = long(imageSize)
+        total, avail = self._get_capacity()
+        if avail <= task.expectedSize:
+            self._fail_task('capacity not enough for size: ' + imageSize)
+
+        entity = req.body
+        boundary = get_boundary(entity)
+        if not boundary:
+            self._fail_task('unexpected post form')
+
+        # prepare the fifo to save image upload
+        fpath = self._get_fifopath(imageUuid)
+        linux.rm_file_force(fpath)
+        try:
+            os.mkfifo(fpath)
+            stream_body(task, fpath, entity)
+        except Exception as e:
+            self._fail_task(str(e))
+        finally:
+            linux.rm_file_force(fpath)
+
+    def _prepare_upload(self, cmd):
+        start = len(self.UPLOAD_PROTO)
+        imageUuid = cmd.url[start:start+self.LENGTH_OF_UUID]
+        dstPath = self._normalize_install_path(cmd.installPath)
+
+        pool, image_name = self._parse_install_path(cmd.installPath)
+        tmp_image_name = 'tmp-%s' % image_name
+        tmpPath = '%s/%s' % (pool, tmp_image_name)
+
+        task = UploadTask(imageUuid, cmd.installPath, dstPath, tmpPath)
+        self.upload_tasks.add_task(task)
+
+    def _get_upload_path(self, req):
+        host = req.headers['Host']
+        return 'http://' + host + self.UPLOAD_IMAGE_PATH
+
+    @replyerror
+    def get_upload_progress(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        task = self.upload_tasks.get_task(cmd.imageUuid)
+        if task is None:
+            raise Exception('image not found %s' % cmd.imageUuid)
+
+        rsp = UploadProgressRsp()
+        rsp.completed = task.completed
+        rsp.installPath = task.installPath
+        rsp.size = task.expectedSize
+        rsp.actualSize = task.expectedSize
+        rsp.progress = task.progress
+
+        if task.lastError is not None:
+            rsp.success = False
+            rsp.error = task.lastError
+
+        return jsonobject.dumps(rsp)
+
     @replyerror
     @rollback
     def download(self, req):
@@ -400,10 +676,19 @@ class CephAgent(object):
                 logger.warn(linux.get_exception_stacktrace())
                 return length
 
+        # whether we have an upload request
+        if cmd.url.startswith(self.UPLOAD_PROTO):
+            self._prepare_upload(cmd)
+            rsp.size = 0
+            rsp.uploadPath = self._get_upload_path(req)
+            self._set_capacity_to_response(rsp)
+            return jsonobject.dumps(rsp)
+
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "AddImage"
         report.resourceUuid = cmd.imageUuid
         report.progress_report("0", "start")
+
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             fail_if_has_backing_file(cmd.url)
             cmd.url = linux.shellquote(cmd.url)
