@@ -29,7 +29,13 @@ class SyncUri(object):
         self.uri = None
         self.func = None
         self.controller = None
-        
+
+class RawUri(object):
+    def __init__(self):
+        self.uri = None
+        self.func = None
+        self.controller = None
+
 class AsyncUri(SyncUri):
     def __init__(self):
         self.callback_uri = None
@@ -76,7 +82,23 @@ class SyncUriHandler(object):
         rsp = self._do_index(req)
         self._check_response(rsp)
         return rsp
-        
+
+class RawUriHandler(object):
+    def __init__(self, uri_obj):
+        self.uri_obj = uri_obj
+
+    @cherrypy.config(**{'response.timeout': 7200}) # default is 300s
+    @cherrypy.expose
+    def index(self):
+        logger.debug('raw http handler: %s' % self.uri_obj.uri)
+        try:
+            return self.uri_obj.func(cherrypy.request)
+        except Exception as e:
+            content = traceback.format_exc()
+            logger.warn('[WARN]: %s]' % content)
+            cherrypy.response.status = 500
+            return str(e)
+
 class AsyncUirHandler(SyncUriHandler):
     def __init__(self, uri_obj):
         super(AsyncUirHandler, self).__init__(uri_obj)
@@ -118,7 +140,12 @@ class AsyncUirHandler(SyncUriHandler):
         req = Request.from_cherrypy_request(cherrypy.request)
         logger.debug('async http call[task uuid: %s], body: %s' % (task_uuid, req.body))
         self._run_index(task_uuid, req)
-        
+
+def tool_disable_multipart_preprocessing():
+    """A cherrypy Tool extension to disable default multipart processing"""
+    cherrypy.request.body.processors.pop('multipart', None)
+    cherrypy.request.body.processors.pop('multipart/form-data', None)
+
 class HttpServer(object):
     '''
     classdocs
@@ -131,6 +158,7 @@ class HttpServer(object):
         self.async_callback_uri = async_callback_uri
         self.async_uri_handlers = {}
         self.sync_uri_handlers = {}
+        self.raw_uri_handlers = {}
         self.server = None
         self.server_conf = None
         self.logfile_path = log.get_logfile_path()
@@ -155,6 +183,13 @@ class HttpServer(object):
         sync_uri.controller = SyncUriHandler(sync_uri)
         self.sync_uri_handlers[uri] = sync_uri
         
+    def register_raw_uri(self, uri, func):
+        raw_uri = RawUri()
+        raw_uri.func = func
+        raw_uri.uri = uri
+        raw_uri.controller = RawUriHandler(raw_uri)
+        self.raw_uri_handlers[uri] = raw_uri
+
     def unregister_uri(self, uri):
         del self.async_callback_uri[uri]
     
@@ -178,6 +213,9 @@ class HttpServer(object):
         for skey in self.sync_uri_handlers.keys():
             sval = self.sync_uri_handlers[skey]
             self._add_mapping(sval)
+        for skey in self.raw_uri_handlers.keys():
+            sval = self.raw_uri_handlers[skey]
+            self._add_mapping(sval)
         
         self.server_conf = {'request.dispatch': self.mapper}
 
@@ -185,6 +223,16 @@ class HttpServer(object):
         site_config = {}
         site_config['server.socket_host'] = '0.0.0.0'
         site_config['server.socket_port'] = self.port
+
+        # remove limitation of request body size, default is 100MB.
+        site_config['server.max_request_body_size'] = 0
+
+        # disable cherrypy multipart preprocessing
+        cherrypy.tools.disable_multipart = cherrypy.Tool(
+                'on_start_resource',
+                tool_disable_multipart_preprocessing)
+        site_config['tools.disable_multipart.on'] = True
+
         cherrypy.config.update(site_config)
 
         self.server = cherrypy.tree.mount(root=None, config={'/' : self.server_conf})
