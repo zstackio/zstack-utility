@@ -135,6 +135,7 @@ class UploadTask(object):
 
     def success(self):
         self.completed = True
+        self.progress = 100
         self.lastOpTime = linux.get_current_timestamp()
 
     def is_started(self):
