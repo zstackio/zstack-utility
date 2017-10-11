@@ -87,7 +87,7 @@ class RawUriHandler(object):
     def __init__(self, uri_obj):
         self.uri_obj = uri_obj
 
-    @cherrypy.config(**{'response.timeout': 3600}) # default is 300s
+    @cherrypy.config(**{'response.timeout': 7200}) # default is 300s
     @cherrypy.expose
     def index(self):
         logger.debug('raw http handler: %s' % self.uri_obj.uri)
