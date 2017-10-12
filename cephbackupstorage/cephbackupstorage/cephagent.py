@@ -181,16 +181,16 @@ class ProgressedFileWriter(object):
     pfunc = None
     bytesWritten = 0
 
-    def __init__(wfd, pfunc):
+    def __init__(self, wfd, pfunc):
         self.wfd = wfd
         self.pfunc = pfunc
 
-    def write(s):
+    def write(self, s):
         self.wfd.write(s)
         self.bytesWritten += len(s)
         self.pfunc(self.bytesWritten)
 
-    def seek(offset, whence=None):
+    def seek(self, offset, whence=None):
         pass
 
 import cherrypy
@@ -238,17 +238,17 @@ def get_boundary(entity):
 
     return ib
 
-def stream_body(task, fpath, entity):
+def stream_body(task, fpath, entity, boundary):
     def _progress_consumer(total):
         task.progress = int(total * 90 / task.expectedSize)
 
     @thread.AsyncThread
     def _do_import(task, fpath):
-        shell.call("rbd import --image-format 2 %s %s" % (fpath, task.tmpPath))
+        shell.call("cat %s | rbd import --image-format 2 - %s" % (fpath, task.tmpPath))
 
     while True:
         headers = cherrypy._cpreqbody.Part.read_headers(entity.fp)
-        p = CustomPart(entity.fp, headers, ib, fifopath, _progress_consumer)
+        p = CustomPart(entity.fp, headers, boundary, fpath, _progress_consumer)
         if not p.filename:
             continue
 
@@ -256,7 +256,8 @@ def stream_body(task, fpath, entity):
         _do_import(task, fpath)
         try:
             p.process()
-        except:
+        except Exception as e:
+            logger.warn('process image %s failed: %s' % (task.imageUuid, str(e)))
             pass
         finally:
             if p.wfd is not None:
@@ -265,8 +266,8 @@ def stream_body(task, fpath, entity):
 
     o = shell.call('rbd info --format=json %s' % task.tmpPath)
     info = jsonobject.loads(o)
-    if o.size != task.expectedSize:
-        task.fail('incomplete upload, got %d, expect %d' % (o.size, task.expectedSize))
+    if info.size != task.expectedSize:
+        task.fail('incomplete upload, got %d, expect %d' % (info.size, task.expectedSize))
         shell.call('rbd rm %s' % task.tmpPath)
         return
 
@@ -321,7 +322,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
         self.http_server.register_raw_uri(self.UPLOAD_IMAGE_PATH, self.upload)
-        self.http_server.register_sync_uri(self.UPLOAD_PROGRESS_PATH, self.get_upload_progress)
+        self.http_server.register_async_uri(self.UPLOAD_PROGRESS_PATH, self.get_upload_progress)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
@@ -550,11 +551,12 @@ class CephAgent(object):
     def _parse_install_path(self, path):
         return path.lstrip('ceph:').lstrip('//').split('/')
 
-    def _fail_task(task, reason):
+    def _fail_task(self, task, reason):
         task.fail(reason)
         raise Exception(reason)
 
-    def _get_fifopath(uu):
+    def _get_fifopath(self, uu):
+        import tempfile
         d = tempfile.gettempdir()
         return os.path.join(d, uu)
 
@@ -572,21 +574,21 @@ class CephAgent(object):
         task.expectedSize = long(imageSize)
         total, avail = self._get_capacity()
         if avail <= task.expectedSize:
-            self._fail_task('capacity not enough for size: ' + imageSize)
+            self._fail_task(task, 'capacity not enough for size: ' + imageSize)
 
         entity = req.body
         boundary = get_boundary(entity)
         if not boundary:
-            self._fail_task('unexpected post form')
+            self._fail_task(task, 'unexpected post form')
 
-        # prepare the fifo to save image upload
-        fpath = self._get_fifopath(imageUuid)
-        linux.rm_file_force(fpath)
         try:
+            # prepare the fifo to save image upload
+            fpath = self._get_fifopath(imageUuid)
+            linux.rm_file_force(fpath)
             os.mkfifo(fpath)
-            stream_body(task, fpath, entity)
+            stream_body(task, fpath, entity, boundary)
         except Exception as e:
-            self._fail_task(str(e))
+            self._fail_task(task, str(e))
         finally:
             linux.rm_file_force(fpath)
 
