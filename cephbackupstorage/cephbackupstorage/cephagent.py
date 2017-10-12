@@ -603,7 +603,7 @@ class CephAgent(object):
         self.upload_tasks.add_task(task)
 
     def _get_upload_path(self, req):
-        host = req.headers['Host']
+        host = req[http.REQUEST_HEADER]['Host']
         return 'http://' + host + self.UPLOAD_IMAGE_PATH
 
     @replyerror
