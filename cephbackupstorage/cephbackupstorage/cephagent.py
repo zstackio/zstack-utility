@@ -123,6 +123,7 @@ class UploadTask(object):
         self.dstPath = dstPath # without 'ceph://'
         self.tmpPath = tmpPath # where image firstly imported to
         self.expectedSize = 0
+        self.downloadedSize = 0
         self.progress = 0
         self.lastError = None
         self.lastOpTime = linux.get_current_timestamp()
@@ -240,7 +241,7 @@ def get_boundary(entity):
 
 def stream_body(task, fpath, entity, boundary):
     def _progress_consumer(total):
-        task.progress = int(total * 90 / task.expectedSize)
+        task.downloadedSize = total
 
     @thread.AsyncThread
     def _do_import(task, fpath):
@@ -264,10 +265,8 @@ def stream_body(task, fpath, entity, boundary):
                 p.wfd.close()
         break
 
-    o = shell.call('rbd info --format=json %s' % task.tmpPath)
-    info = jsonobject.loads(o)
-    if info.size != task.expectedSize:
-        task.fail('incomplete upload, got %d, expect %d' % (info.size, task.expectedSize))
+    if task.downloadedSize != task.expectedSize:
+        task.fail('incomplete upload, got %d, expect %d' % (task.downloadedSize, task.expectedSize))
         shell.call('rbd rm %s' % task.tmpPath)
         return
 
@@ -620,7 +619,12 @@ class CephAgent(object):
         rsp.installPath = task.installPath
         rsp.size = task.expectedSize
         rsp.actualSize = task.expectedSize
-        rsp.progress = task.progress
+        if task.expectedSize == 0:
+            rsp.progress = 0
+        elif task.completed:
+            rsp.progress = 100
+        else:
+            rsp.progress = task.downloadedSize * 90 / task.expectedSize
 
         if task.lastError is not None:
             rsp.success = False
