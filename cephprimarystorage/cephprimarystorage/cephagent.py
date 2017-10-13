@@ -92,10 +92,10 @@ class ResizeVolumeRsp(AgentResponse):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
-class MigrateVolumeResponse(object):
+class GetVolumeSnapInfosRsp(AgentResponse):
     def __init__(self):
-        self.success = True
-        self.error = ''
+        super(GetVolumeSnapInfosRsp, self).__init__()
+        self.snapInfos = None
 
 def replyerror(func):
     @functools.wraps(func)
@@ -125,6 +125,7 @@ class CephAgent(object):
     ECHO_PATH = "/ceph/primarystorage/echo"
     CREATE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/create"
     DELETE_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/delete"
+    PURGE_SNAPSHOT_PATH = "/ceph/primarystorage/volume/purgesnapshots"
     COMMIT_IMAGE_PATH = "/ceph/primarystorage/snapshot/commit"
     PROTECT_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/protect"
     ROLLBACK_SNAPSHOT_PATH = "/ceph/primarystorage/snapshot/rollback"
@@ -140,6 +141,8 @@ class CephAgent(object):
     CHECK_POOL_PATH = "/ceph/primarystorage/checkpool"
     RESIZE_VOLUME_PATH = "/ceph/primarystorage/volume/resize"
     MIGRATE_VOLUME_PATH = "/ceph/primarystorage/volume/migrate"
+    MIGRATE_VOLUME_SNAPSHOT_PATH = "/ceph/primarystorage/volume/snapshot/migrate"
+    GET_VOLUME_SNAPINFOS_PATH = "/ceph/primarystorage/volume/getsnapinfos"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -154,6 +157,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.COMMIT_IMAGE_PATH, self.commit_image)
         self.http_server.register_async_uri(self.CREATE_SNAPSHOT_PATH, self.create_snapshot)
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
+        self.http_server.register_async_uri(self.PURGE_SNAPSHOT_PATH, self.purge_snapshots)
         self.http_server.register_async_uri(self.PROTECT_SNAPSHOT_PATH, self.protect_snapshot)
         self.http_server.register_async_uri(self.UNPROTECT_SNAPSHOT_PATH, self.unprotect_snapshot)
         self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
@@ -169,7 +173,9 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         self.http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
-        self.http_server.register_sync_uri(self.MIGRATE_VOLUME_PATH, self.migrate_volume)
+        self.http_server.register_async_uri(self.MIGRATE_VOLUME_PATH, self.migrate_volume)
+        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SNAPSHOT_PATH, self.migrate_volume_snapshot)
+        self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -196,6 +202,10 @@ class CephAgent(object):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
         return long(o.size_)
+
+    def _read_file_content(self, path):
+        with open(path) as f:
+            return f.read()
 
     @replyerror
     @in_bash
@@ -399,6 +409,16 @@ class CephAgent(object):
 
         shell.call('rbd snap rm %s' % spath)
 
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    @in_bash
+    def purge_snapshots(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vpath = self._normalize_install_path(cmd.volumePath)
+        shell.call('rbd snap purge %s' % vpath)
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
@@ -650,18 +670,71 @@ class CephAgent(object):
 
         return jsonobject.dumps(rsp)
 
-    def _migrate_volume(self, src_install_path, src_volume_size, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port, dst_pool_name, dst_volume_uuid):
-        return shell.run('rbd export %s - | pv -n -s %s 2>/tmp/%s | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'rbd import - %s/%s\'' % (src_install_path, src_volume_size, dst_volume_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, dst_pool_name, dst_volume_uuid))
+    def _migrate_volume(self, volume_uuid, volume_size, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
+        src_install_path = self._normalize_install_path(src_install_path)
+        dst_install_path = self._normalize_install_path(dst_install_path)
+
+        ret = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, volume_uuid, volume_size, volume_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid, dst_install_path))
+        if ret != 0:
+            return ret
+
+        src_md5 = _read_file_content('/tmp/%s_src_md5' % volume_uuid)
+        dst_md5 = shell.call('sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid))
+        if src_md5 != dst_md5:
+            return -1
+        else:
+            return 0
 
     @replyerror
+    @in_bash
     def migrate_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = MigrateVolumeResponse()
-        rst = self._migrate_volume(cmd.srcInstallPath, cmd.srcVolumeSize, cmd.dstMonHostname, cmd.dstMonSshUsername,
-                cmd.dstMonSshPassword, cmd.dstMonSshPort, cmd.dstPoolName, cmd.dstVolumeUuid)
-        if rst != 0:
+        rsp = AgentResponse()
+        ret = self._migrate_volume(cmd.volumeUuid, cmd.volumeSize, cmd.srcInstallPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
+        if ret != 0:
             rsp.success = False
             rsp.error = "Failed to migrate volume from one ceph primary storage to another."
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    def _migrate_volume_snapshot(self, parent_uuid, snapshot_uuid, snapshot_size, src_snapshot_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
+        src_snapshot_path = self._normalize_install_path(src_snapshot_path)
+        dst_install_path = self._normalize_install_path(dst_install_path)
+
+        if parent_uuid == "":
+            ret = shell.run('rbd export-diff %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (src_snapshot_path, snapshot_uuid, snapshot_size, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
+        else:
+            ret = shell.run('rbd export-diff --from-snap %s %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (parent_uuid, src_snapshot_path, snapshot_uuid, snapshot_size, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
+        if ret != 0:
+            return ret
+
+        src_md5 = _read_file_content('/tmp/%s_src_md5' % snapshot_uuid)
+        dst_md5 = shell.call('sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid))
+        if src_md5 != dst_md5:
+            return -1
+        else:
+            return 0
+
+    @replyerror
+    @in_bash
+    def migrate_volume_snapshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+        ret = self._migrate_volume_snapshot(cmd.parentUuid, cmd.snapshotUuid, cmd.snapshotSize, cmd.srcSnapshotPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
+        if ret != 0:
+            rsp.success = False
+            rsp.error = "Failed to migrate volume snapshot from one ceph primary storage to another."
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    @in_bash
+    def get_volume_snapinfos(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vpath = self._normalize_install_path(cmd.volumePath)
+        ret = shell.call('rbd --format=json snap ls %s' % vpath)
+        rsp = GetVolumeSnapInfosRsp()
+        rsp.snapInfos = jsonobject.loads(ret)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 

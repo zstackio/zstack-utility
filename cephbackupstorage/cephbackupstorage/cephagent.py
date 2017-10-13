@@ -94,11 +94,6 @@ class GetLocalFileSizeRsp(AgentResponse):
         super(GetLocalFileSizeRsp, self).__init__()
         self.size = None
 
-class MigrateImageResponse(object):
-    def __init__(self):
-        self.success = True
-        self.error = ''
-
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -333,7 +328,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DELETE_IMAGES_METADATA, self.delete_image_metadata_from_file)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
-        self.http_server.register_sync_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image)
+        self.http_server.register_async_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image)
 
     def _get_capacity(self):
         o = shell.call('ceph df -f json')
@@ -382,6 +377,9 @@ class CephAgent(object):
         rsp.size = self._get_file_size(path)
         return jsonobject.dumps(rsp)
 
+    def _read_file_content(self, path):
+        with open(path) as f:
+            return f.read()
 
     @in_bash
     @replyerror
@@ -855,15 +853,27 @@ class CephAgent(object):
         rsp.size = linux.get_local_file_size(cmd.path)
         return jsonobject.dumps(rsp)
 
-    def _migrate_image(self, src_install_path, src_image_size, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port, dst_pool_name, dst_image_uuid):
-        return shell.run('rbd export %s - | pv -n -s %s 2>/tmp/%s | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'rbd import - %s/%s\'' % (src_install_path, src_image_size, dst_image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, dst_pool_name, dst_image_uuid))
+    def _migrate_image(self, image_uuid, image_size, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
+        src_install_path = self._normalize_install_path(src_install_path)
+        dst_install_path = self._normalize_install_path(dst_install_path)
+
+        rst = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, image_uuid, image_size, image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
+        if rst != 0:
+            return rst
+
+        src_md5 = _read_file_content('/tmp/%s_src_md5' % image_uuid)
+        dst_md5 = shell.call('sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid))
+        if src_md5 != dst_md5:
+            return -1
+        else:
+            return 0
 
     @replyerror
+    @in_bash
     def migrate_image(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = MigrateImageResponse()
-        rst = self._migrate_image(cmd.srcInstallPath, cmd.srcImageSize, cmd.dstMonHostname, cmd.dstMonSshUsername,
-                                   cmd.dstMonSshPassword, cmd.dstMonSshPort, cmd.dstPoolName, cmd.dstImageUuid)
+        rsp = AgentResponse()
+        rst = self._migrate_image(cmd.imageUuid, cmd.imageSize, cmd.srcInstallPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
         if rst != 0:
             rsp.success = False
             rsp.error = "Failed to migrate image from one ceph backup storage to another."
@@ -877,5 +887,3 @@ class CephDaemon(daemon.Daemon):
     def run(self):
         self.agent = CephAgent()
         self.agent.http_server.start()
-
-
