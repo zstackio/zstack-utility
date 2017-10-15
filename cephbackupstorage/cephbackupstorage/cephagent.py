@@ -861,7 +861,7 @@ class CephAgent(object):
         if rst != 0:
             return rst
 
-        src_md5 = _read_file_content('/tmp/%s_src_md5' % image_uuid)
+        src_md5 = self._read_file_content('/tmp/%s_src_md5' % image_uuid)
         dst_md5 = shell.call('sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid))
         if src_md5 != dst_md5:
             return -1
