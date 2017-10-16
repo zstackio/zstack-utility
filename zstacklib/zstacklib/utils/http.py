@@ -320,6 +320,38 @@ def json_dump_get(uri, body=None, headers={}, fail_soon=False):
         content = jsonobject.dumps(body)
     return json_post(uri, content, headers, 'GET', fail_soon=fail_soon)
 
+class LimitedSizedReader(cherrypy._cpreqbody.SizedReader):
+    maxlinesize = 16 << 20 # 16 MB
+
+    def readline(self, size=None):
+        """Read a line from the request body and return it."""
+        chunks = []
+        total = 0
+        while size is None or size > 0:
+            chunksize = self.bufsize
+            if size is not None and size < self.bufsize:
+                chunksize = size
+            data = self.read(chunksize)
+            if not data:
+                break
+            pos = data.find(cherrypy._cpcompat.ntob('\n')) + 1
+            if pos:
+                chunks.append(data[:pos])
+                remainder = data[pos:]
+                self.buffer += remainder
+                self.bytes_read -= len(remainder)
+                break
+            else:
+                chunks.append(data)
+
+            total += len(data)
+            if total >= self.maxlinesize:
+                break
+
+        return cherrypy._cpcompat.ntob('').join(chunks)
+
+cherrypy._cpreqbody.SizedReader = LimitedSizedReader
+
 class UriBuilder(object):
     def _invalid_uri(self, uri):
         raise Exception('invalid uri[%s]' % uri)
