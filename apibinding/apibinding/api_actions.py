@@ -4478,6 +4478,18 @@ class GetVipQosAction(inventory.APIGetVipQosMsg):
         self.out = evt
         return self.out
 
+class GetVipUsedPortsAction(inventory.APIGetVipUsedPortsMsg):
+    def __init__(self):
+        super(GetVipUsedPortsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVipUsedPortsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVmAttachableDataVolumeAction(inventory.APIGetVmAttachableDataVolumeMsg):
     def __init__(self):
         super(GetVmAttachableDataVolumeAction, self).__init__()
