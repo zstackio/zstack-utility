@@ -12508,23 +12508,9 @@ class APIGetPrimaryStorageCandidatesForVolumeMigrationReply(object):
         self.error = None
 
 
-APIPRIMARYSTORAGEMIGRATEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
-class APIPrimaryStorageMigrateDataVolumeMsg(object):
-    FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
-    def __init__(self):
-        #mandatory field
-        self.volumeUuid = NotNoneField()
-        #mandatory field
-        self.dstPrimaryStorageUuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIPRIMARYSTORAGEMIGRATEROOTVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateRootVolumeMsg'
-class APIPrimaryStorageMigrateRootVolumeMsg(object):
-    FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateRootVolumeMsg'
+APIPRIMARYSTORAGEMIGRATEVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateVolumeMsg'
+class APIPrimaryStorageMigrateVolumeMsg(object):
+    FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateVolumeMsg'
     def __init__(self):
         #mandatory field
         self.volumeUuid = NotNoneField()
@@ -13966,8 +13952,7 @@ api_names = [
     'APIPowerOnBaremetalHostMsg',
     'APIPowerResetBaremetalHostMsg',
     'APIPowerStatusBaremetalHostMsg',
-    'APIPrimaryStorageMigrateDataVolumeMsg',
-    'APIPrimaryStorageMigrateRootVolumeMsg',
+    'APIPrimaryStorageMigrateVolumeMsg',
     'APIPrometheusQueryLabelValuesMsg',
     'APIPrometheusQueryLabelValuesReply',
     'APIPrometheusQueryMetadataMsg',
