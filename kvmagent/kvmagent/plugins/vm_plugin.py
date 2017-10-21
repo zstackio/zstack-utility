@@ -2060,7 +2060,7 @@ class Vm(object):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ == cmd.nic.mac:
-                    s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
+                    s = shell.ShellCmd('ip link | grep -w %s > /dev/null' % cmd.nic.nicInternalName)
                     s(False)
                     return s.return_code == 0
 
