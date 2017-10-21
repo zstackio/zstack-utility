@@ -2110,7 +2110,7 @@ class Vm(object):
                 if iface.mac.address_ == cmd.nic.mac:
                     return False
 
-            s = shell.ShellCmd('ip link | grep %s > /dev/null' % cmd.nic.nicInternalName)
+            s = shell.ShellCmd('ip link | grep -w %s > /dev/null' % cmd.nic.nicInternalName)
             s(False)
             return s.return_code != 0
 
