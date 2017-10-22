@@ -12951,6 +12951,100 @@ class APIAddZsesPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIATTACHUSBDEVICETOVMMSG_FULL_NAME = 'org.zstack.usbDevice.APIAttachUsbDeviceToVmMsg'
+class APIAttachUsbDeviceToVmMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIAttachUsbDeviceToVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.usbDeviceUuid = NotNoneField()
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHUSBDEVICEFROMVMMSG_FULL_NAME = 'org.zstack.usbDevice.APIDetachUsbDeviceFromVmMsg'
+class APIDetachUsbDeviceFromVmMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIDetachUsbDeviceFromVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.usbDeviceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETUSBDEVICECANDIDATESFORATTACHINGVMMSG_FULL_NAME = 'org.zstack.usbDevice.APIGetUsbDeviceCandidatesForAttachingVmMsg'
+class APIGetUsbDeviceCandidatesForAttachingVmMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIGetUsbDeviceCandidatesForAttachingVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETUSBDEVICECANDIDATESFORATTACHINGVMREPLY_FULL_NAME = 'org.zstack.usbDevice.APIGetUsbDeviceCandidatesForAttachingVmReply'
+class APIGetUsbDeviceCandidatesForAttachingVmReply(object):
+    FULL_NAME='org.zstack.usbDevice.APIGetUsbDeviceCandidatesForAttachingVmReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYUSBDEVICEMSG_FULL_NAME = 'org.zstack.usbDevice.APIQueryUsbDeviceMsg'
+class APIQueryUsbDeviceMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIQueryUsbDeviceMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYUSBDEVICEREPLY_FULL_NAME = 'org.zstack.usbDevice.APIQueryUsbDeviceReply'
+class APIQueryUsbDeviceReply(object):
+    FULL_NAME='org.zstack.usbDevice.APIQueryUsbDeviceReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIUPDATEUSBDEVICEMSG_FULL_NAME = 'org.zstack.usbDevice.APIUpdateUsbDeviceMsg'
+class APIUpdateUsbDeviceMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIUpdateUsbDeviceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        #valid values: [Enabled, Disabled]
+        self.state = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIAddVCenterMsg'
 class APIAddVCenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIAddVCenterMsg'
@@ -13460,6 +13554,7 @@ api_names = [
     'APIAttachPortForwardingRuleMsg',
     'APIAttachPrimaryStorageToClusterMsg',
     'APIAttachSecurityGroupToL3NetworkMsg',
+    'APIAttachUsbDeviceToVmMsg',
     'APIAttachVRouterRouteTableToVRouterMsg',
     'APIBackupDataVolumeMsg',
     'APIBackupDatabaseToPublicCloudMsg',
@@ -13692,6 +13787,7 @@ api_names = [
     'APIDetachPortForwardingRuleMsg',
     'APIDetachPrimaryStorageFromClusterMsg',
     'APIDetachSecurityGroupFromL3NetworkMsg',
+    'APIDetachUsbDeviceFromVmMsg',
     'APIDetachVRouterRouteTableFromVRouterMsg',
     'APIDownloadBackupFileFromPublicCloudMsg',
     'APIExportImageFromBackupStorageMsg',
@@ -13852,6 +13948,8 @@ api_names = [
     'APIGetSftpBackupStorageReply',
     'APIGetTaskProgressMsg',
     'APIGetTaskProgressReply',
+    'APIGetUsbDeviceCandidatesForAttachingVmMsg',
+    'APIGetUsbDeviceCandidatesForAttachingVmReply',
     'APIGetUserGroupReply',
     'APIGetUserReply',
     'APIGetVCenterDVSwitchesMsg',
@@ -14118,6 +14216,8 @@ api_names = [
     'APIQuerySystemTagReply',
     'APIQueryTagMsg',
     'APIQueryTagReply',
+    'APIQueryUsbDeviceMsg',
+    'APIQueryUsbDeviceReply',
     'APIQueryUserGroupMsg',
     'APIQueryUserGroupReply',
     'APIQueryUserMsg',
@@ -14342,6 +14442,7 @@ api_names = [
     'APIUpdateSecurityGroupMsg',
     'APIUpdateSftpBackupStorageMsg',
     'APIUpdateSystemTagMsg',
+    'APIUpdateUsbDeviceMsg',
     'APIUpdateUserGroupMsg',
     'APIUpdateUserMsg',
     'APIUpdateVCenterMsg',
@@ -19563,6 +19664,108 @@ class SftpBackupStorageInventory(BackupStorageInventory):
 
 
 
+class UsbDeviceInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.hostUuid = None
+        self.vmInstanceUuid = None
+        self.state = None
+        self.busNum = None
+        self.devNum = None
+        self.idVendor = None
+        self.idProduct = None
+        self.iManufacturer = None
+        self.iProduct = None
+        self.iSerial = None
+        self.usbVersion = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'hostUuid'):
+            self.hostUuid = inv.hostUuid
+        else:
+            self.hostUuid = None
+
+        if hasattr(inv, 'vmInstanceUuid'):
+            self.vmInstanceUuid = inv.vmInstanceUuid
+        else:
+            self.vmInstanceUuid = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'busNum'):
+            self.busNum = inv.busNum
+        else:
+            self.busNum = None
+
+        if hasattr(inv, 'devNum'):
+            self.devNum = inv.devNum
+        else:
+            self.devNum = None
+
+        if hasattr(inv, 'idVendor'):
+            self.idVendor = inv.idVendor
+        else:
+            self.idVendor = None
+
+        if hasattr(inv, 'idProduct'):
+            self.idProduct = inv.idProduct
+        else:
+            self.idProduct = None
+
+        if hasattr(inv, 'iManufacturer'):
+            self.iManufacturer = inv.iManufacturer
+        else:
+            self.iManufacturer = None
+
+        if hasattr(inv, 'iProduct'):
+            self.iProduct = inv.iProduct
+        else:
+            self.iProduct = None
+
+        if hasattr(inv, 'iSerial'):
+            self.iSerial = inv.iSerial
+        else:
+            self.iSerial = None
+
+        if hasattr(inv, 'usbVersion'):
+            self.usbVersion = inv.usbVersion
+        else:
+            self.usbVersion = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class ESXHostInventory(HostInventory):
     def __init__(self):
         super(ESXHostInventory, self).__init__()
@@ -20084,6 +20287,13 @@ XSKY_PRIMARY_STORAGE_TYPE = 'XSky'
 PRIMARY_STORAGE_TYPE = 'ZSES'
 
 #GlobalConfigPythonConstant
+class GlobalConfig_ALIYUN(object):
+    UPLOAD_ECS_IMAGE_FORMAT = 'upload.ecs.image.format'
+
+    @staticmethod
+    def get_category():
+        return 'aliyun'
+
 class GlobalConfig_APPLIANCEVM(object):
     SSH_TIMEOUT = 'ssh.timeout'
     CONNECT_TIMEOUT = 'connect.timeout'
@@ -20460,6 +20670,7 @@ class GlobalConfig_VM(object):
     NUMA = 'numa'
     CLEANTRAFFIC = 'cleanTraffic'
     INSTANCEOFFERING_SETNULLWHENDELETING = 'instanceOffering.setNullWhenDeleting'
+    SPICESTREAMINGMODE = 'spiceStreamingMode'
     EXPUNGEINTERVAL = 'expungeInterval'
 
     @staticmethod
@@ -21322,6 +21533,14 @@ class QueryObjectSystemTagInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectUsbDeviceInventory(object):
+     PRIMITIVE_FIELDS = ['busNum','iProduct','iSerial','description','uuid','idVendor','hostUuid','name','lastOpDate','idProduct','state','devNum','usbVersion','iManufacturer','vmInstanceUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmInstance','host']
+     QUERY_OBJECT_MAP = {
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'host' : 'QueryObjectHostInventory',
+     }
+
 class QueryObjectUserGroupInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','accountUuid','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['account','user','policy']
@@ -21754,6 +21973,7 @@ queryMessageInventoryMap = {
      'APIQueryShareableVolumeVmInstanceRefMsg' : QueryObjectShareableVolumeVmInstanceRefInventory,
      'APIQuerySharedResourceMsg' : QueryObjectSharedResourceInventory,
      'APIQuerySystemTagMsg' : QueryObjectSystemTagInventory,
+     'APIQueryUsbDeviceMsg' : QueryObjectUsbDeviceInventory,
      'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,
      'APIQueryUserMsg' : QueryObjectUserInventory,
      'APIQueryUserTagMsg' : QueryObjectUserTagInventory,
