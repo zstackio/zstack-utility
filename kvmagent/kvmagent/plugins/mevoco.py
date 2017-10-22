@@ -284,7 +284,7 @@ class Mevoco(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RemoveForwardDnsRsp()
 
-        conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(cmd.namespaceName)
+        conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(cmd.nameSpace)
         self._remove_dns_forward(cmd.mac, option_path)
         self._restart_dnsmasq(cmd.nameSpace, conf_file_path)
 
