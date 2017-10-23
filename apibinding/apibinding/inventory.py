@@ -11053,29 +11053,6 @@ class APIGetAttachablePublicL3ForVRouterReply(object):
         self.error = None
 
 
-APIGETVIPUSEDPORTSMSG_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetVipUsedPortsMsg'
-class APIGetVipUsedPortsMsg(object):
-    FULL_NAME='org.zstack.network.service.virtualrouter.APIGetVipUsedPortsMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        #valid values: [tcp, udp]
-        self.protocol = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIGETVIPUSEDPORTSREPLY_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetVipUsedPortsReply'
-class APIGetVipUsedPortsReply(object):
-    FULL_NAME='org.zstack.network.service.virtualrouter.APIGetVipUsedPortsReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.success = None
-        self.error = None
-
 APIGETVIRTUALROUTEROFFERINGREPLY_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetVirtualRouterOfferingReply'
 class APIGetVirtualRouterOfferingReply(object):
     FULL_NAME='org.zstack.network.service.virtualrouter.APIGetVirtualRouterOfferingReply'
@@ -13884,8 +13861,6 @@ api_names = [
     'APIGetVersionMsg',
     'APIGetVersionReply',
     'APIGetVipQosMsg',
-    'APIGetVipUsedPortsMsg',
-    'APIGetVipUsedPortsReply',
     'APIGetVirtualRouterOfferingReply',
     'APIGetVmAttachableDataVolumeMsg',
     'APIGetVmAttachableDataVolumeReply',
