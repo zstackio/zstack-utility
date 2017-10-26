@@ -265,8 +265,20 @@ def stream_body(task, fpath, entity, boundary):
         shell.call('rbd rm %s' % task.tmpPath)
         return
 
-    file_format = linux.get_img_fmt('rbd:'+task.tmpPath)
+    file_format = None
+
+    try:
+        file_format = linux.get_img_fmt('rbd:'+task.tmpPath)
+    except Exception as e:
+        task.fail('upload image %s failed: %s' % (task.imageUuid, str(e)))
+        return
+
     if file_format == 'qcow2':
+        if linux.qcow2_get_backing_file('rbd:'+task.tmpPath):
+            task.fail('Qcow2 image %s has backing file' % task.imageUuid)
+            shell.call('rbd rm %s' % task.tmpPath)
+            return
+
         conf_path = None
         try:
             with open('/etc/ceph/ceph.conf', 'r') as fd:
