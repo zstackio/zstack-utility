@@ -19,6 +19,8 @@ import os.path
 import re
 import threading
 import time
+import libvirt
+import pyudev
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -57,8 +59,17 @@ class PingResponse(kvmagent.AgentResponse):
         super(PingResponse, self).__init__()
         self.hostUuid = None
 
-logger = log.get_logger(__name__)
+class GetUsbDevicesRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetUsbDevicesRsp, self).__init__()
+        self.usbDevicesInfo = None
 
+class ReportDeviceEventCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ReportDeviceEventCmd, self).__init__()
+        self.hostUuid = None
+
+logger = log.get_logger(__name__)
 
 def _get_memory(word):
     out = shell.ShellCmd("cat /proc/meminfo | grep '%s'" % word)()
@@ -86,6 +97,7 @@ class HostPlugin(kvmagent.KvmAgent):
     ECHO_PATH = '/host/echo'
     FACT_PATH = '/host/fact'
     PING_PATH = "/host/ping"
+    GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
 
     def _get_libvirt_version(self):
@@ -133,6 +145,9 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp = ConnectResponse()
         rsp.libvirtVersion = self.libvirt_version
         rsp.qemuVersion = self.qemu_version
+
+        # create udev rule
+        self.handle_usb_device_events()
 
         vm_plugin.cleanup_stale_vnc_iptable_chains()
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
@@ -230,7 +245,99 @@ class HostPlugin(kvmagent.KvmAgent):
             logger.debug('create heartbeat file at[%s]' % hb)
             
         return jsonobject.dumps(rsp)
-        
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_usb_devices(self, req):
+        class UsbDeviceInfo(object):
+            def __init__(self):
+                self.busNum = None
+                self.devNum = None
+                self.idVendor = None
+                self.idProduct = None
+                self.iManufacturer = None
+                self.iProduct = None
+                self.iSerial = None
+                self.usbVersion = None
+            def toString(self):
+                return self.busNum + ':' + self.devNum + ':' + self.idVendor + ':' + self.idProduct + ':' + self.iManufacturer + ':' + self.iProduct + ':' + self.iSerial + ':' + self.usbVersion + ";"
+
+        # use 'lsusb.py -U' to get device ID, like '0751:9842'
+        rsp = GetUsbDevicesRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        r, o, e = bash_roe("lsusb.py -U")
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+            return jsonobject.dumps(rsp)
+
+        idSet = set()
+        usbDevicesInfo = ''
+        for line in o.split('\n'):
+            line = line.split()
+            if len(line) < 2:
+                continue
+            idSet.add(line[1])
+
+        for devId in idSet:
+            # use 'lsusb -v -d ID' to get device info[s]
+            r, o, e = bash_roe("lsusb -v -d %s" % devId)
+            if r != 0:
+                rsp.success = False
+                rsp.error = "%s %s" % (e, o)
+                return jsonobject.dumps(rsp)
+
+            for line in o.split('\n'):
+                line = line.strip().split()
+                if len(line) < 2:
+                    continue
+
+                if line[0] == 'Bus':
+                    info = UsbDeviceInfo()
+                    info.idVendor, info.idProduct = devId.split(':')
+                    info.busNum = line[1]
+                    info.devNum = line[3].rsplit(':')[0]
+                elif line[0] == 'bcdUSB':
+                    info.usbVersion = line[1]
+                elif line[0] == 'iManufacturer':
+                    info.iManufacturer = ' '.join(line[2:])
+                elif line[0] == 'iProduct':
+                    info.iProduct = ' '.join(line[2:])
+                elif line[0] == 'iSerial':
+                    info.iSerial = ' '.join(line[2:])
+                    if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
+                        rsp.success = False
+                        rsp.error = "cannot get enough info of usb device"
+                        return jsonobject.dumps(rsp)
+                    else:
+                        usbDevicesInfo += info.toString()
+        rsp.usbDevicesInfo = usbDevicesInfo
+        return jsonobject.dumps(rsp)
+
+    @lock.file_lock('/usr/bin/_report_device_event.sh')
+    def handle_usb_device_events(self):
+        bash_str = """#!/usr/bin/env python
+import urllib2
+def post_msg(data, post_url):
+    headers = {"content-type": "application/json", "commandpath": "/host/reportdeviceevent"}
+    req = urllib2.Request(post_url, data, headers)
+    response = urllib2.urlopen(req)
+    response.close()
+
+if __name__ == "__main__":
+    post_msg("{'hostUuid':'%s'}", '%s')
+""" % (self.config.get(kvmagent.HOST_UUID), self.config.get(kvmagent.SEND_COMMAND_URL))
+
+        bash_file = '/usr/bin/_report_device_event.py'
+        with open(bash_file, 'w') as f:
+            f.write(bash_str)
+        os.chmod(bash_file, 0o755)
+
+        rule_str = 'ACTION=="add|remove", SUBSYSTEM=="usb", RUN="%s"' % bash_file
+        rule_file = '/etc/udev/rules.d/usb.rules'
+        with open(rule_file, 'w') as f:
+            f.write(rule_str)
+
     def start(self):
         self.host_uuid = None
         
@@ -241,6 +348,7 @@ class HostPlugin(kvmagent.KvmAgent):
         http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         http_server.register_async_uri(self.SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT, self.setup_heartbeat_file)
         http_server.register_async_uri(self.FACT_PATH, self.fact)
+        http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

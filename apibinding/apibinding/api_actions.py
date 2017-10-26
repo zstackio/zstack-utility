@@ -710,6 +710,18 @@ class AttachSecurityGroupToL3NetworkAction(inventory.APIAttachSecurityGroupToL3N
         self.out = evt
         return self.out
 
+class AttachUsbDeviceToVmAction(inventory.APIAttachUsbDeviceToVmMsg):
+    def __init__(self):
+        super(AttachUsbDeviceToVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachUsbDeviceToVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AttachVRouterRouteTableToVRouterAction(inventory.APIAttachVRouterRouteTableToVRouterMsg):
     def __init__(self):
         super(AttachVRouterRouteTableToVRouterAction, self).__init__()
@@ -3458,6 +3470,18 @@ class DetachSecurityGroupFromL3NetworkAction(inventory.APIDetachSecurityGroupFro
         self.out = evt
         return self.out
 
+class DetachUsbDeviceFromVmAction(inventory.APIDetachUsbDeviceFromVmMsg):
+    def __init__(self):
+        super(DetachUsbDeviceFromVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachUsbDeviceFromVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DetachVRouterRouteTableFromVRouterAction(inventory.APIDetachVRouterRouteTableFromVRouterMsg):
     def __init__(self):
         super(DetachVRouterRouteTableFromVRouterAction, self).__init__()
@@ -4426,6 +4450,18 @@ class GetTaskProgressAction(inventory.APIGetTaskProgressMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetTaskProgressAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetUsbDeviceCandidatesForAttachingVmAction(inventory.APIGetUsbDeviceCandidatesForAttachingVmMsg):
+    def __init__(self):
+        super(GetUsbDeviceCandidatesForAttachingVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetUsbDeviceCandidatesForAttachingVmAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -6115,6 +6151,20 @@ class QueryTagAction(inventory.APIQueryTagMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryTagAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryUsbDeviceAction(inventory.APIQueryUsbDeviceMsg):
+    def __init__(self):
+        super(QueryUsbDeviceAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryUsbDeviceAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -8190,6 +8240,18 @@ class UpdateSystemTagAction(inventory.APIUpdateSystemTagMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateSystemTagAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateUsbDeviceAction(inventory.APIUpdateUsbDeviceMsg):
+    def __init__(self):
+        super(UpdateUsbDeviceAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateUsbDeviceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

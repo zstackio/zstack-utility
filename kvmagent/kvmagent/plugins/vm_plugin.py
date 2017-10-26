@@ -277,6 +277,13 @@ class HotUnplugPciDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(HotUnplugPciDeviceRsp, self).__init__()
 
+class KvmAttachUsbDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(KvmAttachUsbDeviceRsp, self).__init__()
+
+class KvmDetachUsbDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(KvmDetachUsbDeviceRsp, self).__init__()
 
 class VncPortIptableRule(object):
     def __init__(self):
@@ -2696,6 +2703,10 @@ class Vm(object):
             if pciDevices:
                 make_pci_device(pciDevices)
 
+            usbDevices = cmd.addons['usbDevice']
+            if usbDevices:
+                make_usb_device(usbDevices)
+
         def make_pci_device(addresses):
             devices = elements['devices']
             for addr in addresses:
@@ -2713,9 +2724,34 @@ class Vm(object):
                     raise kvmagent.KvmError(
                        'can not find pci device for address %s' % addr)
 
+        def make_usb_device(usbDevices):
+            devices = elements['devices']
+            for usb in usbDevices:
+                if match_usb_device(usb):
+                    hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'usb', 'managed': 'yes'})
+                    source = e(hostdev, "source")
+                    e(source, "address", None, {
+                        "bus": hex(int(usb.split(":")[0], 16)),
+                        "device": hex(int(usb.split(":")[1], 16))
+                    })
+                    e(source, "vendor", None, {
+                        "id": hex(int(usb.split(":")[2], 16))
+                    })
+                    e(source, "product", None, {
+                        "id": hex(int(usb.split(":")[3], 16))
+                    })
+                else:
+                    raise kvmagent.KvmError('cannot find usb device %s', usb)
+
         # TODO(WeiW) Validate here
         def match_pci_device(addr):
             return True
+
+        def match_usb_device(addr):
+            if len(addr.split(':')) == 4:
+                return True
+            else:
+                return False
 
         def make_balloon_memory():
             devices = elements['devices']
@@ -2802,6 +2838,8 @@ class VmPlugin(kvmagent.KvmAgent):
     GET_PCI_DEVICES = "/pcidevice/get"
     HOT_PLUG_PCI_DEVICE = "/pcidevice/hotplug"
     HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
+    KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
+    KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -3538,6 +3576,48 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = "%s %s" % (e, o)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def kvm_attach_usb_device(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = KvmAttachUsbDeviceRsp()
+        content = '''
+<hostdev mode='subsystem' type='usb' managed='yes'>
+  <source>
+    <vendor id='0x%s'/>
+    <product id='0x%s'/>
+    <address bus='%s' device='%s'/>
+  </source>
+</hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum))
+        spath = linux.write_to_temp_file(content)
+        r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
+        logger.debug("attached %s to %s, %s, %s" % (
+            spath, cmd.vmUuid, o, e))
+        if r!= 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def kvm_detach_usb_device(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = KvmDetachUsbDeviceRsp()
+        content = '''
+<hostdev mode='subsystem' type='usb' managed='yes'>
+  <source>
+    <vendor id='0x%s'/>
+    <product id='0x%s'/>
+    <address bus='%s' device='%s'/>
+  </source>
+</hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum))
+        spath = linux.write_to_temp_file(content)
+        r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
+        logger.debug("detached %s from %s, %s, %s" % (
+            spath, cmd.vmUuid, o, e))
+        if r!= 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -3575,6 +3655,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
         http_server.register_async_uri(self.HOT_PLUG_PCI_DEVICE, self.hot_plug_pci_device)
         http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
+        http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
+        http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
 
         self.register_libvirt_event()
 
