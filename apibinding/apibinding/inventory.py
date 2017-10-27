@@ -11076,6 +11076,7 @@ class APIGetVipUsedPortsReply(object):
         self.success = None
         self.error = None
 
+
 APIGETVIRTUALROUTEROFFERINGREPLY_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetVirtualRouterOfferingReply'
 class APIGetVirtualRouterOfferingReply(object):
     FULL_NAME='org.zstack.network.service.virtualrouter.APIGetVirtualRouterOfferingReply'
@@ -20747,14 +20748,17 @@ class QueryObjectAlertInventory(object):
 
 class QueryObjectAliyunDiskInventory(object):
      PRIMITIVE_FIELDS = ['ecsInstanceUuid','sizeWithGB','identityZoneUuid','description','uuid','deviceInfo','diskChargeType','name','lastOpDate','diskId','diskType','diskCategory','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['ecs','snapshot']
      QUERY_OBJECT_MAP = {
+        'ecs' : 'QueryObjectEcsInstanceInventory',
+        'snapshot' : 'QueryObjectAliyunSnapshotInventory',
      }
 
 class QueryObjectAliyunSnapshotInventory(object):
      PRIMITIVE_FIELDS = ['snapshotId','diskUuid','name','lastOpDate','description','dataCenterUuid','uuid','aliyunSnapshotUsage','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['imageRef']
+     EXPANDED_FIELDS = ['disk','imageRef']
      QUERY_OBJECT_MAP = {
+        'disk' : 'QueryObjectAliyunDiskInventory',
         'imageRef' : 'QueryObjectEcsImageInventory',
      }
 
