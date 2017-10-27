@@ -251,14 +251,14 @@ class HostPlugin(kvmagent.KvmAgent):
     def get_usb_devices(self, req):
         class UsbDeviceInfo(object):
             def __init__(self):
-                self.busNum = None
-                self.devNum = None
-                self.idVendor = None
-                self.idProduct = None
-                self.iManufacturer = None
-                self.iProduct = None
-                self.iSerial = None
-                self.usbVersion = None
+                self.busNum = ""
+                self.devNum = ""
+                self.idVendor = ""
+                self.idProduct = ""
+                self.iManufacturer = ""
+                self.iProduct = ""
+                self.iSerial = ""
+                self.usbVersion = ""
             def toString(self):
                 return self.busNum + ':' + self.devNum + ':' + self.idVendor + ':' + self.idProduct + ':' + self.iManufacturer + ':' + self.iProduct + ':' + self.iSerial + ':' + self.usbVersion + ";"
 
@@ -297,14 +297,18 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.idVendor, info.idProduct = devId.split(':')
                     info.busNum = line[1]
                     info.devNum = line[3].rsplit(':')[0]
+                elif line[0] == 'idVendor':
+                    info.iManufacturer = ' '.join(line[2:]) if len(line) > 2 else ""
+                elif line[0] == 'idProduct':
+                    info.iProduct = ' '.join(line[2:]) if len(line) > 2 else ""
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
-                elif line[0] == 'iManufacturer':
+                elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
-                elif line[0] == 'iProduct':
+                elif line[0] == 'iProduct' and len(line) > 2:
                     info.iProduct = ' '.join(line[2:])
                 elif line[0] == 'iSerial':
-                    info.iSerial = ' '.join(line[2:])
+                    info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
                     if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
                         rsp.success = False
                         rsp.error = "cannot get enough info of usb device"

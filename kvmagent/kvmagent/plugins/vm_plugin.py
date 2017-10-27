@@ -2731,8 +2731,8 @@ class Vm(object):
                     hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'usb', 'managed': 'yes'})
                     source = e(hostdev, "source")
                     e(source, "address", None, {
-                        "bus": hex(int(usb.split(":")[0], 16)),
-                        "device": hex(int(usb.split(":")[1], 16))
+                        "bus": str(int(usb.split(":")[0])),
+                        "device": str(int(usb.split(":")[1]))
                     })
                     e(source, "vendor", None, {
                         "id": hex(int(usb.split(":")[2], 16))
