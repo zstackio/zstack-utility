@@ -2654,7 +2654,10 @@ class Vm(object):
                 redirdev5 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
                 e(redirdev5, 'address', None, {'type': 'usb', 'bus': '0', 'port': '6'})
             else:
-                return
+                # make sure there are three default usb controllers, for usb 1.1/2.0/3.0
+                devices = elements['devices']
+                e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+                e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
         def make_video():
             devices = elements['devices']
@@ -2725,6 +2728,9 @@ class Vm(object):
                        'can not find pci device for address %s' % addr)
 
         def make_usb_device(usbDevices):
+            next_uhci_port = 2
+            next_ehci_port = 1
+            next_xhci_port = 1
             devices = elements['devices']
             for usb in usbDevices:
                 if match_usb_device(usb):
@@ -2740,6 +2746,23 @@ class Vm(object):
                     e(source, "product", None, {
                         "id": hex(int(usb.split(":")[3], 16))
                     })
+
+                    # get controller index from usbVersion
+                    # eg. 1.1 -> 0
+                    # eg. 2.0.0 -> 1
+                    # eg. 3 -> 2
+                    bus = int(usb.split(":")[4][0]) - 1
+                    if bus == 0:
+                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
+                        next_uhci_port += 1
+                    elif bus == 1:
+                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
+                        next_ehci_port += 1
+                    elif bus == 2:
+                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
+                        next_xhci_port += 1
+                    else:
+                        raise kvmagent.KvmError('unknown usb controller %s', bus)
                 else:
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
 
@@ -2748,7 +2771,7 @@ class Vm(object):
             return True
 
         def match_usb_device(addr):
-            if len(addr.split(':')) == 4:
+            if len(addr.split(':')) == 5:
                 return True
             else:
                 return False
@@ -3576,10 +3599,36 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = "%s %s" % (e, o)
         return jsonobject.dumps(rsp)
 
+    def _get_next_usb_port(self, vmUuid, bus):
+        conn = libvirt.open('qemu:///system')
+        if not conn:
+            raise Exception('unable to get libvirt connection')
+        dom = conn.lookupByName(vmUuid)
+        domain_xml = dom.XMLDesc(0)
+        domain_xmlobject = xmlobject.loads(domain_xml)
+        # if uhci, port 0 and 1 are hard-coded reserved
+        # if ehci/xhci, port 0 is hard-coded reserved
+        if bus == 0:
+            usb_ports = [0, 1]
+        else:
+            usb_ports = [0]
+        for hostdev in domain_xmlobject.devices.get_child_node_as_list('hostdev'):
+            if hostdev.type_ == 'usb':
+                for address in hostdev.get_child_node_as_list('address'):
+                    if address.type_ == 'usb' and address.bus_ == str(bus):
+                        usb_ports.append(int(address.port_))
+        conn.close()
+
+        # get the first unused port number
+        for i in range(len(usb_ports) + 1):
+            if i not in usb_ports:
+                return i
+
     @kvmagent.replyerror
     def kvm_attach_usb_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmAttachUsbDeviceRsp()
+        bus = int(cmd.usbVersion[0]) - 1
         content = '''
 <hostdev mode='subsystem' type='usb' managed='yes'>
   <source>
@@ -3587,7 +3636,8 @@ class VmPlugin(kvmagent.KvmAgent):
     <product id='0x%s'/>
     <address bus='%s' device='%s'/>
   </source>
-</hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum))
+  <address type='usb' bus='%s' port='%s' />
+</hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum), bus, self._get_next_usb_port(cmd.vmUuid, bus))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
         logger.debug("attached %s to %s, %s, %s" % (
