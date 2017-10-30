@@ -75,6 +75,7 @@
     <import file="${basedir}/projects/zstack-cli.xml" optional="false" />
     <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ui-war.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-pysdk.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
     <import file="${basedir}/projects/zstack-agent.xml" optional="false" />
     <import file="${basedir}/projects/zstack-store.xml" optional="false" />
@@ -301,6 +302,9 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-ui-war-on-condition"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-pysdk"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-cli"/>

@@ -22,6 +22,11 @@
         </exec>
 
         <copy file="${zstack.source}/build/target/zstack.war" todir="${build.dir}" overwrite="true" />
+
+        <exec executable="bash" dir="${zstack.source}" failonerror="true">
+            <arg value="${build.zstack.pysdk.script}" />
+            <arg value="${zstack.source}" />
+        </exec>
     </target>
 
 </project>
