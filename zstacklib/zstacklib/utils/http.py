@@ -232,6 +232,7 @@ class HttpServer(object):
                 'on_start_resource',
                 tool_disable_multipart_preprocessing)
         site_config['tools.disable_multipart.on'] = True
+        site_config['engine.timeout_monitor.on'] = False
 
         cherrypy.config.update(site_config)
 
