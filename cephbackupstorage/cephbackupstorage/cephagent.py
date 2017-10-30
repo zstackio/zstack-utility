@@ -173,13 +173,10 @@ class UploadTasks(object):
 # ------------------------------------------------------------------ #
 
 class ProgressedFileWriter(object):
-    wfd = None
-    pfunc = None
-    bytesWritten = 0
-
     def __init__(self, wfd, pfunc):
         self.wfd = wfd
         self.pfunc = pfunc
+        self.bytesWritten = 0
 
     def write(self, s):
         self.wfd.write(s)
@@ -193,12 +190,10 @@ import cherrypy
 class CustomPart(cherrypy._cpreqbody.Part):
     """A customized multipart"""
     maxrambytes = 0
-    fifopath = None
-    wfd = None
-    pfunc = None
 
     def __init__(self, fp, headers, boundary, fifopath, pfunc):
         cherrypy._cpreqbody.Part.__init__(self, fp, headers, boundary)
+        self.wfd = None
         self.file = None
         self.value = None
         self.fifopath = fifopath
@@ -833,7 +828,9 @@ class CephAgent(object):
         pool, image_name = self._parse_install_path(cmd.installPath)
 
         def delete_image(_):
-            shell.call('rbd rm %s/%s' % (pool, image_name))
+            # in case image is deleted, we don't have to wait for timeout
+            img = "%s/%s" % (pool, image_name)
+            shell.call('rbd info %s && rbd rm %s' % (img, img))
             return True
 
         # 'rbd rm' might fail due to client crash. We wait for 30 seconds as suggested by 'rbd'.
