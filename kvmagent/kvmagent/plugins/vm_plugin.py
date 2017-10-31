@@ -2656,6 +2656,7 @@ class Vm(object):
             else:
                 # make sure there are three default usb controllers, for usb 1.1/2.0/3.0
                 devices = elements['devices']
+                e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
