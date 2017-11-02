@@ -8419,6 +8419,7 @@ class APIStopVmInstanceMsg(object):
         self.uuid = NotNoneField()
         #valid values: [grace, cold]
         self.type = None
+        self.stopHA = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
