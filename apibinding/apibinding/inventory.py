@@ -9202,6 +9202,27 @@ class APIDeleteLdapServerMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETLDAPENTRYMSG_FULL_NAME = 'org.zstack.ldap.APIGetLdapEntryMsg'
+class APIGetLdapEntryMsg(object):
+    FULL_NAME='org.zstack.ldap.APIGetLdapEntryMsg'
+    def __init__(self):
+        #mandatory field
+        self.ldapFilter = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETLDAPENTRYREPLY_FULL_NAME = 'org.zstack.ldap.APIGetLdapEntryReply'
+class APIGetLdapEntryReply(object):
+    FULL_NAME='org.zstack.ldap.APIGetLdapEntryReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APILOGINBYLDAPMSG_FULL_NAME = 'org.zstack.ldap.APILogInByLdapMsg'
 class APILogInByLdapMsg(object):
     FULL_NAME='org.zstack.ldap.APILogInByLdapMsg'
@@ -13918,6 +13939,8 @@ api_names = [
     'APIGetL3NetworkRouterInterfaceIpReply',
     'APIGetL3NetworkTypesMsg',
     'APIGetL3NetworkTypesReply',
+    'APIGetLdapEntryMsg',
+    'APIGetLdapEntryReply',
     'APIGetLicenseCapabilitiesMsg',
     'APIGetLicenseCapabilitiesReply',
     'APIGetLicenseInfoMsg',
@@ -20498,6 +20521,14 @@ class GlobalConfig_KVM(object):
     def get_category():
         return 'kvm'
 
+class GlobalConfig_LDAP(object):
+    QUERYLDAPENTRYRETURNATTRIBUTESEPARATOR = 'queryLdapEntryReturnAttributeSeparator'
+    QUERYLDAPENTRYRETURNATTRIBUTES = 'queryLdapEntryReturnAttributes'
+
+    @staticmethod
+    def get_category():
+        return 'ldap'
+
 class GlobalConfig_LOADBALANCER(object):
     HEALTHCHECKINTERVAL = 'healthCheckInterval'
     MAXCONNECTION = 'maxConnection'
@@ -20619,7 +20650,6 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
@@ -20627,6 +20657,7 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
