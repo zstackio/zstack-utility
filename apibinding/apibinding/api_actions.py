@@ -4154,6 +4154,18 @@ class GetL3NetworkTypesAction(inventory.APIGetL3NetworkTypesMsg):
         self.out = evt
         return self.out
 
+class GetLdapEntryAction(inventory.APIGetLdapEntryMsg):
+    def __init__(self):
+        super(GetLdapEntryAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetLdapEntryAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
     def __init__(self):
         super(GetLicenseCapabilitiesAction, self).__init__()
