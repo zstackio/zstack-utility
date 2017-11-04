@@ -2288,8 +2288,7 @@ missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Test network connection"
-BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
-curl ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
+curl -L ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 yum clean all >/dev/null 2>&1
