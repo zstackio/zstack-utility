@@ -2656,7 +2656,7 @@ echo_hints_to_upgrade_iso()
         "Syncing local repo with repo.zstack.io has been failed too.\n" \
         "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
         "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-        "# sh zstack-upgrade ${ISO_NAME}\n" \
+        "# bash zstack-upgrade ${ISO_NAME}\n" \
         "For more information, see ${UPGRADE_WIKI}"
 }
 
@@ -2668,7 +2668,7 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     if [ $? -ne 0 ]; then
         if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
             ISO_NAME="ZStack-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
-            UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
+            UPGRADE_WIKI="http://www.zstack.io/support/productsupport/tutorial/"
             ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
             echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
         elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
@@ -2678,7 +2678,7 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
             echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
         elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
             ISO_NAME="ZStack-Enterprise-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
-            UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
+            UPGRADE_WIKI="http://www.zstack.io/support/productsupport/tutorial/"
             ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
             echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
         else
