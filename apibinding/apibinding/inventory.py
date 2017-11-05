@@ -7461,6 +7461,20 @@ class APIChangeInstanceOfferingMsg(object):
         self.userTags = OptionalList()
 
 
+APICHANGEVMIMAGEMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVmImageMsg'
+class APIChangeVmImageMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIChangeVmImageMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        #mandatory field
+        self.imageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVmPasswordMsg'
 class APIChangeVmPasswordMsg(object):
     FULL_NAME='org.zstack.header.vm.APIChangeVmPasswordMsg'
@@ -7739,6 +7753,27 @@ class APIGetCandidateZonesClustersHostsForCreatingVmReply(object):
         self.zones = OptionalList()
         self.clusters = OptionalList()
         self.hosts = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETIMAGECANDIDATESFORVMTOCHANGEMSG_FULL_NAME = 'org.zstack.header.vm.APIGetImageCandidatesForVmToChangeMsg'
+class APIGetImageCandidatesForVmToChangeMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetImageCandidatesForVmToChangeMsg'
+    def __init__(self):
+        self.vmInstanceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETIMAGECANDIDATESFORVMTOCHANGEREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetImageCandidatesForVmToChangeReply'
+class APIGetImageCandidatesForVmToChangeReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetImageCandidatesForVmToChangeReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.inventory = None
         self.success = None
         self.error = None
 
@@ -13626,6 +13661,7 @@ api_names = [
     'APIChangeSchedulerStateMsg',
     'APIChangeSecurityGroupStateMsg',
     'APIChangeVipStateMsg',
+    'APIChangeVmImageMsg',
     'APIChangeVmPasswordMsg',
     'APIChangeVolumeStateMsg',
     'APIChangeZoneStateMsg',
@@ -13916,6 +13952,8 @@ api_names = [
     'APIGetHypervisorTypesReply',
     'APIGetIdentityZoneFromRemoteMsg',
     'APIGetIdentityZoneFromRemoteReply',
+    'APIGetImageCandidatesForVmToChangeMsg',
+    'APIGetImageCandidatesForVmToChangeReply',
     'APIGetImageQgaMsg',
     'APIGetImageQgaReply',
     'APIGetImageReply',
@@ -20650,6 +20688,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
@@ -20657,7 +20696,6 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'

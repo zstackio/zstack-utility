@@ -1022,6 +1022,18 @@ class ChangeVipStateAction(inventory.APIChangeVipStateMsg):
         self.out = evt
         return self.out
 
+class ChangeVmImageAction(inventory.APIChangeVmImageMsg):
+    def __init__(self):
+        super(ChangeVmImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeVmImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeVmPasswordAction(inventory.APIChangeVmPasswordMsg):
     def __init__(self):
         super(ChangeVmPasswordAction, self).__init__()
@@ -4042,6 +4054,18 @@ class GetIdentityZoneFromRemoteAction(inventory.APIGetIdentityZoneFromRemoteMsg)
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetIdentityZoneFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetImageCandidatesForVmToChangeAction(inventory.APIGetImageCandidatesForVmToChangeMsg):
+    def __init__(self):
+        super(GetImageCandidatesForVmToChangeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetImageCandidatesForVmToChangeAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
