@@ -1034,6 +1034,18 @@ class ChangeVipStateAction(inventory.APIChangeVipStateMsg):
         self.out = evt
         return self.out
 
+class ChangeVmImageAction(inventory.APIChangeVmImageMsg):
+    def __init__(self):
+        super(ChangeVmImageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeVmImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeVmPasswordAction(inventory.APIChangeVmPasswordMsg):
     def __init__(self):
         super(ChangeVmPasswordAction, self).__init__()
@@ -3038,18 +3050,6 @@ class DeleteVmConsolePasswordAction(inventory.APIDeleteVmConsolePasswordMsg):
         self.out = evt
         return self.out
 
-class DeleteVmFromAffinityGroupAction(inventory.APIDeleteVmFromAffinityGroupMsg):
-    def __init__(self):
-        super(DeleteVmFromAffinityGroupAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DeleteVmFromAffinityGroupAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class DeleteVmHostnameAction(inventory.APIDeleteVmHostnameMsg):
     def __init__(self):
         super(DeleteVmHostnameAction, self).__init__()
@@ -4090,6 +4090,18 @@ class GetIdentityZoneFromRemoteAction(inventory.APIGetIdentityZoneFromRemoteMsg)
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetIdentityZoneFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetImageCandidatesForVmToChangeAction(inventory.APIGetImageCandidatesForVmToChangeMsg):
+    def __init__(self):
+        super(GetImageCandidatesForVmToChangeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetImageCandidatesForVmToChangeAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -6960,6 +6972,18 @@ class RemoveUserFromGroupAction(inventory.APIRemoveUserFromGroupMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RemoveUserFromGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveVmFromAffinityGroupAction(inventory.APIRemoveVmFromAffinityGroupMsg):
+    def __init__(self):
+        super(RemoveVmFromAffinityGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveVmFromAffinityGroupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

@@ -4331,7 +4331,8 @@ class RestoreMysqlCmd(Command):
         try:
             shell_no_pipe(command)
         except:
-            error("Can't connect mysql with root password '%s', please specify databse root password with --mysql-root-password" % db_connect_password.split('-p')[1])
+            db_connect_password = db_connect_password.split('-p')[1] if db_connect_password.startswith('-p') else db_connect_password
+            error("Can't connect mysql with root password '%s', please specify databse root password with --mysql-root-password" % db_connect_password)
 
 
     def run(self, args):
@@ -4342,10 +4343,8 @@ class RestoreMysqlCmd(Command):
         if os.path.exists(db_backup_name) is False:
             error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
         error_if_tool_is_missing('gunzip')
-        info("Backup mysql before restore data ...")
-        shell_no_pipe('zstack-ctl dump_mysql')
-        shell_no_pipe('zstack-ctl stop_node')
-        info("Starting recover data ...")
+
+        # test mysql connection
         if db_password is None or db_password == "":
             db_connect_password = ""
         else:
@@ -4354,9 +4353,13 @@ class RestoreMysqlCmd(Command):
             db_hostname = ""
         else:
             db_hostname = "--host %s" % db_hostname
-
         self.test_mysql_connection(db_connect_password, db_port, db_hostname)
 
+        info("Backup mysql before restore data ...")
+        shell_no_pipe('zstack-ctl dump_mysql')
+        shell_no_pipe('zstack-ctl stop_node')
+
+        info("Starting recover data ...")
         for database in ['zstack','zstack_rest']:
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)

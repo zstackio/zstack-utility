@@ -195,113 +195,6 @@ class APIQueryResourcePriceReply(object):
         self.error = None
 
 
-APIADDVMTOAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.compute.affinityGroup.APIAddVmToAffinityGroupMsg'
-class APIAddVmToAffinityGroupMsg(object):
-    FULL_NAME='org.zstack.compute.affinityGroup.APIAddVmToAffinityGroupMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        self.vmInstanceUuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APICREATEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.compute.affinityGroup.APICreateAffinityGroupMsg'
-class APICreateAffinityGroupMsg(object):
-    FULL_NAME='org.zstack.compute.affinityGroup.APICreateAffinityGroupMsg'
-    def __init__(self):
-        #mandatory field
-        self.name = NotNoneField()
-        self.description = None
-        #mandatory field
-        #valid values: [antiAffinitySoft, antiAffinityHard]
-        self.policy = NotNoneField()
-        #mandatory field
-        self.version = NotNoneField()
-        #valid values: [host]
-        self.type = None
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIDELETEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.compute.affinityGroup.APIDeleteAffinityGroupMsg'
-class APIDeleteAffinityGroupMsg(object):
-    FULL_NAME='org.zstack.compute.affinityGroup.APIDeleteAffinityGroupMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.deleteMode = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIDELETEVMFROMAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.compute.affinityGroup.APIDeleteVmFromAffinityGroupMsg'
-class APIDeleteVmFromAffinityGroupMsg(object):
-    FULL_NAME='org.zstack.compute.affinityGroup.APIDeleteVmFromAffinityGroupMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        self.vmInstanceUuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.compute.affinityGroup.APIQueryAffinityGroupMsg'
-class APIQueryAffinityGroupMsg(object):
-    FULL_NAME='org.zstack.compute.affinityGroup.APIQueryAffinityGroupMsg'
-    def __init__(self):
-        #mandatory field
-        self.conditions = NotNoneList()
-        self.limit = None
-        self.start = None
-        self.count = None
-        self.groupBy = None
-        self.replyWithCount = None
-        self.sortBy = None
-        #valid values: [asc, desc]
-        self.sortDirection = None
-        self.fields = OptionalList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYAFFINITYGROUPREPLY_FULL_NAME = 'org.zstack.compute.affinityGroup.APIQueryAffinityGroupReply'
-class APIQueryAffinityGroupReply(object):
-    FULL_NAME='org.zstack.compute.affinityGroup.APIQueryAffinityGroupReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.total = None
-        self.success = None
-        self.error = None
-
-
-APIUPDATEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.compute.affinityGroup.APIUpdateAffinityGroupMsg'
-class APIUpdateAffinityGroupMsg(object):
-    FULL_NAME='org.zstack.compute.affinityGroup.APIUpdateAffinityGroupMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.name = None
-        self.description = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIGETGLOBALCONFIGMSG_FULL_NAME = 'org.zstack.core.config.APIGetGlobalConfigMsg'
 class APIGetGlobalConfigMsg(object):
     FULL_NAME='org.zstack.core.config.APIGetGlobalConfigMsg'
@@ -601,6 +494,113 @@ class APIIsOpensourceVersionReply(object):
         self.opensource = None
         self.success = None
         self.error = None
+
+
+APIADDVMTOAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIAddVmToAffinityGroupMsg'
+class APIAddVmToAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIAddVmToAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.affinityGroupUuid = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APICreateAffinityGroupMsg'
+class APICreateAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APICreateAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
+        #valid values: [antiAffinitySoft, antiAffinityHard]
+        self.policy = NotNoneField()
+        #mandatory field
+        self.version = NotNoneField()
+        #valid values: [host]
+        self.type = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIDeleteAffinityGroupMsg'
+class APIDeleteAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIDeleteAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIQueryAffinityGroupMsg'
+class APIQueryAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIQueryAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYAFFINITYGROUPREPLY_FULL_NAME = 'org.zstack.header.affinitygroup.APIQueryAffinityGroupReply'
+class APIQueryAffinityGroupReply(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIQueryAffinityGroupReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIREMOVEVMFROMAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIRemoveVmFromAffinityGroupMsg'
+class APIRemoveVmFromAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIRemoveVmFromAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.affinityGroupUuid = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIUpdateAffinityGroupMsg'
+class APIUpdateAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIUpdateAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIADDALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
@@ -7568,6 +7568,20 @@ class APIChangeInstanceOfferingMsg(object):
         self.userTags = OptionalList()
 
 
+APICHANGEVMIMAGEMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVmImageMsg'
+class APIChangeVmImageMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIChangeVmImageMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        #mandatory field
+        self.imageUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICHANGEVMPASSWORDMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVmPasswordMsg'
 class APIChangeVmPasswordMsg(object):
     FULL_NAME='org.zstack.header.vm.APIChangeVmPasswordMsg'
@@ -7848,6 +7862,27 @@ class APIGetCandidateZonesClustersHostsForCreatingVmReply(object):
         self.zones = OptionalList()
         self.clusters = OptionalList()
         self.hosts = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETIMAGECANDIDATESFORVMTOCHANGEMSG_FULL_NAME = 'org.zstack.header.vm.APIGetImageCandidatesForVmToChangeMsg'
+class APIGetImageCandidatesForVmToChangeMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetImageCandidatesForVmToChangeMsg'
+    def __init__(self):
+        self.vmInstanceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETIMAGECANDIDATESFORVMTOCHANGEREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetImageCandidatesForVmToChangeReply'
+class APIGetImageCandidatesForVmToChangeReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetImageCandidatesForVmToChangeReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.inventory = None
         self.success = None
         self.error = None
 
@@ -13737,6 +13772,7 @@ api_names = [
     'APIChangeSchedulerStateMsg',
     'APIChangeSecurityGroupStateMsg',
     'APIChangeVipStateMsg',
+    'APIChangeVmImageMsg',
     'APIChangeVmPasswordMsg',
     'APIChangeVolumeStateMsg',
     'APIChangeZoneStateMsg',
@@ -13906,7 +13942,6 @@ api_names = [
     'APIDeleteVirtualBorderRouterLocalMsg',
     'APIDeleteVirtualRouterLocalMsg',
     'APIDeleteVmConsolePasswordMsg',
-    'APIDeleteVmFromAffinityGroupMsg',
     'APIDeleteVmHostnameMsg',
     'APIDeleteVmInstanceHaLevelMsg',
     'APIDeleteVmNicFromSecurityGroupMsg',
@@ -14030,6 +14065,8 @@ api_names = [
     'APIGetHypervisorTypesReply',
     'APIGetIdentityZoneFromRemoteMsg',
     'APIGetIdentityZoneFromRemoteReply',
+    'APIGetImageCandidatesForVmToChangeMsg',
+    'APIGetImageCandidatesForVmToChangeReply',
     'APIGetImageQgaMsg',
     'APIGetImageQgaReply',
     'APIGetImageReply',
@@ -14469,6 +14506,7 @@ api_names = [
     'APIRemoveMonFromFusionstorPrimaryStorageMsg',
     'APIRemoveSchedulerJobFromSchedulerTriggerMsg',
     'APIRemoveUserFromGroupMsg',
+    'APIRemoveVmFromAffinityGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
     'APIReply',
     'APIRequestBaremetalConsoleAccessMsg',
@@ -20767,6 +20805,7 @@ class GlobalConfig_QUOTA(object):
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
     PORTFORWARDING_NUM = 'portForwarding.num'
     EIP_NUM = 'eip.num'
@@ -20774,7 +20813,6 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
