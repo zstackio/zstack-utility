@@ -2344,7 +2344,8 @@ class Vm(object):
                 e(devices, 'emulator', cmd.addons['qemuPath'])
             else:
                 e(devices, 'emulator', kvmagent.get_qemu_path())
-            e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb', 'port': '1'})
+            tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
+            e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
             elements['devices'] = devices
 
         def make_cdrom():
