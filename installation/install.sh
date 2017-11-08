@@ -1199,7 +1199,7 @@ uz_stop_zstack(){
 
 uz_upgrade_tomcat(){
     echo_subtitle "Upgrade apache-tomcat"
-    ZSTACK_HOME=`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`
+    ZSTACK_HOME=${ZSTACK_HOME:-`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`}
     ZSTACK_HOME=${ZSTACK_HOME:-"/usr/local/zstack/apache-tomcat/webapps/zstack/"}
     TOMCAT_PATH=${ZSTACK_HOME%/apache-tomcat*}
 
@@ -2576,7 +2576,8 @@ elif [ x"$UPGRADE" != x'n' ]; then
     get_zstack_repo
 fi
 
-[ ! -z $ZSTACK_YUM_REPOS ] && set_zstack_repo
+# there is no zstack-ctl yet
+#[ ! -z $ZSTACK_YUM_REPOS ] && set_zstack_repo
 
 README=$ZSTACK_INSTALL_ROOT/readme
 
@@ -2751,6 +2752,12 @@ fi
 
 #Set ZSTACK_HOME for zstack-ctl.
 export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
+grep "ZSTACK_HOME" ~/.bashrc > /dev/null
+if [ $? -eq 0 ]; then
+    sed -i "s#export ZSTACK_HOME=.*#export ZSTACK_HOME=${ZSTACK_HOME}#" ~/.bashrc
+else
+    echo "export ZSTACK_HOME=${ZSTACK_HOME}" >> ~/.bashrc
+fi
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
