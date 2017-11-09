@@ -542,6 +542,10 @@ do_check_system(){
             zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
             fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ${PRODUCT_NAME}\n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n All ZStack services have been stopped. Run \`zstack-ctl start\` to recover."
         fi
+
+        # kill zstack if it's still running
+        ZSTACK_PID=`ps aux | grep 'appName=zstack' | grep -v 'grep' | awk '{ print $2 }'`
+        [ ! -z $ZSTACK_PID ] && pkill -9 $ZSTACK_PID
     fi
 
     if [ `whoami` != 'root' ];then
