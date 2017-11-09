@@ -8783,6 +8783,18 @@ class APIQueryVolumeMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+APIRESIZEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.header.volume.APIResizeDataVolumeMsg'
+class APIResizeDataVolumeMsg(object):
+    FULL_NAME='org.zstack.header.volume.APIResizeDataVolumeMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.size = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 APIQUERYVOLUMEREPLY_FULL_NAME = 'org.zstack.header.volume.APIQueryVolumeReply'
 class APIQueryVolumeReply(object):
@@ -14395,6 +14407,7 @@ api_names = [
     'APIReply',
     'APIRequestBaremetalConsoleAccessMsg',
     'APIRequestConsoleAccessMsg',
+    'APIResizeDataVolumeMsg',
     'APIResizeRootVolumeMsg',
     'APIResumeVmInstanceMsg',
     'APIRevertVolumeFromSnapshotMsg',
