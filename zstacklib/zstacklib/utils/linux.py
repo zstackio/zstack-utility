@@ -1350,3 +1350,7 @@ def timeout_isdir(path):
         return False
     else:
         return True
+
+def set_device_uuid_alias(interf, l2NetworkUuid):
+    cmd = shell.ShellCmd("ip link set dev %s alias \"uuid: %s\"" % (interf, l2NetworkUuid))
+    cmd(is_exception=False)
