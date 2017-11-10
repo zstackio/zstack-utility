@@ -542,6 +542,10 @@ do_check_system(){
             zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
             fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ${PRODUCT_NAME}\n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n All ZStack services have been stopped. Run \`zstack-ctl start\` to recover."
         fi
+
+        # kill zstack if it's still running
+        ZSTACK_PID=`ps aux | grep 'appName=zstack' | grep -v 'grep' | awk '{ print $2 }'`
+        [ ! -z $ZSTACK_PID ] && pkill -9 $ZSTACK_PID
     fi
 
     if [ `whoami` != 'root' ];then
@@ -1199,7 +1203,7 @@ uz_stop_zstack(){
 
 uz_upgrade_tomcat(){
     echo_subtitle "Upgrade apache-tomcat"
-    ZSTACK_HOME=`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`
+    ZSTACK_HOME=${ZSTACK_HOME:-`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`}
     ZSTACK_HOME=${ZSTACK_HOME:-"/usr/local/zstack/apache-tomcat/webapps/zstack/"}
     TOMCAT_PATH=${ZSTACK_HOME%/apache-tomcat*}
 
@@ -2576,7 +2580,8 @@ elif [ x"$UPGRADE" != x'n' ]; then
     get_zstack_repo
 fi
 
-[ ! -z $ZSTACK_YUM_REPOS ] && set_zstack_repo
+# there is no zstack-ctl yet
+#[ ! -z $ZSTACK_YUM_REPOS ] && set_zstack_repo
 
 README=$ZSTACK_INSTALL_ROOT/readme
 
@@ -2751,6 +2756,12 @@ fi
 
 #Set ZSTACK_HOME for zstack-ctl.
 export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
+grep "ZSTACK_HOME" ~/.bashrc > /dev/null
+if [ $? -eq 0 ]; then
+    sed -i "s#export ZSTACK_HOME=.*#export ZSTACK_HOME=${ZSTACK_HOME}#" ~/.bashrc
+else
+    echo "export ZSTACK_HOME=${ZSTACK_HOME}" >> ~/.bashrc
+fi
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
