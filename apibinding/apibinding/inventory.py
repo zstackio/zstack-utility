@@ -21741,14 +21741,22 @@ class QueryObjectVRouterRouteTableInventory(object):
      }
 
 class QueryObjectVipInventory(object):
-     PRIMITIVE_FIELDS = ['ip','useFor','description','l3NetworkUuid','uuid','netmask','name','serviceProvider','lastOpDate','peerL3NetworkUuid','state','gateway','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ip','useFor','description','l3NetworkUuid','uuid','netmask','name','serviceProvider','lastOpDate','state','gateway','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['portForwarding','l3Network','loadBalancer','peerL3Network','eip']
      QUERY_OBJECT_MAP = {
         'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
         'l3Network' : 'QueryObjectL3NetworkInventory',
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
-        'peerL3Network' : 'QueryObjectL3NetworkInventory',
+        'peerL3Network' : 'QueryObjectVipPeerL3NetworkRefInventory',
         'eip' : 'QueryObjectEipInventory',
+     }
+
+class QueryObjectVipPeerL3NetworkRefInventory(object):
+     PRIMITIVE_FIELDS = ['vipUuid','lastOpDate','l3NetworkUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['l3Network','vip']
+     QUERY_OBJECT_MAP = {
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'vip' : 'QueryObjectVipInventory',
      }
 
 class QueryObjectVirtualBorderRouterInventory(object):
