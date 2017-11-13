@@ -546,6 +546,8 @@ do_check_system(){
         # kill zstack if it's still running
         ZSTACK_PID=`ps aux | grep 'appName=zstack' | grep -v 'grep' | awk '{ print $2 }'`
         [ ! -z $ZSTACK_PID ] && pkill -9 $ZSTACK_PID
+    elif [ ! -d $ZSTACK_INSTALL_ROOT -a ! -f $ZSTACK_INSTALL_ROOT ]; then
+        fail "$ZSTACK_INSTALL_ROOT does not exist, maybe you need to install a new ${PRODUCT_NAME} instead of upgrading an old one."
     fi
 
     if [ `whoami` != 'root' ];then
