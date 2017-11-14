@@ -80,6 +80,7 @@
     <import file="${basedir}/projects/zstack-agent.xml" optional="false" />
     <import file="${basedir}/projects/zstack-store.xml" optional="false" />
     <import file="${basedir}/projects/zstack-vyos.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-network.xml" optional="false" />
     <import file="${basedir}/projects/zstack-distro.xml" optional="false" />
     <import file="${basedir}/projects/build-pypi-source.xml" optional="false" />
     <import file="${basedir}/projects/install-all-zstack-agents-to-local-virtualenv.xml" optional="false" />
@@ -178,6 +179,12 @@
             <arg value="--name-status" />
             <arg value="HEAD^..HEAD" />
         </exec>
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/zsn-git-commit">
+            <arg value="--git-dir=${zstacknetwork.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
     </target>
 
     <target name="zip-war">
@@ -269,6 +276,9 @@
                 <antcall target="build-zstack-vyos"/>
             </sequential>
             <sequential>
+                <antcall target="build-zstack-network"/>
+            </sequential>
+            <sequential>
                 <antcall target="check-zstack-distro"/>
             </sequential>
         </parallel>
@@ -341,6 +351,9 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-vyos"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-network"/>
             </sequential>
         </parallel>
 
