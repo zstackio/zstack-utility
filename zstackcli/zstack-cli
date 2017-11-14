@@ -4,5 +4,11 @@ if [ ! -d ${VIRTUAL_ENV} ]; then
     echo "Need to install zstackcli before using it"
     exit 1
 fi
+
+# set utf-8
+LANG=en_US.UTF-8
+LC_ALL=en_US.utf8
+export LANG LC_ALL
+
 . ${VIRTUAL_ENV}/bin/activate
 python -c "from zstackcli import cli; cli.main()" "$@"
