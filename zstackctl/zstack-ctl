@@ -5,6 +5,11 @@ if [ ! -d $VIRTUAL_ENV ]; then
     exit 1
 fi
 
+# set utf-8
+LANG=en_US.UTF-8
+LC_ALL=en_US.utf8
+export LANG LC_ALL
+
 # check disk space
 all_full=true
 for path in '/tmp' '/var/tmp' '/usr/tmp' '/root'; do
