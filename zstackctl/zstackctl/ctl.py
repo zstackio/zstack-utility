@@ -5250,9 +5250,9 @@ eval "bash $$install_script zstack-cli"
 set +e
 grep "ZSTACK_HOME" ~/.bashrc > /dev/null
 if [ $$? -eq 0 ]; then
-    sed -i "s#export ZSTACK_HOME=.*#export ZSTACK_HOME=$apache_path/webapps/zstack#" ~/.bashrc
+    sed -i "s#export ZSTACK_HOME=.*#export ZSTACK_HOME=$$apache_path/webapps/zstack#" ~/.bashrc
 else
-    echo "export ZSTACK_HOME=$apache_path/webapps/zstack" >> ~/.bashrc
+    echo "export ZSTACK_HOME=$$apache_path/webapps/zstack" >> ~/.bashrc
 fi
 
 which ansible-playbook &> /dev/null
