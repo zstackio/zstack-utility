@@ -14,6 +14,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
 import os
 from zstacklib.utils import shell
+from imagestore import ImageStoreClient
 
 logger = log.get_logger(__name__)
 
@@ -55,7 +56,6 @@ class CpRsp(AgentResponse):
         super(CpRsp, self).__init__()
         self.size = None
         self.actualSize = None
-
 
 class CreateSnapshotRsp(AgentResponse):
     def __init__(self):
@@ -143,6 +143,7 @@ class CephAgent(object):
     MIGRATE_VOLUME_PATH = "/ceph/primarystorage/volume/migrate"
     MIGRATE_VOLUME_SNAPSHOT_PATH = "/ceph/primarystorage/volume/snapshot/migrate"
     GET_VOLUME_SNAPINFOS_PATH = "/ceph/primarystorage/volume/getsnapinfos"
+    UPLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/commit"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -165,6 +166,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.SFTP_DOWNLOAD_PATH, self.sftp_download)
         self.http_server.register_async_uri(self.SFTP_UPLOAD_PATH, self.sftp_upload)
         self.http_server.register_async_uri(self.CP_PATH, self.cp)
+        self.http_server.register_async_uri(self.UPLOAD_IMAGESTORE_PATH, self.upload_imagestore)
         self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
         self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
@@ -176,6 +178,8 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.MIGRATE_VOLUME_PATH, self.migrate_volume)
         self.http_server.register_async_uri(self.MIGRATE_VOLUME_SNAPSHOT_PATH, self.migrate_volume_snapshot)
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
+
+        self.imagestore_client = ImageStoreClient()
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -364,6 +368,11 @@ class CephAgent(object):
         rsp.size = self._get_file_size(dst_path)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    def upload_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.upload_imagestore(cmd, req)
 
     @replyerror
     def commit_image(self, req):
