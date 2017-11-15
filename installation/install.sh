@@ -104,14 +104,11 @@ ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
 #define extra upgrade params
-#1.0  1.1  1.2  1.3  1.4
-declare -a upgrade_params_arrays_zstack1=(
-    '' 
-    '' 
-    '' 
-    '-DsyncImageActualSize=true' 
-    '-DtapResourcesForBilling=true'
-)
+#USE THIS PATTERN: upgrade_params_array[INDEX]='MAJOR,MINOR,PARAM'
+declare -A upgrade_params_array
+upgrade_params_array[0]='1,3,-DsyncImageActualSize=true'
+upgrade_params_array[1]='1,4,-DtapResourcesForBilling=true'
+upgrade_params_array[2]='2,2,-DupdateLdapUidToLdapDn=true'
 
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
@@ -801,12 +798,19 @@ upgrade_zstack(){
     current_major_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
     current_minor_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     upgrade_params=''
-    if [ x"$current_major_version" = x"$PRE_MAJOR_VERSION" ]; then
-        while [ $current_minor_version -gt $PRE_MINOR_VERSION ]; do
-            PRE_MINOR_VERSION=`expr $PRE_MINOR_VERSION + 1`
-            upgrade_params="${upgrade_params} ${upgrade_params_arrays_zstack1[$PRE_MINOR_VERSION]}"
-        done
-    fi
+
+    pre_major_minor_sum=`expr "$PRE_MAJOR_VERSION" \* 10000 + "$PRE_MINOR_VERSION"`
+    post_major_minor_sum=`expr "$current_major_version" \* 10000 + "$current_minor_version"`
+    for item in ${upgrade_params_array[*]}; do
+        major=`echo $item | cut -d ',' -f 1`
+        minor=`echo $item | cut -d ',' -f 2`
+        param=`echo $item | cut -d ',' -f 3`
+
+        item_major_minor_sum=`exp "$major" \* 10000 + "$minor"`
+        if [ ${pre_major_minor_sum} -lt ${item_major_minor_sum} -a ${item_major_minor_sum} -le ${post_major_minor_sum} ]; then
+            upgrade_params="${upgrade_params} ${param}"
+        fi
+    done
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
 
     #When using -i option, will not upgrade kariosdb and not start zstack
