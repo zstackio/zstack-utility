@@ -9170,8 +9170,7 @@ class APIAddLdapServerMsg(object):
     def __init__(self):
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.description = NotNoneField()
+        self.description = None
         #mandatory field
         self.url = NotNoneField()
         #mandatory field
