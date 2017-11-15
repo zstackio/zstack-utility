@@ -104,11 +104,45 @@ ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
 #define extra upgrade params
-#USE THIS PATTERN: upgrade_params_array[INDEX]='MAJOR,MINOR,PARAM'
+#USE THIS PATTERN: upgrade_params_array[INDEX]='VERSION,PARAM'
 declare -A upgrade_params_array
-upgrade_params_array[0]='1,3,-DsyncImageActualSize=true'
-upgrade_params_array[1]='1,4,-DtapResourcesForBilling=true'
-upgrade_params_array[2]='2,2,-DupdateLdapUidToLdapDn=true'
+upgrade_params_array[0]='1.3,-DsyncImageActualSize=true'
+upgrade_params_array[1]='1.4,-DtapResourcesForBilling=true'
+upgrade_params_array[2]='2.2.2,-DupdateLdapUidToLdapDn=true'
+
+# version compare
+# eg. 1 = 1.0
+# eg. 4.08 < 4.08.01
+vercomp () {
+    if [[ $1 == $2 ]]
+    then
+        return 0
+    fi
+    local IFS=.
+    local i ver1=($1) ver2=($2)
+    # fill empty fields in ver1 with zeros
+    for ((i=${#ver1[@]}; i<${#ver2[@]}; i++))
+    do
+        ver1[i]=0
+    done
+    for ((i=0; i<${#ver1[@]}; i++))
+    do
+        if [[ -z ${ver2[i]} ]]
+        then
+            # fill empty fields in ver2 with zeros
+            ver2[i]=0
+        fi
+        if ((10#${ver1[i]} > 10#${ver2[i]}))
+        then
+            return 1
+        fi
+        if ((10#${ver1[i]} < 10#${ver2[i]}))
+        then
+            return 2
+        fi
+    done
+    return 0
+}
 
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
@@ -795,19 +829,17 @@ upgrade_zstack(){
     fi
 
     #set zstack upgrade params 
-    current_major_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
-    current_minor_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     upgrade_params=''
+    post_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
 
-    pre_major_minor_sum=`expr "$PRE_MAJOR_VERSION" \* 10000 + "$PRE_MINOR_VERSION"`
-    post_major_minor_sum=`expr "$current_major_version" \* 10000 + "$current_minor_version"`
     for item in ${upgrade_params_array[*]}; do
-        major=`echo $item | cut -d ',' -f 1`
-        minor=`echo $item | cut -d ',' -f 2`
-        param=`echo $item | cut -d ',' -f 3`
+        version=`echo $item | cut -d ',' -f 1`
+        param=`echo $item | cut -d ',' -f 2`
 
-        item_major_minor_sum=`exp "$major" \* 10000 + "$minor"`
-        if [ ${pre_major_minor_sum} -lt ${item_major_minor_sum} -a ${item_major_minor_sum} -le ${post_major_minor_sum} ]; then
+        # pre < version && version <= post
+        vercomp ${pre_upgrade_version} ${version}; cmp1=$?
+        vercomp ${version} ${post_upgrade_version}; cmp2=$?
+        if [ ${cmp1} -eq 2 -a ${cmp2} -ne 1 ]; then
             upgrade_params="${upgrade_params} ${param}"
         fi
     done
@@ -2776,8 +2808,7 @@ check_system
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
-    PRE_MAJOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
-    PRE_MINOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
+    pre_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
 
     #only upgrade zstack
     upgrade_zstack
