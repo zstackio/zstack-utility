@@ -2,7 +2,7 @@
 
 <project name="zstack-network builder" basedir="../">
     <property name="zsn.bdir" location="${build.dir}/zsn-agent/" />
-    <property name="zsn.ansible.dir" location="${ansible.dir}/zsn-agent/" />
+    <property name="zsn.ansible.dir" location="${ansible.dir}/zsnagentansible/" />
 
     <target name="build-zstack-network">
         <makeDir dir="${zsn.bdir}" />
@@ -22,6 +22,12 @@
     <target name="assemble-zstack-network">
         <copy todir="${zsn.ansible.dir}">
             <fileset dir="${zsn.bdir}">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy todir="${zsn.ansible.dir}">
+            <fileset dir="${zsnansibleplaybook.source}/ansible">
                 <include name="**/*" />
             </fileset>
         </copy>

@@ -29,6 +29,18 @@ require_python_env = "false"
 
 zsn_root = "%s/zsn-agent/package" % zstack_root
 
+# get parameter from shell
+parser = argparse.ArgumentParser(description='Deploy zsn-agent to host')
+parser.add_argument('-i', type=str, help="""specify inventory host file
+                        default=/etc/ansible/hosts""")
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
+args = parser.parse_args()
+argument_dict = eval(args.e)
+
+# update the variable from shell arguments
+locals().update(argument_dict)
+
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
@@ -79,21 +91,19 @@ copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
 
 
-# name: install zstack-store
+# name: install zstack-network
 command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(command, host_post_info)
 
 
-# name: restart image store server
-if client != "true":
-    # integrate zstack-store with init.d
-    run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
-    if distro == "CentOS" or distro == "RedHat":
-        command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
-    elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-imagestorebackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start"
-    run_remote_command(command, host_post_info)
+# integrate zstack-store with init.d
+run_remote_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent /etc/init.d/", host_post_info)
+if distro == "CentOS" or distro == "RedHat":
+    command = "/usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
+elif distro == "Debian" or distro == "Ubuntu":
+    command = "update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
+run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
-handle_ansible_info("SUCC: Deploy imagestore backupstore successful", host_post_info, "INFO")
+handle_ansible_info("SUCC: Deploy zstack network successful", host_post_info, "INFO")
 sys.exit(0)
