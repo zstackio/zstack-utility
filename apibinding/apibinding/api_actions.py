@@ -710,18 +710,6 @@ class AttachSecurityGroupToL3NetworkAction(inventory.APIAttachSecurityGroupToL3N
         self.out = evt
         return self.out
 
-class AttachUsbDeviceToVmAction(inventory.APIAttachUsbDeviceToVmMsg):
-    def __init__(self):
-        super(AttachUsbDeviceToVmAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AttachUsbDeviceToVmAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class AttachVRouterRouteTableToVRouterAction(inventory.APIAttachVRouterRouteTableToVRouterMsg):
     def __init__(self):
         super(AttachVRouterRouteTableToVRouterAction, self).__init__()
@@ -790,6 +778,18 @@ class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CalculateAccountSpendingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ChangeAlarmStateAction(inventory.APIChangeAlarmStateMsg):
+    def __init__(self):
+        super(ChangeAlarmStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeAlarmStateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -986,6 +986,30 @@ class ChangeResourceOwnerAction(inventory.APIChangeResourceOwnerMsg):
         self.out = evt
         return self.out
 
+class ChangeSNSApplicationEndpointStateAction(inventory.APIChangeSNSApplicationEndpointStateMsg):
+    def __init__(self):
+        super(ChangeSNSApplicationEndpointStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeSNSApplicationEndpointStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ChangeSNSApplicationPlatformStateAction(inventory.APIChangeSNSApplicationPlatformStateMsg):
+    def __init__(self):
+        super(ChangeSNSApplicationPlatformStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeSNSApplicationPlatformStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeSchedulerStateAction(inventory.APIChangeSchedulerStateMsg):
     def __init__(self):
         super(ChangeSchedulerStateAction, self).__init__()
@@ -1150,6 +1174,18 @@ class CreateAccountAction(inventory.APICreateAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateAlarmAction(inventory.APICreateAlarmMsg):
+    def __init__(self):
+        super(CreateAlarmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateAlarmAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1742,6 +1778,66 @@ class CreateRouterInterfacePairRemoteAction(inventory.APICreateRouterInterfacePa
         self.out = evt
         return self.out
 
+class CreateSNSEmailEndpointAction(inventory.APICreateSNSEmailEndpointMsg):
+    def __init__(self):
+        super(CreateSNSEmailEndpointAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateSNSEmailEndpointAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateSNSEmailPlatformAction(inventory.APICreateSNSEmailPlatformMsg):
+    def __init__(self):
+        super(CreateSNSEmailPlatformAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateSNSEmailPlatformAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateSNSHttpEndpointAction(inventory.APICreateSNSHttpEndpointMsg):
+    def __init__(self):
+        super(CreateSNSHttpEndpointAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateSNSHttpEndpointAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateSNSTextTemplateAction(inventory.APICreateSNSTextTemplateMsg):
+    def __init__(self):
+        super(CreateSNSTextTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateSNSTextTemplateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateSNSTopicAction(inventory.APICreateSNSTopicMsg):
+    def __init__(self):
+        super(CreateSNSTopicAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateSNSTopicAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateSchedulerJobAction(inventory.APICreateSchedulerJobMsg):
     def __init__(self):
         super(CreateSchedulerJobAction, self).__init__()
@@ -1934,18 +2030,6 @@ class CreateVpcUserVpnGatewayRemoteAction(inventory.APICreateVpcUserVpnGatewayRe
         self.out = evt
         return self.out
 
-class CreateVpcVRouterAction(inventory.APICreateVpcVRouterMsg):
-    def __init__(self):
-        super(CreateVpcVRouterAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[CreateVpcVRouterAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class CreateVpcVpnConnectionRemoteAction(inventory.APICreateVpcVpnConnectionRemoteMsg):
     def __init__(self):
         super(CreateVpcVpnConnectionRemoteAction, self).__init__()
@@ -2026,6 +2110,18 @@ class DeleteAccountAction(inventory.APIDeleteAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAlarmAction(inventory.APIDeleteAlarmMsg):
+    def __init__(self):
+        super(DeleteAlarmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAlarmAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2810,6 +2906,54 @@ class DeleteRouterInterfaceRemoteAction(inventory.APIDeleteRouterInterfaceRemote
         self.out = evt
         return self.out
 
+class DeleteSNSApplicationEndpointAction(inventory.APIDeleteSNSApplicationEndpointMsg):
+    def __init__(self):
+        super(DeleteSNSApplicationEndpointAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteSNSApplicationEndpointAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteSNSApplicationPlatformAction(inventory.APIDeleteSNSApplicationPlatformMsg):
+    def __init__(self):
+        super(DeleteSNSApplicationPlatformAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteSNSApplicationPlatformAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteSNSTextTemplateAction(inventory.APIDeleteSNSTextTemplateMsg):
+    def __init__(self):
+        super(DeleteSNSTextTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteSNSTextTemplateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteSNSTopicAction(inventory.APIDeleteSNSTopicMsg):
+    def __init__(self):
+        super(DeleteSNSTopicAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteSNSTopicAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteSchedulerJobAction(inventory.APIDeleteSchedulerJobMsg):
     def __init__(self):
         super(DeleteSchedulerJobAction, self).__init__()
@@ -3470,18 +3614,6 @@ class DetachSecurityGroupFromL3NetworkAction(inventory.APIDetachSecurityGroupFro
         self.out = evt
         return self.out
 
-class DetachUsbDeviceFromVmAction(inventory.APIDetachUsbDeviceFromVmMsg):
-    def __init__(self):
-        super(DetachUsbDeviceFromVmAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DetachUsbDeviceFromVmAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class DetachVRouterRouteTableFromVRouterAction(inventory.APIDetachVRouterRouteTableFromVRouterMsg):
     def __init__(self):
         super(DetachVRouterRouteTableFromVRouterAction, self).__init__()
@@ -3694,6 +3826,18 @@ class GetAttachablePublicL3ForVRouterAction(inventory.APIGetAttachablePublicL3Fo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetAttachablePublicL3ForVRouterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetAuditDataAction(inventory.APIGetAuditDataMsg):
+    def __init__(self):
+        super(GetAuditDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAuditDataAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3950,6 +4094,18 @@ class GetEipAttachableVmNicsAction(inventory.APIGetEipAttachableVmNicsMsg):
         self.out = evt
         return self.out
 
+class GetEventDataAction(inventory.APIGetEventDataMsg):
+    def __init__(self):
+        super(GetEventDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetEventDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetFreeIpAction(inventory.APIGetFreeIpMsg):
     def __init__(self):
         super(GetFreeIpAction, self).__init__()
@@ -4186,6 +4342,18 @@ class GetLocalStorageHostDiskCapacityAction(inventory.APIGetLocalStorageHostDisk
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetLocalStorageHostDiskCapacityAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetMetricDataAction(inventory.APIGetMetricDataMsg):
+    def __init__(self):
+        super(GetMetricDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetMetricDataAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4454,18 +4622,6 @@ class GetTaskProgressAction(inventory.APIGetTaskProgressMsg):
         self.out = evt
         return self.out
 
-class GetUsbDeviceCandidatesForAttachingVmAction(inventory.APIGetUsbDeviceCandidatesForAttachingVmMsg):
-    def __init__(self):
-        super(GetUsbDeviceCandidatesForAttachingVmAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetUsbDeviceCandidatesForAttachingVmAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class GetVCenterDVSwitchesAction(inventory.APIGetVCenterDVSwitchesMsg):
     def __init__(self):
         super(GetVCenterDVSwitchesAction, self).__init__()
@@ -4510,18 +4666,6 @@ class GetVipQosAction(inventory.APIGetVipQosMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetVipQosAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class GetVipUsedPortsAction(inventory.APIGetVipUsedPortsMsg):
-    def __init__(self):
-        super(GetVipUsedPortsAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[GetVipUsedPortsAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4950,14 +5094,26 @@ class PowerStatusBaremetalHostAction(inventory.APIPowerStatusBaremetalHostMsg):
         self.out = evt
         return self.out
 
-class PrimaryStorageMigrateVolumeAction(inventory.APIPrimaryStorageMigrateVolumeMsg):
+class PrimaryStorageMigrateDataVolumeAction(inventory.APIPrimaryStorageMigrateDataVolumeMsg):
     def __init__(self):
-        super(PrimaryStorageMigrateVolumeAction, self).__init__()
+        super(PrimaryStorageMigrateDataVolumeAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[PrimaryStorageMigrateVolumeAction] cannot be None')
+            raise Exception('sessionUuid of action[PrimaryStorageMigrateDataVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrimaryStorageMigrateRootVolumeAction(inventory.APIPrimaryStorageMigrateRootVolumeMsg):
+    def __init__(self):
+        super(PrimaryStorageMigrateRootVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrimaryStorageMigrateRootVolumeAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -6156,20 +6312,6 @@ class QueryTagAction(inventory.APIQueryTagMsg):
         self.out = reply.inventories
         return self.out
 
-class QueryUsbDeviceAction(inventory.APIQueryUsbDeviceMsg):
-    def __init__(self):
-        super(QueryUsbDeviceAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryUsbDeviceAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
 class QueryUserAction(inventory.APIQueryUserMsg):
     def __init__(self):
         super(QueryUserAction, self).__init__()
@@ -7284,6 +7426,30 @@ class StopVmInstanceAction(inventory.APIStopVmInstanceMsg):
         self.out = evt
         return self.out
 
+class SubscribeEventAction(inventory.APISubscribeEventMsg):
+    def __init__(self):
+        super(SubscribeEventAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SubscribeEventAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SubscribeTopicAction(inventory.APISubscribeTopicMsg):
+    def __init__(self):
+        super(SubscribeTopicAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SubscribeTopicAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SyncAliyunRouteEntryFromRemoteAction(inventory.APISyncAliyunRouteEntryFromRemoteMsg):
     def __init__(self):
         super(SyncAliyunRouteEntryFromRemoteAction, self).__init__()
@@ -7580,6 +7746,30 @@ class TriggerGCJobAction(inventory.APITriggerGCJobMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[TriggerGCJobAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UnsubscribeEventAction(inventory.APIUnsubscribeEventMsg):
+    def __init__(self):
+        super(UnsubscribeEventAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UnsubscribeEventAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UnsubscribeTopicAction(inventory.APIUnsubscribeTopicMsg):
+    def __init__(self):
+        super(UnsubscribeTopicAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UnsubscribeTopicAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -8184,6 +8374,18 @@ class UpdateRouteInterfaceRemoteAction(inventory.APIUpdateRouteInterfaceRemoteMs
         self.out = evt
         return self.out
 
+class UpdateSNSTextTemplateAction(inventory.APIUpdateSNSTextTemplateMsg):
+    def __init__(self):
+        super(UpdateSNSTextTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateSNSTextTemplateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateSchedulerJobAction(inventory.APIUpdateSchedulerJobMsg):
     def __init__(self):
         super(UpdateSchedulerJobAction, self).__init__()
@@ -8240,18 +8442,6 @@ class UpdateSystemTagAction(inventory.APIUpdateSystemTagMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateSystemTagAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class UpdateUsbDeviceAction(inventory.APIUpdateUsbDeviceMsg):
-    def __init__(self):
-        super(UpdateUsbDeviceAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[UpdateUsbDeviceAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
