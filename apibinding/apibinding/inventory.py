@@ -496,6 +496,113 @@ class APIIsOpensourceVersionReply(object):
         self.error = None
 
 
+APIADDVMTOAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIAddVmToAffinityGroupMsg'
+class APIAddVmToAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIAddVmToAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.affinityGroupUuid = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APICreateAffinityGroupMsg'
+class APICreateAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APICreateAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
+        #valid values: [antiAffinitySoft, antiAffinityHard]
+        self.policy = NotNoneField()
+        #mandatory field
+        self.version = NotNoneField()
+        #valid values: [host]
+        self.type = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIDeleteAffinityGroupMsg'
+class APIDeleteAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIDeleteAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIQueryAffinityGroupMsg'
+class APIQueryAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIQueryAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYAFFINITYGROUPREPLY_FULL_NAME = 'org.zstack.header.affinitygroup.APIQueryAffinityGroupReply'
+class APIQueryAffinityGroupReply(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIQueryAffinityGroupReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIREMOVEVMFROMAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIRemoveVmFromAffinityGroupMsg'
+class APIRemoveVmFromAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIRemoveVmFromAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.affinityGroupUuid = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIUpdateAffinityGroupMsg'
+class APIUpdateAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIUpdateAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
 class APIAddAliyunKeySecretMsg(object):
     FULL_NAME='org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
@@ -7500,6 +7607,7 @@ class APICloneVmInstanceMsg(object):
         self.vmInstanceUuid = NotNoneField()
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
+        self.affinityGroupUuid = None
         #mandatory field
         self.names = NotNoneList()
         self.session = None
@@ -7529,6 +7637,7 @@ class APICreateVmInstanceMsg(object):
         self.hostUuid = None
         self.primaryStorageUuidForRootVolume = None
         self.description = None
+        self.affinityGroupUuid = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
@@ -11078,6 +11187,7 @@ class APICreateVirtualRouterVmMsg(object):
         self.hostUuid = None
         self.primaryStorageUuidForRootVolume = None
         self.description = None
+        self.affinityGroupUuid = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
@@ -13612,6 +13722,7 @@ api_names = [
     'APIAddVRouterRouteEntryMsg',
     'APIAddVmNicToLoadBalancerMsg',
     'APIAddVmNicToSecurityGroupMsg',
+    'APIAddVmToAffinityGroupMsg',
     'APIAddXSkyPrimaryStorageMsg',
     'APIAddZsesPrimaryStorageMsg',
     'APIAttachAliyunDiskToEcsMsg',
@@ -13675,6 +13786,7 @@ api_names = [
     'APICloneVmInstanceMsg',
     'APICommitVolumeAsImageMsg',
     'APICreateAccountMsg',
+    'APICreateAffinityGroupMsg',
     'APICreateAliyunDiskFromRemoteMsg',
     'APICreateAliyunSnapshotRemoteMsg',
     'APICreateAliyunVpcVirtualRouterEntryRemoteMsg',
@@ -13748,6 +13860,7 @@ api_names = [
     'APICreateZoneMsg',
     'APIDebugSignalMsg',
     'APIDeleteAccountMsg',
+    'APIDeleteAffinityGroupMsg',
     'APIDeleteAlertMsg',
     'APIDeleteAliyunDiskFromLocalMsg',
     'APIDeleteAliyunDiskFromRemoteMsg',
@@ -14150,6 +14263,8 @@ api_names = [
     'APIQueryAccountReply',
     'APIQueryAccountResourceRefMsg',
     'APIQueryAccountResourceRefReply',
+    'APIQueryAffinityGroupMsg',
+    'APIQueryAffinityGroupReply',
     'APIQueryAlertMsg',
     'APIQueryAlertReply',
     'APIQueryAliyunDiskFromLocalMsg',
@@ -14391,6 +14506,7 @@ api_names = [
     'APIRemoveMonFromFusionstorPrimaryStorageMsg',
     'APIRemoveSchedulerJobFromSchedulerTriggerMsg',
     'APIRemoveUserFromGroupMsg',
+    'APIRemoveVmFromAffinityGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
     'APIReply',
     'APIRequestBaremetalConsoleAccessMsg',
@@ -14474,6 +14590,7 @@ api_names = [
     'APITerminateVirtualBorderRouterRemoteMsg',
     'APITriggerGCJobMsg',
     'APIUpdateAccountMsg',
+    'APIUpdateAffinityGroupMsg',
     'APIUpdateAliyunDiskMsg',
     'APIUpdateAliyunKeySecretMsg',
     'APIUpdateAliyunSnapshotMsg',
@@ -20809,6 +20926,19 @@ class QueryObjectAccountResourceRefInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectAffinityGroupInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','type','uuid','version','policy','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['usages']
+     QUERY_OBJECT_MAP = {
+        'usages' : 'QueryObjectAffinityGroupUsageInventory',
+     }
+
+class QueryObjectAffinityGroupUsageInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','affinityGroupUuid','uuid','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectAlertInventory(object):
      PRIMITIVE_FIELDS = ['lastOpDate','triggerUuid','targetResourceUuid','uuid','content','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -22001,6 +22131,7 @@ class QueryObjectZoneInventory(object):
 queryMessageInventoryMap = {
      'APIQueryAccountMsg' : QueryObjectAccountInventory,
      'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
+     'APIQueryAffinityGroupMsg' : QueryObjectAffinityGroupInventory,
      'APIQueryAlertMsg' : QueryObjectAlertInventory,
      'APIQueryAliyunDiskFromLocalMsg' : QueryObjectAliyunDiskInventory,
      'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,

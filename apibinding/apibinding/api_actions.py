@@ -446,6 +446,18 @@ class AddVmNicToSecurityGroupAction(inventory.APIAddVmNicToSecurityGroupMsg):
         self.out = evt
         return self.out
 
+class AddVmToAffinityGroupAction(inventory.APIAddVmToAffinityGroupMsg):
+    def __init__(self):
+        super(AddVmToAffinityGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddVmToAffinityGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddXSkyPrimaryStorageAction(inventory.APIAddXSkyPrimaryStorageMsg):
     def __init__(self):
         super(AddXSkyPrimaryStorageAction, self).__init__()
@@ -1162,6 +1174,18 @@ class CreateAccountAction(inventory.APICreateAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateAffinityGroupAction(inventory.APICreateAffinityGroupMsg):
+    def __init__(self):
+        super(CreateAffinityGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateAffinityGroupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2038,6 +2062,18 @@ class DeleteAccountAction(inventory.APIDeleteAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAffinityGroupAction(inventory.APIDeleteAffinityGroupMsg):
+    def __init__(self):
+        super(DeleteAffinityGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAffinityGroupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5086,6 +5122,20 @@ class QueryAccountResourceRefAction(inventory.APIQueryAccountResourceRefMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryAffinityGroupAction(inventory.APIQueryAffinityGroupMsg):
+    def __init__(self):
+        super(QueryAffinityGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAffinityGroupAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryAlertAction(inventory.APIQueryAlertMsg):
     def __init__(self):
         super(QueryAlertAction, self).__init__()
@@ -6926,6 +6976,18 @@ class RemoveUserFromGroupAction(inventory.APIRemoveUserFromGroupMsg):
         self.out = evt
         return self.out
 
+class RemoveVmFromAffinityGroupAction(inventory.APIRemoveVmFromAffinityGroupMsg):
+    def __init__(self):
+        super(RemoveVmFromAffinityGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveVmFromAffinityGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RemoveVmNicFromLoadBalancerAction(inventory.APIRemoveVmNicFromLoadBalancerMsg):
     def __init__(self):
         super(RemoveVmNicFromLoadBalancerAction, self).__init__()
@@ -7628,6 +7690,18 @@ class UpdateAccountAction(inventory.APIUpdateAccountMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateAccountAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateAffinityGroupAction(inventory.APIUpdateAffinityGroupMsg):
+    def __init__(self):
+        super(UpdateAffinityGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAffinityGroupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
