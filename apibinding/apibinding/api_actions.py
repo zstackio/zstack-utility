@@ -7000,6 +7000,18 @@ class RemoveVmNicFromLoadBalancerAction(inventory.APIRemoveVmNicFromLoadBalancer
         self.out = evt
         return self.out
 
+class ResizeDataVolumeAction(inventory.APIResizeDataVolumeMsg):
+    def __init__(self):
+        super(ResizeDataVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ResizeDataVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RequestBaremetalConsoleAccessAction(inventory.APIRequestBaremetalConsoleAccessMsg):
     def __init__(self):
         super(RequestBaremetalConsoleAccessAction, self).__init__()
