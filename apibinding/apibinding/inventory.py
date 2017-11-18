@@ -11820,6 +11820,99 @@ class APIDeleteSNSTopicMsg(object):
         self.userTags = OptionalList()
 
 
+APIQUERYSNSAPPLICATIONENDPOINTMSG_FULL_NAME = 'org.zstack.sns.APIQuerySNSApplicationEndpointMsg'
+class APIQuerySNSApplicationEndpointMsg(object):
+    FULL_NAME='org.zstack.sns.APIQuerySNSApplicationEndpointMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSAPPLICATIONENDPOINTREPLY_FULL_NAME = 'org.zstack.sns.APIQuerySNSApplicationEndpointReply'
+class APIQuerySNSApplicationEndpointReply(object):
+    FULL_NAME='org.zstack.sns.APIQuerySNSApplicationEndpointReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYSNSAPPLICATIONPLATFORMMSG_FULL_NAME = 'org.zstack.sns.APIQuerySNSApplicationPlatformMsg'
+class APIQuerySNSApplicationPlatformMsg(object):
+    FULL_NAME='org.zstack.sns.APIQuerySNSApplicationPlatformMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSAPPLICATIONPLATFORMREPLY_FULL_NAME = 'org.zstack.sns.APIQuerySNSApplicationPlatformReply'
+class APIQuerySNSApplicationPlatformReply(object):
+    FULL_NAME='org.zstack.sns.APIQuerySNSApplicationPlatformReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYSNSTOPICMSG_FULL_NAME = 'org.zstack.sns.APIQuerySNSTopicMsg'
+class APIQuerySNSTopicMsg(object):
+    FULL_NAME='org.zstack.sns.APIQuerySNSTopicMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSTOPICREPLY_FULL_NAME = 'org.zstack.sns.APIQuerySNSTopicReply'
+class APIQuerySNSTopicReply(object):
+    FULL_NAME='org.zstack.sns.APIQuerySNSTopicReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APISUBSCRIBETOPICMSG_FULL_NAME = 'org.zstack.sns.APISubscribeTopicMsg'
 class APISubscribeTopicMsg(object):
     FULL_NAME='org.zstack.sns.APISubscribeTopicMsg'
@@ -11846,6 +11939,56 @@ class APIUnsubscribeTopicMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APICREATESNSDINGTALKENDPOINTMSG_FULL_NAME = 'org.zstack.sns.platform.dingtalk.APICreateSNSDingTalkEndpointMsg'
+class APICreateSNSDingTalkEndpointMsg(object):
+    FULL_NAME='org.zstack.sns.platform.dingtalk.APICreateSNSDingTalkEndpointMsg'
+    def __init__(self):
+        #mandatory field
+        self.url = NotNoneField()
+        self.atAll = None
+        self.atPersonPhoneNumbers = OptionalList()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.platformUuid = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSDINGTALKENDPOINTMSG_FULL_NAME = 'org.zstack.sns.platform.dingtalk.APIQuerySNSDingTalkEndpointMsg'
+class APIQuerySNSDingTalkEndpointMsg(object):
+    FULL_NAME='org.zstack.sns.platform.dingtalk.APIQuerySNSDingTalkEndpointMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSDINGTALKENDPOINTREPLY_FULL_NAME = 'org.zstack.sns.platform.dingtalk.APIQuerySNSDingTalkEndpointReply'
+class APIQuerySNSDingTalkEndpointReply(object):
+    FULL_NAME='org.zstack.sns.platform.dingtalk.APIQuerySNSDingTalkEndpointReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
 
 
 APICREATESNSEMAILENDPOINTMSG_FULL_NAME = 'org.zstack.sns.platform.email.APICreateSNSEmailEndpointMsg'
@@ -11885,6 +12028,68 @@ class APICreateSNSEmailPlatformMsg(object):
         self.userTags = OptionalList()
 
 
+APIQUERYSNSEMAILENDPOINTMSG_FULL_NAME = 'org.zstack.sns.platform.email.APIQuerySNSEmailEndpointMsg'
+class APIQuerySNSEmailEndpointMsg(object):
+    FULL_NAME='org.zstack.sns.platform.email.APIQuerySNSEmailEndpointMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSEMAILENDPOINTREPLY_FULL_NAME = 'org.zstack.sns.platform.email.APIQuerySNSEmailEndpointReply'
+class APIQuerySNSEmailEndpointReply(object):
+    FULL_NAME='org.zstack.sns.platform.email.APIQuerySNSEmailEndpointReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYSNSEMAILPLATFORMMSG_FULL_NAME = 'org.zstack.sns.platform.email.APIQuerySNSEmailPlatformMsg'
+class APIQuerySNSEmailPlatformMsg(object):
+    FULL_NAME='org.zstack.sns.platform.email.APIQuerySNSEmailPlatformMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSEMAILPLATFORMREPLY_FULL_NAME = 'org.zstack.sns.platform.email.APIQuerySNSEmailPlatformReply'
+class APIQuerySNSEmailPlatformReply(object):
+    FULL_NAME='org.zstack.sns.platform.email.APIQuerySNSEmailPlatformReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APICREATESNSHTTPENDPOINTMSG_FULL_NAME = 'org.zstack.sns.platform.http.APICreateSNSHttpEndpointMsg'
 class APICreateSNSHttpEndpointMsg(object):
     FULL_NAME='org.zstack.sns.platform.http.APICreateSNSHttpEndpointMsg'
@@ -11902,6 +12107,37 @@ class APICreateSNSHttpEndpointMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIQUERYSNSHTTPENDPOINTMSG_FULL_NAME = 'org.zstack.sns.platform.http.APIQuerySNSHttpEndpointMsg'
+class APIQuerySNSHttpEndpointMsg(object):
+    FULL_NAME='org.zstack.sns.platform.http.APIQuerySNSHttpEndpointMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSHTTPENDPOINTREPLY_FULL_NAME = 'org.zstack.sns.platform.http.APIQuerySNSHttpEndpointReply'
+class APIQuerySNSHttpEndpointReply(object):
+    FULL_NAME='org.zstack.sns.platform.http.APIQuerySNSHttpEndpointReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
 
 
 APIADDDISASTERIMAGESTOREBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.backup.imagestore.APIAddDisasterImageStoreBackupStorageMsg'
@@ -13621,6 +13857,68 @@ class APIDeleteAlarmMsg(object):
         self.userTags = OptionalList()
 
 
+APIQUERYALARMMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIQueryAlarmMsg'
+class APIQueryAlarmMsg(object):
+    FULL_NAME='org.zstack.zwatch.alarm.APIQueryAlarmMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALARMREPLY_FULL_NAME = 'org.zstack.zwatch.alarm.APIQueryAlarmReply'
+class APIQueryAlarmReply(object):
+    FULL_NAME='org.zstack.zwatch.alarm.APIQueryAlarmReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYEVENTSUBSCRIPTIONMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIQueryEventSubscriptionMsg'
+class APIQueryEventSubscriptionMsg(object):
+    FULL_NAME='org.zstack.zwatch.alarm.APIQueryEventSubscriptionMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYEVENTSUBSCRIPTIONREPLY_FULL_NAME = 'org.zstack.zwatch.alarm.APIQueryEventSubscriptionReply'
+class APIQueryEventSubscriptionReply(object):
+    FULL_NAME='org.zstack.zwatch.alarm.APIQueryEventSubscriptionReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APISUBSCRIBEEVENTMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APISubscribeEventMsg'
 class APISubscribeEventMsg(object):
     FULL_NAME='org.zstack.zwatch.alarm.APISubscribeEventMsg'
@@ -13684,6 +13982,37 @@ class APIDeleteSNSTextTemplateMsg(object):
         self.userTags = OptionalList()
 
 
+APIQUERYSNSTEXTTEMPLATEMSG_FULL_NAME = 'org.zstack.zwatch.alarm.sns.APIQuerySNSTextTemplateMsg'
+class APIQuerySNSTextTemplateMsg(object):
+    FULL_NAME='org.zstack.zwatch.alarm.sns.APIQuerySNSTextTemplateMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSNSTEXTTEMPLATEREPLY_FULL_NAME = 'org.zstack.zwatch.alarm.sns.APIQuerySNSTextTemplateReply'
+class APIQuerySNSTextTemplateReply(object):
+    FULL_NAME='org.zstack.zwatch.alarm.sns.APIQuerySNSTextTemplateReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIUPDATESNSTEXTTEMPLATEMSG_FULL_NAME = 'org.zstack.zwatch.alarm.sns.APIUpdateSNSTextTemplateMsg'
 class APIUpdateSNSTextTemplateMsg(object):
     FULL_NAME='org.zstack.zwatch.alarm.sns.APIUpdateSNSTextTemplateMsg'
@@ -13721,8 +14050,7 @@ class APIGetEventDataMsg(object):
         self.startTime = None
         self.endTime = None
         self.limit = None
-        #mandatory field
-        self.labels = NotNoneList()
+        self.labels = OptionalList()
         self.latest = None
         self.session = None
         self.timeout = None
@@ -13910,6 +14238,7 @@ api_names = [
     'APICreateRootVolumeTemplateFromRootVolumeMsg',
     'APICreateRootVolumeTemplateFromVolumeSnapshotMsg',
     'APICreateRouterInterfacePairRemoteMsg',
+    'APICreateSNSDingTalkEndpointMsg',
     'APICreateSNSEmailEndpointMsg',
     'APICreateSNSEmailPlatformMsg',
     'APICreateSNSHttpEndpointMsg',
@@ -14341,6 +14670,8 @@ api_names = [
     'APIQueryAccountReply',
     'APIQueryAccountResourceRefMsg',
     'APIQueryAccountResourceRefReply',
+    'APIQueryAlarmMsg',
+    'APIQueryAlarmReply',
     'APIQueryAlertMsg',
     'APIQueryAlertReply',
     'APIQueryAliyunDiskFromLocalMsg',
@@ -14397,6 +14728,8 @@ api_names = [
     'APIQueryEipReply',
     'APIQueryEmailMediaMsg',
     'APIQueryEmailTriggerActionMsg',
+    'APIQueryEventSubscriptionMsg',
+    'APIQueryEventSubscriptionReply',
     'APIQueryFusionstorBackupStorageMsg',
     'APIQueryFusionstorPrimaryStorageMsg',
     'APIQueryGCJobMsg',
@@ -14476,6 +14809,22 @@ api_names = [
     'APIQueryResourcePriceReply',
     'APIQueryRouterInterfaceFromLocalMsg',
     'APIQueryRouterInterfaceFromLocalReply',
+    'APIQuerySNSApplicationEndpointMsg',
+    'APIQuerySNSApplicationEndpointReply',
+    'APIQuerySNSApplicationPlatformMsg',
+    'APIQuerySNSApplicationPlatformReply',
+    'APIQuerySNSDingTalkEndpointMsg',
+    'APIQuerySNSDingTalkEndpointReply',
+    'APIQuerySNSEmailEndpointMsg',
+    'APIQuerySNSEmailEndpointReply',
+    'APIQuerySNSEmailPlatformMsg',
+    'APIQuerySNSEmailPlatformReply',
+    'APIQuerySNSHttpEndpointMsg',
+    'APIQuerySNSHttpEndpointReply',
+    'APIQuerySNSTextTemplateMsg',
+    'APIQuerySNSTextTemplateReply',
+    'APIQuerySNSTopicMsg',
+    'APIQuerySNSTopicReply',
     'APIQuerySchedulerJobMsg',
     'APIQuerySchedulerJobReply',
     'APIQuerySchedulerTriggerMsg',
@@ -21674,6 +22023,19 @@ class QueryObjectSNSApplicationPlatformInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectSNSDingTalkAtPersonInventory(object):
+     PRIMITIVE_FIELDS = ['phoneNumber','endpointUuid','uuid','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectSNSDingTalkEndpointInventory(object):
+     PRIMITIVE_FIELDS = ['atAll','name','platformUuid','lastOpDate','description','type','uuid','url','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['atPersons']
+     QUERY_OBJECT_MAP = {
+        'atPersons' : 'QueryObjectSNSDingTalkAtPersonInventory',
+     }
+
 class QueryObjectSNSEmailEndpointInventory(object):
      PRIMITIVE_FIELDS = ['name','platformUuid','lastOpDate','description','type','uuid','email','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -22143,6 +22505,7 @@ class QueryObjectZoneInventory(object):
 queryMessageInventoryMap = {
      'APIQueryAccountMsg' : QueryObjectAccountInventory,
      'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
+     'APIQueryAlarmMsg' : QueryObjectAlarmInventory,
      'APIQueryAlertMsg' : QueryObjectAlertInventory,
      'APIQueryAliyunDiskFromLocalMsg' : QueryObjectAliyunDiskInventory,
      'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,
@@ -22173,6 +22536,7 @@ queryMessageInventoryMap = {
      'APIQueryEipMsg' : QueryObjectEipInventory,
      'APIQueryEmailMediaMsg' : QueryObjectEmailMediaInventory,
      'APIQueryEmailTriggerActionMsg' : QueryObjectEmailTriggerActionInventory,
+     'APIQueryEventSubscriptionMsg' : QueryObjectEventSubscriptionInventory,
      'APIQueryFusionstorBackupStorageMsg' : QueryObjectFusionstorBackupStorageInventory,
      'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
      'APIQueryGCJobMsg' : QueryObjectGarbageCollectorInventory,
@@ -22213,6 +22577,14 @@ queryMessageInventoryMap = {
      'APIQueryQuotaMsg' : QueryObjectQuotaInventory,
      'APIQueryResourcePriceMsg' : QueryObjectPriceInventory,
      'APIQueryRouterInterfaceFromLocalMsg' : QueryObjectVirtualRouterInterfaceInventory,
+     'APIQuerySNSApplicationEndpointMsg' : QueryObjectSNSApplicationEndpointInventory,
+     'APIQuerySNSApplicationPlatformMsg' : QueryObjectSNSApplicationPlatformInventory,
+     'APIQuerySNSDingTalkEndpointMsg' : QueryObjectSNSDingTalkEndpointInventory,
+     'APIQuerySNSEmailEndpointMsg' : QueryObjectSNSEmailEndpointInventory,
+     'APIQuerySNSEmailPlatformMsg' : QueryObjectSNSEmailPlatformInventory,
+     'APIQuerySNSHttpEndpointMsg' : QueryObjectSNSHttpEndpointInventory,
+     'APIQuerySNSTextTemplateMsg' : QueryObjectSNSTextTemplateInventory,
+     'APIQuerySNSTopicMsg' : QueryObjectSNSTopicInventory,
      'APIQuerySchedulerJobMsg' : QueryObjectSchedulerJobInventory,
      'APIQuerySchedulerTriggerMsg' : QueryObjectSchedulerTriggerInventory,
      'APIQuerySecurityGroupMsg' : QueryObjectSecurityGroupInventory,

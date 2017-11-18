@@ -1778,6 +1778,18 @@ class CreateRouterInterfacePairRemoteAction(inventory.APICreateRouterInterfacePa
         self.out = evt
         return self.out
 
+class CreateSNSDingTalkEndpointAction(inventory.APICreateSNSDingTalkEndpointMsg):
+    def __init__(self):
+        super(CreateSNSDingTalkEndpointAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateSNSDingTalkEndpointAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateSNSEmailEndpointAction(inventory.APICreateSNSEmailEndpointMsg):
     def __init__(self):
         super(CreateSNSEmailEndpointAction, self).__init__()
@@ -5206,6 +5218,20 @@ class QueryAccountResourceRefAction(inventory.APIQueryAccountResourceRefMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryAlarmAction(inventory.APIQueryAlarmMsg):
+    def __init__(self):
+        super(QueryAlarmAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAlarmAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryAlertAction(inventory.APIQueryAlertMsg):
     def __init__(self):
         super(QueryAlertAction, self).__init__()
@@ -5621,6 +5647,20 @@ class QueryEmailTriggerActionAction(inventory.APIQueryEmailTriggerActionMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryEmailTriggerActionAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryEventSubscriptionAction(inventory.APIQueryEventSubscriptionMsg):
+    def __init__(self):
+        super(QueryEventSubscriptionAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryEventSubscriptionAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -6181,6 +6221,118 @@ class QueryRouterInterfaceFromLocalAction(inventory.APIQueryRouterInterfaceFromL
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryRouterInterfaceFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySNSApplicationEndpointAction(inventory.APIQuerySNSApplicationEndpointMsg):
+    def __init__(self):
+        super(QuerySNSApplicationEndpointAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSApplicationEndpointAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySNSApplicationPlatformAction(inventory.APIQuerySNSApplicationPlatformMsg):
+    def __init__(self):
+        super(QuerySNSApplicationPlatformAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSApplicationPlatformAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySNSDingTalkEndpointAction(inventory.APIQuerySNSDingTalkEndpointMsg):
+    def __init__(self):
+        super(QuerySNSDingTalkEndpointAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSDingTalkEndpointAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySNSEmailEndpointAction(inventory.APIQuerySNSEmailEndpointMsg):
+    def __init__(self):
+        super(QuerySNSEmailEndpointAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSEmailEndpointAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySNSEmailPlatformAction(inventory.APIQuerySNSEmailPlatformMsg):
+    def __init__(self):
+        super(QuerySNSEmailPlatformAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSEmailPlatformAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySNSHttpEndpointAction(inventory.APIQuerySNSHttpEndpointMsg):
+    def __init__(self):
+        super(QuerySNSHttpEndpointAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSHttpEndpointAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySNSTextTemplateAction(inventory.APIQuerySNSTextTemplateMsg):
+    def __init__(self):
+        super(QuerySNSTextTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSTextTemplateAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySNSTopicAction(inventory.APIQuerySNSTopicMsg):
+    def __init__(self):
+        super(QuerySNSTopicAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSTopicAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
