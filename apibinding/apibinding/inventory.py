@@ -14103,8 +14103,7 @@ class APIGetMetricDataMsg(object):
         self.namespace = NotNoneField()
         #mandatory field
         self.metricName = NotNoneField()
-        #mandatory field
-        self.startTime = NotNoneField()
+        self.startTime = None
         self.endTime = None
         self.period = None
         self.labels = OptionalList()
