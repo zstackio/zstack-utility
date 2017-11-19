@@ -302,6 +302,18 @@ class AddOssBucketFromRemoteAction(inventory.APIAddOssBucketFromRemoteMsg):
         self.out = evt
         return self.out
 
+class AddSNSDingTalkAtPersonAction(inventory.APIAddSNSDingTalkAtPersonMsg):
+    def __init__(self):
+        super(AddSNSDingTalkAtPersonAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddSNSDingTalkAtPersonAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddSchedulerJobToSchedulerTriggerAction(inventory.APIAddSchedulerJobToSchedulerTriggerMsg):
     def __init__(self):
         super(AddSchedulerJobToSchedulerTriggerAction, self).__init__()
@@ -7156,6 +7168,18 @@ class RemoveMonFromFusionstorPrimaryStorageAction(inventory.APIRemoveMonFromFusi
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RemoveMonFromFusionstorPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveSNSDingTalkAtPersonAction(inventory.APIRemoveSNSDingTalkAtPersonMsg):
+    def __init__(self):
+        super(RemoveSNSDingTalkAtPersonAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveSNSDingTalkAtPersonAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

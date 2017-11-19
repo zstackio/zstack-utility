@@ -11941,6 +11941,21 @@ class APIUnsubscribeTopicMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDSNSDINGTALKATPERSONMSG_FULL_NAME = 'org.zstack.sns.platform.dingtalk.APIAddSNSDingTalkAtPersonMsg'
+class APIAddSNSDingTalkAtPersonMsg(object):
+    FULL_NAME='org.zstack.sns.platform.dingtalk.APIAddSNSDingTalkAtPersonMsg'
+    def __init__(self):
+        #mandatory field
+        self.phoneNumber = NotNoneField()
+        #mandatory field
+        self.endpointUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATESNSDINGTALKENDPOINTMSG_FULL_NAME = 'org.zstack.sns.platform.dingtalk.APICreateSNSDingTalkEndpointMsg'
 class APICreateSNSDingTalkEndpointMsg(object):
     FULL_NAME='org.zstack.sns.platform.dingtalk.APICreateSNSDingTalkEndpointMsg'
@@ -11989,6 +12004,19 @@ class APIQuerySNSDingTalkEndpointReply(object):
         self.total = None
         self.success = None
         self.error = None
+
+
+APIREMOVESNSDINGTALKATPERSONMSG_FULL_NAME = 'org.zstack.sns.platform.dingtalk.APIRemoveSNSDingTalkAtPersonMsg'
+class APIRemoveSNSDingTalkAtPersonMsg(object):
+    FULL_NAME='org.zstack.sns.platform.dingtalk.APIRemoveSNSDingTalkAtPersonMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APICREATESNSEMAILENDPOINTMSG_FULL_NAME = 'org.zstack.sns.platform.email.APICreateSNSEmailEndpointMsg'
@@ -14112,6 +14140,7 @@ api_names = [
     'APIAddNetworkServiceProviderMsg',
     'APIAddNfsPrimaryStorageMsg',
     'APIAddOssBucketFromRemoteMsg',
+    'APIAddSNSDingTalkAtPersonMsg',
     'APIAddSchedulerJobToSchedulerTriggerMsg',
     'APIAddSecurityGroupRuleMsg',
     'APIAddSftpBackupStorageMsg',
@@ -14927,6 +14956,7 @@ api_names = [
     'APIRemoveMonFromCephPrimaryStorageMsg',
     'APIRemoveMonFromFusionstorBackupStorageMsg',
     'APIRemoveMonFromFusionstorPrimaryStorageMsg',
+    'APIRemoveSNSDingTalkAtPersonMsg',
     'APIRemoveSchedulerJobFromSchedulerTriggerMsg',
     'APIRemoveUserFromGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
@@ -21107,16 +21137,11 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
 
@@ -21245,7 +21270,7 @@ class QueryObjectAlarmActionInventory(object):
 
 class QueryObjectAlarmInventory(object):
      PRIMITIVE_FIELDS = ['period','metricName','comparisonOperator','description','threshold','uuid','name','namespace','repeatInterval','lastOpDate','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['labels','actions']
+     EXPANDED_FIELDS = ['labels','actions','actions','labels']
      QUERY_OBJECT_MAP = {
         'actions' : 'QueryObjectAlarmActionInventory',
         'labels' : 'QueryObjectAlarmLabelInventory',
@@ -21537,14 +21562,14 @@ class QueryObjectEmailTriggerActionInventory(object):
      }
 
 class QueryObjectEventSubscriptionActionInventory(object):
-     PRIMITIVE_FIELDS = ['actionUuid','actionType','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['actionUuid','actionType','subscriptionUuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectEventSubscriptionInventory(object):
      PRIMITIVE_FIELDS = ['namespace','lastOpDate','eventName','state','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['actions','labels']
+     EXPANDED_FIELDS = ['actions','labels','actions','labels']
      QUERY_OBJECT_MAP = {
         'actions' : 'QueryObjectEventSubscriptionActionInventory',
         'labels' : 'QueryObjectEventSubscriptionLabelInventory',
@@ -22013,14 +22038,17 @@ class QueryObjectRootVolumeUsageInventory(object):
 
 class QueryObjectSNSApplicationEndpointInventory(object):
      PRIMITIVE_FIELDS = ['name','platformUuid','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['platform','topics']
      QUERY_OBJECT_MAP = {
+        'topics' : 'QueryObjectSNSTopicInventory',
+        'platform' : 'QueryObjectSNSApplicationPlatformInventory',
      }
 
 class QueryObjectSNSApplicationPlatformInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['endpoints']
      QUERY_OBJECT_MAP = {
+        'endpoints' : 'QueryObjectSNSApplicationEndpointInventory',
      }
 
 class QueryObjectSNSDingTalkAtPersonInventory(object):
@@ -22031,27 +22059,36 @@ class QueryObjectSNSDingTalkAtPersonInventory(object):
 
 class QueryObjectSNSDingTalkEndpointInventory(object):
      PRIMITIVE_FIELDS = ['atAll','name','platformUuid','lastOpDate','description','type','uuid','url','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['atPersons']
+     EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
-        'atPersons' : 'QueryObjectSNSDingTalkAtPersonInventory',
      }
 
 class QueryObjectSNSEmailEndpointInventory(object):
      PRIMITIVE_FIELDS = ['name','platformUuid','lastOpDate','description','type','uuid','email','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['platform']
      QUERY_OBJECT_MAP = {
+        'platform' : 'QueryObjectSNSEmailPlatformInventory',
      }
 
 class QueryObjectSNSEmailPlatformInventory(object):
      PRIMITIVE_FIELDS = ['password','smtpServer','smtpPort','name','lastOpDate','description','type','uuid','username','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['endpoints']
      QUERY_OBJECT_MAP = {
+        'endpoints' : 'QueryObjectSNSEmailEndpointInventory',
      }
 
 class QueryObjectSNSHttpEndpointInventory(object):
      PRIMITIVE_FIELDS = ['password','name','platformUuid','lastOpDate','description','type','uuid','url','username','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectSNSSubscriberInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','endpointUuid','topicUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['endpoints','topics']
+     QUERY_OBJECT_MAP = {
+        'endpoints' : 'QueryObjectSNSApplicationEndpointInventory',
+        'topics' : 'QueryObjectSNSTopicInventory',
      }
 
 class QueryObjectSNSTextTemplateInventory(object):
@@ -22062,8 +22099,9 @@ class QueryObjectSNSTextTemplateInventory(object):
 
 class QueryObjectSNSTopicInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['endpoints']
      QUERY_OBJECT_MAP = {
+        'endpoints' : 'QueryObjectSNSApplicationEndpointInventory',
      }
 
 class QueryObjectSchedulerJobInventory(object):
