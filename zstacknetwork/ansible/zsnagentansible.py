@@ -17,7 +17,7 @@ sproxy = ""
 chroot_env = 'false'
 zstack_repo = 'false'
 current_dir = os.path.dirname(os.path.realpath(__file__))
-file_root = "files/zsn-agent"
+file_root = "files/zsnagentansible"
 pkg_zsn = ""
 post_url = ""
 fs_rootpath = ""
@@ -27,6 +27,17 @@ remote_port = None
 require_python_env = "false"
 
 
+# get parameter from shell
+parser = argparse.ArgumentParser(description='Deploy zsn-agent to host')
+parser.add_argument('-i', type=str, help="""specify inventory host file
+                        default=/etc/ansible/hosts""")
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
+args = parser.parse_args()
+argument_dict = eval(args.e)
+
+# update the variable from shell arguments
+locals().update(argument_dict)
 zsn_root = "%s/zsn-agent/package" % zstack_root
 
 # get parameter from shell
@@ -82,6 +93,8 @@ else:
     error("ERROR: Unsupported distribution")
 
 run_remote_command("rm -rf %s/*" % zsn_root, host_post_info)
+command = 'mkdir -p %s ' % (zsn_root)
+run_remote_command(command, host_post_info)
 
 # name: copy zsn binary
 copy_arg = CopyArg()
