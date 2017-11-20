@@ -12,7 +12,11 @@ import os.path
 import traceback
 import pprint
 import functools
+import sys
 import string
+
+reload(sys)
+sys.setdefaultencoding('utf-8')
 
 from zstacklib.utils import shell
 
