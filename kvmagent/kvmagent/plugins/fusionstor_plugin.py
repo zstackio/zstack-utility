@@ -187,6 +187,10 @@ class FusionstorPlugin(kvmagent.KvmAgent):
             rsp.result = self.RET_SUCCESS
             return jsonobject.dumps(rsp)
 
+        if success == 0:
+            rsp.result = self.RET_FAILURE
+            return jsonobject.dumps(rsp)
+
         rsp.result = self.RET_NOT_STABLE
         return jsonobject.dumps(rsp)
 
