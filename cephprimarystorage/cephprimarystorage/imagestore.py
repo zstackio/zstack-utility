@@ -44,7 +44,7 @@ class ImageStoreClient(object):
     def _get_image_reference(self, path):
         try:
             pool, meta = self._get_id_name_from_install(path)
-            metastr = 'rados get %s - -p %s' % (meta, pool)
+            metastr = 'rados get %s - -p %s' % (meta+'.imf2', pool)
 
             imf = jsonobject.loads(shell.call(metastr).strip())
             return imf.name, imf.id
@@ -64,7 +64,7 @@ class ImageStoreClient(object):
             self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
             req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.srcPath)
         logger.debug('pushing %s to image store' % cmd.srcPath)
-        shell.call(cmdstr)
+        shell.call(cmdstr.encode(encoding="utf-8"))
         logger.debug('%s pushed to image store' % cmd.srcPath)
 
         name, imageid = self._get_image_reference(cmd.srcPath)
