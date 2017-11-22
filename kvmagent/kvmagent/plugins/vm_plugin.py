@@ -2600,10 +2600,10 @@ class Vm(object):
 
         def make_meta():
             root = elements['root']
+
             e(root, 'name', cmd.vmInstanceUuid)
             e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
-            e(root, 'clock', None, {'offset': cmd.clock})
             e(root, 'on_poweroff', 'destroy')
             e(root, 'on_crash', 'restart')
             e(root, 'on_reboot', 'restart')
@@ -2611,6 +2611,11 @@ class Vm(object):
             zs = e(meta, 'zstack', usenamesapce=True)
             e(zs, 'internalId', str(cmd.vmInternalId))
             e(zs, 'hostManagementIp', str(cmd.hostManagementIp))
+            clock = e(root, 'clock', None, {'offset': cmd.clock})
+            if cmd.clock == 'localtime':
+                e(clock, 'timer', None, {'name': 'rtc', 'tickpolicy': 'catchup'})
+                e(clock, 'timer', None, {'name': 'pit', 'tickpolicy': 'delay'})
+                e(clock, 'timer', None, {'name': 'hpet', 'present': 'no'})
 
         def make_vnc():
             devices = elements['devices']
