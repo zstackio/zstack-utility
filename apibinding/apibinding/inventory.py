@@ -7607,7 +7607,6 @@ class APICloneVmInstanceMsg(object):
         self.vmInstanceUuid = NotNoneField()
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
-        self.affinityGroupUuid = None
         #mandatory field
         self.names = NotNoneList()
         self.session = None
@@ -7637,7 +7636,6 @@ class APICreateVmInstanceMsg(object):
         self.hostUuid = None
         self.primaryStorageUuidForRootVolume = None
         self.description = None
-        self.affinityGroupUuid = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
@@ -11199,7 +11197,6 @@ class APICreateVirtualRouterVmMsg(object):
         self.hostUuid = None
         self.primaryStorageUuidForRootVolume = None
         self.description = None
-        self.affinityGroupUuid = None
         self.defaultL3NetworkUuid = None
         #valid values: [InstantStart, JustCreate]
         self.strategy = None
