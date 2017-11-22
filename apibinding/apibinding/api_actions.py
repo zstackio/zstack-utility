@@ -3746,6 +3746,18 @@ class GetAttachablePublicL3ForVRouterAction(inventory.APIGetAttachablePublicL3Fo
         self.out = evt
         return self.out
 
+class GetAttachableVpcL3NetworkAction(inventory.APIGetAttachableVpcL3NetworkMsg):
+    def __init__(self):
+        super(GetAttachableVpcL3NetworkAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAttachableVpcL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetAvailableTriggersAction(inventory.APIGetAvailableTriggersMsg):
     def __init__(self):
         super(GetAvailableTriggersAction, self).__init__()
@@ -7000,18 +7012,6 @@ class RemoveVmNicFromLoadBalancerAction(inventory.APIRemoveVmNicFromLoadBalancer
         self.out = evt
         return self.out
 
-class ResizeDataVolumeAction(inventory.APIResizeDataVolumeMsg):
-    def __init__(self):
-        super(ResizeDataVolumeAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ResizeDataVolumeAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
 class RequestBaremetalConsoleAccessAction(inventory.APIRequestBaremetalConsoleAccessMsg):
     def __init__(self):
         super(RequestBaremetalConsoleAccessAction, self).__init__()
@@ -7032,6 +7032,18 @@ class RequestConsoleAccessAction(inventory.APIRequestConsoleAccessMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RequestConsoleAccessAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ResizeDataVolumeAction(inventory.APIResizeDataVolumeMsg):
+    def __init__(self):
+        super(ResizeDataVolumeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ResizeDataVolumeAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

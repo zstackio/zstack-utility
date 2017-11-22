@@ -8561,6 +8561,7 @@ class APIStopVmInstanceMsg(object):
         self.uuid = NotNoneField()
         #valid values: [grace, cold]
         self.type = None
+        #valid values: [true]
         self.stopHA = None
         self.session = None
         self.timeout = None
@@ -8891,18 +8892,6 @@ class APIQueryVolumeMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
-APIRESIZEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.header.volume.APIResizeDataVolumeMsg'
-class APIResizeDataVolumeMsg(object):
-    FULL_NAME='org.zstack.header.volume.APIResizeDataVolumeMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        self.size = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
 
 APIQUERYVOLUMEREPLY_FULL_NAME = 'org.zstack.header.volume.APIQueryVolumeReply'
 class APIQueryVolumeReply(object):
@@ -8920,6 +8909,20 @@ class APIRecoverDataVolumeMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIRESIZEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.header.volume.APIResizeDataVolumeMsg'
+class APIResizeDataVolumeMsg(object):
+    FULL_NAME='org.zstack.header.volume.APIResizeDataVolumeMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.size = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11757,6 +11760,7 @@ class APICreateSchedulerJobMsg(object):
         #mandatory field
         self.targetResourceUuid = NotNoneField()
         #mandatory field
+        #valid values: [startVm, stopVm, rebootVm, volumeSnapshot]
         self.type = NotNoneField()
         self.parameters = OptionalMap()
         self.resourceUuid = None
@@ -13490,6 +13494,27 @@ class APICreateVpcVRouterMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETATTACHABLEVPCL3NETWORKMSG_FULL_NAME = 'org.zstack.vpc.APIGetAttachableVpcL3NetworkMsg'
+class APIGetAttachableVpcL3NetworkMsg(object):
+    FULL_NAME='org.zstack.vpc.APIGetAttachableVpcL3NetworkMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETATTACHABLEVPCL3NETWORKREPLY_FULL_NAME = 'org.zstack.vpc.APIGetAttachableVpcL3NetworkReply'
+class APIGetAttachableVpcL3NetworkReply(object):
+    FULL_NAME='org.zstack.vpc.APIGetAttachableVpcL3NetworkReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIADDVROUTERROUTEENTRYMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
 class APIAddVRouterRouteEntryMsg(object):
     FULL_NAME='org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
@@ -14012,6 +14037,8 @@ api_names = [
     'APIGetAccountReply',
     'APIGetAttachablePublicL3ForVRouterMsg',
     'APIGetAttachablePublicL3ForVRouterReply',
+    'APIGetAttachableVpcL3NetworkMsg',
+    'APIGetAttachableVpcL3NetworkReply',
     'APIGetAvailableTriggersMsg',
     'APIGetAvailableTriggersReply',
     'APIGetBackupStorageCandidatesForImageMigrationMsg',
@@ -19576,6 +19603,7 @@ class VirtualRouterVmInventory(ApplianceVmInventory):
     def __init__(self):
         super(VirtualRouterVmInventory, self).__init__()
         self.publicNetworkUuid = None
+        self.virtualRouterVips = None
 
     def evaluate(self, inv):
         super(VirtualRouterVmInventory, self).evaluate(inv)
@@ -19583,6 +19611,11 @@ class VirtualRouterVmInventory(ApplianceVmInventory):
             self.publicNetworkUuid = inv.publicNetworkUuid
         else:
             self.publicNetworkUuid = None
+
+        if hasattr(inv, 'virtualRouterVips'):
+            self.virtualRouterVips = inv.virtualRouterVips
+        else:
+            self.virtualRouterVips = None
 
 
 
@@ -20616,6 +20649,7 @@ class GlobalConfig_HA(object):
 class GlobalConfig_HOST(object):
     LOAD_PARALLELISMDEGREE = 'load.parallelismDegree'
     PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
+    PING_MAXFAILURE = 'ping.maxFailure'
     LOAD_ALL = 'load.all'
     CONNECTION_AUTORECONNECTONERROR = 'connection.autoReconnectOnError'
     CPU_OVERPROVISIONING_RATIO = 'cpu.overProvisioning.ratio'
@@ -20826,6 +20860,7 @@ class GlobalConfig_QUOTA(object):
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
+    VXLAN_NUM = 'vxlan.num'
 
     @staticmethod
     def get_category():
