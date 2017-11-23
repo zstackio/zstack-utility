@@ -39,6 +39,7 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
     logger.debug('vm_in_process_uuid_list:\n' + vm_in_process_uuid_list)
 
     # kill vm's qemu process
+    vm_pids = []
     for vm_uuid in vm_in_process_uuid_list.split('\n'):
         vm_uuid = vm_uuid.strip(' \t\n\r')
         if not vm_uuid:
@@ -50,6 +51,9 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
 
         vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
         vm_pid = vm_pid.strip(' \t\n\r')
+        vm_pids.append(vm_pid)
+
+    for vm_pid in vm_pids:
         kill = shell.ShellCmd('kill -9 %s' % vm_pid)
         kill(False)
         if kill.return_code == 0:
