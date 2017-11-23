@@ -11,6 +11,9 @@ import traceback
 
 logger = log.get_logger(__name__)
 
+class UmountException(Exception):
+    pass
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
@@ -62,9 +65,8 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
-    if isFileSystem :
-        for mp in mountPaths:
-            kill_and_umount(mp, mount_path_is_nfs(mp))
+    return vm_pids
+
 
 def mount_path_is_nfs(mount_path):
     typ = shell.call("mount | grep '%s' | awk '{print $5}'" % mount_path)
@@ -84,7 +86,11 @@ def kill_and_umount(mount_path, is_nfs):
 def umount_fs(mount_path, is_nfs):
     if is_nfs:
         shell.ShellCmd("systemctl stop nfs-client.target")(False)
-    shell.call("sleep 2; umount -f %s" % mount_path)
+    time.sleep(2)
+    o = shell.ShellCmd("umount -f %s" % mount_path)
+    o(False)
+    if o.return_code != 0:
+        raise UmountException(o.stderr)
 
 
 def kill_progresses_using_mount_path(mount_path):
@@ -256,30 +262,64 @@ class HaPlugin(kvmagent.KvmAgent):
 
         @thread.AsyncThread
         def heartbeat_file_fencer(mount_path, ps_uuid):
+            def try_remount_fs():
+                if mount_path_is_nfs(mount_path):
+                    shell.ShellCmd("systemctl start nfs-client.target")(False)
+
+                while self.run_filesystem_fencer:
+                    if linux.is_mounted(path=mount_path) and touch_heartbeat_file():
+                        self.report_storage_status([ps_uuid], 'Connected')
+                        logger.debug("fs[uuid:%s] is reachable again, report to management" % ps_uuid)
+                        break
+                    try:
+                        logger.debug('fs[uuid:%s] is unreachable, it will be remounted after 180s' % ps_uuid)
+                        time.sleep(180)
+                        if not self.run_filesystem_fencer:
+                            break
+                        linux.remount(url, mount_path)
+                        self.report_storage_status([ps_uuid], 'Connected')
+                        logger.debug("remount fs[uuid:%s] success, report to management" % ps_uuid)
+                        break
+                    except:
+                        logger.warn('remount fs[uuid:%s] fail, try again soon' % ps_uuid)
+                        kill_progresses_using_mount_path(mount_path)
+
+                logger.debug('stop remount fs[uuid:%s]' % ps_uuid)
+
+            def touch_heartbeat_file():
+                touch = shell.ShellCmd('timeout %s touch %s' % (cmd.storageCheckerTimeout, heartbeat_file_path))
+                touch(False)
+                if touch.return_code != 0:
+                    logger.warn('unable to touch %s, %s %s' % (heartbeat_file_path, touch.stderr, touch.stdout))
+                return touch.return_code == 0
+
             heartbeat_file_path = os.path.join(mount_path, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
+            killed_vm_pids = None
             try:
                 failure = 0
+                url = shell.call("mount | grep -e '%s' | awk '{print $1}'" % mount_path).strip()
 
                 while self.run_filesystem_fencer:
                     time.sleep(cmd.interval)
-
-                    touch = shell.ShellCmd('timeout %s touch %s; exit $?' % (cmd.storageCheckerTimeout, heartbeat_file_path))
-                    touch(False)
-                    if touch.return_code == 0:
+                    if touch_heartbeat_file():
                         failure = 0
                         continue
 
-                    logger.warn('unable to touch %s, %s %s' % (heartbeat_file_path, touch.stderr, touch.stdout))
                     failure += 1
-
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
-                        kill_vm(cmd.maxAttempts, [mount_path], True)
-                        break
+                        killed_vm_pids = kill_vm(cmd.maxAttempts, [mount_path], True)
+                        kill_and_umount(mount_path, mount_path_is_nfs(mount_path))
+                        try_remount_fs()
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
+            except UmountException:
+                if killed_vm_pids and shell.run('ps -p %s' % ' '.join(killed_vm_pids)):
+                    logger.error('kill vm[pids:%s] failed because of unavailable fs[mountPath:%s].'
+                                 ' please retry "umount -f %s"' % (killed_vm_pids, mount_path, mount_path))
+                    try_remount_fs()
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
@@ -369,8 +409,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
             logger.debug(
                 'primary storage[psList:%s] has new connection status[%s], report it to %s' % (
-                ps_uuids, ps_status, url))
+                    ps_uuids, ps_status, url))
             http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportstoragestatus'})
 
         report_to_management_node()
+
+
 
