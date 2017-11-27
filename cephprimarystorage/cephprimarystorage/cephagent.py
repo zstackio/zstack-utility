@@ -144,6 +144,7 @@ class CephAgent(object):
     MIGRATE_VOLUME_SNAPSHOT_PATH = "/ceph/primarystorage/volume/snapshot/migrate"
     GET_VOLUME_SNAPINFOS_PATH = "/ceph/primarystorage/volume/getsnapinfos"
     UPLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/commit"
+    DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -167,6 +168,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.SFTP_UPLOAD_PATH, self.sftp_upload)
         self.http_server.register_async_uri(self.CP_PATH, self.cp)
         self.http_server.register_async_uri(self.UPLOAD_IMAGESTORE_PATH, self.upload_imagestore)
+        self.http_server.register_async_uri(self.DOWNLOAD_IMAGESTORE_PATH, self.download_imagestore)
         self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
         self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
@@ -387,6 +389,11 @@ class CephAgent(object):
         self._set_capacity_to_response(rsp)
         rsp.size = self._get_file_size(dpath)
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    def download_imagestore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return self.imagestore_client.download_imagestore(cmd)
 
     @replyerror
     def create_snapshot(self, req):
