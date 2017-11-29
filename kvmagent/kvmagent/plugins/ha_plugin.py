@@ -8,6 +8,7 @@ from zstacklib.utils import thread
 import os.path
 import time
 import traceback
+import threading
 
 logger = log.get_logger(__name__)
 
@@ -155,7 +156,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def __init__(self):
         self.run_ceph_fencer = False
-        self.run_filesystem_fencer = False
+        self.run_filesystem_fencer_timestamp = {}
+        self.fencer_lock = threading.RLock()
 
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
@@ -164,7 +166,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def cancel_filesystem_self_fencer(self, req):
-        self.run_filesystem_fencer = False
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        with self.fencer_lock:
+            for ps_uuid in cmd.psUuids:
+                self.run_filesystem_fencer_timestamp.pop(ps_uuid, None)
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -258,15 +263,13 @@ class HaPlugin(kvmagent.KvmAgent):
     def setup_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        self.run_filesystem_fencer = True
-
         @thread.AsyncThread
         def heartbeat_file_fencer(mount_path, ps_uuid):
             def try_remount_fs():
                 if mount_path_is_nfs(mount_path):
                     shell.ShellCmd("systemctl start nfs-client.target")(False)
 
-                while self.run_filesystem_fencer:
+                while self.run_filesystem_fencer(ps_uuid, created_time):
                     if linux.is_mounted(path=mount_path) and touch_heartbeat_file():
                         self.report_storage_status([ps_uuid], 'Connected')
                         logger.debug("fs[uuid:%s] is reachable again, report to management" % ps_uuid)
@@ -274,7 +277,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.debug('fs[uuid:%s] is unreachable, it will be remounted after 180s' % ps_uuid)
                         time.sleep(180)
-                        if not self.run_filesystem_fencer:
+                        if not self.run_filesystem_fencer(ps_uuid, created_time):
                             break
                         linux.remount(url, mount_path, options)
                         self.report_storage_status([ps_uuid], 'Connected')
@@ -294,13 +297,16 @@ class HaPlugin(kvmagent.KvmAgent):
                 return touch.return_code == 0
 
             heartbeat_file_path = os.path.join(mount_path, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
+            created_time = time.time()
+            with self.fencer_lock:
+                self.run_filesystem_fencer_timestamp[ps_uuid] = created_time
             killed_vm_pids = None
             try:
                 failure = 0
                 url = shell.call("mount | grep -e '%s' | awk '{print $1}'" % mount_path).strip()
                 options = shell.call("mount | grep -e '%s' | awk -F '[()]' '{print $2}'" % mount_path).strip()
 
-                while self.run_filesystem_fencer:
+                while self.run_filesystem_fencer(ps_uuid, created_time):
                     time.sleep(cmd.interval)
                     if touch_heartbeat_file():
                         failure = 0
@@ -415,5 +421,11 @@ class HaPlugin(kvmagent.KvmAgent):
 
         report_to_management_node()
 
+    def run_filesystem_fencer(self, ps_uuid, created_time):
+        with self.fencer_lock:
+            if not self.run_filesystem_fencer_timestamp[ps_uuid] or self.run_filesystem_fencer_timestamp[ps_uuid] > created_time:
+                return False
 
+            self.run_filesystem_fencer_timestamp[ps_uuid] = created_time
+            return True
 
