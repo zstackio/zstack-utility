@@ -276,7 +276,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         time.sleep(180)
                         if not self.run_filesystem_fencer:
                             break
-                        linux.remount(url, mount_path)
+                        linux.remount(url, mount_path, options)
                         self.report_storage_status([ps_uuid], 'Connected')
                         logger.debug("remount fs[uuid:%s] success, report to management" % ps_uuid)
                         break
@@ -298,6 +298,7 @@ class HaPlugin(kvmagent.KvmAgent):
             try:
                 failure = 0
                 url = shell.call("mount | grep -e '%s' | awk '{print $1}'" % mount_path).strip()
+                options = shell.call("mount | grep -e '%s' | awk -F '[()]' '{print $2}'" % mount_path).strip()
 
                 while self.run_filesystem_fencer:
                     time.sleep(cmd.interval)
