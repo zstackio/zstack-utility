@@ -215,6 +215,18 @@ def umount(path, is_exception=True):
     cmd(is_exception=is_exception)
     return cmd.return_code == 0
 
+def remount(url, path, options=None):
+    if not is_mounted(path, url):
+        mount(url, path, options)
+
+    o = shell.ShellCmd('timeout 180 mount -o remount %s' % path)
+    o(False)
+    if o.return_code == 124:
+        raise Exception('unable to access the mount path[%s] of the nfs primary storage[url:%s] in 180s, timeout' %
+                        (path, url))
+    elif o.return_code != 0:
+        o.raise_error()
+
 def is_valid_nfs_url(url):
     ts = url.split(':')
     if len(ts) != 2: raise InvalidNfsUrlError(url, 'url should have one and only one ":"')
