@@ -72,6 +72,26 @@ class ImageStoreClient(object):
         rsp.installPath = self._build_install_path(name, imageid)
         return jsonobject.dumps(rsp)
 
+    def _parse_image_reference(self, backupStorageInstallPath):
+        if not backupStorageInstallPath.startswith(self.ZSTORE_PROTOSTR):
+            raise Exception('unexpected backup storage install path %s' % backupStorageInstallPath)
+
+        xs = backupStorageInstallPath[len(self.ZSTORE_PROTOSTR):].split('/')
+        if len(xs) != 2:
+            raise Exception('unexpected backup storage install path %s' % backupStorageInstallPath)
+
+        return xs[0], xs[1]
+
+    def download_imagestore(self, cmd):
+        rsp = AgentResponse()
+        name, imageid = self._parse_image_reference(cmd.bsInstallPath)
+        cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (
+        self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, cmd.psInstallPath, name, imageid)
+        logger.debug('pulling %s:%s from image store' % (name, imageid))
+        shell.call(cmdstr)
+        logger.debug('%s:%s pulled to ceph storage' % (name, imageid))
+        return jsonobject.dumps(rsp)
+
     def commit_to_imagestore(self, cmd, req):
         fpath = cmd.srcPath
 
