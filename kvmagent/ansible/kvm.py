@@ -377,10 +377,10 @@ if copy_kvmagent != "changed:False":
     agent_install(agent_install_arg, host_post_info)
 
 # name: add audit rules for signals
-command = "systemctl enable auditd; systemctl start auditd; " \
-          "auditctl -D -k zstack_log_kill; " \
-          "auditctl -a always,exit -F arch=b64 -F a1=9 -S kill -k zstack_log_kill; " \
-          "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill"
+command = "systemctl enable auditd; systemctl start auditd || true; " \
+          "auditctl -D -k zstack_log_kill || true; " \
+          "auditctl -a always,exit -F arch=b64 -F a1=9 -S kill -k zstack_log_kill || true; " \
+          "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill || true"
 host_post_info.post_label = "ansible.shell.audit.signal"
 host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
