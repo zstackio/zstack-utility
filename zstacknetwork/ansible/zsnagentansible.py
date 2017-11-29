@@ -25,6 +25,7 @@ remote_user = "root"
 remote_pass = None
 remote_port = None
 require_python_env = "false"
+tmout = None
 
 
 # get parameter from shell
@@ -39,15 +40,6 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 zsn_root = "%s/zsn-agent/package" % zstack_root
-
-# get parameter from shell
-parser = argparse.ArgumentParser(description='Deploy zsn-agent to host')
-parser.add_argument('-i', type=str, help="""specify inventory host file
-                        default=/etc/ansible/hosts""")
-parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
-parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
-args = parser.parse_args()
-argument_dict = eval(args.e)
 
 # update the variable from shell arguments
 locals().update(argument_dict)
@@ -111,10 +103,16 @@ run_remote_command(command, host_post_info)
 
 # integrate zstack-store with init.d
 run_remote_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent /etc/init.d/", host_post_info)
-if distro == "CentOS" or distro == "RedHat":
-    command = "/usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
-elif distro == "Debian" or distro == "Ubuntu":
-    command = "update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
+if tmout != None:
+    if distro == "CentOS" or distro == "RedHat":
+        command = "/usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on" % (tmout)
+    elif distro == "Debian" or distro == "Ubuntu":
+        command = "update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start" % (tmout)
+else:
+    if distro == "CentOS" or distro == "RedHat":
+        command = "/usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
+    elif distro == "Debian" or distro == "Ubuntu":
+        command = "update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
