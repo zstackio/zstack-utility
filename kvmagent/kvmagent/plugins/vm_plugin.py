@@ -2616,6 +2616,7 @@ class Vm(object):
                 e(clock, 'timer', None, {'name': 'rtc', 'tickpolicy': 'catchup'})
                 e(clock, 'timer', None, {'name': 'pit', 'tickpolicy': 'delay'})
                 e(clock, 'timer', None, {'name': 'hpet', 'present': 'no'})
+                e(clock, 'timer', None, {'name': 'hypervclock', 'present': 'yes'})
 
         def make_vnc():
             devices = elements['devices']
