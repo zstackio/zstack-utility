@@ -20972,7 +20972,7 @@ class QueryObjectAccountResourceRefInventory(object):
      }
 
 class QueryObjectAffinityGroupInventory(object):
-     PRIMITIVE_FIELDS = ['name','lastOpDate','description','type','uuid','version','policy','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['appliance','name','lastOpDate','description','type','uuid','version','policy','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['usages']
      QUERY_OBJECT_MAP = {
         'usages' : 'QueryObjectAffinityGroupUsageInventory',
