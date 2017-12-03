@@ -7788,6 +7788,7 @@ class APIGetCandidatePrimaryStoragesForCreatingVmMsg(object):
     def __init__(self):
         #mandatory field
         self.imageUuid = NotNoneField()
+        self.backupStorageUuid = None
         #mandatory field
         self.l3NetworkUuids = NotNoneList()
         self.rootDiskOfferingUuid = None
@@ -9359,12 +9360,26 @@ class APIDeleteLdapServerMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETCANDIDATELDAPENTRYFORBINDINGMSG_FULL_NAME = 'org.zstack.ldap.APIGetCandidateLdapEntryForBindingMsg'
+class APIGetCandidateLdapEntryForBindingMsg(object):
+    FULL_NAME='org.zstack.ldap.APIGetCandidateLdapEntryForBindingMsg'
+    def __init__(self):
+        #mandatory field
+        self.ldapFilter = NotNoneField()
+        self.limit = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIGETLDAPENTRYMSG_FULL_NAME = 'org.zstack.ldap.APIGetLdapEntryMsg'
 class APIGetLdapEntryMsg(object):
     FULL_NAME='org.zstack.ldap.APIGetLdapEntryMsg'
     def __init__(self):
         #mandatory field
         self.ldapFilter = NotNoneField()
+        self.limit = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -14052,6 +14067,7 @@ api_names = [
     'APIGetCandidateBackupStorageForCreatingImageReply',
     'APIGetCandidateIsoForAttachingVmMsg',
     'APIGetCandidateIsoForAttachingVmReply',
+    'APIGetCandidateLdapEntryForBindingMsg',
     'APIGetCandidatePrimaryStoragesForCreatingVmMsg',
     'APIGetCandidatePrimaryStoragesForCreatingVmReply',
     'APIGetCandidateVmForAttachingIsoMsg',
@@ -20848,19 +20864,13 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
-    SECURITYGROUP_NUM = 'securityGroup.num'
-    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
-    PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
-    VXLAN_NUM = 'vxlan.num'
 
     @staticmethod
     def get_category():
@@ -20952,6 +20962,13 @@ class GlobalConfig_VOLUMESNAPSHOT(object):
     @staticmethod
     def get_category():
         return 'volumeSnapshot'
+
+class GlobalConfig_VPC(object):
+    ZSNP_TIMEOUT = 'zsnp.timeout'
+
+    @staticmethod
+    def get_category():
+        return 'vpc'
 
 
 #QueryObjectInventory

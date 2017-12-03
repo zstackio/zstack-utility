@@ -3830,6 +3830,18 @@ class GetCandidateIsoForAttachingVmAction(inventory.APIGetCandidateIsoForAttachi
         self.out = evt
         return self.out
 
+class GetCandidateLdapEntryForBindingAction(inventory.APIGetCandidateLdapEntryForBindingMsg):
+    def __init__(self):
+        super(GetCandidateLdapEntryForBindingAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetCandidateLdapEntryForBindingAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetCandidatePrimaryStoragesForCreatingVmAction(inventory.APIGetCandidatePrimaryStoragesForCreatingVmMsg):
     def __init__(self):
         super(GetCandidatePrimaryStoragesForCreatingVmAction, self).__init__()
