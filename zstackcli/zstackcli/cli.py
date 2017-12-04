@@ -800,7 +800,7 @@ Parse command parameters error:
                         key = start_value - i + CLI_MAX_RESULT_HISTORY
 
                     cmd_result = self.hd.get(str(key))
-                    cmd_result_list = cmd_result[0].split()
+                    cmd_result_list = str(cmd_result[0]).split()
                     cmd = text_doc.bold(cmd_result_list[0])
                     if len(cmd_result_list) > 1:
                         cmd = cmd + ' ' + ' '.join(cmd_result_list[1:])
@@ -811,7 +811,7 @@ Parse command parameters error:
             else:
                 for i in range(start_value):
                     cmd_result = self.hd.get(str(start_value - i))
-                    cmd_result_list = cmd_result[0].split()
+                    cmd_result_list = str(cmd_result[0]).split()
                     cmd = text_doc.bold(cmd_result_list[0])
                     if len(cmd_result_list) > 1:
                         cmd = cmd + ' ' + ' '.join(cmd_result_list[1:])
