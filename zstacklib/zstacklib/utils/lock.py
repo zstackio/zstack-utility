@@ -80,7 +80,7 @@ class FileLock(object):
         
     def unlock(self):
         try:
-            fcntl.lockf(self.lock_file, fcntl.LOCK_UN)
+            fcntl.flock(self.lock_file, fcntl.LOCK_UN)
         finally:
             self.lock_file.close()
         
