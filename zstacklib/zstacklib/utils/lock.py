@@ -76,7 +76,7 @@ class FileLock(object):
             _prepare_lock_file(self.LOCK_DIR, '%s.lock' % lock_prefix)
     
     def lock(self):
-        fcntl.flock(self.lock_file, fcntl.LOCK_EX)
+        fcntl.lockf(self.lock_file, fcntl.LOCK_EX)
         
     def unlock(self):
         try:
