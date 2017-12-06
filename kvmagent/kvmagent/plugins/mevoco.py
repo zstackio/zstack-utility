@@ -564,7 +564,6 @@ mimetype.assign = (
             if not linux.wait_callback_success(check, None, 5):
                 raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
 
-    @lock.file_lock('/run/xtables.lock')
     def work_userdata_iptables(self, CHAIN_NAME, to):
         # DNAT port 80
         PORT = to.port
@@ -574,21 +573,21 @@ mimetype.assign = (
         if OLD_CHAIN and OLD_CHAIN != CHAIN_NAME:
             ret = bash_r('iptables-save -t nat | grep -- "-j {{OLD_CHAIN}}"')
             if ret == 0:
-                bash_r('iptables -t nat -D PREROUTING -j {{OLD_CHAIN}}')
+                bash_r('iptables -w -t nat -D PREROUTING -j {{OLD_CHAIN}}')
 
-            bash_errorout('iptables -t nat -F {{OLD_CHAIN}}')
-            bash_errorout('iptables -t nat -X {{OLD_CHAIN}}')
+            bash_errorout('iptables -w -t nat -F {{OLD_CHAIN}}')
+            bash_errorout('iptables -w -t nat -X {{OLD_CHAIN}}')
         ret = bash_r('iptables-save | grep -w ":{{PORT_CHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            bash_errorout('iptables -t nat -N {{PORT_CHAIN_NAME}}')
-        ret = bash_r('iptables -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"')
+            bash_errorout('iptables -w -t nat -N {{PORT_CHAIN_NAME}}')
+        ret = bash_r('iptables -w -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"')
         if ret != 0:
-            bash_errorout('iptables -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}')
+            bash_errorout('iptables -w -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}')
         ret = bash_r(
             'iptables-save -t nat | grep -- "{{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}"')
         if ret != 0:
             bash_errorout(
-                'iptables -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}')
+                'iptables -w -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}')
 
     @kvmagent.replyerror
     def release_userdata(self, req):
