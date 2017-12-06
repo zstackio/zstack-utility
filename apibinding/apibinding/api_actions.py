@@ -806,6 +806,18 @@ class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
         self.out = evt
         return self.out
 
+class CancelLongJobAction(inventory.APICancelLongJobMsg):
+    def __init__(self):
+        super(CancelLongJobAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CancelLongJobAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeBackupStorageStateAction(inventory.APIChangeBackupStorageStateMsg):
     def __init__(self):
         super(ChangeBackupStorageStateAction, self).__init__()
@@ -2650,6 +2662,18 @@ class DeleteLoadBalancerListenerAction(inventory.APIDeleteLoadBalancerListenerMs
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteLoadBalancerListenerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteLongJobAction(inventory.APIDeleteLongJobMsg):
+    def __init__(self):
+        super(DeleteLongJobAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteLongJobAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5912,6 +5936,20 @@ class QueryLocalStorageResourceRefAction(inventory.APIQueryLocalStorageResourceR
         self.out = reply.inventories
         return self.out
 
+class QueryLongJobAction(inventory.APIQueryLongJobMsg):
+    def __init__(self):
+        super(QueryLongJobAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryLongJobAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryManagementNodeAction(inventory.APIQueryManagementNodeMsg):
     def __init__(self):
         super(QueryManagementNodeAction, self).__init__()
@@ -7450,6 +7488,18 @@ class StopVmInstanceAction(inventory.APIStopVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[StopVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SubmitLongJobAction(inventory.APISubmitLongJobMsg):
+    def __init__(self):
+        super(SubmitLongJobAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SubmitLongJobAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

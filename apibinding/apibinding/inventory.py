@@ -5667,6 +5667,79 @@ class APIUpdateImageMsg(object):
         self.userTags = OptionalList()
 
 
+APICANCELLONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APICancelLongJobMsg'
+class APICancelLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APICancelLongJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETELONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APIDeleteLongJobMsg'
+class APIDeleteLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APIDeleteLongJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYLONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APIQueryLongJobMsg'
+class APIQueryLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APIQueryLongJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYLONGJOBREPLY_FULL_NAME = 'org.zstack.header.longjob.APIQueryLongJobReply'
+class APIQueryLongJobReply(object):
+    FULL_NAME='org.zstack.header.longjob.APIQueryLongJobReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APISUBMITLONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APISubmitLongJobMsg'
+class APISubmitLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APISubmitLongJobMsg'
+    def __init__(self):
+        self.name = None
+        self.description = None
+        #mandatory field
+        self.jobName = NotNoneField()
+        #mandatory field
+        self.jobData = NotNoneField()
+        self.targetResourceUuid = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIGETCURRENTTIMEMSG_FULL_NAME = 'org.zstack.header.managementnode.APIGetCurrentTimeMsg'
 class APIGetCurrentTimeMsg(object):
     FULL_NAME='org.zstack.header.managementnode.APIGetCurrentTimeMsg'
@@ -13871,6 +13944,7 @@ api_names = [
     'APIBackupVolumeSnapshotMsg',
     'APICalculateAccountSpendingMsg',
     'APICalculateAccountSpendingReply',
+    'APICancelLongJobMsg',
     'APIChangeBackupStorageStateMsg',
     'APIChangeClusterStateMsg',
     'APIChangeDiskOfferingStateMsg',
@@ -14027,6 +14101,7 @@ api_names = [
     'APIDeleteLdapServerMsg',
     'APIDeleteLoadBalancerListenerMsg',
     'APIDeleteLoadBalancerMsg',
+    'APIDeleteLongJobMsg',
     'APIDeleteMediaMsg',
     'APIDeleteMonitorTriggerActionMsg',
     'APIDeleteMonitorTriggerMsg',
@@ -14488,6 +14563,8 @@ api_names = [
     'APIQueryLoadBalancerReply',
     'APIQueryLocalStorageResourceRefMsg',
     'APIQueryLocalStorageResourceRefReply',
+    'APIQueryLongJobMsg',
+    'APIQueryLongJobReply',
     'APIQueryManagementNodeMsg',
     'APIQueryManagementNodeReply',
     'APIQueryMediaMsg',
@@ -14691,6 +14768,7 @@ api_names = [
     'APIStopBaremetalPxeServerMsg',
     'APIStopEcsInstanceMsg',
     'APIStopVmInstanceMsg',
+    'APISubmitLongJobMsg',
     'APISyncAliyunRouteEntryFromRemoteMsg',
     'APISyncAliyunSnapshotRemoteMsg',
     'APISyncAliyunVirtualRouterFromRemoteMsg',
@@ -18222,6 +18300,84 @@ class ImageInventory(object):
 
 
 
+class LongJobInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.apiId = None
+        self.jobName = None
+        self.jobData = None
+        self.jobResult = None
+        self.state = None
+        self.targetResourceUuid = None
+        self.managementNodeUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'apiId'):
+            self.apiId = inv.apiId
+        else:
+            self.apiId = None
+
+        if hasattr(inv, 'jobName'):
+            self.jobName = inv.jobName
+        else:
+            self.jobName = None
+
+        if hasattr(inv, 'jobData'):
+            self.jobData = inv.jobData
+        else:
+            self.jobData = None
+
+        if hasattr(inv, 'jobResult'):
+            self.jobResult = inv.jobResult
+        else:
+            self.jobResult = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'targetResourceUuid'):
+            self.targetResourceUuid = inv.targetResourceUuid
+        else:
+            self.targetResourceUuid = None
+
+        if hasattr(inv, 'managementNodeUuid'):
+            self.managementNodeUuid = inv.managementNodeUuid
+        else:
+            self.managementNodeUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class ManagementNodeInventory(object):
     def __init__(self):
         self.uuid = None
@@ -20298,52 +20454,52 @@ class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
 
 
 
-class VpcConnectionTO(object):
+class VpcConnectionEntry(object):
     def __init__(self):
-        self.sourceL2NetworkType = None
-        self.destinationL2NetworkType = None
-        self.sourceMac = None
-        self.destinationMac = None
-        self.sourceL2NetworkVni = None
-        self.destinationL2NetworkVni = None
-        self.lastOpDate = None
+        self.srcL2Type = None
+        self.dstL2Type = None
+        self.srcMac = None
+        self.dstMac = None
+        self.srcL2Vni = None
+        self.dstL2Vni = None
+        self.opDate = None
         self.status = None
 
     def evaluate(self, inv):
-        if hasattr(inv, 'sourceL2NetworkType'):
-            self.sourceL2NetworkType = inv.sourceL2NetworkType
+        if hasattr(inv, 'srcL2Type'):
+            self.srcL2Type = inv.srcL2Type
         else:
-            self.sourceL2NetworkType = None
+            self.srcL2Type = None
 
-        if hasattr(inv, 'destinationL2NetworkType'):
-            self.destinationL2NetworkType = inv.destinationL2NetworkType
+        if hasattr(inv, 'dstL2Type'):
+            self.dstL2Type = inv.dstL2Type
         else:
-            self.destinationL2NetworkType = None
+            self.dstL2Type = None
 
-        if hasattr(inv, 'sourceMac'):
-            self.sourceMac = inv.sourceMac
+        if hasattr(inv, 'srcMac'):
+            self.srcMac = inv.srcMac
         else:
-            self.sourceMac = None
+            self.srcMac = None
 
-        if hasattr(inv, 'destinationMac'):
-            self.destinationMac = inv.destinationMac
+        if hasattr(inv, 'dstMac'):
+            self.dstMac = inv.dstMac
         else:
-            self.destinationMac = None
+            self.dstMac = None
 
-        if hasattr(inv, 'sourceL2NetworkVni'):
-            self.sourceL2NetworkVni = inv.sourceL2NetworkVni
+        if hasattr(inv, 'srcL2Vni'):
+            self.srcL2Vni = inv.srcL2Vni
         else:
-            self.sourceL2NetworkVni = None
+            self.srcL2Vni = None
 
-        if hasattr(inv, 'destinationL2NetworkVni'):
-            self.destinationL2NetworkVni = inv.destinationL2NetworkVni
+        if hasattr(inv, 'dstL2Vni'):
+            self.dstL2Vni = inv.dstL2Vni
         else:
-            self.destinationL2NetworkVni = None
+            self.dstL2Vni = None
 
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
+        if hasattr(inv, 'opDate'):
+            self.opDate = inv.opDate
         else:
-            self.lastOpDate = None
+            self.opDate = None
 
         if hasattr(inv, 'status'):
             self.status = inv.status
@@ -21702,6 +21858,12 @@ class QueryObjectLocalStorageResourceRefInventory(object):
         'snapshot' : 'QueryObjectVolumeSnapshotInventory',
      }
 
+class QueryObjectLongJobInventory(object):
+     PRIMITIVE_FIELDS = ['jobName','managementNodeUuid','jobData','jobResult','name','lastOpDate','description','state','targetResourceUuid','uuid','apiId','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectManagementNodeInventory(object):
      PRIMITIVE_FIELDS = ['hostName','joinDate','heartBeat','uuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -22396,6 +22558,7 @@ queryMessageInventoryMap = {
      'APIQueryLoadBalancerListenerMsg' : QueryObjectLoadBalancerListenerInventory,
      'APIQueryLoadBalancerMsg' : QueryObjectLoadBalancerInventory,
      'APIQueryLocalStorageResourceRefMsg' : QueryObjectLocalStorageResourceRefInventory,
+     'APIQueryLongJobMsg' : QueryObjectLongJobInventory,
      'APIQueryManagementNodeMsg' : QueryObjectManagementNodeInventory,
      'APIQueryMediaMsg' : QueryObjectMediaInventory,
      'APIQueryMonitorTriggerActionMsg' : QueryObjectMonitorTriggerActionInventory,
