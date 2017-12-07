@@ -564,6 +564,7 @@ mimetype.assign = (
             if not linux.wait_callback_success(check, None, 5):
                 raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
 
+    @lock.file_lock('/run/xtables.lock')
     def work_userdata_iptables(self, CHAIN_NAME, to):
         # DNAT port 80
         PORT = to.port
