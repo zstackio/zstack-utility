@@ -580,15 +580,25 @@ mimetype.assign = (
             bash_errorout('iptables -w -t nat -X {{OLD_CHAIN}}')
         ret = bash_r('iptables-save | grep -w ":{{PORT_CHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            bash_errorout('iptables -w -t nat -N {{PORT_CHAIN_NAME}}')
+            self.bash_ignore_exist_for_ipt('iptables -w -t nat -N {{PORT_CHAIN_NAME}}')
         ret = bash_r('iptables -w -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"')
         if ret != 0:
-            bash_errorout('iptables -w -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}')
+            self.bash_ignore_exist_for_ipt('iptables -w -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}')
         ret = bash_r(
             'iptables-save -t nat | grep -- "{{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}"')
         if ret != 0:
-            bash_errorout(
+            self.bash_ignore_exist_for_ipt(
                 'iptables -w -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}')
+
+    @staticmethod
+    def bash_ignore_exist_for_ipt(cmd):
+        r, o, e = bash_roe(cmd)
+        if r == 0:
+            return
+        elif r == 1 and "iptables: Chain already exists." in e:
+            return
+        else:
+            raise BashError('failed to execute bash[%s], return code: %s, stdout: %s, stderr: %s' % (cmd, r, o, e))
 
     @kvmagent.replyerror
     def release_userdata(self, req):
