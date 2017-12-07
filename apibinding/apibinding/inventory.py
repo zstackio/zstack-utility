@@ -13530,6 +13530,61 @@ class APIGetAttachableVpcL3NetworkReply(object):
         self.error = None
 
 
+APIGETVPCVROUTERDISTRIBUTEDROUTINGCONNECTIONSMSG_FULL_NAME = 'org.zstack.vpc.APIGetVpcVRouterDistributedRoutingConnectionsMsg'
+class APIGetVpcVRouterDistributedRoutingConnectionsMsg(object):
+    FULL_NAME='org.zstack.vpc.APIGetVpcVRouterDistributedRoutingConnectionsMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVPCVROUTERDISTRIBUTEDROUTINGCONNECTIONSREPLY_FULL_NAME = 'org.zstack.vpc.APIGetVpcVRouterDistributedRoutingConnectionsReply'
+class APIGetVpcVRouterDistributedRoutingConnectionsReply(object):
+    FULL_NAME='org.zstack.vpc.APIGetVpcVRouterDistributedRoutingConnectionsReply'
+    def __init__(self):
+        self.inventories = OptionalMap()
+        self.success = None
+        self.error = None
+
+
+APIGETVPCVROUTERDISTRIBUTEDROUTINGENABLEDMSG_FULL_NAME = 'org.zstack.vpc.APIGetVpcVRouterDistributedRoutingEnabledMsg'
+class APIGetVpcVRouterDistributedRoutingEnabledMsg(object):
+    FULL_NAME='org.zstack.vpc.APIGetVpcVRouterDistributedRoutingEnabledMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVPCVROUTERDISTRIBUTEDROUTINGENABLEDREPLY_FULL_NAME = 'org.zstack.vpc.APIGetVpcVRouterDistributedRoutingEnabledReply'
+class APIGetVpcVRouterDistributedRoutingEnabledReply(object):
+    FULL_NAME='org.zstack.vpc.APIGetVpcVRouterDistributedRoutingEnabledReply'
+    def __init__(self):
+        self.enabled = None
+        self.success = None
+        self.error = None
+
+
+APISETVPCVROUTERDISTRIBUTEDROUTINGENABLEDMSG_FULL_NAME = 'org.zstack.vpc.APISetVpcVRouterDistributedRoutingEnabledMsg'
+class APISetVpcVRouterDistributedRoutingEnabledMsg(object):
+    FULL_NAME='org.zstack.vpc.APISetVpcVRouterDistributedRoutingEnabledMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.enabled = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDVROUTERROUTEENTRYMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
 class APIAddVRouterRouteEntryMsg(object):
     FULL_NAME='org.zstack.vrouterRoute.APIAddVRouterRouteEntryMsg'
@@ -14252,6 +14307,10 @@ api_names = [
     'APIGetVolumeReply',
     'APIGetVolumeSnapshotTreeMsg',
     'APIGetVolumeSnapshotTreeReply',
+    'APIGetVpcVRouterDistributedRoutingConnectionsMsg',
+    'APIGetVpcVRouterDistributedRoutingConnectionsReply',
+    'APIGetVpcVRouterDistributedRoutingEnabledMsg',
+    'APIGetVpcVRouterDistributedRoutingEnabledReply',
     'APIGetVpcVpnConfigurationFromRemoteMsg',
     'APIGetVpcVpnConfigurationFromRemoteReply',
     'APIGetZoneMsg',
@@ -14610,6 +14669,7 @@ api_names = [
     'APISetVmStaticIpMsg',
     'APISetVmUsbRedirectMsg',
     'APISetVolumeQosMsg',
+    'APISetVpcVRouterDistributedRoutingEnabledMsg',
     'APIShareResourceMsg',
     'APIStartBaremetalPxeServerMsg',
     'APIStartEcsInstanceMsg',
@@ -20211,6 +20271,60 @@ class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
 
 
 
+class VpcConnectionTO(object):
+    def __init__(self):
+        self.sourceL2NetworkType = None
+        self.destinationL2NetworkType = None
+        self.sourceMac = None
+        self.destinationMac = None
+        self.sourceL2NetworkVni = None
+        self.destinationL2NetworkVni = None
+        self.lastOpDate = None
+        self.status = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'sourceL2NetworkType'):
+            self.sourceL2NetworkType = inv.sourceL2NetworkType
+        else:
+            self.sourceL2NetworkType = None
+
+        if hasattr(inv, 'destinationL2NetworkType'):
+            self.destinationL2NetworkType = inv.destinationL2NetworkType
+        else:
+            self.destinationL2NetworkType = None
+
+        if hasattr(inv, 'sourceMac'):
+            self.sourceMac = inv.sourceMac
+        else:
+            self.sourceMac = None
+
+        if hasattr(inv, 'destinationMac'):
+            self.destinationMac = inv.destinationMac
+        else:
+            self.destinationMac = None
+
+        if hasattr(inv, 'sourceL2NetworkVni'):
+            self.sourceL2NetworkVni = inv.sourceL2NetworkVni
+        else:
+            self.sourceL2NetworkVni = None
+
+        if hasattr(inv, 'destinationL2NetworkVni'):
+            self.destinationL2NetworkVni = inv.destinationL2NetworkVni
+        else:
+            self.destinationL2NetworkVni = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+
+
 class VRouterRouteEntryAO(object):
     def __init__(self):
         self.destination = None
@@ -20551,6 +20665,7 @@ PRIMARY_STORAGE_TYPE = 'ZSES'
 
 #GlobalConfigPythonConstant
 class GlobalConfig_ALIYUN(object):
+    ALIYUN_OPENAPI_PAGE_SIZE = 'aliyun.openapi.page.size'
     UPLOAD_ECS_IMAGE_FORMAT = 'upload.ecs.image.format'
 
     @staticmethod
@@ -20864,13 +20979,19 @@ class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
+    SECURITYGROUP_NUM = 'securityGroup.num'
+    SCHEDULER_NUM = 'scheduler.num'
     VM_MEMORYSIZE = 'vm.memorySize'
+    PORTFORWARDING_NUM = 'portForwarding.num'
+    EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
+    VXLAN_NUM = 'vxlan.num'
 
     @staticmethod
     def get_category():
@@ -20964,6 +21085,7 @@ class GlobalConfig_VOLUMESNAPSHOT(object):
         return 'volumeSnapshot'
 
 class GlobalConfig_VPC(object):
+    ZSNP_ENABLED = 'zsnp.enabled'
     ZSNP_TIMEOUT = 'zsnp.timeout'
 
     @staticmethod

@@ -4850,6 +4850,30 @@ class GetVolumeSnapshotTreeAction(inventory.APIGetVolumeSnapshotTreeMsg):
         self.out = evt
         return self.out
 
+class GetVpcVRouterDistributedRoutingConnectionsAction(inventory.APIGetVpcVRouterDistributedRoutingConnectionsMsg):
+    def __init__(self):
+        super(GetVpcVRouterDistributedRoutingConnectionsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVpcVRouterDistributedRoutingConnectionsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetVpcVRouterDistributedRoutingEnabledAction(inventory.APIGetVpcVRouterDistributedRoutingEnabledMsg):
+    def __init__(self):
+        super(GetVpcVRouterDistributedRoutingEnabledAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetVpcVRouterDistributedRoutingEnabledAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetVpcVpnConfigurationFromRemoteAction(inventory.APIGetVpcVpnConfigurationFromRemoteMsg):
     def __init__(self):
         super(GetVpcVpnConfigurationFromRemoteAction, self).__init__()
@@ -7330,6 +7354,18 @@ class SetVolumeQosAction(inventory.APISetVolumeQosMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SetVolumeQosAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SetVpcVRouterDistributedRoutingEnabledAction(inventory.APISetVpcVRouterDistributedRoutingEnabledMsg):
+    def __init__(self):
+        super(SetVpcVRouterDistributedRoutingEnabledAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SetVpcVRouterDistributedRoutingEnabledAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
