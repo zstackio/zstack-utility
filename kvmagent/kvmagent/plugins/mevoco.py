@@ -415,6 +415,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         return jsonobject.dumps(ApplyUserdataRsp())
 
     @in_bash
+    @lock.file_lock('/run/xtables.lock')
     def _apply_userdata(self, to):
         p = UserDataEnv(to.bridgeName, to.namespaceName)
         INNER_DEV = None
