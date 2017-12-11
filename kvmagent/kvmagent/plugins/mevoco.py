@@ -1,4 +1,3 @@
-
 __author__ = 'frank'
 
 from kvmagent import kvmagent
@@ -508,8 +507,10 @@ $HTTP["remoteip"] =~ "^(.*)$" {
         "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
         "^/.*/meta-data$" => "../%1/meta-data",
         "^/.*/meta-data/$" => "../%1/meta-data/",
-        "^/.*/user-data$" => "../%1/user-data"
+        "^/.*/user-data$" => "../%1/user-data",
+        "^/.*/$" => "../%1/$1"
     )
+    dir-listing.activate = "enable"
 }
 
 mimetype.assign = (
