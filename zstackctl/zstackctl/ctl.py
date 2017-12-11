@@ -4340,6 +4340,7 @@ class RestoreMysqlCmd(Command):
         # only root user can restore database
         db_password = args.mysql_root_password
         db_backup_name = args.from_file
+        db_hostname_origin_cp = db_hostname
         if os.path.exists(db_backup_name) is False:
             error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
         error_if_tool_is_missing('gunzip')
@@ -4364,8 +4365,12 @@ class RestoreMysqlCmd(Command):
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)
             shell_no_pipe(command)
-            command = "gunzip < %s | mysql -uroot %s %s -P %s %s" \
-                  % (db_backup_name, db_connect_password, db_hostname, db_port, database)
+            
+            # modify DEFINER of view, trigger and so on
+            # from: /* ... */ /*!50017 DEFINER=`old_user`@`old_hostname`*/ /*...
+            # to:   /* ... */ /*!50017 DEFINER=`new_user`@`new_hostname`*/ /*...
+            command = "gunzip < %s | sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`%s`@`%s`/' | mysql -uroot %s %s -P %s %s" \
+                  % (db_backup_name, db_user, db_hostname_origin_cp, db_connect_password, db_hostname, db_port, database)
             shell_no_pipe(command)
         #shell_no_pipe('zstack-ctl start_node')
         info("Recover data successfully! You can start node by: zstack-ctl start")
