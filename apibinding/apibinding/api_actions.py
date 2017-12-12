@@ -7670,6 +7670,18 @@ class SyncRouterInterfaceFromRemoteAction(inventory.APISyncRouterInterfaceFromRe
         self.out = evt
         return self.out
 
+class SyncVCenterAction(inventory.APISyncVCenterMsg):
+    def __init__(self):
+        super(SyncVCenterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncVCenterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class SyncVirtualBorderRouterFromRemoteAction(inventory.APISyncVirtualBorderRouterFromRemoteMsg):
     def __init__(self):
         super(SyncVirtualBorderRouterFromRemoteAction, self).__init__()
