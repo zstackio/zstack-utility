@@ -13477,6 +13477,18 @@ class APIQueryVCenterReply(object):
         self.error = None
 
 
+APISYNCVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APISyncVCenterMsg'
+class APISyncVCenterMsg(object):
+    FULL_NAME='org.zstack.vmware.APISyncVCenterMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIUPDATEVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIUpdateVCenterMsg'
 class APIUpdateVCenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIUpdateVCenterMsg'
@@ -13578,7 +13590,9 @@ class APISetVpcVRouterDistributedRoutingEnabledMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.enabled = None
+        #mandatory field
+        #valid values: [enable, disable]
+        self.stateEvent = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -14695,6 +14709,7 @@ api_names = [
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncRouterInterfaceFromRemoteMsg',
+    'APISyncVCenterMsg',
     'APISyncVirtualBorderRouterFromRemoteMsg',
     'APISyncVolumeSizeMsg',
     'APISyncVpcUserVpnGatewayFromRemoteMsg',
@@ -20113,6 +20128,7 @@ class VCenterBackupStorageInventory(BackupStorageInventory):
     def __init__(self):
         super(VCenterBackupStorageInventory, self).__init__()
         self.vCenterUuid = None
+        self.datastore = None
 
     def evaluate(self, inv):
         super(VCenterBackupStorageInventory, self).evaluate(inv)
@@ -20120,6 +20136,11 @@ class VCenterBackupStorageInventory(BackupStorageInventory):
             self.vCenterUuid = inv.vCenterUuid
         else:
             self.vCenterUuid = None
+
+        if hasattr(inv, 'datastore'):
+            self.datastore = inv.datastore
+        else:
+            self.datastore = None
 
 
 
@@ -20261,6 +20282,7 @@ class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
     def __init__(self):
         super(VCenterPrimaryStorageInventory, self).__init__()
         self.vCenterUuid = None
+        self.datastore = None
 
     def evaluate(self, inv):
         super(VCenterPrimaryStorageInventory, self).evaluate(inv)
@@ -20268,6 +20290,11 @@ class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
             self.vCenterUuid = inv.vCenterUuid
         else:
             self.vCenterUuid = None
+
+        if hasattr(inv, 'datastore'):
+            self.datastore = inv.datastore
+        else:
+            self.datastore = None
 
 
 
@@ -21086,6 +21113,7 @@ class GlobalConfig_VOLUMESNAPSHOT(object):
 
 class GlobalConfig_VPC(object):
     ZSNP_ENABLED = 'zsnp.enabled'
+    DISTRIBUTEDROUTING_ENABLED = 'distributedRouting.enabled'
     ZSNP_TIMEOUT = 'zsnp.timeout'
 
     @staticmethod
@@ -22002,7 +22030,7 @@ class QueryObjectUserTagInventory(object):
      }
 
 class QueryObjectVCenterBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','name','lastOpDate','vCenterUuid','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','datastore','description','type','uuid','url','totalCapacity','name','lastOpDate','vCenterUuid','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -22029,7 +22057,7 @@ class QueryObjectVCenterInventory(object):
      }
 
 class QueryObjectVCenterPrimaryStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','zoneUuid','description','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','name','lastOpDate','vCenterUuid','state','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','datastore','zoneUuid','description','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','name','lastOpDate','vCenterUuid','state','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['volume','volumeSnapshot','zone','cluster']
      QUERY_OBJECT_MAP = {
         'volume' : 'QueryObjectVolumeInventory',
