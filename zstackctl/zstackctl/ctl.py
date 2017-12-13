@@ -1267,6 +1267,78 @@ class DeployDBCmd(Command):
 
         info('Successfully deployed ZStack database and updated corresponding DB information in %s' % property_file_path)
 
+class DeployUIDBCmd(Command):
+    DEPLOY_UI_DB_SCRIPT_PATH = "WEB-INF/classes/deployuidb.sh"
+
+    def __init__(self):
+        super(DeployUIDBCmd, self).__init__()
+        self.name = "deploy_ui_db"
+        self.description = (
+            "Deploy a new zstack_ui database.\n"
+            "\nDANGER: this will erase the existing zstack_ui database.\n"
+            "NOTE: If the database is running on a remote host, please make sure you have granted privileges to the root user by:\n"
+            "\n\tGRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' IDENTIFIED BY 'your_root_password' WITH GRANT OPTION;\n"
+            "\tFLUSH PRIVILEGES;\n"
+        )
+        ctl.register_command(self)
+
+    def update_db_config(self):
+        update_db_config_script = mysql_db_config_script
+
+        fd, update_db_config_script_path = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write(update_db_config_script)
+        info('update_db_config_script_path is: %s' % update_db_config_script_path)
+        ShellCmd('bash %s' % update_db_config_script_path)()
+        os.remove(update_db_config_script_path)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--root-password', help='root user password of MySQL. [DEFAULT] empty password')
+        parser.add_argument('--zstack-password', help='password of user "zstack". [DEFAULT] empty password')
+        parser.add_argument('--host', help='IP or DNS name of MySQL host; default is localhost', default='localhost')
+        parser.add_argument('--port', help='port of MySQL host; default is 3306', type=int, default=3306)
+        parser.add_argument('--drop', help='drop existing zstack ui database', action='store_true', default=False)
+        parser.add_argument('--keep-db', help='keep existing zstack ui database and not raise error.', action='store_true', default=False)
+
+    def run(self, args):
+        error_if_tool_is_missing('mysql')
+
+        script_path = os.path.join(ctl.zstack_home, self.DEPLOY_UI_DB_SCRIPT_PATH)
+        if not os.path.exists(script_path):
+            error('cannot find %s, your zstack installation may have been corrupted, please reinstall it' % script_path)
+
+        if args.root_password:
+            check_existing_db = 'mysql --user=root --password=%s --host=%s --port=%s -e "use zstack_ui"' % (args.root_password, args.host, args.port)
+        else:
+            check_existing_db = 'mysql --user=root --host=%s --port=%s -e "use zstack_ui"' % (args.host, args.port)
+
+        self.update_db_config()
+        cmd = ShellCmd(check_existing_db)
+        cmd(False)
+        if not args.root_password:
+            args.root_password = "''"
+        if not args.zstack_password:
+            args.zstack_password = "''"
+
+        if cmd.return_code == 0 and not args.drop:
+            if args.keep_db:
+                info('detected existing zstack_ui database and keep it; if you want to drop it, please append parameter --drop, instead of --keep-db\n')
+            else:
+                raise CtlError('detected existing zstack_ui database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database')
+        else:
+            cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, args.host, args.port, args.zstack_password))
+            cmd(False)
+            if cmd.return_code != 0:
+                if ('ERROR 1044' in cmd.stdout or 'ERROR 1044' in cmd.stderr) or ('Access denied' in cmd.stdout or 'Access denied' in cmd.stderr):
+                    raise CtlError(
+                        "failed to deploy zstack_ui database, access denied; if your root password is correct and you use IP rather than localhost,"
+                        "it's probably caused by the privileges are not granted to root user for remote access; please see instructions in 'zstack-ctl -h'."
+                        "error details: %s, %s\n" % (cmd.stdout, cmd.stderr)
+                    )
+                else:
+                    cmd.raise_error()
+
+        info('Successfully deployed zstack_ui database')
+
 class TailLogCmd(Command):
     def __init__(self):
         super(TailLogCmd, self).__init__()
@@ -4409,7 +4481,7 @@ class DumpMysqlCmd(Command):
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command = "mysqldump --add-drop-database  --databases -u %s %s -P %s zstack zstack_rest | gzip > %s "\
+            command = "mysqldump --add-drop-database  --databases -u %s %s -P %s zstack zstack_rest zstack_ui | gzip > %s "\
                            % (db_user, db_connect_password, db_port, db_backup_name + ".gz")
             (status, output) = commands.getstatusoutput(command)
             if status != 0:
@@ -4419,7 +4491,7 @@ class DumpMysqlCmd(Command):
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command = "mysqldump --add-drop-database  --databases -u %s %s --host %s -P %s zstack zstack_rest | gzip > %s " \
+            command = "mysqldump --add-drop-database  --databases -u %s %s --host %s -P %s zstack zstack_rest zstack_ui | gzip > %s " \
                            % (db_user, db_connect_password, db_hostname, db_port, db_backup_name + ".gz")
             (status, output) = commands.getstatusoutput(command)
             if status != 0:
@@ -4498,7 +4570,7 @@ class RestoreMysqlCmd(Command):
         shell_no_pipe('zstack-ctl stop_node')
 
         info("Starting recover data ...")
-        for database in ['zstack','zstack_rest']:
+        for database in ['zstack','zstack_rest','zstack_ui']:
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)
             shell_no_pipe(command)
@@ -5767,15 +5839,18 @@ class InstallZstackUiCmd(Command):
   remote_user: root
   tasks:
     - name: create zstack-ui directory
-      shell: "mkdir -p /usr/local/zstack/zstack-ui"
+      shell: "mkdir -p {{ui_home}}/tmp"
     - name: copy zstack-ui package
       copy: src=$src dest=$dest
+    - name: decompress zstack-ui package
+      shell: "rm -rf {{ui_home}}/tmp; unzip {{dest}} -d {{ui_home}}/tmp"
 '''
 
         t = string.Template(yaml)
         yaml = t.substitute({
             "src": ui_binary_path,
-            "dest": os.path.join('/usr/local/zstack/zstack-ui/', ui_binary),
+            "dest": os.path.join(ctl.ZSTACK_UI_HOME, ui_binary),
+            "ui_home": ctl.ZSTACK_UI_HOME,
             "host": args.host
         })
 
@@ -6200,6 +6275,99 @@ class UpgradeDbCmd(Command):
                 shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s' % (flyway_path, db_user, db_url, schema_path))
 
             info('Successfully upgraded the database to the latest version.\n')
+
+        backup_current_database()
+        create_schema_version_table_if_needed()
+        migrate()
+
+class UpgradeUIDbCmd(Command):
+    def __init__(self):
+        super(UpgradeUIDbCmd, self).__init__()
+        self.name = 'upgrade_ui_db'
+        self.description = (
+            'upgrade the zstack_ui database from current version to a new version'
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--force', help='bypass zstack ui status check.'
+                            '\nNOTE: only use it when you know exactly what it does', action='store_true', default=False)
+        parser.add_argument('--no-backup', help='do NOT backup the zstack_ui database. If the database is very large and you have manually backup it, using this option will fast the upgrade process. [DEFAULT] false', default=False)
+        parser.add_argument('--dry-run', help='Check if zstack_ui database could be upgraded. [DEFAULT] not set', action='store_true', default=False)
+
+    def run(self, args):
+        error_if_tool_is_missing('mysqldump')
+        error_if_tool_is_missing('mysql')
+
+        db_url = ctl.get_db_url()
+        db_url_params = db_url.split('//')
+        db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
+        if 'zstack_ui' not in db_url:
+            db_url = '%s/zstack_ui' % db_url.rstrip('/')
+
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+
+        flyway_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/tools/flyway-3.2.1/flyway')
+        if not os.path.exists(flyway_path):
+            raise CtlError('cannot find %s. Have you run upgrade_management_node?' % flyway_path)
+
+        upgrading_schema_dir = os.path.join(ctl.ZSTACK_UI_HOME, 'tmp/WEB-INF/classes/db/migration/')
+        if not os.path.exists(upgrading_schema_dir):
+            raise CtlError('cannot find %s' % upgrading_schema_dir)
+
+        if not args.force:
+            (status, output)= commands.getstatusoutput("zstack-ctl ui_status")
+            if status == 0 and 'Running' in output:
+                raise CtlError('ZStack UI is still running. Please stop it before upgrade zstack_ui database.')
+
+        if args.dry_run:
+            info('Dry run finished. zstack_ui database could be upgraded. ')
+            return True
+
+        def backup_current_database():
+            if args.no_backup:
+                return
+
+            info('start to backup the zstack_ui database ...')
+
+            db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime()), 'ui_backup.sql')
+            shell('mkdir -p %s' % os.path.dirname(db_backup_path))
+            if db_password:
+                shell('mysqldump -u %s -p%s --host %s --port %s zstack_ui > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
+            else:
+                shell('mysqldump -u %s --host %s --port %s zstack_ui > %s' % (db_user, db_hostname, db_port, db_backup_path))
+
+            info('successfully backup the zstack_ui database to %s' % db_backup_path)
+
+        def create_schema_version_table_if_needed():
+            if db_password:
+                out = shell('''mysql -u %s -p%s --host %s --port %s -t zstack_ui -e "show tables like 'schema_version'"''' %
+                            (db_user, db_password, db_hostname, db_port))
+            else:
+                out = shell('''mysql -u %s --host %s --port %s -t zstack_ui -e "show tables like 'schema_version'"''' %
+                            (db_user, db_hostname, db_port))
+
+            if 'schema_version' in out:
+                return
+
+            info('version table "schema_version" is not existing; initializing a new version table first')
+
+            if db_password:
+                shell_no_pipe('bash %s baseline -baselineVersion=2.3.1 -baselineDescription="2.3.1 version" -user=%s -password=%s -url=%s' %
+                      (flyway_path, db_user, db_password, db_url))
+            else:
+                shell_no_pipe('bash %s baseline -baselineVersion=2.3.1 -baselineDescription="2.3.1 version" -user=%s -url=%s' %
+                      (flyway_path, db_user, db_url))
+
+        def migrate():
+            schema_path = 'filesystem:%s' % upgrading_schema_dir
+
+            if db_password:
+                shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (flyway_path, db_user, db_password, db_url, schema_path))
+            else:
+                shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s' % (flyway_path, db_user, db_url, schema_path))
+
+            info('Successfully upgraded the zstack_ui database to the latest version.\n')
 
         backup_current_database()
         create_schema_version_table_if_needed()
@@ -6960,6 +7128,13 @@ class StartUiCmd(Command):
         if not os.path.exists(os.path.dirname(self.PID_FILE)):
             shell("mkdir -p %s" % os.path.dirname(self.PID_FILE))
 
+	# get default DB.url, DB.user, DB.password etc.
+        db_url_params = ctl.get_db_url().split('//')
+        self.db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
+        if 'zstack_ui' not in self.db_url:
+            self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
+        _, _, self.db_user, self.db_password = ctl.get_live_mysql_portal()
+
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
@@ -6974,12 +7149,19 @@ class StartUiCmd(Command):
         parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
         parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui", default='zstackui')
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE, default=ctl.ZSTACK_UI_KEYSTORE)
-        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JCEKS). [DEFAULT] PKCS12", default='PKCS12')
+        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS). [DEFAULT] PKCS12", default='PKCS12')
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password", default='password')
 
-    def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log):
-        cmd = '/etc/init.d/zstack-ui start --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s' \
-              % (mn_host, mn_port, webhook_host, webhook_port, server_port, log)
+        # arguments for ui_db
+        parser.add_argument('--db-url', help="zstack_ui database jdbc url", default=self.db_url)
+        parser.add_argument('--db-username', help="zstack_ui database username", default=self.db_user)
+        parser.add_argument('--db-password', help="zstack_ui database password", default=self.db_password)
+
+    def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log, enable_ssl, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password):
+        if enable_ssl:
+            cmd = '/etc/init.d/zstack-ui start --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --enable-ssl --ssl-keyalias %s --ssl-keystore %s --ssl-keystore-type %s --ssl-keystore-password %s --db-url %s --db-username %s --db-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password)
+        else:
+            cmd = '/etc/init.d/zstack-ui start --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --db-url %s --db-username %s --db-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, db_url, db_username, db_password)
         ssh_run_no_pipe(host, cmd)
         info('successfully start the UI server on the remote host[%s:%s]' % (host, server_port))
 
@@ -7029,7 +7211,7 @@ class StartUiCmd(Command):
     def run(self, args):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         if args.host != 'localhost':
-            self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log)
+            self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log, args.enable_ssl, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password)
             return
 
         # create default ssl keystore if enable_ssl is True
@@ -7108,9 +7290,9 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
         if args.enable_ssl:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %s/zstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.log)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %s/zstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, args.log)
         else:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %s/zstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %s/zstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, args.log)
 
         script(scmd, no_pipe=True)
 
@@ -7161,7 +7343,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
         parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui", default='zstackui')
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE, default=ctl.ZSTACK_UI_KEYSTORE)
-        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JCEKS). [DEFAULT] PKCS12", default='PKCS12')
+        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS). [DEFAULT] PKCS12", default='PKCS12')
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password", default='password')
 
     def run(self, args):
@@ -7356,6 +7538,7 @@ def main():
     DumpMysqlCmd()
     ChangeMysqlPasswordCmd()
     DeployDBCmd()
+    DeployUIDBCmd()
     GetEnvironmentVariableCmd()
     InstallHACmd()
     InstallDbCmd()
@@ -7383,6 +7566,7 @@ def main():
     UpgradeManagementNodeCmd()
     UpgradeMultiManagementNodeCmd()
     UpgradeDbCmd()
+    UpgradeUIDbCmd()
     UpgradeCtlCmd()
     UpgradeHACmd()
     StartVDIUICmd()
