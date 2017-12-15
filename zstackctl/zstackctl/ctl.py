@@ -381,7 +381,7 @@ def check_host_info_format(host_info):
         return (user, password, ip, port)
 
 def check_host_password(password, ip):
-    command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+    command ='timeout 10 sshpass -p "%s" ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
              'StrictHostKeyChecking=no  root@%s echo ""' % (password, ip)
     (status, output) = commands.getstatusoutput(command)
     if status != 0:
@@ -2232,7 +2232,7 @@ class AddManagementNodeCmd(Command):
                             default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
                  ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
@@ -2757,7 +2757,7 @@ class InstallHACmd(Command):
                                       % (public_key.strip('\n'), public_key.strip('\n'), public_key.strip('\n'))
 
         # add ha public key to host1
-        ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+        ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s'" % \
                                   (args.host1_password, args.host1, add_public_key_command)
         (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
@@ -2765,7 +2765,7 @@ class InstallHACmd(Command):
             error(output)
 
         # add ha public key to host2
-        ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+        ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
                                   (args.host2_password, args.host2, add_public_key_command)
         (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
@@ -2774,7 +2774,7 @@ class InstallHACmd(Command):
 
         # add ha public key to host3
         if args.host3_info is not False:
-            ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+            ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                               "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
                                               (args.host3_password, args.host3, add_public_key_command)
             (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
@@ -4988,7 +4988,7 @@ class InstallManagementNodeCmd(Command):
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
                  ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
