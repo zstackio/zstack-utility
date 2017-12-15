@@ -3602,20 +3602,24 @@ class VmPlugin(kvmagent.KvmAgent):
         r, o, e = bash.bash_roe(cmd)
         if o == "":
             return "can not get irq"
-        cmd = "cat /proc/interrupts | grep ' %s:' | awk '{print $NF }' | awk -F ':' '{ print $2 }'" % o.strip()
-        r, o, e = bash.bash_roe(cmd)
-        if o == "":
-            return "can not get irq conflict device"
-        cmd = "virsh nodedev-list | grep %s" % o
-        r, o, e = bash.bash_roe(cmd)
-        if o == "":
-            return "can not get conflict device path"
-        cmd = "virsh nodedev-dumpxml %s | grep path | awk -F '[<>]' '{ print $3 }' | awk -F 'usb' '{ print $1 }'" % o.strip()
-        r, o, e = bash.bash_roe(cmd)
-        if o == "":
-            return "can not get conflict device path"
         hostname = bash.bash_o("hostname -f")
-        return "found irq conflict for pci device %s, please execute 'echo 1 > %sremove' on %s" % (addr, o.strip(), hostname)
+
+        cmd = "devices=`find /sys/devices/ -iname 'irq' | grep pci | xargs grep %s | grep -v '%s' | awk -F '/' '{ print \"/\"$2\"/\"$3\"/\"$4\"/\"$5 }' | sort | uniq`;" % (o.strip(), addr) + \
+              " for dev in $devices; do wc -l $dev/msi_bus; done | grep -E '^.*0 /sys' | awk -F '/' '{ print \"/\"$2\"/\"$3\"/\"$4\"/\"$5 }'"
+        r, o, e = bash.bash_roe(cmd)
+        if o == "":
+            return "there are irq conflict, but zstack can not get irq conflict device, you need fix it manually"
+        ret = ""
+        names = ""
+        for dev in o.splitlines():
+            if dev.strip() != "":
+                ret += "echo 1 > %s/remove; " % dev
+                cmd = "lspci -s %s" % dev.split('/')[-1]
+                r, o, e = bash.bash_roe(cmd)
+                names += o.strip()
+
+        return "WARN: found irq conflict for pci device addr %s, please execute '%s', and then try to passthrough again. Please noted, the above command will remove the conflicted devices(%s) from system, ONLY reboot can bring the device back to service." % \
+               (addr, ret, names)
 
     @in_bash
     def handle_vfio_irq_conflict(self, vmUuid):
