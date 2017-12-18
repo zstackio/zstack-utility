@@ -90,6 +90,7 @@ class HostPostInfo(object):
         self.host_inventory = None
         self.host = None
         self.vip= None
+        self.chrony_servers = None
         self.post_url = ""
         self.start_time = None
         self.rabbit_password = None
