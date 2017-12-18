@@ -4437,6 +4437,8 @@ class CollectLogCmd(Command):
         run_remote_command(command, host_post_info)
         command = "iptables-save > %s/iptables_info" % tmp_log_dir
         run_remote_command(command, host_post_info)
+        command = "journalctl -x > %s/journalctl_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
 
     def get_pkg_list(self, host_post_info, tmp_log_dir):
         command = "rpm -qa | sort > %s/pkg_list" % tmp_log_dir
@@ -4705,6 +4707,8 @@ class CollectLogCmd(Command):
         command = " rpm -qa | sort  > %s/pkg_list" % mn_log_dir
         commands.getstatusoutput(command)
         command = " rpm -qa | sort  > %s/pkg_list" % mn_log_dir
+        commands.getstatusoutput(command)
+        command = "journalctl -x > %s/journalctl_info" % mn_log_dir
         commands.getstatusoutput(command)
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
