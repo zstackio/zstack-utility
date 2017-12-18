@@ -13,6 +13,7 @@ import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
 from zstacklib.utils import bash
+from zstacklib.utils.bash import in_bash
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lichbd
@@ -2994,6 +2995,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.error = "QoS exceed max limit, please check and reset it in zstack"
             else:
                 rsp.error = e_str
+            err = self.handle_vfio_irq_conflict(cmd.vmInstanceUuid)
+            if err != "":
+                rsp.error = "%s, details: %s" % (err, rsp.error)
             rsp.success = False
         return jsonobject.dumps(rsp)
 
@@ -3579,8 +3583,52 @@ class VmPlugin(kvmagent.KvmAgent):
             spath, cmd.vmUuid, o, e))
         if r!= 0:
             rsp.success = False
-            rsp.error = "%s %s" % (e, o)
+            err = self.handle_vfio_irq_conflict_with_addr(cmd.vmUuid, addr)
+            if err == "":
+                rsp.error = "%s %s" % (e, o)
+            else:
+                rsp.error = "%s, details: %s %s" % (err, e, o)
         return jsonobject.dumps(rsp)
+
+    @in_bash
+    def handle_vfio_irq_conflict_with_addr(self, vmUuid, addr):
+        logger.debug("check irq conflict with %s, %s" % (vmUuid, addr))
+        cmd = ("tail -n 5 /var/log/libvirt/qemu/%s.log | grep -E 'vfio: Error: Failed to setup INTx fd: Device or resource busy'" %
+                vmUuid)
+        r, o, e = bash.bash_roe(cmd)
+        if r != 0:
+            return ""
+        cmd = "lspci -vs %s | grep IRQ | awk '{print $5}'" % addr
+        r, o, e = bash.bash_roe(cmd)
+        if o == "":
+            return "can not get irq"
+        hostname = bash.bash_o("hostname -f")
+
+        cmd = "devices=`find /sys/devices/ -iname 'irq' | grep pci | xargs grep %s | grep -v '%s' | awk -F '/' '{ print \"/\"$2\"/\"$3\"/\"$4\"/\"$5 }' | sort | uniq`;" % (o.strip(), addr) + \
+              " for dev in $devices; do wc -l $dev/msi_bus; done | grep -E '^.*0 /sys' | awk -F '/' '{ print \"/\"$2\"/\"$3\"/\"$4\"/\"$5 }'"
+        r, o, e = bash.bash_roe(cmd)
+        if o == "":
+            return "there are irq conflict, but zstack can not get irq conflict device, you need fix it manually"
+        ret = ""
+        names = ""
+        for dev in o.splitlines():
+            if dev.strip() != "":
+                ret += "echo 1 > %s/remove; " % dev
+                cmd = "lspci -s %s" % dev.split('/')[-1]
+                r, o, e = bash.bash_roe(cmd)
+                names += o.strip()
+
+        return "WARN: found irq conflict for pci device addr %s, please execute '%s', and then try to passthrough again. Please noted, the above command will remove the conflicted devices(%s) from system, ONLY reboot can bring the device back to service." % \
+               (addr, ret, names)
+
+    @in_bash
+    def handle_vfio_irq_conflict(self, vmUuid):
+        cmd = ("tail -n 5 /var/log/libvirt/qemu/%s.log | grep -E 'qemu.*vfio: Error: Failed to setup INTx fd: Device or resource busy' | awk -F'[=,]' '{ print $3 }'" %
+                vmUuid)
+        r, o, e = bash.bash_roe(cmd)
+        if r != 0:
+            return ""
+        return self.handle_vfio_irq_conflict_with_addr(vmUuid, o.strip())
 
     @kvmagent.replyerror
     def hot_unplug_pci_device(self, req):
