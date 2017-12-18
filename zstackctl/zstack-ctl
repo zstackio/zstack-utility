@@ -29,3 +29,5 @@ fi
 
 . $VIRTUAL_ENV/bin/activate
 python -c "from zstackctl import ctl; ctl.main()" $@
+
+sync; sync
