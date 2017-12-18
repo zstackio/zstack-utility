@@ -348,13 +348,13 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
 
             if cmd.dstUsername == 'root':
                 _, _, err = bash_progress_1(
-                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
+                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p "{{PASSWORD}}" ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
                 if err:
                     raise err
             else:
                 raise Exception("cannot support migrate to non-root user host")
             written += os.path.getsize(path)
-            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
+            bash_errorout('/usr/bin/sshpass -p "{{PASSWORD}}" ssh -o StrictHostKeyChecking=no -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
             percent = int(round(float(written) / float(total) * (end - start) + start))
             report.progress_report(percent, "report")
 
