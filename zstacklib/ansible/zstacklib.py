@@ -81,6 +81,7 @@ class HostPostInfo(object):
         self.host_inventory = None
         self.host = None
         self.vip= None
+        self.chrony_servers = None
         self.post_url = ""
         self.post_label = None
         self.post_label_param = None
@@ -1471,7 +1472,7 @@ def modprobe(modprobe_arg, host_post_info):
             handle_ansible_failed(description, result, host_post_info)
 
 
-def enable_ntp(trusted_host, host_post_info, distro):
+def do_enable_ntp(trusted_host, host_post_info, distro):
     logger.debug("Starting enable ntp service")
 
     def get_ha_mn_list(conf_file):
@@ -1517,6 +1518,29 @@ def enable_ntp(trusted_host, host_post_info, distro):
     sync_date(distro)
 
 
+def do_deploy_chrony(host_post_info, svrs, distro):
+    if distro == "RedHat" or distro == "CentOS":
+        yum_install_package("chrony", host_post_info)
+        replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
+        for svr in svrs:
+            update_file("/etc/chrony.conf", "regexp='#server %s' state=absent" % svr, host_post_info)
+            update_file("/etc/chrony.conf", "line='server %s iburst'" % svr, host_post_info)
+
+        command = "systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd || true"
+        host_post_info.post_label = "ansible.shell.enable.chronyd"
+        host_post_info.post_label_param = None
+        run_remote_command(command, host_post_info)
+
+def enable_ntp(trusted_host, host_post_info, distro):
+    if host_post_info.chrony_servers is None:
+        do_enable_ntp(trusted_host, host_post_info, distro)
+        return
+
+    svrs = host_post_info.chrony_servers.split(',')
+    if host_post_info.host in svrs:
+        return
+
+    do_deploy_chrony(host_post_info, svrs, distro)
 
 class ZstackLib(object):
     def __init__(self, args):
