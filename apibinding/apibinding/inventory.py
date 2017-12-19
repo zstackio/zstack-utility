@@ -7596,6 +7596,54 @@ class APIUpdateSystemTagMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEVIPQOSMSG_FULL_NAME = 'org.zstack.header.vipQos.APIDeleteVipQosMsg'
+class APIDeleteVipQosMsg(object):
+    FULL_NAME='org.zstack.header.vipQos.APIDeleteVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.port = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVIPQOSMSG_FULL_NAME = 'org.zstack.header.vipQos.APIGetVipQosMsg'
+class APIGetVipQosMsg(object):
+    FULL_NAME='org.zstack.header.vipQos.APIGetVipQosMsg'
+    def __init__(self):
+        self.uuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVIPQOSREPLY_FULL_NAME = 'org.zstack.header.vipQos.APIGetVipQosReply'
+class APIGetVipQosReply(object):
+    FULL_NAME='org.zstack.header.vipQos.APIGetVipQosReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APISETVIPQOSMSG_FULL_NAME = 'org.zstack.header.vipQos.APISetVipQosMsg'
+class APISetVipQosMsg(object):
+    FULL_NAME='org.zstack.header.vipQos.APISetVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.port = None
+        self.outboundBandwidth = None
+        self.inboundBandwidth = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIATTACHISOTOVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APIAttachIsoToVmInstanceMsg'
 class APIAttachIsoToVmInstanceMsg(object):
     FULL_NAME='org.zstack.header.vm.APIAttachIsoToVmInstanceMsg'
@@ -11158,33 +11206,6 @@ class APIDeleteVipMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APIDeleteVipQosMsg'
-class APIDeleteVipQosMsg(object):
-    FULL_NAME='org.zstack.network.service.vip.APIDeleteVipQosMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        #valid values: [in, out, all]
-        self.direction = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIGETVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APIGetVipQosMsg'
-class APIGetVipQosMsg(object):
-    FULL_NAME='org.zstack.network.service.vip.APIGetVipQosMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIQUERYVIPMSG_FULL_NAME = 'org.zstack.network.service.vip.APIQueryVipMsg'
 class APIQueryVipMsg(object):
     FULL_NAME='org.zstack.network.service.vip.APIQueryVipMsg'
@@ -11214,20 +11235,6 @@ class APIQueryVipReply(object):
         self.total = None
         self.success = None
         self.error = None
-
-
-APISETVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APISetVipQosMsg'
-class APISetVipQosMsg(object):
-    FULL_NAME='org.zstack.network.service.vip.APISetVipQosMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.outboundBandwidth = None
-        self.inboundBandwidth = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
 
 
 APIUPDATEVIPMSG_FULL_NAME = 'org.zstack.network.service.vip.APIUpdateVipMsg'
@@ -14387,6 +14394,7 @@ api_names = [
     'APIGetVersionMsg',
     'APIGetVersionReply',
     'APIGetVipQosMsg',
+    'APIGetVipQosReply',
     'APIGetVipUsedPortsMsg',
     'APIGetVipUsedPortsReply',
     'APIGetVirtualRouterOfferingReply',
@@ -22302,6 +22310,12 @@ class QueryObjectVipPeerL3NetworkRefInventory(object):
      QUERY_OBJECT_MAP = {
         'l3Network' : 'QueryObjectL3NetworkInventory',
         'vip' : 'QueryObjectVipInventory',
+     }
+
+class QueryObjectVipQosInventory(object):
+     PRIMITIVE_FIELDS = ['outboundBandwidth','port','vipUuid','inboundBandwidth','lastOpDate','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectVirtualBorderRouterInventory(object):
