@@ -3522,6 +3522,7 @@ class VmPlugin(kvmagent.KvmAgent):
             os.remove(spath)
 
     @kvmagent.replyerror
+    @in_bash
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
@@ -3562,6 +3563,7 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @in_bash
     def hot_plug_pci_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotPlugPciDeviceRsp()
@@ -3631,6 +3633,7 @@ class VmPlugin(kvmagent.KvmAgent):
         return self.handle_vfio_irq_conflict_with_addr(vmUuid, o.strip())
 
     @kvmagent.replyerror
+    @in_bash
     def hot_unplug_pci_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotUnplugPciDeviceRsp()
