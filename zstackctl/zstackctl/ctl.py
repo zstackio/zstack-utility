@@ -4848,9 +4848,6 @@ class ChangeIpCmd(Command):
                                          'zstack config file' , required=True)
         parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
         parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
-        parser.add_argument('--yum',
-                            help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.",
-                            default=None)
 
     def run(self, args):
         if args.ip == '0.0.0.0':
