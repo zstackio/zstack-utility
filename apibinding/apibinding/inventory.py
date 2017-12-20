@@ -11809,6 +11809,26 @@ class APIPrometheusQueryVmMonitoringDataReply(object):
         self.error = None
 
 
+APIBATCHQUERYMSG_FULL_NAME = 'org.zstack.query.APIBatchQueryMsg'
+class APIBatchQueryMsg(object):
+    FULL_NAME='org.zstack.query.APIBatchQueryMsg'
+    def __init__(self):
+        self.script = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIBATCHQUERYREPLY_FULL_NAME = 'org.zstack.query.APIBatchQueryReply'
+class APIBatchQueryReply(object):
+    FULL_NAME='org.zstack.query.APIBatchQueryReply'
+    def __init__(self):
+        self.result = OptionalMap()
+        self.success = None
+        self.error = None
+
+
 APIADDSCHEDULERJOBTOSCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APIAddSchedulerJobToSchedulerTriggerMsg'
 class APIAddSchedulerJobToSchedulerTriggerMsg(object):
     FULL_NAME='org.zstack.scheduler.APIAddSchedulerJobToSchedulerTriggerMsg'
@@ -13942,6 +13962,8 @@ api_names = [
     'APIBackupDatabaseToPublicCloudMsg',
     'APIBackupStorageMigrateImageMsg',
     'APIBackupVolumeSnapshotMsg',
+    'APIBatchQueryMsg',
+    'APIBatchQueryReply',
     'APICalculateAccountSpendingMsg',
     'APICalculateAccountSpendingReply',
     'APICancelLongJobMsg',
@@ -15112,6 +15134,7 @@ class EcsInstanceInventory(object):
         self.ecsRootVolumeCategory = None
         self.ecsRootVolumeSize = None
         self.privateIpAddress = None
+        self.publicIpAddress = None
         self.ecsVSwitchUuid = None
         self.ecsImageUuid = None
         self.ecsSecurityGroupUuid = None
@@ -15192,6 +15215,11 @@ class EcsInstanceInventory(object):
             self.privateIpAddress = inv.privateIpAddress
         else:
             self.privateIpAddress = None
+
+        if hasattr(inv, 'publicIpAddress'):
+            self.publicIpAddress = inv.publicIpAddress
+        else:
+            self.publicIpAddress = None
 
         if hasattr(inv, 'ecsVSwitchUuid'):
             self.ecsVSwitchUuid = inv.ecsVSwitchUuid
@@ -20454,52 +20482,52 @@ class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
 
 
 
-class VpcConnectionEntry(object):
+class VpcConnectionTO(object):
     def __init__(self):
-        self.srcL2Type = None
-        self.dstL2Type = None
-        self.srcMac = None
-        self.dstMac = None
-        self.srcL2Vni = None
-        self.dstL2Vni = None
-        self.opDate = None
+        self.sourceL2NetworkType = None
+        self.destinationL2NetworkType = None
+        self.sourceMac = None
+        self.destinationMac = None
+        self.sourceL2NetworkVni = None
+        self.destinationL2NetworkVni = None
+        self.lastOpDate = None
         self.status = None
 
     def evaluate(self, inv):
-        if hasattr(inv, 'srcL2Type'):
-            self.srcL2Type = inv.srcL2Type
+        if hasattr(inv, 'sourceL2NetworkType'):
+            self.sourceL2NetworkType = inv.sourceL2NetworkType
         else:
-            self.srcL2Type = None
+            self.sourceL2NetworkType = None
 
-        if hasattr(inv, 'dstL2Type'):
-            self.dstL2Type = inv.dstL2Type
+        if hasattr(inv, 'destinationL2NetworkType'):
+            self.destinationL2NetworkType = inv.destinationL2NetworkType
         else:
-            self.dstL2Type = None
+            self.destinationL2NetworkType = None
 
-        if hasattr(inv, 'srcMac'):
-            self.srcMac = inv.srcMac
+        if hasattr(inv, 'sourceMac'):
+            self.sourceMac = inv.sourceMac
         else:
-            self.srcMac = None
+            self.sourceMac = None
 
-        if hasattr(inv, 'dstMac'):
-            self.dstMac = inv.dstMac
+        if hasattr(inv, 'destinationMac'):
+            self.destinationMac = inv.destinationMac
         else:
-            self.dstMac = None
+            self.destinationMac = None
 
-        if hasattr(inv, 'srcL2Vni'):
-            self.srcL2Vni = inv.srcL2Vni
+        if hasattr(inv, 'sourceL2NetworkVni'):
+            self.sourceL2NetworkVni = inv.sourceL2NetworkVni
         else:
-            self.srcL2Vni = None
+            self.sourceL2NetworkVni = None
 
-        if hasattr(inv, 'dstL2Vni'):
-            self.dstL2Vni = inv.dstL2Vni
+        if hasattr(inv, 'destinationL2NetworkVni'):
+            self.destinationL2NetworkVni = inv.destinationL2NetworkVni
         else:
-            self.dstL2Vni = None
+            self.destinationL2NetworkVni = None
 
-        if hasattr(inv, 'opDate'):
-            self.opDate = inv.opDate
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
         else:
-            self.opDate = None
+            self.lastOpDate = None
 
         if hasattr(inv, 'status'):
             self.status = inv.status
@@ -21539,7 +21567,7 @@ class QueryObjectEcsImageUsageInventory(object):
      }
 
 class QueryObjectEcsInstanceInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','chargeType','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','expireDate','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','publicIpAddress','ecsRootVolumeId','identityZoneUuid','chargeType','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','expireDate','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }

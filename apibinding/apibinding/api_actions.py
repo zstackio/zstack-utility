@@ -794,6 +794,18 @@ class BackupVolumeSnapshotAction(inventory.APIBackupVolumeSnapshotMsg):
         self.out = evt
         return self.out
 
+class BatchQueryAction(inventory.APIBatchQueryMsg):
+    def __init__(self):
+        super(BatchQueryAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[BatchQueryAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CalculateAccountSpendingAction(inventory.APICalculateAccountSpendingMsg):
     def __init__(self):
         super(CalculateAccountSpendingAction, self).__init__()
