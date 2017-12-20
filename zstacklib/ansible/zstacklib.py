@@ -81,6 +81,7 @@ class HostPostInfo(object):
         self.host_inventory = None
         self.host = None
         self.vip= None
+        self.chrony_servers = None
         self.post_url = ""
         self.post_label = None
         self.post_label_param = None
