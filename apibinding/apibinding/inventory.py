@@ -8662,6 +8662,20 @@ class APIUpdateVmInstanceMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATEVMNICMACMSG_FULL_NAME = 'org.zstack.header.vm.APIUpdateVmNicMacMsg'
+class APIUpdateVmNicMacMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIUpdateVmNicMacMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmNicUuid = NotNoneField()
+        #mandatory field
+        self.mac = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIGETRESOURCENAMESMSG_FULL_NAME = 'org.zstack.header.vo.APIGetResourceNamesMsg'
 class APIGetResourceNamesMsg(object):
     FULL_NAME='org.zstack.header.vo.APIGetResourceNamesMsg'
@@ -14880,6 +14894,7 @@ api_names = [
     'APIUpdateVirtualBorderRouterRemoteMsg',
     'APIUpdateVirtualRouterOfferingMsg',
     'APIUpdateVmInstanceMsg',
+    'APIUpdateVmNicMacMsg',
     'APIUpdateVolumeMsg',
     'APIUpdateVolumeSnapshotMsg',
     'APIUpdateVpcUserVpnGatewayMsg',
