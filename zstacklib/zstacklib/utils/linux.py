@@ -175,6 +175,14 @@ def get_disk_capacity_by_df(dir_path):
     avail = shell.call("df %s|tail -1|awk '{print $(NF-2)}'" % dir_path)
     return long(total) * 1024, long(avail) * 1024
 
+def get_folder_size(path = "."):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += (os.path.getsize(fp) if os.path.isfile(fp) else 0)
+    return total_size
+
 def is_mounted(path=None, url=None):
     if url:
         url = url.rstrip('/')
