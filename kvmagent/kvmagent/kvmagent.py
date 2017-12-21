@@ -62,8 +62,8 @@ def get_qemu_path():
             raise KvmError('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-x86_64')
 
     return _qemu_path
-        
-    
+
+
 class KvmRESTService(object):
     http_server = http.HttpServer()
     http_server.logfile_path = log.get_logfile_path()
