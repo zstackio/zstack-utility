@@ -84,6 +84,12 @@ def check_nested_kvm(host_post_info):
     modprobe_arg.state = 'present'
     modprobe(modprobe_arg, host_post_info)
 
+def disable_ntp(host_post_info):
+    host_post_info.post_label = "ansible.shell.disable.ntpd"
+    host_post_info.post_label_param = None
+    command = "systemctl stop ntpd && systemctl disable ntpd || true"
+    run_remote_command(command, host_post_info)
+
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
 parser.add_argument('-i', type=str, help="""specify inventory host file
@@ -390,6 +396,7 @@ run_remote_command(command, host_post_info)
 # name: update time syncing settings
 if chrony_servers is not None:
     if distro == "RedHat" or distro == "CentOS":
+        disable_ntp(host_post_info)
         yum_install_package("chrony", host_post_info)
         replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
         for svr in chrony_servers.split(','):
