@@ -6510,7 +6510,8 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
-        ha_info_file = '/var/lib/zstack/ha/ha.yaml'
+        # no need to consider ha because it's not supported any more
+        #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         pidfile = '/var/run/zstack/zstack-ui.pid'
         portfile = '/var/run/zstack/zstack-ui.port'
         if os.path.exists(pidfile):
@@ -6520,14 +6521,14 @@ class UiStatusCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    if os.path.exists(ha_info_file):
-                        with open(ha_info_file, 'r') as fd2:
-                            ha_conf = yaml.load(fd2)
-                            if check_ip_port(ha_conf['vip'], 8888):
-                                info('UI status: %s [PID:%s] http://%s:8888' % (colored('Running', 'green'), pid, ha_conf['vip']))
-                            else:
-                                info('UI status: %s' % colored('Unknown', 'yellow'))
-                            return
+                    #if os.path.exists(ha_info_file):
+                    #    with open(ha_info_file, 'r') as fd2:
+                    #        ha_conf = yaml.load(fd2)
+                    #        if check_ip_port(ha_conf['vip'], 8888):
+                    #            info('UI status: %s [PID:%s] http://%s:8888' % (colored('Running', 'green'), pid, ha_conf['vip']))
+                    #        else:
+                    #            info('UI status: %s' % colored('Unknown', 'yellow'))
+                    #        return
                     default_ip = get_default_ip()
                     if not default_ip:
                         info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
