@@ -784,7 +784,6 @@ upgrade_zstack(){
     is_install_system_libs
     show_spinner uz_stop_zstack
     show_spinner uz_upgrade_zstack
-    show_spinner is_install_concurrentloghandler
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_enable_zstack_service
@@ -1283,6 +1282,16 @@ uz_upgrade_zstack_ctl(){
     fi
 
     if [ ! -z $DEBUG ]; then
+        pip install -i "file://$upgrade_folder/zstack/static/pypi/simple" --trusted-host localhost --ignore-installed concurrentloghandler
+    else
+        pip install -i "file://$upgrade_folder/zstack/static/pypi/simple" --trusted-host localhost --ignore-installed concurrentloghandler >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        cd /; rm -rf $upgrade_folder
+        fail "failed to upgrade ConcurrentLogHandler"
+    fi
+
+    if [ ! -z $DEBUG ]; then
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
     else
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1291,6 +1300,7 @@ uz_upgrade_zstack_ctl(){
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade zstack-ctl"
     fi
+
     pass
 }
 
