@@ -518,10 +518,8 @@ class APICreateAffinityGroupMsg(object):
         self.name = NotNoneField()
         self.description = None
         #mandatory field
-        #valid values: [antiAffinitySoft, antiAffinityHard]
+        #valid values: [antiSoft]
         self.policy = NotNoneField()
-        #mandatory field
-        self.version = NotNoneField()
         #valid values: [host]
         self.type = None
         self.resourceUuid = None
