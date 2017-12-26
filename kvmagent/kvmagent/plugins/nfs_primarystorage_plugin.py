@@ -14,9 +14,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils.bash import *
-from zstacklib.utils.linux import get_folder_size
 from zstacklib.utils.report import Report
-from zstacklib.utils.rollback import rollback, rollbackable
 
 logger = log.get_logger(__name__)
 
@@ -227,8 +225,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         def _getProgress(synced):
             logger.debug("report volume migration progress in nfs_ps_plugin")
-            total = get_folder_size(cmd.srcVolumeFolderPath)
-            synced = get_folder_size(cmd.dstVolumeFolderPath)
+            total = linux.get_folder_size(cmd.srcVolumeFolderPath)
+            synced = linux.get_folder_size(cmd.dstVolumeFolderPath)
             if synced < total:
                 percent = int(round(float(synced) / float(total) * 90))
                 report.progress_report(percent, "report")
@@ -257,7 +255,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = NfsRebaseVolumeBackingFileRsp()
         qcow2s = shell.call("find %s -type f | egrep \"*.qcow2$\"" % cmd.dstVolumeFolderPath) 
         for qcow2 in qcow2s.split():
-            fmt = shell.call("qemu-img info %s | grep 'file format' | awk -F ': ' '{ print $2 }'" % qcow2)
+            fmt = shell.call("qemu-img info %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % qcow2)
             if fmt.strip() != "qcow2":
                 continue
             backing_file = linux.qcow2_get_backing_file(qcow2)
