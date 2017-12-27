@@ -24,8 +24,7 @@ zstack management tool""",
           'simplejson',
           'configobj',
           'pyyaml',
-          'ansible',
-          'cloghandler'
+          'ansible'
           # -*- Extra requirements: -*-
       ],
       entry_points="""
