@@ -26,7 +26,8 @@ Python support library for zstack""",
           'pickledb',
           'urllib3==1.10.4',
           'netaddr',
-          'Jinja2'
+          'Jinja2',
+          'concurrentloghandler'
       ],
       entry_points="""
       # -*- Entry points: -*-
