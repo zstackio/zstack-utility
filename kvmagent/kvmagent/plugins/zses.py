@@ -532,7 +532,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
 
         if not os.path.exists(cmd.templatePathInCache):
-            rsp.error = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
+            rsp.error = "unable to find image in cache"
             rsp.success = False
             logger.debug('error: %s: %s' % (rsp.error, cmd.templatePathInCache))
             return jsonobject.dumps(rsp)

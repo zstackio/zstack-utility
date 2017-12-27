@@ -165,7 +165,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
 
-    ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
+    ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "unable to find image in cache"
     
     def start(self):
         http_server = kvmagent.get_http_server()
