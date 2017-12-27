@@ -177,7 +177,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
 
         if not os.path.exists(cmd.templatePathInCache):
-            rsp.error = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
+            rsp.error = "unable to find image in cache"
             rsp.success = False
             return jsonobject.dumps(rsp)
 
