@@ -14,6 +14,7 @@ import time
 import functools
 import jinja2
 import commands
+from cloghandler import ConcurrentRotatingFileHandler
 
 # set global default value
 start_time = datetime.now()
@@ -202,7 +203,7 @@ def create_log(logger_dir, logger_file):
         os.makedirs(logger_dir)
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler = logging.handlers.RotatingFileHandler(logger_dir + "/deploy.log", maxBytes=10 * 1024 * 1024,
+    handler = ConcurrentRotatingFileHandler(logger_dir + '/' + logger_file, maxBytes=10 * 1024 * 1024,
                                                    backupCount=30)
     handler.setFormatter(fmt)
     logger.addHandler(handler)
