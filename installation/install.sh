@@ -784,7 +784,6 @@ upgrade_zstack(){
     is_install_system_libs
     show_spinner uz_stop_zstack
     show_spinner uz_upgrade_zstack
-    show_spinner is_install_concurrentloghandler
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_enable_zstack_service
