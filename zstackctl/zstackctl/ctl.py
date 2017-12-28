@@ -1025,8 +1025,9 @@ class MySqlCommandLineQuery(object):
                 current = {}
             else:
                 l = l.strip()
-                key, value = l.split(':', 1)
-                current[key.strip()] = value[1:]
+                if ":" in l:
+                    key, value = l.split(':', 1)
+                    current[key.strip()] = value[1:]
 
         if current:
             ret.append(current)
@@ -4365,7 +4366,7 @@ class RestoreMysqlCmd(Command):
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)
             shell_no_pipe(command)
-            
+
             # modify DEFINER of view, trigger and so on
             # from: /* ... */ /*!50017 DEFINER=`old_user`@`old_hostname`*/ /*...
             # to:   /* ... */ /*!50017 DEFINER=`new_user`@`new_hostname`*/ /*...
@@ -5009,7 +5010,7 @@ class InstallManagementNodeCmd(Command):
             args.yum = get_yum_repo_from_property()
 
         if args.ssh_key is None:
-            args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
+            args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
         private_key = args.ssh_key.split('.')[0]
 
         inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
@@ -5019,7 +5020,7 @@ class InstallManagementNodeCmd(Command):
         (host_info.remote_user, host_info.remote_pass, host_info.host, host_info.remote_port) = check_host_info_format(args.host)
 
         check_host_password(host_info.remote_pass, host_info.host)
-        
+
         self.add_public_key_to_host(args.ssh_key, host_info)
 
         apache_tomcat = None
@@ -5332,7 +5333,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'setup_account': setup_account_path
         })
 
-        
+
         ansible(yaml, host_info.host, args.debug, private_key)
         info('successfully installed new management node on machine(%s)' % host_info.host)
 
@@ -5838,7 +5839,7 @@ fi
             info('start to upgrade the remote management node; the process may cost several minutes ...')
 
             if args.ssh_key is None:
-                args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
+                args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
             private_key = args.ssh_key.split('.')[0]
 
             ansible(yaml, args.host, args.debug, ssh_key=private_key)
