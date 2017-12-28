@@ -147,6 +147,8 @@ run_remote_command("rm -rf %s/*" % kvm_root, host_post_info)
 check_nested_kvm(host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
+    #we should check libvirtd config file status before restart the service
+    libvirtd_conf_status = update_libvritd_config(host_post_info)
     # handle zstack_repo
     if zstack_repo != 'false':
         if distro_version >= 7:
@@ -303,7 +305,6 @@ host_post_info.post_label = "ansible.shell.virsh.destroy.bridge"
 host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
 
-libvirtd_conf_status = update_libvritd_config(host_post_info)
 
 # name: copy qemu conf
 copy_arg = CopyArg()
