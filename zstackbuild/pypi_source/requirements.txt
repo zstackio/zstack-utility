@@ -32,4 +32,3 @@ websockify==0.6.1
 Werkzeug==0.10.4
 flask-socketio==2.2
 versiontools==1.7
-ConcurrentLogHandler==0.9.1
