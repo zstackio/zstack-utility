@@ -285,7 +285,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.qcow2_create_template(cmd.destPath, tmp)
+            linux.create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         self._set_capacity_to_response(cmd.uuid, rsp)
@@ -326,7 +326,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         try:
-            linux.qcow2_create_template(latest, cmd.workspaceInstallPath)
+            linux.create_template(latest, cmd.workspaceInstallPath)
             rsp.size, rsp.actualSize = cmd.workspaceInstallPath
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
@@ -347,7 +347,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         try:
-            linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+            linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
             rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
@@ -511,8 +511,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             dirname = os.path.dirname(cmd.installPath)
             if not os.path.exists(dirname):
                 os.makedirs(dirname, 0755)
-
-            linux.qcow2_create_template(cmd.rootVolumePath, cmd.installPath)
+            linux.create_template(cmd.rootVolumePath, cmd.installPath)
         except linux.LinuxError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create image to root@%s:%s from root volume[%s], %s' % (cmd.sftpBackupStorageHostName,

@@ -561,8 +561,19 @@ def raw_create(dst, size):
     shell.ShellCmd('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))()
     shell.ShellCmd('chmod 666 %s' % dst)()
 
+def create_template(src, dst):
+    fmt = get_img_fmt(src)
+    if fmt == 'raw':
+        return raw_create_template(src, dst)
+    if fmt == 'qcow2':
+        return qcow2_create_template(src, dst)
+    raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
+
 def qcow2_create_template(src, dst):
     shell.call('/usr/bin/qemu-img convert -f qcow2 -O qcow2 %s %s' % (src, dst))
+
+def raw_create_template(src, dst):
+    shell.call('/usr/bin/qemu-img convert -f raw -O qcow2 %s %s' % (src, dst))
 
 def qcow2_convert_to_raw(src, dst):
     shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (src, dst))
