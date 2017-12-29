@@ -240,6 +240,8 @@ if distro == "RedHat" or distro == "CentOS":
             run_remote_command(command, host_post_info)
             service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
+    #we should check libvirtd config file status before restart the service
+    libvirtd_conf_status = update_libvritd_config(host_post_info)
     if chroot_env == 'false':
         # name: enable libvirt daemon on RedHat based OS
         service_status("libvirtd", "state=started enabled=yes", host_post_info)
@@ -303,7 +305,6 @@ host_post_info.post_label = "ansible.shell.virsh.destroy.bridge"
 host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
 
-libvirtd_conf_status = update_libvritd_config(host_post_info)
 
 # name: copy qemu conf
 copy_arg = CopyArg()
