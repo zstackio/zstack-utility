@@ -407,7 +407,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
 
-        linux.qcow2_create_template(cmd.volumePath, cmd.installPath)
+        linux.create_template(cmd.volumePath, cmd.installPath)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -433,7 +433,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(workspace_dir):
             os.makedirs(workspace_dir)
 
-        linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+        linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -456,7 +456,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(workspace_dir):
             os.makedirs(workspace_dir)
 
-        linux.qcow2_create_template(latest, cmd.workspaceInstallPath)
+        linux.create_template(latest, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -470,7 +470,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.qcow2_create_template(cmd.destPath, tmp)
+            linux.create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
