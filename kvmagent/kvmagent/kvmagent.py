@@ -141,7 +141,7 @@ def deleteImage(path):
 class KvmDaemon(daemon.Daemon):
     def __init__(self, pidfile, config={}):
         super(KvmDaemon, self).__init__(pidfile)
-        
+
     def run(self):
         self.agent = new_rest_service()
         self.agent.start(in_thread=False)
