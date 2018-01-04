@@ -511,7 +511,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
         "^/.*/user_data$" => "../%1/user_data",
         "^/.*/meta_data.json$" => "../%1/meta_data.json",
         "^/.*/password$" => "../%1/password",
-        "^/.*/$" => "../%1/$1"
+        "^/.*/$" => "../index.html"
     )
     dir-listing.activate = "enable"
 }
@@ -550,6 +550,10 @@ mimetype.assign = (
         })
 
         root = os.path.join(http_root, to.vmIp)
+        index_file_path = os.path.join(http_root, 'index.html')
+        with open(index_file_path, 'w') as fd:
+            fd.write('')
+
         meta_root = os.path.join(root, 'meta-data')
         if not os.path.exists(meta_root):
             shell.call('mkdir -p %s' % meta_root)
