@@ -20,6 +20,7 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 file_root = "files/zsnagentansible"
 pkg_zsn = ""
 post_url = ""
+chrony_servers = None
 fs_rootpath = ""
 remote_user = "root"
 remote_pass = None
@@ -41,13 +42,11 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 zsn_root = "%s/zsn-agent/package" % zstack_root
 
-# update the variable from shell arguments
-locals().update(argument_dict)
-
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
+host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
 host_post_info.remote_user = remote_user
 host_post_info.remote_pass = remote_pass
