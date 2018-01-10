@@ -614,6 +614,18 @@ class AttachL3NetworkToVmAction(inventory.APIAttachL3NetworkToVmMsg):
         self.out = evt
         return self.out
 
+class AttachMonitorTriggerActionToTriggerAction(inventory.APIAttachMonitorTriggerActionToTriggerMsg):
+    def __init__(self):
+        super(AttachMonitorTriggerActionToTriggerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AttachMonitorTriggerActionToTriggerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AttachNetworkServiceProviderToL2NetworkAction(inventory.APIAttachNetworkServiceProviderToL2NetworkMsg):
     def __init__(self):
         super(AttachNetworkServiceProviderToL2NetworkAction, self).__init__()
@@ -934,6 +946,42 @@ class ChangeL3NetworkStateAction(inventory.APIChangeL3NetworkStateMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[ChangeL3NetworkStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ChangeMediaStateAction(inventory.APIChangeMediaStateMsg):
+    def __init__(self):
+        super(ChangeMediaStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeMediaStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ChangeMonitorTriggerActionStateAction(inventory.APIChangeMonitorTriggerActionStateMsg):
+    def __init__(self):
+        super(ChangeMonitorTriggerActionStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeMonitorTriggerActionStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ChangeMonitorTriggerStateAction(inventory.APIChangeMonitorTriggerStateMsg):
+    def __init__(self):
+        super(ChangeMonitorTriggerStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeMonitorTriggerStateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1442,6 +1490,30 @@ class CreateEipAction(inventory.APICreateEipMsg):
         self.out = evt
         return self.out
 
+class CreateEmailMediaAction(inventory.APICreateEmailMediaMsg):
+    def __init__(self):
+        super(CreateEmailMediaAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEmailMediaAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateEmailMonitorTriggerActionAction(inventory.APICreateEmailMonitorTriggerActionMsg):
+    def __init__(self):
+        super(CreateEmailMonitorTriggerActionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateEmailMonitorTriggerActionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateHybridEipAction(inventory.APICreateHybridEipMsg):
     def __init__(self):
         super(CreateHybridEipAction, self).__init__()
@@ -1582,6 +1654,18 @@ class CreateMessageAction(inventory.APICreateMessage):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateMessageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateMonitorTriggerAction(inventory.APICreateMonitorTriggerMsg):
+    def __init__(self):
+        super(CreateMonitorTriggerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateMonitorTriggerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2098,6 +2182,18 @@ class DeleteAlarmAction(inventory.APIDeleteAlarmMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteAlarmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteAlertAction(inventory.APIDeleteAlertMsg):
+    def __init__(self):
+        super(DeleteAlertAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAlertAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2662,6 +2758,42 @@ class DeleteLoadBalancerListenerAction(inventory.APIDeleteLoadBalancerListenerMs
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteLoadBalancerListenerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteMediaAction(inventory.APIDeleteMediaMsg):
+    def __init__(self):
+        super(DeleteMediaAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteMediaAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteMonitorTriggerAction(inventory.APIDeleteMonitorTriggerMsg):
+    def __init__(self):
+        super(DeleteMonitorTriggerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteMonitorTriggerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteMonitorTriggerActionAction(inventory.APIDeleteMonitorTriggerActionMsg):
+    def __init__(self):
+        super(DeleteMonitorTriggerActionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteMonitorTriggerActionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3406,6 +3538,18 @@ class DetachL3NetworkFromVmAction(inventory.APIDetachL3NetworkFromVmMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DetachL3NetworkFromVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DetachMonitorTriggerActionFromTriggerAction(inventory.APIDetachMonitorTriggerActionFromTriggerMsg):
+    def __init__(self):
+        super(DetachMonitorTriggerActionFromTriggerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DetachMonitorTriggerActionFromTriggerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4298,6 +4442,30 @@ class GetMetricDataAction(inventory.APIGetMetricDataMsg):
         self.out = evt
         return self.out
 
+class GetMetricLabelValueAction(inventory.APIGetMetricLabelValueMsg):
+    def __init__(self):
+        super(GetMetricLabelValueAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetMetricLabelValueAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetMonitorItemAction(inventory.APIGetMonitorItemMsg):
+    def __init__(self):
+        super(GetMonitorItemAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetMonitorItemAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetNetworkServiceTypesAction(inventory.APIGetNetworkServiceTypesMsg):
     def __init__(self):
         super(GetNetworkServiceTypesAction, self).__init__()
@@ -5046,6 +5214,54 @@ class PrimaryStorageMigrateRootVolumeAction(inventory.APIPrimaryStorageMigrateRo
         self.out = evt
         return self.out
 
+class PrometheusQueryLabelValuesAction(inventory.APIPrometheusQueryLabelValuesMsg):
+    def __init__(self):
+        super(PrometheusQueryLabelValuesAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrometheusQueryLabelValuesAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrometheusQueryMetadataAction(inventory.APIPrometheusQueryMetadataMsg):
+    def __init__(self):
+        super(PrometheusQueryMetadataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrometheusQueryMetadataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrometheusQueryPassThroughAction(inventory.APIPrometheusQueryPassThroughMsg):
+    def __init__(self):
+        super(PrometheusQueryPassThroughAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrometheusQueryPassThroughAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrometheusQueryVmMonitoringDataAction(inventory.APIPrometheusQueryVmMonitoringDataMsg):
+    def __init__(self):
+        super(PrometheusQueryVmMonitoringDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrometheusQueryVmMonitoringDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ProvisionBaremetalHostAction(inventory.APIProvisionBaremetalHostMsg):
     def __init__(self):
         super(ProvisionBaremetalHostAction, self).__init__()
@@ -5095,6 +5311,20 @@ class QueryAlarmAction(inventory.APIQueryAlarmMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryAlarmAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryAlertAction(inventory.APIQueryAlertMsg):
+    def __init__(self):
+        super(QueryAlertAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAlertAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -5478,6 +5708,34 @@ class QueryEipAction(inventory.APIQueryEipMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryEmailMediaAction(inventory.APIQueryEmailMediaMsg):
+    def __init__(self):
+        super(QueryEmailMediaAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryEmailMediaAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryEmailTriggerActionAction(inventory.APIQueryEmailTriggerActionMsg):
+    def __init__(self):
+        super(QueryEmailTriggerActionAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryEmailTriggerActionAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryEventSubscriptionAction(inventory.APIQueryEventSubscriptionMsg):
     def __init__(self):
         super(QueryEventSubscriptionAction, self).__init__()
@@ -5809,6 +6067,48 @@ class QueryManagementNodeAction(inventory.APIQueryManagementNodeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryManagementNodeAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryMediaAction(inventory.APIQueryMediaMsg):
+    def __init__(self):
+        super(QueryMediaAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryMediaAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryMonitorTriggerAction(inventory.APIQueryMonitorTriggerMsg):
+    def __init__(self):
+        super(QueryMonitorTriggerAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryMonitorTriggerAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryMonitorTriggerActionAction(inventory.APIQueryMonitorTriggerActionMsg):
+    def __init__(self):
+        super(QueryMonitorTriggerActionAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryMonitorTriggerActionAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -8010,6 +8310,30 @@ class UpdateEipAction(inventory.APIUpdateEipMsg):
         self.out = evt
         return self.out
 
+class UpdateEmailMediaAction(inventory.APIUpdateEmailMediaMsg):
+    def __init__(self):
+        super(UpdateEmailMediaAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEmailMediaAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateEmailMonitorTriggerActionAction(inventory.APIUpdateEmailMonitorTriggerActionMsg):
+    def __init__(self):
+        super(UpdateEmailMonitorTriggerActionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateEmailMonitorTriggerActionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateEncryptKeyAction(inventory.APIUpdateEncryptKeyMsg):
     def __init__(self):
         super(UpdateEncryptKeyAction, self).__init__()
@@ -8234,6 +8558,18 @@ class UpdateLoadBalancerListenerAction(inventory.APIUpdateLoadBalancerListenerMs
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateLoadBalancerListenerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateMonitorTriggerAction(inventory.APIUpdateMonitorTriggerMsg):
+    def __init__(self):
+        super(UpdateMonitorTriggerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateMonitorTriggerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -8594,6 +8930,18 @@ class UpdateZoneAction(inventory.APIUpdateZoneMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateZoneAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ValidateSNSEmailPlatformAction(inventory.APIValidateSNSEmailPlatformMsg):
+    def __init__(self):
+        super(ValidateSNSEmailPlatformAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ValidateSNSEmailPlatformAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
