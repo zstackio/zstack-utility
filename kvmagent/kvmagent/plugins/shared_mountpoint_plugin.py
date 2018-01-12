@@ -93,7 +93,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
 
         self.imagestore_client = ImageStoreClient()
-        self.id_file = None
+        self.id_files = {}
 
     def stop(self):
         pass
@@ -140,14 +140,14 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         @lock.file_lock(lock_file)
         def check_other_smp_and_set_id_file(uuid, existUuids):
-            o = shell.ShellCmd('''
-            ls %s | grep -v %s | grep -o "[0-9a-f]\{8\}[0-9a-f]\{4\}[1-5][0-9a-f]\{3\}[89ab][0-9a-f]\{3\}[0-9a-f]\{12\}"
+            o = shell.ShellCmd('''\
+            ls %s | grep -v %s | grep -o "[0-9a-f]\{8\}[0-9a-f]\{4\}[1-5][0-9a-f]\{3\}[89ab][0-9a-f]\{3\}[0-9a-f]\{12\}"\
             ''' % (id_dir, uuid))
             o(False)
             if o.return_code != 0:
                 file_uuids = []
             else:
-                file_uuids = o.stdout.split("\n")
+                file_uuids = o.stdout.splitlines()
 
             for file_uuid in file_uuids:
                 if file_uuid in existUuids:
@@ -155,15 +155,15 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                         "the mount point [%s] has been occupied by other SMP[uuid:%s], Please attach this directly"
                         % (cmd.mountPoint, file_uuid))
 
-            self.id_file = os.path.join(id_dir, uuid)
+            logger.debug("existing id files: %s" % file_uuids)
+            self.id_files[uuid] = os.path.join(id_dir, uuid)
 
-            if not os.path.exists(self.id_file):
+            if not os.path.exists(self.id_files[uuid]):
                 # check if hosts in the same cluster mount the same path but different storages.
                 rsp.isFirst = True
-
                 for file_uuid in file_uuids:
                     shell.call("rm -rf %s" % os.path.join(id_dir, file_uuid))
-                shell.call("touch %s" % self.id_file)
+                shell.call("touch %s && sync" % self.id_files[uuid])
 
         rsp = ConnectRsp()
         check_other_smp_and_set_id_file(cmd.uuid, cmd.existUuids)
