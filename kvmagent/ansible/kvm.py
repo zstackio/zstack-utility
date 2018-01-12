@@ -155,48 +155,27 @@ if distro == "RedHat" or distro == "CentOS":
             qemu_pkg = 'qemu-kvm-ev'
         else:
             qemu_pkg = 'qemu-kvm'
-
-        # kvm releated rpm packages
-        pkg_list = "%s \
-                bridge-utils \
-                dnsmasq \
-                expect \
-                iproute \
-                ipset \
-                iputils \
-                iscsi-initiator-utils \
-                libguestfs-tools \
-                libguestfs-winsupport \
-                libvirt \
-                libvirt-client \
-                libvirt-python \
-                lighttpd \
-                net-tools \
-                nfs-utils \
-                nmap \
-                openssh-clients \
-                pciutils \
-                pv \
-                rsync \
-                sed \
-                sshpass \
-                usbutils \
-                vconfig \
-                wget" % qemu_pkg
-
-        # name: install/update kvm related packages on RedHat based OS from user defined repo
-        # if an update is available, `yum install` will just apply the update instead
-        command = ("yum --enablerepo=%s clean metadata && yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y %s") % (zstack_repo, zstack_repo, pkg_list)
+        # name: install kvm related packages on RedHat based OS from user defined repo
+        command = ("yum --enablerepo=%s clean metadata && "
+                   "pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils sed "
+                   "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
+                   "libguestfs-winsupport libguestfs-tools pv ipset usbutils pciutils expect "
+                   "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, qemu_pkg, zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
-        host_post_info.post_label_param = pkg_list
+        host_post_info.post_label_param = "openssh-clients,%s,bridge-utils,wget,sed," \
+                                          "libvirt-python,libvirt,nfs-utils,vconfig,libvirt-client,net-tools," \
+                                          "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils," \
+                                          "libguestfs-winsupport,libguestfs-tools,pv,rsync,nmap,ipset,usbutils,pciutils,expect" % qemu_pkg
         run_remote_command(command, host_post_info)
-
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
-            pkg_list="collectd-virt"
-            command = ("yum --enablerepo=%s clean metadata && yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y %s") % (zstack_repo, zstack_repo, pkg_list)
+            command = ("yum --enablerepo=%s clean metadata && "
+                       "pkg_list=`rpm -q collectd-virt | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
+                       "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
+                       "--nogpgcheck install -y $pkg; done;") % (zstack_repo, zstack_repo)
             host_post_info.post_label = "ansible.shell.install.pkg"
-            host_post_info.post_label_param = pkg_list
+            host_post_info.post_label_param = "collectd-virt"
             run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
