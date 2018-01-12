@@ -5,16 +5,16 @@
 import os.path
 import traceback
 
+import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.utils import jsonobject
+from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import linux
-import zstacklib.utils.uuidhelper as uuidhelper
 from zstacklib.utils.bash import *
-
+from zstacklib.utils.report import Report
 
 logger = log.get_logger(__name__)
 
@@ -135,6 +135,14 @@ class ResizeVolumeRsp(NfsResponse):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
+class NfsToNfsMigrateVolumeRsp(NfsResponse):
+    def __init__(self):
+        super(NfsToNfsMigrateVolumeRsp, self).__init__()
+
+class NfsRebaseVolumeBackingFileRsp(NfsResponse):
+    def __init__(self):
+        super(NfsRebaseVolumeBackingFileRsp, self).__init__()
+
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -164,6 +172,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
+    NFS_TO_NFS_MIGRATE_VOLUME_PATH = "/nfsprimarystorage/migratevolume"
+    NFS_REBASE_VOLUME_BACKING_FILE_PATH = "/nfsprimarystorage/rebasevolumebackingfile"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "unable to find image in cache"
     
@@ -193,12 +203,67 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.update_mount_point)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.NFS_TO_NFS_MIGRATE_VOLUME_PATH, self.migrate_volume)
+        http_server.register_async_uri(self.NFS_REBASE_VOLUME_BACKING_FILE_PATH, self.rebase_volume_backing_file)
         self.mount_path = {}
         self.image_cache = None
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def migrate_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = NfsToNfsMigrateVolumeRsp()
+
+        # progress reporter
+        report = Report(cmd.threadContext, cmd.threadContextStack)
+        report.processType = "StorageMigration"
+        report.resourceUuid = cmd.volumeUuid
+        report.progress_report("0", "start")
+
+        def _getProgress(synced):
+            logger.debug("report volume migration progress in nfs_ps_plugin")
+            total = linux.get_folder_size(cmd.srcVolumeFolderPath)
+            synced = linux.get_folder_size(cmd.dstVolumeFolderPath)
+            if synced < total:
+                percent = int(round(float(synced) / float(total) * 90))
+                report.progress_report(percent, "report")
+            return synced
+
+        # begin volume migration
+        _, _, err = bash_progress_1(
+            "mkdir -p %s; cp -r %s/* %s" % (cmd.dstVolumeFolderPath, cmd.srcVolumeFolderPath, cmd.dstVolumeFolderPath),
+            _getProgress
+        )
+
+        # check MD5
+        src_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcVolumeFolderPath)
+        dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.dstVolumeFolderPath)
+        if err or src_md5 != dst_md5:
+            rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcVolumeFolderPath, cmd.dstVolumeFolderPath)
+            rsp.success = False
+        else:
+            report.progress_report("100", "finish")
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def rebase_volume_backing_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = NfsRebaseVolumeBackingFileRsp()
+        qcow2s = shell.call("find %s -type f | egrep \"*.qcow2$\"" % cmd.dstVolumeFolderPath) 
+        for qcow2 in qcow2s.split():
+            fmt = shell.call("qemu-img info %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % qcow2)
+            if fmt.strip() != "qcow2":
+                continue
+            backing_file = linux.qcow2_get_backing_file(qcow2)
+            if backing_file == "":
+                continue
+            new_backing_file = backing_file.replace(cmd.srcPsMountPath, cmd.dstPsMountPath)
+            linux.qcow2_rebase_no_check(new_backing_file, qcow2)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def resize_volume(self, req):
