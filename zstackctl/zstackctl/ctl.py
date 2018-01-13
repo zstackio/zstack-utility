@@ -356,21 +356,41 @@ def expand_path(path):
     else:
         return os.path.abspath(path)
 
-def check_host_info_format(host_info):
+def validate_ip(s):
+    a = s.split('.')
+    if len(a) != 4:
+        return False
+    for x in a:
+        if not x.isdigit():
+            return False
+        i = int(x)
+        if i < 0 or i > 255:
+            return False
+    return True
+
+
+def check_host_info_format(host_info, with_public_key=False):
     '''check install ha and install multi mn node info format'''
     if '@' not in host_info:
-        error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
+        if with_public_key is False:
+            error("Host connect info: '%s' is wrong, should follow format: 'root:password@host_ip', please check your input!" % host_info)
+        if with_public_key is True:
+            error("Host connect info: '%s' is wrong, should follow format: 'root@host_ip', please check your input!" % host_info)
     else:
         # get user and password
         if ':' not in host_info.split('@')[0]:
-            error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
+            if with_public_key is False:
+                error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
+            else:
+                user = host_info.split('@')[0]
+                password = ""
+
         else:
-            user = host_info.split('@')[0].split(':')[0]
-            password = host_info.split('@')[0].split(':')[1]
-            if user != "" and user != "root":
-                print "Only root user can be supported, please change user to root"
-            if user == "":
-                user = "root"
+            if with_public_key is False:
+                user = host_info.split('@')[0].split(':')[0]
+                password = host_info.split('@')[0].split(':')[1]
+                if  user != "root":
+                    error("Only root user can be supported, please change user to root")
         # get ip and port
         if ':' not in host_info.split('@')[1]:
             ip = host_info.split('@')[1]
@@ -378,6 +398,9 @@ def check_host_info_format(host_info):
         else:
             ip = host_info.split('@')[1].split(':')[0]
             port = host_info.split('@')[1].split(':')[1]
+
+        if validate_ip(ip) is False:
+            error("Ip : %s is invalid" % ip)
         return (user, password, ip, port)
 
 def check_host_password(password, ip):
@@ -387,6 +410,13 @@ def check_host_password(password, ip):
     if status != 0:
         error("Connect to host: '%s' with password '%s' failed! Please check password firstly and make sure you have "
               "disabled UseDNS in '/etc/ssh/sshd_config' on %s" % (ip, password, ip))
+
+def check_host_connection_with_key(ip, user="root", private_key=""):
+    command ='timeout 3 sshpass ssh -q %s@%s echo ""' % (user, ip)
+    (status, stdout, stderr) = shell_return_stdout_stderr(command)
+    if status != 0:
+        error("Connect to host: '%s' with private key: '%s' failed, please transfer your public key "
+              "to remote host firstly then make sure the host address is valid" % (ip, private_key))
 
 def get_ip_by_interface(device_name):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -912,6 +942,11 @@ def shell_return(cmd):
     scmd = ShellCmd(cmd)
     scmd(False)
     return scmd.return_code
+
+def shell_return_stdout_stderr(cmd):
+    scmd = ShellCmd(cmd)
+    scmd(False)
+    return (scmd.return_code, scmd.stdout, scmd.stderr)
 
 class Command(object):
     def __init__(self):
@@ -4251,6 +4286,10 @@ class ChangeMysqlPasswordCmd(Command):
            error("Only support change 'zstack' and 'root' password")
 
 class DumpMysqlCmd(Command):
+    mysql_backup_dir = "/var/lib/zstack/mysql-backup/"
+    remote_backup_dir = "/var/lib/zstack/from-zstack-remote-backup/"
+    ui_backup_dir = "/var/lib/zstack/ui/"
+
     def __init__(self):
         super(DumpMysqlCmd, self).__init__()
         self.name = "dump_mysql"
@@ -4266,6 +4305,26 @@ class DumpMysqlCmd(Command):
         parser.add_argument('--keep-amount',type=int,
                             help="The amount of backup files you want to keep, older backup files will be deleted, default number is 60",
                             default=60)
+        parser.add_argument('--host-info','--h','--host',
+                           help="ZStack will sync the backup database and ui data to remote host, the remote host connect info follow "
+                                "below format: 'root@ip_address' ",
+                           required=False)
+
+    def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip):
+        (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
+        if status != 0:
+            error(stderr)
+
+        command ='timeout 3 sshpass ssh -q -i %s %s@%s "mkdir -p %s"' % (private_key, user, remote_host_ip, self.remote_backup_dir)
+        (status, output, stderr) = shell_return_stdout_stderr(command)
+        if status != 0:
+            error(stderr)
+
+        sync_command = "rsync -lr --delete -e 'ssh -i %s'  %s %s %s:%s" % (private_key, self.mysql_backup_dir,
+                                                                           self.ui_backup_dir, remote_host_ip, self.remote_backup_dir)
+        (status, output, stderr) = shell_return_stdout_stderr(sync_command)
+        if status != 0:
+            error(stderr)
 
     def run(self, args):
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
@@ -4276,6 +4335,19 @@ class DumpMysqlCmd(Command):
         if os.path.exists(db_backup_dir) is False:
             os.mkdir(db_backup_dir)
         db_backup_name = db_backup_dir + file_name + "-" + backup_timestamp
+        if args.host_info is not None:
+            host_info = args.host_info
+            host_connect_info_list = check_host_info_format(host_info, with_public_key=True)
+            remote_host_user = host_connect_info_list[0]
+            remote_host_ip = host_connect_info_list[2]
+            key_path = os.path.expanduser('~%s' % remote_host_user) + "/.ssh/"
+            private_key= key_path + "id_rsa"
+            public_key= key_path + "id_rsa.pub"
+            if os.path.isfile(public_key) is not True:
+                error("Didn't find public key: %s" % public_key)
+            if os.path.isfile(private_key) is not True:
+                error("Didn't find private key: %s" % private_key)
+            check_host_connection_with_key(remote_host_ip, remote_host_user, private_key)
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
             if db_password is None or db_password == "":
                 db_connect_password = ""
@@ -4296,7 +4368,7 @@ class DumpMysqlCmd(Command):
             (status, output) = commands.getstatusoutput(command)
             if status != 0:
                 error(output)
-        print "Backup mysql successful! You can check the file at %s.gz" % db_backup_name
+        info("Backup mysql successfully! You can check the file at %s.gz" % db_backup_name)
         # remove old file
         if len(os.listdir(db_backup_dir)) > keep_amount:
             backup_files_list = [s for s in os.listdir(db_backup_dir) if os.path.isfile(os.path.join(db_backup_dir, s))]
@@ -4304,6 +4376,11 @@ class DumpMysqlCmd(Command):
             for expired_file in backup_files_list:
                 if expired_file not in backup_files_list[-keep_amount:]:
                     os.remove(db_backup_dir + expired_file)
+        #remote backup
+        if args.host_info is not None:
+            self.sync_local_backup_db_to_remote_host(args, remote_host_user, private_key, remote_host_ip)
+            info("Sync ZStack backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
+
 
 
 class RestoreMysqlCmd(Command):
