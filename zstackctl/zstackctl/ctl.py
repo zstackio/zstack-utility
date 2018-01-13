@@ -1587,6 +1587,21 @@ class StartCmd(Command):
                 else:
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
+        def prepare_qemu_kvm_repo():
+            NEW_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.9.0'
+            DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/qemu-kvm-ev'
+            NEW_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + NEW_QEMU_KVM_VERSION
+
+            version = ctl.read_property('KvmHost.qemu_kvm.version')
+            if version == NEW_QEMU_KVM_VERSION:
+                # use new version of qemu-kvm
+                cmd = ShellCmd("umount %s; mount --bind %s %s" % (DEFAULT_QEMU_KVM_PATH, NEW_QEMU_KVM_PATH, DEFAULT_QEMU_KVM_PATH))
+                cmd(False)
+            else:
+                # use default version of qemu-kvm
+                cmd = ShellCmd("umount %s" % DEFAULT_QEMU_KVM_PATH)
+                cmd(False)
+
         def prepare_setenv():
             setenv_path = os.path.join(ctl.zstack_home, self.SET_ENV_SCRIPT)
             catalina_opts = [
@@ -1661,6 +1676,7 @@ class StartCmd(Command):
         check_9090()
         check_msyql()
         check_rabbitmq()
+        prepare_qemu_kvm_repo()
         prepare_setenv()
         open_iptables_port('udp',['123'])
         prepareBeanRefContextXml()
