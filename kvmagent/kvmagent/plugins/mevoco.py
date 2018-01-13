@@ -429,6 +429,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             INNER_DEV = bash_errorout(
                 "ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
         if not INNER_DEV:
+            p.prepare()
+            INNER_DEV = p.inner_dev
             raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
 
         ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
