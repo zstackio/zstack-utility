@@ -14301,6 +14301,7 @@ class APIGetMetricDataMsg(object):
         self.endTime = None
         self.period = None
         self.labels = OptionalList()
+        self.functions = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -21466,6 +21467,7 @@ class GlobalConfig_VOLUMESNAPSHOT(object):
         return 'volumeSnapshot'
 
 class GlobalConfig_ZWATCH(object):
+    MANAGEMENTSERVERDIRECTORIESTOMONITOR = 'managementServerDirectoriesToMonitor'
     ALARM_REPEATINTERVAL = 'alarm.repeatInterval'
     EVALUATION_INTERVAL = 'evaluation.interval'
     EVALUATION_THREADNUM = 'evaluation.threadNum'
