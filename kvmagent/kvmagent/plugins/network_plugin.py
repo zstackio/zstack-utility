@@ -20,6 +20,7 @@ KVM_CHECK_L2VLAN_NETWORK_PATH = "/network/l2vlan/checkbridge"
 KVM_CHECK_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/checkcidr"
 KVM_REALIZE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/createbridge"
 KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/populatefdb"
+KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
 
 logger = log.get_logger(__name__)
 
@@ -285,6 +286,27 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def populate_vxlan_fdbs(self, req):
+        # populate vxlan fdb
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = PopulateVxlanFdbResponse
+
+        interfs = linux.get_interfs_from_uuids(cmd.networkUuids)
+        if interfs == []:
+            rsp.success = True
+            return jsonobject.dumps(rsp)
+
+        for interf in interfs:
+            if interf == "":
+                continue
+            if (linux.populate_vxlan_fdb(interf, cmd.peers) == False):
+                rsp.success = False
+                rsp.error = "error on populate fdb"
+                return jsonobject.dumps(rsp)
+
+        rsp.success = True
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, self.check_physical_network_interface)
@@ -295,6 +317,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_CHECK_L2VXLAN_NETWORK_PATH, self.check_vxlan_cidr)
         http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORK_PATH, self.create_vxlan_bridge)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH, self.populate_vxlan_fdb)
+        http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH, self.populate_vxlan_fdbs)
 
     def stop(self):
         pass
