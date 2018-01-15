@@ -5274,6 +5274,18 @@ class ProvisionBaremetalHostAction(inventory.APIProvisionBaremetalHostMsg):
         self.out = evt
         return self.out
 
+class PutMetricDataAction(inventory.APIPutMetricDataMsg):
+    def __init__(self):
+        super(PutMetricDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PutMetricDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class QueryAccountAction(inventory.APIQueryAccountMsg):
     def __init__(self):
         super(QueryAccountAction, self).__init__()

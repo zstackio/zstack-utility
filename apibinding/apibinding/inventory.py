@@ -14325,6 +14325,20 @@ class APIGetMetricLabelValueMsg(object):
         self.userTags = OptionalList()
 
 
+APIPUTMETRICDATAMSG_FULL_NAME = 'org.zstack.zwatch.api.APIPutMetricDataMsg'
+class APIPutMetricDataMsg(object):
+    FULL_NAME='org.zstack.zwatch.api.APIPutMetricDataMsg'
+    def __init__(self):
+        #mandatory field
+        self.namespace = NotNoneField()
+        #mandatory field
+        self.data = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 api_names = [
     'APIAddActionToAlarmMsg',
     'APIAddAliyunKeySecretMsg',
@@ -14914,6 +14928,7 @@ api_names = [
     'APIPrometheusQueryVmMonitoringDataMsg',
     'APIPrometheusQueryVmMonitoringDataReply',
     'APIProvisionBaremetalHostMsg',
+    'APIPutMetricDataMsg',
     'APIQueryAccountMsg',
     'APIQueryAccountReply',
     'APIQueryAccountResourceRefMsg',
