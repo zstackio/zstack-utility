@@ -7,6 +7,7 @@ import time
 import traceback
 import xml.etree.ElementTree as etree
 import re
+import platform
 
 import libvirt
 import zstacklib.utils.iptables as iptables
@@ -26,6 +27,8 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 
 logger = log.get_logger(__name__)
+
+IS_AARCH64 = platform.machine() == 'aarch64'
 
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
@@ -689,7 +692,10 @@ class IsoCeph(object):
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
         for minfo in self.iso.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
-        e(disk, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+        if IS_AARCH64:
+            e(disk, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+        else:
+            e(disk, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
         e(disk, 'readonly', None)
         return disk
 
@@ -711,6 +717,21 @@ class IdeCeph(object):
         e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
         return disk
 
+class ScsiCeph(object):
+    def __init__(self):
+        self.volume = None
+        self.dev_letter = None
+
+    def to_xmlobject(self):
+        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+        source = e(disk, 'source', None,
+                   {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
+        auth = e(disk, 'auth', attrib={'username': 'zstack'})
+        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
+        for minfo in self.volume.monInfo:
+            e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
+        e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
+        return disk
 
 class VirtioCeph(object):
     def __init__(self):
@@ -793,7 +814,10 @@ class IsoFusionstor(object):
             e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+        if IS_AARCH64:
+            e(disk, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+        else:
+            e(disk, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
         e(disk, 'readonly', None)
         return disk
 
@@ -821,7 +845,10 @@ class IdeFusionstor(object):
             e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
+        if IS_AARCH64:
+            e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
+        else:
+            e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
         e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
         return disk
 
@@ -1280,7 +1307,7 @@ class Vm(object):
 
             try:
                 self.domain.undefineFlags(
-                    libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE | libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA)
+                    libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE | libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA | libvirt.VIR_DOMAIN_UNDEFINE_NVRAM)
             except libvirt.libvirtError as ex:
                 logger.warn('undefine domain[%s] failed: %s' % (self.uuid, str(ex)))
                 force_undefine()
@@ -1443,6 +1470,8 @@ class Vm(object):
             else:
                 if volume.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+                elif IS_AARCH64:
+                    e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 else:
                     e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
 
@@ -1487,7 +1516,10 @@ class Vm(object):
                 return etree.tostring(xml_obj)
 
             def blk_ceph():
-                ic = IdeCeph()
+                if not IS_AARCH64:
+                    ic = IdeCeph()
+                else:
+                    ic = ScsiCeph()
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = ic.to_xmlobject()
@@ -1964,7 +1996,10 @@ class Vm(object):
             hostname, path = iso.path.lstrip('http://').split('/', 1)
             source = e(cdrom, 'source', None, {'protocol': 'http', 'name': path})
             e(source, 'host', None, {'name': hostname, 'port': '80'})
-            e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+            if IS_AARCH64:
+                e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            else:
+                e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
             e(cdrom, 'readonly', None)
         elif iso.path.startswith('iscsi'):
             bi = BlkIscsi()
@@ -1990,7 +2025,10 @@ class Vm(object):
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
-            e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+            if IS_AARCH64:
+                e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            else:
+                e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
             e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -2022,7 +2060,10 @@ class Vm(object):
 
         cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
         e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-        e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+        if IS_AARCH64:
+            e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+        else:
+            e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
         e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -2299,6 +2340,9 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'host-passthrough':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
+                elif IS_AARCH64:
+                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                    e(cpu, 'model', attrib={'fallback': 'allow'})
                 else:
                     cpu = e(root, 'cpu')
                     # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
@@ -2319,10 +2363,12 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'host-passthrough':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
+                elif IS_AARCH64:
+                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                    e(cpu, 'model', attrib={'fallback': 'allow'})
                 else:
                     cpu = e(root, 'cpu')
-                e(cpu, 'topology',
-                  attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
         def make_memory():
             root = elements['root']
@@ -2338,7 +2384,11 @@ class Vm(object):
         def make_os():
             root = elements['root']
             os = e(root, 'os')
-            e(os, 'type', 'hvm', attrib={'machine': 'pc'})
+            if IS_AARCH64:
+                e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
+                e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+            else:
+                e(os, 'type', 'hvm', attrib={'machine': 'pc'})
             # if not booting from cdrom, don't add any boot element in os section
             if cmd.bootDev[0] == "cdrom":
                 for boot_dev in cmd.bootDev:
@@ -2365,6 +2415,7 @@ class Vm(object):
                 e(devices, 'emulator', kvmagent.get_qemu_path())
             tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
             e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
+            keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
             elements['devices'] = devices
 
         def make_cdrom():
@@ -2372,7 +2423,10 @@ class Vm(object):
             if not cmd.bootIso:
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+                if IS_AARCH64:
+                    e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+                else:
+                    e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
                 e(cdrom, 'readonly', None)
                 return
 
@@ -2383,7 +2437,10 @@ class Vm(object):
                 hostname, path = iso.path.lstrip('http://').split('/', 1)
                 source = e(cdrom, 'source', None, {'protocol': 'http', 'name': path})
                 e(source, 'host', None, {'name': hostname, 'port': '80'})
-                e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+                if IS_AARCH64:
+                    e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+                else:
+                    e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
                 e(cdrom, 'readonly', None)
             elif iso.path.startswith('iscsi'):
                 bi = BlkIscsi()
@@ -2409,7 +2466,10 @@ class Vm(object):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 e(cdrom, 'source', None, {'file': iso.path})
-                e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+                if IS_AARCH64:
+                    e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+                else:
+                    e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
                 e(cdrom, 'readonly', None)
 
         def make_volumes():
@@ -2432,6 +2492,8 @@ class Vm(object):
 
                 if _v.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                elif IS_AARCH64:
+                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                 else:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'ide'})
                 return disk
@@ -2472,7 +2534,10 @@ class Vm(object):
                     return vc.to_xmlobject()
 
                 def ceph_blk():
-                    ic = IdeCeph()
+                    if not IS_AARCH64:
+                        ic = IdeCeph()
+                    else:
+                        ic = ScsiCeph()
                     ic.volume = _v
                     ic.dev_letter = _dev_letter
                     return ic.to_xmlobject()
@@ -2683,12 +2748,16 @@ class Vm(object):
                 # make sure there are three default usb controllers, for usb 1.1/2.0/3.0
                 devices = elements['devices']
                 e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
-                e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
-                e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
+                if not IS_AARCH64:
+                    e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+                    e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
         def make_video():
             devices = elements['devices']
-            if cmd.videoType != "qxl":
+            if IS_AARCH64:
+                video = e(devices, 'video')
+                e(video, 'model', None, {'type': 'virtio'})
+            elif cmd.videoType != "qxl":
                 video = e(devices, 'video')
                 e(video, 'model', None, {'type': str(cmd.videoType)})
             else:
