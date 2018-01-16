@@ -1372,6 +1372,21 @@ def populate_vxlan_fdb(interf, ips):
 
     return success
 
+def get_interfs_from_uuids(uuids):
+    strUuids = ""
+    for uuid in uuids:
+        strUuids += "%s|" % uuid
+
+    strUuids.rstrip("|")
+
+    cmd = shell.ShellCmd("ip link | grep -E '%s' -B2 | grep vxlan | awk '{ print $2}' | tr ':' ' '" % strUuids)
+    o = cmd(is_exception=False)
+
+    if o == "":
+        return []
+    else:
+        return o.split("\n")[:-1] # remove last ""
+
 def timeout_isdir(path):
     o = shell.ShellCmd("timeout 10 ls -d -l %s" % path)
     o(False)
