@@ -21,6 +21,8 @@
         </exec>
 
         <exec executable="bash" dir="${zstack.ui.source}" failonerror="true">
+            <env key="BUILD_VERSION" value="${vendor.name}" />
+            <env key="CUSTOM_PATH" value="${vendor.custom.path}" />
             <arg value="${build.zstack.ui.war.script}" />
             <arg value="${zstack.ui.source}" />
         </exec>
