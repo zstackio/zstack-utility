@@ -19,6 +19,7 @@ KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
 KVM_CHECK_L2VLAN_NETWORK_PATH = "/network/l2vlan/checkbridge"
 KVM_CHECK_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/checkcidr"
 KVM_REALIZE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/createbridge"
+KVM_REALIZE_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/createbridges"
 KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/populatefdb"
 KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
 
@@ -62,6 +63,14 @@ class CreateVxlanBridgeCmd(kvmagent.AgentCommand):
         self.vni = None
         self.peers = None
 
+class CreateVxlanBridgesCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(CreateVxlanBridgesCmd, self).__init__()
+        self.bridgeNames = None
+        self.vtepIp = None
+        self.vnis = None
+        self.peers = None
+
 class PopulateVxlanFdbCmd(kvmagent.AgentResponse):
     def __init__(self):
         super(PopulateVxlanFdbCmd, self).__init__()
@@ -88,6 +97,10 @@ class CheckVxlanCidrResponse(kvmagent.AgentResponse):
 class CreateVxlanBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CreateVxlanBridgeResponse, self).__init__()
+
+class CreateVxlanBridgesResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CreateVxlanBridgesResponse, self).__init__()
 
 class PopulateVxlanFdbResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -213,7 +226,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    @lock.lock('create_bridge')
     @kvmagent.replyerror
     def check_vxlan_cidr(self, req):
         # Check qualified interface with cidr and interface name (if provided).
@@ -273,6 +285,25 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @lock.lock('create_bridge')
+    @kvmagent.replyerror
+    def create_vxlan_bridges(self, req):
+        # Create VXLAN interface using vtep ip then create bridge
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVxlanBridgesResponse()
+        if not (cmd.vnis and cmd.vtepIp):
+            rsp.error = "vni or vtepip is none"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        for vni in cmd.vnis:
+            linux.create_vxlan_interface(vni, cmd.vtepIp)
+            interf = "vxlan" + str(vni)
+            linux.create_vxlan_bridge(interf, "br_vx_%s" % vni, cmd.peers)
+            linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
+
+        return jsonobject.dumps(rsp)
+
     def populate_vxlan_fdb(self, req):
         # populate vxlan fdb
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -316,6 +347,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_CHECK_L2VLAN_NETWORK_PATH, self.check_vlan_bridge)
         http_server.register_async_uri(KVM_CHECK_L2VXLAN_NETWORK_PATH, self.check_vxlan_cidr)
         http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORK_PATH, self.create_vxlan_bridge)
+        http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORKS_PATH, self.create_vxlan_bridges)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH, self.populate_vxlan_fdb)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH, self.populate_vxlan_fdbs)
 

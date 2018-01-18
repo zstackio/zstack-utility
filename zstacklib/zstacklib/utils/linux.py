@@ -1345,9 +1345,15 @@ def get_nics_by_cidr(cidr):
 
 def create_vxlan_interface(vni, vtepIp):
     vni = str(vni)
-    cmd = shell.ShellCmd("ip link add {name} type vxlan id {id} local {ip} learning noproxy nol2miss nol3miss".format(
-        **{"name": "vxlan" + vni, "id": vni, "ip": vtepIp}))
+    cmd = shell.ShellCmd("ip -d -o link show dev {name} | grep -w {ip} ".format(**{"name": "vxlan" + vni, "ip": vtepIp}))
     cmd(is_exception=False)
+    if cmd.return_code != 0:
+        cmd = shell.ShellCmd("ip link del {name}".format(**{"name": "vxlan" + vni}))
+        cmd(is_exception=False)
+
+        cmd = shell.ShellCmd("ip link add {name} type vxlan id {id} local {ip} learning noproxy nol2miss nol3miss".format(
+            **{"name": "vxlan" + vni, "id": vni, "ip": vtepIp}))
+        cmd(is_exception=False)
 
     cmd = shell.ShellCmd("ip link set %s up" % ("vxlan" + vni))
     cmd(is_exception=False)
