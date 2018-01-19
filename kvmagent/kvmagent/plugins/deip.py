@@ -8,7 +8,6 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import ebtables
 from zstacklib.utils.bash import *
-from kvmagent.plugins import prometheus
 from prometheus_client.core import GaugeMetricFamily
 
 logger = log.get_logger(__name__)
@@ -18,6 +17,7 @@ class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
+
 
 @in_bash
 def collect_vip_statistics():
@@ -36,8 +36,9 @@ def collect_vip_statistics():
         ns_name_suffix = ip.replace('.', '_')
         o = bash_o('ip netns')
         for l in o.split('\n'):
-            if l.endswith(ns_name_suffix):
-                return l
+            if ('%s ' % ns_name_suffix) in l:
+                # l is like 'br_eth0_172_20_51_136 (id: 3)'
+                return l.split()[0]
 
         return None
 
@@ -54,16 +55,20 @@ def collect_vip_statistics():
         if src.startswith(ip):
             g = GaugeMetricFamily('zstack_vip_out_bytes', 'VIP outbound traffic in bytes', labels=[VIP_LABEL_NAME])
             g.add_metric([vip_uuid], float(bs))
+            ret.append(g)
 
             g = GaugeMetricFamily('zstack_vip_out_packages', 'VIP outbound traffic packages', labels=[VIP_LABEL_NAME])
             g.add_metric([vip_uuid], float(pkts))
+            ret.append(g)
         # in traffic
         if dst.startswith(ip):
             g = GaugeMetricFamily('zstack_vip_in_bytes', 'VIP inbound traffic in bytes',  labels=[VIP_LABEL_NAME])
             g.add_metric([vip_uuid], float(bs))
+            ret.append(g)
 
             g = GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
             g.add_metric([vip_uuid], float(pkts))
+            ret.append(g)
 
         return ret
 
@@ -76,13 +81,15 @@ def collect_vip_statistics():
         CHAIN_NAME = "vip-perf"
         o = bash_o("ip netns exec {{ns_name}} iptables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
         for l in o.split('\n'):
-            ret.append(create_metric(l, ip, vip_uuid))
+            l = l.strip(' \t\r\n')
+            if l:
+                ret.extend(create_metric(l, ip, vip_uuid))
 
         return ret
 
     o = bash_o('ip -o -d link')
     words = o.split()
-    eip_strings = [w.startswith('eip:') for w in words]
+    eip_strings = [w for w in words if w.startswith('eip:')]
 
     ret = []
     for estr in eip_strings:
@@ -98,7 +105,7 @@ def collect_vip_statistics():
 
     return ret
 
-prometheus.register_prometheus_collector(collect_vip_statistics)
+kvmagent.register_prometheus_collector(collect_vip_statistics)
 
 class DEip(kvmagent.KvmAgent):
 
@@ -256,9 +263,12 @@ class DEip(kvmagent.KvmAgent):
 
             bash_errorout('eval {{NS}} ip link set {{device}} up')
 
-        def create_iptable_rule_if_needed(table, rule):
+        def create_iptable_rule_if_needed(table, rule, at_head=False):
             if bash_r('eval {{NS}} iptables-save | grep -- "{{rule}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} iptables {{table}} -A {{rule}}')
+                if at_head:
+                    bash_errorout('eval {{NS}} iptables {{table}} -I {{rule}}')
+                else:
+                    bash_errorout('eval {{NS}} iptables {{table}} -A {{rule}}')
 
         def create_ebtable_rule_if_needed(table, chain, rule):
             if bash_r(EBTABLES_CMD + ' -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:
@@ -315,10 +325,10 @@ class DEip(kvmagent.KvmAgent):
         def create_perf_monitor():
             CHAIN_NAME = "vip-perf"
             bash_r("eval {{NS}} iptables -N {{CHAIN_NAME}} > /dev/null")
-            create_iptable_rule_if_needed("-t filter", "-A FORWARD -s {{VIP}} -j {{CHAIN_NAME}}")
-            create_iptable_rule_if_needed("-t filter", "-A FORWARD -d {{VIP}} -j {{CHAIN_NAME}}")
-            create_iptable_rule_if_needed("-t filter", "-A {{CHAIN_NAME}} -s {{VIP}} -j RETURN")
-            create_iptable_rule_if_needed("-t filter", "-A {{CHAIN_NAME}} -d {{VIP}} -j RETURN")
+            create_iptable_rule_if_needed("-t filter", "FORWARD -s {{VIP}}/32 -j {{CHAIN_NAME}}", True)
+            create_iptable_rule_if_needed("-t filter", "FORWARD -d {{VIP}}/32 -j {{CHAIN_NAME}}", True)
+            create_iptable_rule_if_needed("-t filter", "{{CHAIN_NAME}} -s {{VIP}}/32 -j RETURN")
+            create_iptable_rule_if_needed("-t filter", "{{CHAIN_NAME}} -d {{VIP}}/32 -j RETURN")
 
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
             bash_errorout('ip netns add {{NS_NAME}}')

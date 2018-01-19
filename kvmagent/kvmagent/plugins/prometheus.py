@@ -13,15 +13,11 @@ import traceback
 from prometheus_client.core import GaugeMetricFamily,REGISTRY
 from prometheus_client import start_http_server
 
-
-def register_prometheus_collector(collector):
-    PrometheusPlugin.COLLECTORS.append(collector)
+logger = log.get_logger(__name__)
 
 class PrometheusPlugin(kvmagent.KvmAgent):
 
     COLLECTD_PATH = "/prometheus/collectdexporter/start"
-
-    COLLECTORS = []
 
     @kvmagent.replyerror
     @in_bash
@@ -154,14 +150,19 @@ LoadPlugin virt
         return jsonobject.dumps(rsp)
 
     def install_colletor(self):
-
         class Collector(object):
             def collect(self):
-                ret = []
-                for c in PrometheusPlugin.COLLECTORS:
-                    ret.extend(c())
+                try:
+                    ret = []
+                    for c in kvmagent.metric_collectors:
+                        ret.extend(c())
 
-                return ret
+                    return ret
+                except Exception as e:
+                    content = traceback.format_exc()
+                    err = '%s\n%s\n' % (str(e), content)
+                    logger.warn(err)
+                    return []
 
         REGISTRY.register(Collector())
 

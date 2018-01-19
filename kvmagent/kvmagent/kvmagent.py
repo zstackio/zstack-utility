@@ -32,6 +32,14 @@ class KvmAgent(plugin.Plugin):
         '''
         pass
 
+metric_collectors = []
+
+def register_prometheus_collector(collector):
+    logger.debug('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx registered %s' % collector)
+    global metric_collectors
+    metric_collectors.append(collector)
+    logger.debug('yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy registered %s' % metric_collectors)
+
 _rest_service = None
 _qemu_path = None
 
