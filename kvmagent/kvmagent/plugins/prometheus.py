@@ -10,10 +10,18 @@ import os.path
 import re
 import time
 import traceback
+from prometheus_client.core import GaugeMetricFamily,REGISTRY
+from prometheus_client import start_http_server
+
+
+def register_prometheus_collector(collector):
+    PrometheusPlugin.COLLECTORS.append(collector)
 
 class PrometheusPlugin(kvmagent.KvmAgent):
 
     COLLECTD_PATH = "/prometheus/collectdexporter/start"
+
+    COLLECTORS = []
 
     @kvmagent.replyerror
     @in_bash
@@ -145,9 +153,24 @@ LoadPlugin virt
 
         return jsonobject.dumps(rsp)
 
+    def install_colletor(self):
+
+        class Collector(object):
+            def collect(self):
+                ret = []
+                for c in PrometheusPlugin.COLLECTORS:
+                    ret.extend(c())
+
+                return ret
+
+        REGISTRY.register(Collector())
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.COLLECTD_PATH, self.start_collectd_exporter)
+
+        self.install_colletor()
+        start_http_server(7069)
 
     def stop(self):
         pass
