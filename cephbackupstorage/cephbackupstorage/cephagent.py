@@ -866,7 +866,7 @@ class CephAgent(object):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        rst = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, image_uuid, image_size, image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
+        rst = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
         if rst != 0:
             return rst
 

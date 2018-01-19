@@ -14,7 +14,6 @@ from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils.bash import *
-from zstacklib.utils.report import Report
 
 logger = log.get_logger(__name__)
 
@@ -217,35 +216,16 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = NfsToNfsMigrateVolumeRsp()
 
-        # progress reporter
-        report = Report(cmd.threadContext, cmd.threadContextStack)
-        report.processType = "StorageMigration"
-        report.resourceUuid = cmd.volumeUuid
-        report.progress_report("0", "start")
+        # Report task progress based on flow chain for now
+        # To get more accurate progress, we need to report from here someday
 
-        def _getProgress(synced):
-            logger.debug("report volume migration progress in nfs_ps_plugin")
-            total = linux.get_folder_size(cmd.srcVolumeFolderPath)
-            synced = linux.get_folder_size(cmd.dstVolumeFolderPath)
-            if synced < total:
-                percent = int(round(float(synced) / float(total) * 90))
-                report.progress_report(percent, "report")
-            return synced
-
-        # begin volume migration
-        _, _, err = bash_progress_1(
-            "mkdir -p %s; cp -r %s/* %s" % (cmd.dstVolumeFolderPath, cmd.srcVolumeFolderPath, cmd.dstVolumeFolderPath),
-            _getProgress
-        )
-
-        # check MD5
+        # begin volume migration, then check md5 sums
+        shell.call("mkdir -p %s; cp -r %s/* %s" % (cmd.dstVolumeFolderPath, cmd.srcVolumeFolderPath, cmd.dstVolumeFolderPath))
         src_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcVolumeFolderPath)
         dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.dstVolumeFolderPath)
-        if err or src_md5 != dst_md5:
+        if src_md5 != dst_md5:
             rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcVolumeFolderPath, cmd.dstVolumeFolderPath)
             rsp.success = False
-        else:
-            report.progress_report("100", "finish")
 
         return jsonobject.dumps(rsp)
 
