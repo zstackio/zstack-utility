@@ -138,7 +138,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         shell.call("mkdir -p %s" % id_dir)
         lock_file = os.path.join(id_dir, "uuid.lock")
 
-        @lock.file_lock(lock_file)
+        @lock.file_lock(lock_file, locker=lock.Flock())
         def check_other_smp_and_set_id_file(uuid, existUuids):
             o = shell.ShellCmd('''\
             ls %s | grep -v %s | grep -o "[0-9a-f]\{8\}[0-9a-f]\{4\}[1-5][0-9a-f]\{3\}[89ab][0-9a-f]\{3\}[0-9a-f]\{12\}"\
