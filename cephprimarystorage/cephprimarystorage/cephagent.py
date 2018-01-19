@@ -690,7 +690,9 @@ class CephAgent(object):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        ret = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, volume_uuid, volume_size, volume_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid, dst_install_path))
+        # Report task progress based on flow chain for now
+        # To get more accurate progress, we need to report from here someday, using pv
+        ret = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, volume_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid, dst_install_path))
         if ret != 0:
             return ret
 
@@ -718,9 +720,9 @@ class CephAgent(object):
         dst_install_path = self._normalize_install_path(dst_install_path)
 
         if parent_uuid == "":
-            ret = shell.run('rbd export-diff %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (src_snapshot_path, snapshot_uuid, snapshot_size, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
+            ret = shell.run('rbd export-diff %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (src_snapshot_path, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
         else:
-            ret = shell.run('rbd export-diff --from-snap %s %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (parent_uuid, src_snapshot_path, snapshot_uuid, snapshot_size, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
+            ret = shell.run('rbd export-diff --from-snap %s %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (parent_uuid, src_snapshot_path, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
         if ret != 0:
             return ret
 
