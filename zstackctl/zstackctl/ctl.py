@@ -412,7 +412,7 @@ def check_host_password(password, ip):
               "disabled UseDNS in '/etc/ssh/sshd_config' on %s" % (ip, password, ip))
 
 def check_host_connection_with_key(ip, user="root", private_key=""):
-    command ='timeout 3 sshpass ssh -q %s@%s echo ""' % (user, ip)
+    command ='timeout 5 sshpass ssh -q %s@%s echo ""' % (user, ip)
     (status, stdout, stderr) = shell_return_stdout_stderr(command)
     if status != 0:
         error("Connect to host: '%s' with private key: '%s' failed, please transfer your public key "
@@ -4316,28 +4316,37 @@ class DumpMysqlCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--file-name',
-                            help="The filename you want to save the database, default is 'zstack-backup-db'",
+                            help="The filename prefix you want to save the backup database under local backup dir, default filename "
+                                 "prefix is 'zstack-backup-db', local backup dir is '/var/lib/zstack/mysql-backup/'",
                             default="zstack-backup-db")
         parser.add_argument('--keep-amount',type=int,
                             help="The amount of backup files you want to keep, older backup files will be deleted, default number is 60",
                             default=60)
-        parser.add_argument('--host-info','--h','--host',
-                           help="ZStack will sync the backup database and ui data to remote host, the remote host connect info follow "
-                                "below format: 'root@ip_address' ",
+        parser.add_argument('--host-info','--host','--h',
+                           help="ZStack will sync the backup database and ui data to remote host dir '/var/lib/zstack/from-zstack-remote-backup/', "
+                                "the host-info format: 'root@ip_address' ",
                            required=False)
+        parser.add_argument('--delete-expired-file','--delete','--d',
+                            action='store_true',
+                            help="ZStack will delete expired files under remote host backup dir /var/lib/zstack/from-zstack-remote-backup/ "
+                                 "to make sure the content under remote host backup dir synchronize with local backup dir",
+                            required=False)
 
     def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip):
         (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
         if status != 0:
             error(stderr)
 
-        command ='timeout 3 sshpass ssh -q -i %s %s@%s "mkdir -p %s"' % (private_key, user, remote_host_ip, self.remote_backup_dir)
+        command ='timeout 10 sshpass ssh -q -i %s %s@%s "mkdir -p %s"' % (private_key, user, remote_host_ip, self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(command)
         if status != 0:
             error(stderr)
-
-        sync_command = "rsync -lr --delete -e 'ssh -i %s'  %s %s %s:%s" % (private_key, self.mysql_backup_dir,
-                                                                           self.ui_backup_dir, remote_host_ip, self.remote_backup_dir)
+        if args.delete_expired_file is True:
+            sync_command = "rsync -lr --delete -e 'ssh -i %s'  %s %s %s:%s" % (private_key, self.mysql_backup_dir,
+                                                                               self.ui_backup_dir, remote_host_ip, self.remote_backup_dir)
+        else:
+            sync_command = "rsync -lr -e 'ssh -i %s'  %s %s %s:%s" % (private_key, self.mysql_backup_dir,
+                                                                               self.ui_backup_dir, remote_host_ip, self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(sync_command)
         if status != 0:
             error(stderr)
@@ -4351,6 +4360,8 @@ class DumpMysqlCmd(Command):
         if os.path.exists(db_backup_dir) is False:
             os.mkdir(db_backup_dir)
         db_backup_name = db_backup_dir + file_name + "-" + backup_timestamp
+        if args.delete_expired_file is not False and args.host_info is None:
+            error("Please specify remote host info with '--host' before you want to delete remote host expired files")
         if args.host_info is not None:
             host_info = args.host_info
             host_connect_info_list = check_host_info_format(host_info, with_public_key=True)
@@ -4395,7 +4406,10 @@ class DumpMysqlCmd(Command):
         #remote backup
         if args.host_info is not None:
             self.sync_local_backup_db_to_remote_host(args, remote_host_user, private_key, remote_host_ip)
-            info("Sync ZStack backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
+            if args.delete_expired_file is False:
+                info("Sync ZStack backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
+            else:
+                info("Sync ZStack backup to remote host %s:%s and delete expired files on remote successfully! " % (remote_host_ip, self.remote_backup_dir))
 
 
 
