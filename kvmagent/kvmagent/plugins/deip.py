@@ -42,56 +42,56 @@ def collect_vip_statistics():
 
         return None
 
-    def create_metric(line, ip, vip_uuid):
+    def create_metric(line, ip, vip_uuid, metrics):
         pairs = line.split()
         pkts = pairs[0]
         bs = pairs[1]
         src = pairs[7]
         dst = pairs[8]
 
-        VIP_LABEL_NAME = 'VipUUID'
-        ret = []
         # out traffic
         if src.startswith(ip):
-            g = GaugeMetricFamily('zstack_vip_out_bytes', 'VIP outbound traffic in bytes', labels=[VIP_LABEL_NAME])
+            g = metrics['zstack_vip_out_bytes']
             g.add_metric([vip_uuid], float(bs))
-            ret.append(g)
 
-            g = GaugeMetricFamily('zstack_vip_out_packages', 'VIP outbound traffic packages', labels=[VIP_LABEL_NAME])
+            g = metrics['zstack_vip_out_packages']
             g.add_metric([vip_uuid], float(pkts))
-            ret.append(g)
         # in traffic
         if dst.startswith(ip):
-            g = GaugeMetricFamily('zstack_vip_in_bytes', 'VIP inbound traffic in bytes',  labels=[VIP_LABEL_NAME])
+            g = metrics['zstack_vip_in_bytes']
             g.add_metric([vip_uuid], float(bs))
-            ret.append(g)
 
-            g = GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
+            g = metrics['zstack_vip_in_packages']
             g.add_metric([vip_uuid], float(pkts))
-            ret.append(g)
-
-        return ret
 
     def collect(ip, vip_uuid):
-        ret = []
         ns_name = find_namespace_name_by_ip(ip)
         if not ns_name:
-            return ret
+            return []
 
         CHAIN_NAME = "vip-perf"
+        VIP_LABEL_NAME = 'VipUUID'
         o = bash_o("ip netns exec {{ns_name}} iptables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
+        metrics = {
+            'zstack_vip_out_bytes': GaugeMetricFamily('zstack_vip_out_bytes', 'VIP outbound traffic in bytes', labels=[VIP_LABEL_NAME]),
+            'zstack_vip_out_packages': GaugeMetricFamily('zstack_vip_out_packages', 'VIP outbound traffic packages', labels=[VIP_LABEL_NAME]),
+            'zstack_vip_in_bytes': GaugeMetricFamily('zstack_vip_in_bytes', 'VIP inbound traffic in bytes',  labels=[VIP_LABEL_NAME]),
+            'zstack_vip_in_packages': GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
+        }
+
         for l in o.split('\n'):
             l = l.strip(' \t\r\n')
             if l:
-                ret.extend(create_metric(l, ip, vip_uuid))
+                create_metric(l, ip, vip_uuid, metrics)
 
-        return ret
+        return metrics.values()
 
     o = bash_o('ip -o -d link')
     words = o.split()
     eip_strings = [w for w in words if w.startswith('eip:')]
 
     ret = []
+    eips = {}
     for estr in eip_strings:
         ip, vip_uuid = parse_eip_string(estr)
         if ip is None:
@@ -101,6 +101,9 @@ def collect_vip_statistics():
             logger.warn("no vip field found in %s" % estr)
             continue
 
+        eips[ip] = vip_uuid
+
+    for ip, vip_uuid in eips.items():
         ret.extend(collect(ip, vip_uuid))
 
     return ret
