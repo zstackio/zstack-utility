@@ -86,7 +86,7 @@ def file_lock(name, locker=Lockf()):
 class FileLock(object):
     LOCK_DIR = '/var/lib/zstack/lock/'
 
-    def __init__(self, lock_prefix, locker):
+    def __init__(self, lock_prefix, locker=Lockf()):
         def _prepare_lock_file(dname, fname):
             if not os.path.exists(dname):
                 os.makedirs(dname, 0755)
