@@ -9,6 +9,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import ebtables
 from zstacklib.utils.bash import *
 from prometheus_client.core import GaugeMetricFamily
+import netaddr
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
@@ -22,15 +23,17 @@ class AgentRsp(object):
 @in_bash
 def collect_vip_statistics():
     def parse_eip_string(estr):
-        ip = vip_uuid = None
+        vnic_ip = ip = vip_uuid = None
         ws = estr.split(',')
         for w in ws:
             if w.startswith('eip_addr'):
                 ip = w.split(':')[1]
             elif w.startswith('vip'):
                 vip_uuid = w.split(':')[1]
+            elif w.startswith('vnic_ip'):
+                vnic_ip = w.split(':')[1]
 
-        return ip, vip_uuid
+        return ip, vip_uuid, vnic_ip
 
     def find_namespace_name_by_ip(ip):
         ns_name_suffix = ip.replace('.', '_')
@@ -42,7 +45,7 @@ def collect_vip_statistics():
 
         return None
 
-    def create_metric(line, ip, vip_uuid, metrics):
+    def create_metric(line, ip, vip_uuid, vnic_ip, metrics):
         pairs = line.split()
         pkts = pairs[0]
         bs = pairs[1]
@@ -50,21 +53,21 @@ def collect_vip_statistics():
         dst = pairs[8]
 
         # out traffic
-        if src.startswith(ip):
+        if src.startswith(vnic_ip):
             g = metrics['zstack_vip_out_bytes']
             g.add_metric([vip_uuid], float(bs))
 
             g = metrics['zstack_vip_out_packages']
             g.add_metric([vip_uuid], float(pkts))
         # in traffic
-        if dst.startswith(ip):
+        if dst.startswith(vnic_ip):
             g = metrics['zstack_vip_in_bytes']
             g.add_metric([vip_uuid], float(bs))
 
             g = metrics['zstack_vip_in_packages']
             g.add_metric([vip_uuid], float(pkts))
 
-    def collect(ip, vip_uuid):
+    def collect(ip, vip_uuid, vnic_ip):
         ns_name = find_namespace_name_by_ip(ip)
         if not ns_name:
             return []
@@ -82,7 +85,7 @@ def collect_vip_statistics():
         for l in o.split('\n'):
             l = l.strip(' \t\r\n')
             if l:
-                create_metric(l, ip, vip_uuid, metrics)
+                create_metric(l, ip, vip_uuid, vnic_ip, metrics)
 
         return metrics.values()
 
@@ -93,18 +96,21 @@ def collect_vip_statistics():
     ret = []
     eips = {}
     for estr in eip_strings:
-        ip, vip_uuid = parse_eip_string(estr)
+        ip, vip_uuid, vnic_ip = parse_eip_string(estr)
         if ip is None:
             logger.warn("no ip field found in %s" % estr)
             continue
         if vip_uuid is None:
             logger.warn("no vip field found in %s" % estr)
             continue
+        if vnic_ip is None:
+            logger.warn("no vnic_ip field found in %s" % estr)
+            continue
 
-        eips[ip] = vip_uuid
+        eips[ip] = (vip_uuid, vnic_ip)
 
-    for ip, vip_uuid in eips.items():
-        ret.extend(collect(ip, vip_uuid))
+    for ip, (vip_uuid, vnic_ip) in eips.items():
+        ret.extend(collect(ip, vip_uuid, vnic_ip))
 
     return ret
 
@@ -326,12 +332,28 @@ class DEip(kvmagent.KvmAgent):
             create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{PRI_ODEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
 
         def create_perf_monitor():
+            o = bash_o("eval {{NS}} ip -o -f inet addr show | awk '/scope global/ {print $4}'")
+            cidr = None
+            vnic_ip = netaddr.IPAddress(NIC_IP)
+            for l in o.split('\n'):
+                l = l.strip(' \t\n\r')
+                if not l:
+                    continue
+
+                nw = netaddr.IPNetwork(l)
+                if vnic_ip in nw:
+                    cidr = nw.cidr
+                    break
+
+            if not cidr:
+                raise Exception("cannot find CIDR of vnic ip[%s] in namespace %s" % (NIC_IP, NS_NAME))
+
             CHAIN_NAME = "vip-perf"
             bash_r("eval {{NS}} iptables -N {{CHAIN_NAME}} > /dev/null")
-            create_iptable_rule_if_needed("-t filter", "FORWARD -s {{VIP}}/32 -j {{CHAIN_NAME}}", True)
-            create_iptable_rule_if_needed("-t filter", "FORWARD -d {{VIP}}/32 -j {{CHAIN_NAME}}", True)
-            create_iptable_rule_if_needed("-t filter", "{{CHAIN_NAME}} -s {{VIP}}/32 -j RETURN")
-            create_iptable_rule_if_needed("-t filter", "{{CHAIN_NAME}} -d {{VIP}}/32 -j RETURN")
+            create_iptable_rule_if_needed("-t filter", "FORWARD -s {{NIC_IP}}/32 ! -d {{cidr}} -j {{CHAIN_NAME}}", True)
+            create_iptable_rule_if_needed("-t filter", "FORWARD ! -s {{cidr}} -d {{NIC_IP}}/32 -j {{CHAIN_NAME}}", True)
+            create_iptable_rule_if_needed("-t filter", "{{CHAIN_NAME}} -s {{NIC_IP}}/32 -j RETURN")
+            create_iptable_rule_if_needed("-t filter", "{{CHAIN_NAME}} -d {{NIC_IP}}/32 -j RETURN")
 
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
             bash_errorout('ip netns add {{NS_NAME}}')
