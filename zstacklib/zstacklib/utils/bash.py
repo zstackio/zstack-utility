@@ -105,9 +105,7 @@ def bash_progress_1(cmd, func):
         watch_thread.stop()
 
 
-
-
-def in_bash(func):
+def in_bash(func, no_log=False):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
         __BASH_DEBUG_INFO__ = []
@@ -117,7 +115,8 @@ def in_bash(func):
             return func(*args, **kwargs)
         finally:
             end_time = time.time()
-            logger.debug('BASH COMMAND DETAILS IN %s [cost %s ms]: %s' % (func.__name__, (end_time - start_time) * 1000, json.dumps(__BASH_DEBUG_INFO__)))
+            if not no_log:
+                logger.debug('BASH COMMAND DETAILS IN %s [cost %s ms]: %s' % (func.__name__, (end_time - start_time) * 1000, json.dumps(__BASH_DEBUG_INFO__)))
             del __BASH_DEBUG_INFO__
 
     return wrap
