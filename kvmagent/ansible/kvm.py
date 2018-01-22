@@ -100,8 +100,8 @@ workplace = "%s/kvm" % zstack_root
 kvm_root = "%s/package" % workplace
 iproute_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % file_root
 iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
-dnsmasq_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % file_root
-dnsmasq_local_pkg = "%s/dnsmasq-2.68-1.x86_64.rpm" % kvm_root
+dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % file_root
+dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % kvm_root
 collectd_pkg = "%s/collectd_exporter" % file_root
 collectd_local_pkg = "%s/collectd_exporter" % workplace
 node_collectd_pkg = "%s/node_exporter" % file_root
@@ -258,9 +258,9 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg.dest = "%s" % dnsmasq_local_pkg
     copy(copy_arg, host_post_info)
     # name: Update dnsmasq for RHEL6 and RHEL7
-    command = "rpm -q dnsmasq-2.68-1 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
+    command = "rpm -q dnsmasq-2.76-2.el7_4.2.x86_64 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
     host_post_info.post_label = "ansible.shell.install.pkg"
-    host_post_info.post_label_param = "dnsmasq-2.68-1"
+    host_post_info.post_label_param = "dnsmasq-2.76-2.el7_4.2.x86_64"
     run_remote_command(command, host_post_info)
     # name: disable selinux on RedHat based OS
     set_selinux("state=disabled", host_post_info)
