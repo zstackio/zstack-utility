@@ -268,7 +268,8 @@ EOF
     yum --installroot=$MNT -y --releasever=$CENTOS_VERSION install openssh-server openssh-clients haproxy dhclient curl ntp python-setuptools gcc python-devel autoconf tcpdump iputils vim-minimal|| call_exception "Fail to install vim-minimal openssh-server dhclient curl ntp dnsmasq."
     yum --installroot=$MNT -y --releasever=$CENTOS_VERSION install telnet nc python-pip|| call_exception "Fail to install network tools. "
     #yum --installroot=$MNT -y upgrade dnsmasq-2.66-3.1.x86_64.rpm || call_exception "Fail to upgrade dnsmasq."
-    yum --installroot=$MNT -y install dnsmasq-2.68-1.x86_64.rpm || call_exception "Fail to upgrade dnsmasq."
+    #yum --installroot=$MNT -y install dnsmasq-2.68-1.x86_64.rpm || call_exception "Fail to upgrade dnsmasq."
+    yum --installroot=$MNT -y install dnsmasq-2.76-2.el7_4.2.x86_64.rpm || call_exception "Fail to upgrade dnsmasq."
     #yum --installroot=$MNT -y --releasever=$CENTOS_VERSION install salt-minion || call_exception "Fail to install salt-minion. "
     # For security group testing, install 2 network packages.
     #Fedora and CentOS 7 special requirement
