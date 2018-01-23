@@ -103,14 +103,14 @@ fi
 
 grep 'tmpdir' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-    mysql_tmp_path="/var/lib/mysql/tmp"
+    mysql_tmp_path="/var/lib/zstack-mysql-tmp"
     if [ ! -x "$mysql_tmp_path" ]; then
         mkdir "$mysql_tmp_path"
         chown mysql:mysql "$mysql_tmp_path"
         chmod 1777 "$mysql_tmp_path"
     fi
-    echo "tmpdir=/var/lib/mysql/tmp"
-    sed -i '/\[mysqld\]/a tmpdir=/var/lib/mysql/tmp\' $mysql_conf
+    echo "tmpdir=$mysql_tmp_path"
+    sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
 '''
 
