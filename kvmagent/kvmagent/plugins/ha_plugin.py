@@ -264,7 +264,7 @@ class HaPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         @thread.AsyncThread
-        def heartbeat_file_fencer(mount_path, ps_uuid):
+        def heartbeat_file_fencer(mount_path, ps_uuid, mounted_by_zstack):
             def try_remount_fs():
                 if mount_path_is_nfs(mount_path):
                     shell.ShellCmd("systemctl start nfs-client.target")(False)
@@ -289,6 +289,23 @@ class HaPlugin(kvmagent.KvmAgent):
 
                 logger.debug('stop remount fs[uuid:%s]' % ps_uuid)
 
+            def after_kill_vm():
+                if not killed_vm_pids or not mounted_by_zstack:
+                    return
+
+                try:
+                    kill_and_umount(mount_path, mount_path_is_nfs(mount_path))
+                except UmountException:
+                    if shell.run('ps -p %s' % ' '.join(killed_vm_pids) == 0):
+                        virsh_list = shell.call("timeout 10 virsh list --all || echo 'cannot obtain virsh list'")
+                        logger.debug("virsh_list:\n" + virsh_list)
+                        logger.error('kill vm[pids:%s] failed because of unavailable fs[mountPath:%s].'
+                                     ' please retry "umount -f %s"' % (killed_vm_pids, mount_path, mount_path))
+                        return
+
+                try_remount_fs()
+
+
             def touch_heartbeat_file():
                 touch = shell.ShellCmd('timeout %s touch %s' % (cmd.storageCheckerTimeout, heartbeat_file_path))
                 touch(False)
@@ -300,7 +317,6 @@ class HaPlugin(kvmagent.KvmAgent):
             created_time = time.time()
             with self.fencer_lock:
                 self.run_filesystem_fencer_timestamp[ps_uuid] = created_time
-            killed_vm_pids = None
             try:
                 failure = 0
                 url = shell.call("mount | grep -e '%s' | awk '{print $1}'" % mount_path).strip()
@@ -318,24 +334,19 @@ class HaPlugin(kvmagent.KvmAgent):
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
                         killed_vm_pids = kill_vm(cmd.maxAttempts, [mount_path], True)
-                        kill_and_umount(mount_path, mount_path_is_nfs(mount_path))
-                        try_remount_fs()
+                        after_kill_vm()
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
-            except UmountException:
-                if killed_vm_pids and shell.run('ps -p %s' % ' '.join(killed_vm_pids)):
-                    logger.error('kill vm[pids:%s] failed because of unavailable fs[mountPath:%s].'
-                                 ' please retry "umount -f %s"' % (killed_vm_pids, mount_path, mount_path))
-                    try_remount_fs()
+
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
 
-        for mount_point, uuid in zip(cmd.mountPoints, cmd.uuids):
-            if not linux.timeout_isdir(mount_point):
-                raise Exception('the mount point[%s] is not a directory' % mount_point)
+        for mount_path, uuid, mounted_by_zstack in zip(cmd.mountPaths, cmd.uuids, cmd.mountedByZStack):
+            if not linux.timeout_isdir(mount_path):
+                raise Exception('the mount path[%s] is not a directory' % mount_path)
 
-            heartbeat_file_fencer(mount_point, uuid)
+            heartbeat_file_fencer(mount_path, uuid, mounted_by_zstack)
 
         return jsonobject.dumps(AgentRsp())
 
