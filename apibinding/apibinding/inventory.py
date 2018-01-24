@@ -14213,6 +14213,29 @@ class APIUpdateSNSTextTemplateMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETALARMDATAMSG_FULL_NAME = 'org.zstack.zwatch.api.APIGetAlarmDataMsg'
+class APIGetAlarmDataMsg(object):
+    FULL_NAME='org.zstack.zwatch.api.APIGetAlarmDataMsg'
+    def __init__(self):
+        self.startTime = None
+        self.endTime = None
+        self.limit = None
+        self.labels = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETALARMDATAREPLY_FULL_NAME = 'org.zstack.zwatch.api.APIGetAlarmDataReply'
+class APIGetAlarmDataReply(object):
+    FULL_NAME='org.zstack.zwatch.api.APIGetAlarmDataReply'
+    def __init__(self):
+        self.histories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIGETALLEVENTMETADATAMSG_FULL_NAME = 'org.zstack.zwatch.api.APIGetAllEventMetadataMsg'
 class APIGetAllEventMetadataMsg(object):
     FULL_NAME='org.zstack.zwatch.api.APIGetAllEventMetadataMsg'
@@ -14272,7 +14295,7 @@ class APIGetEventDataMsg(object):
         self.startTime = None
         self.endTime = None
         self.limit = None
-        self.labels = OptionalList()
+        self.conditions = OptionalList()
         self.latest = None
         self.session = None
         self.timeout = None
@@ -14668,6 +14691,8 @@ api_names = [
     'APIGetAccountQuotaUsageMsg',
     'APIGetAccountQuotaUsageReply',
     'APIGetAccountReply',
+    'APIGetAlarmDataMsg',
+    'APIGetAlarmDataReply',
     'APIGetAllEventMetadataMsg',
     'APIGetAllEventMetadataReply',
     'APIGetAllMetricMetadataMsg',

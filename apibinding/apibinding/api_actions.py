@@ -3878,6 +3878,18 @@ class GetAccountQuotaUsageAction(inventory.APIGetAccountQuotaUsageMsg):
         self.out = evt
         return self.out
 
+class GetAlarmDataAction(inventory.APIGetAlarmDataMsg):
+    def __init__(self):
+        super(GetAlarmDataAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAlarmDataAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetAllEventMetadataAction(inventory.APIGetAllEventMetadataMsg):
     def __init__(self):
         super(GetAllEventMetadataAction, self).__init__()
