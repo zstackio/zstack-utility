@@ -226,6 +226,7 @@ def umount(path, is_exception=True):
 def remount(url, path, options=None):
     if not is_mounted(path, url):
         mount(url, path, options)
+        return
 
     o = shell.ShellCmd('timeout 180 mount -o remount %s' % path)
     o(False)
