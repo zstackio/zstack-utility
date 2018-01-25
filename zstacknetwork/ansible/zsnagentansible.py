@@ -104,14 +104,14 @@ run_remote_command(command, host_post_info)
 run_remote_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent /etc/init.d/", host_post_info)
 if tmout != None:
     if distro == "CentOS" or distro == "RedHat":
-        command = "/usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on" % (tmout)
+        command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on" % (tmout)
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start" % (tmout)
+        command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start" % (tmout)
 else:
     if distro == "CentOS" or distro == "RedHat":
-        command = "/usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
+        command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
+        command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time
