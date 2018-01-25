@@ -14281,7 +14281,7 @@ class APIGetAuditDataMsg(object):
         self.startTime = None
         self.endTime = None
         self.limit = None
-        self.labels = OptionalList()
+        self.conditions = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
