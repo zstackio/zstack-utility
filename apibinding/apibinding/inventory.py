@@ -12072,7 +12072,9 @@ class APIRemoveSNSDingTalkAtPersonMsg(object):
     FULL_NAME='org.zstack.sns.platform.dingtalk.APIRemoveSNSDingTalkAtPersonMsg'
     def __init__(self):
         #mandatory field
-        self.uuid = NotNoneField()
+        self.endpointUuid = NotNoneField()
+        #mandatory field
+        self.phoneNumber = NotNoneField()
         self.deleteMode = None
         self.session = None
         self.timeout = None
@@ -22346,14 +22348,14 @@ class QueryObjectSNSEmailEndpointInventory(object):
      }
 
 class QueryObjectSNSEmailPlatformInventory(object):
-     PRIMITIVE_FIELDS = ['password','smtpServer','smtpPort','name','lastOpDate','description','state','type','uuid','username','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['smtpServer','smtpPort','name','lastOpDate','description','state','type','uuid','username','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['endpoints']
      QUERY_OBJECT_MAP = {
         'endpoints' : 'QueryObjectSNSEmailEndpointInventory',
      }
 
 class QueryObjectSNSHttpEndpointInventory(object):
-     PRIMITIVE_FIELDS = ['password','name','platformUuid','lastOpDate','description','state','type','uuid','url','username','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['name','platformUuid','lastOpDate','description','state','type','uuid','url','username','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['platform','topics']
      QUERY_OBJECT_MAP = {
         'topics' : 'QueryObjectSNSTopicInventory',
