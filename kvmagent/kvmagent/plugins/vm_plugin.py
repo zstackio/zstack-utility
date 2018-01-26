@@ -3600,7 +3600,7 @@ class VmPlugin(kvmagent.KvmAgent):
         r, o, e = bash.bash_roe(cmd)
         if r != 0:
             return ""
-        cmd = "lspci -vs %s | grep IRQ | awk '{print $5}'" % addr
+        cmd = "lspci -vs %s | grep IRQ | awk '{print $5}' | grep -E -o '[[:digit:]]+'" % addr
         r, o, e = bash.bash_roe(cmd)
         if o == "":
             return "can not get irq"
