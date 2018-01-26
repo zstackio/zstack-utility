@@ -350,7 +350,7 @@ if __name__ == "__main__":
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.PING_PATH, self.ping)
-        http_server.register_sync_uri(self.CAPACITY_PATH, self.capacity)
+        http_server.register_async_uri(self.CAPACITY_PATH, self.capacity)
         http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         http_server.register_async_uri(self.SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT, self.setup_heartbeat_file)
         http_server.register_async_uri(self.FACT_PATH, self.fact)
