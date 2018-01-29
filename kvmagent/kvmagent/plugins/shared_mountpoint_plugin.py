@@ -54,11 +54,17 @@ class ResizeVolumeRsp(AgentRsp):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
+class GetSubPathRsp(AgentRsp):
+    def __init__(self):
+        super(GetSubPathRsp, self).__init__()
+        self.paths = []
+
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointprimarystorage/createrootvolume"
     DELETE_BITS_PATH = "/sharedmountpointprimarystorage/bits/delete"
+    GET_SUBPATH_PATH = "/sharedmountpointprimarystorage/sub/path"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointprimarystorage/createtemplatefromvolume"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/download"
@@ -78,6 +84,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
+        http_server.register_async_uri(self.GET_SUBPATH_PATH, self.get_sub_path)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
@@ -195,6 +202,13 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         kvmagent.deleteImage(cmd.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_sub_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetSubPathRsp()
+        rsp.paths = kvmagent.listPath(cmd.path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

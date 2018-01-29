@@ -138,6 +138,25 @@ def deleteImage(path):
      pdir = os.path.dirname(path)
      linux.rmdir_if_empty(pdir)
 
+
+def listPath(path):
+    s = []
+    pwd = shell.call('pwd')
+    sub_paths = shell.call('ls %s' % path)
+    for f in sub_paths:
+        s.append("%s/%s" % (pwd, f))
+    return s
+
+    shell.call('ls -f %s' % path)
+    logger.debug('successfully delete %s' % path)
+    if (path.endswith('.qcow2')):
+        imfFiles = [".imf", ".imf2"]
+        for f in imfFiles:
+            filePath = path.replace(".qcow2", f)
+            shell.call('rm -f %s' % filePath)
+    pdir = os.path.dirname(path)
+    linux.rmdir_if_empty(pdir)
+
 class KvmDaemon(daemon.Daemon):
     def __init__(self, pidfile, config={}):
         super(KvmDaemon, self).__init__(pidfile)

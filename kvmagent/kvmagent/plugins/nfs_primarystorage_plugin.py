@@ -75,6 +75,11 @@ class DeleteResponse(NfsResponse):
     def __init__(self):
         super(DeleteResponse, self).__init__()
 
+class ListResponse(NfsResponse):
+    def __init__(self):
+        super(ListResponse, self).__init__()
+        self.paths = []
+
 class CheckIsBitsExistingRsp(NfsResponse):
     def __init__(self):
         super(CheckIsBitsExistingRsp, self).__init__()
@@ -155,6 +160,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/nfsprimarystorage/sftp/createtemplatefromvolume"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/nfsprimarystorage/revertvolumefromsnapshot"
     DELETE_PATH = "/nfsprimarystorage/delete"
+    LIST_PATH = "/nfsprimarystorage/listpath"
     CHECK_BITS_PATH = "/nfsprimarystorage/checkbits"
     UPLOAD_TO_SFTP_PATH = "/nfsprimarystorage/uploadtosftpbackupstorage"
     DOWNLOAD_FROM_SFTP_PATH = "/nfsprimarystorage/downloadfromsftpbackupstorage"
@@ -185,6 +191,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_FROM_SFTP_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         http_server.register_async_uri(self.DELETE_PATH, self.delete)
+        http_server.register_async_uri(self.LIST_PATH, self.list)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_root_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
@@ -474,6 +481,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             kvmagent.deleteImage(cmd.installPath)
         logger.debug('successfully delete %s' % cmd.installPath)
         self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def list(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ListResponse()
+
+        rsp.paths = kvmagent.listPath(cmd.path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
