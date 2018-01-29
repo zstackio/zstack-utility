@@ -67,10 +67,10 @@ class DEip(kvmagent.KvmAgent):
 
         NIC_NAME = eip.nicName
         CHAIN_NAME = '%s-gw' % NIC_NAME
-        EIP_UUID = eip.eipUuid[-5:-1]
-        PUB_ODEV = "%s_eo_%s" % (dev_base_name, EIP_UUID)
-        PRI_ODEV = "%s_o_%s" % (dev_base_name, EIP_UUID)
         NS_NAME = "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
+        EIP_UUID = eip.eipUuid[-9:]
+        PUB_ODEV = "%s_eo" % (EIP_UUID)
+        PRI_ODEV = "%s_o" % (EIP_UUID)
 
         def delete_namespace():
             if bash_r('ip netns | grep -w {{NS_NAME}} > /dev/null') == 0:
@@ -89,15 +89,16 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
                 bash_errorout(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
 
-            BLOCK_CHAIN_NAME = '{{PRI_ODEV}}-arp'
+            for BLOCK_DEV in [PRI_ODEV, PUB_ODEV]:
+                BLOCK_CHAIN_NAME = '{{BLOCK_DEV}}-arp'
 
-            if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
-                RULE = '-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}'
-                if bash_r(EBTABLES_CMD + ' -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
-                    bash_errorout(EBTABLES_CMD + ' -t nat -D POSTROUTING {{RULE}}')
+                if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
+                    RULE = '-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}'
+                    if bash_r(EBTABLES_CMD + ' -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                        bash_errorout(EBTABLES_CMD + ' -t nat -D POSTROUTING {{RULE}}')
 
-                bash_errorout(EBTABLES_CMD + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
-                bash_errorout(EBTABLES_CMD + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
+                    bash_errorout(EBTABLES_CMD + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
+                    bash_errorout(EBTABLES_CMD + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
 
         delete_namespace()
         delete_outer_dev()
