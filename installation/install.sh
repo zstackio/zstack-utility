@@ -2335,7 +2335,9 @@ curl -L ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTA
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 yum clean all >/dev/null 2>&1
-sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+if [ -f /etc/yum.repos.d/epel.repo ]; then
+    sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+fi
 
 mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
 mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
