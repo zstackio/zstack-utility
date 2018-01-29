@@ -290,6 +290,30 @@ class AddNfsPrimaryStorageAction(inventory.APIAddNfsPrimaryStorageMsg):
         self.out = evt
         return self.out
 
+class AddNodeToSurfsBackupStorageAction(inventory.APIAddNodeToSurfsBackupStorageMsg):
+    def __init__(self):
+        super(AddNodeToSurfsBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddNodeToSurfsBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddNodeToSurfsPrimaryStorageAction(inventory.APIAddNodeToSurfsPrimaryStorageMsg):
+    def __init__(self):
+        super(AddNodeToSurfsPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddNodeToSurfsPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddOssBucketFromRemoteAction(inventory.APIAddOssBucketFromRemoteMsg):
     def __init__(self):
         super(AddOssBucketFromRemoteAction, self).__init__()
@@ -298,18 +322,6 @@ class AddOssBucketFromRemoteAction(inventory.APIAddOssBucketFromRemoteMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AddOssBucketFromRemoteAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class AddRemoteCidrsToIPsecConnectionAction(inventory.APIAddRemoteCidrsToIPsecConnectionMsg):
-    def __init__(self):
-        super(AddRemoteCidrsToIPsecConnectionAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AddRemoteCidrsToIPsecConnectionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -394,6 +406,30 @@ class AddSimulatorPrimaryStorageAction(inventory.APIAddSimulatorPrimaryStorageMs
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AddSimulatorPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddSurfsBackupStorageAction(inventory.APIAddSurfsBackupStorageMsg):
+    def __init__(self):
+        super(AddSurfsBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddSurfsBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddSurfsPrimaryStorageAction(inventory.APIAddSurfsPrimaryStorageMsg):
+    def __init__(self):
+        super(AddSurfsPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddSurfsPrimaryStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -586,18 +622,6 @@ class AttachL2NetworkToClusterAction(inventory.APIAttachL2NetworkToClusterMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AttachL2NetworkToClusterAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class AttachL3NetworksToIPsecConnectionAction(inventory.APIAttachL3NetworksToIPsecConnectionMsg):
-    def __init__(self):
-        super(AttachL3NetworksToIPsecConnectionAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[AttachL3NetworksToIPsecConnectionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3430,18 +3454,6 @@ class DetachL2NetworkFromClusterAction(inventory.APIDetachL2NetworkFromClusterMs
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DetachL2NetworkFromClusterAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class DetachL3NetworksFromIPsecConnectionAction(inventory.APIDetachL3NetworksFromIPsecConnectionMsg):
-    def __init__(self):
-        super(DetachL3NetworksFromIPsecConnectionAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[DetachL3NetworksFromIPsecConnectionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -6348,6 +6360,48 @@ class QuerySharedResourceAction(inventory.APIQuerySharedResourceMsg):
         self.out = reply.inventories
         return self.out
 
+class QuerySurfsBackupStorageAction(inventory.APIQuerySurfsBackupStorageMsg):
+    def __init__(self):
+        super(QuerySurfsBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySurfsBackupStorageAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySurfsPoolClassAction(inventory.APIQuerySurfsPoolClassMsg):
+    def __init__(self):
+        super(QuerySurfsPoolClassAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySurfsPoolClassAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySurfsPrimaryStorageAction(inventory.APIQuerySurfsPrimaryStorageMsg):
+    def __init__(self):
+        super(QuerySurfsPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySurfsPrimaryStorageAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QuerySystemTagAction(inventory.APIQuerySystemTagMsg):
     def __init__(self):
         super(QuerySystemTagAction, self).__init__()
@@ -7086,14 +7140,26 @@ class RemoveMonFromFusionstorPrimaryStorageAction(inventory.APIRemoveMonFromFusi
         self.out = evt
         return self.out
 
-class RemoveRemoteCidrsFromIPsecConnectionAction(inventory.APIRemoveRemoteCidrsFromIPsecConnectionMsg):
+class RemoveNodeFromSurfsBackupStorageAction(inventory.APIRemoveNodeFromSurfsBackupStorageMsg):
     def __init__(self):
-        super(RemoveRemoteCidrsFromIPsecConnectionAction, self).__init__()
+        super(RemoveNodeFromSurfsBackupStorageAction, self).__init__()
         self.sessionUuid = None
         self.out = None
     def run(self):
         if not self.sessionUuid:
-            raise Exception('sessionUuid of action[RemoveRemoteCidrsFromIPsecConnectionAction] cannot be None')
+            raise Exception('sessionUuid of action[RemoveNodeFromSurfsBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveNodeFromSurfsPrimaryStorageAction(inventory.APIRemoveNodeFromSurfsPrimaryStorageMsg):
+    def __init__(self):
+        super(RemoveNodeFromSurfsPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveNodeFromSurfsPrimaryStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -8532,6 +8598,30 @@ class UpdateSftpBackupStorageAction(inventory.APIUpdateSftpBackupStorageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateSftpBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateSurfsBackupStorageNodeAction(inventory.APIUpdateSurfsBackupStorageNodeMsg):
+    def __init__(self):
+        super(UpdateSurfsBackupStorageNodeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateSurfsBackupStorageNodeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateSurfsPrimaryStorageNodeAction(inventory.APIUpdateSurfsPrimaryStorageNodeMsg):
+    def __init__(self):
+        super(UpdateSurfsPrimaryStorageNodeAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateSurfsPrimaryStorageNodeAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
