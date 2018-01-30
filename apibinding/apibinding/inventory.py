@@ -9251,35 +9251,6 @@ class APIUpdateZoneMsg(object):
         self.userTags = OptionalList()
 
 
-APIADDREMOTECIDRSTOIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIAddRemoteCidrsToIPsecConnectionMsg'
-class APIAddRemoteCidrsToIPsecConnectionMsg(object):
-    FULL_NAME='org.zstack.ipsec.APIAddRemoteCidrsToIPsecConnectionMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.peerCidrs = OptionalList()
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIATTACHL3NETWORKSTOIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIAttachL3NetworksToIPsecConnectionMsg'
-class APIAttachL3NetworksToIPsecConnectionMsg(object):
-    FULL_NAME='org.zstack.ipsec.APIAttachL3NetworksToIPsecConnectionMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        self.l3NetworkUuids = NotNoneList()
-        self.resourceUuid = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APICHANGEIPSECCONNECTIONSTATEMSG_FULL_NAME = 'org.zstack.ipsec.APIChangeIPSecConnectionStateMsg'
 class APIChangeIPSecConnectionStateMsg(object):
     FULL_NAME='org.zstack.ipsec.APIChangeIPSecConnectionStateMsg'
@@ -9302,7 +9273,8 @@ class APICreateIPsecConnectionMsg(object):
         #mandatory field
         self.name = NotNoneField()
         self.description = None
-        self.l3NetworkUuid = None
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.peerAddress = NotNoneField()
         #valid values: [psk, certs]
@@ -9311,7 +9283,8 @@ class APICreateIPsecConnectionMsg(object):
         self.authKey = NotNoneField()
         #mandatory field
         self.vipUuid = NotNoneField()
-        self.peerCidrs = OptionalList()
+        #mandatory field
+        self.peerCidrs = NotNoneList()
         #valid values: [md5, sha1, sha256, sha384, sha512]
         self.ikeAuthAlgorithm = None
         #valid values: [3des, aes-128, aes-192, aes-256]
@@ -9347,20 +9320,6 @@ class APIDeleteIPsecConnectionMsg(object):
         self.userTags = OptionalList()
 
 
-APIDETACHL3NETWORKSFROMIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIDetachL3NetworksFromIPsecConnectionMsg'
-class APIDetachL3NetworksFromIPsecConnectionMsg(object):
-    FULL_NAME='org.zstack.ipsec.APIDetachL3NetworksFromIPsecConnectionMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        self.l3NetworkUuids = NotNoneList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIQUERYIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIQueryIPSecConnectionMsg'
 class APIQueryIPSecConnectionMsg(object):
     FULL_NAME='org.zstack.ipsec.APIQueryIPSecConnectionMsg'
@@ -9390,19 +9349,6 @@ class APIQueryIPSecConnectionReply(object):
         self.total = None
         self.success = None
         self.error = None
-
-
-APIREMOVEREMOTECIDRSFROMIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIRemoveRemoteCidrsFromIPsecConnectionMsg'
-class APIRemoveRemoteCidrsFromIPsecConnectionMsg(object):
-    FULL_NAME='org.zstack.ipsec.APIRemoveRemoteCidrsFromIPsecConnectionMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.peerCidrs = OptionalList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
 
 
 APIUPDATEIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIUpdateIPsecConnectionMsg'
@@ -13335,6 +13281,212 @@ class APIAddZsesPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDNODETOSURFSBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.surfs.backup.APIAddNodeToSurfsBackupStorageMsg'
+class APIAddNodeToSurfsBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.backup.APIAddNodeToSurfsBackupStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.nodeUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIADDSURFSBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.surfs.backup.APIAddSurfsBackupStorageMsg'
+class APIAddSurfsBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.backup.APIAddSurfsBackupStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.nodeUrls = NotNoneList()
+        self.poolName = None
+        self.url = None
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.type = None
+        self.importImages = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSURFSBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.surfs.backup.APIQuerySurfsBackupStorageMsg'
+class APIQuerySurfsBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.backup.APIQuerySurfsBackupStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIREMOVENODEFROMSURFSBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.surfs.backup.APIRemoveNodeFromSurfsBackupStorageMsg'
+class APIRemoveNodeFromSurfsBackupStorageMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.backup.APIRemoveNodeFromSurfsBackupStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.nodeHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATESURFSBACKUPSTORAGENODEMSG_FULL_NAME = 'org.zstack.storage.surfs.backup.APIUpdateSurfsBackupStorageNodeMsg'
+class APIUpdateSurfsBackupStorageNodeMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.backup.APIUpdateSurfsBackupStorageNodeMsg'
+    def __init__(self):
+        #mandatory field
+        self.nodeUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.nodePort = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIADDNODETOSURFSPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.surfs.primary.APIAddNodeToSurfsPrimaryStorageMsg'
+class APIAddNodeToSurfsPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.primary.APIAddNodeToSurfsPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.nodeUrls = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIADDSURFSPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.surfs.primary.APIAddSurfsPrimaryStorageMsg'
+class APIAddSurfsPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.primary.APIAddSurfsPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.nodeUrls = NotNoneList()
+        self.rootVolumePoolName = None
+        self.dataVolumePoolName = None
+        self.imageCachePoolName = None
+        self.url = None
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.type = None
+        #mandatory field
+        self.zoneUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSURFSPOOLCLASSMSG_FULL_NAME = 'org.zstack.storage.surfs.primary.APIQuerySurfsPoolClassMsg'
+class APIQuerySurfsPoolClassMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.primary.APIQuerySurfsPoolClassMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSURFSPOOLCLASSREPLAY_FULL_NAME = 'org.zstack.storage.surfs.primary.APIQuerySurfsPoolClassReplay'
+class APIQuerySurfsPoolClassReplay(object):
+    FULL_NAME='org.zstack.storage.surfs.primary.APIQuerySurfsPoolClassReplay'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYSURFSPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.surfs.primary.APIQuerySurfsPrimaryStorageMsg'
+class APIQuerySurfsPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.primary.APIQuerySurfsPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIREMOVENODEFROMSURFSPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.surfs.primary.APIRemoveNodeFromSurfsPrimaryStorageMsg'
+class APIRemoveNodeFromSurfsPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.primary.APIRemoveNodeFromSurfsPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.nodeHostnames = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATESURFSPRIMARYSTORAGENODEMSG_FULL_NAME = 'org.zstack.storage.surfs.primary.APIUpdateSurfsPrimaryStorageNodeMsg'
+class APIUpdateSurfsPrimaryStorageNodeMsg(object):
+    FULL_NAME='org.zstack.storage.surfs.primary.APIUpdateSurfsPrimaryStorageNodeMsg'
+    def __init__(self):
+        #mandatory field
+        self.nodeUuid = NotNoneField()
+        self.hostname = None
+        self.sshUsername = None
+        self.sshPassword = None
+        self.sshPort = None
+        self.nodePort = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIATTACHUSBDEVICETOVMMSG_FULL_NAME = 'org.zstack.usbDevice.APIAttachUsbDeviceToVmMsg'
 class APIAttachUsbDeviceToVmMsg(object):
     FULL_NAME='org.zstack.usbDevice.APIAttachUsbDeviceToVmMsg'
@@ -13993,8 +14145,9 @@ api_names = [
     'APIAddMonToFusionstorPrimaryStorageMsg',
     'APIAddNetworkServiceProviderMsg',
     'APIAddNfsPrimaryStorageMsg',
+    'APIAddNodeToSurfsBackupStorageMsg',
+    'APIAddNodeToSurfsPrimaryStorageMsg',
     'APIAddOssBucketFromRemoteMsg',
-    'APIAddRemoteCidrsToIPsecConnectionMsg',
     'APIAddSchedulerJobToSchedulerTriggerMsg',
     'APIAddSecurityGroupRuleMsg',
     'APIAddSftpBackupStorageMsg',
@@ -14002,6 +14155,8 @@ api_names = [
     'APIAddSimulatorBackupStorageMsg',
     'APIAddSimulatorHostMsg',
     'APIAddSimulatorPrimaryStorageMsg',
+    'APIAddSurfsBackupStorageMsg',
+    'APIAddSurfsPrimaryStorageMsg',
     'APIAddUserToGroupMsg',
     'APIAddVCenterMsg',
     'APIAddVRouterRouteEntryMsg',
@@ -14019,7 +14174,6 @@ api_names = [
     'APIAttachIsoToVmInstanceMsg',
     'APIAttachL2NetworkToClusterMsg',
     'APIAttachL3NetworkToVmMsg',
-    'APIAttachL3NetworksToIPsecConnectionMsg',
     'APIAttachMonitorTriggerActionToTriggerMsg',
     'APIAttachNetworkServiceProviderToL2NetworkMsg',
     'APIAttachNetworkServiceToL3NetworkMsg',
@@ -14260,7 +14414,6 @@ api_names = [
     'APIDetachIsoFromVmInstanceMsg',
     'APIDetachL2NetworkFromClusterMsg',
     'APIDetachL3NetworkFromVmMsg',
-    'APIDetachL3NetworksFromIPsecConnectionMsg',
     'APIDetachMonitorTriggerActionFromTriggerMsg',
     'APIDetachNetworkServiceFromL3NetworkMsg',
     'APIDetachNetworkServiceProviderFromL2NetworkMsg',
@@ -14715,6 +14868,10 @@ api_names = [
     'APIQueryShareableVolumeVmInstanceRefReply',
     'APIQuerySharedResourceMsg',
     'APIQuerySharedResourceReply',
+    'APIQuerySurfsBackupStorageMsg',
+    'APIQuerySurfsPoolClassMsg',
+    'APIQuerySurfsPoolClassReplay',
+    'APIQuerySurfsPrimaryStorageMsg',
     'APIQuerySystemTagMsg',
     'APIQuerySystemTagReply',
     'APIQueryTagMsg',
@@ -14805,7 +14962,8 @@ api_names = [
     'APIRemoveMonFromCephPrimaryStorageMsg',
     'APIRemoveMonFromFusionstorBackupStorageMsg',
     'APIRemoveMonFromFusionstorPrimaryStorageMsg',
-    'APIRemoveRemoteCidrsFromIPsecConnectionMsg',
+    'APIRemoveNodeFromSurfsBackupStorageMsg',
+    'APIRemoveNodeFromSurfsPrimaryStorageMsg',
     'APIRemoveSchedulerJobFromSchedulerTriggerMsg',
     'APIRemoveUserFromGroupMsg',
     'APIRemoveVmFromAffinityGroupMsg',
@@ -14951,6 +15109,8 @@ api_names = [
     'APIUpdateSchedulerTriggerMsg',
     'APIUpdateSecurityGroupMsg',
     'APIUpdateSftpBackupStorageMsg',
+    'APIUpdateSurfsBackupStorageNodeMsg',
+    'APIUpdateSurfsPrimaryStorageNodeMsg',
     'APIUpdateSystemTagMsg',
     'APIUpdateUsbDeviceMsg',
     'APIUpdateUserGroupMsg',
@@ -20892,6 +21052,10 @@ SIMULATOR_PRIMARY_STORAGE_TYPE = 'SimulatorPrimaryStorage'
 
 #StorageMigrationConstant
 
+#SurfsConstants
+SURFS_BACKUP_STORAGE_TYPE = 'Surfs'
+SURFS_PRIMARY_STORAGE_TYPE = 'Surfs'
+
 #VCenterConstant
 VCENTER_CLUSTER_TYPE = 'vmware'
 VCENTER_BACKUP_STORAGE_TYPE = 'VCenter'
@@ -21058,6 +21222,7 @@ class GlobalConfig_HA(object):
     NEVERSTOPVM_SCAN_INTERVAL = 'neverStopVm.scan.interval'
     NEVERSTOPVM_RETRY_DELAY = 'neverStopVm.retry.delay'
     HOST_SELFFENCER_STORAGECHECKER_TIMEOUT = 'host.selfFencer.storageChecker.timeout'
+    NEVERSTOPVM_GC_MAXRETRYINTERVALTIME = 'neverStopVm.gc.maxRetryIntervalTime'
     HOST_CHECK_SUCCESSINTERVAL = 'host.check.successInterval'
     HOST_CHECK_SUCCESSRATIO = 'host.check.successRatio'
     HOST_CHECK_MAXATTEMPTS = 'host.check.maxAttempts'
@@ -21232,13 +21397,6 @@ class GlobalConfig_NOTIFICATION(object):
     def get_category():
         return 'notification'
 
-class GlobalConfig_OTHERS(object):
-    TEST2 = 'Test2'
-
-    @staticmethod
-    def get_category():
-        return 'Others'
-
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
@@ -21278,6 +21436,7 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
@@ -21313,19 +21472,22 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     def get_category():
         return 'sharedMountPointPrimaryStorage'
 
-class GlobalConfig_TEST(object):
-    TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
-    TESTSTRING = 'TestString'
-    TESTBOOLEAN = 'TestBoolean'
+class GlobalConfig_SURFS(object):
+    PRIMARYSTORAGE_DELETEPOOL = 'primaryStorage.deletePool'
+    PRIMARYSTORAGE_NODE_RECONNECTDELAY = 'primaryStorage.node.reconnectDelay'
+    BACKUPSTORAGE_NODE_RECONNECTDELAY = 'backupStorage.node.reconnectDelay'
+    BACKUPSTORAGE_IMAGE_DOWNLOAD_TIMEOUT = 'backupStorage.image.download.timeout'
+    BACKUPSTORAGE_NODE_AUTORECONNECT = 'backupStorage.node.autoReconnect'
+    IMAGECACHE_CLEANUP_INTERVAL = 'imageCache.cleanup.interval'
+    PRIMARYSTORAGE_NODE_AUTORECONNECT = 'primaryStorage.node.autoReconnect'
 
     @staticmethod
     def get_category():
-        return 'Test'
+        return 'surfs'
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
+    VROUTER_ECHOTIMEOUT = 'vrouter.echoTimeout'
     SSH_PORT = 'ssh.port'
     PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
     VROUTER_PASSWORD = 'vrouter.password'
@@ -21375,8 +21537,6 @@ class GlobalConfig_VOLUMESNAPSHOT(object):
         return 'volumeSnapshot'
 
 class GlobalConfig_VPC(object):
-    ZSNP_ENABLED = 'zsnp.enabled'
-    DISTRIBUTEDROUTING_ENABLED = 'distributedRouting.enabled'
     ZSNP_TIMEOUT = 'zsnp.timeout'
 
     @staticmethod
@@ -21775,19 +21935,12 @@ class QueryObjectHybridEipAddressInventory(object):
      }
 
 class QueryObjectIPsecConnectionInventory(object):
-     PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','state','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['l3NetworkRefs','peerCidrs','l3Network','vip']
+     PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','l3NetworkUuid','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','state','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['peerCidrs','l3Network','vip']
      QUERY_OBJECT_MAP = {
-        'l3NetworkRefs' : 'QueryObjectIPsecL3NetworkRefInventory',
-        'l3Network' : 'QueryObjectIPsecL3NetworkRefInventory',
+        'l3Network' : 'QueryObjectL3NetworkInventory',
         'peerCidrs' : 'QueryObjectIPsecPeerCidrInventory',
         'vip' : 'QueryObjectVipInventory',
-     }
-
-class QueryObjectIPsecL3NetworkRefInventory(object):
-     PRIMITIVE_FIELDS = ['lastOpDate','l3NetworkUuid','uuid','connectionUuid','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
-     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectIPsecPeerCidrInventory(object):
@@ -22239,6 +22392,51 @@ class QueryObjectSimulatorHostInventory(object):
 
 class QueryObjectSnapshotUsageInventory(object):
      PRIMITIVE_FIELDS = ['SnapshotSize','volumeUuid','SnapshotStatus','lastOpDate','SnapshotUuid','id','inventory','SnapshotName','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectSurfsBackupStorageInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['nodes','nodes','image','volumeSnapshot','zone']
+     QUERY_OBJECT_MAP = {
+        'image' : 'QueryObjectImageInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'nodes' : 'QueryObjectSurfsBackupStorageNodeInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectSurfsBackupStorageNodeInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','hostname','nodeAddr','sshUsername','lastOpDate','sshPassword','nodeUuid','nodePort','backupStorageUuid','createDate','status','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectSurfsPoolClassInventory(object):
+     PRIMITIVE_FIELDS = ['clsdisplayname','availableCapacity','isrootcls','totalCapacity','isactive','fsid','lastOpDate','clsname','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectSurfsPrimaryStorageInventory(object):
+     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','imageCachePoolName','zoneUuid','description','rootVolumePoolName','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','fsid','name','lastOpDate','state','dataVolumePoolName','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['nodes','volume','volumeSnapshot','nodes','zone','cluster']
+     QUERY_OBJECT_MAP = {
+        'volume' : 'QueryObjectVolumeInventory',
+        'cluster' : 'QueryObjectClusterInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'nodes' : 'QueryObjectSurfsPrimaryStorageNodeInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectSurfsPrimaryStorageNodeInventory(object):
+     PRIMITIVE_FIELDS = ['sshPort','hostname','nodeAddr','sshUsername','lastOpDate','sshPassword','primaryStorageUuid','nodeUuid','nodePort','createDate','status','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectSurfsPrimaryStoragePoolInventory(object):
+     PRIMITIVE_FIELDS = ['aliasName','lastOpDate','description','primaryStorageUuid','type','uuid','poolName','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -22704,6 +22902,9 @@ queryMessageInventoryMap = {
      'APIQuerySftpBackupStorageMsg' : QueryObjectSftpBackupStorageInventory,
      'APIQueryShareableVolumeVmInstanceRefMsg' : QueryObjectShareableVolumeVmInstanceRefInventory,
      'APIQuerySharedResourceMsg' : QueryObjectSharedResourceInventory,
+     'APIQuerySurfsBackupStorageMsg' : QueryObjectSurfsBackupStorageInventory,
+     'APIQuerySurfsPoolClassMsg' : QueryObjectSurfsPoolClassInventory,
+     'APIQuerySurfsPrimaryStorageMsg' : QueryObjectSurfsPrimaryStorageInventory,
      'APIQuerySystemTagMsg' : QueryObjectSystemTagInventory,
      'APIQueryUsbDeviceMsg' : QueryObjectUsbDeviceInventory,
      'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,

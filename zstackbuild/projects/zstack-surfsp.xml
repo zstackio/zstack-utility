@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-surfsp builder" basedir="../">
+    <property name="surfsp.bdir" location="${build.dir}/surfsp" />
+    <property name="surfsp.ansible.dir" location="${ansible.dir}/surfsp/" />
+
+    <target name="build-surfsp" >
+        <makeDir dir="${surfsp.bdir}" />
+
+        <checkProperty property="surfsp.source" />
+        <checkProperty property="surfsp.serviceFile" />
+        <checkFile file="${surfsp.source}" />
+        <checkFile file="${surfsp.source}/setup.py" />
+        <checkFile file="${surfsp.serviceFile}" />
+
+        <delete dir="${surfsp.source}/dist" />
+
+        <exec executable="python" dir="${surfsp.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${surfsp.bdir}/">
+            <fileset dir="${surfsp.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-surfsp">
+        <makeDir dir="${surfsp.ansible.dir}" />
+
+        <copy todir="${surfsp.ansible.dir}">
+            <fileset dir="${surfsp.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${surfsp.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${surfsp.serviceFile}" todir="${surfsp.ansible.dir}" />
+    </target>
+</project>
