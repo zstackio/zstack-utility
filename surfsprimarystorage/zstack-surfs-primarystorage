@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# the following is chkconfig init header
+#
+# zstack-surfs-primarystorage:  zstack surfs primary storage agent daemon
+#
+# chkconfig: 345 97 03
+# description:  This is a daemon instructed by zstack management server \
+#               to perform primary storage related operations\
+#               See http://zstack.org
+#
+# processname: zstack-surfs-primarystorage
+# pidfile: /var/run/zstack/surfs-primarystorage.pid
+#
+
+check_status() {
+    pidfile='/var/run/zstack/surfs-primarystorage.pid'
+	if [ ! -f $pidfile ]; then
+		echo "zstack surfs-primarystorage agent is stopped"
+		exit 1
+	else
+		pid=`cat $pidfile`
+		ps -p $pid > /dev/null
+		if [ $? -eq 0 ]; then
+			echo "zstack surfs-primarystorage agent is running, pid is $pid"
+			exit 0
+		else
+			echo "zstack surfs-primarystorage is stopped, but pidfile at $pidfile is not cleaned. It may be caused by the agent crashed at last time, manually cleaning it would be ok"
+			exit 1
+		fi
+	fi
+}
+
+if [ $# -eq 0 ]; then
+	echo "usage: $0
+[start|stop|restart|status]"
+	exit 1
+fi
+
+if [ "$@" = "status" ]; then
+	check_status
+else
+	. /var/lib/zstack/virtualenv/surfsp/bin/activate && python -c "from surfsprimarystorage import cdaemon; cdaemon.main()" $@
+fi
+
+if [ $? -eq 0 ]; then
+    echo "$@ zstack surfs-primarystorage agent .... SUCCESS"
+    exit 0
+else
+    echo "$@ zstack surfs-primarystorage agent .... FAILED"
+    exit 1
+fi
