@@ -9255,9 +9255,9 @@ APIADDREMOTECIDRSTOIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIAddRemote
 class APIAddRemoteCidrsToIPsecConnectionMsg(object):
     FULL_NAME='org.zstack.ipsec.APIAddRemoteCidrsToIPsecConnectionMsg'
     def __init__(self):
-        #mandatory field
         self.uuid = NotNoneField()
-        self.peerCidrs = OptionalList()
+        self.peerCidrs = NotNoneList()
+        #mandatory field
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -9396,9 +9396,9 @@ APIREMOVEREMOTECIDRSFROMIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIRemo
 class APIRemoveRemoteCidrsFromIPsecConnectionMsg(object):
     FULL_NAME='org.zstack.ipsec.APIRemoveRemoteCidrsFromIPsecConnectionMsg'
     def __init__(self):
-        #mandatory field
         self.uuid = NotNoneField()
-        self.peerCidrs = OptionalList()
+        self.peerCidrs = NotNoneList()
+        #mandatory field
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
