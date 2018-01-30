@@ -78,7 +78,7 @@ class DEip(kvmagent.KvmAgent):
 
         def delete_outer_dev():
             if bash_r('ip link | grep -w {{PUB_ODEV}} > /dev/null') == 0:
-                bash_errorout('ip link del {{PUB_ODEV}}')
+                bash_r('ip link del {{PUB_ODEV}}')
 
         def delete_arp_rules():
             if bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
