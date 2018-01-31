@@ -696,6 +696,9 @@ class CephAgent(object):
             self._set_capacity_to_response(rsp)
             return jsonobject.dumps(rsp)
 
+        if cmd.sendCommandUrl:
+            Report.url = cmd.sendCommandUrl
+
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "AddImage"
         report.resourceUuid = cmd.imageUuid
@@ -706,8 +709,6 @@ class CephAgent(object):
             cmd.url = linux.shellquote(cmd.url)
             # roll back tmp ceph file after import it
             _1()
-            if cmd.sendCommandUrl:
-                Report.url = cmd.sendCommandUrl
 
             PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
             content_length = shell.call('curl -sI %s|grep Content-Length' % cmd.url).strip().split()[1]

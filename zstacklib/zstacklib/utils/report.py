@@ -48,6 +48,9 @@ class Report(object):
 
     @thread.AsyncThread
     def report(self):
+        if not self.url:
+            raise Exception('No url specified')
+
         cmd = ProgressReportCmd()
         cmd.serverUuid = Report.serverUuid
         cmd.processType = self.processType
