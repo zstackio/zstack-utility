@@ -6693,6 +6693,80 @@ class VDIUiStatusCmd(Command):
         else:
             info('VDI UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
+def mysql(cmd):
+    (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+    if db_password is None or db_password == "":
+        db_connect_password = ""
+    else:
+        db_connect_password = "-p" + db_password
+    if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in RestoreMysqlCmd.all_local_ip):
+        db_hostname = ""
+    else:
+        db_hostname = "--host %s" % db_hostname
+    command = "mysql -uzstack %s -P %s %s zstack -e \"%s\"" % (db_connect_password, db_port, db_hostname, cmd)
+    return shell(command).strip()
+
+class ShowSessionCmd(Command):
+    def __init__(self):
+        super(ShowSessionCmd, self).__init__()
+        self.name = "show_session_list"
+        self.description = "show user session list"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--account', '-c', help='Show the designated account session lists')
+    def run(self, args):
+        command = "select a.name, count(1) from AccountVO a, SessionVO s where s.accountUuid = a.uuid group by a.name"
+        result = mysql(command)
+        if result is not None:
+            output = result.splitlines()
+            info("account sessions")
+            info("---------------")
+            count = 0
+            for o in output[1:]:
+                session = o.split()
+                if args.user is None:
+                    info(o)
+                else:
+                    if args.user == session[0]:
+                        info(o)
+                    else:
+                        continue
+                count = int(session[1]) + count
+            info("---------------")
+            info("total   %d" % count)
+
+class DropSessionCmd(Command):
+    def __init__(self):
+        super(DropSessionCmd, self).__init__()
+        self.name = "drop_user_session"
+        self.description = "drop user session"
+        ctl.register_command(self)
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--all', '-a', help='Drop all sessions except which belong to admin account', action='store_true', default=False)
+        parser.add_argument('--account', '-c', help='Drop the designated account sessions')
+    def run(self, args):
+        count = 0
+        command = ""
+        if not args.all:
+            if args.user is None:
+                return
+            countCmd = "select count(1) from SessionVO where accountUuid = (select distinct(a.uuid) from AccountVO a, (select * from SessionVO)" \
+                  " as s where s.accountUuid = a.uuid and a.name='%s')" % args.user
+            command = "delete from SessionVO where accountUuid = (select distinct(a.uuid) from AccountVO a, (select * from SessionVO)" \
+                  " as s where s.accountUuid = a.uuid and a.name='%s')" % args.user
+            result = mysql(countCmd)
+        else:
+            countCmd = "select count(1) from SessionVO where accountUuid not in (select uuid from AccountVO where type='SystemAdmin')"
+            command = "delete from SessionVO where accountUuid not in (select uuid from AccountVO where type='SystemAdmin')"
+            result = mysql(countCmd)
+        count = result.splitlines()
+        if count is not None and len(count) > 0 and int(count[1]) > 0:
+            mysql(command)
+            info("drop %d sessions totally" % int(count[1]))
+        else:
+            info("drop 0 session")
+
 class InstallLicenseCmd(Command):
     def __init__(self):
         super(InstallLicenseCmd, self).__init__()
@@ -7207,6 +7281,8 @@ def main():
     StartVDIUICmd()
     StopVDIUiCmd()
     VDIUiStatusCmd()
+    ShowSessionCmd()
+    DropSessionCmd()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard
