@@ -684,8 +684,9 @@ class IsoCeph(object):
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
         source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
+        if self.iso.secretUuid:
+            auth = e(disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
         for minfo in self.iso.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
@@ -702,8 +703,9 @@ class IdeCeph(object):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
+        if self.volume.secretUuid:
+            auth = e(disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
@@ -719,8 +721,9 @@ class VirtioCeph(object):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
+        if self.volume.secretUuid:
+            auth = e(disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'vd%s' % self.dev_letter, 'bus': 'virtio'})
@@ -736,8 +739,9 @@ class VirtioSCSICeph(object):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
+        if self.volume.secretUuid:
+            auth = e(disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
@@ -2707,9 +2711,8 @@ class Vm(object):
 
             cephSecretKey = cmd.addons['ceph_secret_key']
             cephSecretUuid = cmd.addons['ceph_secret_uuid']
-            if cephSecretKey:
-                if cephSecretUuid:
-                    VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
+            if cephSecretKey and cephSecretUuid:
+                VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
 
             pciDevices = cmd.addons['pciDevice']
             if pciDevices:
@@ -3496,10 +3499,13 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def _create_ceph_secret_key(userKey, uuid):
-        sh_cmd = shell.ShellCmd('virsh secret-list | grep %s > /dev/null' % uuid)
+        sh_cmd = shell.ShellCmd('virsh secret-get-value %s' % uuid)
         sh_cmd(False)
-        if sh_cmd.return_code == 0:
-            return jsonobject.dumps(kvmagent.AgentResponse())
+        if sh_cmd.stdout.strip() == userKey:
+            return
+        elif sh_cmd.return_code == 0:
+            shell.call('virsh secret-set-value %s %s' % (uuid, userKey))
+            return
 
         # for some reason, ceph doesn't work with the secret created by libvirt
         # we have to use the command line here
