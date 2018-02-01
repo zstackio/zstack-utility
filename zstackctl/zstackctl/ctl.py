@@ -6725,10 +6725,10 @@ class ShowSessionCmd(Command):
             count = 0
             for o in output[1:]:
                 session = o.split()
-                if args.user is None:
+                if args.account is None:
                     info(o)
                 else:
-                    if args.user == session[0]:
+                    if args.account == session[0]:
                         info(o)
                     else:
                         continue
@@ -6739,8 +6739,8 @@ class ShowSessionCmd(Command):
 class DropSessionCmd(Command):
     def __init__(self):
         super(DropSessionCmd, self).__init__()
-        self.name = "drop_user_session"
-        self.description = "drop user session"
+        self.name = "drop_account_session"
+        self.description = "drop account session"
         ctl.register_command(self)
     def install_argparse_arguments(self, parser):
         parser.add_argument('--all', '-a', help='Drop all sessions except which belong to admin account', action='store_true', default=False)
@@ -6749,12 +6749,12 @@ class DropSessionCmd(Command):
         count = 0
         command = ""
         if not args.all:
-            if args.user is None:
+            if args.account is None:
                 return
             countCmd = "select count(1) from SessionVO where accountUuid = (select distinct(a.uuid) from AccountVO a, (select * from SessionVO)" \
-                  " as s where s.accountUuid = a.uuid and a.name='%s')" % args.user
+                  " as s where s.accountUuid = a.uuid and a.name='%s')" % args.account
             command = "delete from SessionVO where accountUuid = (select distinct(a.uuid) from AccountVO a, (select * from SessionVO)" \
-                  " as s where s.accountUuid = a.uuid and a.name='%s')" % args.user
+                  " as s where s.accountUuid = a.uuid and a.name='%s')" % args.account
             result = mysql(countCmd)
         else:
             countCmd = "select count(1) from SessionVO where accountUuid not in (select uuid from AccountVO where type='SystemAdmin')"
