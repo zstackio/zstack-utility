@@ -62,8 +62,6 @@
     <import file="${basedir}/projects/zstack-iscsi.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephb.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephp.xml" optional="false" />
-    <import file="${basedir}/projects/zstack-surfsb.xml" optional="false" />
-    <import file="${basedir}/projects/zstack-surfsp.xml" optional="false" />
     <import file="${basedir}/projects/zstack-fusionstorb.xml" optional="false" />
     <import file="${basedir}/projects/zstack-fusionstorp.xml" optional="false" />
     <import file="${basedir}/projects/zstack-console-proxy.xml" optional="false" />
@@ -263,12 +261,6 @@
                 <antcall target="build-cephp"/>
             </sequential>
             <sequential>
-                <antcall target="build-surfsb"/>
-            </sequential>
-            <sequential>
-                <antcall target="build-surfsp"/>
-            </sequential>
-            <sequential>
                 <antcall target="build-zstack-agent"/>
             </sequential>
             <sequential>
@@ -338,12 +330,6 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-cephp"/>
-            </sequential>
-            <sequential>
-                <antcall target="assemble-surfsb"/>
-            </sequential>
-            <sequential>
-                <antcall target="assemble-surfsp"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-agent-server"/>
