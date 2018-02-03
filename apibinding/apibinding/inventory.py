@@ -14298,7 +14298,6 @@ class APIGetEventDataMsg(object):
         self.endTime = None
         self.limit = None
         self.conditions = OptionalList()
-        self.latest = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
