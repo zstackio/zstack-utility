@@ -20,7 +20,6 @@ class AgentRsp(object):
         self.error = None
 
 
-@in_bash(no_log=True)
 def collect_vip_statistics():
     def parse_eip_string(estr):
         vnic_ip = ip = vip_uuid = None
