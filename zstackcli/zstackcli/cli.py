@@ -864,7 +864,7 @@ Parse command parameters error:
             cmd, output = return_result
 
             if not file_folder:
-                new_file_folder = '%s-%s.json' % (cmd.split()[0], num)
+                new_file_folder = '%s-%s.json' % (cmd[0], num)
             else:
                 new_file_folder = file_folder
 
@@ -874,7 +874,8 @@ Parse command parameters error:
                 write_to_file(output, file_name, num)
             else:
                 if os.path.isdir(new_file_folder):
-                    file_name = '%s/%s-%s.json' % (new_file_folder, cmd.split()[0], num)
+                    file_name = '%s/%s-%s.json' % (new_file_folder, cmd[0], num)
+                    write_to_file(output, file_name, num)
                 elif os.path.isdir(dirname):
                     write_to_file(output, file_name, num)
                 else:
