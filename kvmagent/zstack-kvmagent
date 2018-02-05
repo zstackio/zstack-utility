@@ -40,7 +40,7 @@ fi
 rm_ebtables_dangling_lock() {
         lockfile='/var/lib/ebtables/lock'
         test -e $lockfile || return
-        pidof -s ebtables > /dev/null && return
+        lsof $lockfile 2>/dev/null >/dev/null && return
         unlink $lockfile
 }
 
