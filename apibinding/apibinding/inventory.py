@@ -7852,6 +7852,7 @@ class APIDetachIsoFromVmInstanceMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.isoUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
