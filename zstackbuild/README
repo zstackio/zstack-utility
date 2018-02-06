@@ -41,7 +41,3 @@ Build all-in-one package with 1.2.x branch
 -------------
 #ant -Dzstack_build_root=/root/zstackorg/ -Dzstack.build_version=1.2.x -Dzstack-utiltiy.build_version=1.2.x all-in-one
 
-Build pypi source
-------------
-
-#build-pypi-source -Dzstack_build_root=/root/zstackorg
