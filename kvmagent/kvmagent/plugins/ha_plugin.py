@@ -8,8 +8,12 @@ from zstacklib.utils import thread
 import os.path
 import time
 import traceback
+import threading
 
 logger = log.get_logger(__name__)
+
+class UmountException(Exception):
+    pass
 
 class AgentRsp(object):
     def __init__(self):
@@ -39,6 +43,7 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
     logger.debug('vm_in_process_uuid_list:\n' + vm_in_process_uuid_list)
 
     # kill vm's qemu process
+    vm_pids = []
     for vm_uuid in vm_in_process_uuid_list.split('\n'):
         vm_uuid = vm_uuid.strip(' \t\n\r')
         if not vm_uuid:
@@ -50,6 +55,9 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
 
         vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
         vm_pid = vm_pid.strip(' \t\n\r')
+        vm_pids.append(vm_pid)
+
+    for vm_pid in vm_pids:
         kill = shell.ShellCmd('kill -9 %s' % vm_pid)
         kill(False)
         if kill.return_code == 0:
@@ -58,9 +66,8 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
-    if isFileSystem :
-        for mp in mountPaths:
-            kill_and_umount(mp, mount_path_is_nfs(mp))
+    return vm_pids
+
 
 def mount_path_is_nfs(mount_path):
     typ = shell.call("mount | grep '%s' | awk '{print $5}'" % mount_path)
@@ -80,7 +87,11 @@ def kill_and_umount(mount_path, is_nfs):
 def umount_fs(mount_path, is_nfs):
     if is_nfs:
         shell.ShellCmd("systemctl stop nfs-client.target")(False)
-    shell.call("sleep 2; umount -f %s" % mount_path)
+    time.sleep(2)
+    o = shell.ShellCmd("umount -f %s" % mount_path)
+    o(False)
+    if o.return_code != 0:
+        raise UmountException(o.stderr)
 
 
 def kill_progresses_using_mount_path(mount_path):
@@ -145,7 +156,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def __init__(self):
         self.run_ceph_fencer = False
-        self.run_filesystem_fencer = False
+        self.run_filesystem_fencer_timestamp = {}
+        self.fencer_lock = threading.RLock()
 
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
@@ -154,7 +166,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def cancel_filesystem_self_fencer(self, req):
-        self.run_filesystem_fencer = False
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        with self.fencer_lock:
+            for ps_uuid in cmd.psUuids:
+                self.run_filesystem_fencer_timestamp.pop(ps_uuid, None)
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -248,43 +263,90 @@ class HaPlugin(kvmagent.KvmAgent):
     def setup_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        self.run_filesystem_fencer = True
-
         @thread.AsyncThread
-        def heartbeat_file_fencer(mount_path, ps_uuid):
+        def heartbeat_file_fencer(mount_path, ps_uuid, mounted_by_zstack):
+            def try_remount_fs():
+                if mount_path_is_nfs(mount_path):
+                    shell.ShellCmd("systemctl start nfs-client.target")(False)
+
+                while self.run_filesystem_fencer(ps_uuid, created_time):
+                    if linux.is_mounted(path=mount_path) and touch_heartbeat_file():
+                        self.report_storage_status([ps_uuid], 'Connected')
+                        logger.debug("fs[uuid:%s] is reachable again, report to management" % ps_uuid)
+                        break
+                    try:
+                        logger.debug('fs[uuid:%s] is unreachable, it will be remounted after 180s' % ps_uuid)
+                        time.sleep(180)
+                        if not self.run_filesystem_fencer(ps_uuid, created_time):
+                            break
+                        linux.remount(url, mount_path, options)
+                        self.report_storage_status([ps_uuid], 'Connected')
+                        logger.debug("remount fs[uuid:%s] success, report to management" % ps_uuid)
+                        break
+                    except:
+                        logger.warn('remount fs[uuid:%s] fail, try again soon' % ps_uuid)
+                        kill_progresses_using_mount_path(mount_path)
+
+                logger.debug('stop remount fs[uuid:%s]' % ps_uuid)
+
+            def after_kill_vm():
+                if not killed_vm_pids or not mounted_by_zstack:
+                    return
+
+                try:
+                    kill_and_umount(mount_path, mount_path_is_nfs(mount_path))
+                except UmountException:
+                    if shell.run('ps -p %s' % ' '.join(killed_vm_pids) == 0):
+                        virsh_list = shell.call("timeout 10 virsh list --all || echo 'cannot obtain virsh list'")
+                        logger.debug("virsh_list:\n" + virsh_list)
+                        logger.error('kill vm[pids:%s] failed because of unavailable fs[mountPath:%s].'
+                                     ' please retry "umount -f %s"' % (killed_vm_pids, mount_path, mount_path))
+                        return
+
+                try_remount_fs()
+
+
+            def touch_heartbeat_file():
+                touch = shell.ShellCmd('timeout %s touch %s' % (cmd.storageCheckerTimeout, heartbeat_file_path))
+                touch(False)
+                if touch.return_code != 0:
+                    logger.warn('unable to touch %s, %s %s' % (heartbeat_file_path, touch.stderr, touch.stdout))
+                return touch.return_code == 0
+
             heartbeat_file_path = os.path.join(mount_path, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
+            created_time = time.time()
+            with self.fencer_lock:
+                self.run_filesystem_fencer_timestamp[ps_uuid] = created_time
             try:
                 failure = 0
+                url = shell.call("mount | grep -e '%s' | awk '{print $1}'" % mount_path).strip()
+                options = shell.call("mount | grep -e '%s' | awk -F '[()]' '{print $2}'" % mount_path).strip()
 
-                while self.run_filesystem_fencer:
+                while self.run_filesystem_fencer(ps_uuid, created_time):
                     time.sleep(cmd.interval)
-
-                    touch = shell.ShellCmd('timeout %s touch %s; exit $?' % (cmd.storageCheckerTimeout, heartbeat_file_path))
-                    touch(False)
-                    if touch.return_code == 0:
+                    if touch_heartbeat_file():
                         failure = 0
                         continue
 
-                    logger.warn('unable to touch %s, %s %s' % (heartbeat_file_path, touch.stderr, touch.stdout))
                     failure += 1
-
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
-                        kill_vm(cmd.maxAttempts, [mount_path], True)
-                        break
+                        killed_vm_pids = kill_vm(cmd.maxAttempts, [mount_path], True)
+                        after_kill_vm()
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
+
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
 
-        for mount_point, uuid in zip(cmd.mountPoints, cmd.uuids):
-            if not linux.timeout_isdir(mount_point):
-                raise Exception('the mount point[%s] is not a directory' % mount_point)
+        for mount_path, uuid, mounted_by_zstack in zip(cmd.mountPaths, cmd.uuids, cmd.mountedByZStack):
+            if not linux.timeout_isdir(mount_path):
+                raise Exception('the mount path[%s] is not a directory' % mount_path)
 
-            heartbeat_file_fencer(mount_point, uuid)
+            heartbeat_file_fencer(mount_path, uuid, mounted_by_zstack)
 
         return jsonobject.dumps(AgentRsp())
 
@@ -319,6 +381,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
         if success == cmd.successTimes:
             rsp.result = self.RET_SUCCESS
+            return jsonobject.dumps(rsp)
+
+        if success == 0:
+            rsp.result = self.RET_FAILURE
             return jsonobject.dumps(rsp)
 
         rsp.result = self.RET_NOT_STABLE
@@ -361,8 +427,16 @@ class HaPlugin(kvmagent.KvmAgent):
 
             logger.debug(
                 'primary storage[psList:%s] has new connection status[%s], report it to %s' % (
-                ps_uuids, ps_status, url))
+                    ps_uuids, ps_status, url))
             http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportstoragestatus'})
 
         report_to_management_node()
+
+    def run_filesystem_fencer(self, ps_uuid, created_time):
+        with self.fencer_lock:
+            if not self.run_filesystem_fencer_timestamp[ps_uuid] or self.run_filesystem_fencer_timestamp[ps_uuid] > created_time:
+                return False
+
+            self.run_filesystem_fencer_timestamp[ps_uuid] = created_time
+            return True
 

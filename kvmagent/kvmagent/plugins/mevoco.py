@@ -1,4 +1,3 @@
-
 __author__ = 'frank'
 
 from kvmagent import kvmagent
@@ -414,8 +413,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         self._apply_userdata(cmd.userdata)
         return jsonobject.dumps(ApplyUserdataRsp())
 
-    @lock.file_lock('/run/xtables.lock')
     @in_bash
+    @lock.file_lock('/run/xtables.lock')
     def _apply_userdata(self, to):
         p = UserDataEnv(to.bridgeName, to.namespaceName)
         INNER_DEV = None
@@ -429,6 +428,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             DHCP_IP = to.dhcpServerIp
             INNER_DEV = bash_errorout(
                 "ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
+        if not INNER_DEV:
+            p.prepare()
+            INNER_DEV = p.inner_dev
         if not INNER_DEV:
             raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
 
@@ -484,31 +486,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if ret != 0:
             bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
 
-
-        # DNAT port 80
-        PORT = to.port
-        PORT_CHAIN_NAME = "UD-PORT-%s" % PORT
-        # delete old chains not matching our port
-        OLD_CHAIN = bash_errorout("iptables-save | awk '/^:UD-PORT-/{print substr($1,2)}'").strip(' \n\r\t')
-        if OLD_CHAIN and OLD_CHAIN != CHAIN_NAME:
-            ret = bash_r('iptables-save -t nat | grep -- "-j {{OLD_CHAIN}}"')
-            if ret == 0:
-                bash_r('iptables -t nat -D PREROUTING -j {{OLD_CHAIN}}')
-
-            bash_errorout('iptables -t nat -F {{OLD_CHAIN}}')
-            bash_errorout('iptables -t nat -X {{OLD_CHAIN}}')
-
-        ret = bash_r('iptables-save | grep -w ":{{PORT_CHAIN_NAME}}" > /dev/null')
-        if ret != 0:
-            bash_errorout('iptables -t nat -N {{PORT_CHAIN_NAME}}')
-
-        ret = bash_r('iptables -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"')
-        if ret != 0:
-            bash_errorout('iptables -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}')
-
-        ret = bash_r('iptables-save -t nat | grep -- "{{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}"')
-        if ret != 0:
-            bash_errorout('iptables -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}')
+        self.work_userdata_iptables(CHAIN_NAME, to)
 
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         if not os.path.exists(conf_folder):
@@ -532,8 +510,13 @@ $HTTP["remoteip"] =~ "^(.*)$" {
         "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
         "^/.*/meta-data$" => "../%1/meta-data",
         "^/.*/meta-data/$" => "../%1/meta-data/",
-        "^/.*/user-data$" => "../%1/user-data"
+        "^/.*/user-data$" => "../%1/user-data",
+        "^/.*/user_data$" => "../%1/user_data",
+        "^/.*/meta_data.json$" => "../%1/meta_data.json",
+        "^/.*/password$" => "../%1/password",
+        "^/.*/$" => "../%1/$1"
     )
+    dir-listing.activate = "enable"
 }
 
 mimetype.assign = (
@@ -560,6 +543,15 @@ mimetype.assign = (
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
 
+        meta_data_json = '''\
+{
+    "uuid": "{{vmInstanceUuid}}"
+}'''
+        tmpt = Template(meta_data_json)
+        conf = tmpt.render({
+            'vmInstanceUuid': to.metadata.vmUuid
+        })
+
         root = os.path.join(http_root, to.vmIp)
         meta_root = os.path.join(root, 'meta-data')
         if not os.path.exists(meta_root):
@@ -578,6 +570,18 @@ mimetype.assign = (
             with open(userdata_file_path, 'w') as fd:
                 fd.write(to.userdata)
 
+            windows_meta_data_json_path = os.path.join(root, 'meta_data.json')
+            with open(windows_meta_data_json_path, 'w') as fd:
+                fd.write(conf)
+
+            windows_userdata_file_path = os.path.join(root, 'user_data')
+            with open(windows_userdata_file_path, 'w') as fd:
+                fd.write(to.userdata)
+
+            windows_meta_data_password = os.path.join(root, 'password')
+            with open(windows_meta_data_password, 'w') as fd:
+                fd.write('')
+
         pid = linux.find_process_by_cmdline([conf_path])
         if not pid:
             shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
@@ -588,6 +592,42 @@ mimetype.assign = (
 
             if not linux.wait_callback_success(check, None, 5):
                 raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
+
+    @lock.file_lock('/run/xtables.lock')
+    def work_userdata_iptables(self, CHAIN_NAME, to):
+        # DNAT port 80
+        PORT = to.port
+        PORT_CHAIN_NAME = "UD-PORT-%s" % PORT
+        # delete old chains not matching our port
+        OLD_CHAIN = bash_errorout("iptables-save | awk '/^:UD-PORT-/{print substr($1,2)}'").strip(' \n\r\t')
+        if OLD_CHAIN and OLD_CHAIN != CHAIN_NAME:
+            ret = bash_r('iptables-save -t nat | grep -- "-j {{OLD_CHAIN}}"')
+            if ret == 0:
+                bash_r('iptables -w -t nat -D PREROUTING -j {{OLD_CHAIN}}')
+
+            bash_errorout('iptables -w -t nat -F {{OLD_CHAIN}}')
+            bash_errorout('iptables -w -t nat -X {{OLD_CHAIN}}')
+        ret = bash_r('iptables-save | grep -w ":{{PORT_CHAIN_NAME}}" > /dev/null')
+        if ret != 0:
+            self.bash_ignore_exist_for_ipt('iptables -w -t nat -N {{PORT_CHAIN_NAME}}')
+        ret = bash_r('iptables -w -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"')
+        if ret != 0:
+            self.bash_ignore_exist_for_ipt('iptables -w -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}')
+        ret = bash_r(
+            'iptables-save -t nat | grep -- "{{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}"')
+        if ret != 0:
+            self.bash_ignore_exist_for_ipt(
+                'iptables -w -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}')
+
+    @staticmethod
+    def bash_ignore_exist_for_ipt(cmd):
+        r, o, e = bash_roe(cmd)
+        if r == 0:
+            return
+        elif r == 1 and "iptables: Chain already exists." in e:
+            return
+        else:
+            raise BashError('failed to execute bash[%s], return code: %s, stdout: %s, stderr: %s' % (cmd, r, o, e))
 
     @kvmagent.replyerror
     def release_userdata(self, req):

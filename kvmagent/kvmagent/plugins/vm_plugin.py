@@ -13,6 +13,7 @@ import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
 from zstacklib.utils import bash
+from zstacklib.utils.bash import in_bash
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lichbd
@@ -683,8 +684,9 @@ class IsoCeph(object):
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
         source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
+        if self.iso.secretUuid:
+            auth = e(disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
         for minfo in self.iso.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
@@ -701,8 +703,9 @@ class IdeCeph(object):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
+        if self.volume.secretUuid:
+            auth = e(disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
@@ -718,8 +721,9 @@ class VirtioCeph(object):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
+        if self.volume.secretUuid:
+            auth = e(disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'vd%s' % self.dev_letter, 'bus': 'virtio'})
@@ -735,8 +739,9 @@ class VirtioSCSICeph(object):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
+        if self.volume.secretUuid:
+            auth = e(disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
@@ -2117,7 +2122,7 @@ class Vm(object):
                 if iface.mac.address_ == cmd.nic.mac:
                     return False
 
-            s = shell.ShellCmd('ip link | grep -w %s > /dev/null' % cmd.nic.nicInternalName)
+            s = shell.ShellCmd('ip link show dev %s > /dev/null' % cmd.nic.nicInternalName)
             s(False)
             return s.return_code != 0
 
@@ -2344,7 +2349,8 @@ class Vm(object):
                 e(devices, 'emulator', cmd.addons['qemuPath'])
             else:
                 e(devices, 'emulator', kvmagent.get_qemu_path())
-            e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb', 'port': '1'})
+            tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
+            e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
             elements['devices'] = devices
 
         def make_cdrom():
@@ -2599,10 +2605,10 @@ class Vm(object):
 
         def make_meta():
             root = elements['root']
+
             e(root, 'name', cmd.vmInstanceUuid)
             e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
-            e(root, 'clock', None, {'offset': cmd.clock})
             e(root, 'on_poweroff', 'destroy')
             e(root, 'on_crash', 'restart')
             e(root, 'on_reboot', 'restart')
@@ -2610,6 +2616,12 @@ class Vm(object):
             zs = e(meta, 'zstack', usenamesapce=True)
             e(zs, 'internalId', str(cmd.vmInternalId))
             e(zs, 'hostManagementIp', str(cmd.hostManagementIp))
+            clock = e(root, 'clock', None, {'offset': cmd.clock})
+            if cmd.clock == 'localtime':
+                e(clock, 'timer', None, {'name': 'rtc', 'tickpolicy': 'catchup'})
+                e(clock, 'timer', None, {'name': 'pit', 'tickpolicy': 'delay'})
+                e(clock, 'timer', None, {'name': 'hpet', 'present': 'no'})
+                e(clock, 'timer', None, {'name': 'hypervclock', 'present': 'yes'})
 
         def make_vnc():
             devices = elements['devices']
@@ -2699,9 +2711,8 @@ class Vm(object):
 
             cephSecretKey = cmd.addons['ceph_secret_key']
             cephSecretUuid = cmd.addons['ceph_secret_uuid']
-            if cephSecretKey:
-                if cephSecretUuid:
-                    VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
+            if cephSecretKey and cephSecretUuid:
+                VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
 
             pciDevices = cmd.addons['pciDevice']
             if pciDevices:
@@ -2987,6 +2998,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.error = "QoS exceed max limit, please check and reset it in zstack"
             else:
                 rsp.error = e_str
+            err = self.handle_vfio_irq_conflict(cmd.vmInstanceUuid)
+            if err != "":
+                rsp.error = "%s, details: %s" % (err, rsp.error)
             rsp.success = False
         return jsonobject.dumps(rsp)
 
@@ -3386,7 +3400,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path):
             makedir_if_need(install_path)
-            linux.qcow2_create_template(previous_install_path, install_path)
+            linux.create_template(previous_install_path, install_path)
             new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone(install_path, new_volume_path)
@@ -3485,10 +3499,13 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def _create_ceph_secret_key(userKey, uuid):
-        sh_cmd = shell.ShellCmd('virsh secret-list | grep %s > /dev/null' % uuid)
+        sh_cmd = shell.ShellCmd('virsh secret-get-value %s' % uuid)
         sh_cmd(False)
-        if sh_cmd.return_code == 0:
-            return jsonobject.dumps(kvmagent.AgentResponse())
+        if sh_cmd.stdout.strip() == userKey:
+            return
+        elif sh_cmd.return_code == 0:
+            shell.call('virsh secret-set-value %s %s' % (uuid, userKey))
+            return
 
         # for some reason, ceph doesn't work with the secret created by libvirt
         # we have to use the command line here
@@ -3511,6 +3528,7 @@ class VmPlugin(kvmagent.KvmAgent):
             os.remove(spath)
 
     @kvmagent.replyerror
+    @in_bash
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
@@ -3551,6 +3569,7 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @in_bash
     def hot_plug_pci_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotPlugPciDeviceRsp()
@@ -3572,10 +3591,55 @@ class VmPlugin(kvmagent.KvmAgent):
             spath, cmd.vmUuid, o, e))
         if r!= 0:
             rsp.success = False
-            rsp.error = "%s %s" % (e, o)
+            err = self.handle_vfio_irq_conflict_with_addr(cmd.vmUuid, addr)
+            if err == "":
+                rsp.error = "%s %s" % (e, o)
+            else:
+                rsp.error = "%s, details: %s %s" % (err, e, o)
         return jsonobject.dumps(rsp)
 
+    @in_bash
+    def handle_vfio_irq_conflict_with_addr(self, vmUuid, addr):
+        logger.debug("check irq conflict with %s, %s" % (vmUuid, addr))
+        cmd = ("tail -n 5 /var/log/libvirt/qemu/%s.log | grep -E 'vfio: Error: Failed to setup INTx fd: Device or resource busy'" %
+                vmUuid)
+        r, o, e = bash.bash_roe(cmd)
+        if r != 0:
+            return ""
+        cmd = "lspci -vs %s | grep IRQ | awk '{print $5}' | grep -E -o '[[:digit:]]+'" % addr
+        r, o, e = bash.bash_roe(cmd)
+        if o == "":
+            return "can not get irq"
+        hostname = bash.bash_o("hostname -f")
+
+        cmd = "devices=`find /sys/devices/ -iname 'irq' | grep pci | xargs grep %s | grep -v '%s' | awk -F '/' '{ print \"/\"$2\"/\"$3\"/\"$4\"/\"$5 }' | sort | uniq`;" % (o.strip(), addr) + \
+              " for dev in $devices; do wc -l $dev/msi_bus; done | grep -E '^.*0 /sys' | awk -F '/' '{ print \"/\"$2\"/\"$3\"/\"$4\"/\"$5 }'"
+        r, o, e = bash.bash_roe(cmd)
+        if o == "":
+            return "there are irq conflict, but zstack can not get irq conflict device, you need fix it manually"
+        ret = ""
+        names = ""
+        for dev in o.splitlines():
+            if dev.strip() != "":
+                ret += "echo 1 > %s/remove; " % dev
+                cmd = "lspci -s %s" % dev.split('/')[-1]
+                r, o, e = bash.bash_roe(cmd)
+                names += o.strip()
+
+        return "WARN: found irq conflict for pci device addr %s, please execute '%s', and then try to passthrough again. Please noted, the above command will remove the conflicted devices(%s) from system, ONLY reboot can bring the device back to service." % \
+               (addr, ret, names)
+
+    @in_bash
+    def handle_vfio_irq_conflict(self, vmUuid):
+        cmd = ("tail -n 5 /var/log/libvirt/qemu/%s.log | grep -E 'qemu.*vfio: Error: Failed to setup INTx fd: Device or resource busy' | awk -F'[=,]' '{ print $3 }'" %
+                vmUuid)
+        r, o, e = bash.bash_roe(cmd)
+        if r != 0:
+            return ""
+        return self.handle_vfio_irq_conflict_with_addr(vmUuid, o.strip())
+
     @kvmagent.replyerror
+    @in_bash
     def hot_unplug_pci_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotUnplugPciDeviceRsp()
@@ -3909,7 +3973,7 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(content)
 
     def register_libvirt_event(self):
-        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
+        #LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                   self._set_vnc_port_iptable_rule)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)

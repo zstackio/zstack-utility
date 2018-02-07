@@ -12,7 +12,11 @@ import os.path
 import traceback
 import pprint
 import functools
+import sys
 import string
+
+reload(sys)
+sys.setdefaultencoding('utf-8')
 
 from zstacklib.utils import shell
 
@@ -141,6 +145,16 @@ def deleteImage(path):
             shell.call('rm -f %s' % filePath)
      pdir = os.path.dirname(path)
      linux.rmdir_if_empty(pdir)
+
+
+def listPath(path):
+    s = []
+    pwd = shell.call('pwd', True, path).strip()
+    sub_paths = shell.call('ls %s' % path).split("\n")
+    for f in sub_paths:
+        if f.strip():
+            s.append("%s/%s" % (pwd, f.strip()))
+    return s
 
 class KvmDaemon(daemon.Daemon):
     def __init__(self, pidfile, config={}):

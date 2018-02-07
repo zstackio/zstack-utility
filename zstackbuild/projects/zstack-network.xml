@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-network builder" basedir="../">
+    <property name="zsn.bdir" location="${build.dir}/zsn-agent/" />
+    <property name="zsn.ansible.dir" location="${ansible.dir}/zsnagentansible/" />
+
+    <target name="build-zstack-network">
+        <makeDir dir="${zsn.bdir}" />
+
+        <checkProperty property="zstacknetwork.source" />
+        <checkFile file="${zstacknetwork.source}" />
+
+        <copy todir="${zsn.bdir}/">
+            <fileset dir="${zstacknetwork.source}/target/package/zsn-agent">
+                <include name="vyos" />
+                <include name="vyos/zsn-agent.bin" />
+                <include name="zsn-agent.bin" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-zstack-network">
+        <copy todir="${zsn.ansible.dir}">
+            <fileset dir="${zsn.bdir}">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy todir="${zsn.ansible.dir}">
+            <fileset dir="${zsnansibleplaybook.source}/ansible">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>

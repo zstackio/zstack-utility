@@ -496,6 +496,111 @@ class APIIsOpensourceVersionReply(object):
         self.error = None
 
 
+APIADDVMTOAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIAddVmToAffinityGroupMsg'
+class APIAddVmToAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIAddVmToAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.affinityGroupUuid = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APICreateAffinityGroupMsg'
+class APICreateAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APICreateAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
+        #valid values: [antiSoft]
+        self.policy = NotNoneField()
+        #valid values: [host]
+        self.type = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIDeleteAffinityGroupMsg'
+class APIDeleteAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIDeleteAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIQueryAffinityGroupMsg'
+class APIQueryAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIQueryAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYAFFINITYGROUPREPLY_FULL_NAME = 'org.zstack.header.affinitygroup.APIQueryAffinityGroupReply'
+class APIQueryAffinityGroupReply(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIQueryAffinityGroupReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIREMOVEVMFROMAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIRemoveVmFromAffinityGroupMsg'
+class APIRemoveVmFromAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIRemoveVmFromAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.affinityGroupUuid = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEAFFINITYGROUPMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIUpdateAffinityGroupMsg'
+class APIUpdateAffinityGroupMsg(object):
+    FULL_NAME='org.zstack.header.affinitygroup.APIUpdateAffinityGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
 class APIAddAliyunKeySecretMsg(object):
     FULL_NAME='org.zstack.header.aliyun.account.APIAddAliyunKeySecretMsg'
@@ -5562,6 +5667,79 @@ class APIUpdateImageMsg(object):
         self.userTags = OptionalList()
 
 
+APICANCELLONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APICancelLongJobMsg'
+class APICancelLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APICancelLongJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETELONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APIDeleteLongJobMsg'
+class APIDeleteLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APIDeleteLongJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYLONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APIQueryLongJobMsg'
+class APIQueryLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APIQueryLongJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYLONGJOBREPLY_FULL_NAME = 'org.zstack.header.longjob.APIQueryLongJobReply'
+class APIQueryLongJobReply(object):
+    FULL_NAME='org.zstack.header.longjob.APIQueryLongJobReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APISUBMITLONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APISubmitLongJobMsg'
+class APISubmitLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APISubmitLongJobMsg'
+    def __init__(self):
+        self.name = None
+        self.description = None
+        #mandatory field
+        self.jobName = NotNoneField()
+        #mandatory field
+        self.jobData = NotNoneField()
+        self.targetResourceUuid = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIGETCURRENTTIMEMSG_FULL_NAME = 'org.zstack.header.managementnode.APIGetCurrentTimeMsg'
 class APIGetCurrentTimeMsg(object):
     FULL_NAME='org.zstack.header.managementnode.APIGetCurrentTimeMsg'
@@ -7420,6 +7598,54 @@ class APIUpdateSystemTagMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETEVIPQOSMSG_FULL_NAME = 'org.zstack.header.vipQos.APIDeleteVipQosMsg'
+class APIDeleteVipQosMsg(object):
+    FULL_NAME='org.zstack.header.vipQos.APIDeleteVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.port = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVIPQOSMSG_FULL_NAME = 'org.zstack.header.vipQos.APIGetVipQosMsg'
+class APIGetVipQosMsg(object):
+    FULL_NAME='org.zstack.header.vipQos.APIGetVipQosMsg'
+    def __init__(self):
+        self.uuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVIPQOSREPLY_FULL_NAME = 'org.zstack.header.vipQos.APIGetVipQosReply'
+class APIGetVipQosReply(object):
+    FULL_NAME='org.zstack.header.vipQos.APIGetVipQosReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APISETVIPQOSMSG_FULL_NAME = 'org.zstack.header.vipQos.APISetVipQosMsg'
+class APISetVipQosMsg(object):
+    FULL_NAME='org.zstack.header.vipQos.APISetVipQosMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.port = None
+        self.outboundBandwidth = None
+        self.inboundBandwidth = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIATTACHISOTOVMINSTANCEMSG_FULL_NAME = 'org.zstack.header.vm.APIAttachIsoToVmInstanceMsg'
 class APIAttachIsoToVmInstanceMsg(object):
     FULL_NAME='org.zstack.header.vm.APIAttachIsoToVmInstanceMsg'
@@ -7457,6 +7683,20 @@ class APIChangeInstanceOfferingMsg(object):
         self.vmInstanceUuid = NotNoneField()
         #mandatory field
         self.instanceOfferingUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICHANGEVMIMAGEMSG_FULL_NAME = 'org.zstack.header.vm.APIChangeVmImageMsg'
+class APIChangeVmImageMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIChangeVmImageMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        #mandatory field
+        self.imageUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -7669,6 +7909,7 @@ class APIGetCandidatePrimaryStoragesForCreatingVmMsg(object):
     def __init__(self):
         #mandatory field
         self.imageUuid = NotNoneField()
+        self.backupStorageUuid = None
         #mandatory field
         self.l3NetworkUuids = NotNoneList()
         self.rootDiskOfferingUuid = None
@@ -7741,6 +7982,27 @@ class APIGetCandidateZonesClustersHostsForCreatingVmReply(object):
         self.zones = OptionalList()
         self.clusters = OptionalList()
         self.hosts = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETIMAGECANDIDATESFORVMTOCHANGEMSG_FULL_NAME = 'org.zstack.header.vm.APIGetImageCandidatesForVmToChangeMsg'
+class APIGetImageCandidatesForVmToChangeMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIGetImageCandidatesForVmToChangeMsg'
+    def __init__(self):
+        self.vmInstanceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETIMAGECANDIDATESFORVMTOCHANGEREPLY_FULL_NAME = 'org.zstack.header.vm.APIGetImageCandidatesForVmToChangeReply'
+class APIGetImageCandidatesForVmToChangeReply(object):
+    FULL_NAME='org.zstack.header.vm.APIGetImageCandidatesForVmToChangeReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.inventory = None
         self.success = None
         self.error = None
 
@@ -8421,6 +8683,8 @@ class APIStopVmInstanceMsg(object):
         self.uuid = NotNoneField()
         #valid values: [grace, cold]
         self.type = None
+        #valid values: [true]
+        self.stopHA = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8442,6 +8706,20 @@ class APIUpdateVmInstanceMsg(object):
         self.platform = None
         self.cpuNum = None
         self.memorySize = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEVMNICMACMSG_FULL_NAME = 'org.zstack.header.vm.APIUpdateVmNicMacMsg'
+class APIUpdateVmNicMacMsg(object):
+    FULL_NAME='org.zstack.header.vm.APIUpdateVmNicMacMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmNicUuid = NotNoneField()
+        #mandatory field
+        self.mac = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -8774,6 +9052,20 @@ class APIRecoverDataVolumeMsg(object):
         self.userTags = OptionalList()
 
 
+APIRESIZEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.header.volume.APIResizeDataVolumeMsg'
+class APIResizeDataVolumeMsg(object):
+    FULL_NAME='org.zstack.header.volume.APIResizeDataVolumeMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.size = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIRESIZEROOTVOLUMEMSG_FULL_NAME = 'org.zstack.header.volume.APIResizeRootVolumeMsg'
 class APIResizeRootVolumeMsg(object):
     FULL_NAME='org.zstack.header.volume.APIResizeRootVolumeMsg'
@@ -8962,6 +9254,36 @@ class APIUpdateZoneMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDREMOTECIDRSTOIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIAddRemoteCidrsToIPsecConnectionMsg'
+class APIAddRemoteCidrsToIPsecConnectionMsg(object):
+    FULL_NAME='org.zstack.ipsec.APIAddRemoteCidrsToIPsecConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.peerCidrs = NotNoneList()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIATTACHL3NETWORKSTOIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIAttachL3NetworksToIPsecConnectionMsg'
+class APIAttachL3NetworksToIPsecConnectionMsg(object):
+    FULL_NAME='org.zstack.ipsec.APIAttachL3NetworksToIPsecConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.l3NetworkUuids = NotNoneList()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICHANGEIPSECCONNECTIONSTATEMSG_FULL_NAME = 'org.zstack.ipsec.APIChangeIPSecConnectionStateMsg'
 class APIChangeIPSecConnectionStateMsg(object):
     FULL_NAME='org.zstack.ipsec.APIChangeIPSecConnectionStateMsg'
@@ -8984,8 +9306,7 @@ class APICreateIPsecConnectionMsg(object):
         #mandatory field
         self.name = NotNoneField()
         self.description = None
-        #mandatory field
-        self.l3NetworkUuid = NotNoneField()
+        self.l3NetworkUuid = None
         #mandatory field
         self.peerAddress = NotNoneField()
         #valid values: [psk, certs]
@@ -8994,8 +9315,7 @@ class APICreateIPsecConnectionMsg(object):
         self.authKey = NotNoneField()
         #mandatory field
         self.vipUuid = NotNoneField()
-        #mandatory field
-        self.peerCidrs = NotNoneList()
+        self.peerCidrs = OptionalList()
         #valid values: [md5, sha1, sha256, sha384, sha512]
         self.ikeAuthAlgorithm = None
         #valid values: [3des, aes-128, aes-192, aes-256]
@@ -9031,6 +9351,20 @@ class APIDeleteIPsecConnectionMsg(object):
         self.userTags = OptionalList()
 
 
+APIDETACHL3NETWORKSFROMIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIDetachL3NetworksFromIPsecConnectionMsg'
+class APIDetachL3NetworksFromIPsecConnectionMsg(object):
+    FULL_NAME='org.zstack.ipsec.APIDetachL3NetworksFromIPsecConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.l3NetworkUuids = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIQueryIPSecConnectionMsg'
 class APIQueryIPSecConnectionMsg(object):
     FULL_NAME='org.zstack.ipsec.APIQueryIPSecConnectionMsg'
@@ -9060,6 +9394,20 @@ class APIQueryIPSecConnectionReply(object):
         self.total = None
         self.success = None
         self.error = None
+
+
+APIREMOVEREMOTECIDRSFROMIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIRemoveRemoteCidrsFromIPsecConnectionMsg'
+class APIRemoveRemoteCidrsFromIPsecConnectionMsg(object):
+    FULL_NAME='org.zstack.ipsec.APIRemoveRemoteCidrsFromIPsecConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.peerCidrs = NotNoneList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APIUPDATEIPSECCONNECTIONMSG_FULL_NAME = 'org.zstack.ipsec.APIUpdateIPsecConnectionMsg'
@@ -9137,8 +9485,7 @@ class APIAddLdapServerMsg(object):
     def __init__(self):
         #mandatory field
         self.name = NotNoneField()
-        #mandatory field
-        self.description = NotNoneField()
+        self.description = None
         #mandatory field
         self.url = NotNoneField()
         #mandatory field
@@ -9203,6 +9550,41 @@ class APIDeleteLdapServerMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIGETCANDIDATELDAPENTRYFORBINDINGMSG_FULL_NAME = 'org.zstack.ldap.APIGetCandidateLdapEntryForBindingMsg'
+class APIGetCandidateLdapEntryForBindingMsg(object):
+    FULL_NAME='org.zstack.ldap.APIGetCandidateLdapEntryForBindingMsg'
+    def __init__(self):
+        #mandatory field
+        self.ldapFilter = NotNoneField()
+        self.limit = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETLDAPENTRYMSG_FULL_NAME = 'org.zstack.ldap.APIGetLdapEntryMsg'
+class APIGetLdapEntryMsg(object):
+    FULL_NAME='org.zstack.ldap.APIGetLdapEntryMsg'
+    def __init__(self):
+        #mandatory field
+        self.ldapFilter = NotNoneField()
+        self.limit = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETLDAPENTRYREPLY_FULL_NAME = 'org.zstack.ldap.APIGetLdapEntryReply'
+class APIGetLdapEntryReply(object):
+    FULL_NAME='org.zstack.ldap.APIGetLdapEntryReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
 
 
 APILOGINBYLDAPMSG_FULL_NAME = 'org.zstack.ldap.APILogInByLdapMsg'
@@ -10971,33 +11353,6 @@ class APIDeleteVipMsg(object):
         self.userTags = OptionalList()
 
 
-APIDELETEVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APIDeleteVipQosMsg'
-class APIDeleteVipQosMsg(object):
-    FULL_NAME='org.zstack.network.service.vip.APIDeleteVipQosMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        #valid values: [in, out, all]
-        self.direction = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIGETVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APIGetVipQosMsg'
-class APIGetVipQosMsg(object):
-    FULL_NAME='org.zstack.network.service.vip.APIGetVipQosMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
 APIQUERYVIPMSG_FULL_NAME = 'org.zstack.network.service.vip.APIQueryVipMsg'
 class APIQueryVipMsg(object):
     FULL_NAME='org.zstack.network.service.vip.APIQueryVipMsg'
@@ -11027,20 +11382,6 @@ class APIQueryVipReply(object):
         self.total = None
         self.success = None
         self.error = None
-
-
-APISETVIPQOSMSG_FULL_NAME = 'org.zstack.network.service.vip.APISetVipQosMsg'
-class APISetVipQosMsg(object):
-    FULL_NAME='org.zstack.network.service.vip.APISetVipQosMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.outboundBandwidth = None
-        self.inboundBandwidth = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
 
 
 APIUPDATEVIPMSG_FULL_NAME = 'org.zstack.network.service.vip.APIUpdateVipMsg'
@@ -11138,6 +11479,30 @@ class APIGetAttachablePublicL3ForVRouterMsg(object):
 APIGETATTACHABLEPUBLICL3FORVROUTERREPLY_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetAttachablePublicL3ForVRouterReply'
 class APIGetAttachablePublicL3ForVRouterReply(object):
     FULL_NAME='org.zstack.network.service.virtualrouter.APIGetAttachablePublicL3ForVRouterReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETVIPUSEDPORTSMSG_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetVipUsedPortsMsg'
+class APIGetVipUsedPortsMsg(object):
+    FULL_NAME='org.zstack.network.service.virtualrouter.APIGetVipUsedPortsMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [tcp, udp]
+        self.protocol = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVIPUSEDPORTSREPLY_FULL_NAME = 'org.zstack.network.service.virtualrouter.APIGetVipUsedPortsReply'
+class APIGetVipUsedPortsReply(object):
+    FULL_NAME='org.zstack.network.service.virtualrouter.APIGetVipUsedPortsReply'
     def __init__(self):
         self.inventories = OptionalList()
         self.success = None
@@ -11523,6 +11888,26 @@ class APIUpdatePciDeviceMsg(object):
         self.userTags = OptionalList()
 
 
+APIBATCHQUERYMSG_FULL_NAME = 'org.zstack.query.APIBatchQueryMsg'
+class APIBatchQueryMsg(object):
+    FULL_NAME='org.zstack.query.APIBatchQueryMsg'
+    def __init__(self):
+        self.script = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIBATCHQUERYREPLY_FULL_NAME = 'org.zstack.query.APIBatchQueryReply'
+class APIBatchQueryReply(object):
+    FULL_NAME='org.zstack.query.APIBatchQueryReply'
+    def __init__(self):
+        self.result = OptionalMap()
+        self.success = None
+        self.error = None
+
+
 APIADDSCHEDULERJOBTOSCHEDULERTRIGGERMSG_FULL_NAME = 'org.zstack.scheduler.APIAddSchedulerJobToSchedulerTriggerMsg'
 class APIAddSchedulerJobToSchedulerTriggerMsg(object):
     FULL_NAME='org.zstack.scheduler.APIAddSchedulerJobToSchedulerTriggerMsg'
@@ -11562,6 +11947,7 @@ class APICreateSchedulerJobMsg(object):
         #mandatory field
         self.targetResourceUuid = NotNoneField()
         #mandatory field
+        #valid values: [startVm, stopVm, rebootVm, volumeSnapshot]
         self.type = NotNoneField()
         self.parameters = OptionalMap()
         self.resourceUuid = None
@@ -13014,23 +13400,9 @@ class APIGetPrimaryStorageCandidatesForVolumeMigrationReply(object):
         self.error = None
 
 
-APIPRIMARYSTORAGEMIGRATEDATAVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
-class APIPrimaryStorageMigrateDataVolumeMsg(object):
-    FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateDataVolumeMsg'
-    def __init__(self):
-        #mandatory field
-        self.volumeUuid = NotNoneField()
-        #mandatory field
-        self.dstPrimaryStorageUuid = NotNoneField()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIPRIMARYSTORAGEMIGRATEROOTVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateRootVolumeMsg'
-class APIPrimaryStorageMigrateRootVolumeMsg(object):
-    FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateRootVolumeMsg'
+APIPRIMARYSTORAGEMIGRATEVOLUMEMSG_FULL_NAME = 'org.zstack.storage.migration.primary.APIPrimaryStorageMigrateVolumeMsg'
+class APIPrimaryStorageMigrateVolumeMsg(object):
+    FULL_NAME='org.zstack.storage.migration.primary.APIPrimaryStorageMigrateVolumeMsg'
     def __init__(self):
         #mandatory field
         self.volumeUuid = NotNoneField()
@@ -13471,6 +13843,100 @@ class APIAddZsesPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIATTACHUSBDEVICETOVMMSG_FULL_NAME = 'org.zstack.usbDevice.APIAttachUsbDeviceToVmMsg'
+class APIAttachUsbDeviceToVmMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIAttachUsbDeviceToVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.usbDeviceUuid = NotNoneField()
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHUSBDEVICEFROMVMMSG_FULL_NAME = 'org.zstack.usbDevice.APIDetachUsbDeviceFromVmMsg'
+class APIDetachUsbDeviceFromVmMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIDetachUsbDeviceFromVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.usbDeviceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETUSBDEVICECANDIDATESFORATTACHINGVMMSG_FULL_NAME = 'org.zstack.usbDevice.APIGetUsbDeviceCandidatesForAttachingVmMsg'
+class APIGetUsbDeviceCandidatesForAttachingVmMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIGetUsbDeviceCandidatesForAttachingVmMsg'
+    def __init__(self):
+        #mandatory field
+        self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETUSBDEVICECANDIDATESFORATTACHINGVMREPLY_FULL_NAME = 'org.zstack.usbDevice.APIGetUsbDeviceCandidatesForAttachingVmReply'
+class APIGetUsbDeviceCandidatesForAttachingVmReply(object):
+    FULL_NAME='org.zstack.usbDevice.APIGetUsbDeviceCandidatesForAttachingVmReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYUSBDEVICEMSG_FULL_NAME = 'org.zstack.usbDevice.APIQueryUsbDeviceMsg'
+class APIQueryUsbDeviceMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIQueryUsbDeviceMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYUSBDEVICEREPLY_FULL_NAME = 'org.zstack.usbDevice.APIQueryUsbDeviceReply'
+class APIQueryUsbDeviceReply(object):
+    FULL_NAME='org.zstack.usbDevice.APIQueryUsbDeviceReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIUPDATEUSBDEVICEMSG_FULL_NAME = 'org.zstack.usbDevice.APIUpdateUsbDeviceMsg'
+class APIUpdateUsbDeviceMsg(object):
+    FULL_NAME='org.zstack.usbDevice.APIUpdateUsbDeviceMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        #valid values: [Enabled, Disabled]
+        self.state = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIAddVCenterMsg'
 class APIAddVCenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIAddVCenterMsg'
@@ -13685,6 +14151,18 @@ class APIQueryVCenterReply(object):
         self.error = None
 
 
+APISYNCVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APISyncVCenterMsg'
+class APISyncVCenterMsg(object):
+    FULL_NAME='org.zstack.vmware.APISyncVCenterMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIUPDATEVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIUpdateVCenterMsg'
 class APIUpdateVCenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIUpdateVCenterMsg'
@@ -13695,6 +14173,100 @@ class APIUpdateVCenterMsg(object):
         self.password = None
         self.domainName = None
         self.port = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEVPCVROUTERMSG_FULL_NAME = 'org.zstack.vpc.APICreateVpcVRouterMsg'
+class APICreateVpcVRouterMsg(object):
+    FULL_NAME='org.zstack.vpc.APICreateVpcVRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.virtualRouterOfferingUuid = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETATTACHABLEVPCL3NETWORKMSG_FULL_NAME = 'org.zstack.vpc.APIGetAttachableVpcL3NetworkMsg'
+class APIGetAttachableVpcL3NetworkMsg(object):
+    FULL_NAME='org.zstack.vpc.APIGetAttachableVpcL3NetworkMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETATTACHABLEVPCL3NETWORKREPLY_FULL_NAME = 'org.zstack.vpc.APIGetAttachableVpcL3NetworkReply'
+class APIGetAttachableVpcL3NetworkReply(object):
+    FULL_NAME='org.zstack.vpc.APIGetAttachableVpcL3NetworkReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETVPCVROUTERDISTRIBUTEDROUTINGCONNECTIONSMSG_FULL_NAME = 'org.zstack.vpc.APIGetVpcVRouterDistributedRoutingConnectionsMsg'
+class APIGetVpcVRouterDistributedRoutingConnectionsMsg(object):
+    FULL_NAME='org.zstack.vpc.APIGetVpcVRouterDistributedRoutingConnectionsMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVPCVROUTERDISTRIBUTEDROUTINGCONNECTIONSREPLY_FULL_NAME = 'org.zstack.vpc.APIGetVpcVRouterDistributedRoutingConnectionsReply'
+class APIGetVpcVRouterDistributedRoutingConnectionsReply(object):
+    FULL_NAME='org.zstack.vpc.APIGetVpcVRouterDistributedRoutingConnectionsReply'
+    def __init__(self):
+        self.inventories = OptionalMap()
+        self.success = None
+        self.error = None
+
+
+APIGETVPCVROUTERDISTRIBUTEDROUTINGENABLEDMSG_FULL_NAME = 'org.zstack.vpc.APIGetVpcVRouterDistributedRoutingEnabledMsg'
+class APIGetVpcVRouterDistributedRoutingEnabledMsg(object):
+    FULL_NAME='org.zstack.vpc.APIGetVpcVRouterDistributedRoutingEnabledMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETVPCVROUTERDISTRIBUTEDROUTINGENABLEDREPLY_FULL_NAME = 'org.zstack.vpc.APIGetVpcVRouterDistributedRoutingEnabledReply'
+class APIGetVpcVRouterDistributedRoutingEnabledReply(object):
+    FULL_NAME='org.zstack.vpc.APIGetVpcVRouterDistributedRoutingEnabledReply'
+    def __init__(self):
+        self.enabled = None
+        self.success = None
+        self.error = None
+
+
+APISETVPCVROUTERDISTRIBUTEDROUTINGENABLEDMSG_FULL_NAME = 'org.zstack.vpc.APISetVpcVRouterDistributedRoutingEnabledMsg'
+class APISetVpcVRouterDistributedRoutingEnabledMsg(object):
+    FULL_NAME='org.zstack.vpc.APISetVpcVRouterDistributedRoutingEnabledMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.stateEvent = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -14391,6 +14963,7 @@ api_names = [
     'APIAddNetworkServiceProviderMsg',
     'APIAddNfsPrimaryStorageMsg',
     'APIAddOssBucketFromRemoteMsg',
+    'APIAddRemoteCidrsToIPsecConnectionMsg',
     'APIAddSNSDingTalkAtPersonMsg',
     'APIAddSchedulerJobToSchedulerTriggerMsg',
     'APIAddSecurityGroupRuleMsg',
@@ -14404,6 +14977,7 @@ api_names = [
     'APIAddVRouterRouteEntryMsg',
     'APIAddVmNicToLoadBalancerMsg',
     'APIAddVmNicToSecurityGroupMsg',
+    'APIAddVmToAffinityGroupMsg',
     'APIAddXSkyPrimaryStorageMsg',
     'APIAddZsesPrimaryStorageMsg',
     'APIAttachAliyunDiskToEcsMsg',
@@ -14415,6 +14989,7 @@ api_names = [
     'APIAttachIsoToVmInstanceMsg',
     'APIAttachL2NetworkToClusterMsg',
     'APIAttachL3NetworkToVmMsg',
+    'APIAttachL3NetworksToIPsecConnectionMsg',
     'APIAttachMonitorTriggerActionToTriggerMsg',
     'APIAttachNetworkServiceProviderToL2NetworkMsg',
     'APIAttachNetworkServiceToL3NetworkMsg',
@@ -14426,13 +15001,17 @@ api_names = [
     'APIAttachPortForwardingRuleMsg',
     'APIAttachPrimaryStorageToClusterMsg',
     'APIAttachSecurityGroupToL3NetworkMsg',
+    'APIAttachUsbDeviceToVmMsg',
     'APIAttachVRouterRouteTableToVRouterMsg',
     'APIBackupDataVolumeMsg',
     'APIBackupDatabaseToPublicCloudMsg',
     'APIBackupStorageMigrateImageMsg',
     'APIBackupVolumeSnapshotMsg',
+    'APIBatchQueryMsg',
+    'APIBatchQueryReply',
     'APICalculateAccountSpendingMsg',
     'APICalculateAccountSpendingReply',
+    'APICancelLongJobMsg',
     'APIChangeAlarmStateMsg',
     'APIChangeBackupStorageStateMsg',
     'APIChangeClusterStateMsg',
@@ -14456,6 +15035,7 @@ api_names = [
     'APIChangeSchedulerStateMsg',
     'APIChangeSecurityGroupStateMsg',
     'APIChangeVipStateMsg',
+    'APIChangeVmImageMsg',
     'APIChangeVmPasswordMsg',
     'APIChangeVolumeStateMsg',
     'APIChangeZoneStateMsg',
@@ -14469,6 +15049,7 @@ api_names = [
     'APICloneVmInstanceMsg',
     'APICommitVolumeAsImageMsg',
     'APICreateAccountMsg',
+    'APICreateAffinityGroupMsg',
     'APICreateAlarmMsg',
     'APICreateAliyunDiskFromRemoteMsg',
     'APICreateAliyunSnapshotRemoteMsg',
@@ -14541,6 +15122,7 @@ api_names = [
     'APICreateVniRangeMsg',
     'APICreateVolumeSnapshotMsg',
     'APICreateVpcUserVpnGatewayRemoteMsg',
+    'APICreateVpcVRouterMsg',
     'APICreateVpcVpnConnectionRemoteMsg',
     'APICreateVpnIkeConfigMsg',
     'APICreateVpnIpsecConfigMsg',
@@ -14548,6 +15130,7 @@ api_names = [
     'APICreateZoneMsg',
     'APIDebugSignalMsg',
     'APIDeleteAccountMsg',
+    'APIDeleteAffinityGroupMsg',
     'APIDeleteAlarmMsg',
     'APIDeleteAlertMsg',
     'APIDeleteAliyunDiskFromLocalMsg',
@@ -14597,6 +15180,7 @@ api_names = [
     'APIDeleteLdapServerMsg',
     'APIDeleteLoadBalancerListenerMsg',
     'APIDeleteLoadBalancerMsg',
+    'APIDeleteLongJobMsg',
     'APIDeleteMediaMsg',
     'APIDeleteMonitorTriggerActionMsg',
     'APIDeleteMonitorTriggerMsg',
@@ -14662,6 +15246,7 @@ api_names = [
     'APIDetachIsoFromVmInstanceMsg',
     'APIDetachL2NetworkFromClusterMsg',
     'APIDetachL3NetworkFromVmMsg',
+    'APIDetachL3NetworksFromIPsecConnectionMsg',
     'APIDetachMonitorTriggerActionFromTriggerMsg',
     'APIDetachNetworkServiceFromL3NetworkMsg',
     'APIDetachNetworkServiceProviderFromL2NetworkMsg',
@@ -14673,6 +15258,7 @@ api_names = [
     'APIDetachPortForwardingRuleMsg',
     'APIDetachPrimaryStorageFromClusterMsg',
     'APIDetachSecurityGroupFromL3NetworkMsg',
+    'APIDetachUsbDeviceFromVmMsg',
     'APIDetachVRouterRouteTableFromVRouterMsg',
     'APIDownloadBackupFileFromPublicCloudMsg',
     'APIExportImageFromBackupStorageMsg',
@@ -14700,6 +15286,8 @@ api_names = [
     'APIGetAllMetricMetadataReply',
     'APIGetAttachablePublicL3ForVRouterMsg',
     'APIGetAttachablePublicL3ForVRouterReply',
+    'APIGetAttachableVpcL3NetworkMsg',
+    'APIGetAttachableVpcL3NetworkReply',
     'APIGetAuditDataMsg',
     'APIGetAvailableTriggersMsg',
     'APIGetAvailableTriggersReply',
@@ -14714,6 +15302,7 @@ api_names = [
     'APIGetCandidateBackupStorageForCreatingImageReply',
     'APIGetCandidateIsoForAttachingVmMsg',
     'APIGetCandidateIsoForAttachingVmReply',
+    'APIGetCandidateLdapEntryForBindingMsg',
     'APIGetCandidatePrimaryStoragesForCreatingVmMsg',
     'APIGetCandidatePrimaryStoragesForCreatingVmReply',
     'APIGetCandidateVmForAttachingIsoMsg',
@@ -14765,6 +15354,8 @@ api_names = [
     'APIGetHypervisorTypesReply',
     'APIGetIdentityZoneFromRemoteMsg',
     'APIGetIdentityZoneFromRemoteReply',
+    'APIGetImageCandidatesForVmToChangeMsg',
+    'APIGetImageCandidatesForVmToChangeReply',
     'APIGetImageQgaMsg',
     'APIGetImageQgaReply',
     'APIGetImageReply',
@@ -14788,6 +15379,8 @@ api_names = [
     'APIGetL3NetworkRouterInterfaceIpReply',
     'APIGetL3NetworkTypesMsg',
     'APIGetL3NetworkTypesReply',
+    'APIGetLdapEntryMsg',
+    'APIGetLdapEntryReply',
     'APIGetLicenseCapabilitiesMsg',
     'APIGetLicenseCapabilitiesReply',
     'APIGetLicenseInfoMsg',
@@ -14844,6 +15437,8 @@ api_names = [
     'APIGetSftpBackupStorageReply',
     'APIGetTaskProgressMsg',
     'APIGetTaskProgressReply',
+    'APIGetUsbDeviceCandidatesForAttachingVmMsg',
+    'APIGetUsbDeviceCandidatesForAttachingVmReply',
     'APIGetUserGroupReply',
     'APIGetUserReply',
     'APIGetVCenterDVSwitchesMsg',
@@ -14853,6 +15448,9 @@ api_names = [
     'APIGetVersionMsg',
     'APIGetVersionReply',
     'APIGetVipQosMsg',
+    'APIGetVipQosReply',
+    'APIGetVipUsedPortsMsg',
+    'APIGetVipUsedPortsReply',
     'APIGetVirtualRouterOfferingReply',
     'APIGetVmAttachableDataVolumeMsg',
     'APIGetVmAttachableDataVolumeReply',
@@ -14894,6 +15492,10 @@ api_names = [
     'APIGetVolumeReply',
     'APIGetVolumeSnapshotTreeMsg',
     'APIGetVolumeSnapshotTreeReply',
+    'APIGetVpcVRouterDistributedRoutingConnectionsMsg',
+    'APIGetVpcVRouterDistributedRoutingConnectionsReply',
+    'APIGetVpcVRouterDistributedRoutingEnabledMsg',
+    'APIGetVpcVRouterDistributedRoutingEnabledReply',
     'APIGetVpcVpnConfigurationFromRemoteMsg',
     'APIGetVpcVpnConfigurationFromRemoteReply',
     'APIGetZoneMsg',
@@ -14944,8 +15546,7 @@ api_names = [
     'APIPowerOnBaremetalHostMsg',
     'APIPowerResetBaremetalHostMsg',
     'APIPowerStatusBaremetalHostMsg',
-    'APIPrimaryStorageMigrateDataVolumeMsg',
-    'APIPrimaryStorageMigrateRootVolumeMsg',
+    'APIPrimaryStorageMigrateVolumeMsg',
     'APIPrometheusQueryLabelValuesMsg',
     'APIPrometheusQueryLabelValuesReply',
     'APIPrometheusQueryMetadataMsg',
@@ -14959,6 +15560,8 @@ api_names = [
     'APIQueryAccountReply',
     'APIQueryAccountResourceRefMsg',
     'APIQueryAccountResourceRefReply',
+    'APIQueryAffinityGroupMsg',
+    'APIQueryAffinityGroupReply',
     'APIQueryAlarmMsg',
     'APIQueryAlarmReply',
     'APIQueryAlertMsg',
@@ -15061,6 +15664,8 @@ api_names = [
     'APIQueryLoadBalancerReply',
     'APIQueryLocalStorageResourceRefMsg',
     'APIQueryLocalStorageResourceRefReply',
+    'APIQueryLongJobMsg',
+    'APIQueryLongJobReply',
     'APIQueryManagementNodeMsg',
     'APIQueryManagementNodeReply',
     'APIQueryMediaMsg',
@@ -15132,6 +15737,8 @@ api_names = [
     'APIQuerySystemTagReply',
     'APIQueryTagMsg',
     'APIQueryTagReply',
+    'APIQueryUsbDeviceMsg',
+    'APIQueryUsbDeviceReply',
     'APIQueryUserGroupMsg',
     'APIQueryUserGroupReply',
     'APIQueryUserMsg',
@@ -15218,13 +15825,16 @@ api_names = [
     'APIRemoveMonFromCephPrimaryStorageMsg',
     'APIRemoveMonFromFusionstorBackupStorageMsg',
     'APIRemoveMonFromFusionstorPrimaryStorageMsg',
+    'APIRemoveRemoteCidrsFromIPsecConnectionMsg',
     'APIRemoveSNSDingTalkAtPersonMsg',
     'APIRemoveSchedulerJobFromSchedulerTriggerMsg',
     'APIRemoveUserFromGroupMsg',
+    'APIRemoveVmFromAffinityGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
     'APIReply',
     'APIRequestBaremetalConsoleAccessMsg',
     'APIRequestConsoleAccessMsg',
+    'APIResizeDataVolumeMsg',
     'APIResizeRootVolumeMsg',
     'APIResumeVmInstanceMsg',
     'APIRevertVolumeFromSnapshotMsg',
@@ -15271,6 +15881,7 @@ api_names = [
     'APISetVmStaticIpMsg',
     'APISetVmUsbRedirectMsg',
     'APISetVolumeQosMsg',
+    'APISetVpcVRouterDistributedRoutingEnabledMsg',
     'APIShareResourceMsg',
     'APIStartBaremetalPxeServerMsg',
     'APIStartEcsInstanceMsg',
@@ -15278,6 +15889,7 @@ api_names = [
     'APIStopBaremetalPxeServerMsg',
     'APIStopEcsInstanceMsg',
     'APIStopVmInstanceMsg',
+    'APISubmitLongJobMsg',
     'APISubscribeEventMsg',
     'APISubscribeSNSTopicMsg',
     'APISyncAliyunRouteEntryFromRemoteMsg',
@@ -15298,6 +15910,7 @@ api_names = [
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
     'APISyncRouterInterfaceFromRemoteMsg',
+    'APISyncVCenterMsg',
     'APISyncVirtualBorderRouterFromRemoteMsg',
     'APISyncVolumeSizeMsg',
     'APISyncVpcUserVpnGatewayFromRemoteMsg',
@@ -15308,6 +15921,7 @@ api_names = [
     'APIUnsubscribeEventMsg',
     'APIUnsubscribeSNSTopicMsg',
     'APIUpdateAccountMsg',
+    'APIUpdateAffinityGroupMsg',
     'APIUpdateAlarmMsg',
     'APIUpdateAliyunDiskMsg',
     'APIUpdateAliyunKeySecretMsg',
@@ -15368,6 +15982,7 @@ api_names = [
     'APIUpdateSecurityGroupMsg',
     'APIUpdateSftpBackupStorageMsg',
     'APIUpdateSystemTagMsg',
+    'APIUpdateUsbDeviceMsg',
     'APIUpdateUserGroupMsg',
     'APIUpdateUserMsg',
     'APIUpdateVCenterMsg',
@@ -15375,6 +15990,7 @@ api_names = [
     'APIUpdateVirtualBorderRouterRemoteMsg',
     'APIUpdateVirtualRouterOfferingMsg',
     'APIUpdateVmInstanceMsg',
+    'APIUpdateVmNicMacMsg',
     'APIUpdateVolumeMsg',
     'APIUpdateVolumeSnapshotMsg',
     'APIUpdateVpcUserVpnGatewayMsg',
@@ -15628,6 +16244,7 @@ class EcsInstanceInventory(object):
         self.ecsRootVolumeCategory = None
         self.ecsRootVolumeSize = None
         self.privateIpAddress = None
+        self.publicIpAddress = None
         self.ecsVSwitchUuid = None
         self.ecsImageUuid = None
         self.ecsSecurityGroupUuid = None
@@ -15708,6 +16325,11 @@ class EcsInstanceInventory(object):
             self.privateIpAddress = inv.privateIpAddress
         else:
             self.privateIpAddress = None
+
+        if hasattr(inv, 'publicIpAddress'):
+            self.publicIpAddress = inv.publicIpAddress
+        else:
+            self.publicIpAddress = None
 
         if hasattr(inv, 'ecsVSwitchUuid'):
             self.ecsVSwitchUuid = inv.ecsVSwitchUuid
@@ -18816,6 +19438,84 @@ class ImageInventory(object):
 
 
 
+class LongJobInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.apiId = None
+        self.jobName = None
+        self.jobData = None
+        self.jobResult = None
+        self.state = None
+        self.targetResourceUuid = None
+        self.managementNodeUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'apiId'):
+            self.apiId = inv.apiId
+        else:
+            self.apiId = None
+
+        if hasattr(inv, 'jobName'):
+            self.jobName = inv.jobName
+        else:
+            self.jobName = None
+
+        if hasattr(inv, 'jobData'):
+            self.jobData = inv.jobData
+        else:
+            self.jobData = None
+
+        if hasattr(inv, 'jobResult'):
+            self.jobResult = inv.jobResult
+        else:
+            self.jobResult = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'targetResourceUuid'):
+            self.targetResourceUuid = inv.targetResourceUuid
+        else:
+            self.targetResourceUuid = None
+
+        if hasattr(inv, 'managementNodeUuid'):
+            self.managementNodeUuid = inv.managementNodeUuid
+        else:
+            self.managementNodeUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class ManagementNodeInventory(object):
     def __init__(self):
         self.uuid = None
@@ -20288,6 +20988,7 @@ class VirtualRouterVmInventory(ApplianceVmInventory):
     def __init__(self):
         super(VirtualRouterVmInventory, self).__init__()
         self.publicNetworkUuid = None
+        self.virtualRouterVips = None
 
     def evaluate(self, inv):
         super(VirtualRouterVmInventory, self).evaluate(inv)
@@ -20295,6 +20996,11 @@ class VirtualRouterVmInventory(ApplianceVmInventory):
             self.publicNetworkUuid = inv.publicNetworkUuid
         else:
             self.publicNetworkUuid = None
+
+        if hasattr(inv, 'virtualRouterVips'):
+            self.virtualRouterVips = inv.virtualRouterVips
+        else:
+            self.virtualRouterVips = None
 
 
 
@@ -20590,6 +21296,108 @@ class SftpBackupStorageInventory(BackupStorageInventory):
 
 
 
+class UsbDeviceInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.hostUuid = None
+        self.vmInstanceUuid = None
+        self.state = None
+        self.busNum = None
+        self.devNum = None
+        self.idVendor = None
+        self.idProduct = None
+        self.iManufacturer = None
+        self.iProduct = None
+        self.iSerial = None
+        self.usbVersion = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'hostUuid'):
+            self.hostUuid = inv.hostUuid
+        else:
+            self.hostUuid = None
+
+        if hasattr(inv, 'vmInstanceUuid'):
+            self.vmInstanceUuid = inv.vmInstanceUuid
+        else:
+            self.vmInstanceUuid = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'busNum'):
+            self.busNum = inv.busNum
+        else:
+            self.busNum = None
+
+        if hasattr(inv, 'devNum'):
+            self.devNum = inv.devNum
+        else:
+            self.devNum = None
+
+        if hasattr(inv, 'idVendor'):
+            self.idVendor = inv.idVendor
+        else:
+            self.idVendor = None
+
+        if hasattr(inv, 'idProduct'):
+            self.idProduct = inv.idProduct
+        else:
+            self.idProduct = None
+
+        if hasattr(inv, 'iManufacturer'):
+            self.iManufacturer = inv.iManufacturer
+        else:
+            self.iManufacturer = None
+
+        if hasattr(inv, 'iProduct'):
+            self.iProduct = inv.iProduct
+        else:
+            self.iProduct = None
+
+        if hasattr(inv, 'iSerial'):
+            self.iSerial = inv.iSerial
+        else:
+            self.iSerial = None
+
+        if hasattr(inv, 'usbVersion'):
+            self.usbVersion = inv.usbVersion
+        else:
+            self.usbVersion = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class ESXHostInventory(HostInventory):
     def __init__(self):
         super(ESXHostInventory, self).__init__()
@@ -20614,6 +21422,7 @@ class VCenterBackupStorageInventory(BackupStorageInventory):
     def __init__(self):
         super(VCenterBackupStorageInventory, self).__init__()
         self.vCenterUuid = None
+        self.datastore = None
 
     def evaluate(self, inv):
         super(VCenterBackupStorageInventory, self).evaluate(inv)
@@ -20621,6 +21430,11 @@ class VCenterBackupStorageInventory(BackupStorageInventory):
             self.vCenterUuid = inv.vCenterUuid
         else:
             self.vCenterUuid = None
+
+        if hasattr(inv, 'datastore'):
+            self.datastore = inv.datastore
+        else:
+            self.datastore = None
 
 
 
@@ -20762,6 +21576,7 @@ class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
     def __init__(self):
         super(VCenterPrimaryStorageInventory, self).__init__()
         self.vCenterUuid = None
+        self.datastore = None
 
     def evaluate(self, inv):
         super(VCenterPrimaryStorageInventory, self).evaluate(inv)
@@ -20769,6 +21584,65 @@ class VCenterPrimaryStorageInventory(PrimaryStorageInventory):
             self.vCenterUuid = inv.vCenterUuid
         else:
             self.vCenterUuid = None
+
+        if hasattr(inv, 'datastore'):
+            self.datastore = inv.datastore
+        else:
+            self.datastore = None
+
+
+
+class VpcConnectionTO(object):
+    def __init__(self):
+        self.sourceL2NetworkType = None
+        self.destinationL2NetworkType = None
+        self.sourceMac = None
+        self.destinationMac = None
+        self.sourceL2NetworkVni = None
+        self.destinationL2NetworkVni = None
+        self.lastOpDate = None
+        self.status = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'sourceL2NetworkType'):
+            self.sourceL2NetworkType = inv.sourceL2NetworkType
+        else:
+            self.sourceL2NetworkType = None
+
+        if hasattr(inv, 'destinationL2NetworkType'):
+            self.destinationL2NetworkType = inv.destinationL2NetworkType
+        else:
+            self.destinationL2NetworkType = None
+
+        if hasattr(inv, 'sourceMac'):
+            self.sourceMac = inv.sourceMac
+        else:
+            self.sourceMac = None
+
+        if hasattr(inv, 'destinationMac'):
+            self.destinationMac = inv.destinationMac
+        else:
+            self.destinationMac = None
+
+        if hasattr(inv, 'sourceL2NetworkVni'):
+            self.sourceL2NetworkVni = inv.sourceL2NetworkVni
+        else:
+            self.sourceL2NetworkVni = None
+
+        if hasattr(inv, 'destinationL2NetworkVni'):
+            self.destinationL2NetworkVni = inv.destinationL2NetworkVni
+        else:
+            self.destinationL2NetworkVni = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
 
 
 
@@ -21089,6 +21963,11 @@ VOLUMEMIGRATING = 'VolumeMigrating'
 ERROR = 'Error'
 UNKNOWN = 'Unknown'
 
+#VpcConstants
+VPC_VROUTER_VM_TYPE = 'vpcvrouter'
+VPC_L3_NETWORK_TYPE = 'L3VpcNetwork'
+SERVICE_ID = 'vpc'
+
 #VxlanNetworkConstant
 VXLAN_NETWORK_TYPE = 'VxlanNetwork'
 
@@ -21106,6 +21985,14 @@ XSKY_PRIMARY_STORAGE_TYPE = 'XSky'
 PRIMARY_STORAGE_TYPE = 'ZSES'
 
 #GlobalConfigPythonConstant
+class GlobalConfig_ALIYUN(object):
+    ALIYUN_OPENAPI_PAGE_SIZE = 'aliyun.openapi.page.size'
+    UPLOAD_ECS_IMAGE_FORMAT = 'upload.ecs.image.format'
+
+    @staticmethod
+    def get_category():
+        return 'aliyun'
+
 class GlobalConfig_APPLIANCEVM(object):
     SSH_TIMEOUT = 'ssh.timeout'
     CONNECT_TIMEOUT = 'connect.timeout'
@@ -21202,6 +22089,7 @@ class GlobalConfig_HA(object):
     NEVERSTOPVM_SCAN_INTERVAL = 'neverStopVm.scan.interval'
     NEVERSTOPVM_RETRY_DELAY = 'neverStopVm.retry.delay'
     HOST_SELFFENCER_STORAGECHECKER_TIMEOUT = 'host.selfFencer.storageChecker.timeout'
+    NEVERSTOPVM_GC_MAXRETRYINTERVALTIME = 'neverStopVm.gc.maxRetryIntervalTime'
     HOST_CHECK_SUCCESSINTERVAL = 'host.check.successInterval'
     HOST_CHECK_SUCCESSRATIO = 'host.check.successRatio'
     HOST_CHECK_MAXATTEMPTS = 'host.check.maxAttempts'
@@ -21214,6 +22102,7 @@ class GlobalConfig_HA(object):
 class GlobalConfig_HOST(object):
     LOAD_PARALLELISMDEGREE = 'load.parallelismDegree'
     PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
+    PING_MAXFAILURE = 'ping.maxFailure'
     LOAD_ALL = 'load.all'
     CONNECTION_AUTORECONNECTONERROR = 'connection.autoReconnectOnError'
     CPU_OVERPROVISIONING_RATIO = 'cpu.overProvisioning.ratio'
@@ -21283,6 +22172,14 @@ class GlobalConfig_KVM(object):
     @staticmethod
     def get_category():
         return 'kvm'
+
+class GlobalConfig_LDAP(object):
+    QUERYLDAPENTRYRETURNATTRIBUTESEPARATOR = 'queryLdapEntryReturnAttributeSeparator'
+    QUERYLDAPENTRYRETURNATTRIBUTES = 'queryLdapEntryReturnAttributes'
+
+    @staticmethod
+    def get_category():
+        return 'ldap'
 
 class GlobalConfig_LOADBALANCER(object):
     HEALTHCHECKINTERVAL = 'healthCheckInterval'
@@ -21383,9 +22280,12 @@ class GlobalConfig_PORTFORWARDING(object):
 
 class GlobalConfig_PRIMARYSTORAGE(object):
     PING_INTERVAL = 'ping.interval'
+    PRIMARYSTORAGE_DELETE_BITS_GARBAGE_ON = 'primarystorage.delete.bits.garbage.on'
     RESERVEDCAPACITY = 'reservedCapacity'
+    PRIMARYSTORAGE_DELETE_BITS_TIMES = 'primarystorage.delete.bits.times'
     IMAGECACHE_GARBAGECOLLECTOR_INTERVAL = 'imageCache.garbageCollector.interval'
     PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
+    PRIMARYSTORAGE_DELETE_BITS_GARBAGECOLLECTOR_INTERVAL = 'primarystorage.delete.bits.garbageCollector.interval'
 
     @staticmethod
     def get_category():
@@ -21413,9 +22313,11 @@ class GlobalConfig_QUOTA(object):
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
+    LOADBALANCER_NUM = 'loadBalancer.num'
     VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
+    VXLAN_NUM = 'vxlan.num'
 
     @staticmethod
     def get_category():
@@ -21460,6 +22362,7 @@ class GlobalConfig_TEST(object):
 
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
+    VROUTER_ECHOTIMEOUT = 'vrouter.echoTimeout'
     SSH_PORT = 'ssh.port'
     PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
     VROUTER_PASSWORD = 'vrouter.password'
@@ -21482,6 +22385,7 @@ class GlobalConfig_VM(object):
     NUMA = 'numa'
     CLEANTRAFFIC = 'cleanTraffic'
     INSTANCEOFFERING_SETNULLWHENDELETING = 'instanceOffering.setNullWhenDeleting'
+    SPICESTREAMINGMODE = 'spiceStreamingMode'
     EXPUNGEINTERVAL = 'expungeInterval'
 
     @staticmethod
@@ -21507,6 +22411,13 @@ class GlobalConfig_VOLUMESNAPSHOT(object):
     def get_category():
         return 'volumeSnapshot'
 
+class GlobalConfig_VPC(object):
+    ZSNP_TIMEOUT = 'zsnp.timeout'
+
+    @staticmethod
+    def get_category():
+        return 'vpc'
+
 class GlobalConfig_ZWATCH(object):
     MANAGEMENTSERVERDIRECTORIESTOMONITOR = 'managementServerDirectoriesToMonitor'
     ALARM_REPEATINTERVAL = 'alarm.repeatInterval'
@@ -21531,6 +22442,19 @@ class QueryObjectAccountInventory(object):
 
 class QueryObjectAccountResourceRefInventory(object):
      PRIMITIVE_FIELDS = ['lastOpDate','accountUuid','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectAffinityGroupInventory(object):
+     PRIMITIVE_FIELDS = ['appliance','name','lastOpDate','description','type','uuid','version','policy','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['usages']
+     QUERY_OBJECT_MAP = {
+        'usages' : 'QueryObjectAffinityGroupUsageInventory',
+     }
+
+class QueryObjectAffinityGroupUsageInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','affinityGroupUuid','uuid','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -21563,14 +22487,17 @@ class QueryObjectAlertInventory(object):
 
 class QueryObjectAliyunDiskInventory(object):
      PRIMITIVE_FIELDS = ['ecsInstanceUuid','sizeWithGB','identityZoneUuid','description','uuid','deviceInfo','diskChargeType','name','lastOpDate','diskId','diskType','diskCategory','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['ecs','snapshot']
      QUERY_OBJECT_MAP = {
+        'ecs' : 'QueryObjectEcsInstanceInventory',
+        'snapshot' : 'QueryObjectAliyunSnapshotInventory',
      }
 
 class QueryObjectAliyunSnapshotInventory(object):
      PRIMITIVE_FIELDS = ['snapshotId','diskUuid','name','lastOpDate','description','dataCenterUuid','uuid','aliyunSnapshotUsage','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['imageRef']
+     EXPANDED_FIELDS = ['disk','imageRef']
      QUERY_OBJECT_MAP = {
+        'disk' : 'QueryObjectAliyunDiskInventory',
         'imageRef' : 'QueryObjectEcsImageInventory',
      }
 
@@ -21784,7 +22711,7 @@ class QueryObjectEcsImageUsageInventory(object):
      }
 
 class QueryObjectEcsInstanceInventory(object):
-     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','ecsRootVolumeId','identityZoneUuid','chargeType','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','expireDate','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ecsInstanceType','ecsImageUuid','publicIpAddress','ecsRootVolumeId','identityZoneUuid','chargeType','description','uuid','privateIpAddress','ecsInstanceId','memorySize','ecsStatus','cpuCores','ecsBandWidth','ecsRootVolumeSize','name','lastOpDate','localVmInstanceUuid','expireDate','ecsVSwitchUuid','ecsSecurityGroupUuid','ecsRootVolumeCategory','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -21933,12 +22860,19 @@ class QueryObjectHybridEipAddressInventory(object):
      }
 
 class QueryObjectIPsecConnectionInventory(object):
-     PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','l3NetworkUuid','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','state','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['peerCidrs','l3Network','vip']
+     PRIMITIVE_FIELDS = ['authKey','transformProtocol','vipUuid','description','uuid','policyMode','peerAddress','authMode','policyAuthAlgorithm','policyEncryptionAlgorithm','ikeDhGroup','name','lastOpDate','state','ikeAuthAlgorithm','pfs','ikeEncryptionAlgorithm','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['l3NetworkRefs','peerCidrs','l3Network','vip']
      QUERY_OBJECT_MAP = {
-        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'l3NetworkRefs' : 'QueryObjectIPsecL3NetworkRefInventory',
+        'l3Network' : 'QueryObjectIPsecL3NetworkRefInventory',
         'peerCidrs' : 'QueryObjectIPsecPeerCidrInventory',
         'vip' : 'QueryObjectVipInventory',
+     }
+
+class QueryObjectIPsecL3NetworkRefInventory(object):
+     PRIMITIVE_FIELDS = ['lastOpDate','l3NetworkUuid','uuid','connectionUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectIPsecPeerCidrInventory(object):
@@ -22121,6 +23055,12 @@ class QueryObjectLocalStorageResourceRefInventory(object):
         'volume' : 'QueryObjectVolumeInventory',
         'image' : 'QueryObjectImageInventory',
         'snapshot' : 'QueryObjectVolumeSnapshotInventory',
+     }
+
+class QueryObjectLongJobInventory(object):
+     PRIMITIVE_FIELDS = ['jobName','managementNodeUuid','jobData','jobResult','name','lastOpDate','description','state','targetResourceUuid','uuid','apiId','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectManagementNodeInventory(object):
@@ -22467,6 +23407,14 @@ class QueryObjectSystemTagInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectUsbDeviceInventory(object):
+     PRIMITIVE_FIELDS = ['busNum','iProduct','iSerial','description','uuid','idVendor','hostUuid','name','lastOpDate','idProduct','state','devNum','usbVersion','iManufacturer','vmInstanceUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vmInstance','host']
+     QUERY_OBJECT_MAP = {
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+        'host' : 'QueryObjectHostInventory',
+     }
+
 class QueryObjectUserGroupInventory(object):
      PRIMITIVE_FIELDS = ['name','lastOpDate','accountUuid','description','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['account','user','policy']
@@ -22516,7 +23464,7 @@ class QueryObjectUserTagInventory(object):
      }
 
 class QueryObjectVCenterBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','name','lastOpDate','vCenterUuid','state','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','datastore','description','type','uuid','url','totalCapacity','name','lastOpDate','vCenterUuid','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -22543,7 +23491,7 @@ class QueryObjectVCenterInventory(object):
      }
 
 class QueryObjectVCenterPrimaryStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','zoneUuid','description','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','name','lastOpDate','vCenterUuid','state','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','datastore','zoneUuid','description','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','totalCapacity','name','lastOpDate','vCenterUuid','state','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['volume','volumeSnapshot','zone','cluster']
      QUERY_OBJECT_MAP = {
         'volume' : 'QueryObjectVolumeInventory',
@@ -22569,14 +23517,28 @@ class QueryObjectVRouterRouteTableInventory(object):
      }
 
 class QueryObjectVipInventory(object):
-     PRIMITIVE_FIELDS = ['ip','useFor','description','l3NetworkUuid','uuid','netmask','name','serviceProvider','lastOpDate','peerL3NetworkUuid','state','gateway','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['ip','useFor','description','l3NetworkUuid','uuid','netmask','name','serviceProvider','lastOpDate','state','gateway','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['portForwarding','l3Network','loadBalancer','peerL3Network','eip']
      QUERY_OBJECT_MAP = {
         'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
         'l3Network' : 'QueryObjectL3NetworkInventory',
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
-        'peerL3Network' : 'QueryObjectL3NetworkInventory',
+        'peerL3Network' : 'QueryObjectVipPeerL3NetworkRefInventory',
         'eip' : 'QueryObjectEipInventory',
+     }
+
+class QueryObjectVipPeerL3NetworkRefInventory(object):
+     PRIMITIVE_FIELDS = ['vipUuid','lastOpDate','l3NetworkUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['l3Network','vip']
+     QUERY_OBJECT_MAP = {
+        'l3Network' : 'QueryObjectL3NetworkInventory',
+        'vip' : 'QueryObjectVipInventory',
+     }
+
+class QueryObjectVipQosInventory(object):
+     PRIMITIVE_FIELDS = ['outboundBandwidth','port','vipUuid','inboundBandwidth','lastOpDate','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectVirtualBorderRouterInventory(object):
@@ -22821,6 +23783,7 @@ class QueryObjectZoneInventory(object):
 queryMessageInventoryMap = {
      'APIQueryAccountMsg' : QueryObjectAccountInventory,
      'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
+     'APIQueryAffinityGroupMsg' : QueryObjectAffinityGroupInventory,
      'APIQueryAlarmMsg' : QueryObjectAlarmInventory,
      'APIQueryAlertMsg' : QueryObjectAlertInventory,
      'APIQueryAliyunDiskFromLocalMsg' : QueryObjectAliyunDiskInventory,
@@ -22875,6 +23838,7 @@ queryMessageInventoryMap = {
      'APIQueryLoadBalancerListenerMsg' : QueryObjectLoadBalancerListenerInventory,
      'APIQueryLoadBalancerMsg' : QueryObjectLoadBalancerInventory,
      'APIQueryLocalStorageResourceRefMsg' : QueryObjectLocalStorageResourceRefInventory,
+     'APIQueryLongJobMsg' : QueryObjectLongJobInventory,
      'APIQueryManagementNodeMsg' : QueryObjectManagementNodeInventory,
      'APIQueryMediaMsg' : QueryObjectMediaInventory,
      'APIQueryMonitorTriggerActionMsg' : QueryObjectMonitorTriggerActionInventory,
@@ -22909,6 +23873,7 @@ queryMessageInventoryMap = {
      'APIQueryShareableVolumeVmInstanceRefMsg' : QueryObjectShareableVolumeVmInstanceRefInventory,
      'APIQuerySharedResourceMsg' : QueryObjectSharedResourceInventory,
      'APIQuerySystemTagMsg' : QueryObjectSystemTagInventory,
+     'APIQueryUsbDeviceMsg' : QueryObjectUsbDeviceInventory,
      'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,
      'APIQueryUserMsg' : QueryObjectUserInventory,
      'APIQueryUserTagMsg' : QueryObjectUserTagInventory,

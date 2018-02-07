@@ -105,11 +105,12 @@ class HostPlugin(kvmagent.KvmAgent):
         return ret.split()[-1]
 
     def _get_qemu_version(self):
+        # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         ret = shell.call('%s -version' % kvmagent.get_qemu_path())
         words = ret.split()
         for w in words:
             if w == 'version':
-                return words[words.index(w)+1].strip()
+                return words[words.index(w)+1].strip().split('(')[0]
 
         raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
@@ -168,7 +169,8 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def fact(self, req):
         rsp = HostFactResponse()
-        qemu_img_version = shell.call("qemu-img --version| grep 'qemu-img version' | cut -d ' ' -f 3")
+        # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
+        qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '{print $2}' | cut -d/ -f1")
         rsp.qemuImgVersion = qemu_img_version
@@ -348,7 +350,7 @@ if __name__ == "__main__":
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.PING_PATH, self.ping)
-        http_server.register_sync_uri(self.CAPACITY_PATH, self.capacity)
+        http_server.register_async_uri(self.CAPACITY_PATH, self.capacity)
         http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         http_server.register_async_uri(self.SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT, self.setup_heartbeat_file)
         http_server.register_async_uri(self.FACT_PATH, self.fact)

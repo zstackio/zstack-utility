@@ -165,10 +165,10 @@ class DEip(kvmagent.KvmAgent):
 
         NIC_NAME = eip.nicName
         CHAIN_NAME = '%s-gw' % NIC_NAME
-        EIP_UUID = eip.eipUuid[-5:-1]
-        PUB_ODEV = "%s_eo_%s" % (dev_base_name, EIP_UUID)
-        PRI_ODEV = "%s_o_%s" % (dev_base_name, EIP_UUID)
         NS_NAME = "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
+        EIP_UUID = eip.eipUuid[-9:]
+        PUB_ODEV = "%s_eo" % (EIP_UUID)
+        PRI_ODEV = "%s_o" % (EIP_UUID)
 
         def delete_namespace():
             if bash_r('ip netns | grep -w {{NS_NAME}} > /dev/null') == 0:
@@ -176,7 +176,7 @@ class DEip(kvmagent.KvmAgent):
 
         def delete_outer_dev():
             if bash_r('ip link | grep -w {{PUB_ODEV}} > /dev/null') == 0:
-                bash_errorout('ip link del {{PUB_ODEV}}')
+                bash_r('ip link del {{PUB_ODEV}}')
 
         def delete_arp_rules():
             if bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
@@ -187,15 +187,16 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
                 bash_errorout(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
 
-            BLOCK_CHAIN_NAME = '{{PRI_ODEV}}-arp'
+            for BLOCK_DEV in [PRI_ODEV, PUB_ODEV]:
+                BLOCK_CHAIN_NAME = '{{BLOCK_DEV}}-arp'
 
-            if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
-                RULE = '-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}'
-                if bash_r(EBTABLES_CMD + ' -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
-                    bash_errorout(EBTABLES_CMD + ' -t nat -D POSTROUTING {{RULE}}')
+                if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
+                    RULE = '-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}'
+                    if bash_r(EBTABLES_CMD + ' -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                        bash_errorout(EBTABLES_CMD + ' -t nat -D POSTROUTING {{RULE}}')
 
-                bash_errorout(EBTABLES_CMD + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
-                bash_errorout(EBTABLES_CMD + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
+                    bash_errorout(EBTABLES_CMD + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
+                    bash_errorout(EBTABLES_CMD + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
 
         delete_namespace()
         delete_outer_dev()
@@ -323,12 +324,13 @@ class DEip(kvmagent.KvmAgent):
 
             create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY}}")
 
-            BLOCK_CHAIN_NAME = '{{PRI_ODEV}}-arp'
-            if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
-                bash_errorout(EBTABLES_CMD + ' -t nat -N {{BLOCK_CHAIN_NAME}}')
+            for BLOCK_DEV in [PRI_ODEV, PUB_ODEV]:
+                BLOCK_CHAIN_NAME = '{{BLOCK_DEV}}-arp'
+                if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
+                    bash_errorout(EBTABLES_CMD + ' -t nat -N {{BLOCK_CHAIN_NAME}}')
 
-            create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{PRI_ODEV}} -j {{BLOCK_CHAIN_NAME}}")
-            create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{PRI_ODEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
+                create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}")
+                create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{BLOCK_DEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
 
         def create_perf_monitor():
             o = bash_o("eval {{NS}} ip -o -f inet addr show | awk '/scope global/ {print $4}'")

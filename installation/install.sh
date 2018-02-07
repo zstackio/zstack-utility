@@ -104,14 +104,45 @@ ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
 #define extra upgrade params
-#1.0  1.1  1.2  1.3  1.4
-declare -a upgrade_params_arrays_zstack1=(
-    '' 
-    '' 
-    '' 
-    '-DsyncImageActualSize=true' 
-    '-DtapResourcesForBilling=true'
-)
+#USE THIS PATTERN: upgrade_params_array[INDEX]='VERSION,PARAM'
+declare -A upgrade_params_array
+upgrade_params_array[0]='1.3,-DsyncImageActualSize=true'
+upgrade_params_array[1]='1.4,-DtapResourcesForBilling=true'
+upgrade_params_array[2]='2.2.2,-DupdateLdapUidToLdapDn=true'
+
+# version compare
+# eg. 1 = 1.0
+# eg. 4.08 < 4.08.01
+vercomp () {
+    if [[ $1 == $2 ]]
+    then
+        return 0
+    fi
+    local IFS=.
+    local i ver1=($1) ver2=($2)
+    # fill empty fields in ver1 with zeros
+    for ((i=${#ver1[@]}; i<${#ver2[@]}; i++))
+    do
+        ver1[i]=0
+    done
+    for ((i=0; i<${#ver1[@]}; i++))
+    do
+        if [[ -z ${ver2[i]} ]]
+        then
+            # fill empty fields in ver2 with zeros
+            ver2[i]=0
+        fi
+        if ((10#${ver1[i]} > 10#${ver2[i]}))
+        then
+            return 1
+        fi
+        if ((10#${ver1[i]} < 10#${ver2[i]}))
+        then
+            return 2
+        fi
+    done
+    return 0
+}
 
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
@@ -542,6 +573,12 @@ do_check_system(){
             zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
             fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ${PRODUCT_NAME}\n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n All ZStack services have been stopped. Run \`zstack-ctl start\` to recover."
         fi
+
+        # kill zstack if it's still running
+        ZSTACK_PID=`ps aux | grep 'appName=zstack' | grep -v 'grep' | awk '{ print $2 }'`
+        [ ! -z $ZSTACK_PID ] && pkill -9 $ZSTACK_PID
+    elif [ ! -d $ZSTACK_INSTALL_ROOT -a ! -f $ZSTACK_INSTALL_ROOT ]; then
+        fail "$ZSTACK_INSTALL_ROOT does not exist, maybe you need to install a new ${PRODUCT_NAME} instead of upgrading an old one."
     fi
 
     if [ `whoami` != 'root' ];then
@@ -792,15 +829,20 @@ upgrade_zstack(){
     fi
 
     #set zstack upgrade params 
-    current_major_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
-    current_minor_version=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
     upgrade_params=''
-    if [ x"$current_major_version" = x"$PRE_MAJOR_VERSION" ]; then
-        while [ $current_minor_version -gt $PRE_MINOR_VERSION ]; do
-            PRE_MINOR_VERSION=`expr $PRE_MINOR_VERSION + 1`
-            upgrade_params="${upgrade_params} ${upgrade_params_arrays_zstack1[$PRE_MINOR_VERSION]}"
-        done
-    fi
+    post_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
+
+    for item in ${upgrade_params_array[*]}; do
+        version=`echo $item | cut -d ',' -f 1`
+        param=`echo $item | cut -d ',' -f 2`
+
+        # pre < version && version <= post
+        vercomp ${pre_upgrade_version} ${version}; cmp1=$?
+        vercomp ${version} ${post_upgrade_version}; cmp2=$?
+        if [ ${cmp1} -eq 2 -a ${cmp2} -ne 1 ]; then
+            upgrade_params="${upgrade_params} ${param}"
+        fi
+    done
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
 
     #When using -i option, will not upgrade kariosdb and not start zstack
@@ -946,11 +988,11 @@ is_install_general_libs_rh(){
 
     rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1 || java -version 2>&1 |grep 1.8 >/dev/null
     if [ $? -ne 0 ]; then
-        fail "java-1.8.0-openjdk is not installed. Did you forget updating management node local repos to latest CentOS ZStack Community ISO? Please use following steps to update local repos:
-        1. cd /opt
-        2. wget http://www.mevoco.com/downloads/scripts/zstack-repo-upgrade.sh
-        3. download latest CentOS ZStack community ISO to /opt/ , e.g.  http://download.zstack.org/ISO/ZStack-Community-x86_64-DVD-160827.iso
-        4. bash /opt/zstack-repo-upgrade.sh
+        fail "java-1.8.0-openjdk is not installed. Did you forget updating management node local repos to latest ZStack ISO? Please use following steps to update local repos:
+        1. # cd /opt
+        2. # wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade
+        3. download the latest ZStack ISO from http://www.zstack.io/product_downloads into /opt
+        4. # bash zstack-upgrade -r PATH_TO_LATEST_ZSTACK_ISO
         "
     else
         #yum clean metadata >/dev/null 2>&1
@@ -1190,7 +1232,8 @@ iz_unpack_zstack(){
 uz_stop_zstack(){
     echo_subtitle "Stop ${PRODUCT_NAME}"
     zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
-    ps axu | grep java | grep zstack | grep -v vdi >>$ZSTACK_INSTALL_LOG 2>&1
+    # make sure zstack is stopped
+    ps axu | grep java | grep 'appName=zstack' >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ];then
         fail "Stop zstack failed!"
     fi
@@ -1199,7 +1242,7 @@ uz_stop_zstack(){
 
 uz_upgrade_tomcat(){
     echo_subtitle "Upgrade apache-tomcat"
-    ZSTACK_HOME=`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`
+    ZSTACK_HOME=${ZSTACK_HOME:-`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`}
     ZSTACK_HOME=${ZSTACK_HOME:-"/usr/local/zstack/apache-tomcat/webapps/zstack/"}
     TOMCAT_PATH=${ZSTACK_HOME%/apache-tomcat*}
 
@@ -2288,12 +2331,13 @@ missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Test network connection"
-BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
-curl ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
+curl -L ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 yum clean all >/dev/null 2>&1
-sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+if [ -f /etc/yum.repos.d/epel.repo ]; then
+    sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+fi
 
 mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
 mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
@@ -2577,7 +2621,8 @@ elif [ x"$UPGRADE" != x'n' ]; then
     get_zstack_repo
 fi
 
-[ ! -z $ZSTACK_YUM_REPOS ] && set_zstack_repo
+# there is no zstack-ctl yet
+#[ ! -z $ZSTACK_YUM_REPOS ] && set_zstack_repo
 
 README=$ZSTACK_INSTALL_ROOT/readme
 
@@ -2657,7 +2702,7 @@ echo_hints_to_upgrade_iso()
         "Syncing local repo with repo.zstack.io has been failed too.\n" \
         "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
         "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-        "# sh zstack-upgrade ${ISO_NAME}\n" \
+        "# bash zstack-upgrade ${ISO_NAME}\n" \
         "For more information, see ${UPGRADE_WIKI}"
 }
 
@@ -2669,7 +2714,7 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     if [ $? -ne 0 ]; then
         if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
             ISO_NAME="ZStack-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
-            UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
+            UPGRADE_WIKI="http://www.zstack.io/support/productsupport/tutorial/"
             ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
             echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
         elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-COMMUNITY" ]; then
@@ -2679,7 +2724,7 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
             echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
         elif [ x"${PRODUCT_NAME^^}" == x"ZSTACK-ENTERPRISE" ]; then
             ISO_NAME="ZStack-Enterprise-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
-            UPGRADE_WIKI="http://www.zstack.io/support/tutorials/upgrade/"
+            UPGRADE_WIKI="http://www.zstack.io/support/productsupport/tutorial/"
             ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
             echo_hints_to_upgrade_iso $ISO_NAME $UPGRADE_WIKI $ISO_DOWNLOAD_LINK
         else
@@ -2752,6 +2797,12 @@ fi
 
 #Set ZSTACK_HOME for zstack-ctl.
 export ZSTACK_HOME=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
+grep "ZSTACK_HOME" ~/.bashrc > /dev/null
+if [ $? -eq 0 ]; then
+    sed -i "s#export ZSTACK_HOME=.*#export ZSTACK_HOME=${ZSTACK_HOME}#" ~/.bashrc
+else
+    echo "export ZSTACK_HOME=${ZSTACK_HOME}" >> ~/.bashrc
+fi
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
@@ -2760,8 +2811,7 @@ check_system
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
-    PRE_MAJOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $1}'`
-    PRE_MINOR_VERSION=`zstack-ctl status|grep version|awk '{print $2}'|awk -F '.' '{print $2}'`
+    pre_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
 
     #only upgrade zstack
     upgrade_zstack

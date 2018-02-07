@@ -16,6 +16,7 @@ sproxy = ""
 chroot_env = 'false'
 zstack_repo = 'false'
 post_url = ""
+chrony_servers = None
 pkg_consoleproxy = ""
 virtualenv_version = "12.1.1"
 remote_user = "root"
@@ -40,6 +41,7 @@ host_post_info.host = host
 host_post_info.host_inventory = args.i
 
 host_post_info.post_url = post_url
+host_post_info.chrony_servers = chrony_servers
 host_post_info.transport = 'local'
 
 # include zstacklib.py

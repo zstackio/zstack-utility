@@ -175,6 +175,14 @@ def get_disk_capacity_by_df(dir_path):
     avail = shell.call("df %s|tail -1|awk '{print $(NF-2)}'" % dir_path)
     return long(total) * 1024, long(avail) * 1024
 
+def get_folder_size(path = "."):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += (os.path.getsize(fp) if os.path.isfile(fp) else 0)
+    return total_size
+
 def is_mounted(path=None, url=None):
     if url:
         url = url.rstrip('/')
@@ -214,6 +222,19 @@ def umount(path, is_exception=True):
     cmd = shell.ShellCmd('umount -f -l %s' % path)
     cmd(is_exception=is_exception)
     return cmd.return_code == 0
+
+def remount(url, path, options=None):
+    if not is_mounted(path, url):
+        mount(url, path, options)
+        return
+
+    o = shell.ShellCmd('timeout 180 mount -o remount %s' % path)
+    o(False)
+    if o.return_code == 124:
+        raise Exception('unable to access the mount path[%s] of the nfs primary storage[url:%s] in 180s, timeout' %
+                        (path, url))
+    elif o.return_code != 0:
+        o.raise_error()
 
 def is_valid_nfs_url(url):
     ts = url.split(':')
@@ -549,8 +570,19 @@ def raw_create(dst, size):
     shell.ShellCmd('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))()
     shell.ShellCmd('chmod 666 %s' % dst)()
 
+def create_template(src, dst):
+    fmt = get_img_fmt(src)
+    if fmt == 'raw':
+        return raw_create_template(src, dst)
+    if fmt == 'qcow2':
+        return qcow2_create_template(src, dst)
+    raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
+
 def qcow2_create_template(src, dst):
     shell.call('/usr/bin/qemu-img convert -f qcow2 -O qcow2 %s %s' % (src, dst))
+
+def raw_create_template(src, dst):
+    shell.call('/usr/bin/qemu-img convert -f raw -O qcow2 %s %s' % (src, dst))
 
 def qcow2_convert_to_raw(src, dst):
     shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (src, dst))
@@ -1314,9 +1346,15 @@ def get_nics_by_cidr(cidr):
 
 def create_vxlan_interface(vni, vtepIp):
     vni = str(vni)
-    cmd = shell.ShellCmd("ip link add {name} type vxlan id {id} local {ip} learning noproxy nol2miss nol3miss".format(
-        **{"name": "vxlan" + vni, "id": vni, "ip": vtepIp}))
+    cmd = shell.ShellCmd("ip -d -o link show dev {name} | grep -w {ip} ".format(**{"name": "vxlan" + vni, "ip": vtepIp}))
     cmd(is_exception=False)
+    if cmd.return_code != 0:
+        cmd = shell.ShellCmd("ip link del {name}".format(**{"name": "vxlan" + vni}))
+        cmd(is_exception=False)
+
+        cmd = shell.ShellCmd("ip link add {name} type vxlan id {id} local {ip} learning noproxy nol2miss nol3miss".format(
+            **{"name": "vxlan" + vni, "id": vni, "ip": vtepIp}))
+        cmd(is_exception=False)
 
     cmd = shell.ShellCmd("ip link set %s up" % ("vxlan" + vni))
     cmd(is_exception=False)
@@ -1341,6 +1379,21 @@ def populate_vxlan_fdb(interf, ips):
 
     return success
 
+def get_interfs_from_uuids(uuids):
+    strUuids = ""
+    for uuid in uuids:
+        strUuids += "%s|" % uuid
+
+    strUuids.rstrip("|")
+
+    cmd = shell.ShellCmd("ip link | grep -E '%s' -B2 | grep vxlan | awk '{ print $2}' | tr ':' ' '" % strUuids)
+    o = cmd(is_exception=False)
+
+    if o == "":
+        return []
+    else:
+        return o.split("\n")[:-1] # remove last ""
+
 def timeout_isdir(path):
     o = shell.ShellCmd("timeout 10 ls -d -l %s" % path)
     o(False)
@@ -1350,3 +1403,7 @@ def timeout_isdir(path):
         return False
     else:
         return True
+
+def set_device_uuid_alias(interf, l2NetworkUuid):
+    cmd = shell.ShellCmd("ip link set dev %s alias \"uuid: %s\"" % (interf, l2NetworkUuid))
+    cmd(is_exception=False)
