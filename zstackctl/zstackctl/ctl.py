@@ -1656,7 +1656,12 @@ class StartCmd(Command):
                 return cmd.return_code == 0
 
             if not check():
-                raise CtlError('no management-node-ready message received within %s seconds, please check error in log file %s' % (timeout, log_path))
+                mgmt_ip = ctl.read_property('management.server.ip')
+                if mgmt_ip:
+                    mgmt_ip = '[ management.server.ip = %s ]' % mgmt_ip
+                else:
+                    mgmt_ip = ''
+                raise CtlError('no management-node-ready message received within %s seconds%s, please check error in log file %s' % (timeout, mgmt_ip, log_path))
 
         def prepareBeanRefContextXml():
             if args.simulator:
