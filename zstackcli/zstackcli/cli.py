@@ -23,6 +23,9 @@ import pydoc
 import time
 import urllib3
 
+import cStringIO as c
+import csv
+
 import zstacklib.utils.log as log
 
 # comment out next line to print detail zstack cli http command to screen.
@@ -60,6 +63,8 @@ NOT_QUERY_MYSQL_APIS = [
     'QueryLog'
 ]
 
+def escape_split(str, deli=','):
+    return csv.reader(c.StringIO(str), delimiter=deli, escapechar='\\').next()
 
 def clean_password_in_cli_history():
     cmd_historys = open(CLI_HISTORY, 'r').readlines()
@@ -314,6 +319,12 @@ Parse command parameters error:
                 elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg',
                                  'APIMonitoringPassThroughMsg'] and params[0] == 'query':
                     all_params[params[0]] = eval(params[1])
+                elif apiname == 'APIPutMetricDataMsg' and params[0] == 'data':
+                    all_params[params[0]] = eval(params[1])
+                elif apiname == 'APICreateAlarmMsg' and params[0] in ['actions', 'labels']:
+                    all_params[params[0]] = eval(params[1])
+                elif apiname == 'APISubscribeEventMsg' and params[0] in ['actions', 'labels']:
+                    all_params[params[0]] = eval(params[1])
                 elif apiname in ['APICreateBaremetalHostCfgMsg'] and params[0] == 'cfgItems':
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and params[0] == 'networkServices':
@@ -323,7 +334,7 @@ Parse command parameters error:
                 elif apiname == 'APICreatePolicyMsg' and params[0] == 'statements':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif is_api_param_a_list(apiname, params[0]):
-                    all_params[params[0]] = params[1].split(',')
+                    all_params[params[0]] = escape_split(params[1])
                 else:
                     all_params[params[0]] = params[1]
 
@@ -864,7 +875,7 @@ Parse command parameters error:
             cmd, output = return_result
 
             if not file_folder:
-                new_file_folder = '%s-%s.json' % (cmd.split()[0], num)
+                new_file_folder = '%s-%s.json' % (cmd[0], num)
             else:
                 new_file_folder = file_folder
 
@@ -874,7 +885,8 @@ Parse command parameters error:
                 write_to_file(output, file_name, num)
             else:
                 if os.path.isdir(new_file_folder):
-                    file_name = '%s/%s-%s.json' % (new_file_folder, cmd.split()[0], num)
+                    file_name = '%s/%s-%s.json' % (new_file_folder, cmd[0], num)
+                    write_to_file(output, file_name, num)
                 elif os.path.isdir(dirname):
                     write_to_file(output, file_name, num)
                 else:

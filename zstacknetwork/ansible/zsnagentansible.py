@@ -20,6 +20,7 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 file_root = "files/zsnagentansible"
 pkg_zsn = ""
 post_url = ""
+chrony_servers = None
 fs_rootpath = ""
 remote_user = "root"
 remote_pass = None
@@ -41,13 +42,11 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 zsn_root = "%s/zsn-agent/package" % zstack_root
 
-# update the variable from shell arguments
-locals().update(argument_dict)
-
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
 host_post_info.post_url = post_url
+host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
 host_post_info.remote_user = remote_user
 host_post_info.remote_pass = remote_pass
@@ -105,14 +104,14 @@ run_remote_command(command, host_post_info)
 run_remote_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent /etc/init.d/", host_post_info)
 if tmout != None:
     if distro == "CentOS" or distro == "RedHat":
-        command = "/usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on" % (tmout)
+        command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on" % (tmout)
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start" % (tmout)
+        command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start" % (tmout)
 else:
     if distro == "CentOS" or distro == "RedHat":
-        command = "/usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
+        command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
     elif distro == "Debian" or distro == "Ubuntu":
-        command = "update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
+        command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
 run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

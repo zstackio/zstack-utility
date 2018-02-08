@@ -54,11 +54,17 @@ class ResizeVolumeRsp(AgentRsp):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
+class GetSubPathRsp(AgentRsp):
+    def __init__(self):
+        super(GetSubPathRsp, self).__init__()
+        self.paths = []
+
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointprimarystorage/createrootvolume"
     DELETE_BITS_PATH = "/sharedmountpointprimarystorage/bits/delete"
+    GET_SUBPATH_PATH = "/sharedmountpointprimarystorage/sub/path"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointprimarystorage/createtemplatefromvolume"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/download"
@@ -78,6 +84,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
+        http_server.register_async_uri(self.GET_SUBPATH_PATH, self.get_sub_path)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
@@ -93,7 +100,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
 
         self.imagestore_client = ImageStoreClient()
-        self.id_file = None
+        self.id_files = {}
 
     def stop(self):
         pass
@@ -138,16 +145,16 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         shell.call("mkdir -p %s" % id_dir)
         lock_file = os.path.join(id_dir, "uuid.lock")
 
-        @lock.file_lock(lock_file)
+        @lock.file_lock(lock_file, locker=lock.Flock())
         def check_other_smp_and_set_id_file(uuid, existUuids):
-            o = shell.ShellCmd('''
-            ls %s | grep -v %s | grep -o "[0-9a-f]\{8\}[0-9a-f]\{4\}[1-5][0-9a-f]\{3\}[89ab][0-9a-f]\{3\}[0-9a-f]\{12\}"
+            o = shell.ShellCmd('''\
+            ls %s | grep -v %s | grep -o "[0-9a-f]\{8\}[0-9a-f]\{4\}[1-5][0-9a-f]\{3\}[89ab][0-9a-f]\{3\}[0-9a-f]\{12\}"\
             ''' % (id_dir, uuid))
             o(False)
             if o.return_code != 0:
                 file_uuids = []
             else:
-                file_uuids = o.stdout.split("\n")
+                file_uuids = o.stdout.splitlines()
 
             for file_uuid in file_uuids:
                 if file_uuid in existUuids:
@@ -155,15 +162,15 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                         "the mount point [%s] has been occupied by other SMP[uuid:%s], Please attach this directly"
                         % (cmd.mountPoint, file_uuid))
 
-            self.id_file = os.path.join(id_dir, uuid)
+            logger.debug("existing id files: %s" % file_uuids)
+            self.id_files[uuid] = os.path.join(id_dir, uuid)
 
-            if not os.path.exists(self.id_file):
+            if not os.path.exists(self.id_files[uuid]):
                 # check if hosts in the same cluster mount the same path but different storages.
                 rsp.isFirst = True
-
                 for file_uuid in file_uuids:
                     shell.call("rm -rf %s" % os.path.join(id_dir, file_uuid))
-                shell.call("touch %s" % self.id_file)
+                shell.call("touch %s && sync" % self.id_files[uuid])
 
         rsp = ConnectRsp()
         check_other_smp_and_set_id_file(cmd.uuid, cmd.existUuids)
@@ -177,7 +184,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
 
         if not os.path.exists(cmd.templatePathInCache):
-            rsp.error = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
+            rsp.error = "unable to find image in cache"
             rsp.success = False
             return jsonobject.dumps(rsp)
 
@@ -193,8 +200,18 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def delete_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        kvmagent.deleteImage(cmd.path)
+        if cmd.folder:
+            shell.call('rm -rf %s' % cmd.path)
+        else:
+            kvmagent.deleteImage(cmd.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_sub_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetSubPathRsp()
+        rsp.paths = kvmagent.listPath(cmd.path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -204,8 +221,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
-
-        linux.qcow2_create_template(cmd.volumePath, cmd.installPath)
+        linux.create_template(cmd.volumePath, cmd.installPath)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
@@ -277,7 +293,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(workspace_dir):
             os.makedirs(workspace_dir)
 
-        linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+        linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
@@ -291,7 +307,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.qcow2_create_template(cmd.destPath, tmp)
+            linux.create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)

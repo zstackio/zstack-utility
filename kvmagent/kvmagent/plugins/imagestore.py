@@ -100,6 +100,10 @@ class ImageStoreClient(object):
         logger.debug('pulling %s:%s from image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
+
+        if not os.path.exists(primaryStorageInstallPath):
+            logger.debug("the file[%s] not exist" % primaryStorageInstallPath)
+
         return
 
     def convert_image_raw(self, cmd):

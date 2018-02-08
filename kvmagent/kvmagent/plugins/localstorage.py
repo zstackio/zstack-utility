@@ -75,6 +75,11 @@ class ResizeVolumeRsp(AgentResponse):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
+class ListResponse(AgentResponse):
+    def __init__(self):
+        super(ListResponse, self).__init__()
+        self.paths = []
+
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
@@ -83,6 +88,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CREATE_VOLUME_FROM_CACHE_PATH = "/localstorage/volume/createvolumefromcache"
     DELETE_BITS_PATH = "/localstorage/delete"
     DELETE_DIR_PATH = "/localstorage/deletedir"
+    GET_LIST_PATH = "/localstorage/list"
     UPLOAD_BIT_PATH = "/localstorage/sftp/upload"
     DOWNLOAD_BIT_PATH = "/localstorage/sftp/download"
     UPLOAD_TO_IMAGESTORE_PATH = "/localstorage/imagestore/upload"
@@ -117,6 +123,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume_from_template)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete)
         http_server.register_async_uri(self.DELETE_DIR_PATH, self.deletedir)
+        http_server.register_async_uri(self.GET_LIST_PATH, self.list)
         http_server.register_async_uri(self.DOWNLOAD_BIT_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.UPLOAD_BIT_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
@@ -376,13 +383,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
             if cmd.dstUsername == 'root':
                 _, _, err = bash_progress_1(
-                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
+                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p "{{PASSWORD}}" ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
                 if err:
                     raise err
             else:
                 raise Exception("cannot support migrate to non-root user host")
             written += os.path.getsize(path)
-            bash_errorout('/usr/bin/sshpass -p {{PASSWORD}} ssh -o StrictHostKeyChecking=no -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
+            bash_errorout('/usr/bin/sshpass -p "{{PASSWORD}}" ssh -o StrictHostKeyChecking=no -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
             percent = int(round(float(written) / float(total) * (end - start) + start))
             report.progress_report(percent, "report")
 
@@ -435,7 +442,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
 
-        linux.qcow2_create_template(cmd.volumePath, cmd.installPath)
+        linux.create_template(cmd.volumePath, cmd.installPath)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -463,7 +470,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(workspace_dir):
             os.makedirs(workspace_dir)
 
-        linux.qcow2_create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+        linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -486,7 +493,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(workspace_dir):
             os.makedirs(workspace_dir)
 
-        linux.qcow2_create_template(latest, cmd.workspaceInstallPath)
+        linux.create_template(latest, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -500,7 +507,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.qcow2_create_template(cmd.destPath, tmp)
+            linux.create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -559,7 +566,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
 
         if not os.path.exists(cmd.templatePathInCache):
-            rsp.error = "UNABLE_TO_FIND_IMAGE_IN_CACHE"
+            rsp.error = "unable to find image in cache"
             rsp.success = False
             logger.debug('error: %s: %s' % (rsp.error, cmd.templatePathInCache))
             return jsonobject.dumps(rsp)
@@ -578,6 +585,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
         kvmagent.deleteImage(cmd.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def list(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ListResponse()
+
+        rsp.paths = kvmagent.listPath(cmd.path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

@@ -10,6 +10,10 @@ import os.path
 import re
 import time
 import traceback
+from prometheus_client.core import GaugeMetricFamily,REGISTRY
+from prometheus_client import start_http_server
+
+logger = log.get_logger(__name__)
 
 class PrometheusPlugin(kvmagent.KvmAgent):
 
@@ -145,9 +149,29 @@ LoadPlugin virt
 
         return jsonobject.dumps(rsp)
 
+    def install_colletor(self):
+        class Collector(object):
+            def collect(self):
+                try:
+                    ret = []
+                    for c in kvmagent.metric_collectors:
+                        ret.extend(c())
+
+                    return ret
+                except Exception as e:
+                    content = traceback.format_exc()
+                    err = '%s\n%s\n' % (str(e), content)
+                    logger.warn(err)
+                    return []
+
+        REGISTRY.register(Collector())
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.COLLECTD_PATH, self.start_collectd_exporter)
+
+        self.install_colletor()
+        start_http_server(7069)
 
     def stop(self):
         pass

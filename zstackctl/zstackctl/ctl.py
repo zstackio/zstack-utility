@@ -103,14 +103,14 @@ fi
 
 grep 'tmpdir' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-    mysql_tmp_path="/var/lib/mysql/tmp"
+    mysql_tmp_path="/var/lib/zstack-mysql-tmp"
     if [ ! -x "$mysql_tmp_path" ]; then
         mkdir "$mysql_tmp_path"
         chown mysql:mysql "$mysql_tmp_path"
         chmod 1777 "$mysql_tmp_path"
     fi
-    echo "tmpdir=/var/lib/mysql/tmp"
-    sed -i '/\[mysqld\]/a tmpdir=/var/lib/mysql/tmp\' $mysql_conf
+    echo "tmpdir=$mysql_tmp_path"
+    sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
 '''
 
@@ -356,21 +356,41 @@ def expand_path(path):
     else:
         return os.path.abspath(path)
 
-def check_host_info_format(host_info):
+def validate_ip(s):
+    a = s.split('.')
+    if len(a) != 4:
+        return False
+    for x in a:
+        if not x.isdigit():
+            return False
+        i = int(x)
+        if i < 0 or i > 255:
+            return False
+    return True
+
+
+def check_host_info_format(host_info, with_public_key=False):
     '''check install ha and install multi mn node info format'''
     if '@' not in host_info:
-        error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
+        if with_public_key is False:
+            error("Host connect info: '%s' is wrong, should follow format: 'root:password@host_ip', please check your input!" % host_info)
+        if with_public_key is True:
+            error("Host connect info: '%s' is wrong, should follow format: 'root@host_ip', please check your input!" % host_info)
     else:
         # get user and password
         if ':' not in host_info.split('@')[0]:
-            error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
+            if with_public_key is False:
+                error("Host connect information should follow format: 'root:password@host_ip', please check your input!")
+            else:
+                user = host_info.split('@')[0]
+                password = ""
+
         else:
-            user = host_info.split('@')[0].split(':')[0]
-            password = host_info.split('@')[0].split(':')[1]
-            if user != "" and user != "root":
-                print "Only root user can be supported, please change user to root"
-            if user == "":
-                user = "root"
+            if with_public_key is False:
+                user = host_info.split('@')[0].split(':')[0]
+                password = host_info.split('@')[0].split(':')[1]
+                if  user != "root":
+                    error("Only root user can be supported, please change user to root")
         # get ip and port
         if ':' not in host_info.split('@')[1]:
             ip = host_info.split('@')[1]
@@ -378,15 +398,25 @@ def check_host_info_format(host_info):
         else:
             ip = host_info.split('@')[1].split(':')[0]
             port = host_info.split('@')[1].split(':')[1]
+
+        if validate_ip(ip) is False:
+            error("Ip : %s is invalid" % ip)
         return (user, password, ip, port)
 
 def check_host_password(password, ip):
-    command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
+    command ='timeout 10 sshpass -p "%s" ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
              'StrictHostKeyChecking=no  root@%s echo ""' % (password, ip)
     (status, output) = commands.getstatusoutput(command)
     if status != 0:
         error("Connect to host: '%s' with password '%s' failed! Please check password firstly and make sure you have "
               "disabled UseDNS in '/etc/ssh/sshd_config' on %s" % (ip, password, ip))
+
+def check_host_connection_with_key(ip, user="root", private_key=""):
+    command ='timeout 5 sshpass ssh -q %s@%s echo ""' % (user, ip)
+    (status, stdout, stderr) = shell_return_stdout_stderr(command)
+    if status != 0:
+        error("Connect to host: '%s' with private key: '%s' failed, please transfer your public key "
+              "to remote host firstly then make sure the host address is valid" % (ip, private_key))
 
 def get_ip_by_interface(device_name):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -913,6 +943,11 @@ def shell_return(cmd):
     scmd(False)
     return scmd.return_code
 
+def shell_return_stdout_stderr(cmd):
+    scmd = ShellCmd(cmd)
+    scmd(False)
+    return (scmd.return_code, scmd.stdout, scmd.stderr)
+
 class Command(object):
     def __init__(self):
         self.name = None
@@ -1025,8 +1060,9 @@ class MySqlCommandLineQuery(object):
                 current = {}
             else:
                 l = l.strip()
-                key, value = l.split(':', 1)
-                current[key.strip()] = value[1:]
+                if ":" in l:
+                    key, value = l.split(':', 1)
+                    current[key.strip()] = value[1:]
 
         if current:
             ret.append(current)
@@ -1069,7 +1105,7 @@ class ShowStatusCmd(Command):
             cmd = create_check_mgmt_node_command()
 
             def write_status(status):
-                info_list.append('MN status: %s' % status)
+                info('MN status: %s' % status)
 
             if not cmd:
                 write_status('cannot detect status, no wget and curl installed')
@@ -1084,7 +1120,7 @@ class ShowStatusCmd(Command):
                                  (colored('Unknown', 'yellow'), pid))
                 else:
                     write_status(colored('Stopped', 'red'))
-                return
+                return False
 
             if 'false' in cmd.stdout:
                 write_status('Starting, should be ready in a few seconds')
@@ -1124,11 +1160,18 @@ class ShowStatusCmd(Command):
             else:
                 info('version: %s' % version)
 
-        check_zstack_status()
-
         info('\n'.join(info_list))
-        ctl.internal_run('ui_status', args='-q')
         show_version()
+
+        s = check_zstack_status()
+        if s is not None and not s:
+            boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
+            if os.path.exists(boot_error_log):
+                info(colored('Management server met an error as below:', 'yellow'))
+                with open(boot_error_log, 'r') as fd:
+                    info(colored(fd.read(), 'red'))
+
+        ctl.internal_run('ui_status', args='-q')
 
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
@@ -1551,6 +1594,21 @@ class StartCmd(Command):
                 else:
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
+        def prepare_qemu_kvm_repo():
+            NEW_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.9.0'
+            DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/qemu-kvm-ev'
+            NEW_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + NEW_QEMU_KVM_VERSION
+
+            version = ctl.read_property('KvmHost.qemu_kvm.version')
+            if version == NEW_QEMU_KVM_VERSION:
+                # use new version of qemu-kvm
+                cmd = ShellCmd("umount %s; mount --bind %s %s" % (DEFAULT_QEMU_KVM_PATH, NEW_QEMU_KVM_PATH, DEFAULT_QEMU_KVM_PATH))
+                cmd(False)
+            else:
+                # use default version of qemu-kvm
+                cmd = ShellCmd("umount %s" % DEFAULT_QEMU_KVM_PATH)
+                cmd(False)
+
         def prepare_setenv():
             setenv_path = os.path.join(ctl.zstack_home, self.SET_ENV_SCRIPT)
             catalina_opts = [
@@ -1605,7 +1663,12 @@ class StartCmd(Command):
                 return cmd.return_code == 0
 
             if not check():
-                raise CtlError('no management-node-ready message received within %s seconds, please check error in log file %s' % (timeout, log_path))
+                mgmt_ip = ctl.read_property('management.server.ip')
+                if mgmt_ip:
+                    mgmt_ip = '[ management.server.ip = %s ]' % mgmt_ip
+                else:
+                    mgmt_ip = ''
+                raise CtlError('no management-node-ready message received within %s seconds%s, please check error in log file %s' % (timeout, mgmt_ip, log_path))
 
         def prepareBeanRefContextXml():
             if args.simulator:
@@ -1625,6 +1688,7 @@ class StartCmd(Command):
         check_9090()
         check_msyql()
         check_rabbitmq()
+        prepare_qemu_kvm_repo()
         prepare_setenv()
         open_iptables_port('udp',['123'])
         prepareBeanRefContextXml()
@@ -1927,9 +1991,9 @@ if [ -f /etc/redhat-release ] ; then
 
 grep ' 7' /etc/redhat-release
 if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 fi
 
 [ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
@@ -2232,7 +2296,7 @@ class AddManagementNodeCmd(Command):
                             default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
                  ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
@@ -2757,7 +2821,7 @@ class InstallHACmd(Command):
                                       % (public_key.strip('\n'), public_key.strip('\n'), public_key.strip('\n'))
 
         # add ha public key to host1
-        ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+        ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s'" % \
                                   (args.host1_password, args.host1, add_public_key_command)
         (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
@@ -2765,7 +2829,7 @@ class InstallHACmd(Command):
             error(output)
 
         # add ha public key to host2
-        ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+        ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
                                   (args.host2_password, args.host2, add_public_key_command)
         (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
@@ -2774,7 +2838,7 @@ class InstallHACmd(Command):
 
         # add ha public key to host3
         if args.host3_info is not False:
-            ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
+            ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                               "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
                                               (args.host3_password, args.host3, add_public_key_command)
             (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
@@ -4102,9 +4166,9 @@ if [ -f /etc/redhat-release ] ; then
 
 grep ' 7' /etc/redhat-release
 if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 fi
 
 [ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
@@ -4250,6 +4314,10 @@ class ChangeMysqlPasswordCmd(Command):
            error("Only support change 'zstack' and 'root' password")
 
 class DumpMysqlCmd(Command):
+    mysql_backup_dir = "/var/lib/zstack/mysql-backup/"
+    remote_backup_dir = "/var/lib/zstack/from-zstack-remote-backup/"
+    ui_backup_dir = "/var/lib/zstack/ui/"
+
     def __init__(self):
         super(DumpMysqlCmd, self).__init__()
         self.name = "dump_mysql"
@@ -4260,11 +4328,40 @@ class DumpMysqlCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--file-name',
-                            help="The filename you want to save the database, default is 'zstack-backup-db'",
+                            help="The filename prefix you want to save the backup database under local backup dir, default filename "
+                                 "prefix is 'zstack-backup-db', local backup dir is '/var/lib/zstack/mysql-backup/'",
                             default="zstack-backup-db")
         parser.add_argument('--keep-amount',type=int,
                             help="The amount of backup files you want to keep, older backup files will be deleted, default number is 60",
                             default=60)
+        parser.add_argument('--host-info','--host','--h',
+                           help="ZStack will sync the backup database and ui data to remote host dir '/var/lib/zstack/from-zstack-remote-backup/', "
+                                "the host-info format: 'root@ip_address' ",
+                           required=False)
+        parser.add_argument('--delete-expired-file','--delete','--d',
+                            action='store_true',
+                            help="ZStack will delete expired files under remote host backup dir /var/lib/zstack/from-zstack-remote-backup/ "
+                                 "to make sure the content under remote host backup dir synchronize with local backup dir",
+                            required=False)
+
+    def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip):
+        (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
+        if status != 0:
+            error(stderr)
+
+        command ='timeout 10 sshpass ssh -q -i %s %s@%s "mkdir -p %s"' % (private_key, user, remote_host_ip, self.remote_backup_dir)
+        (status, output, stderr) = shell_return_stdout_stderr(command)
+        if status != 0:
+            error(stderr)
+        if args.delete_expired_file is True:
+            sync_command = "rsync -lr --delete -e 'ssh -i %s'  %s %s %s:%s" % (private_key, self.mysql_backup_dir,
+                                                                               self.ui_backup_dir, remote_host_ip, self.remote_backup_dir)
+        else:
+            sync_command = "rsync -lr -e 'ssh -i %s'  %s %s %s:%s" % (private_key, self.mysql_backup_dir,
+                                                                               self.ui_backup_dir, remote_host_ip, self.remote_backup_dir)
+        (status, output, stderr) = shell_return_stdout_stderr(sync_command)
+        if status != 0:
+            error(stderr)
 
     def run(self, args):
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
@@ -4275,6 +4372,21 @@ class DumpMysqlCmd(Command):
         if os.path.exists(db_backup_dir) is False:
             os.mkdir(db_backup_dir)
         db_backup_name = db_backup_dir + file_name + "-" + backup_timestamp
+        if args.delete_expired_file is not False and args.host_info is None:
+            error("Please specify remote host info with '--host' before you want to delete remote host expired files")
+        if args.host_info is not None:
+            host_info = args.host_info
+            host_connect_info_list = check_host_info_format(host_info, with_public_key=True)
+            remote_host_user = host_connect_info_list[0]
+            remote_host_ip = host_connect_info_list[2]
+            key_path = os.path.expanduser('~%s' % remote_host_user) + "/.ssh/"
+            private_key= key_path + "id_rsa"
+            public_key= key_path + "id_rsa.pub"
+            if os.path.isfile(public_key) is not True:
+                error("Didn't find public key: %s" % public_key)
+            if os.path.isfile(private_key) is not True:
+                error("Didn't find private key: %s" % private_key)
+            check_host_connection_with_key(remote_host_ip, remote_host_user, private_key)
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
             if db_password is None or db_password == "":
                 db_connect_password = ""
@@ -4295,7 +4407,7 @@ class DumpMysqlCmd(Command):
             (status, output) = commands.getstatusoutput(command)
             if status != 0:
                 error(output)
-        print "Backup mysql successful! You can check the file at %s.gz" % db_backup_name
+        info("Backup mysql successfully! You can check the file at %s.gz" % db_backup_name)
         # remove old file
         if len(os.listdir(db_backup_dir)) > keep_amount:
             backup_files_list = [s for s in os.listdir(db_backup_dir) if os.path.isfile(os.path.join(db_backup_dir, s))]
@@ -4303,6 +4415,14 @@ class DumpMysqlCmd(Command):
             for expired_file in backup_files_list:
                 if expired_file not in backup_files_list[-keep_amount:]:
                     os.remove(db_backup_dir + expired_file)
+        #remote backup
+        if args.host_info is not None:
+            self.sync_local_backup_db_to_remote_host(args, remote_host_user, private_key, remote_host_ip)
+            if args.delete_expired_file is False:
+                info("Sync ZStack backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
+            else:
+                info("Sync ZStack backup to remote host %s:%s and delete expired files on remote successfully! " % (remote_host_ip, self.remote_backup_dir))
+
 
 
 class RestoreMysqlCmd(Command):
@@ -4365,7 +4485,7 @@ class RestoreMysqlCmd(Command):
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)
             shell_no_pipe(command)
-            
+
             # modify DEFINER of view, trigger and so on
             # from: /* ... */ /*!50017 DEFINER=`old_user`@`old_hostname`*/ /*...
             # to:   /* ... */ /*!50017 DEFINER=`new_user`@`new_hostname`*/ /*...
@@ -4436,6 +4556,8 @@ class CollectLogCmd(Command):
         command = "route -n > %s/route_table" % tmp_log_dir
         run_remote_command(command, host_post_info)
         command = "iptables-save > %s/iptables_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+        command = "journalctl -x > %s/journalctl_info" % tmp_log_dir
         run_remote_command(command, host_post_info)
 
     def get_pkg_list(self, host_post_info, tmp_log_dir):
@@ -4706,6 +4828,8 @@ class CollectLogCmd(Command):
         commands.getstatusoutput(command)
         command = " rpm -qa | sort  > %s/pkg_list" % mn_log_dir
         commands.getstatusoutput(command)
+        command = "journalctl -x > %s/journalctl_info" % mn_log_dir
+        commands.getstatusoutput(command)
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
@@ -4844,9 +4968,6 @@ class ChangeIpCmd(Command):
                                          'zstack config file' , required=True)
         parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
         parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
-        parser.add_argument('--yum',
-                            help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.",
-                            default=None)
 
     def run(self, args):
         if args.ip == '0.0.0.0':
@@ -4988,7 +5109,7 @@ class InstallManagementNodeCmd(Command):
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
                  ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
@@ -5008,7 +5129,7 @@ class InstallManagementNodeCmd(Command):
             args.yum = get_yum_repo_from_property()
 
         if args.ssh_key is None:
-            args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
+            args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
         private_key = args.ssh_key.split('.')[0]
 
         inventory_file = ctl.zstack_home + "/../../../ansible/hosts"
@@ -5018,7 +5139,7 @@ class InstallManagementNodeCmd(Command):
         (host_info.remote_user, host_info.remote_pass, host_info.host, host_info.remote_port) = check_host_info_format(args.host)
 
         check_host_password(host_info.remote_pass, host_info.host)
-        
+
         self.add_public_key_to_host(args.ssh_key, host_info)
 
         apache_tomcat = None
@@ -5181,9 +5302,9 @@ if [ -f /etc/redhat-release ] ; then
 
 grep ' 7' /etc/redhat-release
 if [ $$? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 fi
 
 [ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
@@ -5331,7 +5452,7 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'setup_account': setup_account_path
         })
 
-        
+
         ansible(yaml, host_info.host, args.debug, private_key)
         info('successfully installed new management node on machine(%s)' % host_info.host)
 
@@ -5547,9 +5668,9 @@ if [ -f /etc/redhat-release ] ; then
 
 grep ' 7' /etc/redhat-release
 if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
 fi
 
 [ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
@@ -5837,7 +5958,7 @@ fi
             info('start to upgrade the remote management node; the process may cost several minutes ...')
 
             if args.ssh_key is None:
-                args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"        
+                args.ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa.pub"
             private_key = args.ssh_key.split('.')[0]
 
             ansible(yaml, args.host, args.debug, ssh_key=private_key)
@@ -6506,7 +6627,8 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
-        ha_info_file = '/var/lib/zstack/ha/ha.yaml'
+        # no need to consider ha because it's not supported any more
+        #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         pidfile = '/var/run/zstack/zstack-ui.pid'
         portfile = '/var/run/zstack/zstack-ui.port'
         if os.path.exists(pidfile):
@@ -6516,14 +6638,14 @@ class UiStatusCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    if os.path.exists(ha_info_file):
-                        with open(ha_info_file, 'r') as fd2:
-                            ha_conf = yaml.load(fd2)
-                            if check_ip_port(ha_conf['vip'], 8888):
-                                info('UI status: %s [PID:%s] http://%s:8888' % (colored('Running', 'green'), pid, ha_conf['vip']))
-                            else:
-                                info('UI status: %s' % colored('Unknown', 'yellow'))
-                            return
+                    #if os.path.exists(ha_info_file):
+                    #    with open(ha_info_file, 'r') as fd2:
+                    #        ha_conf = yaml.load(fd2)
+                    #        if check_ip_port(ha_conf['vip'], 8888):
+                    #            info('UI status: %s [PID:%s] http://%s:8888' % (colored('Running', 'green'), pid, ha_conf['vip']))
+                    #        else:
+                    #            info('UI status: %s' % colored('Unknown', 'yellow'))
+                    #        return
                     default_ip = get_default_ip()
                     if not default_ip:
                         info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
@@ -6582,6 +6704,80 @@ class VDIUiStatusCmd(Command):
             info('VDI UI status: %s [PID: %s]' % (colored('Zombie', 'yellow'), pid))
         else:
             info('VDI UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
+
+def mysql(cmd):
+    (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+    if db_password is None or db_password == "":
+        db_connect_password = ""
+    else:
+        db_connect_password = "-p" + db_password
+    if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in RestoreMysqlCmd.all_local_ip):
+        db_hostname = ""
+    else:
+        db_hostname = "--host %s" % db_hostname
+    command = "mysql -uzstack %s -P %s %s zstack -e \"%s\"" % (db_connect_password, db_port, db_hostname, cmd)
+    return shell(command).strip()
+
+class ShowSessionCmd(Command):
+    def __init__(self):
+        super(ShowSessionCmd, self).__init__()
+        self.name = "show_session_list"
+        self.description = "show user session list"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--account', '-c', help='Show the designated account session lists')
+    def run(self, args):
+        command = "select a.name, count(1) from AccountVO a, SessionVO s where s.accountUuid = a.uuid group by a.name"
+        result = mysql(command)
+        if result is not None:
+            output = result.splitlines()
+            info("account sessions")
+            info("---------------")
+            count = 0
+            for o in output[1:]:
+                session = o.split()
+                if args.account is None:
+                    info(o)
+                else:
+                    if args.account == session[0]:
+                        info(o)
+                    else:
+                        continue
+                count = int(session[1]) + count
+            info("---------------")
+            info("total   %d" % count)
+
+class DropSessionCmd(Command):
+    def __init__(self):
+        super(DropSessionCmd, self).__init__()
+        self.name = "drop_account_session"
+        self.description = "drop account session"
+        ctl.register_command(self)
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--all', '-a', help='Drop all sessions except which belong to admin account', action='store_true', default=False)
+        parser.add_argument('--account', '-c', help='Drop the designated account sessions')
+    def run(self, args):
+        count = 0
+        command = ""
+        if not args.all:
+            if args.account is None:
+                return
+            countCmd = "select count(1) from SessionVO where accountUuid = (select distinct(a.uuid) from AccountVO a, (select * from SessionVO)" \
+                  " as s where s.accountUuid = a.uuid and a.name='%s')" % args.account
+            command = "delete from SessionVO where accountUuid = (select distinct(a.uuid) from AccountVO a, (select * from SessionVO)" \
+                  " as s where s.accountUuid = a.uuid and a.name='%s')" % args.account
+            result = mysql(countCmd)
+        else:
+            countCmd = "select count(1) from SessionVO where accountUuid not in (select uuid from AccountVO where type='SystemAdmin')"
+            command = "delete from SessionVO where accountUuid not in (select uuid from AccountVO where type='SystemAdmin')"
+            result = mysql(countCmd)
+        count = result.splitlines()
+        if count is not None and len(count) > 0 and int(count[1]) > 0:
+            mysql(command)
+            info("drop %d sessions totally" % int(count[1]))
+        else:
+            info("drop 0 session")
 
 class InstallLicenseCmd(Command):
     def __init__(self):
@@ -7097,6 +7293,8 @@ def main():
     StartVDIUICmd()
     StopVDIUiCmd()
     VDIUiStatusCmd()
+    ShowSessionCmd()
+    DropSessionCmd()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard

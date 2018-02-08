@@ -105,8 +105,6 @@ def bash_progress_1(cmd, func):
         watch_thread.stop()
 
 
-
-
 def in_bash(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -121,3 +119,4 @@ def in_bash(func):
             del __BASH_DEBUG_INFO__
 
     return wrap
+

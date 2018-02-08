@@ -37,11 +37,20 @@ if [ $# -eq 0 ]; then
 	exit 1
 fi
 
+rm_ebtables_dangling_lock() {
+        lockfile='/var/lib/ebtables/lock'
+        test -e $lockfile || return
+        lsof $lockfile 2>/dev/null >/dev/null && return
+        unlink $lockfile
+}
+
 if [ "$@" = "status" ]; then
 	check_status
 else
 	ulimit -Hn 16384
 	ulimit -Sn 16384
+	rm_ebtables_dangling_lock
+
 	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" $@
 fi
 

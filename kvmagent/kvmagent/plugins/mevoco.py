@@ -429,6 +429,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             INNER_DEV = bash_errorout(
                 "ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
         if not INNER_DEV:
+            p.prepare()
+            INNER_DEV = p.inner_dev
+        if not INNER_DEV:
             raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
 
         ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
@@ -508,6 +511,9 @@ $HTTP["remoteip"] =~ "^(.*)$" {
         "^/.*/meta-data$" => "../%1/meta-data",
         "^/.*/meta-data/$" => "../%1/meta-data/",
         "^/.*/user-data$" => "../%1/user-data",
+        "^/.*/user_data$" => "../%1/user_data",
+        "^/.*/meta_data.json$" => "../%1/meta_data.json",
+        "^/.*/password$" => "../%1/password",
         "^/.*/$" => "../%1/$1"
     )
     dir-listing.activate = "enable"
@@ -537,6 +543,15 @@ mimetype.assign = (
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
 
+        meta_data_json = '''\
+{
+    "uuid": "{{vmInstanceUuid}}"
+}'''
+        tmpt = Template(meta_data_json)
+        conf = tmpt.render({
+            'vmInstanceUuid': to.metadata.vmUuid
+        })
+
         root = os.path.join(http_root, to.vmIp)
         meta_root = os.path.join(root, 'meta-data')
         if not os.path.exists(meta_root):
@@ -554,6 +569,18 @@ mimetype.assign = (
             userdata_file_path = os.path.join(root, 'user-data')
             with open(userdata_file_path, 'w') as fd:
                 fd.write(to.userdata)
+
+            windows_meta_data_json_path = os.path.join(root, 'meta_data.json')
+            with open(windows_meta_data_json_path, 'w') as fd:
+                fd.write(conf)
+
+            windows_userdata_file_path = os.path.join(root, 'user_data')
+            with open(windows_userdata_file_path, 'w') as fd:
+                fd.write(to.userdata)
+
+            windows_meta_data_password = os.path.join(root, 'password')
+            with open(windows_meta_data_password, 'w') as fd:
+                fd.write('')
 
         pid = linux.find_process_by_cmdline([conf_path])
         if not pid:

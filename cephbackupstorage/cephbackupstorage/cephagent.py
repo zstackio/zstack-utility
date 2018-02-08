@@ -696,6 +696,9 @@ class CephAgent(object):
             self._set_capacity_to_response(rsp)
             return jsonobject.dumps(rsp)
 
+        if cmd.sendCommandUrl:
+            Report.url = cmd.sendCommandUrl
+
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "AddImage"
         report.resourceUuid = cmd.imageUuid
@@ -706,8 +709,6 @@ class CephAgent(object):
             cmd.url = linux.shellquote(cmd.url)
             # roll back tmp ceph file after import it
             _1()
-            if cmd.sendCommandUrl:
-                Report.url = cmd.sendCommandUrl
 
             PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
             content_length = shell.call('curl -sI %s|grep Content-Length' % cmd.url).strip().split()[1]
@@ -866,12 +867,12 @@ class CephAgent(object):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        rst = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | pv -n -s %s 2>/tmp/%s_progress | sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, image_uuid, image_size, image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
+        rst = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
         if rst != 0:
             return rst
 
         src_md5 = self._read_file_content('/tmp/%s_src_md5' % image_uuid)
-        dst_md5 = shell.call('sshpass -p %s ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid))
+        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid))
         if src_md5 != dst_md5:
             return -1
         else:
