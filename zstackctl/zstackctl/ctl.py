@@ -1105,7 +1105,7 @@ class ShowStatusCmd(Command):
             cmd = create_check_mgmt_node_command()
 
             def write_status(status):
-                info_list.append('MN status: %s' % status)
+                info('MN status: %s' % status)
 
             if not cmd:
                 write_status('cannot detect status, no wget and curl installed')
@@ -1120,7 +1120,7 @@ class ShowStatusCmd(Command):
                                  (colored('Unknown', 'yellow'), pid))
                 else:
                     write_status(colored('Stopped', 'red'))
-                return
+                return False
 
             if 'false' in cmd.stdout:
                 write_status('Starting, should be ready in a few seconds')
@@ -1160,11 +1160,18 @@ class ShowStatusCmd(Command):
             else:
                 info('version: %s' % version)
 
-        check_zstack_status()
-
         info('\n'.join(info_list))
-        ctl.internal_run('ui_status', args='-q')
         show_version()
+
+        s = check_zstack_status()
+        if s is not None and not s:
+            boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
+            if os.path.exists(boot_error_log):
+                info(colored('Management server met an error as below:', 'yellow'))
+                with open(boot_error_log, 'r') as fd:
+                    info(colored(fd.read(), 'red'))
+
+        ctl.internal_run('ui_status', args='-q')
 
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"

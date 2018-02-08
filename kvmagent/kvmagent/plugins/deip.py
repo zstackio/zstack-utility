@@ -8,6 +8,8 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import ebtables
 from zstacklib.utils.bash import *
+from prometheus_client.core import GaugeMetricFamily
+import netaddr
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
@@ -16,6 +18,102 @@ class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
+
+
+def collect_vip_statistics():
+    def parse_eip_string(estr):
+        vnic_ip = ip = vip_uuid = None
+        ws = estr.split(',')
+        for w in ws:
+            if w.startswith('eip_addr'):
+                ip = w.split(':')[1]
+            elif w.startswith('vip'):
+                vip_uuid = w.split(':')[1]
+            elif w.startswith('vnic_ip'):
+                vnic_ip = w.split(':')[1]
+
+        return ip, vip_uuid, vnic_ip
+
+    def find_namespace_name_by_ip(ip):
+        ns_name_suffix = ip.replace('.', '_')
+        o = bash_o('ip netns')
+        for l in o.split('\n'):
+            if ('%s ' % ns_name_suffix) in l:
+                # l is like 'br_eth0_172_20_51_136 (id: 3)'
+                return l.split()[0]
+
+        return None
+
+    def create_metric(line, ip, vip_uuid, vnic_ip, metrics):
+        pairs = line.split()
+        pkts = pairs[0]
+        bs = pairs[1]
+        src = pairs[7]
+        dst = pairs[8]
+
+        # out traffic
+        if src.startswith(vnic_ip):
+            g = metrics['zstack_vip_out_bytes']
+            g.add_metric([vip_uuid], float(bs))
+
+            g = metrics['zstack_vip_out_packages']
+            g.add_metric([vip_uuid], float(pkts))
+        # in traffic
+        if dst.startswith(vnic_ip):
+            g = metrics['zstack_vip_in_bytes']
+            g.add_metric([vip_uuid], float(bs))
+
+            g = metrics['zstack_vip_in_packages']
+            g.add_metric([vip_uuid], float(pkts))
+
+    def collect(ip, vip_uuid, vnic_ip):
+        ns_name = find_namespace_name_by_ip(ip)
+        if not ns_name:
+            return []
+
+        CHAIN_NAME = "vip-perf"
+        VIP_LABEL_NAME = 'VipUUID'
+        o = bash_o("ip netns exec {{ns_name}} iptables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
+        metrics = {
+            'zstack_vip_out_bytes': GaugeMetricFamily('zstack_vip_out_bytes', 'VIP outbound traffic in bytes', labels=[VIP_LABEL_NAME]),
+            'zstack_vip_out_packages': GaugeMetricFamily('zstack_vip_out_packages', 'VIP outbound traffic packages', labels=[VIP_LABEL_NAME]),
+            'zstack_vip_in_bytes': GaugeMetricFamily('zstack_vip_in_bytes', 'VIP inbound traffic in bytes',  labels=[VIP_LABEL_NAME]),
+            'zstack_vip_in_packages': GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
+        }
+
+        for l in o.split('\n'):
+            l = l.strip(' \t\r\n')
+            if l:
+                create_metric(l, ip, vip_uuid, vnic_ip, metrics)
+
+        return metrics.values()
+
+    o = bash_o('ip -o -d link')
+    words = o.split()
+    eip_strings = [w for w in words if w.startswith('eip:')]
+
+    ret = []
+    eips = {}
+    for estr in eip_strings:
+        ip, vip_uuid, vnic_ip = parse_eip_string(estr)
+        if ip is None:
+            logger.warn("no ip field found in %s" % estr)
+            continue
+        if vip_uuid is None:
+            logger.warn("no vip field found in %s" % estr)
+            continue
+        if vnic_ip is None:
+            logger.warn("no vnic_ip field found in %s" % estr)
+            continue
+
+        eips[ip] = (vip_uuid, vnic_ip)
+
+    for ip, (vip_uuid, vnic_ip) in eips.items():
+        ret.extend(collect(ip, vip_uuid, vnic_ip))
+
+    return ret
+
+kvmagent.register_prometheus_collector(collect_vip_statistics)
 
 class DEip(kvmagent.KvmAgent):
 
@@ -140,7 +238,7 @@ class DEip(kvmagent.KvmAgent):
         EBTABLE_CHAIN_NAME= eip.vmBridgeName
         PRI_BR_PHY_DEV= eip.vmBridgeName.replace('br_', '', 1)
 
-        EIP_DESC = "eip:%s,eip_addr:%s,vnic:%s,vnic_ip:%s,vm:%s" % (eip.eipUuid, VIP, eip.nicName, NIC_IP, eip.vmUuid)
+        EIP_DESC = "eip:%s,eip_addr:%s,vnic:%s,vnic_ip:%s,vm:%s,vip:%s" % (eip.eipUuid, VIP, eip.nicName, NIC_IP, eip.vmUuid, eip.vipUuid)
 
         NS = "ip netns exec {{NS_NAME}}"
 
@@ -174,9 +272,12 @@ class DEip(kvmagent.KvmAgent):
 
             bash_errorout('eval {{NS}} ip link set {{device}} up')
 
-        def create_iptable_rule_if_needed(table, rule):
+        def create_iptable_rule_if_needed(table, rule, at_head=False):
             if bash_r('eval {{NS}} iptables-save | grep -- "{{rule}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} iptables {{table}} -A {{rule}}')
+                if at_head:
+                    bash_errorout('eval {{NS}} iptables {{table}} -I {{rule}}')
+                else:
+                    bash_errorout('eval {{NS}} iptables {{table}} -A {{rule}}')
 
         def create_ebtable_rule_if_needed(table, chain, rule):
             if bash_r(EBTABLES_CMD + ' -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:
@@ -231,10 +332,34 @@ class DEip(kvmagent.KvmAgent):
                 create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}")
                 create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{BLOCK_DEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
 
+        def create_perf_monitor():
+            o = bash_o("eval {{NS}} ip -o -f inet addr show | awk '/scope global/ {print $4}'")
+            cidr = None
+            vnic_ip = netaddr.IPAddress(NIC_IP)
+            for l in o.split('\n'):
+                l = l.strip(' \t\n\r')
+                if not l:
+                    continue
+
+                nw = netaddr.IPNetwork(l)
+                if vnic_ip in nw:
+                    cidr = nw.cidr
+                    break
+
+            if not cidr:
+                raise Exception("cannot find CIDR of vnic ip[%s] in namespace %s" % (NIC_IP, NS_NAME))
+
+            CHAIN_NAME = "vip-perf"
+            bash_r("eval {{NS}} iptables -N {{CHAIN_NAME}} > /dev/null")
+            create_iptable_rule_if_needed("-t filter", "FORWARD -s {{NIC_IP}}/32 ! -d {{cidr}} -j {{CHAIN_NAME}}", True)
+            create_iptable_rule_if_needed("-t filter", "FORWARD ! -s {{cidr}} -d {{NIC_IP}}/32 -j {{CHAIN_NAME}}", True)
+            create_iptable_rule_if_needed("-t filter", "{{CHAIN_NAME}} -s {{NIC_IP}}/32 -j RETURN")
+            create_iptable_rule_if_needed("-t filter", "{{CHAIN_NAME}} -d {{NIC_IP}}/32 -j RETURN")
+
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
             bash_errorout('ip netns add {{NS_NAME}}')
 
-        # To be compatibled with old Oversion
+        # To be compatibled with old version
         for i in range(len(OLD_PUB_IDEVS)):
             delete_orphan_outer_dev(OLD_PUB_IDEVS[i], OLD_PUB_ODEVS[i])
             delete_orphan_outer_dev(OLD_PRI_IDEVS[i], OLD_PRI_ODEVS[i])
@@ -260,6 +385,7 @@ class DEip(kvmagent.KvmAgent):
         set_gateway_arp_if_needed()
         set_eip_rules()
         set_default_route_if_needed()
+        create_perf_monitor()
 
     @lock.lock('eip')
     def _apply_eips(self, eips):
