@@ -544,7 +544,7 @@ class CephAgent(object):
             if pool.predefined and pool.name not in existing_pools:
                 raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
             elif pool.name not in existing_pools:
-                shell.call('ceph osd pool create %s 100' % pool.name)
+                shell.call('ceph osd pool create %s 128' % pool.name)
 
         rsp = InitRsp()
         rsp.fsid = fsid
