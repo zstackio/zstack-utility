@@ -800,6 +800,7 @@ config_system(){
     show_spinner cs_chown_install_root
     show_spinner cs_config_zstack_properties
     show_spinner cs_config_tomcat
+    show_spinner cs_config_catalina_option
     show_spinner cs_install_zstack_service
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
@@ -937,6 +938,18 @@ cs_config_tomcat(){
     cat >> $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/setenv.sh <<EOF
 export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true"
 EOF
+    pass
+}
+
+cs_config_catalina_option(){
+    echo_subtitle "Config catalina option"
+    catalina_opt=$(zstack-ctl getenv CATALINA_OPTS | awk -F '=' '{print $2}' | grep -v "^$")
+
+    if [[ ! "$catalina_opt" =~ "OmitStackTraceInFastThrow" ]];  then
+        catalina_opt="-XX:-OmitStackTraceInFastThrow $catalina_opt"
+    fi
+
+    zstack-ctl setenv CATALINA_OPTS="$catalina_opt"
     pass
 }
 
