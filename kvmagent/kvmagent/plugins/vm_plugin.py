@@ -3004,6 +3004,13 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
         return jsonobject.dumps(rsp)
 
+    def get_vm_stat_with_ps(uuid):
+        """In case libvirtd is stopped or misbehaved"""
+        ret = shell.run("ps x | grep -w qemu | grep -v grep | grep -w -q %s" % uuid)
+        if ret != 0:
+            return Vm.VM_STATE_SHUTDOWN
+        return Vm.VM_STATE_RUNNING
+
     @kvmagent.replyerror
     def check_vm_state(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -3012,7 +3019,7 @@ class VmPlugin(kvmagent.KvmAgent):
         for uuid in cmd.vmUuids:
             s = states.get(uuid)
             if not s:
-                s = Vm.VM_STATE_SHUTDOWN
+                s = get_vm_stat_with_ps(uuid)
             rsp.states[uuid] = s
         return jsonobject.dumps(rsp)
 
