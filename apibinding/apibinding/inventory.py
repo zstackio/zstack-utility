@@ -8383,6 +8383,7 @@ class APIMigrateVmMsg(object):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
         self.hostUuid = None
+        self.migrateFromDestination = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()

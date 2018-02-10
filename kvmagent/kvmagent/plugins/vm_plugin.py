@@ -928,7 +928,7 @@ class VirtioIscsi(object):
         return secret.UUIDString()
 
 
-def get_vm_by_uuid(uuid, exception_if_not_existing=True):
+def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
     try:
         # libvirt may not be able to find a VM when under a heavy workload, we re-try here
         @LibvirtAutoReconnect
@@ -937,7 +937,10 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True):
 
         @linux.retry(times=3, sleep_time=1)
         def retry_call_libvirt():
-            return call_libvirt()
+            if conn is None:
+                return call_libvirt()
+            else:
+                return conn.lookupByName(uuid)
 
         vm = Vm.from_virt_domain(retry_call_libvirt())
         return vm
@@ -1864,9 +1867,14 @@ class Vm(object):
     def migrate(self, cmd):
         current_hostname = shell.call('hostname')
         current_hostname = current_hostname.strip(' \t\n\r')
+        if cmd.migrateFromDestination:
+            hostname = cmd.destHostIp.replace('.', '-')
+        else:
+            hostname = cmd.srcHostIp.replace('.', '-')
+
         if current_hostname == 'localhost.localdomain' or current_hostname == 'localhost':
             # set the hostname, otherwise the migration will fail
-            shell.call('hostname %s.zstack.org' % cmd.srcHostIp.replace('.', '-'))
+            shell.call('hostname %s.zstack.org' % hostname)
 
         destHostIp = cmd.destHostIp
         destUrl = "qemu+tcp://{0}/system".format(destHostIp)
@@ -3360,13 +3368,33 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def migrate_vm(self, req):
+        @linux.retry(times=3, sleep_time=1)
+        def get_connect(srcHostIP):
+            return libvirt.open('qemu+tcp://{0}/system'.format(srcHostIP))
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MigrateVmResponse()
         try:
             self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
 
-            vm = get_vm_by_uuid(cmd.vmUuid)
-            vm.migrate(cmd)
+            if cmd.migrateFromDestination:
+                conn = get_connect(cmd.srcHostIp)
+                if conn is None:
+                    logger.warn('unable to connect qemu on host {0}'.format(cmd.srcHostIp))
+                    raise kvmagent.KvmError('unable to connect qemu on host %s' % (cmd.srcHostIp))
+
+                vm = get_vm_by_uuid(cmd.vmUuid, False, conn)
+                if vm is None:
+                    conn.close()
+                    logger.warn('unable to find vm {0} on host {1}'.format(cmd.vmUuid, cmd.srcHostIp))
+                    raise kvmagent.KvmError('unable to find vm %s on host %s' % (cmd.vmUuid, cmd.srcHostIp))
+
+                vm.migrate(cmd)
+                conn.close()
+            else:
+                vm = get_vm_by_uuid(cmd.vmUuid)
+                vm.migrate(cmd)
+
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
