@@ -296,7 +296,7 @@ class HaPlugin(kvmagent.KvmAgent):
                 try:
                     kill_and_umount(mount_path, mount_path_is_nfs(mount_path))
                 except UmountException:
-                    if shell.run('ps -p %s' % ' '.join(killed_vm_pids) == 0):
+                    if shell.run('ps -p %s' % ' '.join(killed_vm_pids)) == 0:
                         virsh_list = shell.call("timeout 10 virsh list --all || echo 'cannot obtain virsh list'")
                         logger.debug("virsh_list:\n" + virsh_list)
                         logger.error('kill vm[pids:%s] failed because of unavailable fs[mountPath:%s].'
