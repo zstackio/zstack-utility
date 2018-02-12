@@ -37,6 +37,15 @@ if [ $# -eq 0 ]; then
 	exit 1
 fi
 
+apply_resource_settings() {
+	ulimit -Hn 16384
+	ulimit -Sn 16384
+
+	# try to avoid 'hung_task_timeout_secs' issue
+	sysctl -w vm.dirty_ratio=10
+	sysctl -w vm.dirty_background_ratio=5
+}
+
 rm_ebtables_dangling_lock() {
         lockfile='/var/lib/ebtables/lock'
         test -e $lockfile || return
@@ -47,8 +56,7 @@ rm_ebtables_dangling_lock() {
 if [ "$@" = "status" ]; then
 	check_status
 else
-	ulimit -Hn 16384
-	ulimit -Sn 16384
+	apply_resource_settings
 	rm_ebtables_dangling_lock
 
 	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" $@
