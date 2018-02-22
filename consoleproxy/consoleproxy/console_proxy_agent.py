@@ -185,7 +185,7 @@ class ConsoleProxyAgent(object):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        token_file = self._make_token_file_name(cmd)
+        token_file = os.path.join(self.TOKEN_FILE_DIR, self._make_token_file_name(cmd))
         shell.call("rm -f %s" % token_file)
         logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
 
