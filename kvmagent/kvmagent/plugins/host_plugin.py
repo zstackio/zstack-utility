@@ -72,7 +72,7 @@ class ReportDeviceEventCmd(kvmagent.AgentCommand):
 logger = log.get_logger(__name__)
 
 def _get_memory(word):
-    out = shell.ShellCmd("cat /proc/meminfo | grep '%s'" % word)()
+    out = shell.call("grep '%s' /proc/meminfo" % word)
     (name, capacity) = out.split(':')
     capacity = re.sub('[k|K][b|B]', '', capacity).strip()
     #capacity = capacity.rstrip('kB').rstrip('KB').rstrip('kb').strip()
@@ -177,15 +177,11 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
 
-        cmd = shell.ShellCmd('cat /proc/cpuinfo | grep vmx')
-        cmd(False)
-        if cmd.return_code == 0:
+        if shell.run('grep vmx /proc/cpuinfo') == 0:
             rsp.hvmCpuFlag = 'vmx'
 
         if not rsp.hvmCpuFlag:
-            cmd = shell.ShellCmd('cat /proc/cpuinfo | grep svm')
-            cmd(False)
-            if cmd.return_code == 0:
+            if shell.run('grep svm /proc/cpuinfo') == 0:
                 rsp.hvmCpuFlag = 'svm'
 
         return jsonobject.dumps(rsp)
@@ -201,7 +197,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
 
-        sockets = bash_o('cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l').strip('\n')
+        sockets = bash_o('grep "physical id" /proc/cpuinfo | sort -u | wc -l').strip('\n')
         rsp.cpuSockets = int(sockets)
 
         ret = jsonobject.dumps(rsp)

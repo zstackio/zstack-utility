@@ -103,7 +103,7 @@ def kill_progresses_using_mount_path(mount_path):
 
     logger.warn('kill the progresses, pids:%s with mount path: %s' % (list_ps, mount_path))
     for ps_id in list_ps:
-        shell.ShellCmd("kill -9 %s || true" % ps_id)
+        linux.kill9_process(ps_id)
 
 
 def is_need_kill(vmUuid, mountPaths, isFileSystem):
@@ -219,9 +219,8 @@ class HaPlugin(kvmagent.KvmAgent):
             return False
 
         def delete_heartbeat_file():
-            delete = shell.ShellCmd("timeout %s rbd rm --id zstack %s -m %s" %
+            shell.run("timeout %s rbd rm --id zstack %s -m %s" %
                     (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, mon_url))
-            delete(False)
 
         @thread.AsyncThread
         def heartbeat_on_ceph():
@@ -267,7 +266,7 @@ class HaPlugin(kvmagent.KvmAgent):
         def heartbeat_file_fencer(mount_path, ps_uuid, mounted_by_zstack):
             def try_remount_fs():
                 if mount_path_is_nfs(mount_path):
-                    shell.ShellCmd("systemctl start nfs-client.target")(False)
+                    shell.run("systemctl start nfs-client.target")
 
                 while self.run_filesystem_fencer(ps_uuid, created_time):
                     if linux.is_mounted(path=mount_path) and touch_heartbeat_file():
