@@ -634,6 +634,8 @@ class BlkIscsi(object):
         self.chap_username = None
         self.chap_password = None
         self.device_letter = None
+        self.addressBus = None
+        self.addressUnit = None
         self.server_hostname = None
         self.server_port = None
         self.target = None
@@ -655,6 +657,8 @@ class BlkIscsi(object):
             e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
             e(root, 'source', attrib={'dev': device_path})
             e(root, 'target', attrib={'dev': self.device_letter})
+            if self.addressBus and self.addressUnit:
+                e(root, 'address', None,{'type' : 'drive', 'bus' : self.addressBus, 'unit' : self.addressUnit})
         else:
             root = etree.Element('disk', {'type': 'block', 'device': 'lun'})
             e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
@@ -681,7 +685,7 @@ class IsoCeph(object):
     def __init__(self):
         self.iso = None
 
-    def to_xmlobject(self):
+    def to_xmlobject(self, targetDev, bus = None, unit = None):
         disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
         source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.iso.secretUuid:
@@ -689,8 +693,10 @@ class IsoCeph(object):
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
         for minfo in self.iso.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
-        e(disk, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+        e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
         e(disk, 'readonly', None)
+        if bus and unit:
+            e(disk, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
         return disk
 
 
@@ -755,7 +761,7 @@ class IsoFusionstor(object):
     def __init__(self):
         self.iso = None
 
-    def to_xmlobject(self):
+    def to_xmlobject(self, targetDev, bus = None, unit = None):
         protocol = lichbd.get_protocol()
         snap = self.iso.path.lstrip('fusionstor:').lstrip('//')
         path = self.iso.path.lstrip('fusionstor:').lstrip('//').split('@')[0]
@@ -793,8 +799,10 @@ class IsoFusionstor(object):
             e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+        e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
         e(disk, 'readonly', None)
+        if bus and unit:
+            e(disk, 'address', None, {'type' : 'drive', 'bus' : bus, 'unit' : unit})
         return disk
 
 
@@ -1131,6 +1139,7 @@ class Vm(object):
 
     # letter 'c' is reserved for cdrom
     DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
+    ISO_DEVICE_LETTERS = 'cde'
 
     timeout_object = linux.TimeoutObject()
 
@@ -1958,39 +1967,28 @@ class Vm(object):
 
     def attach_iso(self, cmd):
         iso = cmd.iso
-        if iso.path.startswith('http'):
-            cdrom = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
-            e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-            hostname, path = iso.path.lstrip('http://').split('/', 1)
-            source = e(cdrom, 'source', None, {'protocol': 'http', 'name': path})
-            e(source, 'host', None, {'name': hostname, 'port': '80'})
-            e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
-            e(cdrom, 'readonly', None)
-        elif iso.path.startswith('iscsi'):
-            bi = BlkIscsi()
-            bi.target = iso.target
-            bi.lun = iso.lun
-            bi.server_hostname = iso.hostname
-            bi.server_port = iso.port
-            bi.device_letter = 'hdc'
-            bi.volume_uuid = iso.imageUuid
-            bi.chap_username = iso.chapUsername
-            bi.chap_password = iso.chapPassword
-            bi.is_cdrom = True
-            cdrom = bi.to_xmlobject()
-        elif iso.path.startswith('ceph'):
+
+        if iso.deviceId >= len(self.ISO_DEVICE_LETTERS):
+            err = 'vm[uuid:%s] exceeds max iso limit, device id[%s], but only %s allowed' % (
+                self.uuid, iso.deviceId, len(self.ISO_DEVICE_LETTERS))
+            logger.warn(err)
+            raise kvmagent.KvmError(err)
+
+        dev = 'hd%s' % self.ISO_DEVICE_LETTERS[iso.deviceId]
+
+        if iso.path.startswith('ceph'):
             ic = IsoCeph()
             ic.iso = iso
-            cdrom = ic.to_xmlobject()
+            cdrom = ic.to_xmlobject(dev)
         elif iso.path.startswith('fusionstor'):
             ic = IsoFusionstor()
             ic.iso = iso
-            cdrom = ic.to_xmlobject()
+            cdrom = ic.to_xmlobject(dev)
         else:
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
-            e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+            e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
             e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -2002,8 +2000,9 @@ class Vm(object):
         def check(_):
             me = get_vm_by_uuid(self.uuid)
             for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                if disk.device_ == "cdrom":
-                    return True
+                if disk.device_ == "cdrom" and xmlobject.has_element(disk, 'source'):
+                    if disk.target.dev__ and disk.target.dev_ == dev:
+                        return True
             return False
 
         if not linux.wait_callback_success(check, None, 30, 1):
@@ -2020,9 +2019,11 @@ class Vm(object):
         if not cdrom:
             return
 
+        dev = 'hd%s' % self.ISO_DEVICE_LETTERS[cmd.deviceId]
+
         cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
         e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-        e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+        e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
         e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -2042,9 +2043,10 @@ class Vm(object):
         def check(_):
             me = get_vm_by_uuid(self.uuid)
             for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                if disk.device_ == "cdrom" and xmlobject.has_element(disk, 'source'):
-                    return False
-            return True
+                if disk.device_ == "cdrom" and xmlobject.has_element(disk, 'source') == False:
+                    if disk.target.dev__ and disk.target.dev_ == dev:
+                        return True
+            return False
 
         if not linux.wait_callback_success(check, None, 30, 1):
             raise Exception('cannot detach the cdrom from the VM[uuid:%s]. The device is still present after 30s' %
@@ -2363,48 +2365,51 @@ class Vm(object):
 
         def make_cdrom():
             devices = elements['devices']
-            if not cmd.bootIso:
+
+            # bus 0 unit 0 already use by root volume
+            EMPTY_CDROM_CONFIGS = [
+                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
+                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '1', '0'),
+                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '1', '1')
+            ]
+            MAX_CDROM_NUM = len(Vm.ISO_DEVICE_LETTERS)
+
+            if len(EMPTY_CDROM_CONFIGS) != MAX_CDROM_NUM:
+                logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
+
+            def makeEmptyCdrom(targetDev, bus, unit):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
+                e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'ide'})
                 e(cdrom, 'readonly', None)
+                e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
+                return cdrom
+
+            if not cmd.bootIso:
+                for config in EMPTY_CDROM_CONFIGS:
+                    makeEmptyCdrom(config.targetDev, config.bus, config.unit)
                 return
 
-            iso = cmd.bootIso
-            if iso.path.startswith('http'):
-                cdrom = e(devices, 'disk', None, {'type': 'network', 'device': 'cdrom'})
-                e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                hostname, path = iso.path.lstrip('http://').split('/', 1)
-                source = e(cdrom, 'source', None, {'protocol': 'http', 'name': path})
-                e(source, 'host', None, {'name': hostname, 'port': '80'})
-                e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
-                e(cdrom, 'readonly', None)
-            elif iso.path.startswith('iscsi'):
-                bi = BlkIscsi()
-                bi.target = iso.target
-                bi.lun = iso.lun
-                bi.server_hostname = iso.hostname
-                bi.server_port = iso.port
-                bi.device_letter = 'hdc'
-                bi.volume_uuid = iso.imageUuid
-                bi.chap_username = iso.chapUsername
-                bi.chap_password = iso.chapPassword
-                bi.is_cdrom = True
-                devices.append(bi.to_xmlobject())
-            elif iso.path.startswith('ceph'):
-                ic = IsoCeph()
-                ic.iso = iso
-                devices.append(ic.to_xmlobject())
-            elif iso.path.startswith('fusionstor'):
-                ic = IsoFusionstor()
-                ic.iso = iso
-                devices.append(ic.to_xmlobject())
-            else:
-                cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
-                e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(cdrom, 'source', None, {'file': iso.path})
-                e(cdrom, 'target', None, {'dev': 'hdc', 'bus': 'ide'})
-                e(cdrom, 'readonly', None)
+            notEmptyCdrom = set([])
+            for iso in cmd.bootIso:
+                notEmptyCdrom.add(iso.deviceId)
+                cdromConfig = EMPTY_CDROM_CONFIGS[iso.deviceId]
+                if iso.path.startswith('ceph'):
+                    ic = IsoCeph()
+                    ic.iso = iso
+                    devices.append(ic.to_xmlobject(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit))
+                elif iso.path.startswith('fusionstor'):
+                    ic = IsoFusionstor()
+                    ic.iso = iso
+                    devices.append(ic.to_xmlobject(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit))
+                else:
+                    cdrom = makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit)
+                    e(cdrom, 'source', None, {'file': iso.path})
+
+            emptyCdrom = set(range(MAX_CDROM_NUM)).difference(notEmptyCdrom)
+            for i in emptyCdrom:
+                cdromConfig = EMPTY_CDROM_CONFIGS[i]
+                makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus, cdromConfig.unit)
 
         def make_volumes():
             devices = elements['devices']
@@ -4019,3 +4024,9 @@ class VmPlugin(kvmagent.KvmAgent):
 
     def configure(self, config):
         self.config = config
+
+class EmptyCdromConfig():
+    def __init__(self, targetDev, bus, unit):
+        self.targetDev = targetDev
+        self.bus = bus
+        self.unit = unit
