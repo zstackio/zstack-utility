@@ -2237,24 +2237,6 @@ gpgcheck=0
 enabled=0
 EOF
 
-mkdir -p /opt/zstack-dvd/Extra/gluster
-cat > /etc/yum.repos.d/gluster.repo << EOF
-[gluster]
-name=Gluster 3.7
-baseurl=file:///opt/zstack-dvd/Extra/gluster
-gpgcheck=0
-enabled=0
-EOF
-
-mkdir -p /opt/zstack-dvd/Extra/moosefs
-cat > /etc/yum.repos.d/moosefs.repo << EOF
-[moosefs]
-name=moosefs
-baseurl=file:///opt/zstack-dvd/Extra/moosefs
-gpgcheck=0
-enabled=0
-EOF
-
 mkdir -p /opt/zstack-dvd/Extra/qemu-kvm-ev
 cat > /etc/yum.repos.d/qemu-kvm-ev.repo << EOF
 [qemu-kvm-ev]
@@ -2313,22 +2295,6 @@ gpgcheck=0
 enabled=0
 EOF
 
-cat > /etc/yum.repos.d/zstack-online-moosefs.repo << EOF
-[zstack-online-moosefs]
-name=zstack-online-moosefs
-baseurl=${BASEURL}/Extra/moosefs
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
-[zstack-online-qemu-kvm-ev]
-name=zstack-online-qemu-kvm-ev
-baseurl=${BASEURL}/Extra/qemu-kvm-ev
-gpgcheck=0
-enabled=0
-EOF
-
 cat > /etc/yum.repos.d/zstack-online-virtio-win.repo << EOF
 [zstack-online-virtio-win]
 name=zstack-online-virtio-win
@@ -2359,8 +2325,6 @@ reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
 reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
 reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
 reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
-reposync -r zstack-online-gluster -p /opt/zstack-dvd/Extra/gluster --norepopath -d
-reposync -r zstack-online-moosefs -p /opt/zstack-dvd/Extra/moosefs --norepopath -d
 reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
 reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
 echo_subtitle "Sync from repo.zstack.io"
@@ -2374,8 +2338,6 @@ rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
 createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/gluster >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/moosefs >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
