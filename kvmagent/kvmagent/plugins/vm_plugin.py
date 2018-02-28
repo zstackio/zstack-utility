@@ -342,7 +342,7 @@ class VncPortIptableRule(object):
         for vm in vms:
             if is_namespace_used():
                 vm_id_node = find_zstack_metadata_node(etree.fromstring(vm.domain_xml), 'internalId')
-                if not vm_id_node:
+                if vm_id_node is None:
                     continue
 
                 vm_id = vm_id_node.text
