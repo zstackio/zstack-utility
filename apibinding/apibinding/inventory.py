@@ -12122,6 +12122,10 @@ class APIUpdateSchedulerTriggerMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.schedulerInterval = None
+        self.repeatCount = None
+        self.startTime = None
+        self.cron = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
