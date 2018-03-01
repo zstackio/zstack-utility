@@ -2057,6 +2057,12 @@ class Vm(object):
         logger.debug('hot plug memory: %d KiB' % mem_size)
         try:
             self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        except kvmagent.KvmError as e:
+            e_str = linux.get_exception_stacktrace()
+            logger.warn(e_str)
+            if "cannot set up guest memory" in e_str:
+                logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, e_str))
+                raise kvmagent.KvmError("No enough physical memory for guest")
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, err))
@@ -3004,6 +3010,9 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(e_str)
             if "burst" in e_str and "Illegal" in e_str and "rate" in e_str:
                 rsp.error = "QoS exceed max limit, please check and reset it in zstack"
+            elif "cannot set up guest memory" in e_str:
+                logger.warn('unable to start vm[uuid:%s], %s' % (cmd.vmInstanceUuid, e_str))
+                rsp.error = "No enough physical memory for guest"
             else:
                 rsp.error = e_str
             err = self.handle_vfio_irq_conflict(cmd.vmInstanceUuid)
