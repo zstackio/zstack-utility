@@ -2415,7 +2415,8 @@ class Vm(object):
                 e(devices, 'emulator', kvmagent.get_qemu_path())
             tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
             e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
-            keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
+            if IS_AARCH64:
+                keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
             elements['devices'] = devices
 
         def make_cdrom():
