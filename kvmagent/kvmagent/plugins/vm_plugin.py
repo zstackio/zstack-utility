@@ -767,6 +767,7 @@ class VirtioSCSICeph(object):
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
+        e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(self.volume.deviceId)})
         if self.volume.shareable:
             e(disk, 'shareable')
         return disk
@@ -1467,6 +1468,7 @@ class Vm(object):
             if volume.useVirtioSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
+                e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(volume.deviceId)})
             else:
                 if volume.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
@@ -1653,30 +1655,33 @@ class Vm(object):
 
     def _detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
-        target_disk = None
 
         def get_disk_name():
             if volume.deviceType == 'iscsi':
                 fmt = 'sd%s'
             elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
-                if volume.useVirtioSCSI:
-                    fmt = 'sd%s'
-                else:
-                    if volume.useVirtio:
-                        fmt = 'vd%s'
-                    else:
-                        fmt = 'hd%s'
+                fmt = ('hd%s', 'vd%s', 'sd%s')[max(volume.useVirtio, volume.useVirtioSCSI * 2)]
             else:
                 raise Exception('unsupported deviceType[%s]' % volume.deviceType)
 
             return fmt % self.DEVICE_LETTERS[volume.deviceId]
 
-        disk_name = get_disk_name()
-        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-            if disk.target.dev_ == disk_name:
-                target_disk = disk
-                break
+        def get_wwn():
+            if volume.useVirtioSCSI:
+                return volume.wwn
 
+        disk_name = get_disk_name()
+        wwn = get_wwn()
+
+        def get_target_disk():
+            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                if wwn and disk.get('wwn') == wwn:
+                    return disk
+
+                if not wwn and disk.target.dev_ == disk_name:
+                    return disk
+
+        target_disk = get_target_disk()
         if not target_disk:
             raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
 
@@ -2492,6 +2497,7 @@ class Vm(object):
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
+                    e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(_v.deviceId)})
                     return disk
 
                 if _v.useVirtio:
@@ -2619,6 +2625,8 @@ class Vm(object):
                     # e(iotune, 'write_iops_sec_max', str(qos.totalIops))
                     # e(iotune, 'total_iops_sec_max', str(qos.totalIops))
 
+            volumes.sort(key=lambda d: d.deviceId)
+            scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
             for v in volumes:
                 if v.deviceId >= len(Vm.DEVICE_LETTERS):
                     err = "exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
@@ -2626,6 +2634,9 @@ class Vm(object):
                     raise kvmagent.KvmError(err)
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
+                if v.useVirtioSCSI:
+                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_ids.pop()]
+
                 if v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
