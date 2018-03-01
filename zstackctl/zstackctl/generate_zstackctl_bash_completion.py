@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import simplejson
 
 verbose = False
 
