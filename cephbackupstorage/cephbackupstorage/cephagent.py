@@ -235,7 +235,7 @@ def stream_body(task, fpath, entity, boundary):
 
     @thread.AsyncThread
     def _do_import(task, fpath):
-        shell.call("cat %s | rbd import --image-format 2 - %s" % (fpath, task.tmpPath))
+        shell.check_run("cat %s | rbd import --image-format 2 - %s" % (fpath, task.tmpPath))
 
     while True:
         headers = cherrypy._cpreqbody.Part.read_headers(entity.fp)
@@ -257,7 +257,7 @@ def stream_body(task, fpath, entity, boundary):
 
     if task.downloadedSize != task.expectedSize:
         task.fail('incomplete upload, got %d, expect %d' % (task.downloadedSize, task.expectedSize))
-        shell.call('rbd rm %s' % task.tmpPath)
+        shell.run('rbd rm %s' % task.tmpPath)
         return
 
     file_format = None
@@ -271,7 +271,7 @@ def stream_body(task, fpath, entity, boundary):
     if file_format == 'qcow2':
         if linux.qcow2_get_backing_file('rbd:'+task.tmpPath):
             task.fail('Qcow2 image %s has backing file' % task.imageUuid)
-            shell.call('rbd rm %s' % task.tmpPath)
+            shell.run('rbd rm %s' % task.tmpPath)
             return
 
         conf_path = None
@@ -281,13 +281,13 @@ def stream_body(task, fpath, entity, boundary):
                 conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                 conf_path = linux.write_to_temp_file(conf)
 
-            shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % (task.tmpPath, task.dstPath, conf_path))
-            shell.call('rbd rm %s' % task.tmpPath)
+            shell.check_run('qemu-img convert -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % (task.tmpPath, task.dstPath, conf_path))
+            shell.check_run('rbd rm %s' % task.tmpPath)
         finally:
             if conf_path:
                 os.remove(conf_path)
     else:
-        shell.call('rbd mv %s %s' % (task.tmpPath, task.dstPath))
+        shell.check_run('rbd mv %s %s' % (task.tmpPath, task.dstPath))
 
     task.success()
 
@@ -544,7 +544,7 @@ class CephAgent(object):
             if pool.predefined and pool.name not in existing_pools:
                 raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
             elif pool.name not in existing_pools:
-                shell.call('ceph osd pool create %s 128' % pool.name)
+                shell.check_run('ceph osd pool create %s 128' % pool.name)
 
         rsp = InitRsp()
         rsp.fsid = fsid
@@ -668,7 +668,7 @@ class CephAgent(object):
 
         @rollbackable
         def _1():
-            shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+            shell.check_run('rbd rm %s/%s' % (pool, tmp_image_name))
 
         def _getRealSize(length):
             '''length looks like: 10245K'''
@@ -747,7 +747,7 @@ class CephAgent(object):
             fail_if_has_backing_file(src_path)
             # roll back tmp ceph file after import it
             _1()
-            shell.call("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
+            shell.check_run("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
             actual_size = os.path.getsize(src_path)
         else:
             raise Exception('unknown url[%s]' % cmd.url)
@@ -766,18 +766,18 @@ class CephAgent(object):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
-                shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
+                shell.check_run('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
+                shell.check_run('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
                 if conf_path:
                     os.remove(conf_path)
         else:
-            shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
+            shell.check_run('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
         report.progress_report("100", "finish")
 
         @rollbackable
         def _2():
-            shell.call('rbd rm %s/%s' % (pool, image_name))
+            shell.check_run('rbd rm %s/%s' % (pool, image_name))
         _2()
 
 
@@ -818,8 +818,7 @@ class CephAgent(object):
             rsp.failure = 'UnableToCreateFile'
             rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
         else:
-            rm_img = shell.ShellCmd('rbd rm %s' % cmd.testImagePath)
-            rm_img(False)
+            shell.run('rbd rm %s' % cmd.testImagePath)
 
         return jsonobject.dumps(rsp)
 
@@ -831,7 +830,7 @@ class CephAgent(object):
         def delete_image(_):
             # in case image is deleted, we don't have to wait for timeout
             img = "%s/%s" % (pool, image_name)
-            shell.call('rbd info %s && rbd rm %s' % (img, img))
+            shell.check_run('rbd info %s && rbd rm %s' % (img, img))
             return True
 
         # 'rbd rm' might fail due to client crash. We wait for 30 seconds as suggested by 'rbd'.
