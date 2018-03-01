@@ -3,6 +3,7 @@
 @author: frank
 '''
 import os
+import os.path
 import socket
 import subprocess
 import datetime
@@ -75,6 +76,18 @@ def rm_file_force(fpath):
         os.remove(fpath)
     except:
         pass
+
+def process_exists(pid):
+    return os.path.exists("/proc/" + str(pid))
+
+def kill_process(pid, sig):
+    try:
+        os.kill(int(pid), int(sig))
+    except:
+        pass
+
+def kill9_process(pid):
+    kill_process(pid, 9)
 
 def cidr_to_netmask(cidr):
     cidr = int(cidr)
@@ -167,7 +180,7 @@ def get_used_disk_size(dir_path):
     return get_total_disk_size(dir_path) - get_free_disk_size(dir_path)
 
 def get_used_disk_apparent_size(dir_path):
-    output = shell.ShellCmd('du --apparent-size --max-depth=1 %s | tail -1' % dir_path)()
+    output = shell.call('du --apparent-size --max-depth=1 %s | tail -1' % dir_path)
     return long(output.split()[0])
 
 def get_disk_capacity_by_df(dir_path):
@@ -196,9 +209,7 @@ def is_mounted(path=None, url=None):
     else:
         raise Exception('path and url cannot both be None')
 
-    cmd = shell.ShellCmd(cmdstr)
-    cmd(is_exception=False)
-    return cmd.return_code == 0
+    return shell.run(cmdstr) == 0
 
 def mount(url, path, options=None):
     cmd = shell.ShellCmd("mount | grep '%s'" % path)
@@ -270,7 +281,7 @@ def umount_by_url(url):
 
 
 def get_file_size_by_http_head(url):
-    output = shell.ShellCmd('curl --head %s' % url)()
+    output = shell.call('curl --head %s' % url)
     for l in output.split('\n'):
         if 'Content-Length' in l:
             filesize = l.split(':')[1].strip()
@@ -291,7 +302,7 @@ def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callba
             return None
 
     def get_file_size(url):
-        output = shell.ShellCmd('curl --head %s' % url)()
+        output = shell.call('curl --head %s' % url)
         for l in output.split('\n'):
             if 'Content-Length' in l:
                 filesize = l.split(':')[1].strip()
@@ -351,7 +362,7 @@ def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callba
         return 0
 
 def md5sum(file_path):
-    return 'md5sum is not calculated, because too time cost'
+    return 'md5sum is not calculated due to time cost'
 
     #cmd = shell.ShellCmd('md5sum %s' % file_path)
     #cmd()
@@ -550,16 +561,16 @@ def get_img_fmt(src):
 
 def qcow2_clone(src, dst):
     fmt = get_img_fmt(src)
-    shell.ShellCmd('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s' % (fmt, src, dst))()
-    shell.ShellCmd('chmod 666 %s' % dst)()
+    shell.check_run('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s' % (fmt, src, dst))
+    shell.check_run('chmod 666 %s' % dst)
 
 def raw_clone(src, dst):
-    shell.ShellCmd('/usr/bin/qemu-img create -b %s -f raw %s' % (src, dst))()
-    shell.ShellCmd('chmod 666 %s' % dst)()
+    shell.check_run('/usr/bin/qemu-img create -b %s -f raw %s' % (src, dst))
+    shell.check_run('chmod 666 %s' % dst)
 
 def qcow2_create(dst, size):
-    shell.ShellCmd('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))()
-    shell.ShellCmd('chmod 666 %s' % dst)()
+    shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))
+    shell.check_run('chmod 666 %s' % dst)
 
 def qcow2_create_with_backing_file(backing_file, dst):
     fmt = get_img_fmt(backing_file)
@@ -567,8 +578,8 @@ def qcow2_create_with_backing_file(backing_file, dst):
     shell.call('chmod 666 %s' % dst)
 
 def raw_create(dst, size):
-    shell.ShellCmd('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))()
-    shell.ShellCmd('chmod 666 %s' % dst)()
+    shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
+    shell.check_run('chmod 666 %s' % dst)
 
 def create_template(src, dst):
     fmt = get_img_fmt(src)
@@ -692,10 +703,10 @@ def get_all_bridge_interface(bridge_name):
 def delete_bridge(bridge_name):
     vifs = get_all_bridge_interface(bridge_name)
     for vif in vifs:
-        shell.ShellCmd("brctl delif %s %s" % (bridge_name, vif))()
+        shell.check_run("brctl delif %s %s" % (bridge_name, vif))
 
-    shell.ShellCmd("ip link set %s down" % bridge_name)()
-    shell.ShellCmd("brctl delbr %s" % bridge_name)()
+    shell.check_run("ip link set %s down" % bridge_name)
+    shell.check_run("brctl delbr %s" % bridge_name)
 
 def find_bridge_having_physical_interface(ifname):
     output = shell.call("brctl show|sed -n '2,$p'|cut -f 1,6")
@@ -730,7 +741,7 @@ def find_route_destination_ip(ip_addr):
             return True
 
     routes = []
-    out = shell.ShellCmd('ip route')()
+    out = shell.call('ip route')
     for line in out.split('\n'):
         line.strip()
         if line:
@@ -861,17 +872,17 @@ def get_process_up_time_in_second(pid):
 
 
 def get_cpu_num():
-    out = shell.ShellCmd("cat /proc/cpuinfo | grep 'processor' | wc -l")()
+    out = shell.call("grep -c processor /proc/cpuinfo")
     return int(out)
 
 @retry(times=3, sleep_time=3)
 def get_cpu_speed():
     max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'
     if os.path.exists(max_freq):
-        out = shell.ShellCmd('cat %s' % max_freq)()
+        out = file(max_freq).read()
         return int(float(out) / 1000)
 
-    cmd = shell.ShellCmd("cat /proc/cpuinfo  | grep 'cpu MHz' | tail -n 1")
+    cmd = shell.ShellCmd("grep 'cpu MHz' /proc/cpuinfo | tail -n 1")
     out = cmd(False)
     if cmd.return_code == -11:
         raise

@@ -342,7 +342,7 @@ class VncPortIptableRule(object):
         for vm in vms:
             if is_namespace_used():
                 vm_id_node = find_zstack_metadata_node(etree.fromstring(vm.domain_xml), 'internalId')
-                if not vm_id_node:
+                if vm_id_node is None:
                     continue
 
                 vm_id = vm_id_node.text
@@ -2324,7 +2324,7 @@ class Vm(object):
             root = elements['root']
             mem = cmd.memory / 1024
             if use_numa:
-                e(root, 'maxMemory', str(104857600), {'slots': str(16), 'unit': 'KiB'})
+                e(root, 'maxMemory', str(68719476736), {'slots': str(16), 'unit': 'KiB'})
                 # e(root,'memory',str(mem),{'unit':'k'})
                 e(root, 'currentMemory', str(mem), {'unit': 'k'})
             else:
@@ -3595,7 +3595,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
         r_bios, o_bios, e_bios = bash.bash_roe("find /sys -iname dmar*")
-        r_kernel, o_kernel, e_kernel = bash.bash_roe("cat /proc/cmdline | grep 'intel_iommu=on'")
+        r_kernel, o_kernel, e_kernel = bash.bash_roe("grep 'intel_iommu=on' /proc/cmdline")
         if o_bios != '' and r_kernel == 0:
             rsp.hostIommuStatus = True
         else:

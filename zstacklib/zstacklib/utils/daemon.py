@@ -3,8 +3,8 @@
 import sys, os, time, atexit
 import traceback
 from signal import SIGTERM,SIGKILL 
+from zstacklib.utils import linux
 from zstacklib.utils import log
-from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
@@ -61,10 +61,10 @@ class Daemon(object):
             pid = os.fork() 
             if pid > 0:
                 # exit from second parent
-                sys.exit(0) 
+                os._exit(0)
         except OSError, e: 
             sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
-            sys.exit(1) 
+            os._exit(1)
     
         # redirect standard file descriptors
         sys.stdout.flush()
@@ -79,8 +79,7 @@ class Daemon(object):
         # write pidfile
         Daemon.register_atexit_hook(self.delpid)
         atexit.register(Daemon._atexit)
-        pid = str(os.getpid())
-        file(self.pidfile,'w').write("%s\n" % pid)
+        file(self.pidfile,'w').write("%d\n" % os.getpid())
     
     def delpid(self):
         os.remove(self.pidfile)
@@ -99,15 +98,14 @@ class Daemon(object):
             pid = None
     
         if pid:
-            pscmd = shell.ShellCmd('ps -p %s > /dev/null' % pid)
-            pscmd(is_exception=False)
-            if pscmd.return_code == 0:
+            if linux.process_exists(pid):
                 message = "Daemon already running, pid is %s\n"
                 sys.stderr.write(message % pid)
                 sys.exit(0)
         
         # Start the daemon
         self.daemonize()
+
         try:
             self.run()
         except Exception:
@@ -140,7 +138,7 @@ class Daemon(object):
         # Try killing the daemon process    
         start_time = time.time()
         while 1:
-            if os.path.exists('/proc/' + str(pid)):
+            if linux.process_exists(pid):
                 curr_time = time.time()
                 if (curr_time - start_time) > wait_stop:
                     os.kill(pid, SIGKILL)
