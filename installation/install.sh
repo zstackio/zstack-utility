@@ -2199,7 +2199,18 @@ else
     echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
 fi
 
-BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
+# if current local repo is based on centos7.2, then sync with eg. 2.3.1_c72
+# if current local repo is based on centos7.4, then sync with eg. 2.3.1_c74
+C72_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm'
+C74_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm'
+if ls ${C72_CENTOS_RELEASE} >/dev/null 2>&1; then
+    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}_c72
+elif ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
+    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}_c74
+else
+    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
+fi
+
 echo_subtitle "Prepare repo files for syncing"
 mkdir -p /opt/zstack-dvd/
 cat > /etc/yum.repos.d/zstack-local.repo << EOF
