@@ -368,6 +368,11 @@
             <arg value="${centos7.unzip.rpm}" />
             <arg value="./" />
         </exec>
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos7.unzip.aarch64.rpm}" />
+            <arg value="./" />
+        </exec>
     </target>
 
     <target name="assemble" depends="pre-assemble, zip-war" >

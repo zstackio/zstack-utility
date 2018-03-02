@@ -15,6 +15,7 @@ import netaddr
 import functools
 import threading
 import re
+import platform
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -882,7 +883,10 @@ def get_cpu_speed():
         out = file(max_freq).read()
         return int(float(out) / 1000)
 
-    cmd = shell.ShellCmd("grep 'cpu MHz' /proc/cpuinfo | tail -n 1")
+    if platform.machine() == 'aarch64':
+        cmd = shell.ShellCmd("dmidecode | grep 'Max Speed' | tail -n 1 | awk -F ' ' '{ print $1 $2 $3 }'")
+    else:
+        cmd = shell.ShellCmd("grep 'cpu MHz' /proc/cpuinfo | tail -n 1")
     out = cmd(False)
     if cmd.return_code == -11:
         raise
