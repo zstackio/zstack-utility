@@ -1605,6 +1605,9 @@ class Vm(object):
             if 'Duplicate ID' in err:
                 err = ('unable to attach the volume[%s] to vm[uuid: %s], %s. This is a KVM issue, please reboot'
                        ' the VM and try again' % (volume.volumeUuid, self.uuid, err))
+            elif 'No more available PCI slots' in err:
+                err = ('vm[uuid: %s] has no more PCI slots for volume[%s]. This is a Libvirt issue, please reboot'
+                       ' the VM and try again' % (volume.volumeUuid, self.uuid))
             else:
                 err = 'unable to attach the volume[%s] to vm[uuid: %s], %s.' % (volume.volumeUuid, self.uuid, err)
             logger.warn(linux.get_exception_stacktrace())
