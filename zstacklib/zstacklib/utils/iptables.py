@@ -287,20 +287,20 @@ class IPTables(Node):
         if self._parser:
             return
         
-        table = Word('*') + Word(alphas)
+        table = Literal('*') + Word(alphas)
         table.setParseAction(self._parse_table_action)
         
         chain_name = Word(printables + '.-_+=%$#')
         
-        counter = Word(':') + chain_name + restOfLine
+        counter = Literal(':') + chain_name + restOfLine
         counter.setParseAction(self._parse_counter_action)
         
-        comment = Word('#') + restOfLine
+        comment = Literal('#') + restOfLine
         
-        rule = Word('-A') + chain_name + restOfLine
+        rule = Literal('-A') + chain_name + restOfLine
         rule.setParseAction(self._parse_rule_action)
         
-        commit = Word('COMMIT')
+        commit = Literal('COMMIT')
         commit.setParseAction(self._parse_commit_action)
         
         self._parser = table | counter | comment | rule | commit
@@ -565,7 +565,7 @@ iptable rules:
         
         self._create_table_if_not_exists(table_name)
         chain_name = Word(printables + '-_+=%$#')
-        rule_p = Word('-A') + chain_name + restOfLine
+        rule_p = Literal('-A') + chain_name + restOfLine
         res = rule_p.parseString(rule)
         self._add_rule(res[1], rule, order)
     
