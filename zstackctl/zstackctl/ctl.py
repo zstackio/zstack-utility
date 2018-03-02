@@ -22,6 +22,7 @@ import traceback
 import uuid
 import yaml
 import re
+import OpenSSL
 
 from zstacklib import *
 import jinja2
@@ -616,6 +617,7 @@ class Ctl(object):
     LOGGER_FILE = "zstack-ctl.log"
     ZSTACK_UI_HOME = '/usr/local/zstack/zstack-ui/'
     ZSTACK_UI_CFG_FILE = ZSTACK_UI_HOME + 'zstack_ui.cfg'
+    ZSTACK_UI_KEYSTORE = ZSTACK_UI_HOME + 'ui.keystore.p12'
 
     def __init__(self):
         self.commands = {}
@@ -6635,8 +6637,8 @@ class UiStatusCmd(Command):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
                 pid = pid.strip(' \t\n\r')
-                check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
-                check_pid_cmd(is_exception=False)
+                check_pid_cmd = ShellCmd('ps %s' % pid)
+                output = check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
                     #if os.path.exists(ha_info_file):
                     #    with open(ha_info_file, 'r') as fd2:
@@ -6656,7 +6658,8 @@ class UiStatusCmd(Command):
                                 port = port.strip(' \t\n\r')
                         else:
                             port = 5000
-                        info('UI status: %s [PID:%s] http://%s:%s' % (colored('Running', 'green'), pid, default_ip, port))
+                        http = 'https' if '--ssl.enabled=true' in output else 'http'
+                        info('UI status: %s [PID:%s] %s://%s:%s' % (colored('Running', 'green'), pid, http, default_ip, port))
                     return
 
         pid = find_process_by_cmdline('zstack-ui')
@@ -6952,6 +6955,13 @@ class StartUiCmd(Command):
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000", default='5000')
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
 
+        # arguments for https
+        parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
+        parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui", default='zstackui')
+        parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE, default=ctl.ZSTACK_UI_KEYSTORE)
+        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JCEKS). [DEFAULT] PKCS12", default='PKCS12')
+        parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password", default='password')
+
     def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log):
         cmd = '/etc/init.d/zstack-ui start --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s' \
               % (mn_host, mn_port, webhook_host, webhook_port, server_port, log)
@@ -6984,11 +6994,38 @@ class StartUiCmd(Command):
             shell('kill -9 %s > /dev/null' % pid)
         return True
 
+    def _gen_default_ssl_keystore(self):
+        key = OpenSSL.crypto.PKey()
+        key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+        cert = OpenSSL.crypto.X509()
+        cert.set_serial_number(0)
+        cert.get_subject().CN = "localhost"
+        cert.set_issuer(cert.get_subject())
+        cert.gmtime_adj_notBefore(0)
+        cert.gmtime_adj_notAfter(10*365*24*60*60)
+        cert.set_pubkey(key)
+        cert.sign(key, 'sha256')
+        p12 = OpenSSL.crypto.PKCS12()
+        p12.set_privatekey(key)
+        p12.set_certificate(cert)
+        p12.set_friendlyname('zstackui')
+        open(ctl.ZSTACK_UI_KEYSTORE, 'w').write(p12.export(b'password'))
+
     def run(self, args):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         if args.host != 'localhost':
             self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log)
             return
+
+        # create default ssl keystore if enable_ssl is True
+        if args.enable_ssl and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
+            self._gen_default_ssl_keystore()
+
+        # server_port default value is 5443 if enable_ssl is True
+        if args.enable_ssl and args.webhook_port == '5000':
+            args.webhook_port = '5443'
+        if args.enable_ssl and args.server_port == '5000':
+            args.server_port = '5443'
 
         # combine with zstack_ui.cfg
         zstackui = ctl.ZSTACK_UI_HOME
@@ -7002,6 +7039,13 @@ class StartUiCmd(Command):
                 _, cfg_server_port = fd.readline().split(':')
                 _, cfg_log = fd.readline().split(':')
 
+                # https
+                _, cfg_enable_ssl = fd.readline().split(':')
+                _, cfg_ssl_keyalias = fd.readline().split(':')
+                _, cfg_ssl_keystore = fd.readline().split(':')
+                _, cfg_ssl_keystore_type = fd.readline().split(':')
+                _, cfg_ssl_keystore_password = fd.readline().split(':')
+
             if args.mn_host == '127.0.0.1':
                 args.mn_host = cfg_mn_host.strip('\n')
             if args.mn_port == "8080":
@@ -7014,6 +7058,20 @@ class StartUiCmd(Command):
                 args.server_port = cfg_server_port.strip('\n')
             if args.log == ui_logging_path:
                 args.log = cfg_log.strip('\n')
+
+            # https
+            if not args.enable_ssl and cfg_enable_ssl.strip('\n') == 'False':
+                args.enable_ssl = False
+            else:
+                args.enable_ssl = True
+            if args.ssl_keyalias == 'zstackui':
+                args.ssl_keyalias = cfg_ssl_keyalias.strip('\n')
+            if args.ssl_keystore == ctl.ZSTACK_UI_KEYSTORE:
+                args.ssl_keystore = cfg_ssl_keystore.strip('\n')
+            if args.ssl_keystore_type == 'PKCS12':
+                args.ssl_keystore_type = cfg_ssl_keystore_type.strip('\n')
+            if args.ssl_keystore_password == 'password':
+                args.ssl_keystore_password = cfg_ssl_keystore_password.strip('\n')
 
         shell("mkdir -p %s" % args.log)
         if not os.path.exists(zstackui):
@@ -7034,7 +7092,10 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
-        scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar -Dmn.host=%s -Dmn.port=%s -Dwebhook.host=%s -Dwebhook.port=%s -Dserver.port=%s %s/zstack-ui.war >>%s/zstack-ui.log 2>&1 &'" % (args.log, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, zstackui, args.log)
+        if args.enable_ssl:
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %s/zstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.log)
+        else:
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %s/zstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log)
 
         script(scmd, no_pipe=True)
 
@@ -7058,7 +7119,7 @@ class StartUiCmd(Command):
         if not default_ip:
             info('successfully started UI server on the local host, PID[%s]' % pid)
         else:
-            info('successfully started UI server on the local host, PID[%s], http://%s:%s' % (pid, default_ip, args.server_port))
+            info('successfully started UI server on the local host, PID[%s], %s://%s:%s' % (pid, 'https' if args.enable_ssl else 'http', default_ip, args.server_port))
 
         os.system('mkdir -p /var/run/zstack/')
         with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
@@ -7081,6 +7142,13 @@ class ConfigUiCmd(Command):
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000", default='5000')
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
 
+        # arguments for https
+        parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
+        parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui", default='zstackui')
+        parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE, default=ctl.ZSTACK_UI_KEYSTORE)
+        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JCEKS). [DEFAULT] PKCS12", default='PKCS12')
+        parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password", default='password')
+
     def run(self, args):
         zstackui = ctl.ZSTACK_UI_HOME
         zstackuicfg = ctl.ZSTACK_UI_CFG_FILE
@@ -7091,13 +7159,25 @@ class ConfigUiCmd(Command):
         if not os.path.exists(zstackuicfg):
             os.mknod(zstackuicfg)
 
+        if args.enable_ssl and args.webhook_port == '5000':
+            args.webhook_port = '5443'
+        if args.enable_ssl and args.server_port == '5000':
+            args.server_port = '5443'
+
         with open(zstackuicfg, 'w') as fd:
             fd.write("mn-host:" + args.mn_host + "\n")
             fd.write("mn-port:" + args.mn_port + "\n")
             fd.write("webhook-host:" + args.webhook_host + "\n")
             fd.write("webhook-port:" + args.webhook_port + "\n")
             fd.write("server-port:" + args.server_port + "\n")
-            fd.write("log-folder:" + args.log)
+            fd.write("log-folder:" + args.log + "\n")
+
+            # https
+            fd.write("enable_ssl:" + str(args.enable_ssl) + "\n")
+            fd.write("ssl_keyalias:" + args.ssl_keyalias + "\n")
+            fd.write("ssl_keystore:" + args.ssl_keystore + "\n")
+            fd.write("ssl_keystore_type:" + args.ssl_keystore_type + "\n")
+            fd.write("ssl_keystore_password:" + args.ssl_keystore_password + "\n")
 
 # For UI 2.0
 class ShowUiCfgCmd(Command):
