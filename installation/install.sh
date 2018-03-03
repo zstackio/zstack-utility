@@ -2905,6 +2905,13 @@ if [ ! -z $NEED_SET_MN_IP ];then
     fi
 fi
 
+# if zstack-local based on centos7.4, then use qemu-kvm-ev-2.9.0 by default
+NEW_QEMU_KVM_VERSION='qemu-kvm-ev-2.9.0'
+C74_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm'
+if ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
+    zstack-ctl configure KvmHost.qemu_kvm.version=${NEW_QEMU_KVM_VERSION}
+fi
+
 #Install license
 install_license
 
