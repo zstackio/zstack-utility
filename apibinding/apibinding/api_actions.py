@@ -6714,6 +6714,20 @@ class QuerySNSTopicAction(inventory.APIQuerySNSTopicMsg):
         self.out = reply.inventories
         return self.out
 
+class QuerySNSTopicSubscriberAction(inventory.APIQuerySNSTopicSubscriberMsg):
+    def __init__(self):
+        super(QuerySNSTopicSubscriberAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySNSTopicSubscriberAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QuerySchedulerJobAction(inventory.APIQuerySchedulerJobMsg):
     def __init__(self):
         super(QuerySchedulerJobAction, self).__init__()
