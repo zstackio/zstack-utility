@@ -18,6 +18,11 @@ from zstacklib.utils.bash import *
 
 logger = log.get_logger(__name__)
 
+class PingEBSRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(PingEBSRsp, self).__init__()
+        self.echo = None
+
 class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/aliyun/ebs/primarystorage/init"
     ECHO_PATH = "/aliyun/ebs/primarystorage/echo"
@@ -86,3 +91,12 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
     def echo(self, req):
         logger.debug('get echoed')
         return ''
+
+    @kvmagent.replyerror
+    def ping(self, req):
+        logger.debug('ping river master')
+        rsp = PingEBSRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        ret = http.json_post(cmd.uri, body=cmd.body)
+        rsp.echo = ret.echo
+        return jsonobject.dumps(rsp)
