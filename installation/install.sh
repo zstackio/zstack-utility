@@ -2648,8 +2648,12 @@ echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 
 pypi_source_easy_install="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
 pypi_source_pip="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
-unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*.rpm"
 unzip_el6_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el6*.rpm"
+if [ `uname -m` == "aarch64" ]; then
+    unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*aarch64*.rpm"
+else
+    unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*x86_64*.rpm"
+fi
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
     fail2 "Cannot not identify default network interface. Please set management
@@ -2979,7 +2983,7 @@ touch $README
 echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
  - Installation path: $ZSTACK_INSTALL_ROOT
 
- - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome or Firefox
+ - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome
       Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
 
  - Management node is running

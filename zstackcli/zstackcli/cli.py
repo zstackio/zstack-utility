@@ -542,7 +542,6 @@ Parse command parameters error:
             self.print_error(str(url_err))
             raise ("Server: %s is not reachable" % self.hostname)
         except Exception as e:
-            self.print_error(str(e))
             self.write_more(args, str(e), False)
             if 'Session expired' in str(e):
                 clear_session()
