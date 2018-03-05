@@ -2014,7 +2014,7 @@ class Vm(object):
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
-        dev = "sdc" if IS_AARCH64 else 'hd%s' % self.ISO_DEVICE_LETTERS[cmd.deviceId]
+        dev = "sdc" if IS_AARCH64 else 'hd%s' % self.ISO_DEVICE_LETTERS[iso.deviceId]
 
         if iso.path.startswith('ceph'):
             ic = IsoCeph()
