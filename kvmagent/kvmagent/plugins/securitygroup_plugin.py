@@ -426,7 +426,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         if len(to_del_ipset_names) > 0:
             to_del_rules = ipt.list_reference_ipset_rules(to_del_ipset_names)
             for rule in to_del_rules:
-                ipt.remove_rule(rule)
+                ipt.remove_rule(str(rule))
             ipt.iptable_restore()
             ips_mn.clean_ipsets(to_del_ipset_names)
 

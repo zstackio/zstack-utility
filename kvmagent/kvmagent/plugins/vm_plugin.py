@@ -7,6 +7,7 @@ import time
 import traceback
 import xml.etree.ElementTree as etree
 import re
+import platform
 
 import libvirt
 import zstacklib.utils.iptables as iptables
@@ -26,6 +27,8 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 
 logger = log.get_logger(__name__)
+
+IS_AARCH64 = platform.machine() == 'aarch64'
 
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
@@ -693,10 +696,13 @@ class IsoCeph(object):
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
         for minfo in self.iso.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
-        e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
+        if IS_AARCH64:
+            e(disk, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+        else:
+            e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
+            if bus and unit:
+                e(disk, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
         e(disk, 'readonly', None)
-        if bus and unit:
-            e(disk, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
         return disk
 
 
@@ -717,6 +723,21 @@ class IdeCeph(object):
         e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
         return disk
 
+class ScsiCeph(object):
+    def __init__(self):
+        self.volume = None
+        self.dev_letter = None
+
+    def to_xmlobject(self):
+        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+        source = e(disk, 'source', None,
+                   {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
+        auth = e(disk, 'auth', attrib={'username': 'zstack'})
+        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
+        for minfo in self.volume.monInfo:
+            e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
+        e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
+        return disk
 
 class VirtioCeph(object):
     def __init__(self):
@@ -752,6 +773,7 @@ class VirtioSCSICeph(object):
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
+        e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(self.volume.deviceId)})
         if self.volume.shareable:
             e(disk, 'shareable')
         return disk
@@ -799,10 +821,13 @@ class IsoFusionstor(object):
             e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
+        if IS_AARCH64:
+            e(disk, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+        else:
+            e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
+            if bus and unit:
+                e(disk, 'address', None, {'type' : 'drive', 'bus' : bus, 'unit' : unit})
         e(disk, 'readonly', None)
-        if bus and unit:
-            e(disk, 'address', None, {'type' : 'drive', 'bus' : bus, 'unit' : unit})
         return disk
 
 
@@ -829,7 +854,10 @@ class IdeFusionstor(object):
             e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
+        if IS_AARCH64:
+            e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
+        else:
+            e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
         e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
         return disk
 
@@ -1139,7 +1167,7 @@ class Vm(object):
 
     # letter 'c' is reserved for cdrom
     DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
-    ISO_DEVICE_LETTERS = 'cde'
+    ISO_DEVICE_LETTERS = 'c' if IS_AARCH64 else 'cde'
 
     timeout_object = linux.TimeoutObject()
 
@@ -1289,7 +1317,7 @@ class Vm(object):
 
             try:
                 self.domain.undefineFlags(
-                    libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE | libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA)
+                    libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE | libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA | libvirt.VIR_DOMAIN_UNDEFINE_NVRAM)
             except libvirt.libvirtError as ex:
                 logger.warn('undefine domain[%s] failed: %s' % (self.uuid, str(ex)))
                 force_undefine()
@@ -1449,9 +1477,12 @@ class Vm(object):
             if volume.useVirtioSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
+                e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(volume.deviceId)})
             else:
                 if volume.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+                elif IS_AARCH64:
+                    e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 else:
                     e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
 
@@ -1496,7 +1527,10 @@ class Vm(object):
                 return etree.tostring(xml_obj)
 
             def blk_ceph():
-                ic = IdeCeph()
+                if not IS_AARCH64:
+                    ic = IdeCeph()
+                else:
+                    ic = ScsiCeph()
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = ic.to_xmlobject()
@@ -1614,6 +1648,9 @@ class Vm(object):
             if 'Duplicate ID' in err:
                 err = ('unable to attach the volume[%s] to vm[uuid: %s], %s. This is a KVM issue, please reboot'
                        ' the VM and try again' % (volume.volumeUuid, self.uuid, err))
+            elif 'No more available PCI slots' in err:
+                err = ('vm[uuid: %s] has no more PCI slots for volume[%s]. This is a Libvirt issue, please reboot'
+                       ' the VM and try again' % (volume.volumeUuid, self.uuid))
             else:
                 err = 'unable to attach the volume[%s] to vm[uuid: %s], %s.' % (volume.volumeUuid, self.uuid, err)
             logger.warn(linux.get_exception_stacktrace())
@@ -1627,30 +1664,33 @@ class Vm(object):
 
     def _detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
-        target_disk = None
 
         def get_disk_name():
             if volume.deviceType == 'iscsi':
                 fmt = 'sd%s'
             elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
-                if volume.useVirtioSCSI:
-                    fmt = 'sd%s'
-                else:
-                    if volume.useVirtio:
-                        fmt = 'vd%s'
-                    else:
-                        fmt = 'hd%s'
+                fmt = ('hd%s', 'vd%s', 'sd%s')[max(volume.useVirtio, volume.useVirtioSCSI * 2)]
             else:
                 raise Exception('unsupported deviceType[%s]' % volume.deviceType)
 
             return fmt % self.DEVICE_LETTERS[volume.deviceId]
 
-        disk_name = get_disk_name()
-        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-            if disk.target.dev_ == disk_name:
-                target_disk = disk
-                break
+        def get_wwn():
+            if volume.useVirtioSCSI:
+                return volume.wwn
 
+        disk_name = get_disk_name()
+        wwn = get_wwn()
+
+        def get_target_disk():
+            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                if wwn and disk.get('wwn') == wwn:
+                    return disk
+
+                if not wwn and disk.target.dev_ == disk_name:
+                    return disk
+
+        target_disk = get_target_disk()
         if not target_disk:
             raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
 
@@ -1974,7 +2014,7 @@ class Vm(object):
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
-        dev = 'hd%s' % self.ISO_DEVICE_LETTERS[iso.deviceId]
+        dev = "sdc" if IS_AARCH64 else 'hd%s' % self.ISO_DEVICE_LETTERS[cmd.deviceId]
 
         if iso.path.startswith('ceph'):
             ic = IsoCeph()
@@ -1988,7 +2028,10 @@ class Vm(object):
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
-            e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
+            if IS_AARCH64:
+                e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            else:
+                e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
             e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -2019,11 +2062,14 @@ class Vm(object):
         if not cdrom:
             return
 
-        dev = 'hd%s' % self.ISO_DEVICE_LETTERS[cmd.deviceId]
+        dev = "sdc" if IS_AARCH64 else 'hd%s' % self.ISO_DEVICE_LETTERS[cmd.deviceId]
 
         cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
         e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-        e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
+        if IS_AARCH64:
+            e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+        else:
+            e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
         e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -2059,6 +2105,12 @@ class Vm(object):
         logger.debug('hot plug memory: %d KiB' % mem_size)
         try:
             self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        except kvmagent.KvmError as e:
+            e_str = linux.get_exception_stacktrace()
+            logger.warn(e_str)
+            if "cannot set up guest memory" in e_str:
+                logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, e_str))
+                raise kvmagent.KvmError("No enough physical memory for guest")
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, err))
@@ -2295,6 +2347,9 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'host-passthrough':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
+                elif IS_AARCH64:
+                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                    e(cpu, 'model', attrib={'fallback': 'allow'})
                 else:
                     cpu = e(root, 'cpu')
                     # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
@@ -2315,10 +2370,12 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'host-passthrough':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
+                elif IS_AARCH64:
+                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                    e(cpu, 'model', attrib={'fallback': 'allow'})
                 else:
                     cpu = e(root, 'cpu')
-                e(cpu, 'topology',
-                  attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
         def make_memory():
             root = elements['root']
@@ -2334,7 +2391,11 @@ class Vm(object):
         def make_os():
             root = elements['root']
             os = e(root, 'os')
-            e(os, 'type', 'hvm', attrib={'machine': 'pc'})
+            if IS_AARCH64:
+                e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
+                e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+            else:
+                e(os, 'type', 'hvm', attrib={'machine': 'pc'})
             # if not booting from cdrom, don't add any boot element in os section
             if cmd.bootDev[0] == "cdrom":
                 for boot_dev in cmd.bootDev:
@@ -2361,18 +2422,28 @@ class Vm(object):
                 e(devices, 'emulator', kvmagent.get_qemu_path())
             tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
             e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
+            if IS_AARCH64:
+                keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
             elements['devices'] = devices
 
         def make_cdrom():
             devices = elements['devices']
 
-            # bus 0 unit 0 already use by root volume
-            EMPTY_CDROM_CONFIGS = [
-                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
-                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '1', '0'),
-                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '1', '1')
-            ]
             MAX_CDROM_NUM = len(Vm.ISO_DEVICE_LETTERS)
+            EMPTY_CDROM_CONFIGS = None
+
+            if IS_AARCH64:
+                # AArch64 Does not support the attachment of multiple iso
+                EMPTY_CDROM_CONFIGS = [
+                    EmptyCdromConfig(None, None, None)
+                ]
+            else:
+                # bus 0 unit 0 already use by root volume
+                EMPTY_CDROM_CONFIGS = [
+                    EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
+                    EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '1', '0'),
+                    EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '1', '1')
+                ]
 
             if len(EMPTY_CDROM_CONFIGS) != MAX_CDROM_NUM:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
@@ -2380,9 +2451,12 @@ class Vm(object):
             def makeEmptyCdrom(targetDev, bus, unit):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'ide'})
+                if IS_AARCH64:
+                    e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+                else:
+                    e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'ide'})
+                    e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
                 e(cdrom, 'readonly', None)
-                e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
                 return cdrom
 
             if not cmd.bootIso:
@@ -2427,10 +2501,13 @@ class Vm(object):
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
+                    e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(_v.deviceId)})
                     return disk
 
                 if _v.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                elif IS_AARCH64:
+                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                 else:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'ide'})
                 return disk
@@ -2471,7 +2548,10 @@ class Vm(object):
                     return vc.to_xmlobject()
 
                 def ceph_blk():
-                    ic = IdeCeph()
+                    if not IS_AARCH64:
+                        ic = IdeCeph()
+                    else:
+                        ic = ScsiCeph()
                     ic.volume = _v
                     ic.dev_letter = _dev_letter
                     return ic.to_xmlobject()
@@ -2549,6 +2629,8 @@ class Vm(object):
                     # e(iotune, 'write_iops_sec_max', str(qos.totalIops))
                     # e(iotune, 'total_iops_sec_max', str(qos.totalIops))
 
+            volumes.sort(key=lambda d: d.deviceId)
+            scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
             for v in volumes:
                 if v.deviceId >= len(Vm.DEVICE_LETTERS):
                     err = "exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
@@ -2556,6 +2638,9 @@ class Vm(object):
                     raise kvmagent.KvmError(err)
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
+                if v.useVirtioSCSI:
+                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_ids.pop()]
+
                 if v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
@@ -2682,12 +2767,16 @@ class Vm(object):
                 # make sure there are three default usb controllers, for usb 1.1/2.0/3.0
                 devices = elements['devices']
                 e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
-                e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
-                e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
+                if not IS_AARCH64:
+                    e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+                    e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
         def make_video():
             devices = elements['devices']
-            if cmd.videoType != "qxl":
+            if IS_AARCH64:
+                video = e(devices, 'video')
+                e(video, 'model', None, {'type': 'virtio'})
+            elif cmd.videoType != "qxl":
                 video = e(devices, 'video')
                 e(video, 'model', None, {'type': str(cmd.videoType)})
             else:
@@ -3009,6 +3098,9 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(e_str)
             if "burst" in e_str and "Illegal" in e_str and "rate" in e_str:
                 rsp.error = "QoS exceed max limit, please check and reset it in zstack"
+            elif "cannot set up guest memory" in e_str:
+                logger.warn('unable to start vm[uuid:%s], %s' % (cmd.vmInstanceUuid, e_str))
+                rsp.error = "No enough physical memory for guest"
             else:
                 rsp.error = e_str
             err = self.handle_vfio_irq_conflict(cmd.vmInstanceUuid)
@@ -3017,7 +3109,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
         return jsonobject.dumps(rsp)
 
-    def get_vm_stat_with_ps(uuid):
+    def get_vm_stat_with_ps(self, uuid):
         """In case libvirtd is stopped or misbehaved"""
         ret = shell.run("ps x | grep -w qemu | grep -v grep | grep -w -q %s" % uuid)
         if ret != 0:
@@ -3032,7 +3124,7 @@ class VmPlugin(kvmagent.KvmAgent):
         for uuid in cmd.vmUuids:
             s = states.get(uuid)
             if not s:
-                s = get_vm_stat_with_ps(uuid)
+                s = self.get_vm_stat_with_ps(uuid)
             rsp.states[uuid] = s
         return jsonobject.dumps(rsp)
 

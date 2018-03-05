@@ -38,6 +38,7 @@ class EmptyNode(urwid.TreeNode):
     
 class FileNode(urwid.TreeNode):
     def __init__(self, entry, parent=None):
+        pass
         
 class CategoryNode(urwid.ParentNode):
     

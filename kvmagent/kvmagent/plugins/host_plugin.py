@@ -3,6 +3,7 @@
 @author: frank
 '''
 
+import platform
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import jsonobject
@@ -21,6 +22,8 @@ import threading
 import time
 import libvirt
 import pyudev
+
+IS_AARCH64 = platform.machine() == 'aarch64'
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -177,12 +180,16 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
 
-        if shell.run('grep vmx /proc/cpuinfo') == 0:
-            rsp.hvmCpuFlag = 'vmx'
+        if IS_AARCH64:
+            # FIXME how to check vt of aarch64?
+            rsp.hvmCpuFlag = 'vt'
+        else:
+            if shell.run('grep vmx /proc/cpuinfo') == 0:
+                rsp.hvmCpuFlag = 'vmx'
 
-        if not rsp.hvmCpuFlag:
-            if shell.run('grep svm /proc/cpuinfo') == 0:
-                rsp.hvmCpuFlag = 'svm'
+            if not rsp.hvmCpuFlag:
+                if shell.run('grep svm /proc/cpuinfo') == 0:
+                    rsp.hvmCpuFlag = 'svm'
 
         return jsonobject.dumps(rsp)
         

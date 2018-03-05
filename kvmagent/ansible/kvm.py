@@ -100,12 +100,6 @@ workplace = "%s/kvm" % zstack_root
 kvm_root = "%s/package" % workplace
 iproute_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % file_root
 iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
-dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % file_root
-dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % kvm_root
-collectd_pkg = "%s/collectd_exporter" % file_root
-collectd_local_pkg = "%s/collectd_exporter" % workplace
-node_collectd_pkg = "%s/node_exporter" % file_root
-node_collectd_local_pkg = "%s/node_exporter" % workplace
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -118,6 +112,21 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+
+# get remote host arch
+IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+if IS_AARCH64:
+    dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % file_root
+    dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % kvm_root
+    collectd_pkg = "%s/collectd_exporter_aarch64" % file_root
+    node_collectd_pkg = "%s/node_exporter_aarch64" % file_root
+else:
+    dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % file_root
+    dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % kvm_root
+    collectd_pkg = "%s/collectd_exporter" % file_root
+    node_collectd_pkg = "%s/node_exporter" % file_root
+collectd_local_pkg = "%s/collectd_exporter" % workplace
+node_collectd_local_pkg = "%s/node_exporter" % workplace
 
 # include zstacklib.py
 (distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
@@ -146,7 +155,9 @@ else:
 
 run_remote_command("rm -rf %s/*" % kvm_root, host_post_info)
 
-check_nested_kvm(host_post_info)
+# aarch64 does not need to modprobe kvm
+if not IS_AARCH64:
+    check_nested_kvm(host_post_info)
 
 if distro == "RedHat" or distro == "CentOS":
     # handle zstack_repo
@@ -177,6 +188,17 @@ if distro == "RedHat" or distro == "CentOS":
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = "collectd-virt"
             run_remote_command(command, host_post_info)
+
+        if IS_AARCH64:
+            # name: aarch64 specific packages from user defined repos
+            command = ("yum --enablerepo=%s clean metadata && "
+                       "pkg_list=`rpm -q AAVMF edk2.git-aarch64 | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
+                       "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
+                       "--nogpgcheck install -y $pkg; done;") % (zstack_repo, zstack_repo)
+            host_post_info.post_label = "ansible.shell.install.pkg"
+            host_post_info.post_label_param = "AAVMF,edk2.git-aarch64"
+            run_remote_command(command, host_post_info)
+
     else:
         # name: install kvm related packages on RedHat based OS from online
         for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
@@ -258,9 +280,9 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg.dest = "%s" % dnsmasq_local_pkg
     copy(copy_arg, host_post_info)
     # name: Update dnsmasq for RHEL6 and RHEL7
-    command = "rpm -q dnsmasq-2.76-2.el7_4.2.x86_64 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
+    command = "rpm -q dnsmasq-2.76 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
     host_post_info.post_label = "ansible.shell.install.pkg"
-    host_post_info.post_label_param = "dnsmasq-2.76-2.el7_4.2.x86_64"
+    host_post_info.post_label_param = "dnsmasq-2.76"
     run_remote_command(command, host_post_info)
     # name: disable selinux on RedHat based OS
     set_selinux("state=disabled", host_post_info)
