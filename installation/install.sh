@@ -2298,10 +2298,10 @@ gpgcheck=0
 enabled=0
 EOF
 
-cat > /etc/yum.repos.d/zstack-online-gluster.repo << EOF
-[zstack-online-gluster]
-name=zstack-online-gluster
-baseurl=${BASEURL}/Extra/gluster
+cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
+[zstack-online-qemu-kvm-ev]
+name=zstack-online-qemu-kvm-ev
+baseurl=${BASEURL}/Extra/qemu-kvm-ev
 gpgcheck=0
 enabled=0
 EOF
@@ -2331,6 +2331,7 @@ if [ -f /etc/yum.repos.d/epel.repo ]; then
 fi
 
 mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
+umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
 mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
 reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
 reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
@@ -2338,6 +2339,7 @@ reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
 reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
 reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
 reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
+rm -f /etc/yum.repos.d/zstack-online-*.repo
 echo_subtitle "Sync from repo.zstack.io"
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
@@ -2370,7 +2372,6 @@ cat .repo_version > /opt/zstack-dvd/.repo_version
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Cleanup"
-rm -f /etc/yum.repos.d/zstack-online-*.repo
 rm -f /opt/zstack-dvd/comps.xml
 yum clean all >/dev/null 2>&1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
@@ -2914,13 +2915,6 @@ if [ ! -z $NEED_SET_MN_IP ];then
     if [ -z $CONSOLE_PROXY_ADDRESS ];then
         zstack-ctl configure consoleProxyOverriddenIp=${MANAGEMENT_IP}
     fi
-fi
-
-# if zstack-local based on centos7.4, then use qemu-kvm-ev-2.9.0 by default
-NEW_QEMU_KVM_VERSION='qemu-kvm-ev-2.9.0'
-C74_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm'
-if ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
-    zstack-ctl configure KvmHost.qemu_kvm.version=${NEW_QEMU_KVM_VERSION}
 fi
 
 #Install license
