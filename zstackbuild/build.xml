@@ -193,6 +193,18 @@
         <echo message="successfully build zstack.war at ${war.file}" />
     </target>
 
+    <target name="build-zstack-network-on-condition" if="${build.zstack.network}">
+        <antcall target="build-zstack-network" />
+    </target>
+
+    <target name="assemble-zstack-network-on-condition" if="${build.zstack.network}">
+        <antcall target="assemble-zstack-network" />
+    </target>
+
+    <target name="check-zstack-distro-on-condition" if="${check.zstack.distro}">
+        <antcall target="check-zstack-distro" />
+    </target>
+
     <!-- For UI 1.x -->
     <target name="build-zstack-dashboard-on-condition" unless="${build.zstack.ui.war}">
         <antcall target="build-zstack-dashboard" />
@@ -276,10 +288,10 @@
                 <antcall target="build-zstack-vyos"/>
             </sequential>
             <sequential>
-                <antcall target="build-zstack-network"/>
+                <antcall target="build-zstack-network-on-condition"/>
             </sequential>
             <sequential>
-                <antcall target="check-zstack-distro"/>
+                <antcall target="check-zstack-distro-on-condition"/>
             </sequential>
         </parallel>
     </target>
@@ -353,7 +365,7 @@
                 <antcall target="assemble-zstack-vyos"/>
             </sequential>
             <sequential>
-                <antcall target="assemble-zstack-network"/>
+                <antcall target="assemble-zstack-network-on-condition"/>
             </sequential>
         </parallel>
 
