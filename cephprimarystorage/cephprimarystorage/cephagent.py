@@ -517,7 +517,7 @@ class CephAgent(object):
             raise Exception('have pool named[%s] in the ceph cluster, can\'t create new pool with same name' % realname)
 
         if realname not in pool_names:
-            shell.call('ceph osd pool create %s 100' % realname)
+            shell.call('ceph osd pool create %s 128' % realname)
 
         return jsonobject.dumps(AgentResponse())
 
@@ -545,7 +545,7 @@ class CephAgent(object):
             if pool.predefined and pool.name not in existing_pools:
                 raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
             elif pool.name not in existing_pools:
-                shell.call('ceph osd pool create %s 100' % pool.name)
+                shell.call('ceph osd pool create %s 128' % pool.name)
 
         rsp = InitRsp()
 
