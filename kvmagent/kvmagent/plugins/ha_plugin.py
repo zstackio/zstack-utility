@@ -175,6 +175,22 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        def check_tools():
+            ceph = shell.run('which ceph')
+            rbd = shell.run('which rbd')
+
+            if ceph == 0 and rbd == 0:
+                return True
+
+            return False
+
+        if not check_tools():
+            rsp = AgentRsp()
+            rsp.error = "no ceph or rbd on current host, please install the tools first"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
         mon_url = '\;'.join(cmd.monUrls)
         mon_url = mon_url.replace(':', '\\\:')
 
