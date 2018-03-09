@@ -9218,6 +9218,18 @@ class UpdateVCenterAction(inventory.APIUpdateVCenterMsg):
         self.out = evt
         return self.out
 
+class UpdateVRouterRouteTableAction(inventory.APIUpdateVRouterRouteTableMsg):
+    def __init__(self):
+        super(UpdateVRouterRouteTableAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateVRouterRouteTableAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateVipAction(inventory.APIUpdateVipMsg):
     def __init__(self):
         super(UpdateVipAction, self).__init__()

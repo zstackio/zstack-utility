@@ -14509,6 +14509,20 @@ class APIQueryVirtualRouterVRouterRouteTableRefReply(object):
         self.error = None
 
 
+APIUPDATEVROUTERROUTETABLEMSG_FULL_NAME = 'org.zstack.vrouterRoute.APIUpdateVRouterRouteTableMsg'
+class APIUpdateVRouterRouteTableMsg(object):
+    FULL_NAME='org.zstack.vrouterRoute.APIUpdateVRouterRouteTableMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDACTIONTOALARMMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIAddActionToAlarmMsg'
 class APIAddActionToAlarmMsg(object):
     FULL_NAME='org.zstack.zwatch.alarm.APIAddActionToAlarmMsg'
@@ -14827,7 +14841,7 @@ class APIGetAlarmDataMsg(object):
         self.startTime = None
         self.endTime = None
         self.limit = None
-        self.labels = OptionalList()
+        self.conditions = OptionalList()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -16021,6 +16035,7 @@ api_names = [
     'APIUpdateUserGroupMsg',
     'APIUpdateUserMsg',
     'APIUpdateVCenterMsg',
+    'APIUpdateVRouterRouteTableMsg',
     'APIUpdateVipMsg',
     'APIUpdateVirtualBorderRouterRemoteMsg',
     'APIUpdateVirtualRouterOfferingMsg',
