@@ -23,6 +23,7 @@ import uuid
 import yaml
 import re
 import OpenSSL
+import glob
 
 from zstacklib import *
 import jinja2
@@ -1597,19 +1598,25 @@ class StartCmd(Command):
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
         def prepare_qemu_kvm_repo():
+            OLD_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.6.0'
             NEW_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.9.0'
             DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/qemu-kvm-ev'
-            NEW_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + NEW_QEMU_KVM_VERSION
 
-            version = ctl.read_property('KvmHost.qemu_kvm.version')
-            if version == NEW_QEMU_KVM_VERSION:
-                # use new version of qemu-kvm
-                cmd = ShellCmd("umount %s; mount --bind %s %s" % (DEFAULT_QEMU_KVM_PATH, NEW_QEMU_KVM_PATH, DEFAULT_QEMU_KVM_PATH))
-                cmd(False)
+            if len(glob.glob("/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm")) > 0:
+                local_repo_version = 'c72'
+                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + NEW_QEMU_KVM_VERSION
             else:
-                # use default version of qemu-kvm
+                local_repo_version = 'c74'
+                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + OLD_QEMU_KVM_VERSION
+
+            # version combinations that need to mount qemu-kvm-ev
+            version_matrix = {'c72': '2.9.0', 'c74': '2.6.0'}
+            qemu_version = ctl.read_property('KvmHost.qemu_kvm.version')
+            if version_matrix[local_repo_version] == qemu_version:
+                cmd = ShellCmd("umount %s; mount --bind %s %s" % (DEFAULT_QEMU_KVM_PATH, EXPERIMENTAL_QEMU_KVM_PATH, DEFAULT_QEMU_KVM_PATH))
+            else:
                 cmd = ShellCmd("umount %s" % DEFAULT_QEMU_KVM_PATH)
-                cmd(False)
+            cmd(False)
 
         def prepare_setenv():
             setenv_path = os.path.join(ctl.zstack_home, self.SET_ENV_SCRIPT)
@@ -1738,6 +1745,11 @@ class StopCmd(Command):
         if args.host:
             self._stop_remote(args)
             return
+
+        # for zstack-local repo upgrade
+        DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/qemu-kvm-ev'
+        cmd = ShellCmd("umount %s" % DEFAULT_QEMU_KVM_PATH)
+        cmd(False)
 
         pid = get_management_node_pid()
         if not pid:

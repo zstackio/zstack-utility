@@ -2199,7 +2199,18 @@ else
     echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
 fi
 
-BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
+# if current local repo is based on centos7.2, then sync with eg. 2.3.1_c72
+# if current local repo is based on centos7.4, then sync with eg. 2.3.1_c74
+C72_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm'
+C74_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm'
+if ls ${C72_CENTOS_RELEASE} >/dev/null 2>&1; then
+    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}_c72
+elif ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
+    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}_c74
+else
+    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
+fi
+
 echo_subtitle "Prepare repo files for syncing"
 mkdir -p /opt/zstack-dvd/
 cat > /etc/yum.repos.d/zstack-local.repo << EOF
@@ -2233,24 +2244,6 @@ cat > /etc/yum.repos.d/galera.repo << EOF
 [mariadb]
 name = MariaDB
 baseurl=file:///opt/zstack-dvd/Extra/galera
-gpgcheck=0
-enabled=0
-EOF
-
-mkdir -p /opt/zstack-dvd/Extra/gluster
-cat > /etc/yum.repos.d/gluster.repo << EOF
-[gluster]
-name=Gluster 3.7
-baseurl=file:///opt/zstack-dvd/Extra/gluster
-gpgcheck=0
-enabled=0
-EOF
-
-mkdir -p /opt/zstack-dvd/Extra/moosefs
-cat > /etc/yum.repos.d/moosefs.repo << EOF
-[moosefs]
-name=moosefs
-baseurl=file:///opt/zstack-dvd/Extra/moosefs
 gpgcheck=0
 enabled=0
 EOF
@@ -2305,22 +2298,6 @@ gpgcheck=0
 enabled=0
 EOF
 
-cat > /etc/yum.repos.d/zstack-online-gluster.repo << EOF
-[zstack-online-gluster]
-name=zstack-online-gluster
-baseurl=${BASEURL}/Extra/gluster
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-moosefs.repo << EOF
-[zstack-online-moosefs]
-name=zstack-online-moosefs
-baseurl=${BASEURL}/Extra/moosefs
-gpgcheck=0
-enabled=0
-EOF
-
 cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
 [zstack-online-qemu-kvm-ev]
 name=zstack-online-qemu-kvm-ev
@@ -2354,15 +2331,15 @@ if [ -f /etc/yum.repos.d/epel.repo ]; then
 fi
 
 mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
+umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
 mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
 reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
 reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
 reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
 reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
-reposync -r zstack-online-gluster -p /opt/zstack-dvd/Extra/gluster --norepopath -d
-reposync -r zstack-online-moosefs -p /opt/zstack-dvd/Extra/moosefs --norepopath -d
 reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
 reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
+rm -f /etc/yum.repos.d/zstack-online-*.repo
 echo_subtitle "Sync from repo.zstack.io"
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
@@ -2374,8 +2351,6 @@ rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
 createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/gluster >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/moosefs >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || return 1
 createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
@@ -2397,7 +2372,6 @@ cat .repo_version > /opt/zstack-dvd/.repo_version
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Cleanup"
-rm -f /etc/yum.repos.d/zstack-online-*.repo
 rm -f /opt/zstack-dvd/comps.xml
 yum clean all >/dev/null 2>&1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
