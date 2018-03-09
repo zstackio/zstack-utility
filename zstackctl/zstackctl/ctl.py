@@ -7128,13 +7128,6 @@ class StartUiCmd(Command):
         if not os.path.exists(os.path.dirname(self.PID_FILE)):
             shell("mkdir -p %s" % os.path.dirname(self.PID_FILE))
 
-	# get default DB.url, DB.user, DB.password etc.
-        db_url_params = ctl.get_db_url().split('//')
-        self.db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
-        if 'zstack_ui' not in self.db_url:
-            self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
-        _, _, self.db_user, self.db_password = ctl.get_live_mysql_portal()
-
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
@@ -7153,9 +7146,9 @@ class StartUiCmd(Command):
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password", default='password')
 
         # arguments for ui_db
-        parser.add_argument('--db-url', help="zstack_ui database jdbc url", default=self.db_url)
-        parser.add_argument('--db-username', help="zstack_ui database username", default=self.db_user)
-        parser.add_argument('--db-password', help="zstack_ui database password", default=self.db_password)
+        parser.add_argument('--db-url', help="zstack_ui database jdbc url")
+        parser.add_argument('--db-username', help="zstack_ui database username")
+        parser.add_argument('--db-password', help="zstack_ui database password")
 
     def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log, enable_ssl, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password):
         if enable_ssl:
@@ -7208,7 +7201,24 @@ class StartUiCmd(Command):
         p12.set_friendlyname('zstackui')
         open(ctl.ZSTACK_UI_KEYSTORE, 'w').write(p12.export(b'password'))
 
+    def _get_db_info(self):
+        # get default DB.url, DB.user, DB.password etc.
+        db_url_params = ctl.get_db_url().split('//')
+        self.db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
+        if 'zstack_ui' not in self.db_url:
+            self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
+        _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal()
+
     def run(self, args):
+        # default arguments for ui db
+        self._get_db_info()
+        if not args.db_url or args.db_url.strip() == '':
+            args.db_url = self.db_url
+        if not args.db_username or args.db_username.strip() == '':
+            args.db_username = self.db_username
+        if not args.db_password or args.db_password.strip() == '':
+            args.db_password = self.db_password
+
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         if args.host != 'localhost':
             self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log, args.enable_ssl, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password)

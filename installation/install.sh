@@ -792,6 +792,7 @@ upgrade_zstack(){
     #rerun install system libs, upgrade might need new libs
     is_install_system_libs
     show_spinner uz_stop_zstack
+    show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
     cd /
     show_spinner cs_add_cronjob
@@ -1248,6 +1249,17 @@ uz_stop_zstack(){
     ps axu | grep java | grep 'appName=zstack' >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ];then
         fail "Stop zstack failed!"
+    fi
+    pass
+}
+
+uz_stop_zstack_ui(){
+    echo_subtitle "Stop ${PRODUCT_NAME} UI"
+    zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    # make sure zstack ui is stopped
+    ps axu | grep zstack-ui.war | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -eq 0 ]; then
+        fail "Failed to stop ${PRODUCT_NAME} UI!"
     fi
     pass
 }
