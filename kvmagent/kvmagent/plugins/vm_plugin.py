@@ -2105,16 +2105,13 @@ class Vm(object):
         logger.debug('hot plug memory: %d KiB' % mem_size)
         try:
             self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-        except kvmagent.KvmError as e:
-            e_str = linux.get_exception_stacktrace()
-            logger.warn(e_str)
-            if "cannot set up guest memory" in e_str:
-                logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, e_str))
-                raise kvmagent.KvmError("No enough physical memory for guest")
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, err))
-            raise kvmagent.KvmError(err)
+            if "cannot set up guest memory" in err:
+                raise kvmagent.KvmError("No enough physical memory for guest")
+            else:
+                raise kvmagent.KvmError(err)
         return
 
     def hotplug_cpu(self, cpu_num):
