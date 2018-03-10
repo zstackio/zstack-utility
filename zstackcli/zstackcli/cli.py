@@ -325,6 +325,8 @@ Parse command parameters error:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APISubscribeEventMsg' and params[0] in ['actions', 'labels']:
                     all_params[params[0]] = eval(params[1])
+                elif apiname == 'APIGetMetricDataMsg' and params[0] == 'functions':
+                    all_params[params[0]] = escape_split(params[1])
                 elif apiname in ['APICreateBaremetalHostCfgMsg'] and params[0] == 'cfgItems':
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIAttachNetworkServiceToL3NetworkMsg' and params[0] == 'networkServices':
