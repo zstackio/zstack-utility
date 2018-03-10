@@ -4078,6 +4078,9 @@ class ResetRabbitCmd(Command):
             error("restart rabbitmq failed")
         info("reset rabbitmq success")
 
+        ip = get_default_ip()
+        replaced_ip = ip.replace(".", "\.")
+        shell("sed -i '/%s /c\%s %s' /etc/hosts" % (replaced_ip, ip, new_hostname))
 
 class InstallRabbitCmd(Command):
     def __init__(self):
