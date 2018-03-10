@@ -2223,8 +2223,8 @@ EOF
 
 mkdir -p /opt/zstack-dvd/Extra/ceph
 cat > /etc/yum.repos.d/ceph.repo << EOF
-[ceph-hammer]
-name=Ceph Hammer
+[ceph]
+name=Ceph
 baseurl=file:///opt/zstack-dvd/Extra/ceph
 gpgcheck=0
 enabled=0
