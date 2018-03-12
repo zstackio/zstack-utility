@@ -46,6 +46,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.qemuImgVersion = None
         self.libvirtVersion = None
         self.hvmCpuFlag = None
+        self.cpuModelName = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -190,6 +191,9 @@ class HostPlugin(kvmagent.KvmAgent):
             if not rsp.hvmCpuFlag:
                 if shell.run('grep svm /proc/cpuinfo') == 0:
                     rsp.hvmCpuFlag = 'svm'
+
+            model_name = shell.call("awk -F: '/^model name/{print $2; exit}' /proc/cpuinfo")
+            rsp.cpuModelName = model_name.strip()
 
         return jsonobject.dumps(rsp)
         
