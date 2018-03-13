@@ -38,6 +38,30 @@ class AddAliyunNasFileSystemAction(inventory.APIAddAliyunNasFileSystemMsg):
         self.out = evt
         return self.out
 
+class AddAliyunNasMountTargetAction(inventory.APIAddAliyunNasMountTargetMsg):
+    def __init__(self):
+        super(AddAliyunNasMountTargetAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddAliyunNasMountTargetAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddAliyunNasPrimaryStorageAction(inventory.APIAddAliyunNasPrimaryStorageMsg):
+    def __init__(self):
+        super(AddAliyunNasPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddAliyunNasPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddCephBackupStorageAction(inventory.APIAddCephBackupStorageMsg):
     def __init__(self):
         super(AddCephBackupStorageAction, self).__init__()
@@ -1274,6 +1298,18 @@ class CreateAliyunDiskFromRemoteAction(inventory.APICreateAliyunDiskFromRemoteMs
         self.out = evt
         return self.out
 
+class CreateAliyunNasAccessGroupAction(inventory.APICreateAliyunNasAccessGroupMsg):
+    def __init__(self):
+        super(CreateAliyunNasAccessGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateAliyunNasAccessGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateAliyunNasFileSystemAction(inventory.APICreateAliyunNasFileSystemMsg):
     def __init__(self):
         super(CreateAliyunNasFileSystemAction, self).__init__()
@@ -1282,6 +1318,18 @@ class CreateAliyunNasFileSystemAction(inventory.APICreateAliyunNasFileSystemMsg)
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateAliyunNasFileSystemAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateAliyunNasMountTargetAction(inventory.APICreateAliyunNasMountTargetMsg):
+    def __init__(self):
+        super(CreateAliyunNasMountTargetAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateAliyunNasMountTargetAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2210,6 +2258,18 @@ class DeleteAliyunKeySecretAction(inventory.APIDeleteAliyunKeySecretMsg):
         self.out = evt
         return self.out
 
+class DeleteAliyunNasAccessGroupAction(inventory.APIDeleteAliyunNasAccessGroupMsg):
+    def __init__(self):
+        super(DeleteAliyunNasAccessGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteAliyunNasAccessGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteAliyunRouteEntryRemoteAction(inventory.APIDeleteAliyunRouteEntryRemoteMsg):
     def __init__(self):
         super(DeleteAliyunRouteEntryRemoteAction, self).__init__()
@@ -2794,6 +2854,18 @@ class DeleteNasFileSystemAction(inventory.APIDeleteNasFileSystemMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteNasFileSystemAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteNasMountTargetAction(inventory.APIDeleteNasMountTargetMsg):
+    def __init__(self):
+        super(DeleteNasMountTargetAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteNasMountTargetAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3850,6 +3922,42 @@ class GetAccountQuotaUsageAction(inventory.APIGetAccountQuotaUsageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetAccountQuotaUsageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetAliyunNasAccessGroupAction(inventory.APIGetAliyunNasAccessGroupMsg):
+    def __init__(self):
+        super(GetAliyunNasAccessGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAliyunNasAccessGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetAliyunNasFileSystemRemoteAction(inventory.APIGetAliyunNasFileSystemRemoteMsg):
+    def __init__(self):
+        super(GetAliyunNasFileSystemRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAliyunNasFileSystemRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetAliyunNasMountTargetRemoteAction(inventory.APIGetAliyunNasMountTargetRemoteMsg):
+    def __init__(self):
+        super(GetAliyunNasMountTargetRemoteAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetAliyunNasMountTargetRemoteAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5360,6 +5468,20 @@ class QueryAliyunKeySecretAction(inventory.APIQueryAliyunKeySecretMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryAliyunNasAccessGroupAction(inventory.APIQueryAliyunNasAccessGroupMsg):
+    def __init__(self):
+        super(QueryAliyunNasAccessGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAliyunNasAccessGroupAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryAliyunNasFileSystemAction(inventory.APIQueryAliyunNasFileSystemMsg):
     def __init__(self):
         super(QueryAliyunNasFileSystemAction, self).__init__()
@@ -5369,6 +5491,20 @@ class QueryAliyunNasFileSystemAction(inventory.APIQueryAliyunNasFileSystemMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryAliyunNasFileSystemAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryAliyunNasMountTargetAction(inventory.APIQueryAliyunNasMountTargetMsg):
+    def __init__(self):
+        super(QueryAliyunNasMountTargetAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryAliyunNasMountTargetAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -6139,6 +6275,20 @@ class QueryNasFileSystemAction(inventory.APIQueryNasFileSystemMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryNasFileSystemAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryNasMountTargetAction(inventory.APIQueryNasMountTargetMsg):
+    def __init__(self):
+        super(QueryNasMountTargetAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryNasMountTargetAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -8026,6 +8176,18 @@ class UpdateAliyunKeySecretAction(inventory.APIUpdateAliyunKeySecretMsg):
         self.out = evt
         return self.out
 
+class UpdateAliyunMountTargetAction(inventory.APIUpdateAliyunMountTargetMsg):
+    def __init__(self):
+        super(UpdateAliyunMountTargetAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAliyunMountTargetAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateAliyunSnapshotAction(inventory.APIUpdateAliyunSnapshotMsg):
     def __init__(self):
         super(UpdateAliyunSnapshotAction, self).__init__()
@@ -8514,6 +8676,18 @@ class UpdateNasFileSystemAction(inventory.APIUpdateNasFileSystemMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateNasFileSystemAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateNasMountTargetAction(inventory.APIUpdateNasMountTargetMsg):
+    def __init__(self):
+        super(UpdateNasMountTargetAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateNasMountTargetAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

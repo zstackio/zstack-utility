@@ -158,6 +158,39 @@ class APIAddAliyunNasFileSystemMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDALIYUNNASMOUNTTARGETMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIAddAliyunNasMountTargetMsg'
+class APIAddAliyunNasMountTargetMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIAddAliyunNasMountTargetMsg'
+    def __init__(self):
+        #mandatory field
+        self.nasFSUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.mountDomain = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATEALIYUNNASACCESSGROUPMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APICreateAliyunNasAccessGroupMsg'
+class APICreateAliyunNasAccessGroupMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APICreateAliyunNasAccessGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEALIYUNNASFILESYSTEMMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APICreateAliyunNasFileSystemMsg'
 class APICreateAliyunNasFileSystemMsg(object):
     FULL_NAME='org.zstack.aliyun.nas.message.APICreateAliyunNasFileSystemMsg'
@@ -179,6 +212,134 @@ class APICreateAliyunNasFileSystemMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEALIYUNNASMOUNTTARGETMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APICreateAliyunNasMountTargetMsg'
+class APICreateAliyunNasMountTargetMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APICreateAliyunNasMountTargetMsg'
+    def __init__(self):
+        #mandatory field
+        self.nasAccessGroupUuid = NotNoneField()
+        #mandatory field
+        self.nasFSUuid = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALIYUNNASACCESSGROUPMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIDeleteAliyunNasAccessGroupMsg'
+class APIDeleteAliyunNasAccessGroupMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIDeleteAliyunNasAccessGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETALIYUNNASACCESSGROUPMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIGetAliyunNasAccessGroupMsg'
+class APIGetAliyunNasAccessGroupMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIGetAliyunNasAccessGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.groupName = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETALIYUNNASACCESSGROUPREPLY_FULL_NAME = 'org.zstack.aliyun.nas.message.APIGetAliyunNasAccessGroupReply'
+class APIGetAliyunNasAccessGroupReply(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIGetAliyunNasAccessGroupReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETALIYUNNASFILESYSTEMREMOTEMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIGetAliyunNasFileSystemRemoteMsg'
+class APIGetAliyunNasFileSystemRemoteMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIGetAliyunNasFileSystemRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.fileSystemId = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETALIYUNNASFILESYSTEMREMOTEREPLY_FULL_NAME = 'org.zstack.aliyun.nas.message.APIGetAliyunNasFileSystemRemoteReply'
+class APIGetAliyunNasFileSystemRemoteReply(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIGetAliyunNasFileSystemRemoteReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETALIYUNNASMOUNTTARGETREMOTEMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIGetAliyunNasMountTargetRemoteMsg'
+class APIGetAliyunNasMountTargetRemoteMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIGetAliyunNasMountTargetRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.nasFSUuid = NotNoneField()
+        self.mountDomain = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETALIYUNNASMOUNTTARGETREMOTEREPLY_FULL_NAME = 'org.zstack.aliyun.nas.message.APIGetAliyunNasMountTargetRemoteReply'
+class APIGetAliyunNasMountTargetRemoteReply(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIGetAliyunNasMountTargetRemoteReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYALIYUNNASACCESSGROUPMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIQueryAliyunNasAccessGroupMsg'
+class APIQueryAliyunNasAccessGroupMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIQueryAliyunNasAccessGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNNASACCESSGROUPREPLY_FULL_NAME = 'org.zstack.aliyun.nas.message.APIQueryAliyunNasAccessGroupReply'
+class APIQueryAliyunNasAccessGroupReply(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIQueryAliyunNasAccessGroupReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYALIYUNNASFILESYSTEMMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIQueryAliyunNasFileSystemMsg'
 class APIQueryAliyunNasFileSystemMsg(object):
     FULL_NAME='org.zstack.aliyun.nas.message.APIQueryAliyunNasFileSystemMsg'
@@ -194,6 +355,66 @@ class APIQueryAliyunNasFileSystemMsg(object):
         #valid values: [asc, desc]
         self.sortDirection = None
         self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNNASMOUNTTARGETMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIQueryAliyunNasMountTargetMsg'
+class APIQueryAliyunNasMountTargetMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIQueryAliyunNasMountTargetMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEALIYUNMOUNTTARGETMSG_FULL_NAME = 'org.zstack.aliyun.nas.message.APIUpdateAliyunMountTargetMsg'
+class APIUpdateAliyunMountTargetMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.message.APIUpdateAliyunMountTargetMsg'
+    def __init__(self):
+        #mandatory field
+        self.accessGroupUuid = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIADDALIYUNNASPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.aliyun.nas.storage.message.APIAddAliyunNasPrimaryStorageMsg'
+class APIAddAliyunNasPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.aliyun.nas.storage.message.APIAddAliyunNasPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.nasUuid = NotNoneField()
+        #mandatory field
+        self.accessGroupUuid = NotNoneField()
+        #mandatory field
+        self.url = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.type = None
+        #mandatory field
+        self.zoneUuid = NotNoneField()
+        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -10371,6 +10592,19 @@ class APIDeleteNasFileSystemMsg(object):
         self.userTags = OptionalList()
 
 
+APIDELETENASMOUNTTARGETMSG_FULL_NAME = 'org.zstack.nas.APIDeleteNasMountTargetMsg'
+class APIDeleteNasMountTargetMsg(object):
+    FULL_NAME='org.zstack.nas.APIDeleteNasMountTargetMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYNASFILESYSTEMMSG_FULL_NAME = 'org.zstack.nas.APIQueryNasFileSystemMsg'
 class APIQueryNasFileSystemMsg(object):
     FULL_NAME='org.zstack.nas.APIQueryNasFileSystemMsg'
@@ -10402,9 +10636,54 @@ class APIQueryNasFileSystemReply(object):
         self.error = None
 
 
+APIQUERYNASMOUNTTARGETMSG_FULL_NAME = 'org.zstack.nas.APIQueryNasMountTargetMsg'
+class APIQueryNasMountTargetMsg(object):
+    FULL_NAME='org.zstack.nas.APIQueryNasMountTargetMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYNASMOUNTTARGETREPLY_FULL_NAME = 'org.zstack.nas.APIQueryNasMountTargetReply'
+class APIQueryNasMountTargetReply(object):
+    FULL_NAME='org.zstack.nas.APIQueryNasMountTargetReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIUPDATENASFILESYSTEMMSG_FULL_NAME = 'org.zstack.nas.APIUpdateNasFileSystemMsg'
 class APIUpdateNasFileSystemMsg(object):
     FULL_NAME='org.zstack.nas.APIUpdateNasFileSystemMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATENASMOUNTTARGETMSG_FULL_NAME = 'org.zstack.nas.APIUpdateNasMountTargetMsg'
+class APIUpdateNasMountTargetMsg(object):
+    FULL_NAME='org.zstack.nas.APIUpdateNasMountTargetMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -14166,6 +14445,8 @@ api_names = [
     'APIAddAliyunEbsPrimaryStorageMsg',
     'APIAddAliyunKeySecretMsg',
     'APIAddAliyunNasFileSystemMsg',
+    'APIAddAliyunNasMountTargetMsg',
+    'APIAddAliyunNasPrimaryStorageMsg',
     'APIAddCephBackupStorageMsg',
     'APIAddCephPrimaryStorageMsg',
     'APIAddCephPrimaryStoragePoolMsg',
@@ -14273,7 +14554,9 @@ api_names = [
     'APICreateAccountMsg',
     'APICreateAffinityGroupMsg',
     'APICreateAliyunDiskFromRemoteMsg',
+    'APICreateAliyunNasAccessGroupMsg',
     'APICreateAliyunNasFileSystemMsg',
+    'APICreateAliyunNasMountTargetMsg',
     'APICreateAliyunSnapshotRemoteMsg',
     'APICreateAliyunVpcVirtualRouterEntryRemoteMsg',
     'APICreateBaremetalChassisMsg',
@@ -14351,6 +14634,7 @@ api_names = [
     'APIDeleteAliyunDiskFromLocalMsg',
     'APIDeleteAliyunDiskFromRemoteMsg',
     'APIDeleteAliyunKeySecretMsg',
+    'APIDeleteAliyunNasAccessGroupMsg',
     'APIDeleteAliyunRouteEntryRemoteMsg',
     'APIDeleteAliyunSnapshotFromLocalMsg',
     'APIDeleteAliyunSnapshotFromRemoteMsg',
@@ -14400,6 +14684,7 @@ api_names = [
     'APIDeleteMonitorTriggerActionMsg',
     'APIDeleteMonitorTriggerMsg',
     'APIDeleteNasFileSystemMsg',
+    'APIDeleteNasMountTargetMsg',
     'APIDeleteNicQosMsg',
     'APIDeleteNotificationsMsg',
     'APIDeleteOssBucketFileRemoteMsg',
@@ -14490,6 +14775,12 @@ api_names = [
     'APIGetAccountQuotaUsageMsg',
     'APIGetAccountQuotaUsageReply',
     'APIGetAccountReply',
+    'APIGetAliyunNasAccessGroupMsg',
+    'APIGetAliyunNasAccessGroupReply',
+    'APIGetAliyunNasFileSystemRemoteMsg',
+    'APIGetAliyunNasFileSystemRemoteReply',
+    'APIGetAliyunNasMountTargetRemoteMsg',
+    'APIGetAliyunNasMountTargetRemoteReply',
     'APIGetAttachablePublicL3ForVRouterMsg',
     'APIGetAttachablePublicL3ForVRouterReply',
     'APIGetAttachableVpcL3NetworkMsg',
@@ -14769,7 +15060,10 @@ api_names = [
     'APIQueryAliyunEbsPrimaryStorageMsg',
     'APIQueryAliyunKeySecretMsg',
     'APIQueryAliyunKeySecretReply',
+    'APIQueryAliyunNasAccessGroupMsg',
+    'APIQueryAliyunNasAccessGroupReply',
     'APIQueryAliyunNasFileSystemMsg',
+    'APIQueryAliyunNasMountTargetMsg',
     'APIQueryAliyunRouteEntryFromLocalMsg',
     'APIQueryAliyunRouteEntryFromLocalReply',
     'APIQueryAliyunSnapshotFromLocalMsg',
@@ -14874,6 +15168,8 @@ api_names = [
     'APIQueryMonitorTriggerReply',
     'APIQueryNasFileSystemMsg',
     'APIQueryNasFileSystemReply',
+    'APIQueryNasMountTargetMsg',
+    'APIQueryNasMountTargetReply',
     'APIQueryNetworkServiceL3NetworkRefMsg',
     'APIQueryNetworkServiceL3NetworkRefReply',
     'APIQueryNetworkServiceProviderMsg',
@@ -15102,6 +15398,7 @@ api_names = [
     'APIUpdateAliyunDiskMsg',
     'APIUpdateAliyunEbsPrimaryStorageMsg',
     'APIUpdateAliyunKeySecretMsg',
+    'APIUpdateAliyunMountTargetMsg',
     'APIUpdateAliyunSnapshotMsg',
     'APIUpdateAliyunVirtualRouterMsg',
     'APIUpdateBackupStorageMsg',
@@ -15144,6 +15441,7 @@ api_names = [
     'APIUpdateLoadBalancerMsg',
     'APIUpdateMonitorTriggerMsg',
     'APIUpdateNasFileSystemMsg',
+    'APIUpdateNasMountTargetMsg',
     'APIUpdateNotificationsStatusMsg',
     'APIUpdateOssBucketMsg',
     'APIUpdatePciDeviceMsg',
@@ -15176,6 +15474,120 @@ api_names = [
     'APIValidateSessionReply',
     'CreateTemplateFromVolumeOnPrimaryStorageReply',
 ]
+
+class AliyunNasAccessGroupInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.dataCenterUuid = None
+        self.rules = None
+        self.type = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'rules'):
+            self.rules = inv.rules
+        else:
+            self.rules = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class AliyunNasAccessRuleInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.accessGroupUuid = None
+        self.sourceCidr = None
+        self.rule = None
+        self.priority = None
+        self.userAccess = None
+        self.ruleId = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'accessGroupUuid'):
+            self.accessGroupUuid = inv.accessGroupUuid
+        else:
+            self.accessGroupUuid = None
+
+        if hasattr(inv, 'sourceCidr'):
+            self.sourceCidr = inv.sourceCidr
+        else:
+            self.sourceCidr = None
+
+        if hasattr(inv, 'rule'):
+            self.rule = inv.rule
+        else:
+            self.rule = None
+
+        if hasattr(inv, 'priority'):
+            self.priority = inv.priority
+        else:
+            self.priority = None
+
+        if hasattr(inv, 'userAccess'):
+            self.userAccess = inv.userAccess
+        else:
+            self.userAccess = None
+
+        if hasattr(inv, 'ruleId'):
+            self.ruleId = inv.ruleId
+        else:
+            self.ruleId = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
 
 class VmInstanceInventory(object):
     def __init__(self):
@@ -19803,6 +20215,60 @@ class NasFileSystemInventory(object):
 
 
 
+class NasMountTargetInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.mountDomain = None
+        self.nasFileSystemUuid = None
+        self.type = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'mountDomain'):
+            self.mountDomain = inv.mountDomain
+        else:
+            self.mountDomain = None
+
+        if hasattr(inv, 'nasFileSystemUuid'):
+            self.nasFileSystemUuid = inv.nasFileSystemUuid
+        else:
+            self.nasFileSystemUuid = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class VtepInventory(object):
     def __init__(self):
         self.uuid = None
@@ -21220,6 +21686,13 @@ class GlobalConfig_ALIYUN(object):
     def get_category():
         return 'aliyun'
 
+class GlobalConfig_ALIYUNNASPRIMARYSTORAGE(object):
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
+
+    @staticmethod
+    def get_category():
+        return 'aliyunNasPrimaryStorage'
+
 class GlobalConfig_APPLIANCEVM(object):
     SSH_TIMEOUT = 'ssh.timeout'
     CONNECT_TIMEOUT = 'connect.timeout'
@@ -21700,10 +22173,37 @@ class QueryObjectAliyunEbsPrimaryStorageInventory(object):
         'zone' : 'QueryObjectZoneInventory',
      }
 
+class QueryObjectAliyunNasAccessGroupInventory(object):
+     PRIMITIVE_FIELDS = ['name','lastOpDate','description','dataCenterUuid','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['rules']
+     QUERY_OBJECT_MAP = {
+        'rules' : 'QueryObjectAliyunNasAccessRuleInventory',
+     }
+
+class QueryObjectAliyunNasAccessRuleInventory(object):
+     PRIMITIVE_FIELDS = ['accessGroupUuid','sourceCidr','userAccess','lastOpDate','rule','priority','ruleId','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectAliyunNasFileSystemInventory(object):
      PRIMITIVE_FIELDS = ['protocol','fileSystemId','name','lastOpDate','dataCenterUuid','storageType','description','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectAliyunNasMountTargetInventory(object):
+     PRIMITIVE_FIELDS = ['nasFileSystemUuid','accessGroupUuid','mountDomain','name','lastOpDate','description','type','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectAliyunNasPrimaryStorageFileSystemRefInventory(object):
+     PRIMITIVE_FIELDS = ['nasFileSystemUuid','lastOpDate','id','primaryStorageUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['primaryStorage','nasFileSystem']
+     QUERY_OBJECT_MAP = {
+        'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
+        'nasFileSystem' : 'QueryObjectNasFileSystemInventory',
      }
 
 class QueryObjectAliyunSnapshotInventory(object):
@@ -22292,6 +22792,12 @@ class QueryObjectMonitorTriggerInventory(object):
 
 class QueryObjectNasFileSystemInventory(object):
      PRIMITIVE_FIELDS = ['protocol','fileSystemId','name','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectNasMountTargetInventory(object):
+     PRIMITIVE_FIELDS = ['nasFileSystemUuid','mountDomain','name','lastOpDate','description','type','uuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -22914,7 +23420,9 @@ queryMessageInventoryMap = {
      'APIQueryAliyunDiskFromLocalMsg' : QueryObjectAliyunDiskInventory,
      'APIQueryAliyunEbsPrimaryStorageMsg' : QueryObjectAliyunEbsPrimaryStorageInventory,
      'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,
+     'APIQueryAliyunNasAccessGroupMsg' : QueryObjectAliyunNasAccessGroupInventory,
      'APIQueryAliyunNasFileSystemMsg' : QueryObjectAliyunNasFileSystemInventory,
+     'APIQueryAliyunNasMountTargetMsg' : QueryObjectAliyunNasMountTargetInventory,
      'APIQueryAliyunRouteEntryFromLocalMsg' : QueryObjectVpcVirtualRouteEntryInventory,
      'APIQueryAliyunSnapshotFromLocalMsg' : QueryObjectAliyunSnapshotInventory,
      'APIQueryAliyunVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
@@ -22970,6 +23478,7 @@ queryMessageInventoryMap = {
      'APIQueryMonitorTriggerActionMsg' : QueryObjectMonitorTriggerActionInventory,
      'APIQueryMonitorTriggerMsg' : QueryObjectMonitorTriggerInventory,
      'APIQueryNasFileSystemMsg' : QueryObjectNasFileSystemInventory,
+     'APIQueryNasMountTargetMsg' : QueryObjectNasMountTargetInventory,
      'APIQueryNetworkServiceL3NetworkRefMsg' : QueryObjectNetworkServiceL3NetworkRefInventory,
      'APIQueryNetworkServiceProviderMsg' : QueryObjectNetworkServiceProviderInventory,
      'APIQueryNotificationMsg' : QueryObjectNotificationInventory,
