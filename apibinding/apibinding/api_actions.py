@@ -8618,6 +8618,18 @@ class UpdateClusterAction(inventory.APIUpdateClusterMsg):
         self.out = evt
         return self.out
 
+class UpdateClusterOSAction(inventory.APIUpdateClusterOSMsg):
+    def __init__(self):
+        super(UpdateClusterOSAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateClusterOSAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateConnectionBetweenL3NetWorkAndAliyunVSwitchAction(inventory.APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg):
     def __init__(self):
         super(UpdateConnectionBetweenL3NetWorkAndAliyunVSwitchAction, self).__init__()
