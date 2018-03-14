@@ -3414,6 +3414,7 @@ class APIUpdateInstanceOfferingMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.allocatorStrategy = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11618,6 +11619,7 @@ class APIUpdateVirtualRouterOfferingMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.allocatorStrategy = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
