@@ -5660,6 +5660,20 @@ class QueryDahoVllAction(inventory.APIQueryDahoVllMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryDahoVllVbrRefAction(inventory.APIQueryDahoVllVbrRefMsg):
+    def __init__(self):
+        super(QueryDahoVllVbrRefAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryDahoVllVbrRefAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryDataCenterFromLocalAction(inventory.APIQueryDataCenterFromLocalMsg):
     def __init__(self):
         super(QueryDataCenterFromLocalAction, self).__init__()

@@ -3627,7 +3627,6 @@ class APIDeleteDahoVllMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.remote = None
         self.deleteMode = None
         self.session = None
         self.timeout = None
@@ -3721,6 +3720,37 @@ class APIQueryDahoVllMsg(object):
 APIQUERYDAHOVLLREPLY_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoVllReply'
 class APIQueryDahoVllReply(object):
     FULL_NAME='org.zstack.header.daho.process.APIQueryDahoVllReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYDAHOVLLVBRREFMSG_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoVllVbrRefMsg'
+class APIQueryDahoVllVbrRefMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoVllVbrRefMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYDAHOVLLVBRREFREPLY_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoVllVbrRefReply'
+class APIQueryDahoVllVbrRefReply(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoVllVbrRefReply'
     def __init__(self):
         self.inventories = OptionalList()
         self.total = None
@@ -14938,6 +14968,8 @@ api_names = [
     'APIQueryDahoDataCenterConnectionReply',
     'APIQueryDahoVllMsg',
     'APIQueryDahoVllReply',
+    'APIQueryDahoVllVbrRefMsg',
+    'APIQueryDahoVllVbrRefReply',
     'APIQueryDataCenterFromLocalMsg',
     'APIQueryDataCenterFromLocalReply',
     'APIQueryDiskOfferingMsg',
@@ -22375,16 +22407,16 @@ class QueryObjectDahoDCAccessInventory(object):
 
 class QueryObjectDahoVllVbrRefInventory(object):
      PRIMITIVE_FIELDS = ['vllUuid','vbrUuid','lastOpDate','id','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['vll','vbr']
+     EXPANDED_FIELDS = ['vbr']
      QUERY_OBJECT_MAP = {
-        'vll' : 'QueryObjectDahoVllsInventory',
         'vbr' : 'QueryObjectVirtualBorderRouterInventory',
      }
 
 class QueryObjectDahoVllsInventory(object):
      PRIMITIVE_FIELDS = ['vllId','connAUuid','description','type','uuid','connZUuid','name','lastOpDate','dataCenterUuid','expirePolicy','bandwidthMbps','startDate','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['vbr']
      QUERY_OBJECT_MAP = {
+        'vbr' : 'QueryObjectVirtualBorderRouterInventory',
      }
 
 class QueryObjectDataCenterInventory(object):
@@ -23427,6 +23459,7 @@ queryMessageInventoryMap = {
      'APIQueryDahoCloudConnectionMsg' : QueryObjectDahoCloudConnectionInventory,
      'APIQueryDahoDataCenterConnectionMsg' : QueryObjectDahoConnectionInventory,
      'APIQueryDahoVllMsg' : QueryObjectDahoVllsInventory,
+     'APIQueryDahoVllVbrRefMsg' : QueryObjectDahoVllVbrRefInventory,
      'APIQueryDataCenterFromLocalMsg' : QueryObjectDataCenterInventory,
      'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
      'APIQueryEcsImageFromLocalMsg' : QueryObjectEcsImageInventory,
