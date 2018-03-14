@@ -983,6 +983,22 @@ class Command(object):
     def run(self, args):
         raise CtlError('the command is not implemented')
 
+def create_check_ui_status_command(timeout=10, ui_ip='127.0.0.1', ui_port='5000'):
+    if shell_return('which wget') == 0:
+        return ShellCmd(
+            '''wget --no-proxy -O- --tries=%s --timeout=1 http://%s:%s/health''' % (timeout, ui_ip, ui_port))
+    else:
+        if shell_return('which curl') == 0:
+            return ShellCmd(
+                '''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s http://%s:%s/health''' % (
+                    timeout, timeout, timeout, ui_ip, ui_port))
+        else:
+            return None
+
+
+
+
+
 def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     USE_CURL = 0
     USE_WGET = 1
@@ -6519,6 +6535,7 @@ class StopUiCmd(Command):
             return
 
         pidfile = '/var/run/zstack/zstack-ui.pid'
+        portfile = '/var/run/zstack/zstack-ui.port'
         if os.path.exists(pidfile):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
@@ -6533,7 +6550,12 @@ class StopUiCmd(Command):
             else:
                 return
 
+        def clean_pid_port():
+            shell('rm -f %s' % pidfile)
+            shell('rm -f %s' % portfile)
+
         stop_all()
+        clean_pid_port()
         info('successfully stopped the UI server')
 
 # For VDI UI 2.1
@@ -6635,8 +6657,7 @@ class UiStatusCmd(Command):
         parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
 
     def _remote_status(self, host):
-        cmd = '/etc/init.d/zstack-ui status'
-        ssh_run_no_pipe(host, cmd)
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl ui_status"' % host)
 
     def run(self, args):
         self.quiet = args.quiet
@@ -6648,40 +6669,54 @@ class UiStatusCmd(Command):
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         pidfile = '/var/run/zstack/zstack-ui.pid'
         portfile = '/var/run/zstack/zstack-ui.port'
+        if os.path.exists(portfile):
+            with open(portfile, 'r') as fd2:
+                port = fd2.readline()
+                port = port.strip(' \t\n\r')
+        else:
+            port = 5000
+
+        cmd = create_check_ui_status_command(ui_port=port)
+
+        def write_status(status):
+            info('UI status: %s' % status)
+
+        if not cmd:
+            write_status('cannot detect status, no wget and curl installed')
+            return
+
+        cmd(False)
+
+        pid = ''
+        output = ''
         if os.path.exists(pidfile):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
                 pid = pid.strip(' \t\n\r')
                 check_pid_cmd = ShellCmd('ps %s' % pid)
                 output = check_pid_cmd(is_exception=False)
-                if check_pid_cmd.return_code == 0:
-                    #if os.path.exists(ha_info_file):
-                    #    with open(ha_info_file, 'r') as fd2:
-                    #        ha_conf = yaml.load(fd2)
-                    #        if check_ip_port(ha_conf['vip'], 8888):
-                    #            info('UI status: %s [PID:%s] http://%s:8888' % (colored('Running', 'green'), pid, ha_conf['vip']))
-                    #        else:
-                    #            info('UI status: %s' % colored('Unknown', 'yellow'))
-                    #        return
-                    default_ip = get_default_ip()
-                    if not default_ip:
-                        info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
-                    else:
-                        if os.path.exists(portfile):
-                            with open(portfile, 'r') as fd2:
-                                port = fd2.readline()
-                                port = port.strip(' \t\n\r')
-                        else:
-                            port = 5000
-                        http = 'https' if '--ssl.enabled=true' in output else 'http'
-                        info('UI status: %s [PID:%s] %s://%s:%s' % (colored('Running', 'green'), pid, http, default_ip, port))
-                    return
 
-        pid = find_process_by_cmdline('zstack-ui')
-        if pid:
-            info('UI status: %s [PID: %s]' % (colored('Zombie', 'yellow'), pid))
+        if cmd.return_code != 0:
+            if cmd.stdout or 'Failed' in cmd.stdout and pid:
+                write_status('Starting, should be ready in a few seconds')
+            elif pid:
+                write_status(
+                    '%s, the ui seems to become zombie as it stops responding APIs but the '
+                    'process(PID: %s) is still running. Please stop the node using zstack-ctl stop_ui' %
+                    (colored('Zombie', 'yellow'), pid))
+            else:
+                write_status(colored('Stopped', 'red'))
+            return False
+        elif 'UP' in cmd.stdout:
+            default_ip = get_default_ip()
+            if not default_ip:
+                info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
+            else:
+                http = 'https' if '--ssl.enabled=true' in output else 'http'
+                info('UI status: %s [PID:%s] %s://%s:%s' % (
+                    colored('Running', 'green'), pid, http, default_ip, port))
         else:
-            info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
+            write_status(colored('Unknown', 'yellow'))
 
 # For VDI UI 2.1
 class VDIUiStatusCmd(Command):
@@ -7125,11 +7160,22 @@ class StartUiCmd(Command):
                 return False
 
         write_pid()
-        pid = find_process_by_cmdline('zstack-ui')
-        if not pid:
+
+        @loop_until_timeout(30)
+        def check_ui_status():
+            command = 'zstack-ctl ui_status'
+            (status, output) = commands.getstatusoutput(command)
+            if status != 0:
+                return False
+
+            return "Running" in output
+
+
+        if not check_ui_status():
             info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui.log' % args.log)
             return False
 
+        pid = find_process_by_cmdline('zstack-ui')
         default_ip = get_default_ip()
         if not default_ip:
             info('successfully started UI server on the local host, PID[%s]' % pid)
