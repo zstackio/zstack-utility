@@ -404,10 +404,19 @@ cs_check_zstack_data_exist(){
     if [ -z $ONLY_INSTALL_ZSTACK ] && [ 'y' != $UPGRADE ];then
         which mysql >/dev/null 2>&1
         if [ $? -eq 0 ]; then
+            # check zstack database
             mysql --user=root --password=$MYSQL_NEW_ROOT_PASSWORD --host=$MANAGEMENT_IP -e "use zstack" >/dev/null 2>&1
             if [ $? -eq  0 ];then
                 if [ -z $NEED_DROP_DB ] && [ -z $NEED_KEEP_DB ];then
                 fail2 'detected existing zstack database; if you are sure to drop it, please append parameter -D or use -k to keep the database'
+                fi
+            fi
+
+            # check zstack_ui database
+            mysql --user=root --password=$MYSQL_NEW_ROOT_PASSWORD --host=$MANAGEMENT_IP -e "use zstack_ui" >/dev/null 2>&1
+            if [ $? -eq  0 ];then
+                if [ -z $NEED_DROP_DB ] && [ -z $NEED_KEEP_DB ];then
+                fail2 'detected existing zstack_ui database; if you are sure to drop it, please append parameter -D or use -k to keep the database'
                 fi
             fi
         fi
@@ -783,6 +792,7 @@ upgrade_zstack(){
     #rerun install system libs, upgrade might need new libs
     is_install_system_libs
     show_spinner uz_stop_zstack
+    show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
     cd /
     show_spinner cs_add_cronjob
@@ -806,6 +816,8 @@ upgrade_zstack(){
     elif [ -f /etc/init.d/zstack-ui ]; then
       UI_INSTALLATION_STATUS='y'
       DASHBOARD_INSTALLATION_STATUS='n'
+      # try to deploy zstack_ui database, if already exists then do upgrade
+      zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
     else
       fail "failed to upgrade zstack web ui" 
     fi
@@ -1241,6 +1253,17 @@ uz_stop_zstack(){
     pass
 }
 
+uz_stop_zstack_ui(){
+    echo_subtitle "Stop ${PRODUCT_NAME} UI"
+    zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    # make sure zstack ui is stopped
+    ps axu | grep zstack-ui.war | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -eq 0 ]; then
+        fail "Failed to stop ${PRODUCT_NAME} UI!"
+    fi
+    pass
+}
+
 uz_upgrade_tomcat(){
     echo_subtitle "Upgrade apache-tomcat"
     ZSTACK_HOME=${ZSTACK_HOME:-`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`}
@@ -1410,6 +1433,62 @@ uz_upgrade_zstack(){
     pass
 }
 
+uz_upgrade_zstack_ui_db(){
+    echo_subtitle "Upgrade ${PRODUCT_NAME} UI Database"
+
+    #Do not upgrade db, when using -i
+    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        upgrade_mysql_configuration
+
+        # upgrade zstack_ui database
+        if [ ! -z $DEBUG ]; then
+            if [ x"$FORCE" = x'n' ];then
+                zstack-ctl upgrade_ui_db --dry-run
+            else
+                zstack-ctl upgrade_ui_db --dry-run --force
+            fi
+        else
+            if [ x"$FORCE" = x'n' ];then
+                zstack-ctl upgrade_ui_db --dry-run >>$ZSTACK_INSTALL_LOG 2>&1
+            else
+                zstack-ctl upgrade_ui_db --dry-run --force >>$ZSTACK_INSTALL_LOG 2>&1
+            fi
+        fi
+        if [ $? -ne 0 ];then
+            if [ x"$FORCE" = x'n' ]; then
+                fail "ZStack UI Database upgrading dry-run failed. You probably should check SQL file conflict, or use -F option to force upgrade."
+            else
+                fail "ZStack UI Database upgrading dry-run failed. You probably should check SQL file conflict."
+            fi
+        fi
+    fi
+
+    #Do not upgrade db, when using -i
+    if [ -z $ONLY_INSTALL_ZSTACK ] ; then
+        # upgrade zstack_ui database
+        if [ -z $NEED_KEEP_DB ];then
+            if [ ! -z $DEBUG ]; then
+                if [ x"$FORCE" = x'n' ];then
+                    zstack-ctl upgrade_ui_db
+                else
+                    zstack-ctl upgrade_ui_db --force
+                fi
+            else
+                if [ x"$FORCE" = x'n' ];then
+                    zstack-ctl upgrade_ui_db >>$ZSTACK_INSTALL_LOG 2>&1
+                else
+                    zstack-ctl upgrade_ui_db --force >>$ZSTACK_INSTALL_LOG 2>&1
+                fi
+            fi
+        fi
+        if [ $? -ne 0 ];then
+            fail "failed to upgrade zstack_ui database"
+        fi
+    fi
+
+    pass
+}
+
 iz_unzip_tomcat(){
     echo_subtitle "Unpack Tomcat"
     cd $ZSTACK_INSTALL_ROOT
@@ -1499,6 +1578,8 @@ install_db_msgbus(){
     show_spinner cs_install_mysql $ssh_tmp_dir
     #deploy initial database
     show_spinner cs_deploy_db
+    #deploy initial database of zstack_ui
+    show_spinner cs_deploy_ui_db
     #check hostname and ip again before install rabbitmq
     ia_check_ip_hijack
     #install rabbitmq server
@@ -1939,6 +2020,32 @@ cs_deploy_db(){
         else
             cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
             fail "failed to deploy ${PRODUCT_NAME} database. Please check mysql accessbility. If your mysql has set root password, please add parameter -PMYSQL_PASSWORD to rerun the installation."
+        fi
+    fi
+
+    cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
+    pass
+}
+
+cs_deploy_ui_db(){
+    echo_subtitle "Initialize ZStack UI Database"
+    if [ -z $NEED_DROP_DB ]; then
+        if [ -z $NEED_KEEP_DB ]; then
+            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+        else
+            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
+        fi
+    else
+        zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        grep 'detected existing zstack_ui database' $ZSTACKCTL_INSTALL_LOG >& /dev/null
+        if [ $? -eq 0 ]; then
+            cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
+            fail "failed to deploy ${PRODUCT_NAME} ui database. You might want to add -D to drop previous ${PRODUCT_NAME} ui database or -k to keep previous zstack ui database"
+        else
+            cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
+            fail "failed to deploy ${PRODUCT_NAME} ui database. Please check mysql accessbility. If your mysql has set root password, please add parameter -PMYSQL_PASSWORD to rerun the installation."
         fi
     fi
 
