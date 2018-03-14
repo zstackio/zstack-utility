@@ -73,6 +73,15 @@ class ReportDeviceEventCmd(kvmagent.AgentCommand):
         super(ReportDeviceEventCmd, self).__init__()
         self.hostUuid = None
 
+class UpdateHostOSCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(UpdateHostOSCmd, self).__init__()
+        self.hostUuid = None
+
+class UpdateHostOSRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateHostOSRsp, self).__init__()
+
 logger = log.get_logger(__name__)
 
 def _get_memory(word):
@@ -103,6 +112,7 @@ class HostPlugin(kvmagent.KvmAgent):
     PING_PATH = "/host/ping"
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
+    UPDATE_OS_PATH = "/host/updateos"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -351,6 +361,24 @@ if __name__ == "__main__":
         with open(rule_file, 'w') as f:
             f.write(rule_str)
 
+    @kvmagent.replyerror
+    @in_bash
+    def update_os(self, req):
+        rsp = UpdateHostOSRsp()
+        if shell.run("which yum") != 0:
+            rsp.success = False
+            rsp.error = "no yum command found, cannot update host os"
+        elif shell.run("yum --disablerepo=* --enablerepo=zstack-mn repoinfo") != 0:
+            rsp.success = False
+            rsp.error = "no zstack-mn repo found, cannot update host os"
+        elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
+            rsp.success = False
+            rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
+        elif shell.run("yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn update -y") != 0:
+            rsp.success = False
+            rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
         
@@ -362,6 +390,7 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT, self.setup_heartbeat_file)
         http_server.register_async_uri(self.FACT_PATH, self.fact)
         http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
+        http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
