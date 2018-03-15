@@ -109,6 +109,7 @@ declare -A upgrade_params_array
 upgrade_params_array[0]='1.3,-DsyncImageActualSize=true'
 upgrade_params_array[1]='1.4,-DtapResourcesForBilling=true'
 upgrade_params_array[2]='2.2.2,-DupdateLdapUidToLdapDn=true'
+upgrade_params_array[3]='2.3.1,-Dzwatch.migrateFromOldMonitorImplementation=true'
 
 # version compare
 # eg. 1 = 1.0
