@@ -24,6 +24,7 @@ import yaml
 import re
 import OpenSSL
 import glob
+from shutil import copyfile
 
 from zstacklib import *
 import jinja2
@@ -619,6 +620,7 @@ class Ctl(object):
     ZSTACK_UI_HOME = '/usr/local/zstack/zstack-ui/'
     ZSTACK_UI_CFG_FILE = ZSTACK_UI_HOME + 'zstack_ui.cfg'
     ZSTACK_UI_KEYSTORE = ZSTACK_UI_HOME + 'ui.keystore.p12'
+    ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
 
     def __init__(self):
         self.commands = {}
@@ -7269,6 +7271,13 @@ class StartUiCmd(Command):
         if args.enable_ssl and args.server_port == '5000':
             args.server_port = '5443'
 
+        if not os.path.exists(args.ssl_keystore):
+            raise CtlError('%s not found.', args.ssl_keystore)
+        # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
+        if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
+            copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
+            args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
+
         # combine with zstack_ui.cfg
         zstackui = ctl.ZSTACK_UI_HOME
         zstackuicfg = ctl.ZSTACK_UI_CFG_FILE
@@ -7416,6 +7425,13 @@ class ConfigUiCmd(Command):
             args.webhook_port = '5443'
         if args.enable_ssl and args.server_port == '5000':
             args.server_port = '5443'
+
+        # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
+        if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
+            if not os.path.exists(args.ssl_keystore):
+                raise CtlError('%s not found.', args.ssl_keystore)
+            copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
+            args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
 
         with open(zstackuicfg, 'w') as fd:
             fd.write("mn-host:" + args.mn_host + "\n")
