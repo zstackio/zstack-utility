@@ -7261,8 +7261,8 @@ class StartUiCmd(Command):
             self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log, args.enable_ssl, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password)
             return
 
-        # create default ssl keystore if enable_ssl is True
-        if args.enable_ssl and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
+        # create default ssl keystore anyway
+        if not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
             self._gen_default_ssl_keystore()
 
         # server_port default value is 5443 if enable_ssl is True
@@ -7272,7 +7272,7 @@ class StartUiCmd(Command):
             args.server_port = '5443'
 
         if not os.path.exists(args.ssl_keystore):
-            raise CtlError('%s not found.', args.ssl_keystore)
+            raise CtlError('%s not found.' % args.ssl_keystore)
         # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
         if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
             copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
@@ -7429,7 +7429,7 @@ class ConfigUiCmd(Command):
         # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
         if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
             if not os.path.exists(args.ssl_keystore):
-                raise CtlError('%s not found.', args.ssl_keystore)
+                raise CtlError('%s not found.' % args.ssl_keystore)
             copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
             args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
 
