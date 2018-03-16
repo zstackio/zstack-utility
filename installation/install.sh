@@ -631,15 +631,16 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     fi
     #add user: zstack and add sudo permission for it.
     id -u zstack >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        ps axu | pgrep prometheus | xargs kill >/dev/null 2>&1
-        ps axu | pgrep prometheus >/dev/null 2>&1
-        if [ $? -eq 0 ];then
-            ps axu | pgrep prometheus | xargs kill -9 >/dev/null 2>&1
-        fi
-        usermod -d $ZSTACK_INSTALL_ROOT zstack >/dev/null >>$ZSTACK_INSTALL_LOG 2>&1
-    else
+    if [ $? -ne 0 ]; then
         useradd -d $ZSTACK_INSTALL_ROOT zstack >/dev/null >>$ZSTACK_INSTALL_LOG 2>&1
+    elif [ $(readlink -f $ZSTACK_INSTALL_ROOT) != $(echo ~zstack) ] ; then
+        killall -u zstack >/dev/null 2>&1
+        i=5
+        while (ps -u zstack > /dev/null) && ((i-- > 0)); do
+            sleep 1
+        done
+        killall -9 -u zstack >/dev/null 2>&1
+        usermod -d $ZSTACK_INSTALL_ROOT zstack >/dev/null >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     zstack_home=`eval echo ~zstack`
     if [ ! -d $zstack_home ];then
