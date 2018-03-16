@@ -2877,13 +2877,16 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     UI_CURRENT_STATUS='n'
     UI_INSTALLATION_STATUS='n'
-    zstack-ctl status 2>/dev/null|grep -q 'UI status' >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        zstack-ctl status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
+    if [ -f /etc/init.d/zstack-ui ]; then
+        UI_INSTALLATION_STATUS='y'
+        zstack-ctl status 2>/dev/null|grep -q 'UI status' >/dev/null 2>&1
         if [ $? -eq 0 ]; then
-            UI_CURRENT_STATUS='y'
-        else
-            UI_CURRENT_STATUS='n'
+            zstack-ctl status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                UI_CURRENT_STATUS='y'
+            else
+                UI_CURRENT_STATUS='n'
+            fi
         fi
     fi
 
