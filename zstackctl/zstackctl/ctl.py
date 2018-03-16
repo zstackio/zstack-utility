@@ -985,21 +985,18 @@ class Command(object):
     def run(self, args):
         raise CtlError('the command is not implemented')
 
-def create_check_ui_status_command(timeout=10, ui_ip='127.0.0.1', ui_port='5000'):
+def create_check_ui_status_command(timeout=10, ui_ip='127.0.0.1', ui_port='5000', if_https=False):
+    protocol = 'https' if if_https else 'http'
     if shell_return('which wget') == 0:
         return ShellCmd(
-            '''wget --no-proxy -O- --tries=%s --timeout=1 http://%s:%s/health''' % (timeout, ui_ip, ui_port))
+            '''wget --no-proxy -O- --tries=%s --no-check-certificate --timeout=1 %s://%s:%s/health''' % (timeout, protocol, ui_ip, ui_port))
     else:
         if shell_return('which curl') == 0:
             return ShellCmd(
-                '''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s http://%s:%s/health''' % (
-                    timeout, timeout, timeout, ui_ip, ui_port))
+                '''curl -k --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s %s://%s:%s/health''' % (
+                    timeout, timeout, timeout, protocol, ui_ip, ui_port))
         else:
             return None
-
-
-
-
 
 def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     USE_CURL = 0
@@ -6846,16 +6843,8 @@ class UiStatusCmd(Command):
         else:
             port = 5000
 
-        cmd = create_check_ui_status_command(ui_port=port)
-
         def write_status(status):
             info('UI status: %s' % status)
-
-        if not cmd:
-            write_status('cannot detect status, no wget and curl installed')
-            return
-
-        cmd(False)
 
         pid = ''
         output = ''
@@ -6865,6 +6854,14 @@ class UiStatusCmd(Command):
                 pid = pid.strip(' \t\n\r')
                 check_pid_cmd = ShellCmd('ps %s' % pid)
                 output = check_pid_cmd(is_exception=False)
+
+        cmd = create_check_ui_status_command(ui_port=port, if_https='--ssl.enabled=true' in output)
+
+        if not cmd:
+            write_status('cannot detect status, no wget and curl installed')
+            return
+
+        cmd(False)
 
         if cmd.return_code != 0:
             if cmd.stdout or 'Failed' in cmd.stdout and pid:
@@ -7362,6 +7359,10 @@ class StartUiCmd(Command):
 
         write_pid()
 
+        os.system('mkdir -p /var/run/zstack/')
+        with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
+            fd.write(args.server_port)
+
         @loop_until_timeout(30)
         def check_ui_status():
             command = 'zstack-ctl ui_status'
@@ -7371,9 +7372,10 @@ class StartUiCmd(Command):
 
             return "Running" in output
 
-
         if not check_ui_status():
             info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui.log' % args.log)
+            shell('rm -rf /var/run/zstack/zstack-ui.port')
+            shell('rm -rf /var/run/zstack/zstack-ui.pid')
             return False
 
         pid = find_process_by_cmdline('zstack-ui')
@@ -7383,9 +7385,6 @@ class StartUiCmd(Command):
         else:
             info('successfully started UI server on the local host, PID[%s], %s://%s:%s' % (pid, 'https' if args.enable_ssl else 'http', default_ip, args.server_port))
 
-        os.system('mkdir -p /var/run/zstack/')
-        with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
-            fd.write(args.server_port)
 
 # For UI 2.0
 class ConfigUiCmd(Command):
