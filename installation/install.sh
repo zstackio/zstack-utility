@@ -871,9 +871,22 @@ upgrade_zstack(){
           if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
               echo "start zstack-ui" >>$ZSTACK_INSTALL_LOG
               show_spinner sd_start_zstack_ui
+
+              #check ui status after upgrade
+              zstack-ctl status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
+              if [ $? -eq 0 ]; then
+                  UI_CURRENT_STATUS='y'
+              else
+                  UI_CURRENT_STATUS='n'
+              fi
           elif [ x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
               echo "start dashboard" >>$ZSTACK_INSTALL_LOG
               show_spinner sd_start_dashboard
+
+              /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
+              if [ $? -eq 0 ]; then
+                  DASHBOARD_CURRENT_STATUS='y'
+              fi
           fi
         fi
     fi
@@ -2115,7 +2128,8 @@ sd_start_zstack_ui(){
     ui_logging_path=$zstack_home/../../logs/
     chmod a+x /etc/init.d/zstack-ui
     cd /
-    /etc/init.d/zstack-ui restart --log $ui_logging_path >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to start zstack web ui"
     pass
 }
