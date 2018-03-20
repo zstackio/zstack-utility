@@ -20,6 +20,12 @@ def get_scale(stage=None):
     end = int(stages[1])
     return start, end
 
+
+def get_exact_percent(percent, stage):
+    start, end = get_scale(stage)
+    return int(float(percent)/100 * (end - start) + start)
+
+
 class Report(object):
     url = None
     serverUuid = None
