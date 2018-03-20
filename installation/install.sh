@@ -68,6 +68,7 @@ INSTALL_ENTERPRISE='n'
 MYSQL_ROOT_PASSWORD=''
 MYSQL_NEW_ROOT_PASSWORD='zstack.mysql.password'
 MYSQL_USER_PASSWORD='zstack.password'
+MYSQL_UI_USER_PASSWORD='zstack.ui.password'
 
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
@@ -819,7 +820,7 @@ upgrade_zstack(){
       UI_INSTALLATION_STATUS='y'
       DASHBOARD_INSTALLATION_STATUS='n'
       # try to deploy zstack_ui database, if already exists then do upgrade
-      zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
+      zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
     else
       fail "failed to upgrade zstack web ui" 
     fi
@@ -2046,12 +2047,12 @@ cs_deploy_ui_db(){
     echo_subtitle "Initialize ZStack UI Database"
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
-            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
         else
-            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
         fi
     else
-        zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
+        zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         grep 'detected existing zstack_ui database' $ZSTACKCTL_INSTALL_LOG >& /dev/null

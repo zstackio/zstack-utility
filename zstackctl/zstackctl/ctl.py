@@ -618,7 +618,6 @@ class Ctl(object):
     LOGGER_DIR = "/var/log/zstack/"
     LOGGER_FILE = "zstack-ctl.log"
     ZSTACK_UI_HOME = '/usr/local/zstack/zstack-ui/'
-    ZSTACK_UI_CFG_FILE = ZSTACK_UI_HOME + 'zstack_ui.cfg'
     ZSTACK_UI_KEYSTORE = ZSTACK_UI_HOME + 'ui.keystore.p12'
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
 
@@ -629,6 +628,7 @@ class Ctl(object):
         self.main_parser.add_argument('-v', help="verbose, print execution details", dest="verbose", action="store_true", default=False)
         self.zstack_home = None
         self.properties_file_path = None
+        self.ui_properties_file_path = None
         self.verbose = False
         self.extra_arguments = None
 
@@ -656,6 +656,7 @@ class Ctl(object):
 
         os.environ['ZSTACK_HOME'] = self.zstack_home
         self.properties_file_path = os.path.join(self.zstack_home, 'WEB-INF/classes/zstack.properties')
+        self.ui_properties_file_path = os.path.join(Ctl.ZSTACK_UI_HOME, 'zstack.ui.properties')
         self.ssh_private_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa')
         self.ssh_public_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa.pub')
         if not os.path.isfile(self.properties_file_path):
@@ -680,6 +681,10 @@ class Ctl(object):
         create_log(Ctl.LOGGER_DIR, Ctl.LOGGER_FILE)
         if os.getuid() != 0:
             raise CtlError('zstack-ctl needs root privilege, please run with sudo')
+
+        if not os.path.exists(self.ui_properties_file_path):
+            os.mknod(self.ui_properties_file_path)
+            os.chmod(self.ui_properties_file_path, 438)
 
         metavar_list = []
         for n,cmd in enumerate(self.command_list):
@@ -757,6 +762,25 @@ class Ctl(object):
         with on_error('property must be in format of "key=value", no space before and after "="'):
             prop.write_property(key, value)
 
+    def read_ui_property(self, key):
+        prop = PropertyFile(self.ui_properties_file_path)
+        val = prop.read_property(key)
+        # our code assume all values are strings
+        if isinstance(val, list):
+            return ','.join(val)
+        else:
+            return val
+
+    def write_ui_properties(self, properties):
+        prop = PropertyFile(self.ui_properties_file_path)
+        with on_error('property must be in format of "key=value", no space before and after "="'):
+            prop.write_properties(properties)
+
+    def write_ui_property(self, key, value):
+        prop = PropertyFile(self.ui_properties_file_path)
+        with on_error('property must be in format of "key=value", no space before and after "="'):
+            prop.write_property(key, value)
+
     def get_db_url(self):
         db_url = self.read_property("DB.url")
         if not db_url:
@@ -765,8 +789,17 @@ class Ctl(object):
             raise CtlError("cannot find DB url in %s. please set DB.url" % self.properties_file_path)
         return db_url
 
-    def get_live_mysql_portal(self):
-        hostname_ports, user, password = self.get_database_portal()
+    def get_ui_db_url(self):
+        db_url = self.read_ui_property("db_url")
+        if not db_url:
+            raise CtlError("cannot find zstack_ui db url in %s. please set db_url" % self.ui_properties_file_path)
+        return db_url
+
+    def get_live_mysql_portal(self, ui=False):
+        if ui:
+            hostname_ports, user, password = self.get_ui_database_portal()
+        else:
+            hostname_ports, user, password = self.get_database_portal()
 
         last_ip = ctl.get_env(self.LAST_ALIVE_MYSQL_IP)
         last_port = ctl.get_env(self.LAST_ALIVE_MYSQL_PORT)
@@ -817,6 +850,35 @@ class Ctl(object):
             raise CtlError("cannot find DB password in %s. please set DB.password" % self.properties_file_path)
 
         db_url = self.get_db_url()
+        host_name_ports = []
+
+        def parse_hostname_ports(prefix):
+            ips = db_url.lstrip(prefix).lstrip('/').split('/')[0]
+            ips = ips.split(',')
+            for ip in ips:
+                if ":" in ip:
+                    hostname, port = ip.split(':')
+                    host_name_ports.append((hostname, port))
+                else:
+                    host_name_ports.append((ip, '3306'))
+
+        if db_url.startswith('jdbc:mysql:loadbalance:'):
+            parse_hostname_ports('jdbc:mysql:loadbalance:')
+        elif db_url.startswith('jdbc:mysql:'):
+            parse_hostname_ports('jdbc:mysql:')
+
+        return host_name_ports, db_user, db_password
+
+    def get_ui_database_portal(self):
+        db_user = self.read_ui_property("db_username")
+        if not db_user:
+            raise CtlError("cannot find zstack_ui db username in %s. please set db_username" % self.ui_properties_file_path)
+
+        db_password = self.read_ui_property("db_password")
+        if db_password is None:
+            raise CtlError("cannot find zstack_ui db password in %s. please set db_password" % self.ui_properties_file_path)
+
+        db_url = self.get_ui_db_url()
         host_name_ports = []
 
         def parse_hostname_ports(prefix):
@@ -1284,6 +1346,7 @@ class DeployDBCmd(Command):
 
 class DeployUIDBCmd(Command):
     DEPLOY_UI_DB_SCRIPT_PATH = "WEB-INF/classes/deployuidb.sh"
+    ZSTACK_UI_PROPERTY_FILE = "zstack.ui.properties"
 
     def __init__(self):
         super(DeployUIDBCmd, self).__init__()
@@ -1308,10 +1371,11 @@ class DeployUIDBCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--root-password', help='root user password of MySQL. [DEFAULT] empty password')
-        parser.add_argument('--zstack-password', help='password of user "zstack". [DEFAULT] empty password')
+        parser.add_argument('--zstack-ui-password', help='password of user "zstack_ui". [DEFAULT] empty password')
         parser.add_argument('--host', help='IP or DNS name of MySQL host; default is localhost', default='localhost')
         parser.add_argument('--port', help='port of MySQL host; default is 3306', type=int, default=3306)
         parser.add_argument('--drop', help='drop existing zstack ui database', action='store_true', default=False)
+        parser.add_argument('--no-update', help='do NOT update database information to zstack.ui.properties; if you do not know what this means, do not use it', action='store_true', default=False)
         parser.add_argument('--keep-db', help='keep existing zstack ui database and not raise error.', action='store_true', default=False)
 
     def run(self, args):
@@ -1331,8 +1395,8 @@ class DeployUIDBCmd(Command):
         cmd(False)
         if not args.root_password:
             args.root_password = "''"
-        if not args.zstack_password:
-            args.zstack_password = "''"
+        if not args.zstack_ui_password:
+            args.zstack_ui_password = "''"
 
         if cmd.return_code == 0 and not args.drop:
             if args.keep_db:
@@ -1340,7 +1404,7 @@ class DeployUIDBCmd(Command):
             else:
                 raise CtlError('detected existing zstack_ui database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database')
         else:
-            cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, args.host, args.port, args.zstack_password))
+            cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, args.host, args.port, args.zstack_ui_password))
             cmd(False)
             if cmd.return_code != 0:
                 if ('ERROR 1044' in cmd.stdout or 'ERROR 1044' in cmd.stderr) or ('Access denied' in cmd.stdout or 'Access denied' in cmd.stderr):
@@ -1351,6 +1415,17 @@ class DeployUIDBCmd(Command):
                     )
                 else:
                     cmd.raise_error()
+
+        if not args.no_update:
+            if args.zstack_ui_password == "''":
+                args.zstack_ui_password = ''
+
+            properties = [
+                    ("db_url", 'jdbc:mysql://%s:%s' % (args.host, args.port)),
+                    ("db_username", "zstack_ui"),
+                    ("db_password", args.zstack_ui_password),
+            ]
+            ctl.write_ui_properties(properties)
 
         info('Successfully deployed zstack_ui database')
 
@@ -4496,7 +4571,7 @@ class DumpMysqlCmd(Command):
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command = "mysqldump --add-drop-database  --databases -u %s %s -P %s zstack zstack_rest zstack_ui | gzip > %s "\
+            command = "mysqldump --add-drop-database  --databases -u %s %s -P %s zstack zstack_rest | gzip > %s "\
                            % (db_user, db_connect_password, db_port, db_backup_name + ".gz")
             (status, output) = commands.getstatusoutput(command)
             if status != 0:
@@ -4506,7 +4581,7 @@ class DumpMysqlCmd(Command):
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command = "mysqldump --add-drop-database  --databases -u %s %s --host %s -P %s zstack zstack_rest zstack_ui | gzip > %s " \
+            command = "mysqldump --add-drop-database  --databases -u %s %s --host %s -P %s zstack zstack_rest | gzip > %s " \
                            % (db_user, db_connect_password, db_hostname, db_port, db_backup_name + ".gz")
             (status, output) = commands.getstatusoutput(command)
             if status != 0:
@@ -4585,7 +4660,7 @@ class RestoreMysqlCmd(Command):
         shell_no_pipe('zstack-ctl stop_node')
 
         info("Starting recover data ...")
-        for database in ['zstack','zstack_rest','zstack_ui']:
+        for database in ['zstack','zstack_rest']:
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)
             shell_no_pipe(command)
@@ -6314,13 +6389,13 @@ class UpgradeUIDbCmd(Command):
         error_if_tool_is_missing('mysqldump')
         error_if_tool_is_missing('mysql')
 
-        db_url = ctl.get_db_url()
+        db_url = ctl.get_ui_db_url()
         db_url_params = db_url.split('//')
         db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
         if 'zstack_ui' not in db_url:
             db_url = '%s/zstack_ui' % db_url.rstrip('/')
 
-        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal(True)
 
         flyway_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/tools/flyway-3.2.1/flyway')
         if not os.path.exists(flyway_path):
@@ -7165,19 +7240,19 @@ class StartUiCmd(Command):
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
-        parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1", default='127.0.0.1')
-        parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080", default='8080')
-        parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1", default='127.0.0.1')
-        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000", default='5000')
-        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000", default='5000')
-        parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
+        parser.add_argument('--mn-host', help="ZStack Management Host IP.")
+        parser.add_argument('--mn-port', help="ZStack Management Host port.")
+        parser.add_argument('--webhook-host', help="Webhook Host IP.")
+        parser.add_argument('--webhook-port', help="Webhook Host port.")
+        parser.add_argument('--server-port', help="UI server port.")
+        parser.add_argument('--log', help="UI log folder.")
 
         # arguments for https
         parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
-        parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui", default='zstackui')
-        parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE, default=ctl.ZSTACK_UI_KEYSTORE)
-        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS). [DEFAULT] PKCS12", default='PKCS12')
-        parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password", default='password')
+        parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias.")
+        parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path.")
+        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS).")
+        parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password.")
 
         # arguments for ui_db
         parser.add_argument('--db-url', help="zstack_ui database jdbc url")
@@ -7236,27 +7311,57 @@ class StartUiCmd(Command):
         open(ctl.ZSTACK_UI_KEYSTORE, 'w').write(p12.export(b'password'))
 
     def _get_db_info(self):
-        # get default DB.url, DB.user, DB.password etc.
-        db_url_params = ctl.get_db_url().split('//')
+        # get default db_url, db_username, db_password etc.
+        db_url_params = ctl.get_ui_db_url().split('//')
         self.db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
         if 'zstack_ui' not in self.db_url:
             self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
-        _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal()
+        _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal(True)
 
     def run(self, args):
-        # default arguments for ui db
-        self._get_db_info()
-        if not args.db_url or args.db_url.strip() == '':
-            args.db_url = self.db_url
-        if not args.db_username or args.db_username.strip() == '':
-            args.db_username = self.db_username
-        if not args.db_password or args.db_password.strip() == '':
-            args.db_password = self.db_password
-
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         if args.host != 'localhost':
             self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log, args.enable_ssl, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password)
             return
+
+        # init zstack.ui.properties
+        ctl.internal_run('config_ui')
+
+        # combine with zstack.ui.properties
+        cfg_mn_host = ctl.read_ui_property("mn_host")
+        cfg_mn_port = ctl.read_ui_property("mn_port")
+        cfg_webhook_host = ctl.read_ui_property("webhook_host")
+        cfg_webhook_port = ctl.read_ui_property("webhook_port")
+        cfg_server_port = ctl.read_ui_property("server_port")
+        cfg_log = ctl.read_ui_property("log")
+        cfg_enable_ssl = ctl.read_ui_property("enable_ssl")
+        cfg_ssl_keyalias = ctl.read_ui_property("ssl_keyalias")
+        cfg_ssl_keystore = ctl.read_ui_property("ssl_keystore")
+        cfg_ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
+        cfg_ssl_keystore_password = ctl.read_ui_property("ssl_keystore_password")
+
+        if not args.mn_host:
+            args.mn_host = cfg_mn_host
+        if not args.mn_port:
+            args.mn_port = cfg_mn_port
+        if not args.webhook_host:
+            args.webhook_host = cfg_webhook_host
+        if not args.webhook_port: 
+            args.webhook_port = cfg_webhook_port
+        if not args.server_port:
+            args.server_port = cfg_server_port
+        if not args.log:
+            args.log = cfg_log
+        if not args.enable_ssl:
+            args.enable_ssl = True if cfg_enable_ssl == 'true' else False
+        if not args.ssl_keyalias:
+            args.ssl_keyalias = cfg_ssl_keyalias
+        if not args.ssl_keystore:
+            args.ssl_keystore = cfg_ssl_keystore
+        if not args.ssl_keystore_type:
+            args.ssl_keystore_type = cfg_ssl_keystore_type
+        if not args.ssl_keystore_password:
+            args.ssl_keystore_password = cfg_ssl_keystore_password
 
         # create default ssl keystore anyway
         if not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
@@ -7271,57 +7376,21 @@ class StartUiCmd(Command):
         if not os.path.exists(args.ssl_keystore):
             raise CtlError('%s not found.' % args.ssl_keystore)
         # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
-        if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
+        if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE and args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE_CP:
             copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
             args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
 
-        # combine with zstack_ui.cfg
-        zstackui = ctl.ZSTACK_UI_HOME
-        zstackuicfg = ctl.ZSTACK_UI_CFG_FILE
-        if os.path.exists(zstackuicfg):
-            with open(zstackuicfg, 'r') as fd:
-                _, cfg_mn_host = fd.readline().split(':')
-                _, cfg_mn_port = fd.readline().split(':')
-                _, cfg_webhook_host = fd.readline().split(':')
-                _, cfg_webhook_port = fd.readline().split(':')
-                _, cfg_server_port = fd.readline().split(':')
-                _, cfg_log = fd.readline().split(':')
-
-                # https
-                _, cfg_enable_ssl = fd.readline().split(':')
-                _, cfg_ssl_keyalias = fd.readline().split(':')
-                _, cfg_ssl_keystore = fd.readline().split(':')
-                _, cfg_ssl_keystore_type = fd.readline().split(':')
-                _, cfg_ssl_keystore_password = fd.readline().split(':')
-
-            if args.mn_host == '127.0.0.1':
-                args.mn_host = cfg_mn_host.strip('\n')
-            if args.mn_port == "8080":
-                args.mn_port = cfg_mn_port.strip('\n')
-            if args.webhook_host == "127.0.0.1":
-                args.webhook_host = cfg_webhook_host.strip('\n')
-            if args.webhook_port == "5000":
-                args.webhook_port = cfg_webhook_port.strip('\n')
-            if args.server_port == "5000":
-                args.server_port = cfg_server_port.strip('\n')
-            if args.log == ui_logging_path:
-                args.log = cfg_log.strip('\n')
-
-            # https
-            if not args.enable_ssl and cfg_enable_ssl.strip('\n') == 'False':
-                args.enable_ssl = False
-            else:
-                args.enable_ssl = True
-            if args.ssl_keyalias == 'zstackui':
-                args.ssl_keyalias = cfg_ssl_keyalias.strip('\n')
-            if args.ssl_keystore == ctl.ZSTACK_UI_KEYSTORE:
-                args.ssl_keystore = cfg_ssl_keystore.strip('\n')
-            if args.ssl_keystore_type == 'PKCS12':
-                args.ssl_keystore_type = cfg_ssl_keystore_type.strip('\n')
-            if args.ssl_keystore_password == 'password':
-                args.ssl_keystore_password = cfg_ssl_keystore_password.strip('\n')
+        # ui_db
+        self._get_db_info()
+        if not args.db_url or args.db_url.strip() == '':
+            args.db_url = self.db_url
+        if not args.db_username or args.db_username.strip() == '':
+            args.db_username = self.db_username
+        if not args.db_password or args.db_password.strip() == '':
+            args.db_password = self.db_password
 
         shell("mkdir -p %s" % args.log)
+        zstackui = ctl.ZSTACK_UI_HOME
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (zstackui, args.host))
 
@@ -7341,9 +7410,9 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
         if args.enable_ssl:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %s/zstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, args.log)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, args.log)
         else:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %s/zstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, args.log)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, args.log)
 
         script(scmd, no_pipe=True)
 
@@ -7385,91 +7454,157 @@ class StartUiCmd(Command):
         else:
             info('successfully started UI server on the local host, PID[%s], %s://%s:%s' % (pid, 'https' if args.enable_ssl else 'http', default_ip, args.server_port))
 
-
 # For UI 2.0
 class ConfigUiCmd(Command):
     def __init__(self):
         super(ConfigUiCmd, self).__init__()
         self.name = "config_ui"
-        self.description = "configure UI host and ports etc."
+        self.description = "configure zstack.ui.properties"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
-        parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1", default='127.0.0.1')
-        parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080", default='8080')
-        parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1", default='127.0.0.1')
-        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000", default='5000')
-        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000", default='5000')
-        parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.ui.properties on the remote machine')
+        parser.add_argument('--restore', help='restore zstack ui properties to default values', action="store_true", default=False)
+        parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1")
+        parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080")
+        parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1")
+        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000")
+        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000")
+        parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
 
         # arguments for https
-        parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
-        parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui", default='zstackui')
-        parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE, default=ctl.ZSTACK_UI_KEYSTORE)
-        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS). [DEFAULT] PKCS12", default='PKCS12')
-        parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password", default='password')
+        parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI. [DEFAULT] False")
+        parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui")
+        parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE)
+        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS). [DEFAULT] PKCS12")
+        parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password")
+
+        # arguments for ui_db
+        parser.add_argument('--db-url', help="zstack_ui database jdbc url.")
+        parser.add_argument('--db-username', help="username of zstack_ui database.")
+        parser.add_argument('--db-password', help="password of zstack_ui database.")
+
+    def _configure_remote_node(self, args):
+        shell_no_pipe('ssh %s "/usr/bin/zstack-ctl config_ui %s"' % (args.host, ' '.join(ctl.extra_arguments)))
 
     def run(self, args):
-        zstackui = ctl.ZSTACK_UI_HOME
-        zstackuicfg = ctl.ZSTACK_UI_CFG_FILE
+        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
+        if args.host:
+            self._configure_remote_node(args)
+            return
 
+        zstackui = ctl.ZSTACK_UI_HOME
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed?' % zstackui)
 
-        if not os.path.exists(zstackuicfg):
-            os.mknod(zstackuicfg)
+        # init zstack.ui.properties
+        if not ctl.read_ui_property("mn_host"):
+            ctl.write_ui_property("mn_host", '127.0.0.1')
+        if not ctl.read_ui_property("mn_port"):
+            ctl.write_ui_property("mn_port", '8080')
+        if not ctl.read_ui_property("webhook_host"):
+            ctl.write_ui_property("webhook_host", '127.0.0.1')
+        if not ctl.read_ui_property("webhook_port"):
+            ctl.write_ui_property("webhook_port", '5000')
+        if not ctl.read_ui_property("server_port"):
+            ctl.write_ui_property("server_port", '5000')
+        if not ctl.read_ui_property("log"):
+            ctl.write_ui_property("log", ui_logging_path)
+        if not ctl.read_ui_property("enable_ssl"):
+            ctl.write_ui_property("enable_ssl", 'false')
+        if not ctl.read_ui_property("ssl_keyalias"):
+            ctl.write_ui_property("ssl_keyalias", 'zstackui')
+        if not ctl.read_ui_property("ssl_keystore"):
+            ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
+        if not ctl.read_ui_property("ssl_keystore_type"):
+            ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
+        if not ctl.read_ui_property("ssl_keystore_password"):
+            ctl.write_ui_property("ssl_keystore_password", 'password')
+        if not ctl.read_ui_property("db_url"):
+            ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+        if not ctl.read_ui_property("db_username"):
+            ctl.write_ui_property("db_username", 'zstack_ui')
+        if not ctl.read_ui_property("db_password"):
+            ctl.write_ui_property("db_password", 'zstack.ui.password')
 
-        if args.enable_ssl and args.webhook_port == '5000':
-            args.webhook_port = '5443'
-        if args.enable_ssl and args.server_port == '5000':
-            args.server_port = '5443'
+        # restore to default values
+        if args.restore:
+            ctl.write_ui_property("mn_host", '127.0.0.1')
+            ctl.write_ui_property("mn_port", '8080')
+            ctl.write_ui_property("webhook_host", '127.0.0.1')
+            ctl.write_ui_property("webhook_port", '5000')
+            ctl.write_ui_property("server_port", '5000')
+            ctl.write_ui_property("log", ui_logging_path)
+            ctl.write_ui_property("enable_ssl", 'false')
+            ctl.write_ui_property("ssl_keyalias", 'zstackui')
+            ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
+            ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
+            ctl.write_ui_property("ssl_keystore_password", 'password')
+            return
+
+        # use 5443 instead if enable_ssl
+        if args.enable_ssl and args.enable_ssl.lower() == 'true':
+            if args.webhook_port == '5000':
+                args.webhook_port = '5443'
+            if args.server_port == '5000':
+                args.server_port = '5443'
 
         # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
-        if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
+        if args.ssl_keystore and args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
             if not os.path.exists(args.ssl_keystore):
                 raise CtlError('%s not found.' % args.ssl_keystore)
-            copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
-            args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
+            if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE_CP:
+                copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
+                args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
 
-        with open(zstackuicfg, 'w') as fd:
-            fd.write("mn-host:" + args.mn_host + "\n")
-            fd.write("mn-port:" + args.mn_port + "\n")
-            fd.write("webhook-host:" + args.webhook_host + "\n")
-            fd.write("webhook-port:" + args.webhook_port + "\n")
-            fd.write("server-port:" + args.server_port + "\n")
-            fd.write("log-folder:" + args.log + "\n")
+        if args.mn_host:
+            ctl.write_ui_property("mn_host", args.mn_host)
+        if args.mn_port:
+            ctl.write_ui_property("mn_port", args.mn_port)
+        if args.webhook_host:
+            ctl.write_ui_property("webhook_host", args.webhook_host)
+        if args.webhook_port:
+            ctl.write_ui_property("webhook_port", args.webhook_port)
+        if args.server_port:
+            ctl.write_ui_property("server_port", args.server_port)
+        if args.log:
+            ctl.write_ui_property("log", args.log)
 
-            # https
-            fd.write("enable_ssl:" + str(args.enable_ssl) + "\n")
-            fd.write("ssl_keyalias:" + args.ssl_keyalias + "\n")
-            fd.write("ssl_keystore:" + args.ssl_keystore + "\n")
-            fd.write("ssl_keystore_type:" + args.ssl_keystore_type + "\n")
-            fd.write("ssl_keystore_password:" + args.ssl_keystore_password + "\n")
+        # https
+        if args.enable_ssl:
+            ctl.write_ui_property("enable_ssl", args.enable_ssl.lower())
+        if args.ssl_keyalias:
+            ctl.write_ui_property("ssl_keyalias", args.ssl_keyalias)
+        if args.ssl_keystore:
+            ctl.write_ui_property("ssl_keystore", args.ssl_keystore)
+        if args.ssl_keystore_type:
+            ctl.write_ui_property("ssl_keystore_type", args.ssl_keystore_type)
+        if args.ssl_keystore_password:
+            ctl.write_ui_property("ssl_keystore_password", args.ssl_keystore_password)
+
+        # ui_db
+        if args.db_url:
+            ctl.write_ui_property("db_url", args.db_url)
+        if args.db_username:
+            ctl.write_ui_property("db_username", args.db_username)
+        if args.db_password:
+            ctl.write_ui_property("db_password", args.db_password)
 
 # For UI 2.0
 class ShowUiCfgCmd(Command):
     def __init__(self):
         super(ShowUiCfgCmd, self).__init__()
         self.name = "show_ui_config"
-        self.description = "Show UI configuration, like server_port etc."
+        self.description = "a shortcut that prints contents of zstack.ui.properties to screen"
         ctl.register_command(self)
 
     def run(self, args):
         zstackui = ctl.ZSTACK_UI_HOME
-        zstackuicfg = ctl.ZSTACK_UI_CFG_FILE
-
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed?' % zstackui)
 
-        if not os.path.exists(zstackuicfg):
-            error('There is no UI configuration now.')
-
-        with open(zstackuicfg, 'r') as fd:
-            for line in fd.readlines():
-                key, value = line.split(':')
-                sys.stdout.write("%s: %s" % (key, value))
-            sys.stdout.write("\n")
+        shell_no_pipe('cat %s' % ctl.ui_properties_file_path)
 
 # For VDI PORTAL 2.1
 class StartVDIUICmd(Command):
