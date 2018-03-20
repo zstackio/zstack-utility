@@ -79,7 +79,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
 
     DEFAULT_POLICY_ACCEPT = 'accept'
     DEFAULT_POLICY_DENY = 'deny'
-    
+    DEFAULT_POLICY_DROP = 'drop'
+
     WORLD_OPEN_CIDR = '0.0.0.0/0'
     
     ZSTACK_DEFAULT_CHAIN = 'sg-default'
@@ -94,9 +95,12 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     def _start_ingress_rule(self, vif_name, in_chain_name):
         return '-A %s -m physdev --physdev-out %s --physdev-is-bridged -j %s' % (self.ZSTACK_DEFAULT_CHAIN, vif_name, in_chain_name)
     
-    def _end_ingress_rule(self, in_chain_name):
-        return '-A %s -j REJECT --reject-with icmp-host-prohibited' % in_chain_name
-    
+    def _end_ingress_rule(self, in_chain_name, default_policy=DEFAULT_POLICY_DENY):
+        if default_policy == self.DEFAULT_POLICY_DENY:
+            return '-A %s -j REJECT --reject-with icmp-host-prohibited' % in_chain_name
+        else:
+            return '-A %s -j DROP' % in_chain_name
+
     def _start_egress_rule(self, vif_name, out_chain_name):
         return '-A %s -m physdev --physdev-in %s --physdev-is-bridged -j %s' % (self.ZSTACK_DEFAULT_CHAIN, vif_name, out_chain_name)
     
@@ -187,10 +191,12 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                     tails_rules.append('-A %s -j ACCEPT' % in_chain_name)
                 elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DENY:
                     tails_rules.append('-A %s -j REJECT --reject-with icmp-host-prohibited' % in_chain_name)
+                elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DROP:
+                    tails_rules.append('-A %s -j DROP' % in_chain_name)
                 else:
                     raise Exception('unknown default ingress policy: %s' % sto.ingressDefaultPolicy)
             else:
-                tails_rules.append(self._end_ingress_rule(in_chain_name))
+                tails_rules.append(self._end_ingress_rule(in_chain_name, sto.ingressDefaultPolicy))
 
             if empty_out_chain[0]:
                 if sto.egressDefaultPolicy == self.DEFAULT_POLICY_ACCEPT:
@@ -288,6 +294,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         ipt.delete_chain(in_chain_name)
         ipt.remove_rule(self._start_ingress_rule(nic_name, in_chain_name))
         ipt.remove_rule(self._end_ingress_rule(in_chain_name))
+        ipt.remove_rule(self._end_ingress_rule(in_chain_name, self.DEFAULT_POLICY_DROP))
         default_chain = ipt.get_chain(self.ZSTACK_DEFAULT_CHAIN)
         for r in default_chain.children:
             if ipt.is_target_in_rule(r.identity, in_chain_name):
