@@ -254,6 +254,7 @@ class GetPciDevicesCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetPciDevicesCmd, self).__init__()
         self.filterString = None
+        self.enableIommu = True
 
 class GetPciDevicesResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -3662,6 +3663,9 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
         r, o, e = bash.bash_roe("grep -E 'intel_iommu(\ )*=(\ )*on' /etc/default/grub")
+        #Note(WeiW): Skip config iommu if enable iommu is false
+        if cmd.enableIommu is False:
+            r = 0
         if r!= 0:
             r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,radeon\"/g' /etc/default/grub")
             if r != 0:
