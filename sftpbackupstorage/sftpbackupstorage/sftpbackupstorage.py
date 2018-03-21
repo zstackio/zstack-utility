@@ -445,7 +445,10 @@ class SftpBackupStorageAgent(object):
 
         os.chmod(cmd.installPath, stat.S_IRUSR + stat.S_IRGRP + stat.S_IROTH)
 
-        image_format = bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % linux.shellquote(install_path)).strip('\n')
+        try:
+            image_format = linux.get_img_file_fmt(linux.shellquote(install_path))
+        except Exception as e:
+            image_format = "raw"
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))
