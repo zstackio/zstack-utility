@@ -509,6 +509,7 @@ class APIAddVmToAffinityGroupMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+
 APICHANGEAFFINITYGROUPSTATEMSG_FULL_NAME = 'org.zstack.header.affinitygroup.APIChangeAffinityGroupStateMsg'
 class APIChangeAffinityGroupStateMsg(object):
     FULL_NAME='org.zstack.header.affinitygroup.APIChangeAffinityGroupStateMsg'
@@ -3078,6 +3079,18 @@ class APIUpdateClusterMsg(object):
         self.uuid = NotNoneField()
         self.name = None
         self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATECLUSTEROSMSG_FULL_NAME = 'org.zstack.header.cluster.APIUpdateClusterOSMsg'
+class APIUpdateClusterOSMsg(object):
+    FULL_NAME='org.zstack.header.cluster.APIUpdateClusterOSMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -14729,8 +14742,7 @@ class APISubscribeEventMsg(object):
         self.namespace = NotNoneField()
         #mandatory field
         self.eventName = NotNoneField()
-        #mandatory field
-        self.actions = NotNoneList()
+        self.actions = OptionalList()
         self.labels = OptionalList()
         self.resourceUuid = None
         self.session = None
@@ -14925,6 +14937,16 @@ class APIGetAuditDataMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETAUDITDATAREPLY_FULL_NAME = 'org.zstack.zwatch.api.APIGetAuditDataReply'
+class APIGetAuditDataReply(object):
+    FULL_NAME='org.zstack.zwatch.api.APIGetAuditDataReply'
+    def __init__(self):
+        self.audits = OptionalList()
+        self.inventory = None
+        self.success = None
+        self.error = None
+
+
 APIGETEVENTDATAMSG_FULL_NAME = 'org.zstack.zwatch.api.APIGetEventDataMsg'
 class APIGetEventDataMsg(object):
     FULL_NAME='org.zstack.zwatch.api.APIGetEventDataMsg'
@@ -14967,6 +14989,15 @@ class APIGetMetricDataMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETMETRICDATAREPLY_FULL_NAME = 'org.zstack.zwatch.api.APIGetMetricDataReply'
+class APIGetMetricDataReply(object):
+    FULL_NAME='org.zstack.zwatch.api.APIGetMetricDataReply'
+    def __init__(self):
+        self.data = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIGETMETRICLABELVALUEMSG_FULL_NAME = 'org.zstack.zwatch.api.APIGetMetricLabelValueMsg'
 class APIGetMetricLabelValueMsg(object):
     FULL_NAME='org.zstack.zwatch.api.APIGetMetricLabelValueMsg'
@@ -14982,6 +15013,15 @@ class APIGetMetricLabelValueMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
+
+
+APIGETMETRICLABELVALUEREPLY_FULL_NAME = 'org.zstack.zwatch.api.APIGetMetricLabelValueReply'
+class APIGetMetricLabelValueReply(object):
+    FULL_NAME='org.zstack.zwatch.api.APIGetMetricLabelValueReply'
+    def __init__(self):
+        self.labels = OptionalList()
+        self.success = None
+        self.error = None
 
 
 APIPUTMETRICDATAMSG_FULL_NAME = 'org.zstack.zwatch.api.APIPutMetricDataMsg'
@@ -15353,6 +15393,7 @@ api_names = [
     'APIGetAttachableVpcL3NetworkMsg',
     'APIGetAttachableVpcL3NetworkReply',
     'APIGetAuditDataMsg',
+    'APIGetAuditDataReply',
     'APIGetAvailableTriggersMsg',
     'APIGetAvailableTriggersReply',
     'APIGetBackupStorageCandidatesForImageMigrationMsg',
@@ -15452,7 +15493,9 @@ api_names = [
     'APIGetLocalStorageHostDiskCapacityMsg',
     'APIGetLocalStorageHostDiskCapacityReply',
     'APIGetMetricDataMsg',
+    'APIGetMetricDataReply',
     'APIGetMetricLabelValueMsg',
+    'APIGetMetricLabelValueReply',
     'APIGetMonitorItemMsg',
     'APIGetMonitorItemReply',
     'APIGetNetworkServiceProviderReply',
@@ -16000,6 +16043,7 @@ api_names = [
     'APIUpdateCephPrimaryStorageMonMsg',
     'APIUpdateCephPrimaryStoragePoolMsg',
     'APIUpdateClusterMsg',
+    'APIUpdateClusterOSMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEcsImageMsg',
@@ -22105,6 +22149,13 @@ class GlobalConfig_CLOUDBUS(object):
     def get_category():
         return 'cloudBus'
 
+class GlobalConfig_CLUSTER(object):
+    UPDATE_OS_PARALLELISMDEGREE = 'update.os.parallelismDegree'
+
+    @staticmethod
+    def get_category():
+        return 'cluster'
+
 class GlobalConfig_CONSOLE(object):
     AGENT_PING_INTERVAL = 'agent.ping.interval'
     PROXY_IDLETIMEOUT = 'proxy.idleTimeout'
@@ -22175,6 +22226,7 @@ class GlobalConfig_HOST(object):
     CPU_OVERPROVISIONING_RATIO = 'cpu.overProvisioning.ratio'
     MAINTENANCEMODE_IGNOREERROR = 'maintenanceMode.ignoreError'
     RECONNECTALLONBOOT = 'reconnectAllOnBoot'
+    UPDATE_OS_PARALLELISMDEGREE = 'update.os.parallelismDegree'
     PING_INTERVAL = 'ping.interval'
 
     @staticmethod
@@ -22184,6 +22236,7 @@ class GlobalConfig_HOST(object):
 class GlobalConfig_HOSTALLOCATOR(object):
     PAGINATIONLIMIT = 'paginationLimit'
     RESERVEDCAPACITY_ZONELEVEL = 'reservedCapacity.zoneLevel'
+    HOSTALLOCATOR_CONCURRENTLEVEL = 'hostAllocator.concurrentLevel'
     RESERVEDCAPACITY_HOSTLEVEL = 'reservedCapacity.hostLevel'
     USEPAGINATION = 'usePagination'
     RESERVEDCAPACITY_CLUSTERLEVEL = 'reservedCapacity.clusterLevel'
@@ -22230,6 +22283,7 @@ class GlobalConfig_KVM(object):
     VM_CACHEMODE = 'vm.cacheMode'
     HOST_DNSCHECK163 = 'host.DNSCheck163'
     RESERVEDCPU = 'reservedCpu'
+    CHECKHOSTCPUMODELNAME = 'checkHostCpuModelName'
     DATAVOLUME_MAXNUM = 'dataVolume.maxNum'
     HOST_DNSCHECKLIST = 'host.DNSCheckList'
     VMSYNCONHOSTPING = 'vmSyncOnHostPing'
@@ -22338,12 +22392,27 @@ class GlobalConfig_OTHERS(object):
     def get_category():
         return 'Others'
 
+class GlobalConfig_PCIDEVICE(object):
+    IOMMUENABLED = 'iommuEnabled'
+
+    @staticmethod
+    def get_category():
+        return 'pciDevice'
+
 class GlobalConfig_PORTFORWARDING(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
 
     @staticmethod
     def get_category():
         return 'portForwarding'
+
+class GlobalConfig_PREMIUMHOSTALLOCATOR(object):
+    MINIMUMCPUUSAGEHOSTALLOCATORSTRATEGY_COLLECTHOSTDATADURATION = 'minimumCPUUsageHostAllocatorStrategy.collectHostDataDuration'
+    MINIMUMMEMORYUSAGEHOSTALLOCATORSTRATEGY_COLLECTHOSTDATADURATION = 'minimumMemoryUsageHostAllocatorStrategy.collectHostDataDuration'
+
+    @staticmethod
+    def get_category():
+        return 'premiumHostAllocator'
 
 class GlobalConfig_PRIMARYSTORAGE(object):
     PING_INTERVAL = 'ping.interval'
@@ -22533,7 +22602,7 @@ class QueryObjectAlarmActionInventory(object):
      }
 
 class QueryObjectAlarmInventory(object):
-     PRIMITIVE_FIELDS = ['period','metricName','comparisonOperator','description','threshold','uuid','name','namespace','repeatInterval','lastOpDate','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['period','metricName','comparisonOperator','description','threshold','uuid','name','namespace','repeatInterval','lastOpDate','state','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['labels','actions','actions','labels']
      QUERY_OBJECT_MAP = {
         'actions' : 'QueryObjectAlarmActionInventory',
