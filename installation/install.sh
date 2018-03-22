@@ -1579,6 +1579,7 @@ install_zstack(){
     show_spinner iz_install_zstackctl
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
       show_spinner sd_install_zstack_ui
+      zstack-ctl config_ui --restore
     fi
 }
 
