@@ -682,7 +682,7 @@ class Ctl(object):
         if os.getuid() != 0:
             raise CtlError('zstack-ctl needs root privilege, please run with sudo')
 
-        if not os.path.exists(self.ui_properties_file_path):
+        if os.path.exists(Ctl.ZSTACK_UI_HOME) and not os.path.exists(self.ui_properties_file_path):
             os.mknod(self.ui_properties_file_path)
             os.chmod(self.ui_properties_file_path, 438)
 
