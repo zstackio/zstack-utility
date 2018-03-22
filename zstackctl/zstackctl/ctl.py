@@ -5372,13 +5372,16 @@ class InstallManagementNodeCmd(Command):
     - name: prepare remote environment
       script: $pre_script
 
+    - name: sync repo from remote management node
+      script: $sync_repo
+
     - name: install dependencies on RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools iptables-services
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
 
     - name: install dependencies on RedHat OS from system repos
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools iptables-services
+      shell: yum clean metadata; yum --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
 
     - name: set java 8 as default runtime
       when: ansible_os_family == 'RedHat'
@@ -5618,6 +5621,123 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
 
         self.install_cleanup_routine(clean_up)
 
+        sync_repo = '''
+# check /opt/zstack-dvd
+if [ ! -d /opt/zstack-dvd ]; then
+    echo "/opt/zstack-dvd not found, please download ZStack ISO and execute '# zstack-upgrade -r PATH_TO_ZSTACK_ISO'"
+    exit 1
+fi
+
+# prepare yum repo file
+cat > /etc/yum.repos.d/zstack-online-base.repo << EOF
+[zstack-online-base]
+name=zstack-online-base
+baseurl=${BASEURL}
+gpgcheck=0
+enabled=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-ceph.repo << EOF
+[zstack-online-ceph]
+name=zstack-online-ceph
+baseurl=${BASEURL}/Extra/ceph
+gpgcheck=0
+enabled=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-uek4.repo << EOF
+[zstack-online-uek4]
+name=zstack-online-uek4
+baseurl=${BASEURL}/Extra/uek4
+gpgcheck=0
+enabled=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-galera.repo << EOF
+[zstack-online-galera]
+name=zstack-online-galera
+baseurl=${BASEURL}/Extra/galera
+gpgcheck=0
+enabled=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
+[zstack-online-qemu-kvm-ev]
+name=zstack-online-qemu-kvm-ev
+baseurl=${BASEURL}/Extra/qemu-kvm-ev
+gpgcheck=0
+enabled=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-virtio-win.repo << EOF
+[zstack-online-virtio-win]
+name=zstack-online-virtio-win
+baseurl=${BASEURL}/Extra/virtio-win
+gpgcheck=0
+enabled=0
+EOF
+
+# close epel
+yum clean all >/dev/null 2>&1
+if [ -f /etc/yum.repos.d/epel.repo ]; then
+    sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+fi
+
+# install necessary packages
+pkg_list="createrepo curl yum-utils"
+yum -y --disablerepo=* --enablerepo=zstack-online-base install $${pkg_list} >/dev/null 2>&1 || exit 1
+
+# reposync
+mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
+umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
+mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
+reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
+reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
+reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
+reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
+reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
+reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
+rm -f /etc/yum.repos.d/zstack-online-*.repo
+
+# createrepo
+createrepo -g /opt/zstack-dvd/Base/comps.xml /opt/zstack-dvd/Base/ >/dev/null 2>&1 || exit 1
+rm -rf /opt/zstack-dvd/repodata >/dev/null 2>&1
+mv /opt/zstack-dvd/Base/* /opt/zstack-dvd/ >/dev/null 2>&1
+rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
+createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || exit 1
+createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1 || exit 1
+createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1 || exit 1
+createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || exit 1
+createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || exit 1
+
+# sync .repo_version
+echo ${repo_version} > /opt/zstack-dvd/.repo_version
+
+# clean up
+rm -f /opt/zstack-dvd/comps.xml
+yum clean all >/dev/null 2>&1
+'''
+        command = "yum --disablerepo=* --enablerepo=zstack-mn repoinfo | grep Repo-baseurl | awk -F ' : ' '{ print $NF }'"
+        (status, baseurl, stderr) = shell_return_stdout_stderr(command)
+        if status != 0:
+            baseurl = 'http://localhost:8080/zstack/static/zstack-dvd/'
+
+        with open('/opt/zstack-dvd/.repo_version') as f:
+            repoversion = f.readline().strip()
+
+        t = string.Template(sync_repo)
+        sync_repo = t.substitute({
+            'BASEURL': baseurl.strip(),
+            'repo_version': repoversion
+        })
+
+        fd, sync_repo_path = tempfile.mkstemp()
+        os.fdopen(fd, 'w').write(sync_repo)
+
+        def clean_up():
+            os.remove(sync_repo_path)
+        self.install_cleanup_routine(clean_up)
+
         t = string.Template(yaml)
         if args.yum:
             yum_repo = args.yum
@@ -5638,9 +5758,9 @@ zstack-ctl setenv ZSTACK_HOME=$install_path/apache-tomcat/webapps/zstack
             'pypi_path': '/tmp/pypi/',
             'yum_folder': ctl.zstack_home,
             'yum_repo': yum_repo,
-            'setup_account': setup_account_path
+            'setup_account': setup_account_path,
+            'sync_repo' : sync_repo_path
         })
-
 
         ansible(yaml, host_info.host, args.debug, private_key)
         info('successfully installed new management node on machine(%s)' % host_info.host)
