@@ -15,9 +15,15 @@ class AgentResponse(object):
 
 
 class ImageStoreClient(object):
-    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
+    ZSTORE_CLI_BIN = "/usr/local/zstack/imagestore/bin/zstcli"
+    ZSTORE_CLI_PATH = ZSTORE_CLI_BIN + " -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_PROTOSTR = "zstore://"
     ZSTORE_DEF_PORT = 8000
+
+    def _check_zstore_cli(self):
+        if not os.path.exists(self.ZSTORE_CLI_BIN):
+            errmsg = '%s not found. Please reconnect all baremetal pxeservers, and try again.' % self.ZSTORE_CLI_BIN
+            raise Exception(errmsg)
 
     def _parse_image_reference(self, bs_install_path):
         if not bs_install_path.startswith(self.ZSTORE_PROTOSTR):
@@ -30,6 +36,8 @@ class ImageStoreClient(object):
         return xs[0], xs[1]
 
     def download_image_from_imagestore(self, cmd):
+        self._check_zstore_cli()
+
         rsp = AgentResponse()
         name, imageid = self._parse_image_reference(cmd.imageInstallPath)
         cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (
