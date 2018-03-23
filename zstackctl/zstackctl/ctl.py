@@ -5210,14 +5210,24 @@ class ChangeIpCmd(Command):
               ('management.server.ip', args.ip),
             ])
             info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
-            db_url = ctl.read_property('DB.url')
 
+            # update zstack db url
+            db_url = ctl.read_property('DB.url')
             db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
             db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
             ctl.write_properties([
               ('DB.url', db_new_url),
             ])
             info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
+
+            # update zstack_ui db url
+            db_url = ctl.read_ui_property('db_url')
+            db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
+            db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
+            ctl.write_ui_properties([
+              ('db_url', db_new_url),
+            ])
+            info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
