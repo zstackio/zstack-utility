@@ -14790,7 +14790,6 @@ class APIRemoveLabelFromEventSubscriptionMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -22556,6 +22555,7 @@ class GlobalConfig_TEST(object):
     TEST = 'Test'
     TESTSTRING = 'TestString'
     TESTBOOLEAN = 'TestBoolean'
+    TESTBORDER = 'TestBorder'
     TEST3 = 'Test3'
     TEST4 = 'Test4'
 
