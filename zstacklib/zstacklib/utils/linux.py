@@ -417,13 +417,14 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         return write_to_temp_file(sshkey)
 
     sshkey_file = create_ssh_key_file()
-    shell.call('chmod 600 %s' % sshkey_file)
+    os.chmod(sshkey_file, 0600)
     try:
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         scp_cmd = 'scp -P {0} -o StrictHostKeyChecking=no -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath)
         shell.call(scp_cmd)
+        os.chmod(dst_dir, 0664)
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
