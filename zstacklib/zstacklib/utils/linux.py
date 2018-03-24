@@ -81,14 +81,6 @@ def rm_file_force(fpath):
 def process_exists(pid):
     return os.path.exists("/proc/" + str(pid))
 
-def kill_process(pid, sig):
-    try:
-        os.kill(int(pid), int(sig))
-    except:
-        pass
-
-def kill9_process(pid):
-    kill_process(pid, 9)
 
 def cidr_to_netmask(cidr):
     cidr = int(cidr)
@@ -1281,7 +1273,8 @@ class TimeoutObject(object):
         clean_timeout_object()
 
 def kill_process(pid, timeout=5):
-    shell.call("kill %s" % pid)
+    logger.debug("kill -15 process[pid %s]" % pid)
+    os.kill(int(pid), 15)
 
     def check(_):
         cmd = shell.ShellCmd('ps %s > /dev/null' % pid)
@@ -1291,7 +1284,8 @@ def kill_process(pid, timeout=5):
     if wait_callback_success(check, None, timeout):
         return
 
-    shell.call("kill -9 %s" % pid)
+    logger.debug("kill -9 process[pid %s]" % pid)
+    os.kill(int(pid), 9)
     if not wait_callback_success(check, None, timeout):
         raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
 
