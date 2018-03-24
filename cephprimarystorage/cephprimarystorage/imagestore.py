@@ -60,9 +60,17 @@ class ImageStoreClient(object):
         if not self._ceph_file_existed(imf):
             self.commit_to_imagestore(cmd, req)
 
-        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s push %s' % (
+        extpara = ""
+        taskid = req[http.REQUEST_HEADER].get(http.TASK_UUID)
+        if cmd.threadContext:
+            if cmd.threadContext['task-stage']:
+                extpara += " -stage %s" % cmd.threadContext['task-stage']
+            if cmd.threadContext.api:
+                taskid = cmd.threadContext.api
+
+        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s %s push %s' % (
             self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
-            req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.srcPath)
+            taskid, cmd.imageUuid, extpara, cmd.srcPath)
         logger.debug('pushing %s to image store' % cmd.srcPath)
         shell.call(cmdstr.encode(encoding="utf-8"))
         logger.debug('%s pushed to image store' % cmd.srcPath)
