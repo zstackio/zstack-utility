@@ -87,7 +87,7 @@ def kill_and_umount(mount_path, is_nfs):
 def umount_fs(mount_path, is_nfs):
     if is_nfs:
         shell.ShellCmd("systemctl stop nfs-client.target")(False)
-    time.sleep(2)
+        time.sleep(2)
     o = shell.ShellCmd("umount -f %s" % mount_path)
     o(False)
     if o.return_code != 0:
@@ -95,15 +95,9 @@ def umount_fs(mount_path, is_nfs):
 
 
 def kill_progresses_using_mount_path(mount_path):
-    list_ps = []
-    o = shell.ShellCmd("ps aux | grep '%s' | awk '{print $2}'" % mount_path)
+    o = shell.ShellCmd("pkill -9 -e -f '%s'" % mount_path)
     o(False)
-    if o.return_code == 0:
-        list_ps = o.stdout.splitlines()
-
-    logger.warn('kill the progresses, pids:%s with mount path: %s' % (list_ps, mount_path))
-    for ps_id in list_ps:
-        linux.kill9_process(ps_id)
+    logger.warn('kill the progresses with mount path: %s, killed process: %s' % (mount_path, o.stdout))
 
 
 def is_need_kill(vmUuid, mountPaths, isFileSystem):
