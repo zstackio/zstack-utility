@@ -545,6 +545,19 @@ def qcow2_size_and_actual_size(file_path):
 
     return virtual_size, actual_size
 
+'''  
+   file command output:
+   # file FusionStack-1.5.iso 
+     FusionStack-1.5.iso: # ISO 9660 CD-ROM filesystem data 'ZS' (bootable) 
+'''
+def get_img_file_fmt(src):
+    fmt = get_img_fmt(src)
+    if fmt == "raw":
+        result = shell.call("set -o pipefail; file %s | awk '{print $2}'" % src)
+        if "ISO" in result:
+            fmt = "iso"
+    return fmt
+
 def get_img_fmt(src):
     fmt = shell.call("set -o pipefail; /usr/bin/qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % src)
     fmt = fmt.strip(' \t\r\n')
