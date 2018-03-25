@@ -643,19 +643,34 @@ class CephAgent(object):
         rsp = DownloadRsp()
 
         def isDerivedQcow2Image(path):
+            return getOriginalFormat(path) == "derivedQcow2"
+
+        def getOriginalFormat(path):
             if path.startswith('http://') or path.startswith('https://'):
                 resp = urllib2.urlopen(path)
-                qhdr = resp.read(72)
+                qhdr = resp.read(0x9007)
                 resp.close()
             else:
                 resp = open(path)
-                qhdr = resp.read(72)
-                resp.close
-            if len(qhdr) != 72:
-                return False
-            if qhdr[:4] != 'QFI\xfb':
-                return False
-            return qhdr[16:20] != '\x00\x00\x00\00'
+                qhdr = resp.read(0x9007)
+                resp.close()
+            if len(qhdr) < 0x9007:
+                return "raw"
+            if qhdr[:4] == 'QFI\xfb':
+                if qhdr[16:20] == '\x00\x00\x00\00':
+                    return "qcow2"
+                else:
+                    return "derivedQcow2"
+
+            if qhdr[0x8001:0x8006] == 'CD001':
+                return 'iso'
+
+            if qhdr[0x8801:0x8806] == 'CD001':
+                return 'iso'
+
+            if qhdr[0x9001:0x9006] == 'CD001':
+                return 'iso'
+            return "raw"
 
         def fail_if_has_backing_file(fpath):
             if isDerivedQcow2Image(fpath):
@@ -706,6 +721,7 @@ class CephAgent(object):
 
         if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
             fail_if_has_backing_file(cmd.url)
+            image_format = getOriginalFormat(cmd.url)
             cmd.url = linux.shellquote(cmd.url)
             # roll back tmp ceph file after import it
             _1()
@@ -747,6 +763,8 @@ class CephAgent(object):
             fail_if_has_backing_file(src_path)
             # roll back tmp ceph file after import it
             _1()
+
+            image_format = getOriginalFormat(src_path)
             shell.check_run("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
             actual_size = os.path.getsize(src_path)
         else:
@@ -786,6 +804,11 @@ class CephAgent(object):
 
         rsp.size = long(image_stats.size_)
         rsp.actualSize = actual_size
+        if image_format == "qcow2":
+            rsp.format = "raw"
+        else:
+            rsp.format = image_format
+
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
