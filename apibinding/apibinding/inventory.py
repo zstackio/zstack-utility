@@ -14568,12 +14568,48 @@ class APIAddActionToAlarmMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDACTIONTOEVENTSUBSCRIPTIONMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIAddActionToEventSubscriptionMsg'
+class APIAddActionToEventSubscriptionMsg(object):
+    FULL_NAME='org.zstack.zwatch.alarm.APIAddActionToEventSubscriptionMsg'
+    def __init__(self):
+        #mandatory field
+        self.subscriptionUuid = NotNoneField()
+        #mandatory field
+        self.actionUuid = NotNoneField()
+        #mandatory field
+        self.actionType = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDLABELTOALARMMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIAddLabelToAlarmMsg'
 class APIAddLabelToAlarmMsg(object):
     FULL_NAME='org.zstack.zwatch.alarm.APIAddLabelToAlarmMsg'
     def __init__(self):
         #mandatory field
         self.alarmUuid = NotNoneField()
+        #mandatory field
+        self.key = NotNoneField()
+        #mandatory field
+        self.value = NotNoneField()
+        #mandatory field
+        #valid values: [Regex, Equal]
+        self.operator = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIADDLABELTOEVENTSUBSCRIPTIONMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIAddLabelToEventSubscriptionMsg'
+class APIAddLabelToEventSubscriptionMsg(object):
+    FULL_NAME='org.zstack.zwatch.alarm.APIAddLabelToEventSubscriptionMsg'
+    def __init__(self):
+        #mandatory field
+        self.subscriptionUuid = NotNoneField()
         #mandatory field
         self.key = NotNoneField()
         #mandatory field
@@ -14721,6 +14757,20 @@ class APIRemoveActionFromAlarmMsg(object):
         self.userTags = OptionalList()
 
 
+APIREMOVEACTIONFROMEVENTSUBSCRIPTIONMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIRemoveActionFromEventSubscriptionMsg'
+class APIRemoveActionFromEventSubscriptionMsg(object):
+    FULL_NAME='org.zstack.zwatch.alarm.APIRemoveActionFromEventSubscriptionMsg'
+    def __init__(self):
+        #mandatory field
+        self.subscriptionUuid = NotNoneField()
+        #mandatory field
+        self.actionUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIREMOVELABELFROMALARMMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIRemoveLabelFromAlarmMsg'
 class APIRemoveLabelFromAlarmMsg(object):
     FULL_NAME='org.zstack.zwatch.alarm.APIRemoveLabelFromAlarmMsg'
@@ -14728,6 +14778,18 @@ class APIRemoveLabelFromAlarmMsg(object):
         #mandatory field
         self.uuid = NotNoneField()
         self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIREMOVELABELFROMEVENTSUBSCRIPTIONMSG_FULL_NAME = 'org.zstack.zwatch.alarm.APIRemoveLabelFromEventSubscriptionMsg'
+class APIRemoveLabelFromEventSubscriptionMsg(object):
+    FULL_NAME='org.zstack.zwatch.alarm.APIRemoveLabelFromEventSubscriptionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -15040,6 +15102,7 @@ class APIPutMetricDataMsg(object):
 
 api_names = [
     'APIAddActionToAlarmMsg',
+    'APIAddActionToEventSubscriptionMsg',
     'APIAddAliyunKeySecretMsg',
     'APIAddCephBackupStorageMsg',
     'APIAddCephPrimaryStorageMsg',
@@ -15057,6 +15120,7 @@ api_names = [
     'APIAddIpRangeMsg',
     'APIAddKVMHostMsg',
     'APIAddLabelToAlarmMsg',
+    'APIAddLabelToEventSubscriptionMsg',
     'APIAddLdapServerMsg',
     'APIAddLocalPrimaryStorageMsg',
     'APIAddMonToCephBackupStorageMsg',
@@ -15928,8 +15992,10 @@ api_names = [
     'APIReloadLicenseMsg',
     'APIReloadLicenseReply',
     'APIRemoveActionFromAlarmMsg',
+    'APIRemoveActionFromEventSubscriptionMsg',
     'APIRemoveDnsFromL3NetworkMsg',
     'APIRemoveLabelFromAlarmMsg',
+    'APIRemoveLabelFromEventSubscriptionMsg',
     'APIRemoveMonFromCephBackupStorageMsg',
     'APIRemoveMonFromCephPrimaryStorageMsg',
     'APIRemoveMonFromFusionstorBackupStorageMsg',
@@ -22097,8 +22163,8 @@ PRIMARY_STORAGE_TYPE = 'ZSES'
 
 #GlobalConfigPythonConstant
 class GlobalConfig_ALIYUN(object):
-    ALIYUN_OPENAPI_PAGE_SIZE = 'aliyun.openapi.page.size'
     UPLOAD_ECS_IMAGE_FORMAT = 'upload.ecs.image.format'
+    ALIYUN_OPENAPI_PAGE_SIZE = 'aliyun.openapi.page.size'
 
     @staticmethod
     def get_category():
@@ -22114,9 +22180,9 @@ class GlobalConfig_APPLIANCEVM(object):
         return 'applianceVm'
 
 class GlobalConfig_BACKUPSTORAGE(object):
-    PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
     RESERVEDCAPACITY = 'reservedCapacity'
     PING_INTERVAL = 'ping.interval'
+    PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
 
     @staticmethod
     def get_category():
@@ -22131,11 +22197,11 @@ class GlobalConfig_BILLING(object):
 
 class GlobalConfig_CEPH(object):
     BACKUPSTORAGE_MON_RECONNECTDELAY = 'backupStorage.mon.reconnectDelay'
+    PRIMARYSTORAGE_MON_RECONNECTDELAY = 'primaryStorage.mon.reconnectDelay'
+    PRIMARYSTORAGE_DELETEPOOL = 'primaryStorage.deletePool'
     BACKUPSTORAGE_MON_AUTORECONNECT = 'backupStorage.mon.autoReconnect'
     PRIMARYSTORAGE_MON_AUTORECONNECT = 'primaryStorage.mon.autoReconnect'
     IMAGECACHE_CLEANUP_INTERVAL = 'imageCache.cleanup.interval'
-    PRIMARYSTORAGE_MON_RECONNECTDELAY = 'primaryStorage.mon.reconnectDelay'
-    PRIMARYSTORAGE_DELETEPOOL = 'primaryStorage.deletePool'
     BACKUPSTORAGE_IMAGE_DOWNLOAD_TIMEOUT = 'backupStorage.image.download.timeout'
 
     @staticmethod
@@ -22180,11 +22246,11 @@ class GlobalConfig_ENCRYPT(object):
 
 class GlobalConfig_FUSIONSTOR(object):
     IMAGECACHE_CLEANUP_INTERVAL = 'imageCache.cleanup.interval'
-    BACKUPSTORAGE_MON_AUTORECONNECT = 'backupStorage.mon.autoReconnect'
     BACKUPSTORAGE_MON_RECONNECTDELAY = 'backupStorage.mon.reconnectDelay'
+    PRIMARYSTORAGE_MON_AUTORECONNECT = 'primaryStorage.mon.autoReconnect'
+    BACKUPSTORAGE_MON_AUTORECONNECT = 'backupStorage.mon.autoReconnect'
     PRIMARYSTORAGE_DELETEPOOL = 'primaryStorage.deletePool'
     PRIMARYSTORAGE_MON_RECONNECTDELAY = 'primaryStorage.mon.reconnectDelay'
-    PRIMARYSTORAGE_MON_AUTORECONNECT = 'primaryStorage.mon.autoReconnect'
     BACKUPSTORAGE_IMAGE_DOWNLOAD_TIMEOUT = 'backupStorage.image.download.timeout'
 
     @staticmethod
@@ -22200,33 +22266,33 @@ class GlobalConfig_GC(object):
 
 class GlobalConfig_HA(object):
     HOST_SELFFENCER_MAXATTEMPTS = 'host.selfFencer.maxAttempts'
-    HOST_CHECK_SUCCESSTIMES = 'host.check.successTimes'
     ENABLE = 'enable'
     NEVERSTOPVM_NOTIFICATION_TIMES = 'neverStopVm.notification.times'
-    HOST_CHECK_INTERVAL = 'host.check.interval'
-    NEVERSTOPVM_SCAN_INTERVAL = 'neverStopVm.scan.interval'
     NEVERSTOPVM_RETRY_DELAY = 'neverStopVm.retry.delay'
-    HOST_SELFFENCER_STORAGECHECKER_TIMEOUT = 'host.selfFencer.storageChecker.timeout'
-    NEVERSTOPVM_GC_MAXRETRYINTERVALTIME = 'neverStopVm.gc.maxRetryIntervalTime'
     HOST_CHECK_SUCCESSINTERVAL = 'host.check.successInterval'
-    HOST_CHECK_SUCCESSRATIO = 'host.check.successRatio'
     HOST_CHECK_MAXATTEMPTS = 'host.check.maxAttempts'
     HOST_SELFFENCER_INTERVAL = 'host.selfFencer.interval'
+    HOST_CHECK_SUCCESSTIMES = 'host.check.successTimes'
+    HOST_CHECK_INTERVAL = 'host.check.interval'
+    NEVERSTOPVM_SCAN_INTERVAL = 'neverStopVm.scan.interval'
+    HOST_SELFFENCER_STORAGECHECKER_TIMEOUT = 'host.selfFencer.storageChecker.timeout'
+    NEVERSTOPVM_GC_MAXRETRYINTERVALTIME = 'neverStopVm.gc.maxRetryIntervalTime'
+    HOST_CHECK_SUCCESSRATIO = 'host.check.successRatio'
 
     @staticmethod
     def get_category():
         return 'ha'
 
 class GlobalConfig_HOST(object):
-    LOAD_PARALLELISMDEGREE = 'load.parallelismDegree'
     PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
+    UPDATE_OS_PARALLELISMDEGREE = 'update.os.parallelismDegree'
+    LOAD_PARALLELISMDEGREE = 'load.parallelismDegree'
     PING_MAXFAILURE = 'ping.maxFailure'
     LOAD_ALL = 'load.all'
     CONNECTION_AUTORECONNECTONERROR = 'connection.autoReconnectOnError'
     CPU_OVERPROVISIONING_RATIO = 'cpu.overProvisioning.ratio'
     MAINTENANCEMODE_IGNOREERROR = 'maintenanceMode.ignoreError'
     RECONNECTALLONBOOT = 'reconnectAllOnBoot'
-    UPDATE_OS_PARALLELISMDEGREE = 'update.os.parallelismDegree'
     PING_INTERVAL = 'ping.interval'
 
     @staticmethod
@@ -22234,11 +22300,12 @@ class GlobalConfig_HOST(object):
         return 'host'
 
 class GlobalConfig_HOSTALLOCATOR(object):
+    HOSTALLOCATOR_CONCURRENTLEVEL = 'hostAllocator.concurrentLevel'
+    USEPAGINATION = 'usePagination'
+    HOSTALLOCATOR_CONCURRENT = 'hostAllocator.concurrent'
     PAGINATIONLIMIT = 'paginationLimit'
     RESERVEDCAPACITY_ZONELEVEL = 'reservedCapacity.zoneLevel'
-    HOSTALLOCATOR_CONCURRENTLEVEL = 'hostAllocator.concurrentLevel'
     RESERVEDCAPACITY_HOSTLEVEL = 'reservedCapacity.hostLevel'
-    USEPAGINATION = 'usePagination'
     RESERVEDCAPACITY_CLUSTERLEVEL = 'reservedCapacity.clusterLevel'
 
     @staticmethod
@@ -22254,22 +22321,22 @@ class GlobalConfig_HYBRID(object):
         return 'hybrid'
 
 class GlobalConfig_IDENTITY(object):
+    ADMIN_SHOWALLRESOURCE = 'admin.showAllResource'
+    SESSION_TIMEOUT = 'session.timeout'
     SESSION_CLEANUP_INTERVAL = 'session.cleanup.interval'
     SESSION_MAXCONCURRENT = 'session.maxConcurrent'
     ACCOUNT_API_CONTROL = 'account.api.control'
-    ADMIN_SHOWALLRESOURCE = 'admin.showAllResource'
-    SESSION_TIMEOUT = 'session.timeout'
 
     @staticmethod
     def get_category():
         return 'identity'
 
 class GlobalConfig_IMAGE(object):
-    EXPUNGEPERIOD = 'expungePeriod'
     DELETIONPOLICY = 'deletionPolicy'
     DELETION_GCINTERVAL = 'deletion.gcInterval'
-    ENABLERESETPASSWORD = 'enableResetPassword'
     EXPUNGEINTERVAL = 'expungeInterval'
+    EXPUNGEPERIOD = 'expungePeriod'
+    ENABLERESETPASSWORD = 'enableResetPassword'
 
     @staticmethod
     def get_category():
@@ -22277,18 +22344,18 @@ class GlobalConfig_IMAGE(object):
 
 class GlobalConfig_KVM(object):
     HOST_DNSCHECKALIYUN = 'host.DNSCheckAliyun'
-    RESERVEDMEMORY = 'reservedMemory'
-    HOST_SYNCLEVEL = 'host.syncLevel'
     VM_CPUMODE = 'vm.cpuMode'
     VM_CACHEMODE = 'vm.cacheMode'
     HOST_DNSCHECK163 = 'host.DNSCheck163'
     RESERVEDCPU = 'reservedCpu'
     CHECKHOSTCPUMODELNAME = 'checkHostCpuModelName'
-    DATAVOLUME_MAXNUM = 'dataVolume.maxNum'
-    HOST_DNSCHECKLIST = 'host.DNSCheckList'
     VMSYNCONHOSTPING = 'vmSyncOnHostPing'
     REDHAT_LIVESNAPSHOTON = 'redhat.liveSnapshotOn'
     VM_MIGRATIONQUANTITY = 'vm.migrationQuantity'
+    RESERVEDMEMORY = 'reservedMemory'
+    HOST_SYNCLEVEL = 'host.syncLevel'
+    DATAVOLUME_MAXNUM = 'dataVolume.maxNum'
+    HOST_DNSCHECKLIST = 'host.DNSCheckList'
 
     @staticmethod
     def get_category():
@@ -22303,12 +22370,12 @@ class GlobalConfig_LDAP(object):
         return 'ldap'
 
 class GlobalConfig_LOADBALANCER(object):
-    HEALTHCHECKINTERVAL = 'healthCheckInterval'
     MAXCONNECTION = 'maxConnection'
     HEALTHCHECKTARGET = 'healthCheckTarget'
+    CONNECTIONIDLETIMEOUT = 'connectionIdleTimeout'
+    HEALTHCHECKINTERVAL = 'healthCheckInterval'
     HEALTHCHECKTIMEOUT = 'healthCheckTimeout'
     UNHEALTHYTHRESHOLD = 'unhealthyThreshold'
-    CONNECTIONIDLETIMEOUT = 'connectionIdleTimeout'
     BALANCERALGORITHM = 'balancerAlgorithm'
     HEALTHYTHRESHOLD = 'healthyThreshold'
 
@@ -22339,14 +22406,14 @@ class GlobalConfig_MANAGEMENTSERVER(object):
         return 'managementServer'
 
 class GlobalConfig_MEVOCO(object):
-    DISTRIBUTEIMAGE_CONCURRENCY = 'distributeImage.concurrency'
-    APIRETRY_INTERVAL_VM = 'apiRetry.interval.vm'
     APIRETRY_VM = 'apiRetry.vm'
     OVERPROVISIONING_MEMORY = 'overProvisioning.memory'
-    DISTRIBUTEIMAGE = 'distributeImage'
-    THRESHOLD_PRIMARYSTORAGE_PHYSICALCAPACITY = 'threshold.primaryStorage.physicalCapacity'
     VM_CONSOLEMODE = 'vm.consoleMode'
     HOSTALLOCATORSTRATEGY = 'hostAllocatorStrategy'
+    DISTRIBUTEIMAGE_CONCURRENCY = 'distributeImage.concurrency'
+    APIRETRY_INTERVAL_VM = 'apiRetry.interval.vm'
+    DISTRIBUTEIMAGE = 'distributeImage'
+    THRESHOLD_PRIMARYSTORAGE_PHYSICALCAPACITY = 'threshold.primaryStorage.physicalCapacity'
     OVERPROVISIONING_PRIMARYSTORAGE = 'overProvisioning.primaryStorage'
 
     @staticmethod
@@ -22361,9 +22428,9 @@ class GlobalConfig_MONITORING(object):
         return 'monitoring'
 
 class GlobalConfig_NETWORKSERVICE(object):
+    DEFAULTDHCPMTU_L2VLANNETWORK = 'defaultDhcpMtu.l2VlanNetwork'
     DEFAULTDHCPMTU_DUMMYNETWORK = 'defaultDhcpMtu.dummyNetwork'
     DEFAULTDHCPMTU_L2VXLANNETWORK = 'defaultDhcpMtu.l2VxlanNetwork'
-    DEFAULTDHCPMTU_L2VLANNETWORK = 'defaultDhcpMtu.l2VlanNetwork'
     DEFAULTDHCPMTU_L2NOVLANNETWORK = 'defaultDhcpMtu.l2NoVlanNetwork'
 
     @staticmethod
@@ -22371,8 +22438,8 @@ class GlobalConfig_NETWORKSERVICE(object):
         return 'networkService'
 
 class GlobalConfig_NFSPRIMARYSTORAGE(object):
-    DELETION_GCINTERVAL = 'deletion.gcInterval'
     MOUNT_BASE = 'mount.base'
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
 
     @staticmethod
     def get_category():
@@ -22407,30 +22474,30 @@ class GlobalConfig_PORTFORWARDING(object):
         return 'portForwarding'
 
 class GlobalConfig_PREMIUMHOSTALLOCATOR(object):
-    MINIMUMCPUUSAGEHOSTALLOCATORSTRATEGY_COLLECTHOSTDATADURATION = 'minimumCPUUsageHostAllocatorStrategy.collectHostDataDuration'
     MINIMUMMEMORYUSAGEHOSTALLOCATORSTRATEGY_COLLECTHOSTDATADURATION = 'minimumMemoryUsageHostAllocatorStrategy.collectHostDataDuration'
+    MINIMUMCPUUSAGEHOSTALLOCATORSTRATEGY_COLLECTHOSTDATADURATION = 'minimumCPUUsageHostAllocatorStrategy.collectHostDataDuration'
 
     @staticmethod
     def get_category():
         return 'premiumHostAllocator'
 
 class GlobalConfig_PRIMARYSTORAGE(object):
-    PING_INTERVAL = 'ping.interval'
     PRIMARYSTORAGE_DELETE_BITS_GARBAGE_ON = 'primarystorage.delete.bits.garbage.on'
-    RESERVEDCAPACITY = 'reservedCapacity'
     PRIMARYSTORAGE_DELETE_BITS_TIMES = 'primarystorage.delete.bits.times'
     IMAGECACHE_GARBAGECOLLECTOR_INTERVAL = 'imageCache.garbageCollector.interval'
     PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
     PRIMARYSTORAGE_DELETE_BITS_GARBAGECOLLECTOR_INTERVAL = 'primarystorage.delete.bits.garbageCollector.interval'
+    PING_INTERVAL = 'ping.interval'
+    RESERVEDCAPACITY = 'reservedCapacity'
 
     @staticmethod
     def get_category():
         return 'primaryStorage'
 
 class GlobalConfig_PROGRESS(object):
+    PROGRESS_CLEANUPTHREADINTERVAL = 'progress.cleanupThreadInterval'
     PROGRESS_ON = 'progress.on'
     PROGRESS_TTL = 'progress.ttl'
-    PROGRESS_CLEANUPTHREADINTERVAL = 'progress.cleanupThreadInterval'
 
     @staticmethod
     def get_category():
@@ -22438,19 +22505,19 @@ class GlobalConfig_PROGRESS(object):
 
 class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
+    VM_MEMORYSIZE = 'vm.memorySize'
+    EIP_NUM = 'eip.num'
+    IMAGE_NUM = 'image.num'
+    VIP_NUM = 'vip.num'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
-    VM_MEMORYSIZE = 'vm.memorySize'
     PORTFORWARDING_NUM = 'portForwarding.num'
-    EIP_NUM = 'eip.num'
-    IMAGE_NUM = 'image.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
     LOADBALANCER_NUM = 'loadBalancer.num'
-    VIP_NUM = 'vip.num'
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
     VXLAN_NUM = 'vxlan.num'
@@ -22468,11 +22535,11 @@ class GlobalConfig_REST(object):
         return 'rest'
 
 class GlobalConfig_SECURITYGROUP(object):
+    HOST_FAILURERESOLVEPERTIME = 'host.failureResolvePerTime'
     INGRESS_DEFAULTPOLICY = 'ingress.defaultPolicy'
     HOST_FAILUREWORKERINTERVAL = 'host.failureWorkerInterval'
     REFRESH_DELAYINTERVAL = 'refresh.delayInterval'
     EGRESS_DEFAULTPOLICY = 'egress.defaultPolicy'
-    HOST_FAILURERESOLVEPERTIME = 'host.failureResolvePerTime'
 
     @staticmethod
     def get_category():
@@ -22487,10 +22554,11 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
 
 class GlobalConfig_TEST(object):
     TEST = 'Test'
-    TEST3 = 'Test3'
-    TEST4 = 'Test4'
     TESTSTRING = 'TestString'
     TESTBOOLEAN = 'TestBoolean'
+    TESTBORDER = 'TestBorder'
+    TEST3 = 'Test3'
+    TEST4 = 'Test4'
 
     @staticmethod
     def get_category():
@@ -22500,11 +22568,11 @@ class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
     VROUTER_ECHOTIMEOUT = 'vrouter.echoTimeout'
     SSH_PORT = 'ssh.port'
-    PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
-    VROUTER_PASSWORD = 'vrouter.password'
     COMMAND_PARALLELISMDEGREE = 'command.parallelismDegree'
     SSH_USERNAME = 'ssh.username'
     PING_INTERVAL = 'ping.interval'
+    PING_PARALLELISMDEGREE = 'ping.parallelismDegree'
+    VROUTER_PASSWORD = 'vrouter.password'
     DNSMASQ_RESTARTAFTERNUMBEROFSIGUSER1 = 'dnsmasq.restartAfterNumberOfSIGUSER1'
 
     @staticmethod
@@ -22513,14 +22581,14 @@ class GlobalConfig_VIRTUALROUTER(object):
 
 class GlobalConfig_VM(object):
     VIDEOTYPE = 'videoType'
-    DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
     BOOTMENU = 'bootMenu'
-    KVMHIDDENSTATE = 'kvmHiddenState'
     EXPUNGEPERIOD = 'expungePeriod'
     DELETIONPOLICY = 'deletionPolicy'
     NUMA = 'numa'
     CLEANTRAFFIC = 'cleanTraffic'
     INSTANCEOFFERING_SETNULLWHENDELETING = 'instanceOffering.setNullWhenDeleting'
+    DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
+    KVMHIDDENSTATE = 'kvmHiddenState'
     SPICESTREAMINGMODE = 'spiceStreamingMode'
     EXPUNGEINTERVAL = 'expungeInterval'
 
@@ -22553,6 +22621,13 @@ class GlobalConfig_VPC(object):
     @staticmethod
     def get_category():
         return 'vpc'
+
+class GlobalConfig_VYOS(object):
+    PRIVATE_L3_FIREWALL_DEFAULT_ACTION = 'private.l3.firewall.default.action'
+
+    @staticmethod
+    def get_category():
+        return 'vyos'
 
 class GlobalConfig_ZWATCH(object):
     MANAGEMENTSERVERDIRECTORIESTOMONITOR = 'managementServerDirectoriesToMonitor'
@@ -22912,7 +22987,7 @@ class QueryObjectEventSubscriptionInventory(object):
      }
 
 class QueryObjectEventSubscriptionLabelInventory(object):
-     PRIMITIVE_FIELDS = ['value','key','operator','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['uuid','value','key','operator','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }

@@ -14,6 +14,18 @@ class AddActionToAlarmAction(inventory.APIAddActionToAlarmMsg):
         self.out = evt
         return self.out
 
+class AddActionToEventSubscriptionAction(inventory.APIAddActionToEventSubscriptionMsg):
+    def __init__(self):
+        super(AddActionToEventSubscriptionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddActionToEventSubscriptionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddAliyunKeySecretAction(inventory.APIAddAliyunKeySecretMsg):
     def __init__(self):
         super(AddAliyunKeySecretAction, self).__init__()
@@ -214,6 +226,18 @@ class AddLabelToAlarmAction(inventory.APIAddLabelToAlarmMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AddLabelToAlarmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddLabelToEventSubscriptionAction(inventory.APIAddLabelToEventSubscriptionMsg):
+    def __init__(self):
+        super(AddLabelToEventSubscriptionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddLabelToEventSubscriptionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -7528,6 +7552,18 @@ class RemoveActionFromAlarmAction(inventory.APIRemoveActionFromAlarmMsg):
         self.out = evt
         return self.out
 
+class RemoveActionFromEventSubscriptionAction(inventory.APIRemoveActionFromEventSubscriptionMsg):
+    def __init__(self):
+        super(RemoveActionFromEventSubscriptionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveActionFromEventSubscriptionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RemoveDnsFromL3NetworkAction(inventory.APIRemoveDnsFromL3NetworkMsg):
     def __init__(self):
         super(RemoveDnsFromL3NetworkAction, self).__init__()
@@ -7548,6 +7584,18 @@ class RemoveLabelFromAlarmAction(inventory.APIRemoveLabelFromAlarmMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RemoveLabelFromAlarmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveLabelFromEventSubscriptionAction(inventory.APIRemoveLabelFromEventSubscriptionMsg):
+    def __init__(self):
+        super(RemoveLabelFromEventSubscriptionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveLabelFromEventSubscriptionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
