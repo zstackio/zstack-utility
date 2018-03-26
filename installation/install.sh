@@ -8,6 +8,7 @@ SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
+ZSTACK_UI_HOME=${ZSTACK_UI_HOME:-"/usr/local/zstack/zstack-ui"}
 
 OS=''
 CENTOS6='CENTOS6'
@@ -805,24 +806,29 @@ upgrade_zstack(){
     show_spinner cs_config_catalina_option
     show_spinner cs_append_iptables
 
-    if [ x"$UI_INSTALLATION_STATUS" = x'y' -o x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
-        echo "upgrade zstack web ui" >>$ZSTACK_INSTALL_LOG
-        rm -f /etc/init.d/zstack-dashboard
-        rm -f /etc/init.d/zstack-ui
-        show_spinner sd_install_zstack_ui
-    fi
+    # if -i is used, then do not upgrade zstack ui
+    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        if [ x"$UI_INSTALLATION_STATUS" = x'y' -o x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
+            echo "upgrade zstack web ui" >>$ZSTACK_INSTALL_LOG
+            rm -f /etc/init.d/zstack-dashboard
+            rm -f /etc/init.d/zstack-ui
+            show_spinner sd_install_zstack_ui
+        fi
 
-    # Who is the new UI? zstack-dashboard(1.x) or zstack-ui(2.0)
-    if [ -f /etc/init.d/zstack-dashboard ]; then
-      UI_INSTALLATION_STATUS='n'
-      DASHBOARD_INSTALLATION_STATUS='y'
+        # Who is the new UI? zstack-dashboard(1.x) or zstack-ui(2.0)
+        if [ -f /etc/init.d/zstack-dashboard ]; then
+          UI_INSTALLATION_STATUS='n'
+          DASHBOARD_INSTALLATION_STATUS='y'
+        elif [ -f /etc/init.d/zstack-ui ]; then
+          UI_INSTALLATION_STATUS='y'
+          DASHBOARD_INSTALLATION_STATUS='n'
+          # try to deploy zstack_ui database, if already exists then do upgrade
+          zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
+        else
+          fail "failed to upgrade zstack web ui"
+        fi
     elif [ -f /etc/init.d/zstack-ui ]; then
-      UI_INSTALLATION_STATUS='y'
-      DASHBOARD_INSTALLATION_STATUS='n'
-      # try to deploy zstack_ui database, if already exists then do upgrade
-      zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
-    else
-      fail "failed to upgrade zstack web ui" 
+        /bin/cp -f $ZSTACK_UI_HOME/zstack-ui.war $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
     fi
 
     #check old license folder and copy old license files to new folder.
