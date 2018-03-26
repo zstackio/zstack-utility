@@ -843,12 +843,13 @@ def wait_callback_success(callback, callback_data=None, timeout=60,
             if rsp:
                 return rsp
             time.sleep(interval)
-            count = time.time()
         except Exception as e:
             if not ignore_exception_in_callback:
                 logger.debug('Meet exception when call %s through wait_callback_success: %s' % (callback.__name__, get_exception_stacktrace()))
                 raise e
             time.sleep(interval)
+        finally:
+            count = time.time()
 
     return False
 
