@@ -1772,7 +1772,7 @@ class StartCmd(Command):
                 EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + OLD_QEMU_KVM_VERSION
 
             # version combinations that need to mount qemu-kvm-ev
-            version_matrix = {'c72': '2.9.0', 'c74': '2.6.0'}
+            version_matrix = {'c72': NEW_QEMU_KVM_VERSION, 'c74': OLD_QEMU_KVM_VERSION}
             qemu_version = ctl.read_property('KvmHost.qemu_kvm.version')
             if version_matrix[local_repo_version] == qemu_version:
                 cmd = ShellCmd("umount %s; mount --bind %s %s" % (DEFAULT_QEMU_KVM_PATH, EXPERIMENTAL_QEMU_KVM_PATH, DEFAULT_QEMU_KVM_PATH))
