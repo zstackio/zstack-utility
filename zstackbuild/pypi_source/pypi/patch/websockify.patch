@@ -1,0 +1,40 @@
+diff -uNr websockify-0.6.1/websockify/websocketproxy.py websockify-0.6.1-patched/websockify/websocketproxy.py
+--- websockify-0.6.1/websockify/websocketproxy.py	2015-05-11 20:58:20.000000000 +0800
++++ websockify-0.6.1-patched/websockify/websocketproxy.py	2018-03-26 20:59:15.000000000 +0800
+@@ -95,27 +95,16 @@
+ 
+         token = args['token'][0].rstrip('\n')
+ 
+-        # target_cfg can be a single config file or directory of
+-        # config files
+-        if os.path.isdir(target_cfg):
+-            cfg_files = [os.path.join(target_cfg, f)
+-                         for f in os.listdir(target_cfg)]
++        token_file = os.path.join(target_cfg, token)
++        line = open(token_file).readline()
++        if line and not line.startswith('#'):
++            try:
++                tok, target = line.split(': ')
++                return target.strip().rsplit(':', 1)
++            except ValueError:
++                raise self.server.EClose("Syntax error in %s" % token_file)
+         else:
+-            cfg_files = [target_cfg]
+-
+-        targets = {}
+-        for f in cfg_files:
+-            for line in [l.strip() for l in file(f).readlines()]:
+-                if line and not line.startswith('#'):
+-                    ttoken, target = line.split(': ')
+-                    targets[ttoken] = target.strip()
+-
+-        self.vmsg("Target config: %s" % repr(targets))
+-
+-        if targets.has_key(token):
+-            return targets[token].split(':')
+-        else:
+-            raise self.EClose("Token '%s' not found" % token)
++            raise self.server.EClose("Token '%s' not found" % token)
+ 
+     def do_proxy(self, target):
+         """
