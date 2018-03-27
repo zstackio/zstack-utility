@@ -4951,6 +4951,11 @@ class CollectLogCmd(Command):
             if status is not True:
                 warn("get management-server log failed: %s" % output)
 
+            command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, tmp_log_dir)
+            (status, output) = run_remote_command(command, host_post_info, True, True)
+            if status is not True:
+                warn("get zstack-api log failed: %s" % output)
+
             if collect_full_log:
                 for item in range(0, 15):
                     log_name = "management-server-" + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
@@ -4982,6 +4987,11 @@ class CollectLogCmd(Command):
         (status, output) = commands.getstatusoutput(command)
         if status !=0:
             warn("get management-server log failed: %s" % output)
+
+        command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, mn_log_dir)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            warn("get zstack-api log failed: %s" % output)
 
         if collect_full_log:
             for item in range(0, 15):
