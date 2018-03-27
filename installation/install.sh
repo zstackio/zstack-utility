@@ -800,6 +800,7 @@ upgrade_zstack(){
     show_spinner uz_upgrade_zstack
     cd /
     show_spinner cs_add_cronjob
+    show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner is_enable_ntpd
     show_spinner cs_config_zstack_properties
