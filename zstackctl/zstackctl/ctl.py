@@ -1052,13 +1052,12 @@ def create_check_ui_status_command(timeout=10, ui_ip='127.0.0.1', ui_port='5000'
     if shell_return('which wget') == 0:
         return ShellCmd(
             '''wget --no-proxy -O- --tries=%s --no-check-certificate --timeout=1 %s://%s:%s/health''' % (timeout, protocol, ui_ip, ui_port))
-    else:
-        if shell_return('which curl') == 0:
+    elif shell_return('which curl') == 0:
             return ShellCmd(
                 '''curl -k --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s %s://%s:%s/health''' % (
                     timeout, timeout, timeout, protocol, ui_ip, ui_port))
-        else:
-            return None
+    else:
+        return None
 
 def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     USE_CURL = 0
@@ -7548,7 +7547,7 @@ class StartUiCmd(Command):
 
         @loop_until_timeout(5, 0.5)
         def write_pid():
-            pid = find_process_by_cmdline('zstack-ui')
+            pid = find_process_by_cmdline('zstack-ui.war')
             if pid:
                 with open(self.PID_FILE, 'w') as fd:
                     fd.write(str(pid))
@@ -7573,6 +7572,7 @@ class StartUiCmd(Command):
 
         if not check_ui_status():
             info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui.log' % args.log)
+            shell('zstack-ctl stop_ui')
             shell('rm -rf /var/run/zstack/zstack-ui.port')
             shell('rm -rf /var/run/zstack/zstack-ui.pid')
             return False
