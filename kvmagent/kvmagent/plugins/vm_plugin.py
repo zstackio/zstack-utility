@@ -1587,10 +1587,52 @@ class Vm(object):
                 else:
                     return blk_fusionstor()
 
+        def get_solt_index(domainxml):
+            if domainxml is None:
+                return None
+            ix=0
+            max_index=0
+            txml=domainxml
+            while True:
+                ix=txml.find('slot=')
+                if ix < 0:
+                    break;
+                solt16=txml[ix +6:ix+10]
+                if "'" in solt16:
+                    solt16=solt16.replace("'", "")
+                try:
+                    solt10=int(solt16,16)
+                    if solt10 > max_index:
+                        max_index=solt10
+                except:
+                    txml=txml[ix + 11:]
+                    continue
+                txml=txml[ix + 11:]
+            return hex(max_index + 1)
+
+        def surfs_file_volume(dxml,dm_xml):
+            if 'surfs_storage' in dxml is False:
+                return dxml
+            oml=dxml
+            soltstr=get_solt_index(dm_xml)
+            if soltstr is None :
+                return oml
+            else:
+                oml='<disk device="disk" type="file">'
+                oml = oml + '<driver name="qemu" type="raw" />'
+                oml = oml + '<source file="' + volume.installPath + '" />'
+                oml = oml + '<alias name="virtio-disk1"/>'
+                oml = oml + '<target bus="virtio" dev="sd' + self.DEVICE_LETTERS[volume.deviceId] +'" />'
+                oml = oml + '<address type="pci" domain="0x0000" bus="0x00" slot="' + str(soltstr) + '" function="0x0"/>'
+                oml = oml + '</disk>'
+            return oml
+
+
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
         elif volume.deviceType == 'file':
             xml = filebased_volume()
+            xml = surfs_file_volume(xml, self.domain_xml)
         elif volume.deviceType == 'ceph':
             xml = ceph_volume()
         elif volume.deviceType == 'fusionstor':
