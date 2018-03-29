@@ -265,6 +265,8 @@ class ConsoleProxyAgent(object):
             TOKEN_FILE_DIR = self.TOKEN_FILE_DIR 
             TIMEOUT = timeout
             start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{TOKEN_FILE_DIR}} --idle-timeout={{TIMEOUT}}'''
+            if cmd.sslCertFile:
+                start_cmd += ' --cert=%s' % cmd.sslCertFile
             ret,out,err = bash_roe(start_cmd)
             if ret != 0:
                 err = []
