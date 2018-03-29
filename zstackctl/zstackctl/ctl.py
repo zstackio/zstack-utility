@@ -5494,6 +5494,9 @@ class InstallManagementNodeCmd(Command):
       with_items:
         - mysql-client
 
+    - name: change owner of /var/lib/zstack/
+      shell: "mkdir -p /var/lib/zstack/; chown -R zstack:zstack /var/lib/zstack/"
+
     - name: copy pypi tar file
       copy: src=$pypi_tar_path dest=$pypi_tar_path_dest
 
