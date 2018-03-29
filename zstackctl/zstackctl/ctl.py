@@ -4543,6 +4543,7 @@ class DumpMysqlCmd(Command):
 
     def run(self, args):
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        (ui_db_hostname, ui_db_port, ui_db_user, ui_db_password) = ctl.get_live_mysql_portal(ui=True)
         file_name = args.file_name
         keep_amount = args.keep_amount
         backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -4570,22 +4571,31 @@ class DumpMysqlCmd(Command):
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command = "mysqldump --add-drop-database  --databases -u %s %s -P %s zstack zstack_rest | gzip > %s "\
-                           % (db_user, db_connect_password, db_port, db_backup_name + ".gz")
-            (status, output) = commands.getstatusoutput(command)
-            if status != 0:
-                error(output)
+            command_1 = "mysqldump --databases -u %s %s -P %s zstack zstack_rest" % (db_user, db_connect_password, db_port)
         else:
             if db_password is None or db_password == "":
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command = "mysqldump --add-drop-database  --databases -u %s %s --host %s -P %s zstack zstack_rest | gzip > %s " \
-                           % (db_user, db_connect_password, db_hostname, db_port, db_backup_name + ".gz")
-            (status, output) = commands.getstatusoutput(command)
-            if status != 0:
-                error(output)
+            command_1 = "mysqldump --databases -u %s %s --host %s -P %s zstack zstack_rest" % (db_user, db_connect_password, db_hostname, db_port)
+
+        if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1":
+            if ui_db_password is None or ui_db_password == "":
+                ui_db_connect_password = ""
+            else:
+                ui_db_connect_password = "-p" + ui_db_password
+            command_2 = "mysqldump --databases -u %s %s -P %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_port)
+        else:
+            if ui_db_password is None or ui_db_password == "":
+                ui_db_connect_password = ""
+            else:
+                ui_db_connect_password = "-p" + ui_db_password
+            command_2 = "mysqldump --databases -u %s %s --host %s -P %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_hostname, ui_db_port)
+
+        cmd = ShellCmd("(%s; %s) | gzip > %s" % (command_1, command_2, db_backup_name + ".gz"))
+        cmd(True)
         info("Backup mysql successfully! You can check the file at %s.gz" % db_backup_name)
+
         # remove old file
         if len(os.listdir(db_backup_dir)) > keep_amount:
             backup_files_list = [s for s in os.listdir(db_backup_dir) if os.path.isfile(os.path.join(db_backup_dir, s))]
@@ -4600,8 +4610,6 @@ class DumpMysqlCmd(Command):
                 info("Sync ZStack backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
             else:
                 info("Sync ZStack backup to remote host %s:%s and delete expired files on remote successfully! " % (remote_host_ip, self.remote_backup_dir))
-
-
 
 class RestoreMysqlCmd(Command):
     status, all_local_ip = commands.getstatusoutput("ip a")
@@ -4620,7 +4628,10 @@ class RestoreMysqlCmd(Command):
                             help="The backup filename under /var/lib/zstack/mysql-backup/ ",
                             required=True)
         parser.add_argument('--mysql-root-password',
-                            help="mysql root password",
+                            help="mysql root password of zstack database",
+                            default=None)
+        parser.add_argument('--ui-mysql-root-password',
+                            help="mysql root password of zstack_ui database, same as --mysql-root-password by default",
                             default=None)
 
     def test_mysql_connection(self, db_connect_password, db_port, db_hostname):
@@ -4630,15 +4641,19 @@ class RestoreMysqlCmd(Command):
             shell_no_pipe(command)
         except:
             db_connect_password = db_connect_password.split('-p')[1] if db_connect_password.startswith('-p') else db_connect_password
-            error("Can't connect mysql with root password '%s', please specify databse root password with --mysql-root-password" % db_connect_password)
-
+            error("Failed to connect to jdbc:mysql://%s:%s with root password '%s'" % (db_hostname, db_port, db_connect_password))
 
     def run(self, args):
-        (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        (db_hostname, db_port, _, _) = ctl.get_live_mysql_portal()
+        (ui_db_hostname, ui_db_port, _, _) = ctl.get_live_mysql_portal(ui=True)
+
         # only root user can restore database
         db_password = args.mysql_root_password
+        ui_db_password = args.ui_mysql_root_password if args.ui_mysql_root_password is not None else args.mysql_root_password
         db_backup_name = args.from_file
         db_hostname_origin_cp = db_hostname
+        ui_db_hostname_origin_cp = ui_db_hostname
+
         if os.path.exists(db_backup_name) is False:
             error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
         error_if_tool_is_missing('gunzip')
@@ -4654,11 +4669,21 @@ class RestoreMysqlCmd(Command):
             db_hostname = "--host %s" % db_hostname
         self.test_mysql_connection(db_connect_password, db_port, db_hostname)
 
+        if ui_db_password is None or ui_db_password == "":
+            ui_db_connect_password = ""
+        else:
+            ui_db_connect_password = "-p" + ui_db_password
+        if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1" or (ui_db_hostname in RestoreMysqlCmd.all_local_ip):
+            ui_db_hostname = ""
+        else:
+            ui_db_hostname = "--host %s" % ui_db_hostname
+        self.test_mysql_connection(ui_db_connect_password, ui_db_port, ui_db_hostname)
+
         info("Backup mysql before restore data ...")
         shell_no_pipe('zstack-ctl dump_mysql')
-        shell_no_pipe('zstack-ctl stop_node')
+        shell_no_pipe('zstack-ctl stop')
 
-        info("Starting recover data ...")
+        info("Starting restore zstack data ...")
         for database in ['zstack','zstack_rest']:
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)
@@ -4666,10 +4691,19 @@ class RestoreMysqlCmd(Command):
 
             # modify DEFINER of view, trigger and so on
             # from: /* ... */ /*!50017 DEFINER=`old_user`@`old_hostname`*/ /*...
-            # to:   /* ... */ /*!50017 DEFINER=`new_user`@`new_hostname`*/ /*...
-            command = "gunzip < %s | sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`%s`@`%s`/' | mysql -uroot %s %s -P %s %s" \
-                  % (db_backup_name, db_user, db_hostname_origin_cp, db_connect_password, db_hostname, db_port, database)
+            # to:   /* ... */ /*!50017 DEFINER=`root`@`new_hostname`*/ /*...
+            command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' |sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' | mysql -uroot %s %s -P %s --one-database %s" \
+                  % (db_backup_name, db_hostname_origin_cp, db_connect_password, db_hostname, db_port, database)
             shell_no_pipe(command)
+
+        info("Starting restore zstack_ui data ...")
+        command = "mysql -uroot %s -P %s  %s -e 'drop database if exists zstack_ui; create database zstack_ui' >> /dev/null 2>&1" \
+                  % (ui_db_connect_password, db_port, ui_db_hostname)
+        shell_no_pipe(command)
+        command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' |sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' | mysql -uroot %s %s -P %s --one-database zstack_ui" \
+              % (db_backup_name, ui_db_hostname_origin_cp, ui_db_connect_password, ui_db_hostname, ui_db_port)
+        shell_no_pipe(command)
+
         #shell_no_pipe('zstack-ctl start_node')
         info("Recover data successfully! You can start node by: zstack-ctl start")
 
