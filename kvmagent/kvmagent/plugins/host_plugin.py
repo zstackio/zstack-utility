@@ -43,6 +43,9 @@ class HostCapacityResponse(kvmagent.AgentResponse):
 class HostFactResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(HostFactResponse, self).__init__()
+        self.osDistribution = None
+        self.osVersion = None
+        self.osRelease = None
         self.qemuImgVersion = None
         self.libvirtVersion = None
         self.hvmCpuFlag = None
@@ -183,6 +186,7 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def fact(self, req):
         rsp = HostFactResponse()
+        rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
