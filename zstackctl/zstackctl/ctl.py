@@ -7385,6 +7385,8 @@ class StartUiCmd(Command):
         parser.add_argument('--webhook-port', help="Webhook Host port.")
         parser.add_argument('--server-port', help="UI server port.")
         parser.add_argument('--log', help="UI log folder.")
+        parser.add_argument('--timeout', help='Wait for ZStack UI startup timeout, default is 120 seconds.',
+                            default=120)
 
         # arguments for https
         parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
@@ -7426,7 +7428,7 @@ class StartUiCmd(Command):
                         info('UI server is still running[PID:%s], http://%s:%s' % (pid, default_ip, port))
                     return False
 
-        pid = find_process_by_cmdline('zstack-ui')
+        pid = find_process_by_cmdline('zstack-ui.war')
         if pid:
             info('found a zombie UI server[PID:%s], kill it and start a new one' % pid)
             shell('kill -9 %s > /dev/null' % pid)
@@ -7571,7 +7573,8 @@ class StartUiCmd(Command):
         with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
             fd.write(args.server_port)
 
-        @loop_until_timeout(30)
+        timeout = int(args.timeout)
+        @loop_until_timeout(timeout)
         def check_ui_status():
             command = 'zstack-ctl ui_status'
             (status, output) = commands.getstatusoutput(command)
