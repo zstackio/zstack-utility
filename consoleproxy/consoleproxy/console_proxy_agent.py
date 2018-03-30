@@ -16,6 +16,7 @@ import pprint
 import functools
 import sys
 import subprocess
+import threading
 
 logger = log.get_logger(__name__)
 
@@ -43,6 +44,7 @@ class EstablishProxyRsp(AgentResponse):
     def __init__(self):
         super(EstablishProxyRsp, self).__init__()
         self.proxyPort = None
+        self.token = None
 
 class CheckAvailabilityCmd(AgentCommand):
     def __init__(self):
@@ -54,6 +56,7 @@ class CheckAvailabilityCmd(AgentCommand):
         self.scheme = None
         self.token = None
         self.proxyIdentity = None
+        self.vncTokenTimeout = None
 
 class CheckAvailabilityRsp(AgentResponse):
     def __init__(self):
@@ -108,14 +111,20 @@ class ConsoleProxyAgent(object):
 
         self.db = filedb.FileDB(self.DB_NAME)
 
-    def _make_token_file_name(self, cmd):
-        target_ip_str = cmd.targetHostname.replace('.', '_')
-        return '%s' % cmd.token
+        self.token_ctrl = ConsoleTokenFileController()
 
+
+    def _make_token_file_name(self, prefix, timeout):
+        return '%s_%s' % (prefix, time.time() + timeout)
+
+
+    def _get_token_name_prefix(self, cmd):
+        return '_'.join(cmd.token.split('_')[:2])
 
     def _get_pid_on_port(self, port):
-        out = shell.call('netstat -anp | grep ":%s" | grep LISTEN' % port, exception=False)
-        out = out.strip(' \n\t\r')
+        out = shell.ShellCmd('netstat -anp | grep ":%s" | grep LISTEN' % port)
+        out(False)
+        out = out.stdout.strip()
         if "" == out:
             return None
 
@@ -183,10 +192,21 @@ class ConsoleProxyAgent(object):
     @replyerror
     @lock.lock('console-proxy')
     def delete(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        def kill_proxy_process():
+            out = shell.ShellCmd(
+                "netstat -ntp | grep '%s:%s *ESTABLISHED.*python'" % (cmd.targetHostname, cmd.targetPort))
+            out(False)
+            pids = [line.strip().split(' ')[-1].split('/')[0] for line in out.stdout.splitlines()]
+            for pid in pids:
+                try:
+                    os.kill(pid, 15)
+                except:
+                    continue
 
-        token_file = os.path.join(self.TOKEN_FILE_DIR, self._make_token_file_name(cmd))
-        shell.call("rm -f %s" % token_file)
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        token_file = ConsoleTokenFile(cmd.token)
+        self.token_ctrl.delete_by_prefix(token_file.prefix)
+        kill_proxy_process()
         logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
 
         rsp = AgentResponse()
@@ -195,7 +215,7 @@ class ConsoleProxyAgent(object):
     @replyerror
     @lock.lock('console-proxy')
     def establish_new_proxy(self, req):
-        #check parameters, generate token file,set db,check process is alive,start process if not,
+        # check parameters, generate token file,set db,check process is alive,start process if not,
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = EstablishProxyRsp()
         log_file = os.path.join(self.PROXY_LOG_DIR, cmd.proxyHostname)
@@ -219,10 +239,19 @@ class ConsoleProxyAgent(object):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
-        ##
-        token_file = os.path.join(self.TOKEN_FILE_DIR, self._make_token_file_name(cmd))
-        with open(token_file, 'w') as fd:
-            fd.write('%s: %s:%s' % (cmd.token, cmd.targetHostname, cmd.targetPort))
+        token_file = ConsoleTokenFile(cmd.token)
+        exist_token = self.token_ctrl.search_by_prefix(token_file.prefix)
+
+        # this logic only execute when request from ZStack API
+        if not exist_token or exist_token.is_stale():
+            self.token_ctrl.delete_by_prefix(token_file.prefix)
+            token_file = self.token_ctrl.create_token_file(token_file.prefix, cmd.vncTokenTimeout)
+            self.token_ctrl.submit_delete_token_task(token_file)
+        else:
+            token_file = exist_token
+
+        rsp.token = token_file.get_full_name()
+        token_file.flush_write('%s: %s:%s' % (token_file.get_full_name(), cmd.targetHostname, cmd.targetPort))
                 
         info = {
                  'proxyHostname': cmd.proxyHostname,
@@ -231,7 +260,7 @@ class ConsoleProxyAgent(object):
                  'targetPort': cmd.targetPort,
                  'token': cmd.token,
                  'logFile': log_file,
-                 'tokenFile': token_file
+                 'tokenFile': token_file.get_absolute_path(),
                 }
         info_str = jsonobject.dumps(info)
         self.db.set(cmd.token, info_str)
@@ -290,3 +319,56 @@ class ConsoleProxyDaemon(daemon.Daemon):
     def run(self):
         self.agent = ConsoleProxyAgent()
         self.agent.http_server.start()
+
+class ConsoleTokenFile(object):
+    directory = None
+    prefix = None
+    timeout_stamp = 0
+
+    def __init__(self, raw=None, directory=ConsoleProxyAgent.TOKEN_FILE_DIR):
+        self.directory = directory
+        if not raw:
+            return
+
+        tmp = raw.split('_')
+        self.prefix = '_'.join(tmp[:2])
+        if len(tmp) > 2:
+            self.timeout_stamp = tmp[2]
+
+    def get_full_name(self):
+        return "%s_%s" % (self.prefix, self.timeout_stamp)
+
+    def is_stale(self):
+        return time.time() > self.timeout_stamp
+
+    def get_absolute_path(self):
+        return os.path.join(self.directory, self.get_full_name())
+
+    def flush_write(self, context):
+        with open(os.path.join(self.directory, self.get_full_name()), 'w') as fd:
+            fd.write(context)
+
+
+class ConsoleTokenFileController(object):
+    def __init__(self, token_dir=ConsoleProxyAgent.TOKEN_FILE_DIR):
+        self.token_dir = token_dir
+
+    def search_by_prefix(self, prefix):
+        token_prefix_path = os.path.join(self.token_dir, prefix)
+        token_full_name = shell.call("find %s* -type f -exec basename {} \; | head -1" % token_prefix_path).strip()
+        if token_full_name:
+            return ConsoleTokenFile(token_full_name)
+
+    def delete_by_prefix(self, prefix):
+        token_prefix_path = os.path.join(self.token_dir, prefix)
+        shell.call("rm -f %s*" % token_prefix_path)
+
+    def submit_delete_token_task(self, token_file):
+        threading.Timer(token_file.timeout_stamp - time.time(), self.delete_by_prefix, args=[token_file.prefix]).start()
+
+    def create_token_file(self, prefix, timeout):
+        t = ConsoleTokenFile()
+        t.prefix = prefix
+        t.timeout_stamp = time.time() + timeout
+        t.directory = self.token_dir
+        return t
