@@ -2036,7 +2036,7 @@ class InstallDbCmd(Command):
         if not args.yum:
             args.yum = get_yum_repo_from_property()
 
-        script = ShellCmd("ip addr |grep 'inet '|grep -v '127.0.0.1'|awk '{print $2}'|awk -F '/' '{print $1}'")
+        script = ShellCmd("ip addr | grep 'inet ' | awk '{print $2}' | awk -F '/' '{print $1}'")
         script(True)
         current_host_ips = script.stdout.split('\n')
 

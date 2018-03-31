@@ -824,7 +824,8 @@ upgrade_zstack(){
           UI_INSTALLATION_STATUS='y'
           DASHBOARD_INSTALLATION_STATUS='n'
           # try to deploy zstack_ui database, if already exists then do upgrade
-          zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
+          mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e "use zstack_ui" >/dev/null 2>&1
+          [ $? -ne 0 ] && zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
         else
           fail "failed to upgrade zstack web ui"
         fi
@@ -1360,6 +1361,13 @@ uz_upgrade_zstack(){
 
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
+        # check mysql root password
+        mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" >/dev/null 2>&1
+        [ $? -eq 0 ] || fail "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
+
+        # grant all to root@127.0.0.1
+        mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' IDENTIFIED BY '$MYSQL_NEW_ROOT_PASSWORD' WITH GRANT OPTION; FLUSH PRIVILEGES"
+
         upgrade_mysql_configuration
         if [ ! -z $DEBUG ]; then
             if [ x"$FORCE" = x'n' ];then
