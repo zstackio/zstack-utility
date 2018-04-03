@@ -432,7 +432,12 @@ class CephAgent(object):
                     do_create = False
 
         if do_create:
-            shell.call('rbd snap create %s' % spath)
+            o = shell.ShellCmd('rbd snap create %s' % spath)
+            o(False)
+            if o.return_code != 0:
+                shell.run("rbd snap rm %s" % spath)
+                o.raise_error()
+
 
         rsp = CreateSnapshotRsp()
         rsp.size = self._get_file_size(spath)
