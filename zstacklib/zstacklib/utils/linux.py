@@ -553,7 +553,7 @@ def qcow2_size_and_actual_size(file_path):
 def get_img_file_fmt(src):
     fmt = get_img_fmt(src)
     if fmt == "raw":
-        result = shell.call("set -o pipefail; file %s | awk '{print $2}'" % src)
+        result = shell.call("set -o pipefail; file %s | awk '{print $2, $3}'" % src)
         if "ISO" in result:
             fmt = "iso"
     return fmt
