@@ -869,6 +869,10 @@ upgrade_zstack(){
     done
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
 
+    # set sns.systemTopic.endpoints.http.url if not exists
+    zstack-ctl show_configuration | grep 'sns.systemTopic.endpoints.http.url'
+    [ $? -ne 0 ] && zstack-ctl configure sns.systemTopic.endpoints.http.url=http://localhost:5000/zwatch/webhook
+
     #When using -i option, will not upgrade kariosdb and not start zstack
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         #when using -k option, will not start zstack.
