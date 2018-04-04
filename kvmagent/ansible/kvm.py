@@ -171,13 +171,14 @@ if distro == "RedHat" or distro == "CentOS":
                    "pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils sed "
                    "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
                    "libguestfs-winsupport libguestfs-tools pv ipset usbutils pciutils expect "
-                   "rsync nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                   "rsync nmap lvm2 lvm2-lockd sanlock smartmontools device-mapper-multipath | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                    "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, qemu_pkg, zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = "openssh-clients,%s,bridge-utils,wget,sed," \
                                           "libvirt-python,libvirt,nfs-utils,vconfig,libvirt-client,net-tools," \
                                           "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils," \
-                                          "libguestfs-winsupport,libguestfs-tools,pv,rsync,nmap,ipset,usbutils,pciutils,expect" % qemu_pkg
+                                          "libguestfs-winsupport,libguestfs-tools,pv,rsync,nmap,ipset,usbutils,pciutils,expect," \
+                                          "lvm2,lvm2-lockd,sanlock,smartmontools,device-mapper-multipath" % qemu_pkg
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
@@ -203,7 +204,8 @@ if distro == "RedHat" or distro == "CentOS":
         # name: install kvm related packages on RedHat based OS from online
         for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'dnsmasq', 'iproute', 'sshpass',
-                    'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect']:
+                    'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
+                    'lvm2', 'lvm2-lockd', 'sanlock', 'smartmontools', 'device-mapper-multipath']:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             # name: RHEL7 specific packages from online
