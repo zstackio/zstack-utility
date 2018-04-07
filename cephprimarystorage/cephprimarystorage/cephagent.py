@@ -19,12 +19,20 @@ from imagestore import ImageStoreClient
 logger = log.get_logger(__name__)
 
 
+class CephPoolCapacity(object):
+    def __init__(self, name, availableCapacity, replicatedSize, used):
+        self.name = name
+        self.availableCapacity = availableCapacity
+        self.replicatedSize = replicatedSize
+        self.usedCapacity = used
+
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
         self.error = error if error else ''
         self.totalCapacity = None
         self.availableCapacity = None
+        self.poolCapacities = None
 
 class CheckIsBitsExistingRsp(AgentResponse):
     def __init__(self):
@@ -203,6 +211,17 @@ class CephAgent(object):
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
+
+        if not df.pools:
+            return
+
+        rsp.poolCapacities = []
+        for pool in df.pools:
+            poolAvailable = pool.stats.max_avail_
+            poolUsed = pool.stats.bytes_used_
+            poolSize = jsonobject.loads(shell.call('ceph osd pool get %s size -f json' % pool.name)).size
+            poolCapacity = CephPoolCapacity(pool.name, poolAvailable, poolSize, poolUsed)
+            rsp.poolCapacities.append(poolCapacity)
 
     def _get_file_size(self, path):
         o = shell.call('rbd --format json info %s' % path)
