@@ -158,6 +158,18 @@ class AddFusionstorPrimaryStorageAction(inventory.APIAddFusionstorPrimaryStorage
         self.out = evt
         return self.out
 
+class AddHostRouteToL3NetworkAction(inventory.APIAddHostRouteToL3NetworkMsg):
+    def __init__(self):
+        super(AddHostRouteToL3NetworkAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddHostRouteToL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddIdentityZoneFromRemoteAction(inventory.APIAddIdentityZoneFromRemoteMsg):
     def __init__(self):
         super(AddIdentityZoneFromRemoteAction, self).__init__()
@@ -7638,6 +7650,18 @@ class RemoveDnsFromL3NetworkAction(inventory.APIRemoveDnsFromL3NetworkMsg):
         self.out = evt
         return self.out
 
+class RemoveHostRouteFromL3NetworkAction(inventory.APIRemoveHostRouteFromL3NetworkMsg):
+    def __init__(self):
+        super(RemoveHostRouteFromL3NetworkAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveHostRouteFromL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RemoveLabelFromAlarmAction(inventory.APIRemoveLabelFromAlarmMsg):
     def __init__(self):
         super(RemoveLabelFromAlarmAction, self).__init__()
@@ -7778,6 +7802,18 @@ class RemoveVmNicFromLoadBalancerAction(inventory.APIRemoveVmNicFromLoadBalancer
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RemoveVmNicFromLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RenewSessionAction(inventory.APIRenewSessionMsg):
+    def __init__(self):
+        super(RenewSessionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RenewSessionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

@@ -5162,6 +5162,19 @@ class APIRemoveUserFromGroupMsg(object):
         self.userTags = OptionalList()
 
 
+APIRENEWSESSIONMSG_FULL_NAME = 'org.zstack.header.identity.APIRenewSessionMsg'
+class APIRenewSessionMsg(object):
+    FULL_NAME='org.zstack.header.identity.APIRenewSessionMsg'
+    def __init__(self):
+        #mandatory field
+        self.sessionUuid = NotNoneField()
+        self.duration = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIREVOKERESOURCESHARINGMSG_FULL_NAME = 'org.zstack.header.identity.APIRevokeResourceSharingMsg'
 class APIRevokeResourceSharingMsg(object):
     FULL_NAME='org.zstack.header.identity.APIRevokeResourceSharingMsg'
@@ -6120,6 +6133,22 @@ class APIAddDnsToL3NetworkMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDHOSTROUTETOL3NETWORKMSG_FULL_NAME = 'org.zstack.header.network.l3.APIAddHostRouteToL3NetworkMsg'
+class APIAddHostRouteToL3NetworkMsg(object):
+    FULL_NAME='org.zstack.header.network.l3.APIAddHostRouteToL3NetworkMsg'
+    def __init__(self):
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        #mandatory field
+        self.prefix = NotNoneField()
+        #mandatory field
+        self.nexthop = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDIPRANGEBYNETWORKCIDRMSG_FULL_NAME = 'org.zstack.header.network.l3.APIAddIpRangeByNetworkCidrMsg'
 class APIAddIpRangeByNetworkCidrMsg(object):
     FULL_NAME='org.zstack.header.network.l3.APIAddIpRangeByNetworkCidrMsg'
@@ -6452,6 +6481,20 @@ class APIRemoveDnsFromL3NetworkMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.dns = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIREMOVEHOSTROUTEFROML3NETWORKMSG_FULL_NAME = 'org.zstack.header.network.l3.APIRemoveHostRouteFromL3NetworkMsg'
+class APIRemoveHostRouteFromL3NetworkMsg(object):
+    FULL_NAME='org.zstack.header.network.l3.APIRemoveHostRouteFromL3NetworkMsg'
+    def __init__(self):
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        #mandatory field
+        self.prefix = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -15233,6 +15276,7 @@ api_names = [
     'APIAddDnsToL3NetworkMsg',
     'APIAddFusionstorBackupStorageMsg',
     'APIAddFusionstorPrimaryStorageMsg',
+    'APIAddHostRouteToL3NetworkMsg',
     'APIAddIdentityZoneFromRemoteMsg',
     'APIAddImageMsg',
     'APIAddImageStoreBackupStorageMsg',
@@ -16119,6 +16163,7 @@ api_names = [
     'APIRemoveActionFromEventSubscriptionMsg',
     'APIRemoveCertificateFromLoadBalancerListenerMsg',
     'APIRemoveDnsFromL3NetworkMsg',
+    'APIRemoveHostRouteFromL3NetworkMsg',
     'APIRemoveLabelFromAlarmMsg',
     'APIRemoveLabelFromEventSubscriptionMsg',
     'APIRemoveMonFromCephBackupStorageMsg',
@@ -16131,6 +16176,7 @@ api_names = [
     'APIRemoveUserFromGroupMsg',
     'APIRemoveVmFromAffinityGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
+    'APIRenewSessionMsg',
     'APIReply',
     'APIRequestBaremetalConsoleAccessMsg',
     'APIRequestConsoleAccessMsg',
@@ -20013,6 +20059,7 @@ class L3NetworkInventory(object):
         self.dns = None
         self.ipRanges = None
         self.networkServices = None
+        self.hostRoute = None
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -20089,6 +20136,11 @@ class L3NetworkInventory(object):
             self.networkServices = inv.networkServices
         else:
             self.networkServices = None
+
+        if hasattr(inv, 'hostRoute'):
+            self.hostRoute = inv.hostRoute
+        else:
+            self.hostRoute = None
 
 
 
@@ -23352,13 +23404,20 @@ class QueryObjectL3NetworkDnsInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectL3NetworkHostRouteInventory(object):
+     PRIMITIVE_FIELDS = ['prefix','lastOpDate','id','l3NetworkUuid','nexthop','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectL3NetworkInventory(object):
      PRIMITIVE_FIELDS = ['zoneUuid','description','type','uuid','dnsDomain','system','l2NetworkUuid','name','lastOpDate','state','category','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
+     EXPANDED_FIELDS = ['hostRoute','networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
      QUERY_OBJECT_MAP = {
         'ipRanges' : 'QueryObjectIpRangeInventory',
         'vmNic' : 'QueryObjectVmNicInventory',
         'zone' : 'QueryObjectZoneInventory',
+        'hostRoute' : 'QueryObjectL3NetworkHostRouteInventory',
         'serviceProvider' : 'QueryObjectNetworkServiceProviderInventory',
         'l2Network' : 'QueryObjectL2NetworkInventory',
         'networkServices' : 'QueryObjectNetworkServiceL3NetworkRefInventory',
