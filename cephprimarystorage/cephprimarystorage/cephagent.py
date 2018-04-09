@@ -538,7 +538,10 @@ class CephAgent(object):
         if realname not in pool_names:
             shell.call('ceph osd pool create %s 128' % realname)
 
-        return jsonobject.dumps(AgentResponse())
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def check_pool(self, req):
@@ -684,7 +687,6 @@ class CephAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
         rsp = AgentResponse()
-        self._set_capacity_to_response(rsp)
         try:
             o = shell.call('rbd snap ls --format json %s' % path)
         except Exception as e:
@@ -703,6 +705,7 @@ class CephAgent(object):
 
         do_deletion()
 
+        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     def _migrate_volume(self, volume_uuid, volume_size, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
