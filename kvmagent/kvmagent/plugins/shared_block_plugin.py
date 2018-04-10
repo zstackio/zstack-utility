@@ -1,6 +1,4 @@
 import os.path
-import traceback
-import uuid
 import re
 import random
 import time
@@ -21,6 +19,9 @@ logger = log.get_logger(__name__)
 LOCK_FILE = "/var/run/zstack/sharedblock.lock"
 INIT_TAG = "zs::sharedblock::init"
 HEARTBEAT_TAG = "zs::sharedblock::heartbeat"
+VOLUME_TAG = "zs::sharedblock::volume"
+DEFAULT_VG_METADATA_SIZE = "2g"
+DEFAULT_QCOW2_OPTION = " -o cluster_size=2m "
 
 class AgentRsp(object):
     def __init__(self):
@@ -65,6 +66,9 @@ class ResizeVolumeRsp(AgentRsp):
 class RetryException(Exception):
     pass
 
+def translate_absolute_path_from_install_path(path):
+    return path.replace("sharedblock:/", "/dev")
+
 class SharedBlockPlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedblock/connect"
@@ -81,7 +85,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/offlinemerge"
     CREATE_EMPTY_VOLUME_PATH = "/sharedblock/volume/createempty"
     CHECK_BITS_PATH = "/sharedblock/bits/check"
-    GET_VOLUME_SIZE_PATH = "/sharedblock/volume/getsize"
     RESIZE_VOLUME_PATH = "/sharedblock/volume/resize"
 
     def start(self):
@@ -100,7 +103,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
-        http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
 
         self.imagestore_client = ImageStoreClient()
@@ -124,7 +126,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvmlocal_conf("local/host_id", host_id)
 
         def check_disk_by_uuid(diskUuid):
-            for cond in ['TYPE=\"mpath\"', '\"\"']:
+            for cond in ['TYPE=\\\"mpath\\\"', '\"\"']:
                 cmd = shell.ShellCmd("lsblk --pair -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN | "
                                      " grep %s | grep %s | sort | uniq" % (cond, diskUuid))
                 cmd(is_exception=False)
@@ -135,32 +137,35 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             raise Exception("can not find disk with %s as uuid or wwn, "
                             "or multiple disks qualify but no mpath device found" % diskUuid)
 
-        def create_vg_if_not_found(vgUuid, diskPaths):
+        def create_vg_if_not_found(vgUuid, diskPaths, hostUuid):
             @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
             def find_vg(vgUuid):
                 cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
                 cmd(is_exception=False)
                 if cmd.return_code != 0:
                     raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
+                return True
 
             try:
                 find_vg(vgUuid)
             except RetryException as e:
-                cmd = shell.ShellCmd("vgcreate --shared --addtag '%s::%s' --metadatasize 512m %s %s" %
-                                     (INIT_TAG, time.time(), vgUuid, " ".join(diskPaths)))
+                cmd = shell.ShellCmd("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
+                                     (INIT_TAG, hostUuid, time.time(),
+                                      DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
                 cmd(is_exception=False)
-                if cmd.return_code == 0:
+                if cmd.return_code == 0 and find_vg(vgUuid) == True:
                     return True
-
+                raise Exception("can not find vg %s with disks: %s and create failed for %s " %
+                                (vgUuid, diskPaths, cmd.stderr))
             return False
 
         config_lvm(cmd.hostId)
         for diskUuid in cmd.sharedBlockUuids:
             diskPaths.add(check_disk_by_uuid(diskUuid))
         lvm.start_lvmlockd()
-        rsp.isFirst = create_vg_if_not_found(cmd.vgUuid, diskPaths)
+        rsp.isFirst = create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid)
         lvm.start_vg_lock(cmd.vgUuid)
-        lvm.add_vg_tag("%s::%s" % (HEARTBEAT_TAG, time.time()), cmd.vgUuid)
+        lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time()))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -168,43 +173,33 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def resize_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
-        install_path = cmd.installPath
+        with lvm.OperateLv(install_abs_path, False):
+            lvm.resize_lv(install_abs_path, cmd.size)
+            shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
+            ret = linux.qcow2_virtualsize(install_abs_path)
+
         rsp = ResizeVolumeRsp()
-        shell.call("qemu-img resize %s %s" % (install_path, cmd.size))
-        ret = linux.qcow2_virtualsize(install_path)
         rsp.size = ret
-        return jsonobject.dumps(rsp)
-
-    @staticmethod
-    def _get_disk_capacity(mount_point):
-        if not mount_point:
-            raise Exception('storage mount point cannot be None')
-        return linux.get_disk_capacity_by_df(mount_point)
-
-    @kvmagent.replyerror
-    def get_volume_size(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetVolumeSizeRsp()
-        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        template_abs_path_cache = translate_absolute_path_from_install_path(cmd.templatePathInCache)
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
-        if not os.path.exists(cmd.templatePathInCache):
-            rsp.error = "unable to find image in cache"
-            rsp.success = False
-            return jsonobject.dumps(rsp)
+        with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True):
+            virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
+            if not lvm.lv_exists(install_abs_path):
+                lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+            with lvm.OperateLv(install_abs_path, shared=False):
+                linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, DEFAULT_QCOW2_OPTION)
 
-        dirname = os.path.dirname(cmd.installPath)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
-
-        linux.qcow2_clone(cmd.templatePathInCache, cmd.installPath)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -212,29 +207,37 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         if cmd.folder:
-            shell.call('rm -rf %s' % cmd.path)
+            raise Exception("not support this operation")
         else:
-            kvmagent.deleteImage(cmd.path)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+            install_abs_path = translate_absolute_path_from_install_path(cmd.path)
+            lvm.delete_lv(install_abs_path)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        dirname = os.path.dirname(cmd.installPath)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname, 0755)
-        linux.create_template(cmd.volumePath, cmd.installPath)
+        volume_abs_path = translate_absolute_path_from_install_path(cmd.volumePath)
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+
+        with lvm.RecursiveOperateLv(volume_abs_path, shared=False):
+            virtual_size = linux.qcow2_virtualsize(install_abs_path)
+            if not lvm.lv_exists(install_abs_path):
+                lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+            with lvm.OperateLv(install_abs_path, shared=False):
+                linux.create_template(volume_abs_path, install_abs_path)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def upload_to_sftp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
 
         def upload():
             if not os.path.exists(cmd.primaryStorageInstallPath):
@@ -242,7 +245,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
             linux.scp_upload(cmd.hostname, cmd.sshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath, cmd.username, cmd.sshPort)
 
-        upload()
+        with lvm.OperateLv(install_abs_path, shared=True):
+            upload()
 
         return jsonobject.dumps(rsp)
 
@@ -250,11 +254,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def download_from_sftp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
 
-        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.username, cmd.sshPort)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        size = linux.sftp_get(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, True)
+        if not lvm.lv_exists(install_abs_path):
+            lvm.create_lv_from_absolute_path(install_abs_path, size,
+                                             "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+
+        with lvm.OperateLv(install_abs_path, shared=False):
+            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort)
         logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
 
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -272,18 +283,24 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def revert_volume_from_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RevertVolumeFromSnapshotRsp()
+        snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
+        with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
+            size = linux.qcow2_virtualsize(snapshot_abs_path)
+            new_volume_path = "/dev/%s/%s" % (cmd.vgUuid, uuidhelper.uuid())
 
-        install_path = cmd.snapshotInstallPath
-        new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone(install_path, new_volume_path)
-        size = linux.qcow2_virtualsize(new_volume_path)
+            lvm.create_lv_from_absolute_path(new_volume_path, size,
+                                             "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+            with lvm.OperateLv(new_volume_path, shared=False):
+                linux.qcow2_clone(snapshot_abs_path, new_volume_path)
+                size = linux.qcow2_virtualsize(new_volume_path)
+
         rsp.newVolumeInstallPath = new_volume_path
         rsp.size = size
         return jsonobject.dumps(rsp)
@@ -292,29 +309,42 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def merge_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MergeSnapshotRsp()
+        snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
+        workspace_abs_path = translate_absolute_path_from_install_path(cmd.workspaceInstallPath)
 
-        workspace_dir = os.path.dirname(cmd.workspaceInstallPath)
-        if not os.path.exists(workspace_dir):
-            os.makedirs(workspace_dir)
+        with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
+            virtual_size = linux.qcow2_virtualsize(snapshot_abs_path)
+            if not lvm.lv_exists(workspace_abs_path):
+                lvm.create_lv_from_absolute_path(workspace_abs_path, virtual_size,
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+            with lvm.OperateLv(workspace_abs_path, shared=False):
+                linux.create_template(snapshot_abs_path, workspace_abs_path)
+                rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(workspace_abs_path)
 
-        linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
-        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
-
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp.actualSize = rsp.size
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def offline_merge_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        if not cmd.fullRebase:
-            linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
-        else:
-            tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.create_template(cmd.destPath, tmp)
-            shell.call("mv %s %s" % (tmp, cmd.destPath))
+        src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath)
+        dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        with lvm.RecursiveOperateLv(src_abs_path, shared=True):
+            virtual_size = linux.qcow2_virtualsize(src_abs_path)
+            if not lvm.lv_exists(dst_abs_path):
+                lvm.create_lv_from_absolute_path(dst_abs_path, virtual_size,
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+            with lvm.OperateLv(dst_abs_path, shared=False):
+                if not cmd.fullRebase:
+                    linux.qcow2_rebase(src_abs_path, src_abs_path)
+                else:
+                    # TODO(weiw): add tmp disk and then rename is better
+                    linux.create_template(src_abs_path, dst_abs_path)
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -322,17 +352,25 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        dirname = os.path.dirname(cmd.installPath)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         if cmd.backingFile:
-            linux.qcow2_create_with_backing_file(cmd.backingFile, cmd.installPath)
-        else:
-            linux.qcow2_create(cmd.installPath, cmd.size)
+            backing_abs_path = translate_absolute_path_from_install_path(cmd.backingFile)
+            with lvm.RecursiveOperateLv(backing_abs_path, shared=True):
+                virtual_size = linux.qcow2_virtualsize(backing_abs_path)
+                if not lvm.lv_exists(install_abs_path):
+                    lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
+                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                with lvm.OperateLv(install_abs_path, shared=False):
+                    linux.qcow2_create_with_backing_file(backing_abs_path, install_abs_path)
+        elif not lvm.lv_exists(install_abs_path):
+                lvm.create_lv_from_absolute_path(install_abs_path, cmd.size,
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+            with lvm.OperateLv(install_abs_path, shared=False):
+                linux.qcow2_create(install_abs_path, cmd.size)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -341,3 +379,4 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = CheckBitsRsp()
         rsp.existing = os.path.exists(cmd.path)
         return jsonobject.dumps(rsp)
+
