@@ -1,3 +1,5 @@
+import tempfile
+
 __author__ = 'frank'
 
 import pprint
@@ -6,10 +8,9 @@ import traceback
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
-import zstacklib.utils.linux as linux
 import zstacklib.utils.lock as lock
 import zstacklib.utils.sizeunit as sizeunit
-from zstacklib.utils import log
+from zstacklib.utils.report import *
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
 import os
@@ -364,7 +365,28 @@ class CephAgent(object):
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
 
-        shell.call('rbd cp %s %s' % (src_path, dst_path))
+        if cmd.sendCommandUrl:
+            Report.url = cmd.sendCommandUrl
+
+        report = Report(cmd.threadContext, cmd.threadContextStack)
+        report.processType = "CephCpVolume"
+        _, PFILE = tempfile.mkstemp()
+        stage = (cmd.threadContext['task-stage'], "10-90")[cmd.threadContext['task-stage'] is None]
+
+        def _get_progress(synced):
+            if not Report.url:
+                return synced
+
+            logger.debug("getProgress in ceph-agent")
+            percent = shell.call("tail -1 %s | grep -o '1\?[0-9]\{1,2\}%%' | tail -1" % PFILE).strip(' \t\n\r%')
+            if percent and Report.url:
+                report.progress_report(get_exact_percent(percent, stage), "report")
+            return synced
+
+        bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
+
+        if os.path.exists(PFILE):
+            os.remove(PFILE)
 
         rsp = CpRsp()
         rsp.size = self._get_file_size(dst_path)
@@ -410,7 +432,12 @@ class CephAgent(object):
                     do_create = False
 
         if do_create:
-            shell.call('rbd snap create %s' % spath)
+            o = shell.ShellCmd('rbd snap create %s' % spath)
+            o(False)
+            if o.return_code != 0:
+                shell.run("rbd snap rm %s" % spath)
+                o.raise_error()
+
 
         rsp = CreateSnapshotRsp()
         rsp.size = self._get_file_size(spath)

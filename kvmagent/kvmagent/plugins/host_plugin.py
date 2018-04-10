@@ -3,6 +3,7 @@
 @author: frank
 '''
 
+import platform
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import jsonobject
@@ -22,6 +23,8 @@ import time
 import libvirt
 import pyudev
 
+IS_AARCH64 = platform.machine() == 'aarch64'
+
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
@@ -40,9 +43,13 @@ class HostCapacityResponse(kvmagent.AgentResponse):
 class HostFactResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(HostFactResponse, self).__init__()
+        self.osDistribution = None
+        self.osVersion = None
+        self.osRelease = None
         self.qemuImgVersion = None
         self.libvirtVersion = None
         self.hvmCpuFlag = None
+        self.cpuModelName = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -68,6 +75,15 @@ class ReportDeviceEventCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(ReportDeviceEventCmd, self).__init__()
         self.hostUuid = None
+
+class UpdateHostOSCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(UpdateHostOSCmd, self).__init__()
+        self.hostUuid = None
+
+class UpdateHostOSRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateHostOSRsp, self).__init__()
 
 logger = log.get_logger(__name__)
 
@@ -99,6 +115,7 @@ class HostPlugin(kvmagent.KvmAgent):
     PING_PATH = "/host/ping"
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
+    UPDATE_OS_PATH = "/host/updateos"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -169,6 +186,7 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def fact(self, req):
         rsp = HostFactResponse()
+        rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
@@ -177,12 +195,19 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
 
-        if shell.run('grep vmx /proc/cpuinfo') == 0:
-            rsp.hvmCpuFlag = 'vmx'
+        if IS_AARCH64:
+            # FIXME how to check vt of aarch64?
+            rsp.hvmCpuFlag = 'vt'
+        else:
+            if shell.run('grep vmx /proc/cpuinfo') == 0:
+                rsp.hvmCpuFlag = 'vmx'
 
-        if not rsp.hvmCpuFlag:
-            if shell.run('grep svm /proc/cpuinfo') == 0:
-                rsp.hvmCpuFlag = 'svm'
+            if not rsp.hvmCpuFlag:
+                if shell.run('grep svm /proc/cpuinfo') == 0:
+                    rsp.hvmCpuFlag = 'svm'
+
+            model_name = shell.call("awk -F: '/^model name/{print $2; exit}' /proc/cpuinfo")
+            rsp.cpuModelName = model_name.strip()
 
         return jsonobject.dumps(rsp)
         
@@ -340,6 +365,24 @@ if __name__ == "__main__":
         with open(rule_file, 'w') as f:
             f.write(rule_str)
 
+    @kvmagent.replyerror
+    @in_bash
+    def update_os(self, req):
+        rsp = UpdateHostOSRsp()
+        if shell.run("which yum") != 0:
+            rsp.success = False
+            rsp.error = "no yum command found, cannot update host os"
+        elif shell.run("yum --disablerepo=* --enablerepo=zstack-mn repoinfo") != 0:
+            rsp.success = False
+            rsp.error = "no zstack-mn repo found, cannot update host os"
+        elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
+            rsp.success = False
+            rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
+        elif shell.run("yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn update -y") != 0:
+            rsp.success = False
+            rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
         
@@ -351,6 +394,7 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT, self.setup_heartbeat_file)
         http_server.register_async_uri(self.FACT_PATH, self.fact)
         http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
+        http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

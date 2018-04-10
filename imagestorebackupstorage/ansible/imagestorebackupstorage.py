@@ -21,7 +21,6 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 chrony_servers = None
 fs_rootpath = ""
-pkg_imagestorebackupstorage = ""
 client = "false"
 remote_user = "root"
 remote_pass = None
@@ -53,6 +52,14 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+
+# get remote host arch
+IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+if IS_AARCH64:
+    src_pkg_imagestorebackupstorage = "zstack-store.aarch64.bin"
+else:
+    src_pkg_imagestorebackupstorage = "zstack-store.bin"
+dst_pkg_imagestorebackupstorage = "zstack-store.bin"
 
 # include zstacklib.py
 (distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
@@ -106,8 +113,8 @@ run_remote_command(command, host_post_info)
 
 # name: copy imagestore binary
 copy_arg = CopyArg()
-dest_pkg = "%s/%s" % (imagestore_root, pkg_imagestorebackupstorage)
-copy_arg.src = "%s/%s" % (file_root, pkg_imagestorebackupstorage)
+dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
+copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
 copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
 

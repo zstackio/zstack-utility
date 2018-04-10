@@ -54,9 +54,17 @@ class ImageStoreClient(object):
         if not os.path.isfile(imf):
             self.commit_to_imagestore(cmd, req)
 
-        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s push %s' % (
-        self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
-                req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.primaryStorageInstallPath)
+        extpara = ""
+        taskid = req[http.REQUEST_HEADER].get(http.TASK_UUID)
+        if cmd.threadContext:
+            if cmd.threadContext['task-stage']:
+                extpara += " -stage %s" % cmd.threadContext['task-stage']
+            if cmd.threadContext.api:
+                taskid = cmd.threadContext.api
+
+        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s %s push %s' % (
+            self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
+            taskid, cmd.imageUuid, extpara, cmd.primaryStorageInstallPath)
         logger.debug(cmdstr)
         logger.debug('pushing %s to image store' % cmd.primaryStorageInstallPath)
         shell.call(cmdstr)

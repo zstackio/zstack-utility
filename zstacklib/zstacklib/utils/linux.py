@@ -15,6 +15,7 @@ import netaddr
 import functools
 import threading
 import re
+import platform
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -80,14 +81,6 @@ def rm_file_force(fpath):
 def process_exists(pid):
     return os.path.exists("/proc/" + str(pid))
 
-def kill_process(pid, sig):
-    try:
-        os.kill(int(pid), int(sig))
-    except:
-        pass
-
-def kill9_process(pid):
-    kill_process(pid, 9)
 
 def cidr_to_netmask(cidr):
     cidr = int(cidr)
@@ -416,13 +409,14 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         return write_to_temp_file(sshkey)
 
     sshkey_file = create_ssh_key_file()
-    shell.call('chmod 600 %s' % sshkey_file)
+    os.chmod(sshkey_file, 0600)
     try:
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         scp_cmd = 'scp -P {0} -o StrictHostKeyChecking=no -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath)
         shell.call(scp_cmd)
+        os.chmod(dst_filepath, 0664)
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
@@ -550,6 +544,19 @@ def qcow2_size_and_actual_size(file_path):
         actual_size = os.path.getsize(file_path)
 
     return virtual_size, actual_size
+
+'''  
+   file command output:
+   # file FusionStack-1.5.iso 
+     FusionStack-1.5.iso: # ISO 9660 CD-ROM filesystem data 'ZS' (bootable) 
+'''
+def get_img_file_fmt(src):
+    fmt = get_img_fmt(src)
+    if fmt == "raw":
+        result = shell.call("set -o pipefail; file %s | awk '{print $2, $3}'" % src)
+        if "ISO" in result:
+            fmt = "iso"
+    return fmt
 
 def get_img_fmt(src):
     fmt = shell.call("set -o pipefail; /usr/bin/qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % src)
@@ -836,12 +843,13 @@ def wait_callback_success(callback, callback_data=None, timeout=60,
             if rsp:
                 return rsp
             time.sleep(interval)
-            count = time.time()
         except Exception as e:
             if not ignore_exception_in_callback:
                 logger.debug('Meet exception when call %s through wait_callback_success: %s' % (callback.__name__, get_exception_stacktrace()))
                 raise e
             time.sleep(interval)
+        finally:
+            count = time.time()
 
     return False
 
@@ -882,7 +890,10 @@ def get_cpu_speed():
         out = file(max_freq).read()
         return int(float(out) / 1000)
 
-    cmd = shell.ShellCmd("grep 'cpu MHz' /proc/cpuinfo | tail -n 1")
+    if platform.machine() == 'aarch64':
+        cmd = shell.ShellCmd("dmidecode | grep 'Max Speed' | tail -n 1 | awk -F ' ' '{ print $1 $2 $3 }'")
+    else:
+        cmd = shell.ShellCmd("grep 'cpu MHz' /proc/cpuinfo | tail -n 1")
     out = cmd(False)
     if cmd.return_code == -11:
         raise
@@ -1276,7 +1287,8 @@ class TimeoutObject(object):
         clean_timeout_object()
 
 def kill_process(pid, timeout=5):
-    shell.call("kill %s" % pid)
+    logger.debug("kill -15 process[pid %s]" % pid)
+    os.kill(int(pid), 15)
 
     def check(_):
         cmd = shell.ShellCmd('ps %s > /dev/null' % pid)
@@ -1286,7 +1298,8 @@ def kill_process(pid, timeout=5):
     if wait_callback_success(check, None, timeout):
         return
 
-    shell.call("kill -9 %s" % pid)
+    logger.debug("kill -9 process[pid %s]" % pid)
+    os.kill(int(pid), 9)
     if not wait_callback_success(check, None, timeout):
         raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
 

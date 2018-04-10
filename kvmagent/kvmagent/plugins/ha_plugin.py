@@ -43,7 +43,7 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
     logger.debug('vm_in_process_uuid_list:\n' + vm_in_process_uuid_list)
 
     # kill vm's qemu process
-    vm_pids = []
+    vm_pids_dict = {}
     for vm_uuid in vm_in_process_uuid_list.split('\n'):
         vm_uuid = vm_uuid.strip(' \t\n\r')
         if not vm_uuid:
@@ -55,9 +55,9 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
 
         vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
         vm_pid = vm_pid.strip(' \t\n\r')
-        vm_pids.append(vm_pid)
+        vm_pids_dict[vm_uuid] = vm_pid
 
-    for vm_pid in vm_pids:
+    for vm_uuid, vm_pid in vm_pids_dict.items():
         kill = shell.ShellCmd('kill -9 %s' % vm_pid)
         kill(False)
         if kill.return_code == 0:
@@ -66,7 +66,7 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
-    return vm_pids
+    return vm_pids_dict.values()
 
 
 def mount_path_is_nfs(mount_path):
@@ -87,7 +87,7 @@ def kill_and_umount(mount_path, is_nfs):
 def umount_fs(mount_path, is_nfs):
     if is_nfs:
         shell.ShellCmd("systemctl stop nfs-client.target")(False)
-    time.sleep(2)
+        time.sleep(2)
     o = shell.ShellCmd("umount -f %s" % mount_path)
     o(False)
     if o.return_code != 0:
@@ -95,15 +95,9 @@ def umount_fs(mount_path, is_nfs):
 
 
 def kill_progresses_using_mount_path(mount_path):
-    list_ps = []
-    o = shell.ShellCmd("ps aux | grep '%s' | awk '{print $2}'" % mount_path)
+    o = shell.ShellCmd("pkill -9 -e -f '%s'" % mount_path)
     o(False)
-    if o.return_code == 0:
-        list_ps = o.stdout.splitlines()
-
-    logger.warn('kill the progresses, pids:%s with mount path: %s' % (list_ps, mount_path))
-    for ps_id in list_ps:
-        linux.kill9_process(ps_id)
+    logger.warn('kill the progresses with mount path: %s, killed process: %s' % (mount_path, o.stdout))
 
 
 def is_need_kill(vmUuid, mountPaths, isFileSystem):
@@ -175,6 +169,22 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        def check_tools():
+            ceph = shell.run('which ceph')
+            rbd = shell.run('which rbd')
+
+            if ceph == 0 and rbd == 0:
+                return True
+
+            return False
+
+        if not check_tools():
+            rsp = AgentRsp()
+            rsp.error = "no ceph or rbd on current host, please install the tools first"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
         mon_url = '\;'.join(cmd.monUrls)
         mon_url = mon_url.replace(':', '\\\:')
 
