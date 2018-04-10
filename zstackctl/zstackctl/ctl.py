@@ -7654,7 +7654,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
 
         # arguments for https
-        parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI. [DEFAULT] False")
+        parser.add_argument('--enable-ssl', choices=['True', 'False'], type=str.title, help="Enable HTTPS for ZStack UI. [DEFAULT] False")
         parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui")
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE)
         parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS). [DEFAULT] PKCS12")
@@ -7738,38 +7738,38 @@ class ConfigUiCmd(Command):
                 copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
                 args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
 
-        if args.mn_host:
-            ctl.write_ui_property("mn_host", args.mn_host)
-        if args.mn_port:
-            ctl.write_ui_property("mn_port", args.mn_port)
-        if args.webhook_host:
-            ctl.write_ui_property("webhook_host", args.webhook_host)
-        if args.webhook_port:
-            ctl.write_ui_property("webhook_port", args.webhook_port)
-        if args.server_port:
-            ctl.write_ui_property("server_port", args.server_port)
-        if args.log:
-            ctl.write_ui_property("log", args.log)
+        if args.mn_host or args.mn_host == '':
+            ctl.write_ui_property("mn_host", args.mn_host.strip())
+        if args.mn_port or args.mn_port == '':
+            ctl.write_ui_property("mn_port", args.mn_port.strip())
+        if args.webhook_host or args.webhook_host == '':
+            ctl.write_ui_property("webhook_host", args.webhook_host.strip())
+        if args.webhook_port or args.webhook_port == '':
+            ctl.write_ui_property("webhook_port", args.webhook_port.strip())
+        if args.server_port or args.server_port == '':
+            ctl.write_ui_property("server_port", args.server_port.strip())
+        if args.log or args.log == '':
+            ctl.write_ui_property("log", args.log.strip())
 
         # https
         if args.enable_ssl:
             ctl.write_ui_property("enable_ssl", args.enable_ssl.lower())
-        if args.ssl_keyalias:
-            ctl.write_ui_property("ssl_keyalias", args.ssl_keyalias)
-        if args.ssl_keystore:
-            ctl.write_ui_property("ssl_keystore", args.ssl_keystore)
-        if args.ssl_keystore_type:
-            ctl.write_ui_property("ssl_keystore_type", args.ssl_keystore_type)
-        if args.ssl_keystore_password:
-            ctl.write_ui_property("ssl_keystore_password", args.ssl_keystore_password)
+        if args.ssl_keyalias or args.ssl_keyalias == '':
+            ctl.write_ui_property("ssl_keyalias", args.ssl_keyalias.strip())
+        if args.ssl_keystore or args.ssl_keystore == '':
+            ctl.write_ui_property("ssl_keystore", args.ssl_keystore.strip())
+        if args.ssl_keystore_type or args.ssl_keystore_type == '':
+            ctl.write_ui_property("ssl_keystore_type", args.ssl_keystore_type.strip())
+        if args.ssl_keystore_password or args.ssl_keystore_password == '':
+            ctl.write_ui_property("ssl_keystore_password", args.ssl_keystore_password.strip())
 
         # ui_db
-        if args.db_url:
-            ctl.write_ui_property("db_url", args.db_url)
-        if args.db_username:
-            ctl.write_ui_property("db_username", args.db_username)
-        if args.db_password:
-            ctl.write_ui_property("db_password", args.db_password)
+        if args.db_url or args.db_url == '':
+            ctl.write_ui_property("db_url", args.db_url.strip())
+        if args.db_username or args.db_username == '':
+            ctl.write_ui_property("db_username", args.db_username.strip())
+        if args.db_password or args.db_password == '':
+            ctl.write_ui_property("db_password", args.db_password.strip())
 
 # For UI 2.0
 class ShowUiCfgCmd(Command):
