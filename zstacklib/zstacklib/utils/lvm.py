@@ -51,7 +51,7 @@ def check_lvm_config_is_default():
 
 
 def config_lvm_conf(node, value):
-    cmd = shell.ShellCmd("lvmconfig --config %s=%s -f /etc/lvm/lvm.conf" % (node, value))
+    cmd = shell.ShellCmd("lvmconfig --mergedconfig --config %s=%s -f /etc/lvm/lvm.conf" % (node, value))
     cmd(is_exception=True)
 
 
