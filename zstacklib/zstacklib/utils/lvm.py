@@ -10,20 +10,31 @@ LV_RESERVED_SIZE = 1024*1024*4
 
 
 class LvmlockdLockType(object):
-    null = 0
-    share = 1
-    exclusive = 2
+    NULL = 0
+    SHARE = 1
+    EXCLUSIVE = 2
 
     @staticmethod
     def from_abbr(abbr):
         if abbr == "sh":
-            return LvmlockdLockType.share
+            return LvmlockdLockType.SHARE
         elif abbr == "ex":
-            return LvmlockdLockType.exclusive
+            return LvmlockdLockType.EXCLUSIVE
         elif abbr == "un":
-            return LvmlockdLockType.null
+            return LvmlockdLockType.NULL
         else:
             raise Exception("unknown lock type %s" % abbr)
+
+    @staticmethod
+    def from_str(string):
+        if string == "NULL":
+            return LvmlockdLockType.SHARE
+        elif string == "SHARE":
+            return LvmlockdLockType.EXCLUSIVE
+        elif string == "EXCLUSIVE":
+            return LvmlockdLockType.NULL
+        else:
+            raise Exception("unknown lock type %s" % string)
 
 
 class RetryException(Exception):
@@ -138,7 +149,7 @@ def lv_active(path):
 
 def get_lv_locking_type(path):
     if not lv_active(path):
-        return LvmlockdLockType.null
+        return LvmlockdLockType.NULL
     cmd = shell.ShellCmd("lvmlockctl -i | grep %s | awk '{print $3}'" % lv_uuid(path))
     cmd(is_exception=True)
     return LvmlockdLockType.from_abbr(cmd.stdout.strip())
@@ -171,17 +182,17 @@ class OperateLv(object):
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
-        self.target_lock = LvmlockdLockType.exclusive if shared == False else LvmlockdLockType.share
+        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared == False else LvmlockdLockType.SHARE
 
     def __enter__(self):
         if self.exists_lock < self.target_lock:
             active_lv(self.abs_path, self.shared)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.exists_lock == LvmlockdLockType.null:
+        if self.exists_lock == LvmlockdLockType.NULL:
             deactive_lv(self.abs_path, raise_exception=False)
         else:
-            active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.share)
+            active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)
 
 
 class RecursiveOperateLv(object):
@@ -189,7 +200,7 @@ class RecursiveOperateLv(object):
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
-        self.target_lock = LvmlockdLockType.exclusive if shared == False else LvmlockdLockType.share
+        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared == False else LvmlockdLockType.SHARE
         self.backing = None
 
     def __enter__(self):
@@ -204,7 +215,7 @@ class RecursiveOperateLv(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.backing is not None:
             self.backing.__exit__(exc_type, exc_val, exc_tb)
-        if self.exists_lock == LvmlockdLockType.null:
+        if self.exists_lock == LvmlockdLockType.NULL:
             deactive_lv(self.abs_path, raise_exception=False)
         else:
-            active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.share)
+            active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)

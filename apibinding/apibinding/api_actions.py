@@ -446,6 +446,18 @@ class AddSftpBackupStorageAction(inventory.APIAddSftpBackupStorageMsg):
         self.out = evt
         return self.out
 
+class AddSharedBlockGroupPrimaryStorageAction(inventory.APIAddSharedBlockGroupPrimaryStorageMsg):
+    def __init__(self):
+        super(AddSharedBlockGroupPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddSharedBlockGroupPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddSharedMountPointPrimaryStorageAction(inventory.APIAddSharedMountPointPrimaryStorageMsg):
     def __init__(self):
         super(AddSharedMountPointPrimaryStorageAction, self).__init__()
@@ -7069,6 +7081,48 @@ class QueryShareableVolumeVmInstanceRefAction(inventory.APIQueryShareableVolumeV
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryShareableVolumeVmInstanceRefAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySharedBlockAction(inventory.APIQuerySharedBlockMsg):
+    def __init__(self):
+        super(QuerySharedBlockAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySharedBlockAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySharedBlockGroupPrimaryStorageAction(inventory.APIQuerySharedBlockGroupPrimaryStorageMsg):
+    def __init__(self):
+        super(QuerySharedBlockGroupPrimaryStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySharedBlockGroupPrimaryStorageAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QuerySharedBlockGroupPrimaryStorageHostRefAction(inventory.APIQuerySharedBlockGroupPrimaryStorageHostRefMsg):
+    def __init__(self):
+        super(QuerySharedBlockGroupPrimaryStorageHostRefAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QuerySharedBlockGroupPrimaryStorageHostRefAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
