@@ -11,6 +11,7 @@ from zstacklib.utils import http
 from zstacklib.utils import shell
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent.plugins.imagestore import ImageStoreClient
+from zstacklib.utils import naslinux
 
 logger = log.get_logger(__name__)
 
@@ -72,33 +73,33 @@ class MergeSnapshotRsp(AliyunNasResponse):
         self.actualSize = None
 
 
-MOUNT_PATH = "/aliyun/nas/primarystorage/mount"
-IS_MOUNT_PATH = "/aliyun/nas/primarystorage/ismount"
-MOUNT_DATA_PATH = "/aliyun/nas/primarystorage/mountdata"
-INIT_PATH = "/aliyun/nas/primarystorage/init"
-PING_PATH = "/aliyun/nas/primarystorage/ping"
-GET_CAPACITY_PATH = "/aliyun/nas/primarystorage/getcapacity"
-LIST_PATH = "/aliyun/nas/primarystorage/list"
-UPDATE_MOUNT_POINT_PATH = "/aliyun/nas/primarystorage/updatemountpoint"
-REMOUNT_PATH = "/aliyun/nas/primarystorage/remount"
-UNMOUNT_PATH = "/aliyun/nas/primarystorage/unmount"
-CHECK_BITS_PATH = "/aliyun/nas/primarystorage/checkbits"
-CREATE_EMPTY_VOLUME_PATH = "/aliyun/nas/primarystorage/createempty"
-CREATE_VOLUME_FROM_CACHE_PATH = "/aliyun/nas/primarystorage/createvolume"
-DELETE_BITS_PATH = "/aliyun/nas/primarystorage/deletebits"
-GET_VOLUME_SIZE_PATH = "/aliyun/nas/primarystorage/getvolumesize"
-REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/aliyun/nas/primarystorage/revertvolume"
-DOWNLOAD_BIT_TO_IMAGESTORE_PATH = "/aliyun/nas/primarystorage/imagestore/download"
-UPLOAD_BIT_TO_IMAGESTORE__PATH = "/aliyun/nas/primarystorage/imagestore/upload"
-REINIT_VOLUME_PATH = "/aliyun/nas/primarystorage/reinit"
-RESIZE_VOLUME_PATH = "/aliyun/nas/primarystorage/resize"
-COMMIT_PATH = "/aliyun/nas/primarystorage/commit"
-CREATE_TEMPLATE_FROM_VOLUME_PATH = "/aliyun/nas/primarystorage/createtemplatefromvolume"
-MERGE_SNAPSHOT_PATH = "/aliyun/nas/primarystorage/mergesnapshot"
-OFFLINE_MERGE_SNAPSHOT_PATH = "/aliyun/nas/primarystorage/snapshot/offlinemerge"
-
-
 class AliyunNasStoragePlugin(kvmagent.KvmAgent):
+    MOUNT_PATH = "/aliyun/nas/primarystorage/mount"
+    IS_MOUNT_PATH = "/aliyun/nas/primarystorage/ismount"
+    MOUNT_DATA_PATH = "/aliyun/nas/primarystorage/mountdata"
+    INIT_PATH = "/aliyun/nas/primarystorage/init"
+    PING_PATH = "/aliyun/nas/primarystorage/ping"
+    GET_CAPACITY_PATH = "/aliyun/nas/primarystorage/getcapacity"
+    LIST_PATH = "/aliyun/nas/primarystorage/list"
+    UPDATE_MOUNT_POINT_PATH = "/aliyun/nas/primarystorage/updatemountpoint"
+    REMOUNT_PATH = "/aliyun/nas/primarystorage/remount"
+    UNMOUNT_PATH = "/aliyun/nas/primarystorage/unmount"
+    CHECK_BITS_PATH = "/aliyun/nas/primarystorage/checkbits"
+    CREATE_EMPTY_VOLUME_PATH = "/aliyun/nas/primarystorage/createempty"
+    CREATE_VOLUME_FROM_CACHE_PATH = "/aliyun/nas/primarystorage/createvolume"
+    DELETE_BITS_PATH = "/aliyun/nas/primarystorage/deletebits"
+    GET_VOLUME_SIZE_PATH = "/aliyun/nas/primarystorage/getvolumesize"
+    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/aliyun/nas/primarystorage/revertvolume"
+    DOWNLOAD_BIT_TO_IMAGESTORE_PATH = "/aliyun/nas/primarystorage/imagestore/download"
+    UPLOAD_BIT_TO_IMAGESTORE__PATH = "/aliyun/nas/primarystorage/imagestore/upload"
+    REINIT_VOLUME_PATH = "/aliyun/nas/primarystorage/reinit"
+    RESIZE_VOLUME_PATH = "/aliyun/nas/primarystorage/resize"
+    COMMIT_PATH = "/aliyun/nas/primarystorage/commit"
+    CREATE_TEMPLATE_FROM_VOLUME_PATH = "/aliyun/nas/primarystorage/createtemplatefromvolume"
+    MERGE_SNAPSHOT_PATH = "/aliyun/nas/primarystorage/mergesnapshot"
+    OFFLINE_MERGE_SNAPSHOT_PATH = "/aliyun/nas/primarystorage/snapshot/offlinemerge"
+
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.MOUNT_PATH, self.mount)
@@ -148,7 +149,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
 
         if not linux.is_mounted(cmd.mountPath, cmd.url):
             linux.mount(cmd.url, cmd.mountPath, cmd.options)
-            logger.debug(http.path_msg(MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))
+            logger.debug(http.path_msg(self.MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))
             rsp.mounted = True
 
         self._set_capacity_to_response(cmd.uuid, rsp)
@@ -170,14 +171,11 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     def mountdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AliyunNasResponse()
-        linux.is_valid_nfs_url(cmd.url)
-
-        if not os.path.exists(cmd.mountPath):
-            shell.call('mkdir -p %s' % cmd.mountPath)
+        naslinux.createCommonPath(cmd.mountPath, cmd.basePath, cmd.url)
 
         if not linux.is_mounted(cmd.dataPath, cmd.url):
             linux.mount(cmd.url, cmd.dataPath, cmd.options)
-            logger.debug(http.path_msg(MOUNT_DATA_PATH, 'mounted %s on %s' % (cmd.url, cmd.dataPath)))
+            logger.debug(http.path_msg(self.MOUNT_DATA_PATH, 'mounted %s on %s' % (cmd.url, cmd.dataPath)))
             rsp.mounted = True
 
         self._set_capacity_to_response(cmd.uuid, rsp)
@@ -303,9 +301,9 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         rsp = AliyunNasResponse()
         if linux.is_mounted(path=cmd.mountPath):
             ret = linux.umount(cmd.mountPath)
-            if not ret: logger.warn(
-                http.path_msg(UNMOUNT_PATH, 'unmount %s failed' % cmd.mountPath))
-        logger.debug(http.path_msg(UNMOUNT_PATH, 'umounted %s' % cmd.mountPath))
+            if not ret:
+                logger.warn(http.path_msg(self.UNMOUNT_PATH, 'unmount %s failed' % cmd.mountPath))
+        logger.debug(http.path_msg(self.UNMOUNT_PATH, 'umounted %s' % cmd.mountPath))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
