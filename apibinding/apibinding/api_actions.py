@@ -8752,6 +8752,18 @@ class UpdateConnectionBetweenL3NetWorkAndAliyunVSwitchAction(inventory.APIUpdate
         self.out = evt
         return self.out
 
+class UpdateConsoleProxyAgentAction(inventory.APIUpdateConsoleProxyAgentMsg):
+    def __init__(self):
+        super(UpdateConsoleProxyAgentAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateConsoleProxyAgentAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateDiskOfferingAction(inventory.APIUpdateDiskOfferingMsg):
     def __init__(self):
         super(UpdateDiskOfferingAction, self).__init__()
