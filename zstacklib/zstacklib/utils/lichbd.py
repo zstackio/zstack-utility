@@ -229,7 +229,7 @@ def lichbd_copy(src_path, dst_path):
         return shellcmd
     else:
         if dst_path.startswith(":"):
-            call("rm -rf %s" % (dst_path.lstrip(":")))
+            shell.run("rm -rf %s" % (dst_path.lstrip(":")))
         else:
             lichbd_rm(dst_path)
 
@@ -253,7 +253,7 @@ def lichbd_export(src_path, dst_path):
     if shellcmd.return_code == 0:
         return shellcmd
     else:
-        call("rm -rf %s" % dst_path)
+        shell.run("rm -rf %s" % dst_path)
 
     raise_exp(shellcmd)
 

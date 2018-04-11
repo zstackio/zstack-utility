@@ -405,7 +405,13 @@ class SftpBackupStorageAgent(object):
             return linux.wget(url, workdir=workdir, rename=name, timeout=timeout, interval=2, callback=percentage_callback, callback_data=url)
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
         rsp = DownloadResponse()
+        # for download failure
+        (total, avail) = self.get_capacity()
+        rsp.totalCapacity = total
+        rsp.availableCapacity = avail
+
         supported_schemes = [self.URL_HTTP, self.URL_HTTPS, self.URL_FILE]
         if cmd.urlScheme not in supported_schemes:
             rsp.success = False
@@ -445,7 +451,10 @@ class SftpBackupStorageAgent(object):
 
         os.chmod(cmd.installPath, stat.S_IRUSR + stat.S_IRGRP + stat.S_IROTH)
 
-        image_format = bash_o("qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % linux.shellquote(install_path)).strip('\n')
+        try:
+            image_format = linux.get_img_file_fmt(linux.shellquote(install_path))
+        except Exception as e:
+            image_format = "raw"
         size = os.path.getsize(install_path)
         md5sum = 'not calculated'
         logger.debug('successfully downloaded %s to %s' % (cmd.url, install_path))

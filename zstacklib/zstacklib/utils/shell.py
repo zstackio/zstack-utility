@@ -55,6 +55,11 @@ def call(cmd, exception=True, workdir=None):
     return ShellCmd(cmd, workdir)(exception)
 
 def run(cmd, workdir=None):
-    s = ShellCmd(cmd, workdir)
+    s = ShellCmd(cmd, workdir, False)
     s(False)
+    return s.return_code
+
+def check_run(cmd, workdir=None):
+    s = ShellCmd(cmd, workdir, False)
+    s(True)
     return s.return_code

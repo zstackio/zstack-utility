@@ -9,6 +9,9 @@ fi
 LANG=en_US.UTF-8
 LC_ALL=en_US.utf8
 export LANG LC_ALL
+unset http_proxy
+unset ftp_proxy
+unset https_proxy
 
 # check disk space
 all_full=true

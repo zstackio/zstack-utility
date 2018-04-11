@@ -146,7 +146,7 @@ def build_deploy_xmlobject_from_configure(xml_cfg_path, template_file_path=None)
         try:
             xmlstr = tmpt.substitute(d)
         except KeyError as key:
-            test_fail("Did not find value definition in [template:] '%s' for [KEY:] '%s' from [config:] '%s' " % (
+            raise Exception("Did not find value definition in [template:] '%s' for [KEY:] '%s' from [config:] '%s' " % (
                 template_file_path, key, xml_cfg_path))
 
     return xmlobject.loads(xmlstr)

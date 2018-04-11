@@ -198,10 +198,10 @@ class IPSetManager(object):
         set_name = Word(printables)
         set_type = Word(alphas) + Word(':') + Word(alphas + ',')
 
-        sets = Word('create') + set_name + set_type + Word('family') + Word(alphanums) + restOfLine
+        sets = Literal('create') + set_name + set_type + Literal('family') + Word(alphanums) + restOfLine
         sets.setParseAction(self._parse_set_action)
 
-        entry = Word('add') + set_name + Word(nums + './')
+        entry = Literal('add') + set_name + Word(nums + './')
         entry.setParseAction(self._parse_entry_action)
 
         self._parser = sets | entry

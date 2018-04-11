@@ -93,6 +93,11 @@
 
     <target name="copy-pypi-source" >
         <makeDir dir="${pypi.parent.dir}" />
+         <exec executable="bash" dir="${pypi.source.folder}" failonerror="true">
+            <arg value="${patch.pypi.source}" />
+             <arg value="websockify-0.6.1.zip" />
+             <arg value="websockify.patch" />
+        </exec>
         <exec executable="cp" dir="${pypi.parent.dir}" failonerror="true">
             <arg value="-a" />
             <arg value="${pypi.source.folder}" />
@@ -366,6 +371,11 @@
         <exec executable="cp" dir="${libs.dir}" failonerror="true">
             <arg value="-f" />
             <arg value="${centos7.unzip.rpm}" />
+            <arg value="./" />
+        </exec>
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos7.unzip.aarch64.rpm}" />
             <arg value="./" />
         </exec>
     </target>
