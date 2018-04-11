@@ -86,6 +86,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CREATE_EMPTY_VOLUME_PATH = "/sharedblock/volume/createempty"
     CHECK_BITS_PATH = "/sharedblock/bits/check"
     RESIZE_VOLUME_PATH = "/sharedblock/volume/resize"
+    CHANGE_VOLUME_ACTIVE_PATH = "/sharedblock/volume/active"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -104,6 +105,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.CHANGE_VOLUME_ACTIVE_PATH, self.active_lv)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -120,7 +122,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         def config_lvm(host_id):
             if not lvm.check_lvm_config_is_default():
-                raise Exception("host lvm config changed from default, please check with 'lvmconfig --type diff'")
+                logger.warn("host lvm config changed from default, please check with 'lvmconfig --type diff'")
             lvm.config_lvm_conf("global/use_lvmlockd", 1)
             lvm.config_lvmlocal_conf("global/use_lvmetad", 0)
             lvm.config_lvmlocal_conf("local/host_id", host_id)
@@ -153,9 +155,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                      (INIT_TAG, hostUuid, time.time(),
                                       DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
                 cmd(is_exception=False)
-                if cmd.return_code == 0 and find_vg(vgUuid) == True:
+                if cmd.return_code == 0:
                     return True
-                raise Exception("can not find vg %s with disks: %s and create failed for %s " %
+                if find_vg(vgUuid) is False:
+                    raise Exception("can not find vg %s with disks: %s and create failed for %s " %
                                 (vgUuid, diskPaths, cmd.stderr))
             return False
 
@@ -283,7 +286,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
-        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -380,3 +382,23 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.existing = os.path.exists(cmd.path)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def active_lv(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        install_abs_path = translate_absolute_path_from_install_path(
+            "sharedblock://%s/%s" % (cmd.vgUuid, cmd.volumeUuid))
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+
+        if cmd.lockType > lvm.LvmlockdLockType.NULL:
+            lvm.active_lv(install_abs_path, cmd.lockType == lvm.LvmlockdLockType.SHARE)
+        else:
+            lvm.deactive_lv(install_abs_path)
+        if cmd.recursive is False or cmd.lockType == lvm.LvmlockdLockType.NULL:
+            return jsonobject.dumps(rsp)
+
+        while linux.qcow2_get_backing_file(install_abs_path) != "":
+            install_abs_path = linux.qcow2_get_backing_file(install_abs_path)
+            lvm.active_lv(install_abs_path, True)
+
+        return jsonobject.dumps(rsp)
