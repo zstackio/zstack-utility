@@ -586,6 +586,10 @@ def qcow2_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))
     shell.check_run('chmod 666 %s' % dst)
 
+def qcow2_create_with_option(dst, size, opt=""):
+    shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
+    shell.check_run('chmod 666 %s' % dst)
+
 def qcow2_create_with_backing_file(backing_file, dst):
     fmt = get_img_fmt(backing_file)
     shell.call('/usr/bin/qemu-img create -F %s -f qcow2 -b %s %s' % (fmt, backing_file, dst))
