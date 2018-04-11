@@ -104,7 +104,11 @@ class ImageStoreClient(object):
 
     def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath):
         name, imageid = self._parse_image_reference(backupStorageInstallPath)
-        cmdstr = '%s -url %s:%s -cachedir %s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cachedir, primaryStorageInstallPath, name, imageid)
+        if cachedir:
+            cmdstr = '%s -url %s:%s -cachedir %s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cachedir, primaryStorageInstallPath, name, imageid)
+        else:
+            cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath, name, imageid)
+
         logger.debug('pulling %s:%s from image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
