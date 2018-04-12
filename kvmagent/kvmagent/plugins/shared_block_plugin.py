@@ -390,8 +390,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def active_lv(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        install_abs_path = translate_absolute_path_from_install_path(
-            "sharedblock://%s/%s" % (cmd.vgUuid, cmd.volumeUuid))
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
 
         if cmd.lockType > lvm.LvmlockdLockType.NULL:

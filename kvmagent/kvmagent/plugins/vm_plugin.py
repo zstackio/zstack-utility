@@ -3567,13 +3567,13 @@ class VmPlugin(kvmagent.KvmAgent):
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path):
             makedir_if_need(install_path)
             linux.create_template(previous_install_path, install_path)
-            new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
+            new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone(install_path, new_volume_path)
             return install_path, new_volume_path
 
         def take_delta_snapshot_by_qemu_img_convert(previous_install_path, install_path):
-            new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
+            new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone(previous_install_path, new_volume_path)
             return previous_install_path, new_volume_path
