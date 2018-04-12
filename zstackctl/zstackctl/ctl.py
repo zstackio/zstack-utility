@@ -7462,7 +7462,9 @@ class StartUiCmd(Command):
                     if not default_ip:
                         info('UI server is still running[PID:%s]' % pid)
                     else:
-                        info('UI server is still running[PID:%s], http://%s:%s' % (pid, default_ip, port))
+                        check_https_cmd = ShellCmd('ps -f -p %s | grep ssl.enabled=true >/dev/null' % pid)
+                        check_https_cmd(is_exception=False)
+                        info('UI server is still running[PID:%s], %s://%s:%s' % (pid, 'https' if check_https_cmd.return_code == 0 else 'http', default_ip, port))
                     return False
 
         pid = find_process_by_cmdline('zstack-ui.war')
