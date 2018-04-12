@@ -349,6 +349,8 @@ class CephAgent(object):
                     rsp.error = "%s %s" % (e, o)
 
         doPing()
+        
+        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     @replyerror
