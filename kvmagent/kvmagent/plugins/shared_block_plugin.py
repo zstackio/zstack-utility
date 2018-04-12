@@ -121,11 +121,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         diskPaths = set()
 
         def config_lvm(host_id):
-            if not lvm.check_lvm_config_is_default():
-                logger.warn("host lvm config changed from default, please check with 'lvmconfig --type diff'")
-            lvm.config_lvm_conf("global/use_lvmlockd", 1)
-            lvm.config_lvmlocal_conf("global/use_lvmetad", 0)
-            lvm.config_lvmlocal_conf("local/host_id", host_id)
+            lvm.backup_lvm_config()
+            lvm.reset_lvm_conf_default()
+            lvm.config_lvm_by_sed("use_lvmlockd", "use_lvmlockd=1", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=0", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("host_id", "host_id=%s" % host_id, ["lvm.conf", "lvmlocal.conf"])
 
         def check_disk_by_uuid(diskUuid):
             for cond in ['TYPE=\\\"mpath\\\"', '\"\"']:

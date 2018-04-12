@@ -1,5 +1,6 @@
 import functools
 import random
+import os.path
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -7,7 +8,8 @@ from zstacklib.utils import linux
 
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
-
+LVM_CONFIG_PATH = "/etc/lvm"
+LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 
 class LvmlockdLockType(object):
     NULL = 0
@@ -48,6 +50,41 @@ def check_lvm_config_is_default():
         return False
     else:
         return True
+
+
+def backup_lvm_config():
+    if not os.path.exists(LVM_CONFIG_PATH):
+        logger.warn("can not find lvm config path: %s, backup failed" % LVM_CONFIG_PATH)
+        return
+
+    if not os.path.exists(LVM_CONFIG_BACKUP_PATH):
+        os.makedirs(LVM_CONFIG_BACKUP_PATH)
+
+    cmd = shell.ShellCmd("cp %s/lvm.conf %s/lvm-`date +%s`.conf; "
+                         "cp %s/lvmlocal.conf %s/lvmlocal-`date +%s`.conf" %
+                         (LVM_CONFIG_PATH, LVM_CONFIG_BACKUP_PATH, LVM_CONFIG_PATH, LVM_CONFIG_BACKUP_PATH))
+    cmd(is_exception=False)
+    logger.debug("backup lvm config file success")
+
+
+def reset_lvm_conf_default():
+    if not os.path.exists(LVM_CONFIG_PATH):
+        raise Exception("can not find lvm config path: %s, reset lvm config failed" % LVM_CONFIG_PATH)
+
+    cmd = shell.ShellCmd("lvmconfig --type default > %s/lvm.conf; "
+                         "lvmconfig --type default > %s/lvmlocal.conf" %
+                         (LVM_CONFIG_PATH, LVM_CONFIG_PATH))
+    cmd(is_exception=False)
+
+
+def config_lvm_by_sed(keyword, entry, files):
+    if not os.path.exists(LVM_CONFIG_PATH):
+        raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
+
+    for file in files:
+        cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
+                             (keyword, entry, file))
+        cmd(is_exception=False)
 
 
 def config_lvm_conf(node, value):
