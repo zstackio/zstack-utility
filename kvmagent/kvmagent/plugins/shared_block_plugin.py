@@ -21,7 +21,7 @@ INIT_TAG = "zs::sharedblock::init"
 HEARTBEAT_TAG = "zs::sharedblock::heartbeat"
 VOLUME_TAG = "zs::sharedblock::volume"
 DEFAULT_VG_METADATA_SIZE = "2g"
-DEFAULT_QCOW2_OPTION = " -o cluster_size=2m "
+DEFAULT_QCOW2_OPTION = " -o cluster_size=2M "
 
 class AgentRsp(object):
     def __init__(self):
