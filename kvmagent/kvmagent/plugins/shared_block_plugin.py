@@ -150,7 +150,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
             try:
                 find_vg(vgUuid)
-            except RetryException as e:
+            except RetryException:
                 cmd = shell.ShellCmd("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
                                      (INIT_TAG, hostUuid, time.time(),
                                       DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
@@ -160,6 +160,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 if find_vg(vgUuid) is False:
                     raise Exception("can not find vg %s with disks: %s and create failed for %s " %
                                 (vgUuid, diskPaths, cmd.stderr))
+            except Exception as e:
+                raise e
+
             return False
 
         config_lvm(cmd.hostId)

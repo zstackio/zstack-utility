@@ -67,6 +67,26 @@ def start_lvmlockd():
 
 
 def start_vg_lock(vgUuid):
+    @linux.retry(times=20, sleep_time=random.uniform(1,10))
+    def vg_lock_is_adding(vgUuid):
+        # NOTE(weiw): this means vg locking is adding rather than complete
+        cmd = shell.ShellCmd("sanlock client status | grep -E 's lvm_%s.*\\:0 ADD'" % vgUuid)
+        cmd(is_exception=False)
+        if cmd.return_code == 0:
+            raise RetryException("vg %s lock space is starting" % vgUuid)
+        return True
+
+    @linux.retry(times=3, sleep_time=random.uniform(0.1, 1))
+    def vg_lock_exists(vgUuid):
+        cmd = shell.ShellCmd("lvmlockctl -i | grep %s" % vgUuid)
+        cmd(is_exception=False)
+        if cmd.return_code != 0:
+            raise RetryException("can not find lock space for vg %s via lvmlockctl" % vgUuid)
+        elif vg_lock_is_adding(vgUuid) is True:
+            raise RetryException("vg %s lock space is always starting" % vgUuid)
+        else:
+            return True
+
     @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
     def start_lock(vgUuid):
         cmd = shell.ShellCmd("vgchange --lock-start %s" % vgUuid)
@@ -74,19 +94,18 @@ def start_vg_lock(vgUuid):
         if cmd.return_code != 0:
             raise Exception("vgchange --lock-start failed")
 
-        cmd = shell.ShellCmd("lvmlockctl -i | grep %s" % vgUuid)
-        cmd(is_exception=True)
-        if cmd.return_code != 0:
-            raise RetryException("can not find lock space for vg %s via lvmlockctl" % vgUuid)
+        vg_lock_exists(vgUuid)
 
     try:
+        vg_lock_exists(vgUuid)
+    except RetryException:
         start_lock(vgUuid)
-    except RetryException as e:
+    except Exception as e:
         raise e
 
 
 def get_vg_size(vgUuid):
-    cmd = shell.ShellCmd("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
+    cmd = shell.ShellCmd("vgs %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
     cmd(is_exception=True)
     return cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
 
@@ -125,7 +144,7 @@ def deactive_lv(path, raise_exception=True):
 
 
 def delete_lv(path):
-    cmd = shell.ShellCmd("lvremove -an %s" % path)
+    cmd = shell.ShellCmd("lvremove -y %s" % path)
     cmd(is_exception=True)
 
 
@@ -136,13 +155,13 @@ def lv_exists(path):
 
 
 def lv_uuid(path):
-    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -ouuid" % path)
+    cmd = shell.ShellCmd("lvs --noheadings %s -ouuid" % path)
     cmd(is_exception=False)
     return cmd.stdout.strip()
 
 
 def lv_active(path):
-    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -oactive | grep active" % path)
+    cmd = shell.ShellCmd("lvs --noheadings %s -oactive | grep active" % path)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
