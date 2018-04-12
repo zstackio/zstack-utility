@@ -1,6 +1,7 @@
 import functools
 import random
 import os.path
+import time
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -60,9 +61,11 @@ def backup_lvm_config():
     if not os.path.exists(LVM_CONFIG_BACKUP_PATH):
         os.makedirs(LVM_CONFIG_BACKUP_PATH)
 
-    cmd = shell.ShellCmd("cp %s/lvm.conf %s/lvm-`date +%s`.conf; "
-                         "cp %s/lvmlocal.conf %s/lvmlocal-`date +%s`.conf" %
-                         (LVM_CONFIG_PATH, LVM_CONFIG_BACKUP_PATH, LVM_CONFIG_PATH, LVM_CONFIG_BACKUP_PATH))
+    current_time = time.time()
+    cmd = shell.ShellCmd("cp %s/lvm.conf %s/lvm-%s.conf; "
+                         "cp %s/lvmlocal.conf %s/lvmlocal-%s.conf" %
+                         (LVM_CONFIG_PATH, LVM_CONFIG_BACKUP_PATH, current_time,
+                          LVM_CONFIG_PATH, LVM_CONFIG_BACKUP_PATH, current_time))
     cmd(is_exception=False)
     logger.debug("backup lvm config file success")
 
@@ -82,8 +85,8 @@ def config_lvm_by_sed(keyword, entry, files):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
     for file in files:
-        cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
-                             (keyword, entry, file))
+        cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s/%s" %
+                             (keyword, entry, LVM_CONFIG_PATH, file))
         cmd(is_exception=False)
 
 
@@ -111,7 +114,7 @@ def start_vg_lock(vgUuid):
         cmd(is_exception=False)
         if cmd.return_code == 0:
             raise RetryException("vg %s lock space is starting" % vgUuid)
-        return True
+        return False
 
     @linux.retry(times=3, sleep_time=random.uniform(0.1, 1))
     def vg_lock_exists(vgUuid):
@@ -119,10 +122,10 @@ def start_vg_lock(vgUuid):
         cmd(is_exception=False)
         if cmd.return_code != 0:
             raise RetryException("can not find lock space for vg %s via lvmlockctl" % vgUuid)
-        elif vg_lock_is_adding(vgUuid) is True:
-            raise RetryException("vg %s lock space is always starting" % vgUuid)
-        else:
+        elif vg_lock_is_adding(vgUuid) is False:
             return True
+        else:
+            return False
 
     @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
     def start_lock(vgUuid):
@@ -142,7 +145,7 @@ def start_vg_lock(vgUuid):
 
 
 def get_vg_size(vgUuid):
-    cmd = shell.ShellCmd("vgs %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
+    cmd = shell.ShellCmd("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
     cmd(is_exception=True)
     return cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
 
@@ -150,6 +153,15 @@ def get_vg_size(vgUuid):
 def add_vg_tag(vgUuid, tag):
     cmd = shell.ShellCmd("vgchange --addtag %s %s" % (tag, vgUuid))
     cmd(is_exception=True)
+
+
+def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
+    cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | grep -Po '%s::%s::[\d.]*'" % (vgUuid, tag, hostUuid))
+    cmd(is_exception=False)
+    exists_tags = cmd.stdout.strip().split("\n")
+    t = " --deltag " +" --deltag ".join(exists_tags)
+    cmd = shell.ShellCmd("vgchange %s %s" % (t, vgUuid))
+    cmd(is_exception=False)
 
 
 def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
@@ -192,13 +204,13 @@ def lv_exists(path):
 
 
 def lv_uuid(path):
-    cmd = shell.ShellCmd("lvs --noheadings %s -ouuid" % path)
+    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -ouuid" % path)
     cmd(is_exception=False)
     return cmd.stdout.strip()
 
 
 def lv_active(path):
-    cmd = shell.ShellCmd("lvs --noheadings %s -oactive | grep active" % path)
+    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -oactive | grep active" % path)
     cmd(is_exception=False)
     return cmd.return_code == 0
 

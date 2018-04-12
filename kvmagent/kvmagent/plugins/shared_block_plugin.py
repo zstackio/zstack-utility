@@ -171,6 +171,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.start_lvmlockd()
         rsp.isFirst = create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid)
         lvm.start_vg_lock(cmd.vgUuid)
+        lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time()))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
