@@ -620,6 +620,8 @@ class Ctl(object):
     ZSTACK_UI_HOME = '/usr/local/zstack/zstack-ui/'
     ZSTACK_UI_KEYSTORE = ZSTACK_UI_HOME + 'ui.keystore.p12'
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
+    # for console proxy https
+    ZSTACK_UI_KEYSTORE_PEM = ZSTACK_UI_HOME + 'ui.keystore.pem'
 
     def __init__(self):
         self.commands = {}
@@ -7429,7 +7431,7 @@ class StartUiCmd(Command):
         parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
         parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias.")
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path.")
-        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS).")
+        parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type.")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password.")
 
         # arguments for ui_db
@@ -7488,7 +7490,18 @@ class StartUiCmd(Command):
         p12.set_privatekey(key)
         p12.set_certificate(cert)
         p12.set_friendlyname('zstackui')
-        open(ctl.ZSTACK_UI_KEYSTORE, 'w').write(p12.export(b'password'))
+        with open(ctl.ZSTACK_UI_KEYSTORE, 'w') as f:
+            f.write(p12.export(b'password'))
+
+    def _gen_ssl_keystore_pem_from_pkcs12(self, ssl_keystore, ssl_keystore_password):
+        try:
+            p12 = OpenSSL.crypto.load_pkcs12(file(ssl_keystore, 'rb').read(), ssl_keystore_password)
+        except Exception as e:
+            raise CtlError('failed to convert %s to %s because %s' % (ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_PEM, str(e)))
+        cert_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, p12.get_certificate())
+        pkey_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, p12.get_privatekey())
+        with open(ctl.ZSTACK_UI_KEYSTORE_PEM, 'w') as f:
+            f.write(cert_pem + pkey_pem)
 
     def _get_db_info(self):
         # get default db_url, db_username, db_password etc.
@@ -7559,6 +7572,12 @@ class StartUiCmd(Command):
         if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE and args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE_CP:
             copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
             args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
+
+        # convert args.ssl_keystore to .pem
+        if args.ssl_keystore_type != 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
+            raise CtlError('%s not found.' % ctl.ZSTACK_UI_KEYSTORE_PEM)
+        if args.ssl_keystore_type == 'PKCS12':
+            self._gen_ssl_keystore_pem_from_pkcs12(args.ssl_keystore, args.ssl_keystore_password)
 
         # ui_db
         self._get_db_info()
@@ -7659,7 +7678,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--enable-ssl', choices=['True', 'False'], type=str.title, help="Enable HTTPS for ZStack UI. [DEFAULT] False")
         parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui")
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE)
-        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS). [DEFAULT] PKCS12")
+        parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type. [DEFAULT] PKCS12")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password")
 
         # arguments for ui_db
