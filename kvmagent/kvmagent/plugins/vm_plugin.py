@@ -2053,6 +2053,8 @@ class Vm(object):
             ic.iso = iso
             cdrom = ic.to_xmlobject(dev)
         else:
+            if iso.path.startswith('sharedblock'):
+                iso.path = iso.path.replace("sharedblock:/", "/dev")
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
