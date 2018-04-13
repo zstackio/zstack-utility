@@ -410,6 +410,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         while linux.qcow2_get_backing_file(install_abs_path) != "":
             install_abs_path = linux.qcow2_get_backing_file(install_abs_path)
-            handle_lv(cmd.lockType, install_abs_path)
+            if cmd.lockType == lvm.LvmlockdLockType.NULL:
+                handle_lv(lvm.LvmlockdLockType.NULL, install_abs_path)
+            else:
+                # activate backing files only in shared mode
+                handle_lv(lvm.LvmlockdLockType.SHARE, install_abs_path)
 
         return jsonobject.dumps(rsp)
