@@ -158,17 +158,20 @@ def has_lv_tag(path, tag):
     o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings --readonly 2>/dev/null | wc -l" % (tag, path))
     return o.strip() == '1'
 
+def get_meta_lv_path(path):
+    return path+"_meta")
+
 def delete_image(path, tag):
     def activate_and_remove(f):
-        with RecursiveOperateLv(f, shared=False):
-            backing = linux.qcow2_get_backing_file(f)
-            shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
-            return f
+        lvm.active_lv(f, shared=False)
+        backing = linux.qcow2_get_backing_file(f)
+        shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
+        return f
 
     fpath = path
     while fpath:
         backing = activate_and_remove(fpath)
-        activate_and_remove(fpath+"_meta")
+        activate_and_remove(get_meta_lv_path(fpath))
         fpath = backing
 
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
