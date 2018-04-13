@@ -20,6 +20,7 @@ LOCK_FILE = "/var/run/zstack/sharedblock.lock"
 INIT_TAG = "zs::sharedblock::init"
 HEARTBEAT_TAG = "zs::sharedblock::heartbeat"
 VOLUME_TAG = "zs::sharedblock::volume"
+IMAGE_TAG = "zs::sharedblock::image"
 DEFAULT_VG_METADATA_SIZE = "2g"
 DEFAULT_QCOW2_OPTION = " -o cluster_size=2M "
 
@@ -215,8 +216,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         if cmd.folder:
             raise Exception("not support this operation")
+
+        install_abs_path = translate_absolute_path_from_install_path(cmd.path)
+        if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
+            lvm.delete_image(install_abs_path, IMAGE_TAG)
         else:
-            install_abs_path = translate_absolute_path_from_install_path(cmd.path)
             lvm.delete_lv(install_abs_path)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -388,20 +392,24 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def active_lv(self, req):
+        def handle_lv(lockType, fpath):
+            if lockType > lvm.LvmlockdLockType.NULL:
+                lvm.active_lv(fpath, cmd.lockType == lvm.LvmlockdLockType.SHARE)
+            else:
+                lvm.deactive_lv(fpath)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
 
-        if cmd.lockType > lvm.LvmlockdLockType.NULL:
-            lvm.active_lv(install_abs_path, cmd.lockType == lvm.LvmlockdLockType.SHARE)
-        else:
-            lvm.deactive_lv(install_abs_path)
-        if cmd.recursive is False or cmd.lockType == lvm.LvmlockdLockType.NULL:
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        handle_lv(cmd.lockType, install_abs_path)
+
+        if cmd.recursive is False:
             return jsonobject.dumps(rsp)
 
         while linux.qcow2_get_backing_file(install_abs_path) != "":
             install_abs_path = linux.qcow2_get_backing_file(install_abs_path)
-            lvm.active_lv(install_abs_path, True)
+            handle_lv(cmd.lockType, install_abs_path)
 
         return jsonobject.dumps(rsp)

@@ -154,6 +154,22 @@ def add_vg_tag(vgUuid, tag):
     cmd = shell.ShellCmd("vgchange --addtag %s %s" % (tag, vgUuid))
     cmd(is_exception=True)
 
+def has_lv_tag(path, tag):
+    o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings --readonly 2>/dev/null | wc -l" % (tag, path))
+    return o.strip() == '1'
+
+def delete_image(path, tag):
+    def activate_and_remove(f):
+        with RecursiveOperateLv(f, shared=False):
+            backing = linux.qcow2_get_backing_file(f)
+            shell.check_run("lvremove -y -S{%s} %s" % (tag, f))
+            return f
+
+    fpath = path
+    while fpath:
+        backing = activate_and_remove(fpath)
+        activate_and_remove(fpath+"_meta")
+        fpath = backing
 
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | grep -Po '%s::%s::[\d.]*'" % (vgUuid, tag, hostUuid))
