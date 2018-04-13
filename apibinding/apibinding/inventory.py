@@ -19050,6 +19050,7 @@ class DahoVllsInventory(object):
         self.name = None
         self.status = None
         self.vllId = None
+        self.vlanId = None
         self.dataCenterUuid = None
         self.type = None
         self.description = None
@@ -19081,6 +19082,11 @@ class DahoVllsInventory(object):
             self.vllId = inv.vllId
         else:
             self.vllId = None
+
+        if hasattr(inv, 'vlanId'):
+            self.vlanId = inv.vlanId
+        else:
+            self.vlanId = None
 
         if hasattr(inv, 'dataCenterUuid'):
             self.dataCenterUuid = inv.dataCenterUuid
@@ -23691,7 +23697,7 @@ class QueryObjectDahoVllVbrRefInventory(object):
      }
 
 class QueryObjectDahoVllsInventory(object):
-     PRIMITIVE_FIELDS = ['vllId','connAUuid','description','type','uuid','connZUuid','name','lastOpDate','dataCenterUuid','expirePolicy','bandwidthMbps','startDate','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['vllId','vlanId','connAUuid','description','type','uuid','connZUuid','name','lastOpDate','dataCenterUuid','expirePolicy','bandwidthMbps','startDate','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['vbr']
      QUERY_OBJECT_MAP = {
         'vbr' : 'QueryObjectVirtualBorderRouterInventory',
