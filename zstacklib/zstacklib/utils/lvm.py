@@ -145,7 +145,7 @@ def start_vg_lock(vgUuid):
 
 
 def get_vg_size(vgUuid):
-    cmd = shell.ShellCmd("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
+    cmd = shell.ShellCmd("vgs --nolocking --readonly %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
     cmd(is_exception=True)
     return cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
 
@@ -220,13 +220,13 @@ def lv_exists(path):
 
 
 def lv_uuid(path):
-    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -ouuid" % path)
+    cmd = shell.ShellCmd("lvs --nolocking --readonly --noheadings %s -ouuid" % path)
     cmd(is_exception=False)
     return cmd.stdout.strip()
 
 
 def lv_active(path):
-    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -oactive | grep active" % path)
+    cmd = shell.ShellCmd("lvs --nolocking --readonly --noheadings %s -oactive | grep active" % path)
     cmd(is_exception=False)
     return cmd.return_code == 0
 

@@ -3618,7 +3618,10 @@ class VmPlugin(kvmagent.KvmAgent):
                         'took delta snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
                             cmd.vmUuid, cmd.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
+
             rsp.size = os.path.getsize(rsp.snapshotInstallPath)
+            if rsp.size == None or rsp.size == 0:
+                rsp.size = linux.qcow2_virtualsize(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
