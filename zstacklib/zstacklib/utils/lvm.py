@@ -175,7 +175,9 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | grep -Po '%s::%s::[\d.]*'" % (vgUuid, tag, hostUuid))
     cmd(is_exception=False)
     exists_tags = cmd.stdout.strip().split("\n")
-    t = " --deltag " +" --deltag ".join(exists_tags)
+    if len(exists_tags) == 0:
+        return
+    t = " --deltag " + " --deltag ".join(exists_tags)
     cmd = shell.ShellCmd("vgchange %s %s" % (t, vgUuid))
     cmd(is_exception=False)
 
@@ -208,9 +210,10 @@ def deactive_lv(path, raise_exception=True):
     cmd(is_exception=raise_exception)
 
 
-def delete_lv(path):
+def delete_lv(path, raise_exception=True):
     cmd = shell.ShellCmd("lvremove -y %s" % path)
-    cmd(is_exception=True)
+    cmd(is_exception=raise_exception)
+    return cmd.return_code
 
 
 def lv_exists(path):

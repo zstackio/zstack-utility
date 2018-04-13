@@ -24,6 +24,7 @@ IMAGE_TAG = "zs::sharedblock::image"
 DEFAULT_VG_METADATA_SIZE = "2g"
 DEFAULT_QCOW2_OPTION = " -o cluster_size=2M "
 
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
@@ -31,10 +32,12 @@ class AgentRsp(object):
         self.totalCapacity = None
         self.availableCapacity = None
 
+
 class ConnectRsp(AgentRsp):
     def __init__(self):
         super(ConnectRsp, self).__init__()
         self.isFirst = False
+
 
 class RevertVolumeFromSnapshotRsp(AgentRsp):
     def __init__(self):
@@ -42,16 +45,19 @@ class RevertVolumeFromSnapshotRsp(AgentRsp):
         self.newVolumeInstallPath = None
         self.size = None
 
+
 class MergeSnapshotRsp(AgentRsp):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
         self.size = None
         self.actualSize = None
 
+
 class CheckBitsRsp(AgentRsp):
     def __init__(self):
         super(CheckBitsRsp, self).__init__()
         self.existing = False
+
 
 class GetVolumeSizeRsp(AgentRsp):
     def __init__(self):
@@ -59,16 +65,26 @@ class GetVolumeSizeRsp(AgentRsp):
         self.size = None
         self.actualSize = None
 
+
 class ResizeVolumeRsp(AgentRsp):
     def __init__(self):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
+
+class OfflineMergeSnapshotRsp(AgentRsp):
+    def __init__(self):
+        super(OfflineMergeSnapshotRsp, self).__init__()
+        self.deleted = False
+
+
 class RetryException(Exception):
     pass
 
+
 def translate_absolute_path_from_install_path(path):
     return path.replace("sharedblock:/", "/dev")
+
 
 class SharedBlockPlugin(kvmagent.KvmAgent):
 
@@ -340,7 +356,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def offline_merge_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = OfflineMergeSnapshotRsp()
         src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath)
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
@@ -349,13 +365,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if not lvm.lv_exists(dst_abs_path):
                 lvm.create_lv_from_absolute_path(dst_abs_path, virtual_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            with lvm.OperateLv(dst_abs_path, shared=False):
+            with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
                 if not cmd.fullRebase:
-                    linux.qcow2_rebase(src_abs_path, src_abs_path)
+                    linux.qcow2_rebase(src_abs_path, dst_abs_path)
                 else:
                     # TODO(weiw): add tmp disk and then rename is better
                     linux.create_template(src_abs_path, dst_abs_path)
 
+        rsp.deleted = lvm.delete_lv(src_abs_path, raise_exception=False) == 0
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
