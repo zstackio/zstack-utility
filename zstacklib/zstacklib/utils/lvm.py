@@ -214,7 +214,7 @@ def delete_lv(path):
 
 
 def lv_exists(path):
-    cmd = shell.ShellCmd("lvs --nolocking %s" % path)
+    cmd = shell.ShellCmd("lvs --nolocking --readonly %s" % path)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
