@@ -159,7 +159,7 @@ def has_lv_tag(path, tag):
     return o.strip() == '1'
 
 def get_meta_lv_path(path):
-    return path+"_meta")
+    return path+"_meta"
 
 def delete_image(path, tag):
     def activate_and_remove(f):
