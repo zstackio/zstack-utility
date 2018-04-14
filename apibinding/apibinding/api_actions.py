@@ -1058,6 +1058,18 @@ class ChangeL3NetworkStateAction(inventory.APIChangeL3NetworkStateMsg):
         self.out = evt
         return self.out
 
+class ChangeLoadBalancerListenerCertificateAction(inventory.APIChangeLoadBalancerListenerCertificateMsg):
+    def __init__(self):
+        super(ChangeLoadBalancerListenerCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeLoadBalancerListenerCertificateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeMediaStateAction(inventory.APIChangeMediaStateMsg):
     def __init__(self):
         super(ChangeMediaStateAction, self).__init__()
@@ -1438,6 +1450,18 @@ class CreateBaremetalPxeServerAction(inventory.APICreateBaremetalPxeServerMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateBaremetalPxeServerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateCertificateAction(inventory.APICreateCertificateMsg):
+    def __init__(self):
+        super(CreateCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateCertificateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -2506,6 +2530,18 @@ class DeleteCephPrimaryStoragePoolAction(inventory.APIDeleteCephPrimaryStoragePo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteCephPrimaryStoragePoolAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteCertificateAction(inventory.APIDeleteCertificateMsg):
+    def __init__(self):
+        super(DeleteCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteCertificateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5840,6 +5876,20 @@ class QueryCephPrimaryStoragePoolAction(inventory.APIQueryCephPrimaryStoragePool
         self.out = reply.inventories
         return self.out
 
+class QueryCertificateAction(inventory.APIQueryCertificateMsg):
+    def __init__(self):
+        super(QueryCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryCertificateAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryClusterAction(inventory.APIQueryClusterMsg):
     def __init__(self):
         super(QueryClusterAction, self).__init__()
@@ -8650,6 +8700,18 @@ class UpdateCephPrimaryStoragePoolAction(inventory.APIUpdateCephPrimaryStoragePo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateCephPrimaryStoragePoolAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateCertificateAction(inventory.APIUpdateCertificateMsg):
+    def __init__(self):
+        super(UpdateCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateCertificateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
