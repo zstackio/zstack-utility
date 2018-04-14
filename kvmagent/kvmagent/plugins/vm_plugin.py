@@ -1107,6 +1107,8 @@ def get_cpu_memory_used_by_running_vms():
 def cleanup_stale_vnc_iptable_chains():
     VncPortIptableRule().delete_stale_chains()
 
+def shared_block_to_file(sbkpath):
+    return sbkpath.replace("sharedblock:/", "/dev")
 
 class VmOperationJudger(object):
     def __init__(self, op):
@@ -2054,7 +2056,7 @@ class Vm(object):
             cdrom = ic.to_xmlobject(dev)
         else:
             if iso.path.startswith('sharedblock'):
-                iso.path = iso.path.replace("sharedblock:/", "/dev")
+                iso.path = shared_block_to_file(iso.path)
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
@@ -3191,6 +3193,8 @@ class VmPlugin(kvmagent.KvmAgent):
         domain_xml = domain.XMLDesc(0)
         domain_xml_obj = xmlobject.loads(domain_xml)
         device_id = None
+        if path.startswith('sharedblock://'):
+            path = shared_block_to_file(path)
         for disk in domain_xml_obj.devices.get_child_node_as_list('disk'):
             if disk.device_ == 'disk':
                 for source in disk.get_child_node_as_list('source'):
