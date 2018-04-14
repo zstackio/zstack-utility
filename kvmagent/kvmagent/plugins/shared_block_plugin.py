@@ -372,7 +372,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     # TODO(weiw): add tmp disk and then rename is better
                     linux.create_template(src_abs_path, dst_abs_path)
 
-        rsp.deleted = lvm.delete_lv(src_abs_path, raise_exception=False) == 0
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
