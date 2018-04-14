@@ -194,6 +194,12 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     cmd(is_exception=True)
 
 
+def get_lv_size(path):
+    cmd = shell.ShellCmd("lvs --nolocking --readonly --noheading -osize --units b %s" % path)
+    cmd(is_exception=True)
+    return cmd.stdout.strip().strip("B")
+
+
 def resize_lv(path, size):
     cmd = shell.ShellCmd("lvresize --size %sb %s" % (int(size) + LV_RESERVED_SIZE, path))
     cmd(is_exception=True)

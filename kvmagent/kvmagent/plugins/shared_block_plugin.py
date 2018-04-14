@@ -78,6 +78,12 @@ class OfflineMergeSnapshotRsp(AgentRsp):
         self.deleted = False
 
 
+class GetVolumeSizeRsp(AgentRsp):
+    def __init__(self):
+        super(GetVolumeSizeRsp, self).__init__()
+        self.size = None
+
+
 class RetryException(Exception):
     pass
 
@@ -104,6 +110,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CHECK_BITS_PATH = "/sharedblock/bits/check"
     RESIZE_VOLUME_PATH = "/sharedblock/volume/resize"
     CHANGE_VOLUME_ACTIVE_PATH = "/sharedblock/volume/active"
+    GET_VOLUME_SIZE_PATH = "/sharedblock/volume/getsize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -123,6 +130,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.CHANGE_VOLUME_ACTIVE_PATH, self.active_lv)
+        http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -435,3 +443,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 handle_lv(lvm.LvmlockdLockType.SHARE, install_abs_path)
 
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVolumeSizeRsp()
+
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        rsp.size = lvm.get_lv_size(install_abs_path)
+        rsp.actualSize = rsp.size
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
