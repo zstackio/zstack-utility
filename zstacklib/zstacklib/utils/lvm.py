@@ -220,6 +220,8 @@ def deactive_lv(path, raise_exception=True):
 
 
 def delete_lv(path, raise_exception=True):
+    # remove meta-lv if any
+    shell.run("lvremove -y %s" % get_meta_lv_path(path))
     cmd = shell.ShellCmd("lvremove -y %s" % path)
     cmd(is_exception=raise_exception)
     return cmd.return_code
