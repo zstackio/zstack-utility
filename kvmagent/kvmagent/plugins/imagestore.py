@@ -52,7 +52,7 @@ class ImageStoreClient(object):
         logger.debug('%s pushed to image store' % cmd.primaryStorageInstallPath)
 
         rsp = kvmagent.AgentResponse()
-        rsp.backupStorageInstallPath = crsp.backupStorageInstallPath
+        rsp.backupStorageInstallPath = jsonobject.loads(crsp).backupStorageInstallPath
         return jsonobject.dumps(rsp)
 
 
