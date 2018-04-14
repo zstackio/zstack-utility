@@ -163,7 +163,7 @@ def get_meta_lv_path(path):
 
 def delete_image(path, tag):
     def activate_and_remove(f):
-        lvm.active_lv(f, shared=False)
+        active_lv(f, shared=False)
         backing = linux.qcow2_get_backing_file(f)
         shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
         return f
