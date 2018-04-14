@@ -413,7 +413,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def active_lv(self, req):
         def handle_lv(lockType, fpath):
             if lockType > lvm.LvmlockdLockType.NULL:
-                lvm.active_lv(fpath, cmd.lockType == lvm.LvmlockdLockType.SHARE)
+                lvm.active_lv(fpath, lockType == lvm.LvmlockdLockType.SHARE)
             else:
                 lvm.deactive_lv(fpath)
 
