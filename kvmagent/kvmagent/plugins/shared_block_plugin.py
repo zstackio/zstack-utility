@@ -207,7 +207,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
-        with lvm.OperateLv(install_abs_path, False):
+        with lvm.RecursiveOperateLv(install_abs_path, False):
             lvm.resize_lv(install_abs_path, cmd.size)
             shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
             ret = linux.qcow2_virtualsize(install_abs_path)
