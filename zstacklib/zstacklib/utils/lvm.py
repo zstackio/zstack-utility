@@ -195,6 +195,7 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd(is_exception=False)
 
 
+@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
 def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
@@ -215,6 +216,7 @@ def resize_lv(path, size):
     cmd(is_exception=True)
 
 
+@linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
 def active_lv(path, shared=False):
     flag = "-ay"
     if shared:
@@ -249,14 +251,14 @@ def lv_uuid(path):
     return cmd.stdout.strip()
 
 
-def lv_active(path):
+def lv_is_active(path):
     cmd = shell.ShellCmd("lvs --nolocking --readonly --noheadings %s -oactive | grep active" % path)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
 
 def get_lv_locking_type(path):
-    if not lv_active(path):
+    if not lv_is_active(path):
         return LvmlockdLockType.NULL
     cmd = shell.ShellCmd("lvmlockctl -i | grep %s | awk '{print $3}'" % lv_uuid(path))
     cmd(is_exception=True)

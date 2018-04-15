@@ -89,6 +89,8 @@ class RetryException(Exception):
 
 
 def translate_absolute_path_from_install_path(path):
+    if path == None:
+        raise Exception("install path can not be null")
     return path.replace("sharedblock:/", "/dev")
 
 
@@ -222,6 +224,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @lock.file_lock(LOCK_FILE)
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
@@ -389,6 +392,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @lock.file_lock(LOCK_FILE)
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
