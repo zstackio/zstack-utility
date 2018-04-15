@@ -10,6 +10,7 @@ from zstacklib.utils import linux
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
+SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 
 class LvmlockdLockType(object):
@@ -88,6 +89,15 @@ def config_lvm_by_sed(keyword, entry, files):
         cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s/%s" %
                              (keyword, entry, LVM_CONFIG_PATH, file))
         cmd(is_exception=False)
+
+
+def config_sanlock_by_sed(keyword, entry):
+    if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
+        raise Exception("can not find sanlock config path: %s, config sanlock failed" % LVM_CONFIG_PATH)
+
+    cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
+                         (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
+    cmd(is_exception=False)
 
 
 def config_lvm_conf(node, value):

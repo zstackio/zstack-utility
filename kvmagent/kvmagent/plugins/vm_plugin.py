@@ -1469,7 +1469,8 @@ class Vm(object):
             if not vol_aio:
                 return
 
-            volume_xml_obj.set("io", "native")
+            driver = volume_xml_obj.getiterator("driver")[0]
+            driver.set("io", "native")
 
         def volume_qos(volume_xml_obj):
             if not addons:
@@ -2693,7 +2694,8 @@ class Vm(object):
                 if not vol_aio:
                     return
 
-                volume_xml_obj.set("io", "native")
+                driver = volume_xml_obj.getiterator("driver")[0]
+                driver.set("io", "native")
 
             volumes.sort(key=lambda d: d.deviceId)
             scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]

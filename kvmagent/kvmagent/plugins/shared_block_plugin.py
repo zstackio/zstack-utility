@@ -152,6 +152,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=0", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("host_id", "host_id=%s" % host_id, ["lvm.conf", "lvmlocal.conf"])
 
+            lvm.config_sanlock_by_sed("sh_retries", "sh_retries=20")
+            lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
+            lvm.config_sanlock_by_sed("renewal_read_extend_sec", "renewal_read_extend_sec=24")
+            lvm.config_sanlock_by_sed("debug_renew", "debug_renew=1")
+
         def check_disk_by_uuid(diskUuid):
             for cond in ['TYPE=\\\"mpath\\\"', '\"\"']:
                 cmd = shell.ShellCmd("lsblk --pair -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN | "
