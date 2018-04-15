@@ -227,13 +227,18 @@ def active_lv(path, shared=False):
 
 
 def deactive_lv(path, raise_exception=True):
+    if not lv_exists(path):
+        return
     cmd = shell.ShellCmd("lvchange -an %s" % path)
     cmd(is_exception=raise_exception)
 
 
 def delete_lv(path, raise_exception=True):
     # remove meta-lv if any
-    shell.run("lvremove -y %s" % get_meta_lv_path(path))
+    if lv_exists(get_meta_lv_path(path)):
+        shell.run("lvremove -y %s" % get_meta_lv_path(path))
+    if not lv_exists(path):
+        return
     cmd = shell.ShellCmd("lvremove -y %s" % path)
     cmd(is_exception=raise_exception)
     return cmd.return_code
