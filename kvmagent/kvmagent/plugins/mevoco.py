@@ -773,6 +773,10 @@ dhcp-range={{g}},static
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
                 dhcp_info['dns'] = ','.join(d.dns)
+                routes = []
+                for route in d.hostRoutes:
+                    routes.append(','.join([route.prefix, route.nexthop]))
+                dhcp_info['routes'] = ','.join(routes)
                 info.append(dhcp_info)
 
                 if not cmd.rebuild:
@@ -808,6 +812,9 @@ tag:{{o.tag}},option:dns-server,{{o.dns}}
 {% endif -%}
 {% if o.dnsDomain -%}
 tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
+{% endif -%}
+{% if o.routes -%}
+tag:{{o.tag}},option:classless-static-route,{{o.routes}}
 {% endif -%}
 {% else -%}
 tag:{{o.tag}},3
