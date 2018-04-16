@@ -74,6 +74,18 @@ class AddCephPrimaryStoragePoolAction(inventory.APIAddCephPrimaryStoragePoolMsg)
         self.out = evt
         return self.out
 
+class AddCertificateToLoadBalancerListenerAction(inventory.APIAddCertificateToLoadBalancerListenerMsg):
+    def __init__(self):
+        super(AddCertificateToLoadBalancerListenerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddCertificateToLoadBalancerListenerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddConnectionAccessPointFromRemoteAction(inventory.APIAddConnectionAccessPointFromRemoteMsg):
     def __init__(self):
         super(AddConnectionAccessPointFromRemoteAction, self).__init__()
@@ -1054,18 +1066,6 @@ class ChangeL3NetworkStateAction(inventory.APIChangeL3NetworkStateMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[ChangeL3NetworkStateAction] cannot be None')
-        evt = api.async_call(self, self.sessionUuid)
-        self.out = evt
-        return self.out
-
-class ChangeLoadBalancerListenerCertificateAction(inventory.APIChangeLoadBalancerListenerCertificateMsg):
-    def __init__(self):
-        super(ChangeLoadBalancerListenerCertificateAction, self).__init__()
-        self.sessionUuid = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[ChangeLoadBalancerListenerCertificateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -7610,6 +7610,18 @@ class RemoveActionFromEventSubscriptionAction(inventory.APIRemoveActionFromEvent
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RemoveActionFromEventSubscriptionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveCertificateFromLoadBalancerListenerAction(inventory.APIRemoveCertificateFromLoadBalancerListenerMsg):
+    def __init__(self):
+        super(RemoveCertificateFromLoadBalancerListenerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveCertificateFromLoadBalancerListenerAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out

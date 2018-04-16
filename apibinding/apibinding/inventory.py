@@ -10978,9 +10978,9 @@ class APIAddVmNicToLoadBalancerMsg(object):
         self.userTags = OptionalList()
 
 
-APICHANGELOADBALANCERLISTENERCERTIFICATEMSG_FULL_NAME = 'org.zstack.network.service.lb.APIChangeLoadBalancerListenerCertificateMsg'
-class APIChangeLoadBalancerListenerCertificateMsg(object):
-    FULL_NAME='org.zstack.network.service.lb.APIChangeLoadBalancerListenerCertificateMsg'
+APIADDCERTIFICATETOLOADBALANCERLISTENERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIAddCertificateToLoadBalancerListenerMsg'
+class APIAddCertificateToLoadBalancerListenerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIAddCertificateToLoadBalancerListenerMsg'
     def __init__(self):
         #mandatory field
         self.certificateUuid = NotNoneField()
@@ -11204,6 +11204,20 @@ class APIRefreshLoadBalancerMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIREMOVECERTIFICATEFROMLOADBALANCERLISTENERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIRemoveCertificateFromLoadBalancerListenerMsg'
+class APIRemoveCertificateFromLoadBalancerListenerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIRemoveCertificateFromLoadBalancerListenerMsg'
+    def __init__(self):
+        #mandatory field
+        self.certificateUuid = NotNoneField()
+        #mandatory field
+        self.listenerUuid = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -15197,6 +15211,7 @@ api_names = [
     'APIAddCephBackupStorageMsg',
     'APIAddCephPrimaryStorageMsg',
     'APIAddCephPrimaryStoragePoolMsg',
+    'APIAddCertificateToLoadBalancerListenerMsg',
     'APIAddConnectionAccessPointFromRemoteMsg',
     'APIAddDataCenterFromRemoteMsg',
     'APIAddDisasterImageStoreBackupStorageMsg',
@@ -15281,7 +15296,6 @@ api_names = [
     'APIChangeInstanceOfferingMsg',
     'APIChangeInstanceOfferingStateMsg',
     'APIChangeL3NetworkStateMsg',
-    'APIChangeLoadBalancerListenerCertificateMsg',
     'APIChangeMediaStateMsg',
     'APIChangeMonitorTriggerActionStateMsg',
     'APIChangeMonitorTriggerStateMsg',
@@ -16088,6 +16102,7 @@ api_names = [
     'APIReloadLicenseReply',
     'APIRemoveActionFromAlarmMsg',
     'APIRemoveActionFromEventSubscriptionMsg',
+    'APIRemoveCertificateFromLoadBalancerListenerMsg',
     'APIRemoveDnsFromL3NetworkMsg',
     'APIRemoveLabelFromAlarmMsg',
     'APIRemoveLabelFromEventSubscriptionMsg',
