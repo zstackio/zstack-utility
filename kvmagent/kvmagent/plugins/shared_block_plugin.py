@@ -229,7 +229,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         template_abs_path_cache = translate_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
+        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2_options, True)
 
         with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
@@ -335,7 +335,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RevertVolumeFromSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
-        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
+        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2_options, True)
 
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             size = linux.qcow2_virtualsize(snapshot_abs_path)
@@ -344,7 +344,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.create_lv_from_absolute_path(new_volume_path, size,
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(new_volume_path, shared=False):
-                linux.qcow2_clone(snapshot_abs_path, new_volume_path)
+                linux.qcow2_clone_with_option(snapshot_abs_path, new_volume_path, qcow2_options)
                 size = linux.qcow2_virtualsize(new_volume_path)
 
         rsp.newVolumeInstallPath = new_volume_path
@@ -357,7 +357,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = MergeSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
         workspace_abs_path = translate_absolute_path_from_install_path(cmd.workspaceInstallPath)
-        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
 
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(snapshot_abs_path)
@@ -378,7 +377,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = OfflineMergeSnapshotRsp()
         src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath)
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
-        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
 
         with lvm.RecursiveOperateLv(src_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(src_abs_path)
@@ -402,9 +400,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
 
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
 
         if cmd.backingFile:
+            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2_options, True)
             backing_abs_path = translate_absolute_path_from_install_path(cmd.backingFile)
             with lvm.RecursiveOperateLv(backing_abs_path, shared=True):
                 virtual_size = linux.qcow2_virtualsize(backing_abs_path)
@@ -414,6 +412,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 with lvm.OperateLv(install_abs_path, shared=False):
                     linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options)
         elif not lvm.lv_exists(install_abs_path):
+            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2_options, False)
             lvm.create_lv_from_absolute_path(install_abs_path, cmd.size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False):
@@ -468,3 +467,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.actualSize = rsp.size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def calc_qcow2_option(self, options, has_backing_file):
+        if options is None or options == "":
+            return ""
+        if has_backing_file:
+            return re.sub("-o preallocation=\w* ", " ", options)
