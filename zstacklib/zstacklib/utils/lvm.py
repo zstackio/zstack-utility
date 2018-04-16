@@ -47,7 +47,9 @@ class RetryException(Exception):
 
 
 def calcLvReservedSize(size):
-    size = int(size) + (size/1024/1024%1024 + 1) * LV_RESERVED_SIZE
+    if size <= 1024 * 1024 * 1024:
+        size = int(size) + LV_RESERVED_SIZE
+    size = int(size) + (size/1024/1024 / 1024 + 1) * LV_RESERVED_SIZE
     return size
 
 
