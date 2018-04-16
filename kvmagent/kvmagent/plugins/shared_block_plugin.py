@@ -407,12 +407,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 with lvm.OperateLv(install_abs_path, shared=False):
-                    linux.qcow2_create_with_backing_file(backing_abs_path, install_abs_path)
+                    linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, DEFAULT_QCOW2_OPTION)
         elif not lvm.lv_exists(install_abs_path):
             lvm.create_lv_from_absolute_path(install_abs_path, cmd.size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False):
-                linux.qcow2_create_with_option(install_abs_path, cmd.size)
+                linux.qcow2_create_with_option(install_abs_path, cmd.size, DEFAULT_QCOW2_OPTION)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
