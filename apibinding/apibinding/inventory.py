@@ -3091,6 +3091,7 @@ class APIUpdateClusterOSMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -3496,6 +3497,20 @@ class APIRequestConsoleAccessMsg(object):
     def __init__(self):
         #mandatory field
         self.vmInstanceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATECONSOLEPROXYAGENTMSG_FULL_NAME = 'org.zstack.header.console.APIUpdateConsoleProxyAgentMsg'
+class APIUpdateConsoleProxyAgentMsg(object):
+    FULL_NAME='org.zstack.header.console.APIUpdateConsoleProxyAgentMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.consoleProxyOverriddenIp = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -16207,6 +16222,7 @@ api_names = [
     'APIUpdateClusterMsg',
     'APIUpdateClusterOSMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
+    'APIUpdateConsoleProxyAgentMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEcsImageMsg',
     'APIUpdateEcsInstanceMsg',
@@ -22319,6 +22335,7 @@ class GlobalConfig_CLUSTER(object):
         return 'cluster'
 
 class GlobalConfig_CONSOLE(object):
+    VNC_TOKEN_TIMEOUT = 'vnc.token.timeout'
     AGENT_PING_INTERVAL = 'agent.ping.interval'
     PROXY_IDLETIMEOUT = 'proxy.idleTimeout'
 
@@ -22396,8 +22413,8 @@ class GlobalConfig_HOST(object):
         return 'host'
 
 class GlobalConfig_HOSTALLOCATOR(object):
-    HOSTALLOCATOR_CONCURRENTLEVEL = 'hostAllocator.concurrentLevel'
     USEPAGINATION = 'usePagination'
+    HOSTALLOCATOR_CONCURRENT = 'hostAllocator.concurrent'
     PAGINATIONLIMIT = 'paginationLimit'
     RESERVEDCAPACITY_ZONELEVEL = 'reservedCapacity.zoneLevel'
     RESERVEDCAPACITY_HOSTLEVEL = 'reservedCapacity.hostLevel'
@@ -22491,6 +22508,13 @@ class GlobalConfig_LOGGING(object):
     @staticmethod
     def get_category():
         return 'logging'
+
+class GlobalConfig_LONGJOB(object):
+    LONGJOB_API_TIMEOUT = 'longJob.api.timeout'
+
+    @staticmethod
+    def get_category():
+        return 'longJob'
 
 class GlobalConfig_MANAGEMENTSERVER(object):
     NODE_HEARTBEATINTERVAL = 'node.heartbeatInterval'
