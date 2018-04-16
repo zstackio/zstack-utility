@@ -13,6 +13,7 @@ LVM_CONFIG_PATH = "/etc/lvm"
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 
+
 class LvmlockdLockType(object):
     NULL = 0
     SHARE = 1
@@ -43,6 +44,11 @@ class LvmlockdLockType(object):
 
 class RetryException(Exception):
     pass
+
+
+def calcLvReservedSize(size):
+    size = int(size) + (size/1024/1024%1024 + 1) * LV_RESERVED_SIZE
+    return size
 
 
 def check_lvm_config_is_default():
@@ -201,7 +207,7 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     lvName = path.split("/")[3]
 
     cmd = shell.ShellCmd("lvcreate -an --addtag %s --size %sb --name %s %s" %
-                         (tag, int(size) + LV_RESERVED_SIZE, lvName, vgName))
+                         (tag, calcLvReservedSize(size), lvName, vgName))
     cmd(is_exception=True)
 
 
@@ -212,7 +218,7 @@ def get_lv_size(path):
 
 
 def resize_lv(path, size):
-    cmd = shell.ShellCmd("lvresize --size %sb %s" % (int(size) + LV_RESERVED_SIZE, path))
+    cmd = shell.ShellCmd("lvresize --size %sb %s" % (calcLvReservedSize(size), path))
     cmd(is_exception=True)
 
 

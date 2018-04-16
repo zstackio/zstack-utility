@@ -22,7 +22,6 @@ HEARTBEAT_TAG = "zs::sharedblock::heartbeat"
 VOLUME_TAG = "zs::sharedblock::volume"
 IMAGE_TAG = "zs::sharedblock::image"
 DEFAULT_VG_METADATA_SIZE = "2g"
-DEFAULT_QCOW2_OPTION = " -o cluster_size=2M "
 
 
 class AgentRsp(object):
@@ -230,6 +229,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         template_abs_path_cache = translate_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
 
         with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
@@ -237,7 +237,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False):
-                linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, DEFAULT_QCOW2_OPTION)
+                linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -335,6 +335,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RevertVolumeFromSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
+        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
+
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             size = linux.qcow2_virtualsize(snapshot_abs_path)
             new_volume_path = "/dev/%s/%s" % (cmd.vgUuid, uuidhelper.uuid())
@@ -355,6 +357,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = MergeSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
         workspace_abs_path = translate_absolute_path_from_install_path(cmd.workspaceInstallPath)
+        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
 
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(snapshot_abs_path)
@@ -375,6 +378,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = OfflineMergeSnapshotRsp()
         src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath)
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
+        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
 
         with lvm.RecursiveOperateLv(src_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(src_abs_path)
@@ -398,6 +402,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
 
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        qcow2_options = "" if cmd.qcow2Options is None else cmd.qcow2Options
 
         if cmd.backingFile:
             backing_abs_path = translate_absolute_path_from_install_path(cmd.backingFile)
@@ -407,12 +412,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 with lvm.OperateLv(install_abs_path, shared=False):
-                    linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, DEFAULT_QCOW2_OPTION)
+                    linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options)
         elif not lvm.lv_exists(install_abs_path):
             lvm.create_lv_from_absolute_path(install_abs_path, cmd.size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False):
-                linux.qcow2_create_with_option(install_abs_path, cmd.size, DEFAULT_QCOW2_OPTION)
+                linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
@@ -463,4 +468,3 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.actualSize = rsp.size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
-
