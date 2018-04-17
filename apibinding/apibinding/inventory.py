@@ -3482,6 +3482,20 @@ class APIRequestConsoleAccessMsg(object):
         self.userTags = OptionalList()
 
 
+APIUPDATECONSOLEPROXYAGENTMSG_FULL_NAME = 'org.zstack.header.console.APIUpdateConsoleProxyAgentMsg'
+class APIUpdateConsoleProxyAgentMsg(object):
+    FULL_NAME='org.zstack.header.console.APIUpdateConsoleProxyAgentMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.consoleProxyOverriddenIp = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIUPDATEENCRYPTKEYMSG_FULL_NAME = 'org.zstack.header.core.encrypt.APIUpdateEncryptKeyMsg'
 class APIUpdateEncryptKeyMsg(object):
     FULL_NAME='org.zstack.header.core.encrypt.APIUpdateEncryptKeyMsg'
@@ -5500,6 +5514,19 @@ class APIRemoveUserFromGroupMsg(object):
         self.userTags = OptionalList()
 
 
+APIRENEWSESSIONMSG_FULL_NAME = 'org.zstack.header.identity.APIRenewSessionMsg'
+class APIRenewSessionMsg(object):
+    FULL_NAME='org.zstack.header.identity.APIRenewSessionMsg'
+    def __init__(self):
+        #mandatory field
+        self.sessionUuid = NotNoneField()
+        self.duration = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIREVOKERESOURCESHARINGMSG_FULL_NAME = 'org.zstack.header.identity.APIRevokeResourceSharingMsg'
 class APIRevokeResourceSharingMsg(object):
     FULL_NAME='org.zstack.header.identity.APIRevokeResourceSharingMsg'
@@ -6458,6 +6485,22 @@ class APIAddDnsToL3NetworkMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDHOSTROUTETOL3NETWORKMSG_FULL_NAME = 'org.zstack.header.network.l3.APIAddHostRouteToL3NetworkMsg'
+class APIAddHostRouteToL3NetworkMsg(object):
+    FULL_NAME='org.zstack.header.network.l3.APIAddHostRouteToL3NetworkMsg'
+    def __init__(self):
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        #mandatory field
+        self.prefix = NotNoneField()
+        #mandatory field
+        self.nexthop = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDIPRANGEBYNETWORKCIDRMSG_FULL_NAME = 'org.zstack.header.network.l3.APIAddIpRangeByNetworkCidrMsg'
 class APIAddIpRangeByNetworkCidrMsg(object):
     FULL_NAME='org.zstack.header.network.l3.APIAddIpRangeByNetworkCidrMsg'
@@ -6790,6 +6833,20 @@ class APIRemoveDnsFromL3NetworkMsg(object):
         self.l3NetworkUuid = NotNoneField()
         #mandatory field
         self.dns = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIREMOVEHOSTROUTEFROML3NETWORKMSG_FULL_NAME = 'org.zstack.header.network.l3.APIRemoveHostRouteFromL3NetworkMsg'
+class APIRemoveHostRouteFromL3NetworkMsg(object):
+    FULL_NAME='org.zstack.header.network.l3.APIRemoveHostRouteFromL3NetworkMsg'
+    def __init__(self):
+        #mandatory field
+        self.l3NetworkUuid = NotNoneField()
+        #mandatory field
+        self.prefix = NotNoneField()
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11317,6 +11374,20 @@ class APIGetL3NetworkDhcpIpAddressReply(object):
         self.error = None
 
 
+APIADDCERTIFICATETOLOADBALANCERLISTENERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIAddCertificateToLoadBalancerListenerMsg'
+class APIAddCertificateToLoadBalancerListenerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIAddCertificateToLoadBalancerListenerMsg'
+    def __init__(self):
+        #mandatory field
+        self.certificateUuid = NotNoneField()
+        #mandatory field
+        self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDVMNICTOLOADBALANCERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIAddVmNicToLoadBalancerMsg'
 class APIAddVmNicToLoadBalancerMsg(object):
     FULL_NAME='org.zstack.network.service.lb.APIAddVmNicToLoadBalancerMsg'
@@ -11325,6 +11396,22 @@ class APIAddVmNicToLoadBalancerMsg(object):
         self.vmNicUuids = NotNoneList()
         #mandatory field
         self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICREATECERTIFICATEMSG_FULL_NAME = 'org.zstack.network.service.lb.APICreateCertificateMsg'
+class APICreateCertificateMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APICreateCertificateMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.certificate = NotNoneField()
+        self.description = None
+        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11343,8 +11430,9 @@ class APICreateLoadBalancerListenerMsg(object):
         self.instancePort = None
         #mandatory field
         self.loadBalancerPort = NotNoneField()
-        #valid values: [tcp, http]
+        #valid values: [tcp, http, https]
         self.protocol = None
+        self.certificateUuid = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -11362,6 +11450,19 @@ class APICreateLoadBalancerMsg(object):
         #mandatory field
         self.vipUuid = NotNoneField()
         self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETECERTIFICATEMSG_FULL_NAME = 'org.zstack.network.service.lb.APIDeleteCertificateMsg'
+class APIDeleteCertificateMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIDeleteCertificateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11410,6 +11511,37 @@ class APIGetCandidateVmNicsForLoadBalancerReply(object):
     FULL_NAME='org.zstack.network.service.lb.APIGetCandidateVmNicsForLoadBalancerReply'
     def __init__(self):
         self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIQUERYCERTIFICATEMSG_FULL_NAME = 'org.zstack.network.service.lb.APIQueryCertificateMsg'
+class APIQueryCertificateMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIQueryCertificateMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYCERTIFICATEREPLY_FULL_NAME = 'org.zstack.network.service.lb.APIQueryCertificateReply'
+class APIQueryCertificateReply(object):
+    FULL_NAME='org.zstack.network.service.lb.APIQueryCertificateReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
         self.success = None
         self.error = None
 
@@ -11488,6 +11620,20 @@ class APIRefreshLoadBalancerMsg(object):
         self.userTags = OptionalList()
 
 
+APIREMOVECERTIFICATEFROMLOADBALANCERLISTENERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIRemoveCertificateFromLoadBalancerListenerMsg'
+class APIRemoveCertificateFromLoadBalancerListenerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIRemoveCertificateFromLoadBalancerListenerMsg'
+    def __init__(self):
+        #mandatory field
+        self.certificateUuid = NotNoneField()
+        #mandatory field
+        self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIREMOVEVMNICFROMLOADBALANCERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIRemoveVmNicFromLoadBalancerMsg'
 class APIRemoveVmNicFromLoadBalancerMsg(object):
     FULL_NAME='org.zstack.network.service.lb.APIRemoveVmNicFromLoadBalancerMsg'
@@ -11496,6 +11642,21 @@ class APIRemoveVmNicFromLoadBalancerMsg(object):
         self.vmNicUuids = NotNoneList()
         #mandatory field
         self.listenerUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATECERTIFICATEMSG_FULL_NAME = 'org.zstack.network.service.lb.APIUpdateCertificateMsg'
+class APIUpdateCertificateMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIUpdateCertificateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.resourceUuid = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -12397,6 +12558,25 @@ class APIGetAvailableTriggersMsg(object):
 APIGETAVAILABLETRIGGERSREPLY_FULL_NAME = 'org.zstack.scheduler.APIGetAvailableTriggersReply'
 class APIGetAvailableTriggersReply(object):
     FULL_NAME='org.zstack.scheduler.APIGetAvailableTriggersReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETNOTRIGGERSCHEDULERJOBSMSG_FULL_NAME = 'org.zstack.scheduler.APIGetNoTriggerSchedulerJobsMsg'
+class APIGetNoTriggerSchedulerJobsMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIGetNoTriggerSchedulerJobsMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETNOTRIGGERSCHEDULERJOBSREPLY_FULL_NAME = 'org.zstack.scheduler.APIGetNoTriggerSchedulerJobsReply'
+class APIGetNoTriggerSchedulerJobsReply(object):
+    FULL_NAME='org.zstack.scheduler.APIGetNoTriggerSchedulerJobsReply'
     def __init__(self):
         self.inventories = OptionalList()
         self.success = None
@@ -15460,12 +15640,14 @@ api_names = [
     'APIAddCephBackupStorageMsg',
     'APIAddCephPrimaryStorageMsg',
     'APIAddCephPrimaryStoragePoolMsg',
+    'APIAddCertificateToLoadBalancerListenerMsg',
     'APIAddConnectionAccessPointFromRemoteMsg',
     'APIAddDataCenterFromRemoteMsg',
     'APIAddDisasterImageStoreBackupStorageMsg',
     'APIAddDnsToL3NetworkMsg',
     'APIAddFusionstorBackupStorageMsg',
     'APIAddFusionstorPrimaryStorageMsg',
+    'APIAddHostRouteToL3NetworkMsg',
     'APIAddHybridKeySecretMsg',
     'APIAddIdentityZoneFromRemoteMsg',
     'APIAddImageMsg',
@@ -15581,6 +15763,7 @@ api_names = [
     'APICreateBaremetalChassisMsg',
     'APICreateBaremetalHostCfgMsg',
     'APICreateBaremetalPxeServerMsg',
+    'APICreateCertificateMsg',
     'APICreateClusterMsg',
     'APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg',
     'APICreateDahoVllRemoteMsg',
@@ -15672,6 +15855,7 @@ api_names = [
     'APIDeleteBaremetalHostCfgMsg',
     'APIDeleteBaremetalPxeServerMsg',
     'APIDeleteCephPrimaryStoragePoolMsg',
+    'APIDeleteCertificateMsg',
     'APIDeleteClusterMsg',
     'APIDeleteConnectionAccessPointLocalMsg',
     'APIDeleteConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
@@ -15928,6 +16112,8 @@ api_names = [
     'APIGetNetworkServiceTypesReply',
     'APIGetNicQosMsg',
     'APIGetNicQosReply',
+    'APIGetNoTriggerSchedulerJobsMsg',
+    'APIGetNoTriggerSchedulerJobsReply',
     'APIGetOssBackupBucketFromRemoteMsg',
     'APIGetOssBackupBucketFromRemoteReply',
     'APIGetOssBucketFileFromRemoteMsg',
@@ -16124,6 +16310,8 @@ api_names = [
     'APIQueryCephPrimaryStorageMsg',
     'APIQueryCephPrimaryStoragePoolMsg',
     'APIQueryCephPrimaryStoragePoolReply',
+    'APIQueryCertificateMsg',
+    'APIQueryCertificateReply',
     'APIQueryClusterMsg',
     'APIQueryClusterReply',
     'APIQueryConnectionAccessPointFromLocalMsg',
@@ -16362,7 +16550,9 @@ api_names = [
     'APIReloadLicenseReply',
     'APIRemoveActionFromAlarmMsg',
     'APIRemoveActionFromEventSubscriptionMsg',
+    'APIRemoveCertificateFromLoadBalancerListenerMsg',
     'APIRemoveDnsFromL3NetworkMsg',
+    'APIRemoveHostRouteFromL3NetworkMsg',
     'APIRemoveLabelFromAlarmMsg',
     'APIRemoveLabelFromEventSubscriptionMsg',
     'APIRemoveMonFromCephBackupStorageMsg',
@@ -16375,6 +16565,7 @@ api_names = [
     'APIRemoveUserFromGroupMsg',
     'APIRemoveVmFromAffinityGroupMsg',
     'APIRemoveVmNicFromLoadBalancerMsg',
+    'APIRenewSessionMsg',
     'APIReply',
     'APIRequestBaremetalConsoleAccessMsg',
     'APIRequestConsoleAccessMsg',
@@ -16482,9 +16673,11 @@ api_names = [
     'APIUpdateCephBackupStorageMonMsg',
     'APIUpdateCephPrimaryStorageMonMsg',
     'APIUpdateCephPrimaryStoragePoolMsg',
+    'APIUpdateCertificateMsg',
     'APIUpdateClusterMsg',
     'APIUpdateClusterOSMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
+    'APIUpdateConsoleProxyAgentMsg',
     'APIUpdateDahoCloudConnectionMsg',
     'APIUpdateDahoDataCenterConnectionMsg',
     'APIUpdateDahoVllMsg',
@@ -20659,6 +20852,7 @@ class L3NetworkInventory(object):
         self.dns = None
         self.ipRanges = None
         self.networkServices = None
+        self.hostRoute = None
 
     def evaluate(self, inv):
         if hasattr(inv, 'uuid'):
@@ -20735,6 +20929,11 @@ class L3NetworkInventory(object):
             self.networkServices = inv.networkServices
         else:
             self.networkServices = None
+
+        if hasattr(inv, 'hostRoute'):
+            self.hostRoute = inv.hostRoute
+        else:
+            self.hostRoute = None
 
 
 
@@ -22943,6 +23142,13 @@ class GlobalConfig_ALIYUN(object):
     def get_category():
         return 'aliyun'
 
+class GlobalConfig_ALIYUNNASPRIMARYSTORAGE(object):
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
+
+    @staticmethod
+    def get_category():
+        return 'aliyunNasPrimaryStorage'
+
 class GlobalConfig_APPLIANCEVM(object):
     SSH_TIMEOUT = 'ssh.timeout'
     CONNECT_TIMEOUT = 'connect.timeout'
@@ -23372,6 +23578,7 @@ class GlobalConfig_VM(object):
     EXPUNGEPERIOD = 'expungePeriod'
     DELETIONPOLICY = 'deletionPolicy'
     NUMA = 'numa'
+    VMPORTOFF = 'vmPortOff'
     CLEANTRAFFIC = 'cleanTraffic'
     INSTANCEOFFERING_SETNULLWHENDELETING = 'instanceOffering.setNullWhenDeleting'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
@@ -23596,7 +23803,7 @@ class QueryObjectBaremetalPxeServerInventory(object):
      }
 
 class QueryObjectCephBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','poolAvailableCapacity','url','poolReplicatedSize','poolUsedCapacity','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['mons','mons','image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -23630,9 +23837,17 @@ class QueryObjectCephPrimaryStorageMonInventory(object):
      }
 
 class QueryObjectCephPrimaryStoragePoolInventory(object):
-     PRIMITIVE_FIELDS = ['aliasName','lastOpDate','description','primaryStorageUuid','type','uuid','poolName','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['aliasName','availableCapacity','usedCapacity','lastOpDate','description','replicatedSize','primaryStorageUuid','type','uuid','poolName','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectCertificateInventory(object):
+     PRIMITIVE_FIELDS = ['name','certificate','lastOpDate','description','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['listeners','listener']
+     QUERY_OBJECT_MAP = {
+        'listeners' : 'QueryObjectLoadBalancerListenerCertificateRefInventory',
+        'listener' : 'QueryObjectLoadBalancerListenerCertificateRefInventory',
      }
 
 class QueryObjectClusterInventory(object):
@@ -24035,13 +24250,20 @@ class QueryObjectL3NetworkDnsInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectL3NetworkHostRouteInventory(object):
+     PRIMITIVE_FIELDS = ['prefix','lastOpDate','id','l3NetworkUuid','nexthop','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectL3NetworkInventory(object):
      PRIMITIVE_FIELDS = ['zoneUuid','description','type','uuid','dnsDomain','system','l2NetworkUuid','name','lastOpDate','state','category','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
+     EXPANDED_FIELDS = ['hostRoute','networkServices','ipRanges','vmNic','zone','l2Network','serviceProvider']
      QUERY_OBJECT_MAP = {
         'ipRanges' : 'QueryObjectIpRangeInventory',
         'vmNic' : 'QueryObjectVmNicInventory',
         'zone' : 'QueryObjectZoneInventory',
+        'hostRoute' : 'QueryObjectL3NetworkHostRouteInventory',
         'serviceProvider' : 'QueryObjectNetworkServiceProviderInventory',
         'l2Network' : 'QueryObjectL2NetworkInventory',
         'networkServices' : 'QueryObjectNetworkServiceL3NetworkRefInventory',
@@ -24067,13 +24289,23 @@ class QueryObjectLoadBalancerInventory(object):
         'vip' : 'QueryObjectVipInventory',
      }
 
+class QueryObjectLoadBalancerListenerCertificateRefInventory(object):
+     PRIMITIVE_FIELDS = ['listenerUuid','lastOpDate','id','certificateUuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['certificate','listener']
+     QUERY_OBJECT_MAP = {
+        'certificate' : 'QueryObjectCertificateInventory',
+        'listener' : 'QueryObjectLoadBalancerListenerInventory',
+     }
+
 class QueryObjectLoadBalancerListenerInventory(object):
      PRIMITIVE_FIELDS = ['instancePort','loadBalancerUuid','protocol','name','lastOpDate','description','uuid','loadBalancerPort','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = ['vmNicRefs','loadBalancer','vmNic']
+     EXPANDED_FIELDS = ['vmNicRefs','certificateRefs','loadBalancer','certificate','vmNic']
      QUERY_OBJECT_MAP = {
         'vmNic' : 'QueryObjectVmNicInventory',
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
+        'certificate' : 'QueryObjectLoadBalancerListenerCertificateRefInventory',
         'vmNicRefs' : 'QueryObjectLoadBalancerListenerVmNicRefInventory',
+        'certificateRefs' : 'QueryObjectLoadBalancerListenerCertificateRefInventory',
      }
 
 class QueryObjectLoadBalancerListenerVmNicRefInventory(object):
@@ -24830,6 +25062,7 @@ queryMessageInventoryMap = {
      'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,
      'APIQueryCephPrimaryStorageMsg' : QueryObjectCephPrimaryStorageInventory,
      'APIQueryCephPrimaryStoragePoolMsg' : QueryObjectCephPrimaryStoragePoolInventory,
+     'APIQueryCertificateMsg' : QueryObjectCertificateInventory,
      'APIQueryClusterMsg' : QueryObjectClusterInventory,
      'APIQueryConnectionAccessPointFromLocalMsg' : QueryObjectConnectionAccessPointInventory,
      'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg' : QueryObjectConnectionRelationShipInventory,

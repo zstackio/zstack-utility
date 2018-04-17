@@ -2407,9 +2407,11 @@ class Vm(object):
             features = e(root, 'features')
             for f in ['acpi', 'apic', 'pae']:
                 e(features, f)
-            if cmd.kvmHiddenState == True:
+            if cmd.kvmHiddenState is True:
                 kvm = e(features, "kvm")
                 e(kvm, 'hidden', None, {'state': 'on'})
+            if cmd.vmPortOff is True:
+                e(features, 'vmport', attrib={'state': 'off'})
 
         def make_devices():
             root = elements['root']

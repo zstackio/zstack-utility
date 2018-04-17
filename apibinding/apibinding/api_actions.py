@@ -74,6 +74,18 @@ class AddCephPrimaryStoragePoolAction(inventory.APIAddCephPrimaryStoragePoolMsg)
         self.out = evt
         return self.out
 
+class AddCertificateToLoadBalancerListenerAction(inventory.APIAddCertificateToLoadBalancerListenerMsg):
+    def __init__(self):
+        super(AddCertificateToLoadBalancerListenerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddCertificateToLoadBalancerListenerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddConnectionAccessPointFromRemoteAction(inventory.APIAddConnectionAccessPointFromRemoteMsg):
     def __init__(self):
         super(AddConnectionAccessPointFromRemoteAction, self).__init__()
@@ -142,6 +154,18 @@ class AddFusionstorPrimaryStorageAction(inventory.APIAddFusionstorPrimaryStorage
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[AddFusionstorPrimaryStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class AddHostRouteToL3NetworkAction(inventory.APIAddHostRouteToL3NetworkMsg):
+    def __init__(self):
+        super(AddHostRouteToL3NetworkAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddHostRouteToL3NetworkAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -1478,6 +1502,18 @@ class CreateBaremetalPxeServerAction(inventory.APICreateBaremetalPxeServerMsg):
         self.out = evt
         return self.out
 
+class CreateCertificateAction(inventory.APICreateCertificateMsg):
+    def __init__(self):
+        super(CreateCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateCertificateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateClusterAction(inventory.APICreateClusterMsg):
     def __init__(self):
         super(CreateClusterAction, self).__init__()
@@ -2566,6 +2602,18 @@ class DeleteCephPrimaryStoragePoolAction(inventory.APIDeleteCephPrimaryStoragePo
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteCephPrimaryStoragePoolAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteCertificateAction(inventory.APIDeleteCertificateMsg):
+    def __init__(self):
+        super(DeleteCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteCertificateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4838,6 +4886,18 @@ class GetNicQosAction(inventory.APIGetNicQosMsg):
         self.out = evt
         return self.out
 
+class GetNoTriggerSchedulerJobsAction(inventory.APIGetNoTriggerSchedulerJobsMsg):
+    def __init__(self):
+        super(GetNoTriggerSchedulerJobsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetNoTriggerSchedulerJobsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetOssBackupBucketFromRemoteAction(inventory.APIGetOssBackupBucketFromRemoteMsg):
     def __init__(self):
         super(GetOssBackupBucketFromRemoteAction, self).__init__()
@@ -5931,6 +5991,20 @@ class QueryCephPrimaryStoragePoolAction(inventory.APIQueryCephPrimaryStoragePool
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryCephPrimaryStoragePoolAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryCertificateAction(inventory.APIQueryCertificateMsg):
+    def __init__(self):
+        super(QueryCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryCertificateAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -7716,6 +7790,18 @@ class RemoveActionFromEventSubscriptionAction(inventory.APIRemoveActionFromEvent
         self.out = evt
         return self.out
 
+class RemoveCertificateFromLoadBalancerListenerAction(inventory.APIRemoveCertificateFromLoadBalancerListenerMsg):
+    def __init__(self):
+        super(RemoveCertificateFromLoadBalancerListenerAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveCertificateFromLoadBalancerListenerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RemoveDnsFromL3NetworkAction(inventory.APIRemoveDnsFromL3NetworkMsg):
     def __init__(self):
         super(RemoveDnsFromL3NetworkAction, self).__init__()
@@ -7724,6 +7810,18 @@ class RemoveDnsFromL3NetworkAction(inventory.APIRemoveDnsFromL3NetworkMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RemoveDnsFromL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveHostRouteFromL3NetworkAction(inventory.APIRemoveHostRouteFromL3NetworkMsg):
+    def __init__(self):
+        super(RemoveHostRouteFromL3NetworkAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveHostRouteFromL3NetworkAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -7868,6 +7966,18 @@ class RemoveVmNicFromLoadBalancerAction(inventory.APIRemoveVmNicFromLoadBalancer
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RemoveVmNicFromLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RenewSessionAction(inventory.APIRenewSessionMsg):
+    def __init__(self):
+        super(RenewSessionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RenewSessionAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -8866,6 +8976,18 @@ class UpdateCephPrimaryStoragePoolAction(inventory.APIUpdateCephPrimaryStoragePo
         self.out = evt
         return self.out
 
+class UpdateCertificateAction(inventory.APIUpdateCertificateMsg):
+    def __init__(self):
+        super(UpdateCertificateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateCertificateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateClusterAction(inventory.APIUpdateClusterMsg):
     def __init__(self):
         super(UpdateClusterAction, self).__init__()
@@ -8898,6 +9020,18 @@ class UpdateConnectionBetweenL3NetWorkAndAliyunVSwitchAction(inventory.APIUpdate
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateConnectionBetweenL3NetWorkAndAliyunVSwitchAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateConsoleProxyAgentAction(inventory.APIUpdateConsoleProxyAgentMsg):
+    def __init__(self):
+        super(UpdateConsoleProxyAgentAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateConsoleProxyAgentAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
