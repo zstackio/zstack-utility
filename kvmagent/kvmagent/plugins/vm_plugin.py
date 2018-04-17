@@ -58,6 +58,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.dataIsoPaths = None
         self.addons = None
         self.useBootMenu = True
+        self.vmCpuModel = None
 
 
 class StartVmResponse(kvmagent.AgentResponse):
@@ -2345,6 +2346,9 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'host-passthrough':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
+                elif cmd.nestedVirtualization == 'custom':
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                 elif IS_AARCH64:
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
@@ -2368,6 +2372,9 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'host-passthrough':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
+                elif cmd.nestedVirtualization == 'custom':
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                 elif IS_AARCH64:
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
