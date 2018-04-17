@@ -672,37 +672,6 @@ class APIDetachAliyunKeyMsg(object):
         self.userTags = OptionalList()
 
 
-APIQUERYALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIQueryAliyunKeySecretMsg'
-class APIQueryAliyunKeySecretMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.account.APIQueryAliyunKeySecretMsg'
-    def __init__(self):
-        #mandatory field
-        self.conditions = NotNoneList()
-        self.limit = None
-        self.start = None
-        self.count = None
-        self.groupBy = None
-        self.replyWithCount = None
-        self.sortBy = None
-        #valid values: [asc, desc]
-        self.sortDirection = None
-        self.fields = OptionalList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYALIYUNKEYSECRETREPLY_FULL_NAME = 'org.zstack.header.aliyun.account.APIQueryAliyunKeySecretReply'
-class APIQueryAliyunKeySecretReply(object):
-    FULL_NAME='org.zstack.header.aliyun.account.APIQueryAliyunKeySecretReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.total = None
-        self.success = None
-        self.error = None
-
-
 APIUPDATEALIYUNKEYSECRETMSG_FULL_NAME = 'org.zstack.header.aliyun.account.APIUpdateAliyunKeySecretMsg'
 class APIUpdateAliyunKeySecretMsg(object):
     FULL_NAME='org.zstack.header.aliyun.account.APIUpdateAliyunKeySecretMsg'
@@ -1116,6 +1085,30 @@ class APIAddConnectionAccessPointFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEALIYUNROUTERINTERFACEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APICreateAliyunRouterInterfaceRemoteMsg'
+class APICreateAliyunRouterInterfaceRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APICreateAliyunRouterInterfaceRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.accessPointUuid = None
+        #valid regex values: [XxlL]{1}arge.(\d+)
+        self.spec = None
+        #mandatory field
+        self.vRouterUuid = NotNoneField()
+        #mandatory field
+        #valid values: [VBR, VRouter]
+        self.routerType = NotNoneField()
+        self.description = None
+        #mandatory field
+        self.name = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATECONNECTIONBETWEENL3NETWORKANDALIYUNVSWITCHMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg'
 class APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.connection.APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg'
@@ -1141,28 +1134,29 @@ class APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
         self.userTags = OptionalList()
 
 
-APICREATEROUTERINTERFACEPAIRREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APICreateRouterInterfacePairRemoteMsg'
-class APICreateRouterInterfacePairRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APICreateRouterInterfacePairRemoteMsg'
+APIDELETEALIYUNROUTERINTERFACELOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIDeleteAliyunRouterInterfaceLocalMsg'
+class APIDeleteAliyunRouterInterfaceLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIDeleteAliyunRouterInterfaceLocalMsg'
     def __init__(self):
         #mandatory field
-        self.dataCenterUuid = NotNoneField()
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEALIYUNROUTERINTERFACEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIDeleteAliyunRouterInterfaceRemoteMsg'
+class APIDeleteAliyunRouterInterfaceRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIDeleteAliyunRouterInterfaceRemoteMsg'
+    def __init__(self):
         #mandatory field
-        self.accessPointUuid = NotNoneField()
+        self.uuid = NotNoneField()
         #mandatory field
-        #valid values: [Small.1, Small.2, Small.5, Middle.1, Middle.2, Middle.5, Large.1, Large.2]
-        self.spec = NotNoneField()
-        #mandatory field
-        self.vRouterUuid = NotNoneField()
-        #mandatory field
-        self.vBorderRouterUuid = NotNoneField()
-        self.aDescription = None
-        #mandatory field
-        self.aName = NotNoneField()
-        self.bDescription = None
-        #mandatory field
-        self.bName = NotNoneField()
-        self.resourceUuid = None
+        #valid values: [vrouter, vbr]
+        self.vRouterType = NotNoneField()
+        self.deleteMode = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -1188,35 +1182,6 @@ class APIDeleteConnectionBetweenL3NetWorkAndAliyunVSwitchMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
-        self.deleteMode = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIDELETEROUTERINTERFACELOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIDeleteRouterInterfaceLocalMsg'
-class APIDeleteRouterInterfaceLocalMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APIDeleteRouterInterfaceLocalMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.deleteMode = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIDELETEROUTERINTERFACEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIDeleteRouterInterfaceRemoteMsg'
-class APIDeleteRouterInterfaceRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APIDeleteRouterInterfaceRemoteMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        #mandatory field
-        #valid values: [vrouter, vbr]
-        self.vRouterType = NotNoneField()
         self.deleteMode = None
         self.session = None
         self.timeout = None
@@ -1276,6 +1241,37 @@ class APIGetConnectionBetweenL3NetworkAndAliyunVSwitchMsg(object):
 APIGETCONNECTIONBETWEENL3NETWORKANDALIYUNVSWITCHREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIGetConnectionBetweenL3NetworkAndAliyunVSwitchReply'
 class APIGetConnectionBetweenL3NetworkAndAliyunVSwitchReply(object):
     FULL_NAME='org.zstack.header.aliyun.network.connection.APIGetConnectionBetweenL3NetworkAndAliyunVSwitchReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYALIYUNROUTERINTERFACEFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryAliyunRouterInterfaceFromLocalMsg'
+class APIQueryAliyunRouterInterfaceFromLocalMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryAliyunRouterInterfaceFromLocalMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYALIYUNROUTERINTERFACEFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryAliyunRouterInterfaceFromLocalReply'
+class APIQueryAliyunRouterInterfaceFromLocalReply(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryAliyunRouterInterfaceFromLocalReply'
     def __init__(self):
         self.inventories = OptionalList()
         self.total = None
@@ -1345,37 +1341,6 @@ class APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply(object):
         self.error = None
 
 
-APIQUERYROUTERINTERFACEFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryRouterInterfaceFromLocalMsg'
-class APIQueryRouterInterfaceFromLocalMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryRouterInterfaceFromLocalMsg'
-    def __init__(self):
-        #mandatory field
-        self.conditions = NotNoneList()
-        self.limit = None
-        self.start = None
-        self.count = None
-        self.groupBy = None
-        self.replyWithCount = None
-        self.sortBy = None
-        #valid values: [asc, desc]
-        self.sortDirection = None
-        self.fields = OptionalList()
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIQUERYROUTERINTERFACEFROMLOCALREPLY_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryRouterInterfaceFromLocalReply'
-class APIQueryRouterInterfaceFromLocalReply(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryRouterInterfaceFromLocalReply'
-    def __init__(self):
-        self.inventories = OptionalList()
-        self.total = None
-        self.success = None
-        self.error = None
-
-
 APIQUERYVIRTUALBORDERROUTERFROMLOCALMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIQueryVirtualBorderRouterFromLocalMsg'
 class APIQueryVirtualBorderRouterFromLocalMsg(object):
     FULL_NAME='org.zstack.header.aliyun.network.connection.APIQueryVirtualBorderRouterFromLocalMsg'
@@ -1419,13 +1384,26 @@ class APIRecoveryVirtualBorderRouterRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APISYNCCONNECTIONACCESSPOINTFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APISyncConnectionAccessPointFromRemoteMsg'
-class APISyncConnectionAccessPointFromRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APISyncConnectionAccessPointFromRemoteMsg'
+APISTARTCONNECTIONBETWEENALIYUNROUTERINTERFACEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIStartConnectionBetweenAliyunRouterInterfaceMsg'
+class APIStartConnectionBetweenAliyunRouterInterfaceMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIStartConnectionBetweenAliyunRouterInterfaceMsg'
+    def __init__(self):
+        #mandatory field
+        self.vrouterInterfaceUuid = NotNoneField()
+        #mandatory field
+        self.vbrInterfaceUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCALIYUNROUTERINTERFACEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APISyncAliyunRouterInterfaceFromRemoteMsg'
+class APISyncAliyunRouterInterfaceFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APISyncAliyunRouterInterfaceFromRemoteMsg'
     def __init__(self):
         #mandatory field
         self.dataCenterUuid = NotNoneField()
-        self.accessPointId = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -1433,12 +1411,13 @@ class APISyncConnectionAccessPointFromRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APISYNCROUTERINTERFACEFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APISyncRouterInterfaceFromRemoteMsg'
-class APISyncRouterInterfaceFromRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APISyncRouterInterfaceFromRemoteMsg'
+APISYNCCONNECTIONACCESSPOINTFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APISyncConnectionAccessPointFromRemoteMsg'
+class APISyncConnectionAccessPointFromRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APISyncConnectionAccessPointFromRemoteMsg'
     def __init__(self):
         #mandatory field
         self.dataCenterUuid = NotNoneField()
+        self.accessPointId = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -1471,23 +1450,9 @@ class APITerminateVirtualBorderRouterRemoteMsg(object):
         self.userTags = OptionalList()
 
 
-APIUPDATECONNECTIONBETWEENL3NETWORKANDALIYUNVSWITCHMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg'
-class APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg'
-    def __init__(self):
-        #mandatory field
-        self.uuid = NotNoneField()
-        self.name = None
-        self.description = None
-        self.session = None
-        self.timeout = None
-        self.systemTags = OptionalList()
-        self.userTags = OptionalList()
-
-
-APIUPDATEROUTEINTERFACEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIUpdateRouteInterfaceRemoteMsg'
-class APIUpdateRouteInterfaceRemoteMsg(object):
-    FULL_NAME='org.zstack.header.aliyun.network.connection.APIUpdateRouteInterfaceRemoteMsg'
+APIUPDATEALIYUNROUTEINTERFACEREMOTEMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIUpdateAliyunRouteInterfaceRemoteMsg'
+class APIUpdateAliyunRouteInterfaceRemoteMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIUpdateAliyunRouteInterfaceRemoteMsg'
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
@@ -1497,6 +1462,20 @@ class APIUpdateRouteInterfaceRemoteMsg(object):
         #mandatory field
         #valid values: [vbr, vrouter]
         self.vRouterType = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATECONNECTIONBETWEENL3NETWORKANDALIYUNVSWITCHMSG_FULL_NAME = 'org.zstack.header.aliyun.network.connection.APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg'
+class APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg(object):
+    FULL_NAME='org.zstack.header.aliyun.network.connection.APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -3630,6 +3609,276 @@ class APIUpdateWebhookMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEDAHOVLLREMOTEMSG_FULL_NAME = 'org.zstack.header.daho.process.APICreateDahoVllRemoteMsg'
+class APICreateDahoVllRemoteMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APICreateDahoVllRemoteMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
+        self.bandwidth = NotNoneField()
+        #mandatory field
+        #valid values: [shutdown, renewal]
+        self.expirePolicy = NotNoneField()
+        #mandatory field
+        self.dcConnUuid = NotNoneField()
+        #mandatory field
+        self.cloudConnUuid = NotNoneField()
+        #mandatory field
+        self.vlan = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEDAHOCLOUDCONNECTIONMSG_FULL_NAME = 'org.zstack.header.daho.process.APIDeleteDahoCloudConnectionMsg'
+class APIDeleteDahoCloudConnectionMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIDeleteDahoCloudConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEDAHODATACENTERCONNECTIONMSG_FULL_NAME = 'org.zstack.header.daho.process.APIDeleteDahoDataCenterConnectionMsg'
+class APIDeleteDahoDataCenterConnectionMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIDeleteDahoDataCenterConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEDAHOVLLMSG_FULL_NAME = 'org.zstack.header.daho.process.APIDeleteDahoVllMsg'
+class APIDeleteDahoVllMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIDeleteDahoVllMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYDAHOCLOUDCONNECTIONMSG_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoCloudConnectionMsg'
+class APIQueryDahoCloudConnectionMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoCloudConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYDAHOCLOUDCONNECTIONREPLY_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoCloudConnectionReply'
+class APIQueryDahoCloudConnectionReply(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoCloudConnectionReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYDAHODATACENTERCONNECTIONMSG_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoDataCenterConnectionMsg'
+class APIQueryDahoDataCenterConnectionMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoDataCenterConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYDAHODATACENTERCONNECTIONREPLY_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoDataCenterConnectionReply'
+class APIQueryDahoDataCenterConnectionReply(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoDataCenterConnectionReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYDAHOVLLMSG_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoVllMsg'
+class APIQueryDahoVllMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoVllMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYDAHOVLLREPLY_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoVllReply'
+class APIQueryDahoVllReply(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoVllReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYDAHOVLLVBRREFMSG_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoVllVbrRefMsg'
+class APIQueryDahoVllVbrRefMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoVllVbrRefMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYDAHOVLLVBRREFREPLY_FULL_NAME = 'org.zstack.header.daho.process.APIQueryDahoVllVbrRefReply'
+class APIQueryDahoVllVbrRefReply(object):
+    FULL_NAME='org.zstack.header.daho.process.APIQueryDahoVllVbrRefReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APISYNCDAHOCLOUDCONNECTIONMSG_FULL_NAME = 'org.zstack.header.daho.process.APISyncDahoCloudConnectionMsg'
+class APISyncDahoCloudConnectionMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APISyncDahoCloudConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCDAHODATACENTERCONNECTIONMSG_FULL_NAME = 'org.zstack.header.daho.process.APISyncDahoDataCenterConnectionMsg'
+class APISyncDahoDataCenterConnectionMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APISyncDahoDataCenterConnectionMsg'
+    def __init__(self):
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APISYNCDAHOVLLMSG_FULL_NAME = 'org.zstack.header.daho.process.APISyncDahoVllMsg'
+class APISyncDahoVllMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APISyncDahoVllMsg'
+    def __init__(self):
+        #mandatory field
+        self.dataCenterUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEDAHOCLOUDCONNECTIONMSG_FULL_NAME = 'org.zstack.header.daho.process.APIUpdateDahoCloudConnectionMsg'
+class APIUpdateDahoCloudConnectionMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIUpdateDahoCloudConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEDAHODATACENTERCONNECTIONMSG_FULL_NAME = 'org.zstack.header.daho.process.APIUpdateDahoDataCenterConnectionMsg'
+class APIUpdateDahoDataCenterConnectionMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIUpdateDahoDataCenterConnectionMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEDAHOVLLMSG_FULL_NAME = 'org.zstack.header.daho.process.APIUpdateDahoVllMsg'
+class APIUpdateDahoVllMsg(object):
+    FULL_NAME='org.zstack.header.daho.process.APIUpdateDahoVllMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.bandWidthMbps = None
+        #valid values: [shutdown, renewal]
+        self.expirePolicy = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDDATACENTERFROMREMOTEMSG_FULL_NAME = 'org.zstack.header.datacenter.APIAddDataCenterFromRemoteMsg'
 class APIAddDataCenterFromRemoteMsg(object):
     FULL_NAME='org.zstack.header.datacenter.APIAddDataCenterFromRemoteMsg'
@@ -3852,6 +4101,109 @@ class APIUpdateHostMsg(object):
         self.name = None
         self.description = None
         self.managementIp = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIADDHYBRIDKEYSECRETMSG_FULL_NAME = 'org.zstack.header.hybrid.account.APIAddHybridKeySecretMsg'
+class APIAddHybridKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.account.APIAddHybridKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.key = NotNoneField()
+        #mandatory field
+        self.secret = NotNoneField()
+        self.accountUuid = None
+        self.description = None
+        #mandatory field
+        self.type = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIATTACHHYBRIDKEYMSG_FULL_NAME = 'org.zstack.header.hybrid.account.APIAttachHybridKeyMsg'
+class APIAttachHybridKeyMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.account.APIAttachHybridKeyMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEHYBRIDKEYSECRETMSG_FULL_NAME = 'org.zstack.header.hybrid.account.APIDeleteHybridKeySecretMsg'
+class APIDeleteHybridKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.account.APIDeleteHybridKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHHYBRIDKEYMSG_FULL_NAME = 'org.zstack.header.hybrid.account.APIDetachHybridKeyMsg'
+class APIDetachHybridKeyMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.account.APIDetachHybridKeyMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYHYBRIDKEYSECRETMSG_FULL_NAME = 'org.zstack.header.hybrid.account.APIQueryHybridKeySecretMsg'
+class APIQueryHybridKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.account.APIQueryHybridKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYHYBRIDKEYSECRETREPLY_FULL_NAME = 'org.zstack.header.hybrid.account.APIQueryHybridKeySecretReply'
+class APIQueryHybridKeySecretReply(object):
+    FULL_NAME='org.zstack.header.hybrid.account.APIQueryHybridKeySecretReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIUPDATEHYBRIDKEYSECRETMSG_FULL_NAME = 'org.zstack.header.hybrid.account.APIUpdateHybridKeySecretMsg'
+class APIUpdateHybridKeySecretMsg(object):
+    FULL_NAME='org.zstack.header.hybrid.account.APIUpdateHybridKeySecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.session = None
         self.timeout = None
         self.systemTags = OptionalList()
@@ -11022,12 +11374,12 @@ class APIGetL3NetworkDhcpIpAddressReply(object):
         self.error = None
 
 
-APIADDVMNICTOLOADBALANCERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIAddVmNicToLoadBalancerMsg'
-class APIAddVmNicToLoadBalancerMsg(object):
-    FULL_NAME='org.zstack.network.service.lb.APIAddVmNicToLoadBalancerMsg'
+APIADDCERTIFICATETOLOADBALANCERLISTENERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIAddCertificateToLoadBalancerListenerMsg'
+class APIAddCertificateToLoadBalancerListenerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIAddCertificateToLoadBalancerListenerMsg'
     def __init__(self):
         #mandatory field
-        self.vmNicUuids = NotNoneList()
+        self.certificateUuid = NotNoneField()
         #mandatory field
         self.listenerUuid = NotNoneField()
         self.session = None
@@ -11036,12 +11388,12 @@ class APIAddVmNicToLoadBalancerMsg(object):
         self.userTags = OptionalList()
 
 
-APIADDCERTIFICATETOLOADBALANCERLISTENERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIAddCertificateToLoadBalancerListenerMsg'
-class APIAddCertificateToLoadBalancerListenerMsg(object):
-    FULL_NAME='org.zstack.network.service.lb.APIAddCertificateToLoadBalancerListenerMsg'
+APIADDVMNICTOLOADBALANCERMSG_FULL_NAME = 'org.zstack.network.service.lb.APIAddVmNicToLoadBalancerMsg'
+class APIAddVmNicToLoadBalancerMsg(object):
+    FULL_NAME='org.zstack.network.service.lb.APIAddVmNicToLoadBalancerMsg'
     def __init__(self):
         #mandatory field
-        self.certificateUuid = NotNoneField()
+        self.vmNicUuids = NotNoneList()
         #mandatory field
         self.listenerUuid = NotNoneField()
         self.session = None
@@ -12206,6 +12558,25 @@ class APIGetAvailableTriggersMsg(object):
 APIGETAVAILABLETRIGGERSREPLY_FULL_NAME = 'org.zstack.scheduler.APIGetAvailableTriggersReply'
 class APIGetAvailableTriggersReply(object):
     FULL_NAME='org.zstack.scheduler.APIGetAvailableTriggersReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
+APIGETNOTRIGGERSCHEDULERJOBSMSG_FULL_NAME = 'org.zstack.scheduler.APIGetNoTriggerSchedulerJobsMsg'
+class APIGetNoTriggerSchedulerJobsMsg(object):
+    FULL_NAME='org.zstack.scheduler.APIGetNoTriggerSchedulerJobsMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETNOTRIGGERSCHEDULERJOBSREPLY_FULL_NAME = 'org.zstack.scheduler.APIGetNoTriggerSchedulerJobsReply'
+class APIGetNoTriggerSchedulerJobsReply(object):
+    FULL_NAME='org.zstack.scheduler.APIGetNoTriggerSchedulerJobsReply'
     def __init__(self):
         self.inventories = OptionalList()
         self.success = None
@@ -15277,6 +15648,7 @@ api_names = [
     'APIAddFusionstorBackupStorageMsg',
     'APIAddFusionstorPrimaryStorageMsg',
     'APIAddHostRouteToL3NetworkMsg',
+    'APIAddHybridKeySecretMsg',
     'APIAddIdentityZoneFromRemoteMsg',
     'APIAddImageMsg',
     'APIAddImageStoreBackupStorageMsg',
@@ -15317,6 +15689,7 @@ api_names = [
     'APIAttachDataVolumeToVmMsg',
     'APIAttachEipMsg',
     'APIAttachHybridEipToEcsMsg',
+    'APIAttachHybridKeyMsg',
     'APIAttachIsoToVmInstanceMsg',
     'APIAttachL2NetworkToClusterMsg',
     'APIAttachL3NetworkToVmMsg',
@@ -15384,6 +15757,7 @@ api_names = [
     'APICreateAffinityGroupMsg',
     'APICreateAlarmMsg',
     'APICreateAliyunDiskFromRemoteMsg',
+    'APICreateAliyunRouterInterfaceRemoteMsg',
     'APICreateAliyunSnapshotRemoteMsg',
     'APICreateAliyunVpcVirtualRouterEntryRemoteMsg',
     'APICreateBaremetalChassisMsg',
@@ -15392,6 +15766,7 @@ api_names = [
     'APICreateCertificateMsg',
     'APICreateClusterMsg',
     'APICreateConnectionBetweenL3NetworkAndAliyunVSwitchMsg',
+    'APICreateDahoVllRemoteMsg',
     'APICreateDataVolumeFromVolumeSnapshotMsg',
     'APICreateDataVolumeFromVolumeTemplateMsg',
     'APICreateDataVolumeMsg',
@@ -15432,7 +15807,6 @@ api_names = [
     'APICreateResourcePriceMsg',
     'APICreateRootVolumeTemplateFromRootVolumeMsg',
     'APICreateRootVolumeTemplateFromVolumeSnapshotMsg',
-    'APICreateRouterInterfacePairRemoteMsg',
     'APICreateSNSDingTalkEndpointMsg',
     'APICreateSNSEmailEndpointMsg',
     'APICreateSNSEmailPlatformMsg',
@@ -15470,6 +15844,8 @@ api_names = [
     'APIDeleteAliyunDiskFromRemoteMsg',
     'APIDeleteAliyunKeySecretMsg',
     'APIDeleteAliyunRouteEntryRemoteMsg',
+    'APIDeleteAliyunRouterInterfaceLocalMsg',
+    'APIDeleteAliyunRouterInterfaceRemoteMsg',
     'APIDeleteAliyunSnapshotFromLocalMsg',
     'APIDeleteAliyunSnapshotFromRemoteMsg',
     'APIDeleteAllEcsInstancesFromDataCenterMsg',
@@ -15483,6 +15859,9 @@ api_names = [
     'APIDeleteClusterMsg',
     'APIDeleteConnectionAccessPointLocalMsg',
     'APIDeleteConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
+    'APIDeleteDahoCloudConnectionMsg',
+    'APIDeleteDahoDataCenterConnectionMsg',
+    'APIDeleteDahoVllMsg',
     'APIDeleteDataCenterInLocalMsg',
     'APIDeleteDataVolumeMsg',
     'APIDeleteDiskOfferingMsg',
@@ -15503,6 +15882,7 @@ api_names = [
     'APIDeleteHostMsg',
     'APIDeleteHybridEipFromLocalMsg',
     'APIDeleteHybridEipRemoteMsg',
+    'APIDeleteHybridKeySecretMsg',
     'APIDeleteIPsecConnectionMsg',
     'APIDeleteIdentityZoneInLocalMsg',
     'APIDeleteImageMsg',
@@ -15530,8 +15910,6 @@ api_names = [
     'APIDeletePrimaryStorageMsg',
     'APIDeleteProtectionGroupMsg',
     'APIDeleteResourcePriceMsg',
-    'APIDeleteRouterInterfaceLocalMsg',
-    'APIDeleteRouterInterfaceRemoteMsg',
     'APIDeleteSNSApplicationEndpointMsg',
     'APIDeleteSNSApplicationPlatformMsg',
     'APIDeleteSNSTextTemplateMsg',
@@ -15577,6 +15955,7 @@ api_names = [
     'APIDetachDataVolumeFromVmMsg',
     'APIDetachEipMsg',
     'APIDetachHybridEipFromEcsMsg',
+    'APIDetachHybridKeyMsg',
     'APIDetachIsoFromVmInstanceMsg',
     'APIDetachL2NetworkFromClusterMsg',
     'APIDetachL3NetworkFromVmMsg',
@@ -15733,6 +16112,8 @@ api_names = [
     'APIGetNetworkServiceTypesReply',
     'APIGetNicQosMsg',
     'APIGetNicQosReply',
+    'APIGetNoTriggerSchedulerJobsMsg',
+    'APIGetNoTriggerSchedulerJobsReply',
     'APIGetOssBackupBucketFromRemoteMsg',
     'APIGetOssBackupBucketFromRemoteReply',
     'APIGetOssBucketFileFromRemoteMsg',
@@ -15905,10 +16286,10 @@ api_names = [
     'APIQueryAlertReply',
     'APIQueryAliyunDiskFromLocalMsg',
     'APIQueryAliyunDiskFromLocalReply',
-    'APIQueryAliyunKeySecretMsg',
-    'APIQueryAliyunKeySecretReply',
     'APIQueryAliyunRouteEntryFromLocalMsg',
     'APIQueryAliyunRouteEntryFromLocalReply',
+    'APIQueryAliyunRouterInterfaceFromLocalMsg',
+    'APIQueryAliyunRouterInterfaceFromLocalReply',
     'APIQueryAliyunSnapshotFromLocalMsg',
     'APIQueryAliyunSnapshotFromLocalReply',
     'APIQueryAliyunVirtualRouterFromLocalMsg',
@@ -15939,6 +16320,14 @@ api_names = [
     'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchReply',
     'APIQueryConsoleProxyAgentMsg',
     'APIQueryConsoleProxyAgentReply',
+    'APIQueryDahoCloudConnectionMsg',
+    'APIQueryDahoCloudConnectionReply',
+    'APIQueryDahoDataCenterConnectionMsg',
+    'APIQueryDahoDataCenterConnectionReply',
+    'APIQueryDahoVllMsg',
+    'APIQueryDahoVllReply',
+    'APIQueryDahoVllVbrRefMsg',
+    'APIQueryDahoVllVbrRefReply',
     'APIQueryDataCenterFromLocalMsg',
     'APIQueryDataCenterFromLocalReply',
     'APIQueryDiskOfferingMsg',
@@ -15971,6 +16360,8 @@ api_names = [
     'APIQueryHostReply',
     'APIQueryHybridEipFromLocalMsg',
     'APIQueryHybridEipFromLocalReply',
+    'APIQueryHybridKeySecretMsg',
+    'APIQueryHybridKeySecretReply',
     'APIQueryIPSecConnectionMsg',
     'APIQueryIPSecConnectionReply',
     'APIQueryIdentityZoneFromLocalMsg',
@@ -16040,8 +16431,6 @@ api_names = [
     'APIQueryReply',
     'APIQueryResourcePriceMsg',
     'APIQueryResourcePriceReply',
-    'APIQueryRouterInterfaceFromLocalMsg',
-    'APIQueryRouterInterfaceFromLocalReply',
     'APIQuerySNSApplicationEndpointMsg',
     'APIQuerySNSApplicationEndpointReply',
     'APIQuerySNSApplicationPlatformMsg',
@@ -16230,6 +16619,7 @@ api_names = [
     'APISetVpcVRouterDistributedRoutingEnabledMsg',
     'APIShareResourceMsg',
     'APIStartBaremetalPxeServerMsg',
+    'APIStartConnectionBetweenAliyunRouterInterfaceMsg',
     'APIStartEcsInstanceMsg',
     'APIStartVmInstanceMsg',
     'APIStopBaremetalPxeServerMsg',
@@ -16239,9 +16629,13 @@ api_names = [
     'APISubscribeEventMsg',
     'APISubscribeSNSTopicMsg',
     'APISyncAliyunRouteEntryFromRemoteMsg',
+    'APISyncAliyunRouterInterfaceFromRemoteMsg',
     'APISyncAliyunSnapshotRemoteMsg',
     'APISyncAliyunVirtualRouterFromRemoteMsg',
     'APISyncConnectionAccessPointFromRemoteMsg',
+    'APISyncDahoCloudConnectionMsg',
+    'APISyncDahoDataCenterConnectionMsg',
+    'APISyncDahoVllMsg',
     'APISyncDataCenterFromRemoteMsg',
     'APISyncDiskFromAliyunFromRemoteMsg',
     'APISyncEcsImageFromRemoteMsg',
@@ -16255,7 +16649,6 @@ api_names = [
     'APISyncImageFromImageStoreBackupStorageMsg',
     'APISyncImageSizeMsg',
     'APISyncPrimaryStorageCapacityMsg',
-    'APISyncRouterInterfaceFromRemoteMsg',
     'APISyncVCenterMsg',
     'APISyncVirtualBorderRouterFromRemoteMsg',
     'APISyncVolumeSizeMsg',
@@ -16271,6 +16664,7 @@ api_names = [
     'APIUpdateAlarmMsg',
     'APIUpdateAliyunDiskMsg',
     'APIUpdateAliyunKeySecretMsg',
+    'APIUpdateAliyunRouteInterfaceRemoteMsg',
     'APIUpdateAliyunSnapshotMsg',
     'APIUpdateAliyunVirtualRouterMsg',
     'APIUpdateBackupStorageMsg',
@@ -16284,6 +16678,9 @@ api_names = [
     'APIUpdateClusterOSMsg',
     'APIUpdateConnectionBetweenL3NetWorkAndAliyunVSwitchMsg',
     'APIUpdateConsoleProxyAgentMsg',
+    'APIUpdateDahoCloudConnectionMsg',
+    'APIUpdateDahoDataCenterConnectionMsg',
+    'APIUpdateDahoVllMsg',
     'APIUpdateDiskOfferingMsg',
     'APIUpdateEcsImageMsg',
     'APIUpdateEcsInstanceMsg',
@@ -16301,6 +16698,7 @@ api_names = [
     'APIUpdateHostIommuStateMsg',
     'APIUpdateHostMsg',
     'APIUpdateHybridEipMsg',
+    'APIUpdateHybridKeySecretMsg',
     'APIUpdateIPsecConnectionMsg',
     'APIUpdateImageMsg',
     'APIUpdateImageStoreBackupStorageMsg',
@@ -16321,7 +16719,6 @@ api_names = [
     'APIUpdatePortForwardingRuleMsg',
     'APIUpdatePrimaryStorageMsg',
     'APIUpdateQuotaMsg',
-    'APIUpdateRouteInterfaceRemoteMsg',
     'APIUpdateSNSApplicationEndpointMsg',
     'APIUpdateSNSApplicationPlatformMsg',
     'APIUpdateSNSTextTemplateMsg',
@@ -16812,6 +17209,96 @@ class EcsImageInventory(object):
 
 
 
+class AliyunRouterInterfaceInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.dataCenterUuid = None
+        self.routerInterfaceId = None
+        self.virtualRouterUuid = None
+        self.accessPointUuid = None
+        self.role = None
+        self.vRouterType = None
+        self.spec = None
+        self.name = None
+        self.description = None
+        self.status = None
+        self.oppositeInterfaceUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'routerInterfaceId'):
+            self.routerInterfaceId = inv.routerInterfaceId
+        else:
+            self.routerInterfaceId = None
+
+        if hasattr(inv, 'virtualRouterUuid'):
+            self.virtualRouterUuid = inv.virtualRouterUuid
+        else:
+            self.virtualRouterUuid = None
+
+        if hasattr(inv, 'accessPointUuid'):
+            self.accessPointUuid = inv.accessPointUuid
+        else:
+            self.accessPointUuid = None
+
+        if hasattr(inv, 'role'):
+            self.role = inv.role
+        else:
+            self.role = None
+
+        if hasattr(inv, 'vRouterType'):
+            self.vRouterType = inv.vRouterType
+        else:
+            self.vRouterType = None
+
+        if hasattr(inv, 'spec'):
+            self.spec = inv.spec
+        else:
+            self.spec = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'oppositeInterfaceUuid'):
+            self.oppositeInterfaceUuid = inv.oppositeInterfaceUuid
+        else:
+            self.oppositeInterfaceUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class ConnectionAccessPointInventory(object):
     def __init__(self):
         self.uuid = None
@@ -17075,96 +17562,6 @@ class VirtualBorderRouterInventory(object):
             self.description = inv.description
         else:
             self.description = None
-
-        if hasattr(inv, 'createDate'):
-            self.createDate = inv.createDate
-        else:
-            self.createDate = None
-
-        if hasattr(inv, 'lastOpDate'):
-            self.lastOpDate = inv.lastOpDate
-        else:
-            self.lastOpDate = None
-
-
-
-class VirtualRouterInterfaceInventory(object):
-    def __init__(self):
-        self.uuid = None
-        self.dataCenterUuid = None
-        self.routerInterfaceId = None
-        self.virtualRouterUuid = None
-        self.accessPointUuid = None
-        self.role = None
-        self.vRouterType = None
-        self.spec = None
-        self.name = None
-        self.description = None
-        self.status = None
-        self.oppositeInterfaceUuid = None
-        self.createDate = None
-        self.lastOpDate = None
-
-    def evaluate(self, inv):
-        if hasattr(inv, 'uuid'):
-            self.uuid = inv.uuid
-        else:
-            self.uuid = None
-
-        if hasattr(inv, 'dataCenterUuid'):
-            self.dataCenterUuid = inv.dataCenterUuid
-        else:
-            self.dataCenterUuid = None
-
-        if hasattr(inv, 'routerInterfaceId'):
-            self.routerInterfaceId = inv.routerInterfaceId
-        else:
-            self.routerInterfaceId = None
-
-        if hasattr(inv, 'virtualRouterUuid'):
-            self.virtualRouterUuid = inv.virtualRouterUuid
-        else:
-            self.virtualRouterUuid = None
-
-        if hasattr(inv, 'accessPointUuid'):
-            self.accessPointUuid = inv.accessPointUuid
-        else:
-            self.accessPointUuid = None
-
-        if hasattr(inv, 'role'):
-            self.role = inv.role
-        else:
-            self.role = None
-
-        if hasattr(inv, 'vRouterType'):
-            self.vRouterType = inv.vRouterType
-        else:
-            self.vRouterType = None
-
-        if hasattr(inv, 'spec'):
-            self.spec = inv.spec
-        else:
-            self.spec = None
-
-        if hasattr(inv, 'name'):
-            self.name = inv.name
-        else:
-            self.name = None
-
-        if hasattr(inv, 'description'):
-            self.description = inv.description
-        else:
-            self.description = None
-
-        if hasattr(inv, 'status'):
-            self.status = inv.status
-        else:
-            self.status = None
-
-        if hasattr(inv, 'oppositeInterfaceUuid'):
-            self.oppositeInterfaceUuid = inv.oppositeInterfaceUuid
-        else:
-            self.oppositeInterfaceUuid = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -18527,6 +18924,402 @@ class ConsoleProxyInventory(object):
             self.status = inv.status
         else:
             self.status = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class DahoCloudConnectionInventory(object):
+    def __init__(self):
+        self.name = None
+        self.uuid = None
+        self.bandwidth = None
+        self.usedBandwidth = None
+        self.connectionId = None
+        self.cloud = None
+        self.accessPointId = None
+        self.accessPointName = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.dataCenterUuid = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'bandwidth'):
+            self.bandwidth = inv.bandwidth
+        else:
+            self.bandwidth = None
+
+        if hasattr(inv, 'usedBandwidth'):
+            self.usedBandwidth = inv.usedBandwidth
+        else:
+            self.usedBandwidth = None
+
+        if hasattr(inv, 'connectionId'):
+            self.connectionId = inv.connectionId
+        else:
+            self.connectionId = None
+
+        if hasattr(inv, 'cloud'):
+            self.cloud = inv.cloud
+        else:
+            self.cloud = None
+
+        if hasattr(inv, 'accessPointId'):
+            self.accessPointId = inv.accessPointId
+        else:
+            self.accessPointId = None
+
+        if hasattr(inv, 'accessPointName'):
+            self.accessPointName = inv.accessPointName
+        else:
+            self.accessPointName = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+
+
+class DahoConnectionInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.connectionId = None
+        self.name = None
+        self.description = None
+        self.status = None
+        self.type = None
+        self.bandwidthMbps = None
+        self.contractEndTime = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.dcName = None
+        self.building = None
+        self.dcLocation = None
+        self.room = None
+        self.rackNo = None
+        self.deviceType = None
+        self.deviceNo = None
+        self.portNo = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'connectionId'):
+            self.connectionId = inv.connectionId
+        else:
+            self.connectionId = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'bandwidthMbps'):
+            self.bandwidthMbps = inv.bandwidthMbps
+        else:
+            self.bandwidthMbps = None
+
+        if hasattr(inv, 'contractEndTime'):
+            self.contractEndTime = inv.contractEndTime
+        else:
+            self.contractEndTime = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'dcName'):
+            self.dcName = inv.dcName
+        else:
+            self.dcName = None
+
+        if hasattr(inv, 'building'):
+            self.building = inv.building
+        else:
+            self.building = None
+
+        if hasattr(inv, 'dcLocation'):
+            self.dcLocation = inv.dcLocation
+        else:
+            self.dcLocation = None
+
+        if hasattr(inv, 'room'):
+            self.room = inv.room
+        else:
+            self.room = None
+
+        if hasattr(inv, 'rackNo'):
+            self.rackNo = inv.rackNo
+        else:
+            self.rackNo = None
+
+        if hasattr(inv, 'deviceType'):
+            self.deviceType = inv.deviceType
+        else:
+            self.deviceType = None
+
+        if hasattr(inv, 'deviceNo'):
+            self.deviceNo = inv.deviceNo
+        else:
+            self.deviceNo = None
+
+        if hasattr(inv, 'portNo'):
+            self.portNo = inv.portNo
+        else:
+            self.portNo = None
+
+
+
+class DahoDCAccessInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.dcName = None
+        self.building = None
+        self.dcLocation = None
+        self.room = None
+        self.rackNo = None
+        self.deviceType = None
+        self.portNo = None
+        self.deviceNo = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'dcName'):
+            self.dcName = inv.dcName
+        else:
+            self.dcName = None
+
+        if hasattr(inv, 'building'):
+            self.building = inv.building
+        else:
+            self.building = None
+
+        if hasattr(inv, 'dcLocation'):
+            self.dcLocation = inv.dcLocation
+        else:
+            self.dcLocation = None
+
+        if hasattr(inv, 'room'):
+            self.room = inv.room
+        else:
+            self.room = None
+
+        if hasattr(inv, 'rackNo'):
+            self.rackNo = inv.rackNo
+        else:
+            self.rackNo = None
+
+        if hasattr(inv, 'deviceType'):
+            self.deviceType = inv.deviceType
+        else:
+            self.deviceType = None
+
+        if hasattr(inv, 'portNo'):
+            self.portNo = inv.portNo
+        else:
+            self.portNo = None
+
+        if hasattr(inv, 'deviceNo'):
+            self.deviceNo = inv.deviceNo
+        else:
+            self.deviceNo = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class DahoVllVbrRefInventory(object):
+    def __init__(self):
+        self.id = None
+        self.vllUuid = None
+        self.vbrUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'vllUuid'):
+            self.vllUuid = inv.vllUuid
+        else:
+            self.vllUuid = None
+
+        if hasattr(inv, 'vbrUuid'):
+            self.vbrUuid = inv.vbrUuid
+        else:
+            self.vbrUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class DahoVllsInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.status = None
+        self.vllId = None
+        self.vlanId = None
+        self.dataCenterUuid = None
+        self.type = None
+        self.description = None
+        self.bandwidthMbps = None
+        self.expirePolicy = None
+        self.connAUuid = None
+        self.connZUuid = None
+        self.startDate = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'vllId'):
+            self.vllId = inv.vllId
+        else:
+            self.vllId = None
+
+        if hasattr(inv, 'vlanId'):
+            self.vlanId = inv.vlanId
+        else:
+            self.vlanId = None
+
+        if hasattr(inv, 'dataCenterUuid'):
+            self.dataCenterUuid = inv.dataCenterUuid
+        else:
+            self.dataCenterUuid = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'bandwidthMbps'):
+            self.bandwidthMbps = inv.bandwidthMbps
+        else:
+            self.bandwidthMbps = None
+
+        if hasattr(inv, 'expirePolicy'):
+            self.expirePolicy = inv.expirePolicy
+        else:
+            self.expirePolicy = None
+
+        if hasattr(inv, 'connAUuid'):
+            self.connAUuid = inv.connAUuid
+        else:
+            self.connAUuid = None
+
+        if hasattr(inv, 'connZUuid'):
+            self.connZUuid = inv.connZUuid
+        else:
+            self.connZUuid = None
+
+        if hasattr(inv, 'startDate'):
+            self.startDate = inv.startDate
+        else:
+            self.startDate = None
 
         if hasattr(inv, 'createDate'):
             self.createDate = inv.createDate
@@ -22349,6 +23142,13 @@ class GlobalConfig_ALIYUN(object):
     def get_category():
         return 'aliyun'
 
+class GlobalConfig_ALIYUNNASPRIMARYSTORAGE(object):
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
+
+    @staticmethod
+    def get_category():
+        return 'aliyunNasPrimaryStorage'
+
 class GlobalConfig_APPLIANCEVM(object):
     SSH_TIMEOUT = 'ssh.timeout'
     CONNECT_TIMEOUT = 'connect.timeout'
@@ -22409,6 +23209,13 @@ class GlobalConfig_CONSOLE(object):
     @staticmethod
     def get_category():
         return 'console'
+
+class GlobalConfig_DAHO(object):
+    DAHO_API_ENDPOINT = 'daho.api.endpoint'
+
+    @staticmethod
+    def get_category():
+        return 'daho'
 
 class GlobalConfig_EIP(object):
     SNATINBOUNDTRAFFIC = 'snatInboundTraffic'
@@ -22771,6 +23578,7 @@ class GlobalConfig_VM(object):
     EXPUNGEPERIOD = 'expungePeriod'
     DELETIONPOLICY = 'deletionPolicy'
     NUMA = 'numa'
+    VMPORTOFF = 'vmPortOff'
     CLEANTRAFFIC = 'cleanTraffic'
     INSTANCEOFFERING_SETNULLWHENDELETING = 'instanceOffering.setNullWhenDeleting'
     DATAVOLUME_DELETEONVMDESTROY = 'dataVolume.deleteOnVmDestroy'
@@ -22890,6 +23698,12 @@ class QueryObjectAliyunDiskInventory(object):
         'snapshot' : 'QueryObjectAliyunSnapshotInventory',
      }
 
+class QueryObjectAliyunRouterInterfaceInventory(object):
+     PRIMITIVE_FIELDS = ['role','description','uuid','spec','accessPointUuid','oppositeInterfaceUuid','virtualRouterUuid','vRouterType','name','lastOpDate','dataCenterUuid','routerInterfaceId','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectAliyunSnapshotInventory(object):
      PRIMITIVE_FIELDS = ['snapshotId','diskUuid','name','lastOpDate','description','dataCenterUuid','uuid','aliyunSnapshotUsage','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['disk','imageRef']
@@ -22989,7 +23803,7 @@ class QueryObjectBaremetalPxeServerInventory(object):
      }
 
 class QueryObjectCephBackupStorageInventory(object):
-     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','url','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['availableCapacity','description','type','uuid','poolAvailableCapacity','url','poolReplicatedSize','poolUsedCapacity','totalCapacity','fsid','name','lastOpDate','state','poolName','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['mons','mons','image','volumeSnapshot','zone']
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
@@ -23023,7 +23837,7 @@ class QueryObjectCephPrimaryStorageMonInventory(object):
      }
 
 class QueryObjectCephPrimaryStoragePoolInventory(object):
-     PRIMITIVE_FIELDS = ['aliasName','lastOpDate','description','primaryStorageUuid','type','uuid','poolName','createDate','__userTag__','__systemTag__']
+     PRIMITIVE_FIELDS = ['aliasName','availableCapacity','usedCapacity','lastOpDate','description','replicatedSize','primaryStorageUuid','type','uuid','poolName','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
      }
@@ -23070,6 +23884,38 @@ class QueryObjectConsoleProxyInventory(object):
      PRIMITIVE_FIELDS = ['agentType','scheme','proxyIdentity','uuid','targetPort','agentIp','token','proxyPort','proxyHostname','targetHostname','lastOpDate','vmInstanceUuid','status','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
      QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectDahoCloudConnectionInventory(object):
+     PRIMITIVE_FIELDS = ['cloud','accessPointName','usedBandwidth','bandwidth','accessPointId','name','lastOpDate','connectionId','description','dataCenterUuid','uuid','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectDahoConnectionInventory(object):
+     PRIMITIVE_FIELDS = ['deviceType','dcLocation','description','deviceNo','type','uuid','building','room','contractEndTime','portNo','rackNo','dcName','name','lastOpDate','connectionId','bandwidthMbps','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectDahoDCAccessInventory(object):
+     PRIMITIVE_FIELDS = ['deviceType','portNo','dcLocation','rackNo','dcName','lastOpDate','deviceNo','uuid','building','room','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
+class QueryObjectDahoVllVbrRefInventory(object):
+     PRIMITIVE_FIELDS = ['vllUuid','vbrUuid','lastOpDate','id','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vbr']
+     QUERY_OBJECT_MAP = {
+        'vbr' : 'QueryObjectVirtualBorderRouterInventory',
+     }
+
+class QueryObjectDahoVllsInventory(object):
+     PRIMITIVE_FIELDS = ['vllId','vlanId','connAUuid','description','type','uuid','connZUuid','name','lastOpDate','dataCenterUuid','expirePolicy','bandwidthMbps','startDate','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['vbr']
+     QUERY_OBJECT_MAP = {
+        'vbr' : 'QueryObjectVirtualBorderRouterInventory',
      }
 
 class QueryObjectDataCenterInventory(object):
@@ -23977,12 +24823,6 @@ class QueryObjectVirtualRouterEipRefInventory(object):
         'applianceVm' : 'QueryObjectApplianceVmInventory',
      }
 
-class QueryObjectVirtualRouterInterfaceInventory(object):
-     PRIMITIVE_FIELDS = ['role','description','uuid','spec','accessPointUuid','oppositeInterfaceUuid','virtualRouterUuid','vRouterType','name','lastOpDate','dataCenterUuid','routerInterfaceId','status','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
-     QUERY_OBJECT_MAP = {
-     }
-
 class QueryObjectVirtualRouterLoadBalancerRefInventory(object):
      PRIMITIVE_FIELDS = ['loadBalancerUuid','lastOpDate','id','virtualRouterVmUuid','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['virtualRouterVm','loadBalancer']
@@ -24209,8 +25049,8 @@ queryMessageInventoryMap = {
      'APIQueryAlarmMsg' : QueryObjectAlarmInventory,
      'APIQueryAlertMsg' : QueryObjectAlertInventory,
      'APIQueryAliyunDiskFromLocalMsg' : QueryObjectAliyunDiskInventory,
-     'APIQueryAliyunKeySecretMsg' : QueryObjectHybridAccountInventory,
      'APIQueryAliyunRouteEntryFromLocalMsg' : QueryObjectVpcVirtualRouteEntryInventory,
+     'APIQueryAliyunRouterInterfaceFromLocalMsg' : QueryObjectAliyunRouterInterfaceInventory,
      'APIQueryAliyunSnapshotFromLocalMsg' : QueryObjectAliyunSnapshotInventory,
      'APIQueryAliyunVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
      'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
@@ -24227,6 +25067,10 @@ queryMessageInventoryMap = {
      'APIQueryConnectionAccessPointFromLocalMsg' : QueryObjectConnectionAccessPointInventory,
      'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg' : QueryObjectConnectionRelationShipInventory,
      'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
+     'APIQueryDahoCloudConnectionMsg' : QueryObjectDahoCloudConnectionInventory,
+     'APIQueryDahoDataCenterConnectionMsg' : QueryObjectDahoConnectionInventory,
+     'APIQueryDahoVllMsg' : QueryObjectDahoVllsInventory,
+     'APIQueryDahoVllVbrRefMsg' : QueryObjectDahoVllVbrRefInventory,
      'APIQueryDataCenterFromLocalMsg' : QueryObjectDataCenterInventory,
      'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
      'APIQueryEcsImageFromLocalMsg' : QueryObjectEcsImageInventory,
@@ -24245,6 +25089,7 @@ queryMessageInventoryMap = {
      'APIQueryGlobalConfigMsg' : QueryObjectGlobalConfigInventory,
      'APIQueryHostMsg' : QueryObjectHostInventory,
      'APIQueryHybridEipFromLocalMsg' : QueryObjectHybridEipAddressInventory,
+     'APIQueryHybridKeySecretMsg' : QueryObjectHybridAccountInventory,
      'APIQueryIPSecConnectionMsg' : QueryObjectIPsecConnectionInventory,
      'APIQueryIdentityZoneFromLocalMsg' : QueryObjectIdentityZoneInventory,
      'APIQueryImageMsg' : QueryObjectImageInventory,
@@ -24279,7 +25124,6 @@ queryMessageInventoryMap = {
      'APIQueryPrimaryStorageMsg' : QueryObjectPrimaryStorageInventory,
      'APIQueryQuotaMsg' : QueryObjectQuotaInventory,
      'APIQueryResourcePriceMsg' : QueryObjectPriceInventory,
-     'APIQueryRouterInterfaceFromLocalMsg' : QueryObjectVirtualRouterInterfaceInventory,
      'APIQuerySNSApplicationEndpointMsg' : QueryObjectSNSApplicationEndpointInventory,
      'APIQuerySNSApplicationPlatformMsg' : QueryObjectSNSApplicationPlatformInventory,
      'APIQuerySNSDingTalkEndpointMsg' : QueryObjectSNSDingTalkEndpointInventory,
