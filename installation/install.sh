@@ -830,7 +830,8 @@ upgrade_zstack(){
           fail "failed to upgrade zstack web ui"
         fi
     elif [ -f /etc/init.d/zstack-ui ]; then
-        /bin/cp -f $ZSTACK_UI_HOME/zstack-ui.war $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
+        # fill CATALINA_ZSTACK_TOOLS with old zstack-ui.war if not exists
+        /bin/cp -n $ZSTACK_UI_HOME/zstack-ui.war $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
     fi
 
     #check old license folder and copy old license files to new folder.
