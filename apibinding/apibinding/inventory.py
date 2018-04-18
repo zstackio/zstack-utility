@@ -3070,6 +3070,7 @@ class APIUpdateClusterOSMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.excludePackages = OptionalList()
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -7717,16 +7718,6 @@ class APIUpdatePrimaryStorageMsg(object):
         self.timeout = None
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
-
-
-CREATETEMPLATEFROMVOLUMEONPRIMARYSTORAGEREPLY_FULL_NAME = 'org.zstack.header.storage.primary.CreateTemplateFromVolumeOnPrimaryStorageReply'
-class CreateTemplateFromVolumeOnPrimaryStorageReply(object):
-    FULL_NAME='org.zstack.header.storage.primary.CreateTemplateFromVolumeOnPrimaryStorageReply'
-    def __init__(self):
-        self.templateBackupStorageInstallPath = None
-        self.format = None
-        self.success = None
-        self.error = None
 
 
 APIBACKUPVOLUMESNAPSHOTMSG_FULL_NAME = 'org.zstack.header.storage.snapshot.APIBackupVolumeSnapshotMsg'
@@ -16748,7 +16739,6 @@ api_names = [
     'APIValidateSNSEmailPlatformMsg',
     'APIValidateSessionMsg',
     'APIValidateSessionReply',
-    'CreateTemplateFromVolumeOnPrimaryStorageReply',
 ]
 
 class VmInstanceInventory(object):
@@ -23141,13 +23131,6 @@ class GlobalConfig_ALIYUN(object):
     @staticmethod
     def get_category():
         return 'aliyun'
-
-class GlobalConfig_ALIYUNNASPRIMARYSTORAGE(object):
-    DELETION_GCINTERVAL = 'deletion.gcInterval'
-
-    @staticmethod
-    def get_category():
-        return 'aliyunNasPrimaryStorage'
 
 class GlobalConfig_APPLIANCEVM(object):
     SSH_TIMEOUT = 'ssh.timeout'
