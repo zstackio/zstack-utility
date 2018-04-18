@@ -372,11 +372,12 @@ class VncPortIptableRule(object):
                 internal_ids.append(vm_id)
 
         # delete all vnc chains
-        for chain in tbl.children:
+        chains = tbl.children[:]
+        for chain in chains:
             if 'vm' in chain.name and 'vnc' in chain.name:
                 vm_internal_id = chain.name.split('-')[1]
                 if vm_internal_id not in internal_ids:
-                    chain.delete()
+                    ipt.delete_chain(chain.name)
                     logger.debug('deleted a stale VNC iptable chain[%s]' % chain.name)
 
         ipt.iptable_restore()
