@@ -823,17 +823,20 @@ class Ctl(object):
 
             cmd = ShellCmd(sql)
             cmd(False)
-            if cmd.return_code == 0:
-                # record the IP and port, so next time we will try them first
+            if cmd.return_code != 0:
+                errors.append(
+                    'failed to connect to the mysql server[hostname:%s, port:%s, user:%s, password:%s]: %s %s' % (
+                        hostname, port, user, password, cmd.stderr, cmd.stdout
+                    ))
+                continue
+
+            # record the IP and port, so next time we will try them first
+            if hostname != last_ip or port != last_port:
                 ctl.put_envs([
                     (self.LAST_ALIVE_MYSQL_IP, hostname),
                     (self.LAST_ALIVE_MYSQL_PORT, port)
                 ])
-                return hostname, port, user, password
-
-            errors.append('failed to connect to the mysql server[hostname:%s, port:%s, user:%s, password:%s]: %s %s' % (
-                hostname, port, user, password, cmd.stderr, cmd.stdout
-            ))
+            return hostname, port, user, password
 
         raise CtlError('\n'.join(errors))
 
