@@ -3,6 +3,8 @@
 @author: yyk
 '''
 
+import linux
+
 class IpAddress(object):
     '''
     Help to save and compare IP Address. 
@@ -59,3 +61,20 @@ class IpAddress(object):
 
     def __repr__(self):
         return self.__str__()
+
+    def toInt32(self):
+        ip32 = self.ips[0];
+        for item in self.ips[1:]:
+            ip32 = ip32 << 8
+            ip32 += item
+        return ip32
+
+    def toCidr(self, netmask):
+        ip32 = self.toInt32()
+        mask32 = IpAddress(netmask).toInt32()
+        cidr32 = ip32 & mask32
+        cidr = [cidr32 >> 24, (cidr32 & 0x00FF0000) >> 16, (cidr32 & 0x0000FF00) >> 8, cidr32 & 0x00000FF]
+
+        maskbits = linux.netmask_to_cidr(netmask)
+
+        return '%s.%s.%s.%s/%s' % (cidr[0], cidr[1], cidr[2], cidr[3], maskbits)
