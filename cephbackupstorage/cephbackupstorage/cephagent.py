@@ -3,16 +3,15 @@ __author__ = 'frank'
 import os
 import os.path
 import pprint
-import re
 import traceback
 import urllib2
+import urlparse
+import tempfile
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import lock
-from zstacklib.utils import linux
-from zstacklib.utils import log
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
@@ -663,19 +662,25 @@ class CephAgent(object):
     def download(self, req):
         rsp = DownloadRsp()
 
-        def isDerivedQcow2Image(path):
-            return getOriginalFormat(path) == "derivedQcow2"
-
-        def getOriginalFormat(path):
-            if path.startswith('http://') or path.startswith('https://'):
+        def _get_origin_format(path):
+            qcow2_length = 0x9007
+            if path.startswith('http://') or path.startswith('https://') or path.startswith('ftp://'):
                 resp = urllib2.urlopen(path)
-                qhdr = resp.read(0x9007)
+                qhdr = resp.read(qcow2_length)
                 resp.close()
+            elif path.startswith('sftp://'):
+                fd, tmp_file = tempfile.mkstemp()
+                get_header_from_pipe_cmd = "timeout 60 head --bytes=%d %s > %s" % (qcow2_length, pipe_path, tmp_file)
+                clean_cmd = "pkill -f %s" % pipe_path
+                shell.run('%s & %s && %s' % (scp_to_pipe_cmd, get_header_from_pipe_cmd, clean_cmd))
+                qhdr = os.read(fd, qcow2_length)
+                if os.path.exists(tmp_file):
+                    os.remove(tmp_file)
             else:
                 resp = open(path)
-                qhdr = resp.read(0x9007)
+                qhdr = resp.read(qcow2_length)
                 resp.close()
-            if len(qhdr) < 0x9007:
+            if len(qhdr) < qcow2_length:
                 return "raw"
             if qhdr[:4] == 'QFI\xfb':
                 if qhdr[16:20] == '\x00\x00\x00\00':
@@ -693,9 +698,11 @@ class CephAgent(object):
                 return 'iso'
             return "raw"
 
-        def fail_if_has_backing_file(fpath):
-            if isDerivedQcow2Image(fpath):
+        def get_origin_format(fpath, fail_if_has_backing_file=True):
+            image_format = _get_origin_format(fpath)
+            if image_format == "derivedQcow2" and fail_if_has_backing_file:
                 raise Exception('image has backing file or %s is not exist!' % fpath)
+            return image_format
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
@@ -740,14 +747,14 @@ class CephAgent(object):
         report.resourceUuid = cmd.imageUuid
         report.progress_report("0", "start")
 
-        if cmd.url.startswith('http://') or cmd.url.startswith('https://'):
-            fail_if_has_backing_file(cmd.url)
-            image_format = getOriginalFormat(cmd.url)
+        url = urlparse.urlparse(cmd.url)
+        if url.scheme in ('http', 'https', 'ftp'):
+            image_format = get_origin_format(cmd.url, True)
             cmd.url = linux.shellquote(cmd.url)
             # roll back tmp ceph file after import it
             _1()
 
-            PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+            _, PFILE = tempfile.mkstemp()
             content_length = shell.call('curl -sI %s|grep Content-Length' % cmd.url).strip().split()[1]
             total = _getRealSize(content_length)
 
@@ -776,16 +783,56 @@ class CephAgent(object):
             if os.path.exists(PFILE):
                 os.remove(PFILE)
 
-        elif cmd.url.startswith('file://'):
+        elif url.scheme == 'sftp':
+            port = (url.port, 22)[url.port is None]
+            _, PFILE = tempfile.mkstemp()
+            pipe_path = PFILE + "fifo"
+            scp_to_pipe_cmd = "scp -P %d -o StrictHostKeyChecking=no %s@%s:%s %s" % (port, url.username, url.hostname, url.path, pipe_path)
+            sftp_command = "sftp -o StrictHostKeyChecking=no -o BatchMode=no -P %s -b /dev/stdin %s@%s" % (port, url.username, url.hostname) + " <<EOF\n%s\nEOF\n"
+            if url.password is not None:
+                scp_to_pipe_cmd = 'sshpass -p %s %s' % (url.password, scp_to_pipe_cmd)
+                sftp_command = 'sshpass -p %s %s' % (url.password, sftp_command)
+
+            actual_size = shell.call(sftp_command % ("ls -l " + url.path)).splitlines()[1].strip().split()[4]
+            os.mkfifo(pipe_path)
+            image_format = get_origin_format(cmd.url, True)
+            cmd.url = linux.shellquote(cmd.url)
+            # roll back tmp ceph file after import it
+            _1()
+
+            def _get_progress(synced):
+                logger.debug("getProgress in add image")
+                if not os.path.exists(PFILE):
+                    return synced
+                last = shell.call('tail -1 %s' % PFILE).strip()
+                if not last or not last.isdigit():
+                    return synced
+                report.progress_report(int(last)*90/100, "report")
+                return synced
+
+            get_content_from_pipe_cmd = "pv -s %s -n %s 2>%s" % (actual_size, pipe_path, PFILE)
+            import_from_pipe_cmd = "rbd import --image-format 2 - %s/%s" % (pool, tmp_image_name)
+            _, _, err = bash_progress_1('set -o pipefail; %s & %s | %s' %
+                                        (scp_to_pipe_cmd, get_content_from_pipe_cmd, import_from_pipe_cmd), _get_progress)
+
+            if os.path.exists(PFILE):
+                os.remove(PFILE)
+
+            if os.path.exists(pipe_path):
+                os.remove(pipe_path)
+
+            if err:
+                raise err
+
+        elif url.scheme == 'file':
             src_path = cmd.url.lstrip('file:')
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
-            fail_if_has_backing_file(src_path)
+            image_format = get_origin_format(cmd.url, True)
             # roll back tmp ceph file after import it
             _1()
 
-            image_format = getOriginalFormat(src_path)
             shell.check_run("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
             actual_size = os.path.getsize(src_path)
         else:

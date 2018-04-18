@@ -2,16 +2,13 @@
 
 @author: frank
 '''
-
 from zstacklib.utils import http
-from zstacklib.utils import log
 from zstacklib.utils import jsonobject
-from zstacklib.utils import sizeunit
-from zstacklib.utils import linux
 from zstacklib.utils import shell
 from zstacklib.utils import daemon
 from zstacklib.utils.bash import *
 import functools
+import urlparse
 import traceback
 import pprint
 import os.path
@@ -206,6 +203,8 @@ class SftpBackupStorageAgent(object):
     URL_HTTP = 'http'
     URL_HTTPS = 'https'
     URL_FILE = 'file'
+    URL_SFTP = 'sftp'
+    URL_FTP = 'ftp'
     URL_NFS = 'nfs'
     PORT = 7171
     SSHKEY_PATH = "~/.ssh/id_rsa.sftp"
@@ -412,7 +411,7 @@ class SftpBackupStorageAgent(object):
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
 
-        supported_schemes = [self.URL_HTTP, self.URL_HTTPS, self.URL_FILE]
+        supported_schemes = [self.URL_HTTP, self.URL_HTTPS, self.URL_FTP, self.URL_SFTP, self.URL_FILE]
         if cmd.urlScheme not in supported_schemes:
             rsp.success = False
             rsp.error = 'unsupported url scheme[%s], SimpleSftpBackupStorage only supports %s' % (cmd.urlScheme, supported_schemes)
@@ -425,15 +424,29 @@ class SftpBackupStorageAgent(object):
         install_path = cmd.installPath
 
         timeout = cmd.timeout if cmd.timeout else 7200
-        if cmd.urlScheme in [self.URL_HTTP, self.URL_HTTPS]:
+        url = urlparse.urlparse(cmd.url)
+        if cmd.urlScheme in [self.URL_HTTP, self.URL_HTTPS, self.URL_FTP]:
             try:
                 image_name = linux.shellquote(image_name)
                 cmd.url = linux.shellquote(cmd.url)
                 ret = use_wget(cmd.url, image_name, path, timeout)
                 if ret != 0:
                     rsp.success = False
-                    rsp.error = 'http/https download failed, [wget -O %s %s] returns value %s' % (image_name, cmd.url, ret)
+                    rsp.error = 'http/https/ftp download failed, [wget -O %s %s] returns value %s' % (image_name, cmd.url, ret)
                     return jsonobject.dumps(rsp)
+            except linux.LinuxError as e:
+                traceback.format_exc()
+                rsp.success = False
+                rsp.error = str(e)
+                return jsonobject.dumps(rsp)
+        elif cmd.urlScheme == self.URL_SFTP:
+            try:
+                port = (url.port, 22)[url.port is None]
+                commond = "sftp -P %d -o StrictHostKeyChecking=no %s@%s:%s %s" % (port, url.username, url.hostname, url.path, cmd.installPath)
+                if url.password is not None:
+                    commond = 'sshpass -p %s %s' % (url.password, commond)
+
+                shell.call(commond)
             except linux.LinuxError as e:
                 traceback.format_exc()
                 rsp.success = False
