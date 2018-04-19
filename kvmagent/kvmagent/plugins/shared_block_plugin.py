@@ -110,6 +110,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CREATE_EMPTY_VOLUME_PATH = "/sharedblock/volume/createempty"
     CHECK_BITS_PATH = "/sharedblock/bits/check"
     RESIZE_VOLUME_PATH = "/sharedblock/volume/resize"
+    CONVERT_IMAGE_TO_VOLUME = "/sharedblock/image/tovolume"
     CHANGE_VOLUME_ACTIVE_PATH = "/sharedblock/volume/active"
     GET_VOLUME_SIZE_PATH = "/sharedblock/volume/getsize"
 
@@ -128,6 +129,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
+        http_server.register_async_uri(self.CONVERT_IMAGE_TO_VOLUME, self.convert_image_to_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.CHANGE_VOLUME_ACTIVE_PATH, self.active_lv)
@@ -310,6 +312,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort)
         logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
 
+        self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, False)
+
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
@@ -327,6 +331,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 
@@ -423,37 +428,52 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def convert_image_to_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
+        with lvm.OperateLv(install_abs_path, shared=False):
+            lvm.clean_lv_tag(install_abs_path, IMAGE_TAG)
+            lvm.add_lv_tag(install_abs_path, "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def check_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBitsRsp()
         rsp.existing = os.path.exists(cmd.path)
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    def active_lv(self, req):
+    def do_active_lv(self, installPath, lockType, recursive):
         def handle_lv(lockType, fpath):
             if lockType > lvm.LvmlockdLockType.NULL:
                 lvm.active_lv(fpath, lockType == lvm.LvmlockdLockType.SHARE)
             else:
                 lvm.deactive_lv(fpath)
 
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
-        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        install_abs_path = translate_absolute_path_from_install_path(installPath)
+        handle_lv(lockType, install_abs_path)
 
-        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        handle_lv(cmd.lockType, install_abs_path)
-
-        if cmd.recursive is False:
-            return jsonobject.dumps(rsp)
+        if recursive is False:
+            return
 
         while linux.qcow2_get_backing_file(install_abs_path) != "":
             install_abs_path = linux.qcow2_get_backing_file(install_abs_path)
-            if cmd.lockType == lvm.LvmlockdLockType.NULL:
+            if lockType == lvm.LvmlockdLockType.NULL:
                 handle_lv(lvm.LvmlockdLockType.NULL, install_abs_path)
             else:
                 # activate backing files only in shared mode
                 handle_lv(lvm.LvmlockdLockType.SHARE, install_abs_path)
+
+    @kvmagent.replyerror
+    def active_lv(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+
+        self.do_active_lv(cmd.installPath, cmd.lockType, cmd.recursive)
 
         return jsonobject.dumps(rsp)
 

@@ -176,6 +176,14 @@ def has_lv_tag(path, tag):
     o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings --readonly 2>/dev/null | wc -l" % (tag, path))
     return o.strip() == '1'
 
+def clean_lv_tag(path, tag):
+    if has_lv_tag(path, tag):
+        shell.run('lvchange --deltag %s %s' % (tag, path))
+
+def add_lv_tag(path, tag):
+    if not has_lv_tag(path, tag):
+        shell.run('lvchange --addtag %s %s' % (tag, path))
+
 def get_meta_lv_path(path):
     return path+"_meta"
 
