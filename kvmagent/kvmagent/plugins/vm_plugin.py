@@ -2694,8 +2694,11 @@ class Vm(object):
                 if not vol_aio:
                     return
 
-                driver = volume_xml_obj.getiterator("driver")[0]
-                driver.set("io", "native")
+                drivers = volume_xml_obj.getiterator("driver")
+                if drivers is None or len(drivers) == 0:
+                    return
+
+                drivers[0].set("io", "native")
 
             volumes.sort(key=lambda d: d.deviceId)
             scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
