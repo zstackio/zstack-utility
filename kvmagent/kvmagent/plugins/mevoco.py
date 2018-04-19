@@ -13,6 +13,7 @@ from zstacklib.utils import iptables
 from zstacklib.utils import ebtables
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
+from zstacklib.utils import ip
 import os.path
 import re
 import threading
@@ -403,19 +404,43 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             # kill all lighttped processes which will be restarted later
             shell.call('pkill -9 lighttpd || true')
 
+        namespaces = {}
         for u in cmd.userdata:
-            self._apply_userdata(u)
+            if u.namespaceName not in namespaces:
+                namespaces[u.namespaceName] = u
+            else:
+                if namespaces[u.namespaceName].dhcpServerIp != u.dhcpServerIp:
+                    raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
+                        u.namespaceName, namespaces[u.namespaceName].dhcpServerIp, u.dhcpServerIp))
+                if namespaces[u.namespaceName].bridgeName != u.bridgeName:
+                    raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
+                    u.namespaceName, namespaces[u.namespaceName].bridgeName, u.bridgeName))
+                if namespaces[u.namespaceName].port != u.port:
+                    raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
+                    u.namespaceName, namespaces[u.namespaceName].port, u.port))
+
+        for n in namespaces.values():
+            self._apply_userdata_xtables(n)
+
+        for u in cmd.userdata:
+            self._apply_userdata_vmdata(u)
+
+        for n in namespaces.values():
+            self._apply_userdata_restart_httpd(n)
+
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
     def apply_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self._apply_userdata(cmd.userdata)
+        self._apply_userdata_xtables(cmd.userdata)
+        self._apply_userdata_vmdata(cmd.userdata)
+        self._apply_userdata_restart_httpd(cmd.userdata)
         return jsonobject.dumps(ApplyUserdataRsp())
 
     @in_bash
     @lock.file_lock('/run/xtables.lock')
-    def _apply_userdata(self, to):
+    def _apply_userdata_xtables(self, to):
         p = UserDataEnv(to.bridgeName, to.namespaceName)
         INNER_DEV = None
         DHCP_IP = None
@@ -457,7 +482,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{CHAIN_NAME}}')
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
-        RULE = "-p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % MAC.replace(":0", ":")
+        cidr = ip.IpAddress(to.vmIp).toCidr(to.netmask)
+        RULE = "-p IPv4 --ip-dst 169.254.169.254 --ip-source %s -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, MAC.replace(":0", ":"))
         ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
             bash_errorout(EBTABLES_CMD + ' -t nat -I {{CHAIN_NAME}} {{RULE}}')
@@ -543,6 +569,11 @@ mimetype.assign = (
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
 
+    @in_bash
+    @lock.file_lock('/run/xtables.lock')
+    def _apply_userdata_vmdata(self, to):
+        conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
+        http_root = os.path.join(conf_folder, 'html')
         meta_data_json = '''\
 {
     "uuid": "{{vmInstanceUuid}}"
@@ -582,6 +613,11 @@ mimetype.assign = (
             with open(windows_meta_data_password, 'w') as fd:
                 fd.write('')
 
+    @in_bash
+    @lock.file_lock('/run/xtables.lock')
+    def _apply_userdata_restart_httpd(self, to):
+        conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
+        conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         pid = linux.find_process_by_cmdline([conf_path])
         if not pid:
             shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
