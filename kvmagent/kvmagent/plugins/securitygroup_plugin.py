@@ -271,15 +271,18 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     
     def _delete_all_chains(self, ipt):
         filter_table = ipt.get_table()
-        for c in filter_table.children:
+        chains = filter_table.children[:]
+        for c in chains:
             if c.name.startswith('vnic'):
                 logger.debug('delete zstack vnic chain[%s]' % c.name)
-                c.delete()
+                ipt.delete_chain(c.name)
                 
         default_chain = ipt.get_chain(self.ZSTACK_DEFAULT_CHAIN)
         if default_chain:
             default_chain.delete()
             logger.debug('deleted default chain')
+
+        ipt.iptable_restore()
     
     def _apply_rules_on_vnic_chain(self, ipt, ipset_mn, rto):
         self._delete_vnic_chain(ipt, rto.vmNicInternalName)
