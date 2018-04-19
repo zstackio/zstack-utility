@@ -82,6 +82,7 @@ class UpdateHostOSCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(UpdateHostOSCmd, self).__init__()
         self.hostUuid = None
+        self.excludePackages = None
 
 class UpdateHostOSRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -473,6 +474,13 @@ if __name__ == "__main__":
     @kvmagent.replyerror
     @in_bash
     def update_os(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if not cmd.excludePackages:
+            exclude = ""
+        else:
+            exclude = "--exclude=" + cmd.excludePackages
+        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn %s update -y" % exclude
+
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
             rsp.success = False
@@ -483,9 +491,11 @@ if __name__ == "__main__":
         elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
-        elif shell.run("yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn update -y") != 0:
+        elif shell.run(yum_cmd) != 0:
             rsp.success = False
             rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
+        else:
+            logger.debug("successfully run: %s" % yum_cmd)
         return jsonobject.dumps(rsp)
 
     def start(self):
