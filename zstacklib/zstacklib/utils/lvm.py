@@ -47,9 +47,10 @@ class RetryException(Exception):
 
 
 def calcLvReservedSize(size):
-    if size <= 1024 * 1024 * 1024:
-        size = int(size) + LV_RESERVED_SIZE
-    size = int(size) + (size/1024/1024 / 1024 + 1) * LV_RESERVED_SIZE
+    # NOTE(weiw): Add additional 12M for every lv
+    size = int(size) + 3 * LV_RESERVED_SIZE
+    # NOTE(weiw): Add additional 4M per 4GB for qcow2 potential use
+    size = int(size) + (size/1024/1024/1024/4) * LV_RESERVED_SIZE
     return size
 
 
