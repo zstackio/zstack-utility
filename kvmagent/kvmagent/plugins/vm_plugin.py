@@ -4002,6 +4002,15 @@ class VmPlugin(kvmagent.KvmAgent):
 
         monitor_libvirt()
 
+        @thread.AsyncThread
+        def clean_stale_vm_vnc_port_chain():
+            while True:
+                logger.debug("do clean up stale vnc port iptable chains")
+                cleanup_stale_vnc_iptable_chains()
+                time.sleep(600)
+
+        clean_stale_vm_vnc_port_chain()
+
     def _vm_lifecycle_event(self, conn, dom, event, detail, opaque):
         try:
             evstr = LibvirtEventManager.event_to_string(event)
@@ -4143,9 +4152,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.debug('Delete firewall rule for vm[uuid:%s] console' % vm_id)
 
         except:
-            # if vm do live migrate the dom may not be found
+            # if vm do live migrate the dom may not be found or the vm has been undefined
             vm = get_vm_by_uuid(dom.name(), False)
             if not vm:
+                logger.debug("can not get domain xml of vm[uuid:%s], "
+                             "the vm may be just migrated here or it has already been undefined" % dom.name())
                 return
 
             content = traceback.format_exc()

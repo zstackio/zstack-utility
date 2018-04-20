@@ -508,8 +508,6 @@ if __name__ == "__main__":
         if os.path.exists(filepath):
             os.unlink(filepath)
 
-        vm_plugin.cleanup_stale_vnc_iptable_chains()
-
 
     def stop(self):
         pass
