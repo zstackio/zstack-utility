@@ -1107,6 +1107,8 @@ def get_cpu_memory_used_by_running_vms():
 def cleanup_stale_vnc_iptable_chains():
     VncPortIptableRule().delete_stale_chains()
 
+def shared_block_to_file(sbkpath):
+    return sbkpath.replace("sharedblock:/", "/dev")
 
 class VmOperationJudger(object):
     def __init__(self, op):
@@ -1459,6 +1461,17 @@ class Vm(object):
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
+        def volume_native_aio(volume_xml_obj):
+            if not addons:
+                return
+
+            vol_aio = addons['NativeAio']
+            if not vol_aio:
+                return
+
+            driver = volume_xml_obj.getiterator("driver")[0]
+            driver.set("io", "native")
+
         def volume_qos(volume_xml_obj):
             if not addons:
                 return
@@ -1501,6 +1514,7 @@ class Vm(object):
                     e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
 
             volume_qos(disk)
+            volume_native_aio(disk)
             return etree.tostring(disk)
 
         def iscsibased_volume():
@@ -1513,6 +1527,7 @@ class Vm(object):
                 vi.chap_username = volume.chapUsername
                 vi.chap_password = volume.chapPassword
                 volume_qos(vi)
+                volume_native_aio(vi)
                 return etree.tostring(vi.to_xmlobject())
 
             def blk_iscsi():
@@ -1524,6 +1539,7 @@ class Vm(object):
                 bi.chap_username = volume.chapUsername
                 bi.chap_password = volume.chapPassword
                 volume_qos(bi)
+                volume_native_aio(bi)
                 return etree.tostring(bi.to_xmlobject())
 
             if volume.useVirtio:
@@ -1538,6 +1554,7 @@ class Vm(object):
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vc.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             def blk_ceph():
@@ -1549,6 +1566,7 @@ class Vm(object):
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = ic.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             def virtio_scsi_ceph():
@@ -1557,6 +1575,7 @@ class Vm(object):
                 vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vsc.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             if volume.useVirtioSCSI:
@@ -1574,6 +1593,7 @@ class Vm(object):
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vc.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             def blk_fusionstor():
@@ -1582,6 +1602,7 @@ class Vm(object):
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = ic.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             def virtio_scsi_fusionstor():
@@ -1590,6 +1611,7 @@ class Vm(object):
                 vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vsc.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             if volume.useVirtioSCSI:
@@ -2053,6 +2075,8 @@ class Vm(object):
             ic.iso = iso
             cdrom = ic.to_xmlobject(dev)
         else:
+            if iso.path.startswith('sharedblock'):
+                iso.path = shared_block_to_file(iso.path)
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
@@ -2662,6 +2686,20 @@ class Vm(object):
                     # e(iotune, 'write_iops_sec_max', str(qos.totalIops))
                     # e(iotune, 'total_iops_sec_max', str(qos.totalIops))
 
+            def volume_native_aio(volume_xml_obj):
+                if not cmd.addons:
+                    return
+
+                vol_aio = cmd.addons['NativeAio']
+                if not vol_aio:
+                    return
+
+                drivers = volume_xml_obj.getiterator("driver")
+                if drivers is None or len(drivers) == 0:
+                    return
+
+                drivers[0].set("io", "native")
+
             volumes.sort(key=lambda d: d.deviceId)
             scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
             for v in volumes:
@@ -2690,6 +2728,7 @@ class Vm(object):
                 if v.deviceId == 0 and cmd.bootDev[0] == 'hd' and cmd.useBootMenu:
                     e(vol, 'boot', None, {'order': '1'})
                 volume_qos(vol)
+                volume_native_aio(vol)
                 devices.append(vol)
 
         def make_nics():
@@ -3189,6 +3228,8 @@ class VmPlugin(kvmagent.KvmAgent):
         domain_xml = domain.XMLDesc(0)
         domain_xml_obj = xmlobject.loads(domain_xml)
         device_id = None
+        if path.startswith('sharedblock://'):
+            path = shared_block_to_file(path)
         for disk in domain_xml_obj.devices.get_child_node_as_list('disk'):
             if disk.device_ == 'disk':
                 for source in disk.get_child_node_as_list('source'):
@@ -3567,13 +3608,13 @@ class VmPlugin(kvmagent.KvmAgent):
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path):
             makedir_if_need(install_path)
             linux.create_template(previous_install_path, install_path)
-            new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
+            new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone(install_path, new_volume_path)
             return install_path, new_volume_path
 
         def take_delta_snapshot_by_qemu_img_convert(previous_install_path, install_path):
-            new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
+            new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone(previous_install_path, new_volume_path)
             return previous_install_path, new_volume_path
@@ -3616,7 +3657,10 @@ class VmPlugin(kvmagent.KvmAgent):
                         'took delta snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
                             cmd.vmUuid, cmd.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
+
             rsp.size = os.path.getsize(rsp.snapshotInstallPath)
+            if rsp.size == None or rsp.size == 0:
+                rsp.size = linux.qcow2_virtualsize(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)

@@ -1,4 +1,3 @@
-import os.path
 import traceback
 
 from kvmagent import kvmagent
@@ -21,21 +20,6 @@ class ImageStoreClient(object):
     COMMIT_BIT_PATH = "/imagestore/commit"
     CONVERT_TO_RAW = "/imagestore/convert/raw"
 
-    def _get_image_json_file(self, primaryInstallPath):
-        idx = primaryInstallPath.rfind('.')
-        if idx == -1:
-            return primaryInstallPath + ".imf2"
-        return primaryInstallPath[:idx] + ".imf2"
-
-    def _get_image_reference(self, primaryStorageInstallPath):
-        try:
-            with open(self._get_image_json_file(primaryStorageInstallPath)) as f:
-                imf = jsonobject.loads(f.read())
-                return imf.name, imf.id
-        except IOError, e:
-            errmsg = '_get_image_reference {0} failed: {1}'.format(primaryStorageInstallPath, e)
-            raise kvmagent.KvmError(errmsg)
-
     def _parse_image_reference(self, backupStorageInstallPath):
         if not backupStorageInstallPath.startswith(self.ZSTORE_PROTOSTR):
             raise kvmagent.KvmError('unexpected backup storage install path %s' % backupStorageInstallPath)
@@ -50,9 +34,7 @@ class ImageStoreClient(object):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
     def upload_to_imagestore(self, cmd, req):
-        imf = self._get_image_json_file(cmd.primaryStorageInstallPath)
-        if not os.path.isfile(imf):
-            self.commit_to_imagestore(cmd, req)
+        crsp = self.commit_to_imagestore(cmd, req)
 
         extpara = ""
         taskid = req[http.REQUEST_HEADER].get(http.TASK_UUID)
@@ -65,14 +47,12 @@ class ImageStoreClient(object):
         cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s %s push %s' % (
             self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
             taskid, cmd.imageUuid, extpara, cmd.primaryStorageInstallPath)
-        logger.debug(cmdstr)
         logger.debug('pushing %s to image store' % cmd.primaryStorageInstallPath)
         shell.call(cmdstr)
         logger.debug('%s pushed to image store' % cmd.primaryStorageInstallPath)
 
         rsp = kvmagent.AgentResponse()
-        name, imageid = self._get_image_reference(cmd.primaryStorageInstallPath)
-        rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
+        rsp.backupStorageInstallPath = jsonobject.loads(crsp).backupStorageInstallPath
         return jsonobject.dumps(rsp)
 
 
@@ -85,32 +65,29 @@ class ImageStoreClient(object):
         # Add the image to registry
         cmdstr = '%s -json  -callbackurl %s -taskid %s -imageUuid %s add -desc \'%s\' -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
                 req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.description, fpath)
-
         logger.debug('adding %s to local image store' % fpath)
-        shell.call(cmdstr.encode(encoding="utf-8"))
+        output = shell.call(cmdstr.encode(encoding="utf-8"))
         logger.debug('%s added to local image store' % fpath)
 
-        name, imageid = self._get_image_reference(fpath)
+        imf = jsonobject.loads(output.splitlines()[-1])
 
         rsp = kvmagent.AgentResponse()
-        rsp.backupStorageInstallPath = self._build_install_path(name, imageid)
-        rsp.size = linux.qcow2_size_and_actual_size(cmd.primaryStorageInstallPath)[0]
-
-        # we need to sum all the disk size within the chain ...
-        chain = linux.qcow2_get_file_chain(cmd.primaryStorageInstallPath)
-        rsp.actualSize = sum([ linux.qcow2_size_and_actual_size(f)[1] for f in chain ])
+        rsp.backupStorageInstallPath = self._build_install_path(imf.name, imf.id)
+        rsp.size = imf.virtualsize
+        rsp.actualSize = imf.size
 
         return jsonobject.dumps(rsp)
 
     def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath):
         name, imageid = self._parse_image_reference(backupStorageInstallPath)
-        cmdstr = '%s -url %s:%s -cachedir %s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cachedir, primaryStorageInstallPath, name, imageid)
+        if cachedir:
+            cmdstr = '%s -url %s:%s -cachedir %s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cachedir, primaryStorageInstallPath, name, imageid)
+        else:
+            cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath, name, imageid)
+
         logger.debug('pulling %s:%s from image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
-
-        if not os.path.exists(primaryStorageInstallPath):
-            logger.debug("the file[%s] not exist" % primaryStorageInstallPath)
 
         return
 
