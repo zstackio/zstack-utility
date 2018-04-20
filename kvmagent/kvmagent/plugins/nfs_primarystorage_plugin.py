@@ -45,6 +45,11 @@ class RevertVolumeFromSnapshotResponse(NfsResponse):
         self.newVolumeInstallPath = None
         self.size = None
 
+class ReInitImageResponse(NfsResponse):
+    def __init__(self):
+        super(ReInitImageResponse, self).__init__()
+        self.newVolumeInstallPath = None
+
 
 class NfsError(Exception):
     '''Nfs primary storage error'''
@@ -159,6 +164,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     GET_CAPACITY_PATH = "/nfsprimarystorage/getcapacity"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/nfsprimarystorage/sftp/createtemplatefromvolume"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/nfsprimarystorage/revertvolumefromsnapshot"
+    REINIT_IMAGE_PATH = "/nfsprimarystorage/reinitimage"
     DELETE_PATH = "/nfsprimarystorage/delete"
     LIST_PATH = "/nfsprimarystorage/listpath"
     CHECK_BITS_PATH = "/nfsprimarystorage/checkbits"
@@ -195,6 +201,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_root_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
+        http_server.register_async_uri(self.REINIT_IMAGE_PATH, self.reinit_image)
         http_server.register_async_uri(self.UPLOAD_TO_SFTP_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
@@ -446,6 +453,18 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         self.check_nfs_mounted(mount_path)
         self.imagestore_client.download_from_imagestore(mount_path, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = kvmagent.AgentResponse()
+        self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def reinit_image(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ReInitImageResponse()
+
+        install_path = cmd.imagePath
+        new_volume_path = os.path.join(os.path.dirname(cmd.volumePath), '{0}.qcow2'.format(uuidhelper.uuid()))
+        linux.qcow2_clone(install_path, new_volume_path)
+        rsp.newVolumeInstallPath = new_volume_path
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
