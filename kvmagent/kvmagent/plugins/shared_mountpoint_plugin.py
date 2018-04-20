@@ -32,6 +32,11 @@ class RevertVolumeFromSnapshotRsp(AgentRsp):
         self.newVolumeInstallPath = None
         self.size = None
 
+class ReinitImageRsp(AgentRsp):
+    def __init__(self):
+        super(ReinitImageRsp, self).__init__()
+        self.newVolumeInstallPath = None
+
 class MergeSnapshotRsp(AgentRsp):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -78,6 +83,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CHECK_BITS_PATH = "/sharedmountpointprimarystorage/bits/check"
     GET_VOLUME_SIZE_PATH = "/sharedmountpointprimarystorage/volume/getsize"
     RESIZE_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/resize"
+    REINIT_IMAGE_PATH = "/sharedmountpointprimarystorage/volume/reinitimage"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -98,6 +104,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.REINIT_IMAGE_PATH, self.reinit_image)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -269,6 +276,17 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def reinit_image(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ReinitImageRsp()
+
+        install_path = cmd.imageInstallPath
+        new_volume_path = os.path.join(os.path.dirname(cmd.volumeInstallPath), '{0}.qcow2'.format(uuidhelper.uuid()))
+        linux.qcow2_clone(install_path, new_volume_path)
+        rsp.newVolumeInstallPath = new_volume_path
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
