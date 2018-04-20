@@ -8344,7 +8344,6 @@ class APIGetCandidatePrimaryStoragesForCreatingVmMsg(object):
     def __init__(self):
         #mandatory field
         self.imageUuid = NotNoneField()
-        self.backupStorageUuid = None
         #mandatory field
         self.l3NetworkUuids = NotNoneList()
         self.rootDiskOfferingUuid = None
