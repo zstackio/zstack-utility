@@ -14867,6 +14867,8 @@ class APIUpdateVCenterMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.username = None
         self.password = None
         self.domainName = None
@@ -23631,6 +23633,7 @@ class GlobalConfig_MANAGEMENTSERVER(object):
 class GlobalConfig_MEVOCO(object):
     APIRETRY_VM = 'apiRetry.vm'
     OVERPROVISIONING_MEMORY = 'overProvisioning.memory'
+    AIO_NATIVE = 'aio.native'
     VM_CONSOLEMODE = 'vm.consoleMode'
     HOSTALLOCATORSTRATEGY = 'hostAllocatorStrategy'
     DISTRIBUTEIMAGE_CONCURRENCY = 'distributeImage.concurrency'
@@ -23770,8 +23773,10 @@ class GlobalConfig_SECURITYGROUP(object):
 
 class GlobalConfig_SHAREDBLOCK(object):
     DELETION_GCINTERVAL = 'deletion.gcInterval'
+    QCOW2_ALLOCATION = 'qcow2.allocation'
     SNAPSHOT_SHRINK = 'snapshot.shrink'
     SNAPSHOT_COMPARE = 'snapshot.compare'
+    QCOW2_CLUSTER_SIZE = 'qcow2.cluster.size'
 
     @staticmethod
     def get_category():
@@ -23788,6 +23793,7 @@ class GlobalConfig_TEST(object):
     TEST = 'Test'
     TESTSTRING = 'TestString'
     TESTBOOLEAN = 'TestBoolean'
+    TESTBORDER = 'TestBorder'
     TEST3 = 'Test3'
     TEST4 = 'Test4'
 
