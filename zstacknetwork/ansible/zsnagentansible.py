@@ -5,6 +5,10 @@ import os.path
 from zstacklib import *
 from datetime import datetime
 
+
+def add_true_in_command(cmd):
+    return "%s || true" % cmd
+
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
@@ -83,9 +87,9 @@ elif distro == "Debian" or distro == "Ubuntu":
 else:
     error("ERROR: Unsupported distribution")
 
-run_remote_command("rm -rf %s/*" % zsn_root, host_post_info)
+run_remote_command(add_true_in_command("rm -rf %s/*" % zsn_root), host_post_info)
 command = 'mkdir -p %s ' % (zsn_root)
-run_remote_command(command, host_post_info)
+run_remote_command(add_true_in_command(command), host_post_info)
 
 # name: copy zsn binary
 copy_arg = CopyArg()
@@ -97,11 +101,11 @@ copy(copy_arg, host_post_info)
 
 # name: install zstack-network
 command = "bash %s %s " % (dest_pkg, fs_rootpath)
-run_remote_command(command, host_post_info)
+run_remote_command(add_true_in_command(command), host_post_info)
 
 
 # integrate zstack-store with init.d
-run_remote_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent /etc/init.d/", host_post_info)
+run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent /etc/init.d/"), host_post_info)
 if tmout != None:
     if distro == "CentOS" or distro == "RedHat":
         command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on" % (tmout)
@@ -112,8 +116,9 @@ else:
         command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
     elif distro == "Debian" or distro == "Ubuntu":
         command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
-run_remote_command(command, host_post_info)
+run_remote_command(add_true_in_command(command), host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy zstack network successful", host_post_info, "INFO")
 sys.exit(0)
+
