@@ -274,7 +274,8 @@ def lv_uuid(path):
 
 
 def lv_is_active(path):
-    cmd = shell.ShellCmd("lvs --nolocking --readonly --noheadings %s -oactive | grep active" % path)
+    # NOTE(weiw): use readonly to get active may return 'unknown'
+    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -oactive | grep active" % path)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
@@ -310,17 +311,22 @@ def qcow2_lv_recursive_operate(abs_path, shared=False):
 
 
 class OperateLv(object):
-    def __init__(self, abs_path, shared=False):
+    def __init__(self, abs_path, shared=False, delete_when_exception=False):
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
-        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared == False else LvmlockdLockType.SHARE
+        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
+        self.delete_when_exception = delete_when_exception
 
     def __enter__(self):
         if self.exists_lock < self.target_lock:
             active_lv(self.abs_path, self.shared)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_val is not None and self.delete_when_exception is True:
+            delete_lv(self.abs_path, False)
+            return
+
         if self.exists_lock == LvmlockdLockType.NULL:
             deactive_lv(self.abs_path, raise_exception=False)
         else:
@@ -328,18 +334,19 @@ class OperateLv(object):
 
 
 class RecursiveOperateLv(object):
-    def __init__(self, abs_path, shared=False):
+    def __init__(self, abs_path, shared=False, delete_when_exception=False):
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
         self.target_lock = LvmlockdLockType.EXCLUSIVE if shared == False else LvmlockdLockType.SHARE
         self.backing = None
+        self.delete_when_exception = delete_when_exception
 
     def __enter__(self):
         if self.exists_lock < self.target_lock:
             active_lv(self.abs_path, self.shared)
         if linux.qcow2_get_backing_file(self.abs_path) != "":
-            self.backing = RecursiveOperateLv(linux.qcow2_get_backing_file(self.abs_path), True)
+            self.backing = RecursiveOperateLv(linux.qcow2_get_backing_file(self.abs_path), True, False)
 
         if self.backing is not None:
             self.backing.__enter__()
@@ -347,6 +354,11 @@ class RecursiveOperateLv(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.backing is not None:
             self.backing.__exit__(exc_type, exc_val, exc_tb)
+
+        if exc_val is not None and self.delete_when_exception is True:
+            delete_lv(self.abs_path, False)
+            return
+
         if self.exists_lock == LvmlockdLockType.NULL:
             deactive_lv(self.abs_path, raise_exception=False)
         else:
