@@ -115,6 +115,8 @@ if [ $? -ne 0 ]; then
     echo "tmpdir=$mysql_tmp_path"
     sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
+
+sync
 '''
 
 def signal_handler(signal, frame):
@@ -1852,7 +1854,7 @@ class StartCmd(Command):
             else:
                 beanXml = "zstack.xml"
 
-            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
+            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s; sync' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
 
         user = getpass.getuser()
         if user != 'root':
@@ -1887,6 +1889,7 @@ class StartCmd(Command):
         info('successfully started management node')
 
         ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
+        shell('sync')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
@@ -4246,7 +4249,7 @@ class ResetRabbitCmd(Command):
 
         ip = get_default_ip()
         replaced_ip = ip.replace(".", "\.")
-        shell("sed -i '/%s /c\%s %s' /etc/hosts" % (replaced_ip, ip, new_hostname))
+        shell("sed -i '/%s /c\%s %s' /etc/hosts; sync" % (replaced_ip, ip, new_hostname))
 
 class InstallRabbitCmd(Command):
     def __init__(self):
@@ -5628,6 +5631,8 @@ which ansible-playbook &> /dev/null
 if [ $$? -ne 0 ]; then
     pip install -i file://$pypi_path/simple --trusted-host localhost ansible
 fi
+
+sync
 '''
         t = string.Template(post_script)
         post_script = t.substitute({
@@ -5814,6 +5819,7 @@ yum clean all >/dev/null 2>&1
         })
 
         ansible(yaml, host_info.host, args.debug, private_key)
+        shell('sync')
         info('successfully installed new management node on machine(%s)' % host_info.host)
 
 class ShowConfiguration(Command):
