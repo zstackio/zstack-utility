@@ -788,6 +788,7 @@ class VirtioSCSICeph(object):
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
         e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(self.volume.deviceId)})
+        e(disk, 'driver', None, {'discard': 'unmap'})
         if self.volume.shareable:
             e(disk, 'shareable')
         return disk
