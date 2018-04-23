@@ -284,7 +284,11 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = ReinitImageRsp()
 
         install_path = cmd.imageInstallPath
-        new_volume_path = os.path.join(os.path.dirname(cmd.volumeInstallPath), '{0}.qcow2'.format(uuidhelper.uuid()))
+        dirname = os.path.dirname(cmd.volumeInstallPath)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname, 0775)
+
+        new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone(install_path, new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
         return jsonobject.dumps(rsp)

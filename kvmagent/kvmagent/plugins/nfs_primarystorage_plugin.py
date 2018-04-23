@@ -462,7 +462,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = ReInitImageResponse()
 
         install_path = cmd.imagePath
-        new_volume_path = os.path.join(os.path.dirname(cmd.volumePath), '{0}.qcow2'.format(uuidhelper.uuid()))
+        dirname = os.path.dirname(cmd.volumePath)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname, 0775)
+
+        new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone(install_path, new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
         self._set_capacity_to_response(cmd.uuid, rsp)
