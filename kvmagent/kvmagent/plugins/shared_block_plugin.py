@@ -93,6 +93,39 @@ def translate_absolute_path_from_install_path(path):
     return path.replace("sharedblock:/", "/dev")
 
 
+class CheckDisk(object):
+    def __init__(self, identifier):
+        self.identifier = identifier
+
+    def get_path(self):
+        o = self.check_disk_by_wwid()
+        if o is not None:
+            return o
+
+        o = self.check_disk_by_uuid()
+        if o is not None:
+            return o
+
+        raise Exception("can not find disk with %s as wwid, uuid or wwn, "
+                        "or multiple disks qualify but no mpath device found" % self.identifier)
+
+    def check_disk_by_uuid(self):
+        for cond in ['TYPE=\\\"mpath\\\"', '\"\"']:
+            cmd = shell.ShellCmd("lsblk --pair -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN | "
+                                 " grep %s | grep %s | sort | uniq" % (cond, self.identifier))
+            cmd(is_exception=False)
+            if len(cmd.stdout.splitlines()) == 1:
+                pattern = re.compile(r'\/dev\/[^ \"]*')
+                return pattern.findall(cmd.stdout)[0]
+
+    def check_disk_by_wwid(self):
+        for cond in ['dm-uuid-mpath-', '']:
+            cmd = shell.ShellCmd("readlink -e /dev/disk/by-id/%s%s" % (cond, self.identifier))
+            cmd(is_exception=False)
+            if cmd.return_code == 0:
+                return cmd.stdout.strip()
+
+
 class SharedBlockPlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedblock/connect"
@@ -113,6 +146,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CONVERT_IMAGE_TO_VOLUME = "/sharedblock/image/tovolume"
     CHANGE_VOLUME_ACTIVE_PATH = "/sharedblock/volume/active"
     GET_VOLUME_SIZE_PATH = "/sharedblock/volume/getsize"
+    CHECK_DISKS_PATH = "/sharedblock/disks/check"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -134,12 +168,22 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.CHANGE_VOLUME_ACTIVE_PATH, self.active_lv)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
 
         self.imagestore_client = ImageStoreClient()
-        self.id_files = {}
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def check_disks(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        for diskUuid in cmd.sharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            disk.get_path()
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)
@@ -159,18 +203,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
             lvm.config_sanlock_by_sed("renewal_read_extend_sec", "renewal_read_extend_sec=24")
             lvm.config_sanlock_by_sed("debug_renew", "debug_renew=1")
-
-        def check_disk_by_uuid(diskUuid):
-            for cond in ['TYPE=\\\"mpath\\\"', '\"\"']:
-                cmd = shell.ShellCmd("lsblk --pair -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN | "
-                                     " grep %s | grep %s | sort | uniq" % (cond, diskUuid))
-                cmd(is_exception=False)
-                if len(cmd.stdout.splitlines()) == 1:
-                    pattern = re.compile(r'\/dev\/[^ \"]*')
-                    return pattern.findall(cmd.stdout)[0]
-
-            raise Exception("can not find disk with %s as uuid or wwn, "
-                            "or multiple disks qualify but no mpath device found" % diskUuid)
 
         def create_vg_if_not_found(vgUuid, diskPaths, hostUuid):
             @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
@@ -200,7 +232,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         config_lvm(cmd.hostId)
         for diskUuid in cmd.sharedBlockUuids:
-            diskPaths.add(check_disk_by_uuid(diskUuid))
+            disk = CheckDisk(diskUuid)
+            diskPaths.add(disk.get_path())
         lvm.start_lvmlockd()
         rsp.isFirst = create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid)
         lvm.start_vg_lock(cmd.vgUuid)
