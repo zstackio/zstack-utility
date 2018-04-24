@@ -1792,6 +1792,7 @@ class StartCmd(Command):
                 '-Djava.net.preferIPv4Stack=true',
                 '-Dcom.sun.management.jmxremote=true',
                 '-Djava.security.egd=file:/dev/./urandom',
+                '-XX:-OmitStackTraceInFastThrow',
                 '-XX:+CMSClassUnloadingEnabled',
                 '-XX:+CMSPermGenSweepingEnabled'
             ]
