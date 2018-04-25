@@ -2138,6 +2138,8 @@ class Vm(object):
             logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, err))
             if "cannot set up guest memory" in err:
                 raise kvmagent.KvmError("No enough physical memory for guest")
+            elif "would exceed domain's maxMemory config" in err:
+                raise kvmagent.KvmError(err + "; please check if you have rebooted the VM to make NUMA take effect")
             else:
                 raise kvmagent.KvmError(err)
         return
@@ -2150,6 +2152,10 @@ class Vm(object):
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to set cpus in vm[uuid:%s], %s' % (self.uuid, err))
+
+            if "requested vcpus is greater than max" in err:
+                err += "; please check if you have rebooted the VM to make NUMA take effect"
+
             raise kvmagent.KvmError(err)
         return
 
