@@ -78,9 +78,9 @@ LoadPlugin virt
 </Plugin>
 
 <Plugin disk>
-  Disk "/^sd/"
-  Disk "/^hd/"
-  Disk "/^vd/"
+  Disk "/^sd[a-z]$/"
+  Disk "/^hd[a-z]$/"
+  Disk "/^vd[a-z]$/"
   IgnoreSelected false
 </Plugin>
 
