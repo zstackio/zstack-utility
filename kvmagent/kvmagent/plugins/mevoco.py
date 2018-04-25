@@ -378,7 +378,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         BR_NAME = cmd.bridgeName
-        CHAIN_NAME = "USERDATA-%s" % BR_NAME
+        CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, cmd.l3NetworkUuid[0:8])
 
         o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
         o = o.strip(" \t\r\n")
@@ -390,6 +390,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 cmds.append(EBTABLES_CMD + " -t filter %s" % l.replace("-A", "-D"))
                 cmds.append(EBTABLES_CMD + " -t nat %s" % l.replace("-A", "-D"))
 
+            cmds.append(EBTABLES_CMD + " -t nat -X %s" % CHAIN_NAME)
             bash_r("\n".join(cmds))
 
         bash_errorout("ps aux | grep lighttpd | grep {{BR_NAME}} | grep -w userdata | awk '{print $2}' | xargs -r kill -9")
@@ -473,44 +474,45 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         ETH_NAME = BR_NAME.replace('br_', '', 1).replace('_', '.', 1)
         MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
         CHAIN_NAME="USERDATA-%s" % BR_NAME
+        EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, to.l3NetworkUuid[0:8])
 
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -t nat -N {{EBCHAIN_NAME}}')
 
-        if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{CHAIN_NAME}}"') != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{CHAIN_NAME}}')
+        if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}"') != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}')
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         cidr = ip.IpAddress(to.vmIp).toCidr(to.netmask)
         RULE = "-p IPv4 --ip-dst 169.254.169.254 --ip-source %s -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, MAC.replace(":0", ":"))
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -I {{CHAIN_NAME}} {{RULE}}')
+            bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -t nat -A {{EBCHAIN_NAME}} -j RETURN')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -N {{EBCHAIN_NAME}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-i {{ETH_NAME}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} | grep -- "-i {{ETH_NAME}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-o {{ETH_NAME}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} | grep -- "-o {{ETH_NAME}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
 
-        ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+        ret = bash_r("ebtables-save | grep '\-A {{EBCHAIN_NAME}} -j RETURN'")
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -A {{EBCHAIN_NAME}} -j RETURN')
 
         self.work_userdata_iptables(CHAIN_NAME, to)
 
