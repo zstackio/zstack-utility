@@ -1036,7 +1036,7 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
         if ip:
             shell.call('ifconfig %s %s netmask %s' % (vlan_dev_name, ip, netmask))
     else:
-        if get_device_ip(vlan_dev_name) != ip:
+        if ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
             # recreate device and configure ip
             delete_vlan_eth(vlan_dev_name)
             shell.call('vconfig add %s %s' % (ethname, vlan))
