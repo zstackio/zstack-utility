@@ -274,9 +274,9 @@ class DEip(kvmagent.KvmAgent):
         def create_iptable_rule_if_needed(table, rule, at_head=False):
             if bash_r('eval {{NS}} iptables-save | grep -- "{{rule}}" > /dev/null') != 0:
                 if at_head:
-                    bash_errorout('eval {{NS}} iptables {{table}} -I {{rule}}')
+                    bash_errorout('eval {{NS}} iptables -w {{table}} -I {{rule}}')
                 else:
-                    bash_errorout('eval {{NS}} iptables {{table}} -A {{rule}}')
+                    bash_errorout('eval {{NS}} iptables -w {{table}} -A {{rule}}')
 
         def create_ebtable_rule_if_needed(table, chain, rule):
             if bash_r(EBTABLES_CMD + ' -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:
