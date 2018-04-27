@@ -1793,8 +1793,7 @@ class StartCmd(Command):
                 '-Dcom.sun.management.jmxremote=true',
                 '-Djava.security.egd=file:/dev/./urandom',
                 '-XX:-OmitStackTraceInFastThrow',
-                '-XX:+CMSClassUnloadingEnabled',
-                '-XX:+CMSPermGenSweepingEnabled'
+                '-XX:MaxMetaspaceSize=512m'
             ]
 
             if ctl.extra_arguments:
