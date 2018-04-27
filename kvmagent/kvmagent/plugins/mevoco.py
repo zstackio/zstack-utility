@@ -235,7 +235,7 @@ class DhcpEnv(object):
         # Note(WeiW): fix dhcp checksum, see more at #982
         ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
         if ret != 0:
-            bash_errorout('iptables -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
+            bash_errorout('iptables -w -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
