@@ -804,7 +804,6 @@ upgrade_zstack(){
     show_spinner cs_enable_zstack_service
     show_spinner is_enable_ntpd
     show_spinner cs_config_zstack_properties
-    show_spinner cs_config_catalina_option
     show_spinner cs_append_iptables
 
     # if -i is used, then do not upgrade zstack ui
@@ -1662,7 +1661,6 @@ config_system(){
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
-    show_spinner cs_config_catalina_option
     show_spinner cs_append_iptables
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
@@ -1860,18 +1858,6 @@ cs_config_tomcat(){
     cat >> $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/setenv.sh <<EOF
 export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true -Djava.security.egd=file:/dev/./urandom"
 EOF
-    pass
-}
-
-cs_config_catalina_option(){
-    echo_subtitle "Config catalina option"
-    catalina_opt=$(zstack-ctl getenv CATALINA_OPTS | awk -F '=' '{print $2}' | grep -v "^$")
-
-    if [[ ! "$catalina_opt" =~ "OmitStackTraceInFastThrow" ]];  then
-        catalina_opt="-XX:-OmitStackTraceInFastThrow $catalina_opt"
-    fi
-
-    zstack-ctl setenv CATALINA_OPTS="$catalina_opt"
     pass
 }
 
