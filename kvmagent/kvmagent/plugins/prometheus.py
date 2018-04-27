@@ -101,6 +101,8 @@ LoadPlugin virt
 	RefreshInterval {{INTERVAL}}
 	HostnameFormat name
     PluginInstanceFormat name
+    BlockDevice "/:hd[a-z]/"
+    IgnoreSelected true
 </Plugin>
 
 <Plugin network>
