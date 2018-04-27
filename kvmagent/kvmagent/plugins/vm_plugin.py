@@ -2825,32 +2825,31 @@ class Vm(object):
             e(spice, "clipboard", None, {'copypaste': 'no'})
 
         def make_usb_redirect():
-            if cmd.usbRedirect == "true":
-                devices = elements['devices']
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-ehci1'})
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci1', 'multifunction': 'on'})
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci2'})
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci3'})
+            # if aarch64, then only create default usb controller
+            if IS_AARCH64:
+                return
 
-                chan = e(devices, 'channel', None, {'type': 'spicevmc'})
-                e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
-                e(chan, 'address', None, {'type': 'virtio-serial'})
+            # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
+            devices = elements['devices']
+            e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
-                redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev2, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
-                redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev3, 'address', None, {'type': 'usb', 'bus': '0', 'port': '3'})
-                redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev4, 'address', None, {'type': 'usb', 'bus': '0', 'port': '4'})
-                redirdev5 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev5, 'address', None, {'type': 'usb', 'bus': '0', 'port': '6'})
-            else:
-                # make sure there are three default usb controllers, for usb 1.1/2.0/3.0
-                devices = elements['devices']
-                e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
-                if not IS_AARCH64:
-                    e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
-                    e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
+            # USB2.0 Controller for redirect
+            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
+            chan = e(devices, 'channel', None, {'type': 'spicevmc'})
+            e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
+            e(chan, 'address', None, {'type': 'virtio-serial'})
+
+            redirdev1 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev1, 'address', None, {'type': 'usb', 'bus': '3', 'port': '1'})
+            redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev2, 'address', None, {'type': 'usb', 'bus': '3', 'port': '2'})
+            redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev3, 'address', None, {'type': 'usb', 'bus': '4', 'port': '1'})
+            redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev4, 'address', None, {'type': 'usb', 'bus': '4', 'port': '2'})
 
         def make_video():
             devices = elements['devices']
