@@ -6102,27 +6102,21 @@ class InstallZstackUiCmd(Command):
         if not os.path.isdir(tools_path):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % tools_path)
 
-        ui_binary = None
-        for l in os.listdir(tools_path):
-            if l.startswith('zstack-ui'):
-                ui_binary = l
-                break
-
-        if not ui_binary:
+        ui_binary = 'zstack-ui.war'
+        if not ui_binary in os.listdir(tools_path):
             raise CtlError('cannot find zstack-ui package under %s, please make sure you have installed ZStack management node' % tools_path)
-
         ui_binary_path = os.path.join(tools_path, ui_binary)
 
         yaml = '''---
-- hosts: $host
+- hosts: ${host}
   remote_user: root
   tasks:
     - name: create zstack-ui directory
-      shell: "mkdir -p {{ui_home}}/tmp"
+      shell: "mkdir -p ${ui_home}/tmp"
     - name: copy zstack-ui package
-      copy: src=$src dest=$dest
+      copy: src=${src} dest=${dest}
     - name: decompress zstack-ui package
-      shell: "rm -rf {{ui_home}}/tmp; unzip {{dest}} -d {{ui_home}}/tmp"
+      shell: "rm -rf ${ui_home}/tmp; unzip ${dest} -d ${ui_home}/tmp"
 '''
 
         t = string.Template(yaml)
