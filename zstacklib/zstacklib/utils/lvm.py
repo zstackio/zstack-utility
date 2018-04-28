@@ -63,6 +63,12 @@ def check_lvm_config_is_default():
         return True
 
 
+def clean_duplicate_configs():
+    cmd = shell.ShellCmd("md5sum %s/* " % LVM_CONFIG_BACKUP_PATH +
+                         " | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
+    cmd(is_exception=False)
+
+
 def backup_lvm_config():
     if not os.path.exists(LVM_CONFIG_PATH):
         logger.warn("can not find lvm config path: %s, backup failed" % LVM_CONFIG_PATH)
@@ -71,6 +77,7 @@ def backup_lvm_config():
     if not os.path.exists(LVM_CONFIG_BACKUP_PATH):
         os.makedirs(LVM_CONFIG_BACKUP_PATH)
 
+    clean_duplicate_configs()
     current_time = time.time()
     cmd = shell.ShellCmd("cp %s/lvm.conf %s/lvm-%s.conf; "
                          "cp %s/lvmlocal.conf %s/lvmlocal-%s.conf" %
