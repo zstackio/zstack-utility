@@ -198,6 +198,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("use_lvmlockd", "use_lvmlockd=1", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=0", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("host_id", "host_id=%s" % host_id, ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("sanlock_lv_extend", "sanlock_lv_extend=1024", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("lvmlockd_lock_retries", "lvmlockd_lock_retries=6", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("issue_discards", "issue_discards=1", ["lvm.conf", "lvmlocal.conf"])
 
             lvm.config_sanlock_by_sed("sh_retries", "sh_retries=20")
             lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
