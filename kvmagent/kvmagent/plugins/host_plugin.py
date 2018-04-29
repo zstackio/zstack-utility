@@ -24,8 +24,15 @@ import time
 import libvirt
 import pyudev
 import traceback
+import Queue
 
 IS_AARCH64 = platform.machine() == 'aarch64'
+
+
+class ReconnectMeCmd(object):
+    def __init__(self):
+        self.hostUuid = None
+        self.reason = None
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -95,7 +102,7 @@ def _get_memory(word):
     (name, capacity) = out.split(':')
     capacity = re.sub('[k|K][b|B]', '', capacity).strip()
     #capacity = capacity.rstrip('kB').rstrip('KB').rstrip('kb').strip()
-    return sizeunit.KiloByte.toByte(long(capacity))   
+    return sizeunit.KiloByte.toByte(long(capacity))
 
 def _get_total_memory():
     return _get_memory('MemTotal')
@@ -218,6 +225,8 @@ class HostPlugin(kvmagent.KvmAgent):
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
 
+    queue = Queue.Queue()
+
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
         return ret.split()[-1]
@@ -272,13 +281,13 @@ class HostPlugin(kvmagent.KvmAgent):
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
         rsp.iptablesSucc = apply_iptables_result
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def ping(self, req):
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def echo(self, req):
         logger.debug('get echoed')
@@ -334,23 +343,23 @@ class HostPlugin(kvmagent.KvmAgent):
         ret = jsonobject.dumps(rsp)
         logger.debug('get host capacity: %s' % ret)
         return ret
-    
+
     def _heartbeat_func(self, heartbeat_file):
         class Heartbeat(object):
             def __init__(self):
                 self.current = None
-        
+
         hb = Heartbeat()
         hb.current = time.time()
         with open(heartbeat_file, 'w') as fd:
             fd.write(jsonobject.dumps(hb))
         return True
-    
+
     @kvmagent.replyerror
     def setup_heartbeat_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetupMountablePrimaryStorageHeartbeatResponse()
-        
+
         for hb in cmd.heartbeatFilePaths:
             hb_dir = os.path.dirname(hb)
             mount_path = os.path.dirname(hb_dir)
@@ -358,21 +367,21 @@ class HostPlugin(kvmagent.KvmAgent):
                 rsp.error = '%s is not mounted, setup heartbeat file[%s] failed' % (mount_path, hb)
                 rsp.success = False
                 return jsonobject.dumps(rsp)
-            
+
         for hb in cmd.heartbeatFilePaths:
             t = self.heartbeat_timer.get(hb, None)
             if t:
                 t.cancel()
-            
+
             hb_dir = os.path.dirname(hb)
             if not os.path.exists(hb_dir):
                 os.makedirs(hb_dir, 0755)
-                
+
             t = thread.timer(cmd.heartbeatInterval, self._heartbeat_func, args=[hb], stop_on_exception=False)
             t.start()
             self.heartbeat_timer[hb] = t
             logger.debug('create heartbeat file at[%s]' % hb)
-            
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -503,7 +512,7 @@ if __name__ == "__main__":
 
     def start(self):
         self.host_uuid = None
-        
+
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.PING_PATH, self.ping)
@@ -520,6 +529,49 @@ if __name__ == "__main__":
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)
+
+        @thread.AsyncThread
+        def wait_end_signal():
+            while True:
+                try:
+                    self.queue.get(True)
+
+                    # the libvirt has been stopped or restarted
+                    # to prevent fd leak caused by broken libvirt connection
+                    # we have to ask mgmt server to reboot the agent
+                    url = self.config.get(kvmagent.SEND_COMMAND_URL)
+                    if not url:
+                        logger.warn('cannot find SEND_COMMAND_URL, unable to ask the mgmt server to reconnect us')
+                        os._exit(1)
+
+                    host_uuid = self.config.get(kvmagent.HOST_UUID)
+                    if not host_uuid:
+                        logger.warn('cannot find HOST_UUID, unable to ask the mgmt server to reconnect us')
+                        os._exit(1)
+
+                    logger.warn("libvirt has been rebooted or stopped, ask the mgmt server to reconnt us")
+                    cmd = ReconnectMeCmd()
+                    cmd.hostUuid = host_uuid
+                    cmd.reason = "libvirt rebooted or stopped"
+                    http.json_dump_post(url, cmd, {'commandpath': '/kvm/reconnectme'})
+                    os._exit(1)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        wait_end_signal()
+
+        @thread.AsyncThread
+        def monitor_libvirt():
+            while True:
+                if shell.run('pid=$(cat /var/run/libvirtd.pid); ps -p $pid > /dev/null') != 0:
+                    logger.warn(
+                        "cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
+                    self.queue.put("exit")
+
+                time.sleep(20)
+
+        monitor_libvirt()
 
 
     def stop(self):
