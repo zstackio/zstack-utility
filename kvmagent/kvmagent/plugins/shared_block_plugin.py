@@ -22,6 +22,7 @@ HEARTBEAT_TAG = "zs::sharedblock::heartbeat"
 VOLUME_TAG = "zs::sharedblock::volume"
 IMAGE_TAG = "zs::sharedblock::image"
 DEFAULT_VG_METADATA_SIZE = "2g"
+DEFAULT_SANLOCK_LV_SIZE = "2048"
 
 
 class AgentRsp(object):
@@ -36,6 +37,7 @@ class ConnectRsp(AgentRsp):
     def __init__(self):
         super(ConnectRsp, self).__init__()
         self.isFirst = False
+        self.hostId = None
 
 
 class RevertVolumeFromSnapshotRsp(AgentRsp):
@@ -129,6 +131,7 @@ class CheckDisk(object):
 class SharedBlockPlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedblock/connect"
+    DISCONNECT_PATH = "/sharedblock/disconnect"
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedblock/createrootvolume"
     DELETE_BITS_PATH = "/sharedblock/bits/delete"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedblock/createtemplatefromvolume"
@@ -151,6 +154,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.CONNECT_PATH, self.connect)
+        http_server.register_async_uri(self.DISCONNECT_PATH, self.disconnect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
@@ -198,7 +202,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("use_lvmlockd", "use_lvmlockd=1", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=0", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("host_id", "host_id=%s" % host_id, ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("sanlock_lv_extend", "sanlock_lv_extend=1024", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("sanlock_lv_extend", "sanlock_lv_extend=%s" % DEFAULT_SANLOCK_LV_SIZE, ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("lvmlockd_lock_retries", "lvmlockd_lock_retries=6", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("issue_discards", "issue_discards=1", ["lvm.conf", "lvmlocal.conf"])
 
@@ -244,7 +248,47 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time()))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @lock.file_lock(LOCK_FILE)
+    def disconnect(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
+        def find_vg(vgUuid):
+            cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd(is_exception=False)
+            if cmd.return_code == 0:
+                return True
+
+            logger.debug("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("vgs %s" % vgUuid)
+            cmd(is_exception=False)
+            if cmd.return_code == 0:
+                logger.warn("found vg %s without tag %s" % (vgUuid, INIT_TAG))
+                return True
+
+            raise RetryException("can not find vg %s with or without tag %s" % (vgUuid, INIT_TAG))
+
+        try:
+            find_vg(cmd.vgUuid)
+        except RetryException:
+            logger.debug("can not find vg %s; return success" % cmd.vgUuid)
+            return jsonobject.dumps(rsp)
+        except Exception as e:
+            raise e
+
+        active_lvs = lvm.list_local_active_lvs(cmd.vgUuid)
+        if len(active_lvs) != 0:
+            logger.warn("active lvs %s will be deactivate" % active_lvs)
+        lvm.deactive_lv(cmd.vgUuid)
+        lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
+        lvm.stop_vg_lock(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
 
     @kvmagent.replyerror
     def resize_volume(self, req):
