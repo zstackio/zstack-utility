@@ -98,10 +98,6 @@
              <arg value="websockify-0.6.1.zip" />
              <arg value="websockify.patch" />
         </exec>
-        <exec executable="cp" dir="${pypi.source.folder}" failonerror="true">
-             <arg value="websockify-0.6.1.zip" />
-             <arg value="./websockify-0.6.1.1.zip" />
-        </exec>
         <exec executable="cp" dir="${pypi.parent.dir}" failonerror="true">
             <arg value="-a" />
             <arg value="${pypi.source.folder}" />
@@ -110,6 +106,10 @@
         <exec executable="bash" dir="${pypi.parent.dir}" failonerror="true">
             <arg value="${remove.pypi.symlink}" />
             <arg value="${pypi.parent.dir}/pypi" />
+        </exec>
+        <exec executable="cp" dir="${pypi.parent.dir}/pypi/simple/websockify" failonerror="true">
+             <arg value="websockify-0.6.1.zip" />
+             <arg value="./websockify-0.6.1.1.zip" />
         </exec>
     </target>
 
