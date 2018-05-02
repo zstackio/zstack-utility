@@ -2825,13 +2825,14 @@ class Vm(object):
             e(spice, "clipboard", None, {'copypaste': 'no'})
 
         def make_usb_redirect():
+            devices = elements['devices']
+            e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
+
             # if aarch64, then only create default usb controller
             if IS_AARCH64:
                 return
 
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
-            devices = elements['devices']
-            e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
             e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
             e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
