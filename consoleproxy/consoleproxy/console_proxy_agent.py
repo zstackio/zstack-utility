@@ -287,14 +287,13 @@ class ConsoleProxyAgent(object):
             bash_errorout("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport {{PROXY_PORT}}' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport {{PROXY_PORT}} -j ACCEPT")
 
         @in_bash
-        def start_proxy(token_path):
+        def start_proxy():
             LOG_FILE = log_file
             PROXY_HOST_NAME = cmd.proxyHostname
             PROXY_PORT = cmd.proxyPort
             TOKEN_FILE_DIR = self.TOKEN_FILE_DIR 
             TIMEOUT = timeout
-            TOKEN_FILE = token_path
-            start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{TOKEN_FILE}} --idle-timeout={{TIMEOUT}}'''
+            start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{TOKEN_FILE_DIR}} --idle-timeout={{TIMEOUT}}'''
             if cmd.sslCertFile:
                 start_cmd += ' --cert=%s' % cmd.sslCertFile
             ret,out,err = bash_roe(start_cmd)
@@ -308,7 +307,7 @@ class ConsoleProxyAgent(object):
             else:
                 enable_proxy_port()
 
-        start_proxy(os.path.join(self.TOKEN_FILE_DIR, token_file.get_full_name()))
+        start_proxy()
         logger.debug('successfully establish new proxy%s' % info_str)
         return jsonobject.dumps(rsp)
 
