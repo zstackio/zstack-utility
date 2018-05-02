@@ -125,3 +125,4 @@ host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy consoleproxy agent successful", host_post_info, "INFO")
 
 sys.exit(0)
+
