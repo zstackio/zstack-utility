@@ -378,7 +378,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         BR_NAME = cmd.bridgeName
-        CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, cmd.l3NetworkUuid[0:8])
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, cmd.l3NetworkUuid[0:8])
+        else:
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], cmd.l3NetworkUuid[0:8])
 
         o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
         o = o.strip(" \t\r\n")
@@ -474,7 +478,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         ETH_NAME = BR_NAME.replace('br_', '', 1).replace('_', '.', 1)
         MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
         CHAIN_NAME="USERDATA-%s" % BR_NAME
-        EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, to.l3NetworkUuid[0:8])
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, to.l3NetworkUuid[0:8])
+        else:
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12 : len(BR_NAME)], to.l3NetworkUuid[0:8])
 
         ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
