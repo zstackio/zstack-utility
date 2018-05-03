@@ -31,6 +31,16 @@ check_status() {
 	fi
 }
 
+apply_resource_settings() {
+	if [ `ulimit -Hn` -lt 16384 ]; then
+	    ulimit -Hn 16384
+	fi
+
+	if [ `ulimit -Sn` -lt 16384 ]; then
+	    ulimit -Sn 16384
+	fi
+}
+
 if [ $# -eq 0 ]; then
 	echo "usage: $0
 [start|stop|restart|status]"
@@ -40,6 +50,8 @@ fi
 if [ "$@" = "status" ]; then
 	check_status
 else
+	apply_resource_settings
+
 	. /var/lib/zstack/virtualenv/cephp/bin/activate && python -c "from cephprimarystorage import cdaemon; cdaemon.main()" $@
 fi
 
