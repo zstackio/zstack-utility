@@ -775,6 +775,21 @@ download_zstack(){
     show_spinner iz_unpack_zstack
 }
 
+# create symbol links for zstack-repo
+iu_deploy_zstack_repo() {
+    echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
+    echo ""
+
+    BASEARCH=`uname -m`
+    DISTRO=$(sed -n 's/^distroverpkg=//p' /etc/yum.conf)
+    RELEASEVER=$(rpm -q --qf "%{version}" -f /etc/$DISTRO)
+    [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
+    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/{x86_64,aarch64}
+    [ -d /opt/zstack-dvd/ ] && ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
+    [ -d /opt/zstack-dvd/Extra/qemu-kvm-ev/ ] && \
+        ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
+}
+
 unpack_zstack_into_tomcat(){
     echo_title "Install ${PRODUCT_NAME} Package"
     echo ""
@@ -784,6 +799,7 @@ unpack_zstack_into_tomcat(){
     fi
     show_spinner iz_unzip_tomcat
     show_spinner iz_install_zstack
+    show_spinner iu_deploy_zstack_repo
 }
 
 upgrade_zstack(){
@@ -805,6 +821,7 @@ upgrade_zstack(){
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
+    show_spinner iu_deploy_zstack_repo
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_install_zstack_service
@@ -1563,15 +1580,6 @@ iz_install_zstack(){
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
     ln -s $CATALINA_ZSTACK_PATH/VERSION $ZSTACK_INSTALL_ROOT/VERSION  
-    #create symbolic link for /opt/zstack-dvd for hosts doing offline 
-    # installation
-    rm -f $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
-    ln -s /opt/zstack-dvd $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-        fail "failed to create symbolic link for $ZSTACK_HOME/static/zstack-dvd . 
-        The contents in the folder: `ls $ZSTACK_HOME/static/zstack-dvd` . 
-        If this folder existed. Please move it to other place and rerun the installation."
-    fi
     pass
 }
 
@@ -3015,7 +3023,6 @@ unpack_zstack_into_tomcat
 
 #Do not config NFS or HTTP when installing ZStack product
 [ ! -z $INSTALL_MONITOR ] && NEED_NFS='' && NEED_HTTP=''
-
 
 #Install ${PRODUCT_NAME} required system libs through ansible
 install_system_libs
