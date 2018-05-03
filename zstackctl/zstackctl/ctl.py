@@ -7581,8 +7581,12 @@ class StartUiCmd(Command):
         # convert args.ssl_keystore to .pem
         if args.ssl_keystore_type != 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
             raise CtlError('%s not found.' % ctl.ZSTACK_UI_KEYSTORE_PEM)
-        if args.ssl_keystore_type == 'PKCS12':
+        if args.ssl_keystore_type == 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
             self._gen_ssl_keystore_pem_from_pkcs12(args.ssl_keystore, args.ssl_keystore_password)
+
+        # auto configure consoleProxyCertFile if not configured already
+        if args.ssl_keystore_type == 'PKCS12' and not ctl.read_property('consoleProxyCertFile'):
+            ctl.write_property('consoleProxyCertFile', ctl.ZSTACK_UI_KEYSTORE_PEM)
 
         # ui_db
         self._get_db_info()
