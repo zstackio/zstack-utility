@@ -705,7 +705,6 @@ class CephAgent(object):
             return image_format
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
 
@@ -829,7 +828,7 @@ class CephAgent(object):
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
-            image_format = get_origin_format(cmd.url, True)
+            image_format = get_origin_format(src_path, True)
             # roll back tmp ceph file after import it
             _1()
 
