@@ -707,6 +707,8 @@ ia_install_python_gcc_rh(){
 
 ia_install_pip(){
     echo_subtitle "Install PIP"
+    rpm -q python2-pip >/dev/null 2>&1 && return
+
     if [ ! -z $DEBUG ]; then
         easy_install -i $pypi_source_easy_install --upgrade pip
     else
