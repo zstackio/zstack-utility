@@ -60,6 +60,7 @@ class GetVolumeBaseImagePathRsp(AgentResponse):
     def __init__(self):
         super(GetVolumeBaseImagePathRsp, self).__init__()
         self.path = None
+        self.size = None
 
 class GetQCOW2ReferenceRsp(AgentResponse):
     def __init__(self):
@@ -161,7 +162,16 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
     def get_volume_base_image_path(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVolumeBaseImagePathRsp()
-        rsp.path = linux.get_qcow2_base_image_path_recusively(cmd.installPath)
+
+        if not os.path.basename(cmd.installDir).endswith(cmd.volumeUuid):
+            raise Exception('maybe you pass a wrong install dir')
+
+        path = linux.get_qcow2_base_image_recusively(cmd.volumeInstallDir, cmd.imageCacheDir)
+        if not path:
+            return jsonobject.dumps(rsp)
+
+        rsp.path = path
+        rsp.size = linux.get_qcow2_file_chain_size(path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
