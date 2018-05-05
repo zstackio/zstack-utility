@@ -308,6 +308,7 @@ class HostPlugin(kvmagent.KvmAgent):
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
+            rsp.cpuModelName = "Unknown"
         else:
             if shell.run('grep vmx /proc/cpuinfo') == 0:
                 rsp.hvmCpuFlag = 'vmx'
