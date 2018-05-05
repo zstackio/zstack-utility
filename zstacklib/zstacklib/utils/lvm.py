@@ -141,10 +141,10 @@ def start_vg_lock(vgUuid):
         cmd(is_exception=False)
         if cmd.return_code != 0:
             raise RetryException("can not find lock space for vg %s via lvmlockctl" % vgUuid)
-        elif vg_lock_is_adding(vgUuid) is False:
-            return True
+        elif vg_lock_is_adding(vgUuid) is True:
+            raise RetryException("lock space for vg %s is adding" % vgUuid)
         else:
-            return False
+            return True
 
     @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
     def start_lock(vgUuid):
@@ -161,6 +161,41 @@ def start_vg_lock(vgUuid):
         start_lock(vgUuid)
     except Exception as e:
         raise e
+
+
+def stop_vg_lock(vgUuid):
+    @linux.retry(times=3, sleep_time=random.uniform(0.1, 1))
+    def vg_lock_not_exists(vgUuid):
+        cmd = shell.ShellCmd("lvmlockctl -i | grep %s" % vgUuid)
+        cmd(is_exception=False)
+        if cmd.return_code == 0:
+            raise RetryException("lock space for vg %s still exists" % vgUuid)
+        else:
+            return True
+
+    @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
+    def stop_lock(vgUuid):
+        cmd = shell.ShellCmd("vgchange --lock-stop %s" % vgUuid)
+        cmd(is_exception=True)
+        if cmd.return_code != 0:
+            raise Exception("vgchange --lock-stop failed")
+
+        vg_lock_not_exists(vgUuid)
+
+    try:
+        vg_lock_not_exists(vgUuid)
+    except RetryException:
+        stop_lock(vgUuid)
+    except Exception as e:
+        raise e
+
+
+def get_running_host_id(vgUuid):
+    cmd = shell.ShellCmd("sanlock client gets | grep %s | awk -F':' '{ print $2 }'" % vgUuid)
+    cmd(is_exception=False)
+    if cmd.stdout.strip == "":
+        raise Exception("can not get running host if for vg %s" % vgUuid)
+    return cmd.stdout
 
 
 def get_vg_size(vgUuid):
@@ -275,9 +310,19 @@ def lv_uuid(path):
 
 def lv_is_active(path):
     # NOTE(weiw): use readonly to get active may return 'unknown'
-    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -oactive | grep active" % path)
+    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -oactive | grep -w active" % path)
     cmd(is_exception=False)
     return cmd.return_code == 0
+
+
+def list_local_active_lvs(vgUuid):
+    cmd = shell.ShellCmd("lvs --nolocking %s --noheadings -opath -Slv_active=active" % vgUuid)
+    cmd(is_exception=False)
+    result = []
+    for i in cmd.stdout.strip().split("\n"):
+        if i != "":
+            result.append(i)
+    return result
 
 
 def get_lv_locking_type(path):
