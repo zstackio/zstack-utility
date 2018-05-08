@@ -72,6 +72,11 @@ class MergeSnapshotRsp(AliyunNasResponse):
         self.size = None
         self.actualSize = None
 
+class ReInitImageRsp(AliyunNasResponse):
+    def __init__(self):
+        super(ReInitImageRsp, self).__init__()
+        self.newVolumeInstallPath = None
+
 
 class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     MOUNT_PATH = "/aliyun/nas/primarystorage/mount"
@@ -125,6 +130,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.createtemplate)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.mergesnapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offlinemerge)
+        http_server.register_async_uri(self.GET_CAPACITY_PATH, self.getcapacity)
         self.mount_path = {}
         self.uuid = None
         self.imagestore_client = ImageStoreClient()
@@ -147,7 +153,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         rsp = AliyunNasResponse()
         linux.is_valid_nfs_url(cmd.url)
 
-        if not linux.is_mounted(cmd.mountPath, cmd.url):
+        if not naslinux.is_mounted(cmd.mountPath, cmd.url):
             linux.mount(cmd.url, cmd.mountPath, cmd.options)
             logger.debug(http.path_msg(self.MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))
             rsp.mounted = True
@@ -161,7 +167,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         rsp = IsMountResponse()
         linux.is_valid_nfs_url(cmd.url)
 
-        if linux.is_mounted(cmd.mountPath, cmd.url):
+        if naslinux.is_mounted(cmd.mountPath, cmd.url):
             rsp.ismounted = True
 
         self._set_capacity_to_response(cmd.uuid, rsp)
@@ -171,9 +177,9 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     def mountdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AliyunNasResponse()
-        naslinux.createCommonPath(cmd.mountPath, cmd.basePath, cmd.url)
+        naslinux.createCommonPath(cmd.mountPath, cmd.basePath)
 
-        if not linux.is_mounted(cmd.dataPath, cmd.url):
+        if not naslinux.is_mounted(cmd.dataPath, cmd.url):
             linux.mount(cmd.url, cmd.dataPath, cmd.options)
             logger.debug(http.path_msg(self.MOUNT_DATA_PATH, 'mounted %s on %s' % (cmd.url, cmd.dataPath)))
             rsp.mounted = True
@@ -201,14 +207,14 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
                 3. mkdir /opt/ps/ps-[uuid]/commons/xxx..  (such as heartbeat, cache, ..)
                 at last we get url:/ps-[uuid] for hosts mount
         '''
-        domain = cmd.url.split(':')[0]
-        psDir = cmd.url.split(':')[1]
+        domain = cmd.url.split(':')[0] + ":/"
+        psDir = cmd.url.split(':')[1].lstrip('/')
         basedir = os.path.join(cmd.mountPath, psDir)
 
         '''
           check if mounted {cmd.mountPath}
         '''
-        if linux.is_mounted(path=cmd.mountPath) and not linux.is_mounted(cmd.mountPath, cmd.url):
+        if linux.is_mounted(path=cmd.mountPath) and not naslinux.is_mounted(cmd.mountPath, cmd.url):
             raise Exception('mountPath[%s] already mount to another url' % cmd.mountPath)
 
         linux.mount(domain, cmd.mountPath, cmd.options)
@@ -232,14 +238,13 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        mount_path = self.mount_path[cmd.uuid]
-        heartbeat_path = cmd.heartbeat
+        mount_path = cmd.mountPath
         # if nfs service stop, os.path.isdir will hung
         if not linux.timeout_isdir(mount_path) or not linux.is_mounted(path=mount_path):
             raise Exception(
                 'the mount path[%s] of the nas primary storage[uuid:%s] is not existing' % (mount_path, cmd.uuid))
 
-        test_file = os.path.join(mount_path, heartbeat_path, '%s-ping-test-file' % cmd.uuid())
+        test_file = os.path.join(mount_path, cmd.heartbeat, '%s-ping-test-file' % cmd.uuid)
         touch = shell.ShellCmd('timeout 60 touch %s' % test_file)
         touch(False)
         if touch.return_code == 124:
@@ -254,8 +259,9 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def getvolumesize(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AliyunNasResponse()
+        rsp = GetVolumeSizeRsp()
         self._set_capacity_to_response(cmd.uuid, rsp)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -272,9 +278,9 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         rsp = AliyunNasResponse()
         linux.is_valid_nfs_url(cmd.newUrl)
 
-        if not linux.is_mounted(cmd.mountPath, cmd.newUrl):
+        if not naslinux.is_mounted(cmd.mountPath, cmd.newUrl):
             # umount old one
-            if linux.is_mounted(cmd.mountPath, cmd.url):
+            if naslinux.is_mounted(cmd.mountPath, cmd.url):
                 linux.umount(cmd.mountPath)
             # mount new
             linux.mount(cmd.newUrl, cmd.mountPath, cmd.options)
@@ -290,8 +296,9 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AliyunNasResponse()
         linux.is_valid_nfs_url(cmd.url)
-        linux.remount(cmd.url, cmd.mountPath, cmd.options)
+        naslinux.remount(cmd.url, cmd.mountPath, cmd.options)
 
+        self.mount_path[cmd.uuid] = cmd.mountPath
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
@@ -310,7 +317,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     def checkbits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckIsBitsExistingResponse()
-        rsp.existing = os.path.exists(cmd.installPath)
+        rsp.existing = os.path.exists(cmd.path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -329,7 +336,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
 
         logger.debug(
             'successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -347,7 +354,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname, 0775)
 
         linux.qcow2_clone(cmd.templatePathInCache, cmd.installPath)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -356,7 +363,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         rsp = AliyunNasResponse()
         self.delNasBits(cmd.folder, cmd.path)
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
 
     def delNasBits(self, folder, path):
@@ -367,14 +374,6 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         # pdir = os.path.dirname(path)
         # if os.path.exists(pdir) or not os.listdir(pdir):
         #     linux.umount(pdir, False)
-
-
-    @kvmagent.replyerror
-    def get_volume_size(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetVolumeSizeRsp()
-        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
-        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def revertvolume(self, req):
@@ -392,12 +391,13 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def reinit(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AliyunNasResponse()
+        rsp = ReInitImageRsp()
 
         install_path = cmd.imagePath
-        new_volume_path = cmd.volumePath
+        new_volume_path = os.path.join(os.path.dirname(cmd.volumePath), '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone(install_path, new_volume_path)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.newVolumeInstallPath = new_volume_path
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -408,10 +408,10 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def downloadfromimagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath,
+        self.imagestore_client.download_from_imagestore(cmd.cacheDir, cmd.hostname, cmd.backupStorageInstallPath,
                                                         cmd.primaryStorageInstallPath)
         rsp = AliyunNasResponse()
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -440,7 +440,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         linux.create_template(cmd.volumePath, cmd.installPath)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -455,7 +455,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -469,5 +469,12 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
             linux.create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def getcapacity(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AliyunNasResponse()
+        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
