@@ -4958,6 +4958,18 @@ class GetPciDeviceCandidatesForAttachingVmAction(inventory.APIGetPciDeviceCandid
         self.out = evt
         return self.out
 
+class GetPciDeviceCandidatesForNewCreateVmAction(inventory.APIGetPciDeviceCandidatesForNewCreateVmMsg):
+    def __init__(self):
+        super(GetPciDeviceCandidatesForNewCreateVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetPciDeviceCandidatesForNewCreateVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetPortForwardingAttachableVmNicsAction(inventory.APIGetPortForwardingAttachableVmNicsMsg):
     def __init__(self):
         super(GetPortForwardingAttachableVmNicsAction, self).__init__()

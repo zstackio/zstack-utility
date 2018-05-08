@@ -12295,6 +12295,28 @@ class APIGetPciDeviceCandidatesForAttachingVmReply(object):
         self.error = None
 
 
+APIGETPCIDEVICECANDIDATESFORNEWCREATEVMMSG_FULL_NAME = 'org.zstack.pciDevice.APIGetPciDeviceCandidatesForNewCreateVmMsg'
+class APIGetPciDeviceCandidatesForNewCreateVmMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetPciDeviceCandidatesForNewCreateVmMsg'
+    def __init__(self):
+        self.hostUuid = None
+        self.clusterUuids = OptionalList()
+        self.types = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETPCIDEVICECANDIDATESFORNEWCREATEVMREPLY_FULL_NAME = 'org.zstack.pciDevice.APIGetPciDeviceCandidatesForNewCreateVmReply'
+class APIGetPciDeviceCandidatesForNewCreateVmReply(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetPciDeviceCandidatesForNewCreateVmReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIQUERYPCIDEVICEMSG_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDeviceMsg'
 class APIQueryPciDeviceMsg(object):
     FULL_NAME='org.zstack.pciDevice.APIQueryPciDeviceMsg'
@@ -16228,6 +16250,8 @@ api_names = [
     'APIGetOssBucketNameFromRemoteReply',
     'APIGetPciDeviceCandidatesForAttachingVmMsg',
     'APIGetPciDeviceCandidatesForAttachingVmReply',
+    'APIGetPciDeviceCandidatesForNewCreateVmMsg',
+    'APIGetPciDeviceCandidatesForNewCreateVmReply',
     'APIGetPolicyReply',
     'APIGetPortForwardingAttachableVmNicsMsg',
     'APIGetPortForwardingAttachableVmNicsReply',
@@ -23729,17 +23753,26 @@ class GlobalConfig_PROGRESS(object):
     def get_category():
         return 'progress'
 
+class GlobalConfig_QUERY(object):
+    BATCHQUERY_DEBUG = 'batchQuery.debug'
+
+    @staticmethod
+    def get_category():
+        return 'query'
+
 class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VIP_NUM = 'vip.num'
+    AFFINITYGROUP_NUM = 'affinitygroup.num'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     PORTFORWARDING_NUM = 'portForwarding.num'
+    LISTENER_NUM = 'listener.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
@@ -23747,6 +23780,7 @@ class GlobalConfig_QUOTA(object):
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
     VXLAN_NUM = 'vxlan.num'
+    SCHEDULER_TRIGGER_NUM = 'scheduler.trigger.num'
 
     @staticmethod
     def get_category():
@@ -23868,8 +23902,10 @@ class GlobalConfig_VYOS(object):
         return 'vyos'
 
 class GlobalConfig_ZWATCH(object):
+    RESOLUTION_DEFAULTALGORITHM_MAXSAMPLES = 'resolution.defaultAlgorithm.maxSamples'
     MANAGEMENTSERVERDIRECTORIESTOMONITOR = 'managementServerDirectoriesToMonitor'
     ALARM_REPEATINTERVAL = 'alarm.repeatInterval'
+    SCRAPE_INTERVAL = 'scrape.interval'
     EVALUATION_INTERVAL = 'evaluation.interval'
     EVALUATION_THREADNUM = 'evaluation.threadNum'
 
