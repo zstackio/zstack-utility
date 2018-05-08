@@ -3415,7 +3415,7 @@ class VmPlugin(kvmagent.KvmAgent):
             port = vm.get_console_port()
             rsp.port = port
             rsp.protocol = vm.get_console_protocol()
-            logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.uuid))
+            logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.vmUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
