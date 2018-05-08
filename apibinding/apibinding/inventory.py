@@ -136,7 +136,7 @@ class APICreateResourcePriceMsg(object):
     FULL_NAME='org.zstack.billing.APICreateResourcePriceMsg'
     def __init__(self):
         #mandatory field
-        #valid values: [cpu, memory, rootVolume, dataVolume, snapShot]
+        #valid values: [cpu, memory, rootVolume, dataVolume, snapShot, gpu]
         self.resourceName = NotNoneField()
         self.resourceUnit = None
         #mandatory field
@@ -12175,10 +12175,8 @@ APICREATEPCIDEVICEOFFERINGMSG_FULL_NAME = 'org.zstack.pciDevice.APICreatePciDevi
 class APICreatePciDeviceOfferingMsg(object):
     FULL_NAME='org.zstack.pciDevice.APICreatePciDeviceOfferingMsg'
     def __init__(self):
-        #mandatory field
-        self.name = NotNoneField()
+        self.name = None
         self.description = None
-        self.type = None
         #mandatory field
         self.vendorId = NotNoneField()
         #mandatory field
@@ -17071,6 +17069,42 @@ class ApplianceVmInventory(VmInstanceInventory):
             self.agentPort = inv.agentPort
         else:
             self.agentPort = None
+
+
+
+class PricePciDeviceOfferingRefInventory(object):
+    def __init__(self):
+        self.id = None
+        self.priceUuid = None
+        self.pciDeviceOfferingUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'priceUuid'):
+            self.priceUuid = inv.priceUuid
+        else:
+            self.priceUuid = None
+
+        if hasattr(inv, 'pciDeviceOfferingUuid'):
+            self.pciDeviceOfferingUuid = inv.pciDeviceOfferingUuid
+        else:
+            self.pciDeviceOfferingUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
 
 
 
@@ -24731,6 +24765,12 @@ class QueryObjectPciDevicePciDeviceOfferingRefInventory(object):
         'pciDevice' : 'QueryObjectPciDeviceInventory',
      }
 
+class QueryObjectPciDeviceUsageInventory(object):
+     PRIMITIVE_FIELDS = ['pciDeviceUuid','vmUuid','lastOpDate','accountUuid','description','id','inventory','dateInLong','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
+     }
+
 class QueryObjectPolicyInventory(object):
      PRIMITIVE_FIELDS = ['name','accountUuid','uuid','__userTag__','__systemTag__']
      EXPANDED_FIELDS = ['account','user','group']
@@ -24750,8 +24790,17 @@ class QueryObjectPortForwardingRuleInventory(object):
 
 class QueryObjectPriceInventory(object):
      PRIMITIVE_FIELDS = ['resourceUnit','price','lastOpDate','resourceName','uuid','timeUnit','dateInLong','createDate','__userTag__','__systemTag__']
-     EXPANDED_FIELDS = []
+     EXPANDED_FIELDS = ['pciDeviceOfferings']
      QUERY_OBJECT_MAP = {
+        'pciDeviceOfferings' : 'QueryObjectPricePciDeviceOfferingRefInventory',
+     }
+
+class QueryObjectPricePciDeviceOfferingRefInventory(object):
+     PRIMITIVE_FIELDS = ['pciDeviceOfferingUuid','priceUuid','lastOpDate','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['price','pciDeviceOffering']
+     QUERY_OBJECT_MAP = {
+        'price' : 'QueryObjectPriceInventory',
+        'pciDeviceOffering' : 'QueryObjectPciDeviceOfferingInventory',
      }
 
 class QueryObjectPrimaryStorageCapacityInventory(object):
