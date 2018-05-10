@@ -440,7 +440,7 @@ def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root'
         if sshkey_file:
             os.remove(sshkey_file)
 
-def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, callback=None, callback_data=None, sshPort=22):
+def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, callback=None, callback_data=None, sshPort=22, get_size=False):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
 
@@ -474,6 +474,8 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
     batch_file_path = None
     try:
         file_size = get_file_size() * 1024
+        if get_size:
+            return file_size
         keyfile_path = create_ssh_key_file()
         batch_file_path = write_to_temp_file('get %s %s' % (filename, download_to))
         cmd = '/usr/bin/sftp -o StrictHostKeyChecking=no -o IdentityFile=%s -b %s %s' % (keyfile_path, batch_file_path, hostname)
@@ -571,6 +573,11 @@ def qcow2_clone(src, dst):
     shell.check_run('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s' % (fmt, src, dst))
     shell.check_run('chmod 666 %s' % dst)
 
+def qcow2_clone_with_option(src, dst, opt=""):
+    fmt = get_img_fmt(src)
+    shell.check_run('/usr/bin/qemu-img create -F %s %s -b %s -f qcow2 %s' % (fmt, opt, src, dst))
+    shell.check_run('chmod 666 %s' % dst)
+
 def raw_clone(src, dst):
     shell.check_run('/usr/bin/qemu-img create -b %s -f raw %s' % (src, dst))
     shell.check_run('chmod 666 %s' % dst)
@@ -579,9 +586,18 @@ def qcow2_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))
     shell.check_run('chmod 666 %s' % dst)
 
+def qcow2_create_with_option(dst, size, opt=""):
+    shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
+    shell.check_run('chmod 666 %s' % dst)
+
 def qcow2_create_with_backing_file(backing_file, dst):
     fmt = get_img_fmt(backing_file)
     shell.call('/usr/bin/qemu-img create -F %s -f qcow2 -b %s %s' % (fmt, backing_file, dst))
+    shell.call('chmod 666 %s' % dst)
+
+def qcow2_create_with_backing_file_and_option(backing_file, dst, opt=""):
+    fmt = get_img_fmt(backing_file)
+    shell.call('/usr/bin/qemu-img create -F %s -f qcow2 %s -b %s %s' % (fmt, opt, backing_file, dst))
     shell.call('chmod 666 %s' % dst)
 
 def raw_create(dst, size):
@@ -1020,7 +1036,7 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
         if ip:
             shell.call('ifconfig %s %s netmask %s' % (vlan_dev_name, ip, netmask))
     else:
-        if get_device_ip(vlan_dev_name) != ip:
+        if ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
             # recreate device and configure ip
             delete_vlan_eth(vlan_dev_name)
             shell.call('vconfig add %s %s' % (ethname, vlan))

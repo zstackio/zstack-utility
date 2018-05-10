@@ -72,21 +72,12 @@ def collect_vip_statistics():
             return []
 
         CHAIN_NAME = "vip-perf"
-        VIP_LABEL_NAME = 'VipUUID'
         o = bash_o("ip netns exec {{ns_name}} iptables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
-        metrics = {
-            'zstack_vip_out_bytes': GaugeMetricFamily('zstack_vip_out_bytes', 'VIP outbound traffic in bytes', labels=[VIP_LABEL_NAME]),
-            'zstack_vip_out_packages': GaugeMetricFamily('zstack_vip_out_packages', 'VIP outbound traffic packages', labels=[VIP_LABEL_NAME]),
-            'zstack_vip_in_bytes': GaugeMetricFamily('zstack_vip_in_bytes', 'VIP inbound traffic in bytes',  labels=[VIP_LABEL_NAME]),
-            'zstack_vip_in_packages': GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
-        }
 
         for l in o.split('\n'):
             l = l.strip(' \t\r\n')
             if l:
                 create_metric(l, ip, vip_uuid, vnic_ip, metrics)
-
-        return metrics.values()
 
     o = bash_o('ip -o -d link')
     words = o.split()
@@ -108,10 +99,18 @@ def collect_vip_statistics():
 
         eips[ip] = (vip_uuid, vnic_ip)
 
-    for ip, (vip_uuid, vnic_ip) in eips.items():
-        ret.extend(collect(ip, vip_uuid, vnic_ip))
+    VIP_LABEL_NAME = 'VipUUID'
+    metrics = {
+        'zstack_vip_out_bytes': GaugeMetricFamily('zstack_vip_out_bytes', 'VIP outbound traffic in bytes', labels=[VIP_LABEL_NAME]),
+        'zstack_vip_out_packages': GaugeMetricFamily('zstack_vip_out_packages', 'VIP outbound traffic packages', labels=[VIP_LABEL_NAME]),
+        'zstack_vip_in_bytes': GaugeMetricFamily('zstack_vip_in_bytes', 'VIP inbound traffic in bytes', labels=[VIP_LABEL_NAME]),
+        'zstack_vip_in_packages': GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
+    }
 
-    return ret
+    for ip, (vip_uuid, vnic_ip) in eips.items():
+        collect(ip, vip_uuid, vnic_ip)
+
+    return metrics.values()
 
 kvmagent.register_prometheus_collector(collect_vip_statistics)
 
@@ -275,9 +274,9 @@ class DEip(kvmagent.KvmAgent):
         def create_iptable_rule_if_needed(table, rule, at_head=False):
             if bash_r('eval {{NS}} iptables-save | grep -- "{{rule}}" > /dev/null') != 0:
                 if at_head:
-                    bash_errorout('eval {{NS}} iptables {{table}} -I {{rule}}')
+                    bash_errorout('eval {{NS}} iptables -w {{table}} -I {{rule}}')
                 else:
-                    bash_errorout('eval {{NS}} iptables {{table}} -A {{rule}}')
+                    bash_errorout('eval {{NS}} iptables -w {{table}} -A {{rule}}')
 
         def create_ebtable_rule_if_needed(table, chain, rule):
             if bash_r(EBTABLES_CMD + ' -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:

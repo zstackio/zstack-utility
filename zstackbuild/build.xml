@@ -107,6 +107,10 @@
             <arg value="${remove.pypi.symlink}" />
             <arg value="${pypi.parent.dir}/pypi" />
         </exec>
+        <exec executable="cp" dir="${pypi.parent.dir}/pypi/simple/websockify" failonerror="true">
+             <arg value="websockify-0.6.1.zip" />
+             <arg value="./websockify-0.6.1.1.zip" />
+        </exec>
     </target>
 
     <target name="copy-centos6-repo" >

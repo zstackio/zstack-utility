@@ -120,11 +120,15 @@ if IS_AARCH64:
     dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % kvm_root
     collectd_pkg = "%s/collectd_exporter_aarch64" % file_root
     node_collectd_pkg = "%s/node_exporter_aarch64" % file_root
+    qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
+    qemu_img_local_pkg = "%s/qemu-img-aarch64" % kvm_root
 else:
     dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % file_root
     dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % kvm_root
     collectd_pkg = "%s/collectd_exporter" % file_root
     node_collectd_pkg = "%s/node_exporter" % file_root
+    qemu_img_pkg = "%s/qemu-img-kvm" % file_root
+    qemu_img_local_pkg = "%s/qemu-img-kvm" % kvm_root
 collectd_local_pkg = "%s/collectd_exporter" % workplace
 node_collectd_local_pkg = "%s/node_exporter" % workplace
 
@@ -294,6 +298,17 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg.src = "%s/libvirtd" % file_root
     copy_arg.dest = "/etc/sysconfig/libvirtd"
     libvirtd_status = copy(copy_arg, host_post_info)
+
+    # replace qemu-img binary
+    copy_arg = CopyArg()
+    copy_arg.src = "%s" % qemu_img_pkg
+    copy_arg.dest = "%s" % qemu_img_local_pkg
+    copy(copy_arg, host_post_info)
+
+    command = "/bin/cp %s `which qemu-img`" % qemu_img_local_pkg
+    host_post_info.post_label = "ansible.shell.install.pkg"
+    host_post_info.post_label_param = "qemu-img"
+    run_remote_command(command, host_post_info)
 
 elif distro == "Debian" or distro == "Ubuntu":
     # name: install kvm related packages on Debian based OS

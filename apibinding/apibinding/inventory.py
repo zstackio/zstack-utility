@@ -3475,6 +3475,7 @@ class APIUpdateClusterOSMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.excludePackages = OptionalList()
         self.resourceUuid = None
         self.session = None
         self.timeout = None
@@ -8124,16 +8125,6 @@ class APIUpdatePrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
-CREATETEMPLATEFROMVOLUMEONPRIMARYSTORAGEREPLY_FULL_NAME = 'org.zstack.header.storage.primary.CreateTemplateFromVolumeOnPrimaryStorageReply'
-class CreateTemplateFromVolumeOnPrimaryStorageReply(object):
-    FULL_NAME='org.zstack.header.storage.primary.CreateTemplateFromVolumeOnPrimaryStorageReply'
-    def __init__(self):
-        self.templateBackupStorageInstallPath = None
-        self.format = None
-        self.success = None
-        self.error = None
-
-
 APIBACKUPVOLUMESNAPSHOTMSG_FULL_NAME = 'org.zstack.header.storage.snapshot.APIBackupVolumeSnapshotMsg'
 class APIBackupVolumeSnapshotMsg(object):
     FULL_NAME='org.zstack.header.storage.snapshot.APIBackupVolumeSnapshotMsg'
@@ -8749,7 +8740,6 @@ class APIGetCandidatePrimaryStoragesForCreatingVmMsg(object):
     def __init__(self):
         #mandatory field
         self.imageUuid = NotNoneField()
-        self.backupStorageUuid = None
         #mandatory field
         self.l3NetworkUuids = NotNoneList()
         self.rootDiskOfferingUuid = None
@@ -12826,6 +12816,28 @@ class APIGetPciDeviceCandidatesForAttachingVmReply(object):
         self.error = None
 
 
+APIGETPCIDEVICECANDIDATESFORNEWCREATEVMMSG_FULL_NAME = 'org.zstack.pciDevice.APIGetPciDeviceCandidatesForNewCreateVmMsg'
+class APIGetPciDeviceCandidatesForNewCreateVmMsg(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetPciDeviceCandidatesForNewCreateVmMsg'
+    def __init__(self):
+        self.hostUuid = None
+        self.clusterUuids = OptionalList()
+        self.types = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETPCIDEVICECANDIDATESFORNEWCREATEVMREPLY_FULL_NAME = 'org.zstack.pciDevice.APIGetPciDeviceCandidatesForNewCreateVmReply'
+class APIGetPciDeviceCandidatesForNewCreateVmReply(object):
+    FULL_NAME='org.zstack.pciDevice.APIGetPciDeviceCandidatesForNewCreateVmReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.success = None
+        self.error = None
+
+
 APIQUERYPCIDEVICEMSG_FULL_NAME = 'org.zstack.pciDevice.APIQueryPciDeviceMsg'
 class APIQueryPciDeviceMsg(object):
     FULL_NAME='org.zstack.pciDevice.APIQueryPciDeviceMsg'
@@ -14656,6 +14668,119 @@ class APIAddNfsPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDSHAREDBLOCKGROUPPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIAddSharedBlockGroupPrimaryStorageMsg'
+class APIAddSharedBlockGroupPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.storage.primary.sharedblock.APIAddSharedBlockGroupPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.diskUuids = NotNoneList()
+        self.url = None
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.type = None
+        #mandatory field
+        self.zoneUuid = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSHAREDBLOCKGROUPPRIMARYSTORAGEHOSTREFMSG_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageHostRefMsg'
+class APIQuerySharedBlockGroupPrimaryStorageHostRefMsg(object):
+    FULL_NAME='org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageHostRefMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSHAREDBLOCKGROUPPRIMARYSTORAGEHOSTREFREPLY_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageHostRefReply'
+class APIQuerySharedBlockGroupPrimaryStorageHostRefReply(object):
+    FULL_NAME='org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageHostRefReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYSHAREDBLOCKGROUPPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageMsg'
+class APIQuerySharedBlockGroupPrimaryStorageMsg(object):
+    FULL_NAME='org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSHAREDBLOCKGROUPPRIMARYSTORAGEREPLY_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageReply'
+class APIQuerySharedBlockGroupPrimaryStorageReply(object):
+    FULL_NAME='org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYSHAREDBLOCKMSG_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIQuerySharedBlockMsg'
+class APIQuerySharedBlockMsg(object):
+    FULL_NAME='org.zstack.storage.primary.sharedblock.APIQuerySharedBlockMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYSHAREDBLOCKREPLY_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIQuerySharedBlockReply'
+class APIQuerySharedBlockReply(object):
+    FULL_NAME='org.zstack.storage.primary.sharedblock.APIQuerySharedBlockReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIADDSHAREDMOUNTPOINTPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.storage.primary.smp.APIAddSharedMountPointPrimaryStorageMsg'
 class APIAddSharedMountPointPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.storage.primary.smp.APIAddSharedMountPointPrimaryStorageMsg'
@@ -15285,6 +15410,8 @@ class APIUpdateVCenterMsg(object):
     def __init__(self):
         #mandatory field
         self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
         self.username = None
         self.password = None
         self.domainName = None
@@ -16069,6 +16196,7 @@ class APIGetEventDataMsg(object):
     def __init__(self):
         self.startTime = None
         self.endTime = None
+        self.offsetAheadOfCurrentTime = None
         self.limit = None
         self.conditions = OptionalList()
         self.session = None
@@ -16096,6 +16224,7 @@ class APIGetMetricDataMsg(object):
         self.metricName = NotNoneField()
         self.startTime = None
         self.endTime = None
+        self.offsetAheadOfCurrentTime = None
         self.period = None
         self.labels = OptionalList()
         self.functions = OptionalList()
@@ -16197,6 +16326,7 @@ api_names = [
     'APIAddSchedulerJobToSchedulerTriggerMsg',
     'APIAddSecurityGroupRuleMsg',
     'APIAddSftpBackupStorageMsg',
+    'APIAddSharedBlockGroupPrimaryStorageMsg',
     'APIAddSharedMountPointPrimaryStorageMsg',
     'APIAddSimulatorBackupStorageMsg',
     'APIAddSimulatorHostMsg',
@@ -16662,6 +16792,8 @@ api_names = [
     'APIGetOssBucketNameFromRemoteReply',
     'APIGetPciDeviceCandidatesForAttachingVmMsg',
     'APIGetPciDeviceCandidatesForAttachingVmReply',
+    'APIGetPciDeviceCandidatesForNewCreateVmMsg',
+    'APIGetPciDeviceCandidatesForNewCreateVmReply',
     'APIGetPolicyReply',
     'APIGetPortForwardingAttachableVmNicsMsg',
     'APIGetPortForwardingAttachableVmNicsReply',
@@ -17010,6 +17142,12 @@ api_names = [
     'APIQuerySftpBackupStorageReply',
     'APIQueryShareableVolumeVmInstanceRefMsg',
     'APIQueryShareableVolumeVmInstanceRefReply',
+    'APIQuerySharedBlockGroupPrimaryStorageHostRefMsg',
+    'APIQuerySharedBlockGroupPrimaryStorageHostRefReply',
+    'APIQuerySharedBlockGroupPrimaryStorageMsg',
+    'APIQuerySharedBlockGroupPrimaryStorageReply',
+    'APIQuerySharedBlockMsg',
+    'APIQuerySharedBlockReply',
     'APIQuerySharedResourceMsg',
     'APIQuerySharedResourceReply',
     'APIQuerySystemTagMsg',
@@ -17301,7 +17439,6 @@ api_names = [
     'APIValidateSNSEmailPlatformMsg',
     'APIValidateSessionMsg',
     'APIValidateSessionReply',
-    'CreateTemplateFromVolumeOnPrimaryStorageReply',
 ]
 
 class AliyunNasAccessGroupInventory(object):
@@ -23220,6 +23357,134 @@ class SftpBackupStorageInventory(BackupStorageInventory):
 
 
 
+class SharedBlockGroupPrimaryStorageHostRefInventory(object):
+    def __init__(self):
+        self.primaryStorageUuid = None
+        self.hostUuid = None
+        self.hostId = None
+        self.status = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'primaryStorageUuid'):
+            self.primaryStorageUuid = inv.primaryStorageUuid
+        else:
+            self.primaryStorageUuid = None
+
+        if hasattr(inv, 'hostUuid'):
+            self.hostUuid = inv.hostUuid
+        else:
+            self.hostUuid = None
+
+        if hasattr(inv, 'hostId'):
+            self.hostId = inv.hostId
+        else:
+            self.hostId = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class SharedBlockGroupPrimaryStorageInventory(PrimaryStorageInventory):
+    def __init__(self):
+        super(SharedBlockGroupPrimaryStorageInventory, self).__init__()
+        self.sharedBlocks = None
+        self.sharedBlockGroupType = None
+
+    def evaluate(self, inv):
+        super(SharedBlockGroupPrimaryStorageInventory, self).evaluate(inv)
+        if hasattr(inv, 'sharedBlocks'):
+            self.sharedBlocks = inv.sharedBlocks
+        else:
+            self.sharedBlocks = None
+
+        if hasattr(inv, 'sharedBlockGroupType'):
+            self.sharedBlockGroupType = inv.sharedBlockGroupType
+        else:
+            self.sharedBlockGroupType = None
+
+
+
+class SharedBlockInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.sharedBlockGroupUuid = None
+        self.type = None
+        self.diskUuid = None
+        self.name = None
+        self.description = None
+        self.state = None
+        self.status = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'sharedBlockGroupUuid'):
+            self.sharedBlockGroupUuid = inv.sharedBlockGroupUuid
+        else:
+            self.sharedBlockGroupUuid = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'diskUuid'):
+            self.diskUuid = inv.diskUuid
+        else:
+            self.diskUuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class UsbDeviceInventory(object):
     def __init__(self):
         self.uuid = None
@@ -24176,6 +24441,7 @@ class GlobalConfig_MANAGEMENTSERVER(object):
 class GlobalConfig_MEVOCO(object):
     APIRETRY_VM = 'apiRetry.vm'
     OVERPROVISIONING_MEMORY = 'overProvisioning.memory'
+    AIO_NATIVE = 'aio.native'
     VM_CONSOLEMODE = 'vm.consoleMode'
     HOSTALLOCATORSTRATEGY = 'hostAllocatorStrategy'
     DISTRIBUTEIMAGE_CONCURRENCY = 'distributeImage.concurrency'
@@ -24271,17 +24537,26 @@ class GlobalConfig_PROGRESS(object):
     def get_category():
         return 'progress'
 
+class GlobalConfig_QUERY(object):
+    BATCHQUERY_DEBUG = 'batchQuery.debug'
+
+    @staticmethod
+    def get_category():
+        return 'query'
+
 class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VIP_NUM = 'vip.num'
+    AFFINITYGROUP_NUM = 'affinitygroup.num'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     PORTFORWARDING_NUM = 'portForwarding.num'
+    LISTENER_NUM = 'listener.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
@@ -24289,6 +24564,7 @@ class GlobalConfig_QUOTA(object):
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
     VXLAN_NUM = 'vxlan.num'
+    SCHEDULER_TRIGGER_NUM = 'scheduler.trigger.num'
 
     @staticmethod
     def get_category():
@@ -24312,6 +24588,17 @@ class GlobalConfig_SECURITYGROUP(object):
     @staticmethod
     def get_category():
         return 'securityGroup'
+
+class GlobalConfig_SHAREDBLOCK(object):
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
+    QCOW2_ALLOCATION = 'qcow2.allocation'
+    SNAPSHOT_SHRINK = 'snapshot.shrink'
+    SNAPSHOT_COMPARE = 'snapshot.compare'
+    QCOW2_CLUSTER_SIZE = 'qcow2.cluster.size'
+
+    @staticmethod
+    def get_category():
+        return 'sharedblock'
 
 class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     DELETION_GCINTERVAL = 'deletion.gcInterval'
@@ -24399,8 +24686,10 @@ class GlobalConfig_VYOS(object):
         return 'vyos'
 
 class GlobalConfig_ZWATCH(object):
+    RESOLUTION_DEFAULTALGORITHM_MAXSAMPLES = 'resolution.defaultAlgorithm.maxSamples'
     MANAGEMENTSERVERDIRECTORIESTOMONITOR = 'managementServerDirectoriesToMonitor'
     ALARM_REPEATINTERVAL = 'alarm.repeatInterval'
+    SCRAPE_INTERVAL = 'scrape.interval'
     EVALUATION_INTERVAL = 'evaluation.interval'
     EVALUATION_THREADNUM = 'evaluation.threadNum'
 
@@ -25481,6 +25770,32 @@ class QueryObjectShareableVolumeVmInstanceRefInventory(object):
      QUERY_OBJECT_MAP = {
      }
 
+class QueryObjectSharedBlockGroupPrimaryStorageHostRefInventory(object):
+     PRIMITIVE_FIELDS = ['hostUuid','lastOpDate','hostId','primaryStorageUuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['sharedBlockGroup','host']
+     QUERY_OBJECT_MAP = {
+        'sharedBlockGroup' : 'QueryObjectSharedBlockGroupPrimaryStorageInventory',
+        'host' : 'QueryObjectHostInventory',
+     }
+
+class QueryObjectSharedBlockGroupPrimaryStorageInventory(object):
+     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','zoneUuid','description','systemUsedCapacity','type','uuid','totalPhysicalCapacity','url','sharedBlockGroupType','totalCapacity','name','lastOpDate','state','availablePhysicalCapacity','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['sharedBlocks','volume','volumeSnapshot','sharedBlocks','zone','cluster']
+     QUERY_OBJECT_MAP = {
+        'volume' : 'QueryObjectVolumeInventory',
+        'cluster' : 'QueryObjectClusterInventory',
+        'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
+        'sharedBlocks' : 'QueryObjectSharedBlockInventory',
+        'zone' : 'QueryObjectZoneInventory',
+     }
+
+class QueryObjectSharedBlockInventory(object):
+     PRIMITIVE_FIELDS = ['diskUuid','sharedBlockGroupUuid','name','lastOpDate','description','state','type','uuid','status','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = ['sharedBlockGroup']
+     QUERY_OBJECT_MAP = {
+        'sharedBlockGroup' : 'QueryObjectSharedBlockGroupPrimaryStorageInventory',
+     }
+
 class QueryObjectSharedResourceInventory(object):
      PRIMITIVE_FIELDS = ['receiverAccountUuid','ownerAccountUuid','lastOpDate','toPublic','resourceUuid','resourceType','createDate','__userTag__','__systemTag__']
      EXPANDED_FIELDS = []
@@ -25975,6 +26290,9 @@ queryMessageInventoryMap = {
      'APIQuerySecurityGroupRuleMsg' : QueryObjectSecurityGroupRuleInventory,
      'APIQuerySftpBackupStorageMsg' : QueryObjectSftpBackupStorageInventory,
      'APIQueryShareableVolumeVmInstanceRefMsg' : QueryObjectShareableVolumeVmInstanceRefInventory,
+     'APIQuerySharedBlockGroupPrimaryStorageHostRefMsg' : QueryObjectSharedBlockGroupPrimaryStorageHostRefInventory,
+     'APIQuerySharedBlockGroupPrimaryStorageMsg' : QueryObjectSharedBlockGroupPrimaryStorageInventory,
+     'APIQuerySharedBlockMsg' : QueryObjectSharedBlockInventory,
      'APIQuerySharedResourceMsg' : QueryObjectSharedResourceInventory,
      'APIQuerySystemTagMsg' : QueryObjectSystemTagInventory,
      'APIQueryUsbDeviceMsg' : QueryObjectUsbDeviceInventory,

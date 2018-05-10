@@ -26,6 +26,11 @@ class RevertVolumeFromSnapshotRsp(AgentResponse):
         self.newVolumeInstallPath = None
         self.size = None
 
+class ReinitImageRsp(AgentResponse):
+    def __init__(self):
+        super(ReinitImageRsp, self).__init__()
+        self.newVolumeInstallPath = None
+
 class MergeSnapshotRsp(AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -112,6 +117,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_QCOW2_REFERENCE = "/localstorage/getqcow2reference"
     CONVERT_QCOW2_TO_RAW = "/localstorage/imagestore/convert/raw"
     RESIZE_VOLUME_PATH = "/localstorage/volume/resize"
+    REINIT_IMAGE_PATH = "/localstorage/reinit/image"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -130,6 +136,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.COMMIT_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
         http_server.register_async_uri(self.DOWNLOAD_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.REVERT_SNAPSHOT_PATH, self.revert_snapshot)
+        http_server.register_async_uri(self.REINIT_IMAGE_PATH, self.reinit_image)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.MERGE_AND_REBASE_SNAPSHOT_PATH, self.merge_and_rebase_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_PATH, self.offline_merge_snapshot)
@@ -459,6 +466,21 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         size = linux.qcow2_virtualsize(new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
         rsp.size = size
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def reinit_image(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ReinitImageRsp()
+        install_path = cmd.imagePath
+        dirname = os.path.dirname(cmd.volumePath)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname, 0775)
+
+        new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
+        linux.qcow2_clone(install_path, new_volume_path)
+        rsp.newVolumeInstallPath = new_volume_path
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

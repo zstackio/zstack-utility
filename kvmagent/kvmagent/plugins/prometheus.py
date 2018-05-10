@@ -78,9 +78,9 @@ LoadPlugin virt
 </Plugin>
 
 <Plugin disk>
-  Disk "/^sd/"
-  Disk "/^hd/"
-  Disk "/^vd/"
+  Disk "/^sd[a-z]$/"
+  Disk "/^hd[a-z]$/"
+  Disk "/^vd[a-z]$/"
   IgnoreSelected false
 </Plugin>
 
@@ -101,6 +101,8 @@ LoadPlugin virt
 	RefreshInterval {{INTERVAL}}
 	HostnameFormat name
     PluginInstanceFormat name
+    BlockDevice "/:hd[a-z]/"
+    IgnoreSelected true
 </Plugin>
 
 <Plugin network>

@@ -58,6 +58,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.dataIsoPaths = None
         self.addons = None
         self.useBootMenu = True
+        self.vmCpuModel = None
 
 
 class StartVmResponse(kvmagent.AgentResponse):
@@ -294,6 +295,16 @@ class CheckMountDomainRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckMountDomainRsp, self).__init__()
         self.active = False
+class KvmResizeVolumeCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(KvmResizeVolumeCommand, self).__init__()
+        self.vmUuid = None
+        self.size = None
+        self.deviceId = None
+
+class KvmResizeVolumeRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(KvmResizeVolumeRsp, self).__init__()
 
 class VncPortIptableRule(object):
     def __init__(self):
@@ -365,11 +376,12 @@ class VncPortIptableRule(object):
                 internal_ids.append(vm_id)
 
         # delete all vnc chains
-        for chain in tbl.children:
+        chains = tbl.children[:]
+        for chain in chains:
             if 'vm' in chain.name and 'vnc' in chain.name:
                 vm_internal_id = chain.name.split('-')[1]
                 if vm_internal_id not in internal_ids:
-                    chain.delete()
+                    ipt.delete_chain(chain.name)
                     logger.debug('deleted a stale VNC iptable chain[%s]' % chain.name)
 
         ipt.iptable_restore()
@@ -1099,6 +1111,8 @@ def get_cpu_memory_used_by_running_vms():
 def cleanup_stale_vnc_iptable_chains():
     VncPortIptableRule().delete_stale_chains()
 
+def shared_block_to_file(sbkpath):
+    return sbkpath.replace("sharedblock:/", "/dev")
 
 class VmOperationJudger(object):
     def __init__(self, op):
@@ -1451,6 +1465,20 @@ class Vm(object):
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
+        def volume_native_aio(volume_xml_obj):
+            if not addons:
+                return
+
+            vol_aio = addons['NativeAio']
+            if not vol_aio:
+                return
+
+            drivers = volume_xml_obj.getiterator("driver")
+            if drivers is None or len(drivers) == 0:
+                return
+
+            drivers[0].set("io", "native")
+
         def volume_qos(volume_xml_obj):
             if not addons:
                 return
@@ -1493,6 +1521,7 @@ class Vm(object):
                     e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
 
             volume_qos(disk)
+            volume_native_aio(disk)
             return etree.tostring(disk)
 
         def iscsibased_volume():
@@ -1505,6 +1534,7 @@ class Vm(object):
                 vi.chap_username = volume.chapUsername
                 vi.chap_password = volume.chapPassword
                 volume_qos(vi)
+                volume_native_aio(vi)
                 return etree.tostring(vi.to_xmlobject())
 
             def blk_iscsi():
@@ -1516,6 +1546,7 @@ class Vm(object):
                 bi.chap_username = volume.chapUsername
                 bi.chap_password = volume.chapPassword
                 volume_qos(bi)
+                volume_native_aio(bi)
                 return etree.tostring(bi.to_xmlobject())
 
             if volume.useVirtio:
@@ -1530,6 +1561,7 @@ class Vm(object):
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vc.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             def blk_ceph():
@@ -1541,6 +1573,7 @@ class Vm(object):
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = ic.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             def virtio_scsi_ceph():
@@ -1549,6 +1582,7 @@ class Vm(object):
                 vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vsc.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             if volume.useVirtioSCSI:
@@ -1566,6 +1600,7 @@ class Vm(object):
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vc.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             def blk_fusionstor():
@@ -1574,6 +1609,7 @@ class Vm(object):
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = ic.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             def virtio_scsi_fusionstor():
@@ -1582,6 +1618,7 @@ class Vm(object):
                 vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vsc.to_xmlobject()
                 volume_qos(xml_obj)
+                volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
             if volume.useVirtioSCSI:
@@ -1858,6 +1895,20 @@ class Vm(object):
 
         return target_disk, disk_name
 
+    def resize_volume(self, device_id, device_type, size):
+        target_disk, disk_name = self._get_target_disk(device_id)
+
+        alias_name = target_disk.alias.name_
+
+        r, o, e = bash.bash_roe("virsh qemu-monitor-command %s block_resize drive-%s %sB --hmp"
+                                % (self.uuid, alias_name, size))
+
+        logger.debug("resize volume[%s] of vm[%s]" % (alias_name, self.uuid))
+        if r != 0:
+            raise kvmagent.KvmError(
+                'unable to resize volume[id:{1}] of vm[uuid:{0}] because {2}'.format(device_id, self.uuid, e))
+
+
     def take_volume_snapshot(self, device_id, install_path, full_snapshot=False):
         target_disk, disk_name = self._get_target_disk(device_id)
         snapshot_dir = os.path.dirname(install_path)
@@ -2031,6 +2082,8 @@ class Vm(object):
             ic.iso = iso
             cdrom = ic.to_xmlobject(dev)
         else:
+            if iso.path.startswith('sharedblock'):
+                iso.path = shared_block_to_file(iso.path)
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
@@ -2116,6 +2169,8 @@ class Vm(object):
             logger.warn('unable to hotplug memory in vm[uuid:%s], %s' % (self.uuid, err))
             if "cannot set up guest memory" in err:
                 raise kvmagent.KvmError("No enough physical memory for guest")
+            elif "would exceed domain's maxMemory config" in err:
+                raise kvmagent.KvmError(err + "; please check if you have rebooted the VM to make NUMA take effect")
             else:
                 raise kvmagent.KvmError(err)
         return
@@ -2128,6 +2183,10 @@ class Vm(object):
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to set cpus in vm[uuid:%s], %s' % (self.uuid, err))
+
+            if "requested vcpus is greater than max" in err:
+                err += "; please check if you have rebooted the VM to make NUMA take effect"
+
             raise kvmagent.KvmError(err)
         return
 
@@ -2350,6 +2409,9 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'host-passthrough':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
+                elif cmd.nestedVirtualization == 'custom':
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                 elif IS_AARCH64:
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
@@ -2373,6 +2435,9 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'host-passthrough':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
+                elif cmd.nestedVirtualization == 'custom':
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                 elif IS_AARCH64:
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
@@ -2412,9 +2477,11 @@ class Vm(object):
             features = e(root, 'features')
             for f in ['acpi', 'apic', 'pae']:
                 e(features, f)
-            if cmd.kvmHiddenState == True:
+            if cmd.kvmHiddenState is True:
                 kvm = e(features, "kvm")
                 e(kvm, 'hidden', None, {'state': 'on'})
+            if cmd.vmPortOff is True:
+                e(features, 'vmport', attrib={'state': 'off'})
 
         def make_devices():
             root = elements['root']
@@ -2632,6 +2699,20 @@ class Vm(object):
                     # e(iotune, 'write_iops_sec_max', str(qos.totalIops))
                     # e(iotune, 'total_iops_sec_max', str(qos.totalIops))
 
+            def volume_native_aio(volume_xml_obj):
+                if not cmd.addons:
+                    return
+
+                vol_aio = cmd.addons['NativeAio']
+                if not vol_aio:
+                    return
+
+                drivers = volume_xml_obj.getiterator("driver")
+                if drivers is None or len(drivers) == 0:
+                    return
+
+                drivers[0].set("io", "native")
+
             volumes.sort(key=lambda d: d.deviceId)
             scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
             for v in volumes:
@@ -2660,6 +2741,7 @@ class Vm(object):
                 if v.deviceId == 0 and cmd.bootDev[0] == 'hd' and cmd.useBootMenu:
                     e(vol, 'boot', None, {'order': '1'})
                 volume_qos(vol)
+                volume_native_aio(vol)
                 devices.append(vol)
 
         def make_nics():
@@ -2747,32 +2829,32 @@ class Vm(object):
             e(spice, "clipboard", None, {'copypaste': 'no'})
 
         def make_usb_redirect():
-            if cmd.usbRedirect == "true":
-                devices = elements['devices']
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-ehci1'})
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci1', 'multifunction': 'on'})
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci2'})
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ich9-uhci3'})
+            devices = elements['devices']
+            e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
 
-                chan = e(devices, 'channel', None, {'type': 'spicevmc'})
-                e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
-                e(chan, 'address', None, {'type': 'virtio-serial'})
+            # if aarch64, then only create default usb controller
+            if IS_AARCH64:
+                return
 
-                redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev2, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
-                redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev3, 'address', None, {'type': 'usb', 'bus': '0', 'port': '3'})
-                redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev4, 'address', None, {'type': 'usb', 'bus': '0', 'port': '4'})
-                redirdev5 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev5, 'address', None, {'type': 'usb', 'bus': '0', 'port': '6'})
-            else:
-                # make sure there are three default usb controllers, for usb 1.1/2.0/3.0
-                devices = elements['devices']
-                e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
-                if not IS_AARCH64:
-                    e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
-                    e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
+            # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
+            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
+
+            # USB2.0 Controller for redirect
+            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
+            chan = e(devices, 'channel', None, {'type': 'spicevmc'})
+            e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
+            e(chan, 'address', None, {'type': 'virtio-serial'})
+
+            redirdev1 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev1, 'address', None, {'type': 'usb', 'bus': '3', 'port': '1'})
+            redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev2, 'address', None, {'type': 'usb', 'bus': '3', 'port': '2'})
+            redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev3, 'address', None, {'type': 'usb', 'bus': '4', 'port': '1'})
+            redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+            e(redirdev4, 'address', None, {'type': 'usb', 'bus': '4', 'port': '2'})
 
         def make_video():
             devices = elements['devices']
@@ -2981,6 +3063,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
     KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
+    KVM_RESIZE_VOLUME_PATH = "/volume/resize"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -3159,6 +3242,8 @@ class VmPlugin(kvmagent.KvmAgent):
         domain_xml = domain.XMLDesc(0)
         domain_xml_obj = xmlobject.loads(domain_xml)
         device_id = None
+        if path.startswith('sharedblock://'):
+            path = shared_block_to_file(path)
         for disk in domain_xml_obj.devices.get_child_node_as_list('disk'):
             if disk.device_ == 'disk':
                 for source in disk.get_child_node_as_list('source'):
@@ -3357,7 +3442,7 @@ class VmPlugin(kvmagent.KvmAgent):
             port = vm.get_console_port()
             rsp.port = port
             rsp.protocol = vm.get_console_protocol()
-            logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.uuid))
+            logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.vmUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -3559,13 +3644,13 @@ class VmPlugin(kvmagent.KvmAgent):
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path):
             makedir_if_need(install_path)
             linux.create_template(previous_install_path, install_path)
-            new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
+            new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone(install_path, new_volume_path)
             return install_path, new_volume_path
 
         def take_delta_snapshot_by_qemu_img_convert(previous_install_path, install_path):
-            new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
+            new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone(previous_install_path, new_volume_path)
             return previous_install_path, new_volume_path
@@ -3608,7 +3693,10 @@ class VmPlugin(kvmagent.KvmAgent):
                         'took delta snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
                             cmd.vmUuid, cmd.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
+
             rsp.size = os.path.getsize(rsp.snapshotInstallPath)
+            if rsp.size == None or rsp.size == 0:
+                rsp.size = linux.qcow2_virtualsize(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -3894,6 +3982,15 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = "%s %s" % (e, o)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def kvm_resize_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = KvmResizeVolumeRsp()
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        vm.resize_volume(cmd.deviceId, cmd.deviceType, cmd.size)
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -3934,6 +4031,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
         http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
+        http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
 
         self.register_libvirt_event()
 
@@ -3984,6 +4082,15 @@ class VmPlugin(kvmagent.KvmAgent):
                 time.sleep(20)
 
         monitor_libvirt()
+
+        @thread.AsyncThread
+        def clean_stale_vm_vnc_port_chain():
+            while True:
+                logger.debug("do clean up stale vnc port iptable chains")
+                cleanup_stale_vnc_iptable_chains()
+                time.sleep(600)
+
+        clean_stale_vm_vnc_port_chain()
 
     def _vm_lifecycle_event(self, conn, dom, event, detail, opaque):
         try:
@@ -4126,9 +4233,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.debug('Delete firewall rule for vm[uuid:%s] console' % vm_id)
 
         except:
-            # if vm do live migrate the dom may not be found
+            # if vm do live migrate the dom may not be found or the vm has been undefined
             vm = get_vm_by_uuid(dom.name(), False)
             if not vm:
+                logger.debug("can not get domain xml of vm[uuid:%s], "
+                             "the vm may be just migrated here or it has already been undefined" % dom.name())
                 return
 
             content = traceback.format_exc()

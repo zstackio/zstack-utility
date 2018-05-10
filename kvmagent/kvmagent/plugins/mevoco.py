@@ -13,6 +13,7 @@ from zstacklib.utils import iptables
 from zstacklib.utils import ebtables
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
+from zstacklib.utils import ip
 import os.path
 import re
 import threading
@@ -234,7 +235,7 @@ class DhcpEnv(object):
         # Note(WeiW): fix dhcp checksum, see more at #982
         ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
         if ret != 0:
-            bash_errorout('iptables -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
+            bash_errorout('iptables -w -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
@@ -377,7 +378,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         BR_NAME = cmd.bridgeName
-        CHAIN_NAME = "USERDATA-%s" % BR_NAME
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, cmd.l3NetworkUuid[0:8])
+        else:
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], cmd.l3NetworkUuid[0:8])
 
         o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
         o = o.strip(" \t\r\n")
@@ -389,6 +394,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 cmds.append(EBTABLES_CMD + " -t filter %s" % l.replace("-A", "-D"))
                 cmds.append(EBTABLES_CMD + " -t nat %s" % l.replace("-A", "-D"))
 
+            cmds.append(EBTABLES_CMD + " -t nat -X %s" % CHAIN_NAME)
             bash_r("\n".join(cmds))
 
         bash_errorout("ps aux | grep lighttpd | grep {{BR_NAME}} | grep -w userdata | awk '{print $2}' | xargs -r kill -9")
@@ -403,19 +409,43 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             # kill all lighttped processes which will be restarted later
             shell.call('pkill -9 lighttpd || true')
 
+        namespaces = {}
         for u in cmd.userdata:
-            self._apply_userdata(u)
+            if u.namespaceName not in namespaces:
+                namespaces[u.namespaceName] = u
+            else:
+                if namespaces[u.namespaceName].dhcpServerIp != u.dhcpServerIp:
+                    raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
+                        u.namespaceName, namespaces[u.namespaceName].dhcpServerIp, u.dhcpServerIp))
+                if namespaces[u.namespaceName].bridgeName != u.bridgeName:
+                    raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
+                    u.namespaceName, namespaces[u.namespaceName].bridgeName, u.bridgeName))
+                if namespaces[u.namespaceName].port != u.port:
+                    raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
+                    u.namespaceName, namespaces[u.namespaceName].port, u.port))
+
+        for n in namespaces.values():
+            self._apply_userdata_xtables(n)
+
+        for u in cmd.userdata:
+            self._apply_userdata_vmdata(u)
+
+        for n in namespaces.values():
+            self._apply_userdata_restart_httpd(n)
+
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
     def apply_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self._apply_userdata(cmd.userdata)
+        self._apply_userdata_xtables(cmd.userdata)
+        self._apply_userdata_vmdata(cmd.userdata)
+        self._apply_userdata_restart_httpd(cmd.userdata)
         return jsonobject.dumps(ApplyUserdataRsp())
 
     @in_bash
     @lock.file_lock('/run/xtables.lock')
-    def _apply_userdata(self, to):
+    def _apply_userdata_xtables(self, to):
         p = UserDataEnv(to.bridgeName, to.namespaceName)
         INNER_DEV = None
         DHCP_IP = None
@@ -448,43 +478,49 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         ETH_NAME = BR_NAME.replace('br_', '', 1).replace('_', '.', 1)
         MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
         CHAIN_NAME="USERDATA-%s" % BR_NAME
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, to.l3NetworkUuid[0:8])
+        else:
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12 : len(BR_NAME)], to.l3NetworkUuid[0:8])
 
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -t nat -N {{EBCHAIN_NAME}}')
 
-        if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{CHAIN_NAME}}"') != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{CHAIN_NAME}}')
+        if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}"') != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}')
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
-        RULE = "-p IPv4 --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % MAC.replace(":0", ":")
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
+        cidr = ip.IpAddress(to.vmIp).toCidr(to.netmask)
+        RULE = "-p IPv4 --ip-dst 169.254.169.254 --ip-source %s -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, MAC.replace(":0", ":"))
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -I {{CHAIN_NAME}} {{RULE}}')
+            bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -t nat -A {{EBCHAIN_NAME}} -j RETURN')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -N {{EBCHAIN_NAME}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-i {{ETH_NAME}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} | grep -- "-i {{ETH_NAME}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-o {{ETH_NAME}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} | grep -- "-o {{ETH_NAME}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
 
-        ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+        ret = bash_r("ebtables-save | grep '\-A {{EBCHAIN_NAME}} -j RETURN'")
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -A {{EBCHAIN_NAME}} -j RETURN')
 
         self.work_userdata_iptables(CHAIN_NAME, to)
 
@@ -543,6 +579,11 @@ mimetype.assign = (
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
 
+    @in_bash
+    @lock.file_lock('/run/xtables.lock')
+    def _apply_userdata_vmdata(self, to):
+        conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
+        http_root = os.path.join(conf_folder, 'html')
         meta_data_json = '''\
 {
     "uuid": "{{vmInstanceUuid}}"
@@ -582,6 +623,11 @@ mimetype.assign = (
             with open(windows_meta_data_password, 'w') as fd:
                 fd.write('')
 
+    @in_bash
+    @lock.file_lock('/run/xtables.lock')
+    def _apply_userdata_restart_httpd(self, to):
+        conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
+        conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         pid = linux.find_process_by_cmdline([conf_path])
         if not pid:
             shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
@@ -773,6 +819,10 @@ dhcp-range={{g}},static
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
                 dhcp_info['dns'] = ','.join(d.dns)
+                routes = []
+                for route in d.hostRoutes:
+                    routes.append(','.join([route.prefix, route.nexthop]))
+                dhcp_info['routes'] = ','.join(routes)
                 info.append(dhcp_info)
 
                 if not cmd.rebuild:
@@ -808,6 +858,9 @@ tag:{{o.tag}},option:dns-server,{{o.dns}}
 {% endif -%}
 {% if o.dnsDomain -%}
 tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
+{% endif -%}
+{% if o.routes -%}
+tag:{{o.tag}},option:classless-static-route,{{o.routes}}
 {% endif -%}
 {% else -%}
 tag:{{o.tag}},3

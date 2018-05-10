@@ -707,6 +707,8 @@ ia_install_python_gcc_rh(){
 
 ia_install_pip(){
     echo_subtitle "Install PIP"
+    rpm -q python2-pip >/dev/null 2>&1 && return
+
     if [ ! -z $DEBUG ]; then
         easy_install -i $pypi_source_easy_install --upgrade pip
     else
@@ -804,7 +806,6 @@ upgrade_zstack(){
     show_spinner cs_enable_zstack_service
     show_spinner is_enable_ntpd
     show_spinner cs_config_zstack_properties
-    show_spinner cs_config_catalina_option
     show_spinner cs_append_iptables
 
     # if -i is used, then do not upgrade zstack ui
@@ -830,7 +831,8 @@ upgrade_zstack(){
           fail "failed to upgrade zstack web ui"
         fi
     elif [ -f /etc/init.d/zstack-ui ]; then
-        /bin/cp -f $ZSTACK_UI_HOME/zstack-ui.war $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
+        # fill CATALINA_ZSTACK_TOOLS with old zstack-ui.war if not exists
+        /bin/cp -n $ZSTACK_UI_HOME/zstack-ui.war $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
     fi
 
     #check old license folder and copy old license files to new folder.
@@ -1661,7 +1663,6 @@ config_system(){
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
-    show_spinner cs_config_catalina_option
     show_spinner cs_append_iptables
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
@@ -1859,18 +1860,6 @@ cs_config_tomcat(){
     cat >> $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/setenv.sh <<EOF
 export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true -Djava.security.egd=file:/dev/./urandom"
 EOF
-    pass
-}
-
-cs_config_catalina_option(){
-    echo_subtitle "Config catalina option"
-    catalina_opt=$(zstack-ctl getenv CATALINA_OPTS | awk -F '=' '{print $2}' | grep -v "^$")
-
-    if [[ ! "$catalina_opt" =~ "OmitStackTraceInFastThrow" ]];  then
-        catalina_opt="-XX:-OmitStackTraceInFastThrow $catalina_opt"
-    fi
-
-    zstack-ctl setenv CATALINA_OPTS="$catalina_opt"
     pass
 }
 
@@ -3059,6 +3048,14 @@ fi
 
 #Install Mysql and Rabbitmq
 install_db_msgbus
+
+#Delete old monitoring data if NEED_DROP_DB
+if [ -n "$NEED_DROP_DB" ]; then
+  kill -9 `ps aux | grep "/var/lib/zstack/prometheus/data" | grep -v 'grep' | awk -F ' ' '{ print $2 }'` 2>/dev/null
+  kill -9 `ps aux | grep "/var/lib/zstack/influxdb/influxdb.conf" | grep -v 'grep' | awk -F ' ' '{ print $2 }'` 2>/dev/null
+  rm -rf /var/lib/zstack/prometheus/data
+  rm -rf /var/lib/zstack/influxdb/
+fi
 
 if [ ! -z $NEED_SET_MN_IP ];then
     zstack-ctl configure management.server.ip=${MANAGEMENT_IP}

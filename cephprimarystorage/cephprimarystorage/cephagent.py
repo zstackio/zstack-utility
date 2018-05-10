@@ -20,12 +20,20 @@ from imagestore import ImageStoreClient
 logger = log.get_logger(__name__)
 
 
+class CephPoolCapacity(object):
+    def __init__(self, name, availableCapacity, replicatedSize, used):
+        self.name = name
+        self.availableCapacity = availableCapacity
+        self.replicatedSize = replicatedSize
+        self.usedCapacity = used
+
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
         self.error = error if error else ''
         self.totalCapacity = None
         self.availableCapacity = None
+        self.poolCapacities = None
 
 class CheckIsBitsExistingRsp(AgentResponse):
     def __init__(self):
@@ -205,6 +213,17 @@ class CephAgent(object):
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
 
+        if not df.pools:
+            return
+
+        rsp.poolCapacities = []
+        for pool in df.pools:
+            poolAvailable = pool.stats.max_avail_
+            poolUsed = pool.stats.bytes_used_
+            poolSize = jsonobject.loads(shell.call('ceph osd pool get %s size -f json' % pool.name)).size
+            poolCapacity = CephPoolCapacity(pool.name, poolAvailable, poolSize, poolUsed)
+            rsp.poolCapacities.append(poolCapacity)
+
     def _get_file_size(self, path):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
@@ -331,6 +350,8 @@ class CephAgent(object):
                     rsp.error = "%s %s" % (e, o)
 
         doPing()
+        
+        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -546,7 +567,10 @@ class CephAgent(object):
         if realname not in pool_names:
             shell.call('ceph osd pool create %s 128' % realname)
 
-        return jsonobject.dumps(AgentResponse())
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def check_pool(self, req):
@@ -692,7 +716,6 @@ class CephAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
         rsp = AgentResponse()
-        self._set_capacity_to_response(rsp)
         try:
             o = shell.call('rbd snap ls --format json %s' % path)
         except Exception as e:
@@ -711,6 +734,7 @@ class CephAgent(object):
 
         do_deletion()
 
+        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     def _migrate_volume(self, volume_uuid, volume_size, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):

@@ -115,6 +115,8 @@ if [ $? -ne 0 ]; then
     echo "tmpdir=$mysql_tmp_path"
     sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
+
+sync
 '''
 
 def signal_handler(signal, frame):
@@ -205,6 +207,8 @@ def info(*msg):
         out = '%s\n' % ''.join(msg)
     else:
         out = ''.join(msg)
+    now = datetime.now()
+    out = "%s " % str(now) + out
     sys.stdout.write(out)
 
 def get_detail_version():
@@ -620,6 +624,8 @@ class Ctl(object):
     ZSTACK_UI_HOME = '/usr/local/zstack/zstack-ui/'
     ZSTACK_UI_KEYSTORE = ZSTACK_UI_HOME + 'ui.keystore.p12'
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
+    # for console proxy https
+    ZSTACK_UI_KEYSTORE_PEM = ZSTACK_UI_HOME + 'ui.keystore.pem'
 
     def __init__(self):
         self.commands = {}
@@ -821,17 +827,20 @@ class Ctl(object):
 
             cmd = ShellCmd(sql)
             cmd(False)
-            if cmd.return_code == 0:
-                # record the IP and port, so next time we will try them first
+            if cmd.return_code != 0:
+                errors.append(
+                    'failed to connect to the mysql server[hostname:%s, port:%s, user:%s, password:%s]: %s %s' % (
+                        hostname, port, user, password, cmd.stderr, cmd.stdout
+                    ))
+                continue
+
+            # record the IP and port, so next time we will try them first
+            if hostname != last_ip or port != last_port:
                 ctl.put_envs([
                     (self.LAST_ALIVE_MYSQL_IP, hostname),
                     (self.LAST_ALIVE_MYSQL_PORT, port)
                 ])
-                return hostname, port, user, password
-
-            errors.append('failed to connect to the mysql server[hostname:%s, port:%s, user:%s, password:%s]: %s %s' % (
-                hostname, port, user, password, cmd.stderr, cmd.stdout
-            ))
+            return hostname, port, user, password
 
         raise CtlError('\n'.join(errors))
 
@@ -1785,6 +1794,8 @@ class StartCmd(Command):
                 '-Djava.net.preferIPv4Stack=true',
                 '-Dcom.sun.management.jmxremote=true',
                 '-Djava.security.egd=file:/dev/./urandom',
+                '-XX:-OmitStackTraceInFastThrow',
+                '-XX:MaxMetaspaceSize=512m'
             ]
 
             if ctl.extra_arguments:
@@ -1847,7 +1858,7 @@ class StartCmd(Command):
             else:
                 beanXml = "zstack.xml"
 
-            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
+            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s; sync' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
 
         user = getpass.getuser()
         if user != 'root':
@@ -1882,6 +1893,7 @@ class StartCmd(Command):
         info('successfully started management node')
 
         ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
+        shell('sync')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
@@ -4241,7 +4253,7 @@ class ResetRabbitCmd(Command):
 
         ip = get_default_ip()
         replaced_ip = ip.replace(".", "\.")
-        shell("sed -i '/%s /c\%s %s' /etc/hosts" % (replaced_ip, ip, new_hostname))
+        shell("sed -i '/%s /c\%s %s' /etc/hosts; sync" % (replaced_ip, ip, new_hostname))
 
 class InstallRabbitCmd(Command):
     def __init__(self):
@@ -4709,7 +4721,7 @@ class RestoreMysqlCmd(Command):
 
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack/"
-    vrouter_log_dir = "/home/vyos/zvr/"
+    vrouter_log_dir_list = ["/home/vyos/zvr", "/var/log/zstack"]
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
                      'zstack-agent/collectd.log','zstack-agent/server.log']
     bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
@@ -4769,27 +4781,62 @@ class CollectLogCmd(Command):
         run_remote_command(command, host_post_info)
         command = "iptables-save > %s/iptables_info" % tmp_log_dir
         run_remote_command(command, host_post_info)
+        command = "ebtables-save > %s/ebtables_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
         command = "journalctl -x > %s/journalctl_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+
+    def get_sharedblock_log(self, host_post_info, tmp_log_dir):
+        info("Collecting sharedblock log from : %s ..." % host_post_info.host)
+        target_dir = tmp_log_dir + "sharedblock"
+        command = "mkdir -p %s " % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "lsblk -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN > %s/lsblk_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "ls -l /dev/disk/by-id > %s/ls_dev_disk_by-id_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "multipath -ll -v3 > %s/ls_dev_disk_by-id_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "cp /var/log/sanlock.log %s || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "lvmlockctl -i > %s/lvmlockctl_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "sanlock client status > %s/sanlock_client_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "sanlock client host_status> %s/sanlock_host_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "lvs --nolocking -oall > %s/lvm_lvs_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "vgs --nolocking -oall > %s/lvm_vgs_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "lvmconfig --type diff > %s/lvm_config_diff_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "cp -r /etc/lvm/ %s || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "cp -r /etc/sanlock %s || true" % target_dir
         run_remote_command(command, host_post_info)
 
     def get_pkg_list(self, host_post_info, tmp_log_dir):
         command = "rpm -qa | sort > %s/pkg_list" % tmp_log_dir
         run_remote_command(command, host_post_info)
 
-
     def get_vrouter_log(self, host_post_info, collect_dir):
         #current vrouter log is very small, so collect all logs for debug
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from vrouter: %s ..." % host_post_info.host)
-            local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
-            tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.vrouter_log_dir
-            command = "mkdir -p %s " % tmp_log_dir
-            run_remote_command(command, host_post_info)
-            command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
-            run_remote_command(command, host_post_info)
-            command = "cp %s/*.log %s/*.json %s" % (CollectLogCmd.vrouter_log_dir, CollectLogCmd.vrouter_log_dir,tmp_log_dir)
-            run_remote_command(command, host_post_info)
-            self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
+            for vrouter_log_dir in CollectLogCmd.vrouter_log_dir_list:
+                local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
+                tmp_log_dir = "/tmp/tmp-log/"
+                command = "mkdir -p %s " % tmp_log_dir
+                run_remote_command(command, host_post_info)
+                command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
+                run_remote_command(command, host_post_info)
+                command = "cp -r %s %s" % (vrouter_log_dir, tmp_log_dir)
+                run_remote_command(command, host_post_info)
+                self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
             warn("Vrouter %s is unreachable!" % host_post_info.host)
 
@@ -4838,6 +4885,7 @@ class CollectLogCmd(Command):
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
+            self.get_sharedblock_log(host_post_info, tmp_log_dir)
             self.get_pkg_list(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir,host_post_info)
 
@@ -5264,13 +5312,14 @@ class ChangeIpCmd(Command):
             info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
 
             # update zstack_ui db url
-            db_url = ctl.read_ui_property('db_url')
-            db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
-            db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
-            ctl.write_ui_properties([
-              ('db_url', db_new_url),
-            ])
-            info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
+            if os.path.isfile(ctl.ui_properties_file_path):
+                db_url = ctl.read_ui_property('db_url')
+                db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
+                db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
+                ctl.write_ui_properties([
+                    ('db_url', db_new_url),
+                ])
+                info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
@@ -5623,6 +5672,8 @@ which ansible-playbook &> /dev/null
 if [ $$? -ne 0 ]; then
     pip install -i file://$pypi_path/simple --trusted-host localhost ansible
 fi
+
+sync
 '''
         t = string.Template(post_script)
         post_script = t.substitute({
@@ -5809,6 +5860,7 @@ yum clean all >/dev/null 2>&1
         })
 
         ansible(yaml, host_info.host, args.debug, private_key)
+        shell('sync')
         info('successfully installed new management node on machine(%s)' % host_info.host)
 
 class ShowConfiguration(Command):
@@ -6089,27 +6141,21 @@ class InstallZstackUiCmd(Command):
         if not os.path.isdir(tools_path):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % tools_path)
 
-        ui_binary = None
-        for l in os.listdir(tools_path):
-            if l.startswith('zstack-ui'):
-                ui_binary = l
-                break
-
-        if not ui_binary:
+        ui_binary = 'zstack-ui.war'
+        if not ui_binary in os.listdir(tools_path):
             raise CtlError('cannot find zstack-ui package under %s, please make sure you have installed ZStack management node' % tools_path)
-
         ui_binary_path = os.path.join(tools_path, ui_binary)
 
         yaml = '''---
-- hosts: $host
+- hosts: ${host}
   remote_user: root
   tasks:
     - name: create zstack-ui directory
-      shell: "mkdir -p {{ui_home}}/tmp"
+      shell: "mkdir -p ${ui_home}/tmp"
     - name: copy zstack-ui package
-      copy: src=$src dest=$dest
+      copy: src=${src} dest=${dest}
     - name: decompress zstack-ui package
-      shell: "rm -rf {{ui_home}}/tmp; unzip {{dest}} -d {{ui_home}}/tmp"
+      shell: "rm -rf ${ui_home}/tmp; unzip ${dest} -d ${ui_home}/tmp"
 '''
 
         t = string.Template(yaml)
@@ -7429,7 +7475,7 @@ class StartUiCmd(Command):
         parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
         parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias.")
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path.")
-        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS).")
+        parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type.")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password.")
 
         # arguments for ui_db
@@ -7462,7 +7508,9 @@ class StartUiCmd(Command):
                     if not default_ip:
                         info('UI server is still running[PID:%s]' % pid)
                     else:
-                        info('UI server is still running[PID:%s], http://%s:%s' % (pid, default_ip, port))
+                        check_https_cmd = ShellCmd('ps -f -p %s | grep ssl.enabled=true >/dev/null' % pid)
+                        check_https_cmd(is_exception=False)
+                        info('UI server is still running[PID:%s], %s://%s:%s' % (pid, 'https' if check_https_cmd.return_code == 0 else 'http', default_ip, port))
                     return False
 
         pid = find_process_by_cmdline('zstack-ui.war')
@@ -7486,7 +7534,18 @@ class StartUiCmd(Command):
         p12.set_privatekey(key)
         p12.set_certificate(cert)
         p12.set_friendlyname('zstackui')
-        open(ctl.ZSTACK_UI_KEYSTORE, 'w').write(p12.export(b'password'))
+        with open(ctl.ZSTACK_UI_KEYSTORE, 'w') as f:
+            f.write(p12.export(b'password'))
+
+    def _gen_ssl_keystore_pem_from_pkcs12(self, ssl_keystore, ssl_keystore_password):
+        try:
+            p12 = OpenSSL.crypto.load_pkcs12(file(ssl_keystore, 'rb').read(), ssl_keystore_password)
+        except Exception as e:
+            raise CtlError('failed to convert %s to %s because %s' % (ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_PEM, str(e)))
+        cert_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, p12.get_certificate())
+        pkey_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, p12.get_privatekey())
+        with open(ctl.ZSTACK_UI_KEYSTORE_PEM, 'w') as f:
+            f.write(cert_pem + pkey_pem)
 
     def _get_db_info(self):
         # get default db_url, db_username, db_password etc.
@@ -7557,6 +7616,16 @@ class StartUiCmd(Command):
         if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE and args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE_CP:
             copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
             args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
+
+        # convert args.ssl_keystore to .pem
+        if args.ssl_keystore_type != 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
+            raise CtlError('%s not found.' % ctl.ZSTACK_UI_KEYSTORE_PEM)
+        if args.ssl_keystore_type == 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
+            self._gen_ssl_keystore_pem_from_pkcs12(args.ssl_keystore, args.ssl_keystore_password)
+
+        # auto configure consoleProxyCertFile if not configured already
+        if args.ssl_keystore_type == 'PKCS12' and not ctl.read_property('consoleProxyCertFile'):
+            ctl.write_property('consoleProxyCertFile', ctl.ZSTACK_UI_KEYSTORE_PEM)
 
         # ui_db
         self._get_db_info()
@@ -7654,10 +7723,10 @@ class ConfigUiCmd(Command):
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
 
         # arguments for https
-        parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI. [DEFAULT] False")
+        parser.add_argument('--enable-ssl', choices=['True', 'False'], type=str.title, help="Enable HTTPS for ZStack UI. [DEFAULT] False")
         parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias. [DEFAULT] zstackui")
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE)
-        parser.add_argument('--ssl-keystore-type', help="HTTPS SSL KeyStore Type (PKCS12/JKS). [DEFAULT] PKCS12")
+        parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type. [DEFAULT] PKCS12")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password")
 
         # arguments for ui_db
@@ -7738,38 +7807,38 @@ class ConfigUiCmd(Command):
                 copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
                 args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
 
-        if args.mn_host:
-            ctl.write_ui_property("mn_host", args.mn_host)
-        if args.mn_port:
-            ctl.write_ui_property("mn_port", args.mn_port)
-        if args.webhook_host:
-            ctl.write_ui_property("webhook_host", args.webhook_host)
-        if args.webhook_port:
-            ctl.write_ui_property("webhook_port", args.webhook_port)
-        if args.server_port:
-            ctl.write_ui_property("server_port", args.server_port)
-        if args.log:
-            ctl.write_ui_property("log", args.log)
+        if args.mn_host or args.mn_host == '':
+            ctl.write_ui_property("mn_host", args.mn_host.strip())
+        if args.mn_port or args.mn_port == '':
+            ctl.write_ui_property("mn_port", args.mn_port.strip())
+        if args.webhook_host or args.webhook_host == '':
+            ctl.write_ui_property("webhook_host", args.webhook_host.strip())
+        if args.webhook_port or args.webhook_port == '':
+            ctl.write_ui_property("webhook_port", args.webhook_port.strip())
+        if args.server_port or args.server_port == '':
+            ctl.write_ui_property("server_port", args.server_port.strip())
+        if args.log or args.log == '':
+            ctl.write_ui_property("log", args.log.strip())
 
         # https
         if args.enable_ssl:
             ctl.write_ui_property("enable_ssl", args.enable_ssl.lower())
-        if args.ssl_keyalias:
-            ctl.write_ui_property("ssl_keyalias", args.ssl_keyalias)
-        if args.ssl_keystore:
-            ctl.write_ui_property("ssl_keystore", args.ssl_keystore)
-        if args.ssl_keystore_type:
-            ctl.write_ui_property("ssl_keystore_type", args.ssl_keystore_type)
-        if args.ssl_keystore_password:
-            ctl.write_ui_property("ssl_keystore_password", args.ssl_keystore_password)
+        if args.ssl_keyalias or args.ssl_keyalias == '':
+            ctl.write_ui_property("ssl_keyalias", args.ssl_keyalias.strip())
+        if args.ssl_keystore or args.ssl_keystore == '':
+            ctl.write_ui_property("ssl_keystore", args.ssl_keystore.strip())
+        if args.ssl_keystore_type or args.ssl_keystore_type == '':
+            ctl.write_ui_property("ssl_keystore_type", args.ssl_keystore_type.strip())
+        if args.ssl_keystore_password or args.ssl_keystore_password == '':
+            ctl.write_ui_property("ssl_keystore_password", args.ssl_keystore_password.strip())
 
         # ui_db
-        if args.db_url:
-            ctl.write_ui_property("db_url", args.db_url)
-        if args.db_username:
-            ctl.write_ui_property("db_username", args.db_username)
-        if args.db_password:
-            ctl.write_ui_property("db_password", args.db_password)
+        if args.db_url or args.db_url == '':
+            ctl.write_ui_property("db_url", args.db_url.strip())
+        if args.db_username or args.db_username == '':
+            ctl.write_ui_property("db_username", args.db_username.strip())
+        if args.db_password or args.db_password == '':
+            ctl.write_ui_property("db_password", args.db_password.strip())
 
 # For UI 2.0
 class ShowUiCfgCmd(Command):

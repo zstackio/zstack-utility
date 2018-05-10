@@ -14,6 +14,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
 import os.path
@@ -22,8 +23,16 @@ import threading
 import time
 import libvirt
 import pyudev
+import traceback
+import Queue
 
 IS_AARCH64 = platform.machine() == 'aarch64'
+
+
+class ReconnectMeCmd(object):
+    def __init__(self):
+        self.hostUuid = None
+        self.reason = None
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -80,6 +89,7 @@ class UpdateHostOSCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(UpdateHostOSCmd, self).__init__()
         self.hostUuid = None
+        self.excludePackages = None
 
 class UpdateHostOSRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -92,7 +102,7 @@ def _get_memory(word):
     (name, capacity) = out.split(':')
     capacity = re.sub('[k|K][b|B]', '', capacity).strip()
     #capacity = capacity.rstrip('kB').rstrip('KB').rstrip('kb').strip()
-    return sizeunit.KiloByte.toByte(long(capacity))   
+    return sizeunit.KiloByte.toByte(long(capacity))
 
 def _get_total_memory():
     return _get_memory('MemTotal')
@@ -102,7 +112,105 @@ def _get_free_memory():
 
 def _get_used_memory():
     return _get_total_memory() - _get_free_memory()
-    
+
+
+class LibvirtAutoReconnect(object):
+    conn = libvirt.open('qemu:///system')
+
+    if not conn:
+        raise Exception('unable to get libvirt connection')
+
+    libvirt_event_callbacks = {}
+
+    def __init__(self, func):
+        self.func = func
+        self.exception = None
+
+    @staticmethod
+    def add_libvirt_callback(id, cb):
+        cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(id, None)
+        if cbs is None:
+            cbs = []
+            LibvirtAutoReconnect.libvirt_event_callbacks[id] = cbs
+        cbs.append(cb)
+
+    @staticmethod
+    def register_libvirt_callbacks():
+        def reboot_callback(conn, dom, opaque):
+            cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT)
+            if not cbs:
+                return
+
+            for cb in cbs:
+                try:
+                    cb(conn, dom, opaque)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, reboot_callback,
+                                                         None)
+
+        def lifecycle_callback(conn, dom, event, detail, opaque):
+            cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE)
+            if not cbs:
+                return
+
+            for cb in cbs:
+                try:
+                    cb(conn, dom, event, detail, opaque)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
+                                                         lifecycle_callback, None)
+
+        # NOTE: the keepalive doesn't work on some libvirtd even the versions are the same
+        # the error is like "the caller doesn't support keepalive protocol; perhaps it's missing event loop implementation"
+
+        # def start_keep_alive(_):
+        #     try:
+        #         LibvirtAutoReconnect.conn.setKeepAlive(5, 3)
+        #         return True
+        #     except Exception as e:
+        #         logger.warn('unable to start libvirt keep-alive, %s' % str(e))
+        #         return False
+        #
+        # if not linux.wait_callback_success(start_keep_alive, timeout=5, interval=0.5):
+        #     raise Exception('unable to start libvirt keep-alive after 5 seconds, see the log for detailed error')
+
+    @lock.lock('libvirt-reconnect')
+    def _reconnect(self):
+        def test_connection():
+            try:
+                LibvirtAutoReconnect.conn.getLibVersion()
+                return None
+            except libvirt.libvirtError as ex:
+                return ex
+
+        ex = test_connection()
+        if not ex:
+            # the connection is ok
+            return
+
+        logger.warn("the libvirt connection is broken, there is no safeway to auto-reconnect without fd leak, we"
+                    " will ask the mgmt server to reconnect us after self quit")
+        HostPlugin.queue.put("exit")
+
+    def __call__(self, *args, **kwargs):
+        try:
+            return self.func(LibvirtAutoReconnect.conn)
+        except libvirt.libvirtError as ex:
+            err = str(ex)
+            if 'client socket is closed' in err or 'Broken pipe' in err:
+                logger.debug('socket to the libvirt is broken[%s], try reconnecting' % err)
+                self._reconnect()
+                return self.func(LibvirtAutoReconnect.conn)
+            else:
+                raise
+
+
 class HostPlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -116,6 +224,8 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
+
+    queue = Queue.Queue()
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -171,13 +281,13 @@ class HostPlugin(kvmagent.KvmAgent):
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
         rsp.iptablesSucc = apply_iptables_result
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def ping(self, req):
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def echo(self, req):
         logger.debug('get echoed')
@@ -198,6 +308,7 @@ class HostPlugin(kvmagent.KvmAgent):
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
+            rsp.cpuModelName = "Unknown"
         else:
             if shell.run('grep vmx /proc/cpuinfo') == 0:
                 rsp.hvmCpuFlag = 'vmx'
@@ -206,11 +317,16 @@ class HostPlugin(kvmagent.KvmAgent):
                 if shell.run('grep svm /proc/cpuinfo') == 0:
                     rsp.hvmCpuFlag = 'svm'
 
-            model_name = shell.call("awk -F: '/^model name/{print $2; exit}' /proc/cpuinfo")
-            rsp.cpuModelName = model_name.strip()
+            rsp.cpuModelName = self._get_host_cpu_model()
 
         return jsonobject.dumps(rsp)
-        
+
+    @LibvirtAutoReconnect
+    def _get_host_cpu_model(conn):
+        xml_object = xmlobject.loads(conn.getCapabilities())
+        return str(xml_object.host.cpu.model.text_)
+
+
     @kvmagent.replyerror
     @in_bash
     def capacity(self, req):
@@ -228,23 +344,23 @@ class HostPlugin(kvmagent.KvmAgent):
         ret = jsonobject.dumps(rsp)
         logger.debug('get host capacity: %s' % ret)
         return ret
-    
+
     def _heartbeat_func(self, heartbeat_file):
         class Heartbeat(object):
             def __init__(self):
                 self.current = None
-        
+
         hb = Heartbeat()
         hb.current = time.time()
         with open(heartbeat_file, 'w') as fd:
             fd.write(jsonobject.dumps(hb))
         return True
-    
+
     @kvmagent.replyerror
     def setup_heartbeat_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetupMountablePrimaryStorageHeartbeatResponse()
-        
+
         for hb in cmd.heartbeatFilePaths:
             hb_dir = os.path.dirname(hb)
             mount_path = os.path.dirname(hb_dir)
@@ -252,21 +368,21 @@ class HostPlugin(kvmagent.KvmAgent):
                 rsp.error = '%s is not mounted, setup heartbeat file[%s] failed' % (mount_path, hb)
                 rsp.success = False
                 return jsonobject.dumps(rsp)
-            
+
         for hb in cmd.heartbeatFilePaths:
             t = self.heartbeat_timer.get(hb, None)
             if t:
                 t.cancel()
-            
+
             hb_dir = os.path.dirname(hb)
             if not os.path.exists(hb_dir):
                 os.makedirs(hb_dir, 0755)
-                
+
             t = thread.timer(cmd.heartbeatInterval, self._heartbeat_func, args=[hb], stop_on_exception=False)
             t.start()
             self.heartbeat_timer[hb] = t
             logger.debug('create heartbeat file at[%s]' % hb)
-            
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -326,6 +442,9 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:]) if len(line) > 2 else ""
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
+                    # special case: USB2.0 with full speed should be attached to USB1.1 Controller
+                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep '12MBit/s'" % devId)
+                    info.usbVersion = info.usbVersion if rst != 0 else '1.1'
                 elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
                 elif line[0] == 'iProduct' and len(line) > 2:
@@ -368,6 +487,13 @@ if __name__ == "__main__":
     @kvmagent.replyerror
     @in_bash
     def update_os(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if not cmd.excludePackages:
+            exclude = ""
+        else:
+            exclude = "--exclude=" + cmd.excludePackages
+        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn %s update -y" % exclude
+
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
             rsp.success = False
@@ -378,14 +504,16 @@ if __name__ == "__main__":
         elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
-        elif shell.run("yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn update -y") != 0:
+        elif shell.run(yum_cmd) != 0:
             rsp.success = False
             rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
+        else:
+            logger.debug("successfully run: %s" % yum_cmd)
         return jsonobject.dumps(rsp)
 
     def start(self):
         self.host_uuid = None
-        
+
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.PING_PATH, self.ping)
@@ -403,7 +531,48 @@ if __name__ == "__main__":
         if os.path.exists(filepath):
             os.unlink(filepath)
 
-        vm_plugin.cleanup_stale_vnc_iptable_chains()
+        @thread.AsyncThread
+        def wait_end_signal():
+            while True:
+                try:
+                    self.queue.get(True)
+
+                    # the libvirt has been stopped or restarted
+                    # to prevent fd leak caused by broken libvirt connection
+                    # we have to ask mgmt server to reboot the agent
+                    url = self.config.get(kvmagent.SEND_COMMAND_URL)
+                    if not url:
+                        logger.warn('cannot find SEND_COMMAND_URL, unable to ask the mgmt server to reconnect us')
+                        os._exit(1)
+
+                    host_uuid = self.config.get(kvmagent.HOST_UUID)
+                    if not host_uuid:
+                        logger.warn('cannot find HOST_UUID, unable to ask the mgmt server to reconnect us')
+                        os._exit(1)
+
+                    logger.warn("libvirt has been rebooted or stopped, ask the mgmt server to reconnt us")
+                    cmd = ReconnectMeCmd()
+                    cmd.hostUuid = host_uuid
+                    cmd.reason = "libvirt rebooted or stopped"
+                    http.json_dump_post(url, cmd, {'commandpath': '/kvm/reconnectme'})
+                    os._exit(1)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        wait_end_signal()
+
+        @thread.AsyncThread
+        def monitor_libvirt():
+            while True:
+                if shell.run('pid=$(cat /var/run/libvirtd.pid); ps -p $pid > /dev/null') != 0:
+                    logger.warn(
+                        "cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
+                    self.queue.put("exit")
+
+                time.sleep(20)
+
+        monitor_libvirt()
 
 
     def stop(self):
