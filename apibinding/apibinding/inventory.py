@@ -4527,6 +4527,7 @@ class APIAddHybridKeySecretMsg(object):
         self.description = None
         #mandatory field
         self.type = NotNoneField()
+        self.sync = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
