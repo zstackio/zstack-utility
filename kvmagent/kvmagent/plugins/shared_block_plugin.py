@@ -22,7 +22,7 @@ HEARTBEAT_TAG = "zs::sharedblock::heartbeat"
 VOLUME_TAG = "zs::sharedblock::volume"
 IMAGE_TAG = "zs::sharedblock::image"
 DEFAULT_VG_METADATA_SIZE = "2g"
-DEFAULT_SANLOCK_LV_SIZE = "2048"
+DEFAULT_SANLOCK_LV_SIZE = "1024"
 
 
 class AgentRsp(object):
