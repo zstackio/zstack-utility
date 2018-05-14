@@ -644,17 +644,41 @@ def qcow2_get_backing_file(path):
 
 # Get derived file and all its backing files
 def qcow2_get_file_chain(path):
-    chain = [ path ]
-    bf = qcow2_get_backing_file(path)
-    while bf:
-        chain.append(bf)
-        bf = qcow2_get_backing_file(bf)
+    out = shell.call("qemu-img info --backing-chain %s | grep 'image:' | awk '{print $2}'" % path)
+    return out.splitlines()
 
-    return chain
+def get_qcow2_file_chain_size(path):
+    chain = qcow2_get_file_chain(path)
+    size = 0L
+    for path in chain:
+        size += os.path.getsize(path)
+    return size
 
-def get_qcow2_base_image_path_recusively(path):
+def get_qcow2_base_backing_file_recusively(path):
     chain = qcow2_get_file_chain(path)
     return chain[-1]
+
+def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
+    real_vol_dir = os.path.realpath(vol_install_dir)
+    real_cache_dir = os.path.realpath(image_cache_dir)
+    backing_files = shell.call(
+        "set -o pipefail; find %s -type f -name '*.qcow2' -exec qemu-img info {} \;| grep 'backing file:' | awk '{print $3}'"
+        % real_vol_dir).splitlines()
+
+    base_image = set()
+    for backing_file in backing_files:
+        real_image_path = os.path.realpath(backing_file)
+        if real_image_path.startswith(real_cache_dir):
+            base_image.add(real_image_path)
+
+    if len(base_image) == 1:
+        return base_image.pop()
+
+    if len(base_image) == 0:
+        return None
+
+    if len(base_image) > 1:
+        raise Exception('more than one image file found in cache dir')
 
 def rmdir_if_empty(dirpath):
     try:
