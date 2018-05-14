@@ -207,6 +207,8 @@ def info(*msg):
         out = '%s\n' % ''.join(msg)
     else:
         out = ''.join(msg)
+    now = datetime.now()
+    out = "%s " % str(now) + out
     sys.stdout.write(out)
 
 def get_detail_version():
@@ -4719,7 +4721,7 @@ class RestoreMysqlCmd(Command):
 
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack/"
-    vrouter_log_dir = "/home/vyos/zvr/"
+    vrouter_log_dir_list = ["/home/vyos/zvr", "/var/log/zstack"]
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
                      'zstack-agent/collectd.log','zstack-agent/server.log']
     bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
@@ -4779,27 +4781,62 @@ class CollectLogCmd(Command):
         run_remote_command(command, host_post_info)
         command = "iptables-save > %s/iptables_info" % tmp_log_dir
         run_remote_command(command, host_post_info)
+        command = "ebtables-save > %s/ebtables_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
         command = "journalctl -x > %s/journalctl_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+
+    def get_sharedblock_log(self, host_post_info, tmp_log_dir):
+        info("Collecting sharedblock log from : %s ..." % host_post_info.host)
+        target_dir = tmp_log_dir + "sharedblock"
+        command = "mkdir -p %s " % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "lsblk -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN > %s/lsblk_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "ls -l /dev/disk/by-id > %s/ls_dev_disk_by-id_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "multipath -ll -v3 > %s/ls_dev_disk_by-id_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "cp /var/log/sanlock.log %s || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "lvmlockctl -i > %s/lvmlockctl_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "sanlock client status > %s/sanlock_client_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "sanlock client host_status> %s/sanlock_host_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "lvs --nolocking -oall > %s/lvm_lvs_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "vgs --nolocking -oall > %s/lvm_vgs_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "lvmconfig --type diff > %s/lvm_config_diff_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "cp -r /etc/lvm/ %s || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "cp -r /etc/sanlock %s || true" % target_dir
         run_remote_command(command, host_post_info)
 
     def get_pkg_list(self, host_post_info, tmp_log_dir):
         command = "rpm -qa | sort > %s/pkg_list" % tmp_log_dir
         run_remote_command(command, host_post_info)
 
-
     def get_vrouter_log(self, host_post_info, collect_dir):
         #current vrouter log is very small, so collect all logs for debug
         if check_host_reachable(host_post_info) is True:
             info("Collecting log from vrouter: %s ..." % host_post_info.host)
-            local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
-            tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.vrouter_log_dir
-            command = "mkdir -p %s " % tmp_log_dir
-            run_remote_command(command, host_post_info)
-            command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
-            run_remote_command(command, host_post_info)
-            command = "cp %s/*.log %s/*.json %s" % (CollectLogCmd.vrouter_log_dir, CollectLogCmd.vrouter_log_dir,tmp_log_dir)
-            run_remote_command(command, host_post_info)
-            self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
+            for vrouter_log_dir in CollectLogCmd.vrouter_log_dir_list:
+                local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
+                tmp_log_dir = "/tmp/tmp-log/"
+                command = "mkdir -p %s " % tmp_log_dir
+                run_remote_command(command, host_post_info)
+                command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
+                run_remote_command(command, host_post_info)
+                command = "cp -r %s %s" % (vrouter_log_dir, tmp_log_dir)
+                run_remote_command(command, host_post_info)
+                self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
             warn("Vrouter %s is unreachable!" % host_post_info.host)
 
@@ -4848,6 +4885,7 @@ class CollectLogCmd(Command):
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
+            self.get_sharedblock_log(host_post_info, tmp_log_dir)
             self.get_pkg_list(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir,host_post_info)
 
