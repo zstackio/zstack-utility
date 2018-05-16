@@ -198,6 +198,15 @@ def get_running_host_id(vgUuid):
     return cmd.stdout
 
 
+def wipe_fs(disks):
+    for disk in disks:
+        cmd = shell.ShellCmd("pvdisplay %s" % disk)
+        cmd(is_exception=False)
+        if cmd.return_code != 0:
+            cmd = shell.ShellCmd("wipefs -a %s" % disk)
+            cmd(is_exception=False)
+
+
 def get_vg_size(vgUuid):
     cmd = shell.ShellCmd("vgs --nolocking --readonly %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
     cmd(is_exception=True)
