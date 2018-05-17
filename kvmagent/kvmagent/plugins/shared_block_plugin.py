@@ -211,7 +211,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_sanlock_by_sed("renewal_read_extend_sec", "renewal_read_extend_sec=24")
             lvm.config_sanlock_by_sed("debug_renew", "debug_renew=1")
 
-        def create_vg_if_not_found(vgUuid, diskPaths, hostUuid):
+        def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
             @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
             def find_vg(vgUuid):
                 cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
@@ -223,6 +223,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             try:
                 find_vg(vgUuid)
             except RetryException:
+                if forceWipe is True:
+                    lvm.wipe_fs(diskPaths)
+
                 cmd = shell.ShellCmd("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
                                      (INIT_TAG, hostUuid, time.time(),
                                       DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
@@ -242,7 +245,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             disk = CheckDisk(diskUuid)
             diskPaths.add(disk.get_path())
         lvm.start_lvmlockd()
-        rsp.isFirst = create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid)
+        rsp.isFirst = create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
         lvm.start_vg_lock(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time()))
