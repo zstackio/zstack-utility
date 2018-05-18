@@ -2942,7 +2942,13 @@ check_system
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
-    pre_upgrade_version=`zstack-ctl get_version`
+    # no get_version before zstack 2.4.0
+    zstack-ctl get_version >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        pre_upgrade_version=`zstack-ctl get_version`
+    else
+        pre_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
+    fi
 
     #only upgrade zstack
     upgrade_zstack
