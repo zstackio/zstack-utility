@@ -785,9 +785,10 @@ iu_deploy_zstack_repo() {
     RELEASEVER=$(rpm -q --qf "%{version}" -f /etc/$DISTRO)
     [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
     mkdir -p ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/{x86_64,aarch64}
-    [ -d /opt/zstack-dvd/ ] && ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
-    [ -d /opt/zstack-dvd/Extra/qemu-kvm-ev/ ] && \
-        ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
+    ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
+    ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
+    ln -s /opt/zstack-dvd-altarch/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/os >/dev/null 2>&1
+    ln -s /opt/zstack-dvd-altarch/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/qemu-kvm-ev >/dev/null 2>&1
 }
 
 unpack_zstack_into_tomcat(){
