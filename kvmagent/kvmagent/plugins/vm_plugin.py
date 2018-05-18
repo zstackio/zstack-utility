@@ -291,6 +291,10 @@ class KvmDetachUsbDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(KvmDetachUsbDeviceRsp, self).__init__()
 
+class CheckMountDomainRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckMountDomainRsp, self).__init__()
+        self.active = False
 class KvmResizeVolumeCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(KvmResizeVolumeCommand, self).__init__()
@@ -3058,6 +3062,7 @@ class VmPlugin(kvmagent.KvmAgent):
     HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
     KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
     KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
+    CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
 
     VM_OP_START = "start"
@@ -3300,6 +3305,28 @@ class VmPlugin(kvmagent.KvmAgent):
         outbound = shell.call('virsh domiftune %s %s | grep "outbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
         rsp.inbound = long(inbound) * 8 * 1024
         rsp.outbound = long(outbound) * 8 * 1024
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_mount_domain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckMountDomainRsp()
+
+        finish_time = time.time() + (cmd.timeout / 1000)
+        while time.time() < finish_time:
+            try:
+                logger.debug("check mount url: %s" % cmd.url)
+                linux.is_valid_nfs_url(cmd.url)
+                rsp.active = True
+                return jsonobject.dumps(rsp)
+            except Exception as err:
+                if 'cannont resolve to ip address' in err.message:
+                    logger.warn(err.message)
+                    logger.warn('wait 1 seconds')
+                else:
+                    raise err
+            time.sleep(1)
+        rsp.active = False
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -4003,6 +4030,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
         http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
         http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
+        http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
 
         self.register_libvirt_event()
