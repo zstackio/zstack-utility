@@ -207,6 +207,11 @@ def wipe_fs(disks):
             cmd(is_exception=False)
 
 
+def add_pv(vg_uuid, disk_path, metadata_size):
+    cmd = shell.ShellCmd("vgextend --metadatasize %s %s %s" % (metadata_size, vg_uuid, disk_path))
+    cmd(is_exception=True)
+
+
 def get_vg_size(vgUuid):
     cmd = shell.ShellCmd("vgs --nolocking --readonly %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
     cmd(is_exception=True)

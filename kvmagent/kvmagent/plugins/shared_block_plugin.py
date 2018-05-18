@@ -150,6 +150,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CHANGE_VOLUME_ACTIVE_PATH = "/sharedblock/volume/active"
     GET_VOLUME_SIZE_PATH = "/sharedblock/volume/getsize"
     CHECK_DISKS_PATH = "/sharedblock/disks/check"
+    ADD_SHARED_BLOCK = "/sharedblock/disks/add"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -173,6 +174,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHANGE_VOLUME_ACTIVE_PATH, self.active_lv)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
+        http_server.register_async_uri(self.ADD_SHARED_BLOCK, self.add_disk)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -188,6 +190,36 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             disk.get_path()
 
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
+        @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
+        def find_vg(vgUuid):
+            cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd(is_exception=False)
+            if cmd.return_code != 0:
+                raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
+            return True
+
+        try:
+            find_vg(vgUuid)
+        except RetryException:
+            if forceWipe is True:
+                lvm.wipe_fs(diskPaths)
+
+            cmd = shell.ShellCmd("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
+                                 (INIT_TAG, hostUuid, time.time(),
+                                  DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
+            cmd(is_exception=False)
+            if cmd.return_code == 0:
+                return True
+            if find_vg(vgUuid) is False:
+                raise Exception("can not find vg %s with disks: %s and create failed for %s " %
+                                (vgUuid, diskPaths, cmd.stderr))
+        except Exception as e:
+            raise e
+
+        return False
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)
@@ -211,41 +243,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_sanlock_by_sed("renewal_read_extend_sec", "renewal_read_extend_sec=24")
             lvm.config_sanlock_by_sed("debug_renew", "debug_renew=1")
 
-        def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
-            @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
-            def find_vg(vgUuid):
-                cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
-                cmd(is_exception=False)
-                if cmd.return_code != 0:
-                    raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
-                return True
-
-            try:
-                find_vg(vgUuid)
-            except RetryException:
-                if forceWipe is True:
-                    lvm.wipe_fs(diskPaths)
-
-                cmd = shell.ShellCmd("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
-                                     (INIT_TAG, hostUuid, time.time(),
-                                      DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
-                cmd(is_exception=False)
-                if cmd.return_code == 0:
-                    return True
-                if find_vg(vgUuid) is False:
-                    raise Exception("can not find vg %s with disks: %s and create failed for %s " %
-                                (vgUuid, diskPaths, cmd.stderr))
-            except Exception as e:
-                raise e
-
-            return False
-
         config_lvm(cmd.hostId)
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
             diskPaths.add(disk.get_path())
         lvm.start_lvmlockd()
-        rsp.isFirst = create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
+        rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
         lvm.start_vg_lock(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time()))
@@ -290,6 +293,24 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.deactive_lv(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.stop_vg_lock(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @lock.file_lock(LOCK_FILE)
+    def add_disk(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        disk = CheckDisk(cmd.diskUuid)
+        command = shell.ShellCmd("vgs %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
+        command(is_exception=False)
+        if command.return_code != 0:
+            self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
+        else:
+            if cmd.forceWipe is True:
+                lvm.wipe_fs(disk.get_path())
+            lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
+
+        rsp = AgentRsp
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
 
