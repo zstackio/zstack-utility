@@ -856,7 +856,7 @@ upgrade_zstack(){
 
     #set zstack upgrade params 
     upgrade_params=''
-    post_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
+    post_upgrade_version=`zstack-ctl get_version`
 
     for item in ${upgrade_params_array[*]}; do
         version=`echo $item | cut -d ',' -f 1`
@@ -2942,7 +2942,7 @@ check_system
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
-    pre_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
+    pre_upgrade_version=`zstack-ctl get_version`
 
     #only upgrade zstack
     upgrade_zstack

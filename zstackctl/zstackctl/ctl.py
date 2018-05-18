@@ -7960,6 +7960,17 @@ class StartVDIUICmd(Command):
         with open('/var/run/zstack/zstack-vdi.port', 'w') as fd:
             fd.write(args.server_port)
 
+class GetZStackVersion(Command):
+    def __init__(self):
+        super(GetZStackVersion, self).__init__()
+        self.name = "get_version"
+        self.description = "get zstack version from database, eg. 2.4.0"
+        ctl.register_command(self)
+
+    def run(self, args):
+        hostname, port, user, password = ctl.get_live_mysql_portal()
+        version = get_zstack_version(hostname, port, user, password)
+        sys.stdout.write(version + '\n')
 
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
@@ -8036,6 +8047,7 @@ def main():
     VDIUiStatusCmd()
     ShowSessionCmd()
     DropSessionCmd()
+    GetZStackVersion()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard
