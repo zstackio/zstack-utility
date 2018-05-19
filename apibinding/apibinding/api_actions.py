@@ -242,6 +242,18 @@ class AddDnsToL3NetworkAction(inventory.APIAddDnsToL3NetworkMsg):
         self.out = evt
         return self.out
 
+class AddDnsToVpcRouterAction(inventory.APIAddDnsToVpcRouterMsg):
+    def __init__(self):
+        super(AddDnsToVpcRouterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddDnsToVpcRouterAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddFusionstorBackupStorageAction(inventory.APIAddFusionstorBackupStorageMsg):
     def __init__(self):
         super(AddFusionstorBackupStorageAction, self).__init__()
@@ -8524,6 +8536,20 @@ class QueryVpcIpSecConfigFromLocalAction(inventory.APIQueryVpcIpSecConfigFromLoc
         self.out = reply.inventories
         return self.out
 
+class QueryVpcRouterAction(inventory.APIQueryVpcRouterMsg):
+    def __init__(self):
+        super(QueryVpcRouterAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVpcRouterAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryVpcUserVpnGatewayFromLocalAction(inventory.APIQueryVpcUserVpnGatewayFromLocalMsg):
     def __init__(self):
         super(QueryVpcUserVpnGatewayFromLocalAction, self).__init__()
@@ -8916,6 +8942,18 @@ class RemoveDnsFromL3NetworkAction(inventory.APIRemoveDnsFromL3NetworkMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RemoveDnsFromL3NetworkAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RemoveDnsFromVpcRouterAction(inventory.APIRemoveDnsFromVpcRouterMsg):
+    def __init__(self):
+        super(RemoveDnsFromVpcRouterAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RemoveDnsFromVpcRouterAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
