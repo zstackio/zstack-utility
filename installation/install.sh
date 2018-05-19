@@ -792,6 +792,11 @@ upgrade_zstack(){
 
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
+
+    # configure management.server.ip if not exists
+    zstack-ctl show_configuration | grep 'management.server.ip' >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
+
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
     fi
@@ -3063,10 +3068,10 @@ if [ -n "$NEED_DROP_DB" ]; then
   rm -rf /var/lib/zstack/influxdb/
 fi
 
+zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
 if [ ! -z $NEED_SET_MN_IP ];then
-    zstack-ctl configure management.server.ip=${MANAGEMENT_IP}
     if [ -z $CONSOLE_PROXY_ADDRESS ];then
-        zstack-ctl configure consoleProxyOverriddenIp=${MANAGEMENT_IP}
+        zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
     fi
 fi
 
