@@ -458,6 +458,18 @@ class AddSharedBlockGroupPrimaryStorageAction(inventory.APIAddSharedBlockGroupPr
         self.out = evt
         return self.out
 
+class AddSharedBlockToSharedBlockGroupAction(inventory.APIAddSharedBlockToSharedBlockGroupMsg):
+    def __init__(self):
+        super(AddSharedBlockToSharedBlockGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddSharedBlockToSharedBlockGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddSharedMountPointPrimaryStorageAction(inventory.APIAddSharedMountPointPrimaryStorageMsg):
     def __init__(self):
         super(AddSharedMountPointPrimaryStorageAction, self).__init__()

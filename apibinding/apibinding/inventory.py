@@ -14145,6 +14145,20 @@ class APIAddSharedBlockGroupPrimaryStorageMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDSHAREDBLOCKTOSHAREDBLOCKGROUPMSG_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIAddSharedBlockToSharedBlockGroupMsg'
+class APIAddSharedBlockToSharedBlockGroupMsg(object):
+    FULL_NAME='org.zstack.storage.primary.sharedblock.APIAddSharedBlockToSharedBlockGroupMsg'
+    def __init__(self):
+        #mandatory field
+        self.diskUuid = NotNoneField()
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYSHAREDBLOCKGROUPPRIMARYSTORAGEHOSTREFMSG_FULL_NAME = 'org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageHostRefMsg'
 class APIQuerySharedBlockGroupPrimaryStorageHostRefMsg(object):
     FULL_NAME='org.zstack.storage.primary.sharedblock.APIQuerySharedBlockGroupPrimaryStorageHostRefMsg'
@@ -15777,6 +15791,7 @@ api_names = [
     'APIAddSecurityGroupRuleMsg',
     'APIAddSftpBackupStorageMsg',
     'APIAddSharedBlockGroupPrimaryStorageMsg',
+    'APIAddSharedBlockToSharedBlockGroupMsg',
     'APIAddSharedMountPointPrimaryStorageMsg',
     'APIAddSimulatorBackupStorageMsg',
     'APIAddSimulatorHostMsg',
