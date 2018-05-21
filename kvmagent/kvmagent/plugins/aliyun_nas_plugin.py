@@ -79,7 +79,7 @@ class ReInitImageRsp(AliyunNasResponse):
 
 
 class AliyunNasStoragePlugin(kvmagent.KvmAgent):
-    MOUNT_PATH = "/aliyun/nas/primarystorage/mount"
+    MOUNT_PATH = "/aliyun/nas/primarystorage/firstmount"
     IS_MOUNT_PATH = "/aliyun/nas/primarystorage/ismount"
     MOUNT_DATA_PATH = "/aliyun/nas/primarystorage/mountdata"
     INIT_PATH = "/aliyun/nas/primarystorage/init"
@@ -158,6 +158,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
             logger.debug(http.path_msg(self.MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))
             rsp.mounted = True
 
+        self.mount_path[cmd.uuid] = cmd.mountPath
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
@@ -170,7 +171,6 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         if naslinux.is_mounted(cmd.mountPath, cmd.url):
             rsp.ismounted = True
 
-        self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
