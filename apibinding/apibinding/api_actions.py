@@ -3614,6 +3614,18 @@ class DeleteLdapServerAction(inventory.APIDeleteLdapServerMsg):
         self.out = evt
         return self.out
 
+class DeleteLicenseAction(inventory.APIDeleteLicenseMsg):
+    def __init__(self):
+        super(DeleteLicenseAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteLicenseAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteLoadBalancerAction(inventory.APIDeleteLoadBalancerMsg):
     def __init__(self):
         super(DeleteLoadBalancerAction, self).__init__()
@@ -5498,6 +5510,18 @@ class GetLdapEntryAction(inventory.APIGetLdapEntryMsg):
         self.out = evt
         return self.out
 
+class GetLicenseAddOnsAction(inventory.APIGetLicenseAddOnsMsg):
+    def __init__(self):
+        super(GetLicenseAddOnsAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetLicenseAddOnsAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetLicenseCapabilitiesAction(inventory.APIGetLicenseCapabilitiesMsg):
     def __init__(self):
         super(GetLicenseCapabilitiesAction, self).__init__()
@@ -6300,8 +6324,6 @@ class LoginIAM2ProjectAction(inventory.APILoginIAM2ProjectMsg):
         self.sessionUuid = None
         self.out = None
     def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[LoginIAM2ProjectAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -6312,8 +6334,6 @@ class LoginIAM2VirtualIDAction(inventory.APILoginIAM2VirtualIDMsg):
         self.sessionUuid = None
         self.out = None
     def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[LoginIAM2VirtualIDAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
