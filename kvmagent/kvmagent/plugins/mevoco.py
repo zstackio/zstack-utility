@@ -759,6 +759,7 @@ mimetype.assign = (
                 namespace_dhcp[d.namespaceName] = lst
             lst.append(d)
 
+        @in_bash
         def apply(dhcp):
             bridge_name = dhcp[0].bridgeName
             namespace_name = dhcp[0].namespaceName
@@ -965,6 +966,7 @@ sed -i '/^$/d' {{DNS}}
                 namespace_dhcp[d.namespaceName] = lst
             lst.append(d)
 
+        @in_bash
         def release(dhcp):
             for d in dhcp:
                 conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(d.namespaceName)
