@@ -111,7 +111,7 @@ command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path
 run_remote_command(command, host_post_info)
 
 
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         # name: install appliance vm related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q iputils tcpdump ethtool | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
@@ -139,7 +139,7 @@ if distro == "RedHat" or distro == "CentOS":
         # name: enable appliancevm service for RedHat on chroot
         service_status("zstack-appliancevm", "enabled=yes state=stopped", host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     install_pkg_list = ['iputils-arping', 'tcpdump', 'ethtool']
     apt_install_packages(install_pkg_list, host_post_info)
     # name: copy iptables initial rules in Debian
@@ -187,13 +187,13 @@ if copy_appliancevm != "changed:False":
 
 if chroot_env == 'false':
     # name: restart appliancevm
-    if distro == "RedHat" or distro == "CentOS":
+    if distro in RPM_BASED_OS:
         command = "service zstack-appliancevm stop && service zstack-appliancevm start && chkconfig zstack-appliancevm on"
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-appliancevm start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-appliancevm stop && service zstack-appliancevm start"
     run_remote_command(command, host_post_info)
 else:
-    if distro == "RedHat" or distro == "CentOS":
+    if distro in RPM_BASED_OS:
         # name: restart iptables
         service_status("iptables", "state=restarted enabled=yes", host_post_info)
 

@@ -73,7 +73,7 @@ else:
 
 run_remote_command("rm -rf %s/*" % iscsi_root, host_post_info)
 
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         # name: install iscsi related packages on RedHat based OS from user defined repo
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget " \
@@ -93,7 +93,7 @@ if distro == "RedHat" or distro == "CentOS":
     # name: enable tgtd daemon on RedHat
     service_status("tgtd", "state=started enabled=yes", host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     # name: install isci related packages on Debian based OS
     install_pkg_list = ['iscsitarget', 'iscsitarget-dkms', 'tgt', 'wget', 'qemu-utils']
     apt_install_packages(install_pkg_list, host_post_info)

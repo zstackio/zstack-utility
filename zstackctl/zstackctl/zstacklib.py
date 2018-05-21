@@ -26,6 +26,8 @@ yum_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 
+RPM_BASED_OS = "CentOS", "RedHat", "Alibaba"
+DEB_BASED_OS = "Ubuntu", "Debian"
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -1259,7 +1261,7 @@ class ZstackLib(object):
         pip_version = "7.0.3"
         yum_server = args.yum_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
-        if distro == "CentOS" or distro == "RedHat":
+        if distro in RPM_BASED_OS:
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
             run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
@@ -1400,7 +1402,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
             # enable ntp service for RedHat
             service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
-        elif distro == "Debian" or distro == "Ubuntu":
+        elif distro in DEB_BASED_OS:
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
                       % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             run_remote_command(command, host_post_info)

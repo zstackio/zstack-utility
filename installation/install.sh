@@ -778,7 +778,6 @@ download_zstack(){
 # create symbol links for zstack-repo
 iu_deploy_zstack_repo() {
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
-    echo ""
 
     BASEARCH=`uname -m`
     DISTRO=$(sed -n 's/^distroverpkg=//p' /etc/yum.conf)

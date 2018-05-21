@@ -163,36 +163,19 @@ run_remote_command("rm -rf %s/*" % kvm_root, host_post_info)
 if not IS_AARCH64:
     check_nested_kvm(host_post_info)
 
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     # handle zstack_repo
     if zstack_repo != 'false':
-        if distro_version >= 7:
-            qemu_pkg = 'qemu-kvm-ev'
-        else:
-            qemu_pkg = 'qemu-kvm'
+        qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 and distro != "Alibaba" else 'qemu-kvm'
+        libvirt_pkg = 'libvirt' if distro != "Alibaba" else 'libvirt-daemon-kvm'
+        extra_pkg = 'collectd-virt' if distro_version >= 7 else ""
+        dep_list = "bridge-utils device-mapper-multipath dnsmasq expect iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sanlock sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, libvirt_pkg, extra_pkg)
+
         # name: install kvm related packages on RedHat based OS from user defined repo
-        command = ("yum --enablerepo=%s clean metadata && "
-                   "pkg_list=`rpm -q openssh-clients %s bridge-utils wget libvirt-python libvirt nfs-utils sed "
-                   "vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass iputils "
-                   "libguestfs-winsupport libguestfs-tools pv ipset usbutils pciutils expect "
-                   "rsync nmap lvm2 lvm2-lockd sanlock smartmontools device-mapper-multipath | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, qemu_pkg, zstack_repo)
+        command = ("yum --enablerepo=%s clean metadata && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --skip-broken --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, dep_list, zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
-        host_post_info.post_label_param = "openssh-clients,%s,bridge-utils,wget,sed," \
-                                          "libvirt-python,libvirt,nfs-utils,vconfig,libvirt-client,net-tools," \
-                                          "iscsi-initiator-utils,lighttpd,dnsmasq,iproute,sshpass,iputils," \
-                                          "libguestfs-winsupport,libguestfs-tools,pv,rsync,nmap,ipset,usbutils,pciutils,expect," \
-                                          "lvm2,lvm2-lockd,sanlock,smartmontools,device-mapper-multipath" % qemu_pkg
+        host_post_info.post_label_param = dep_list
         run_remote_command(command, host_post_info)
-        if distro_version >= 7:
-            # name: RHEL7 specific packages from user defined repos
-            command = ("yum --enablerepo=%s clean metadata && "
-                       "pkg_list=`rpm -q collectd-virt | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
-                       "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
-                       "--nogpgcheck install -y $pkg; done;") % (zstack_repo, zstack_repo)
-            host_post_info.post_label = "ansible.shell.install.pkg"
-            host_post_info.post_label_param = "collectd-virt"
-            run_remote_command(command, host_post_info)
 
         if IS_AARCH64:
             # name: aarch64 specific packages from user defined repos
@@ -310,7 +293,7 @@ if distro == "RedHat" or distro == "CentOS":
     host_post_info.post_label_param = "qemu-img"
     run_remote_command(command, host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     # name: install kvm related packages on Debian based OS
     install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin',
                         'vlan', 'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','pv', 'usbutils', 'pciutils', 'expect',
@@ -333,7 +316,8 @@ else:
 
 
 #set max performance 
-if distro == "RedHat" or distro == "CentOS":
+# AliOS 7u2 does not support tuned-adm
+if distro in RPM_BASED_OS and distro != "Alibaba":
     command = "tuned-adm profile virtual-host; echo virtual-host > /etc/tuned/active_profile"
     host_post_info.post_label = "ansible.shell.set.tuned.profile"
     host_post_info.post_label_param = "set profile as virtual-host"
@@ -429,20 +413,22 @@ run_remote_command(command, host_post_info)
 
 # handlers
 if chroot_env == 'false':
-    if distro == "RedHat" or distro == "CentOS":
+    if distro in RPM_BASED_OS:
         if libvirtd_status != "changed:False" or libvirtd_conf_status != "changed:False" \
                 or qemu_conf_status != "changed:False":
             # name: restart redhat libvirtd
             service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         if libvirt_bin_status != "changed:False" or libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
             # name: restart debian libvirtd
             service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
-    if distro == "RedHat" or distro == "CentOS":
+    if distro in RPM_BASED_OS and distro_version >= 7:
+        command = "systemctl stop zstack-kvmagent && systemctl start zstack-kvmagent && systemctl enable zstack-kvmagent"
+    elif distro in RPM_BASED_OS:
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-kvmagent start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-kvmagent stop && service zstack-kvmagent start"
     host_post_info.post_label = "ansible.shell.restart.service"
     host_post_info.post_label_param = "zstack-kvmagent"

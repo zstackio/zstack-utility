@@ -77,7 +77,7 @@ else:
 
 run_remote_command("rm -rf %s/*" % sftp_root, host_post_info)
 
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         # name: install sftp backup storage related packages on RedHat based OS from local
         command = ("pkg_list=`rpm -q openssh-clients qemu-img-ev libvirt libguestfs-winsupport libguestfs-tools | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
@@ -88,7 +88,7 @@ if distro == "RedHat" or distro == "CentOS":
         for pkg in [ "openssh-clients", "qemu-img-ev", "libvirt", "libguestfs-winsupport", "libguestfs-tools"]:
             yum_install_package(pkg, host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     install_pkg_list = ["openssh-client", "qemu-utils", "libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
@@ -148,10 +148,10 @@ if sftp_copy_result != "changed:False":
 
 # name: restart sftp
 if chroot_env == 'false':
-    if distro == "RedHat" or distro == "CentOS":
+    if distro in RPM_BASED_OS:
         # some users meet restart can't work on their system
         command = "service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start && chkconfig zstack-sftpbackupstorage on"
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-sftpbackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start"
     run_remote_command(command, host_post_info)
 

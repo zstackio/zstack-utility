@@ -27,6 +27,8 @@ yum_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 
+RPM_BASED_OS = "CentOS", "RedHat", "Alibaba"
+DEB_BASED_OS = "Ubuntu", "Debian"
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -1519,15 +1521,15 @@ def do_enable_ntp(trusted_host, host_post_info, distro):
         if trusted_host != host_post_info.host:
             if host_post_info.host not in commands.getoutput("ip a  | grep 'inet ' | awk '{print $2}'"):
                 if host_post_info.host not in get_ha_mn_list("/var/lib/zstack/ha/ha.yaml"):
-                    if distro == "CentOS" or distro == "RedHat":
+                    if distro in RPM_BASED_OS:
                         service_status("ntpd", "state=stopped enabled=yes", host_post_info)
-                    elif distro == "Debian" or distro == "Ubuntu":
+                    elif distro in DEB_BASED_OS:
                         service_status("ntp", "state=stopped enabled=yes", host_post_info)
                     command = "ntpdate %s" % trusted_host
                     run_remote_command(command, host_post_info, True, True)
-        if distro == "CentOS" or distro == "RedHat":
+        if distro in RPM_BASED_OS:
             service_status("ntpd", "state=restarted enabled=yes", host_post_info)
-        elif distro == "Debian" or distro == "Ubuntu":
+        elif distro in DEB_BASED_OS:
             service_status("ntp", "state=restarted enabled=yes", host_post_info)
 
     if trusted_host != host_post_info.host:
@@ -1538,11 +1540,11 @@ def do_enable_ntp(trusted_host, host_post_info, distro):
                 update_file("/etc/ntp.conf", "line='server %s'" % trusted_host, host_post_info)
     replace_content("/etc/ntp.conf", "regexp='restrict default nomodify notrap nopeer noquery'"
                                      " replace='restrict default nomodify notrap nopeer' backup=yes", host_post_info)
-    if distro == "CentOS" or distro == "RedHat":
+    if distro in RPM_BASED_OS:
         command = " iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I" \
                   " INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && service iptables save)"
         run_remote_command(command, host_post_info)
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         command = " ! iptables -C INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT 2>&1 || (iptables -I " \
                   "INPUT -p udp -m state --state NEW -m udp --dport 123 -j ACCEPT && /etc/init.d/iptables-persistent save)"
         run_remote_command(command, host_post_info)
@@ -1550,7 +1552,7 @@ def do_enable_ntp(trusted_host, host_post_info, distro):
 
 
 def do_deploy_chrony(host_post_info, svrs, distro):
-    if distro == "RedHat" or distro == "CentOS":
+    if distro in RPM_BASED_OS:
         yum_install_package("chrony", host_post_info)
         replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
         for svr in svrs:
@@ -1592,7 +1594,7 @@ class ZstackLib(object):
         else:
             require_python_env = "true"
 
-        if distro == "CentOS" or distro == "RedHat":
+        if distro in RPM_BASED_OS:
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
             host_post_info.post_label = "ansible.shell.remove.file"
@@ -1777,7 +1779,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                     # enable ntp service for RedHat
                 enable_ntp(trusted_host, host_post_info, distro)
 
-        elif distro == "Debian" or distro == "Ubuntu":
+        elif distro in DEB_BASED_OS:
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
                       % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             host_post_info.post_label = "ansible.shell.backup.file"

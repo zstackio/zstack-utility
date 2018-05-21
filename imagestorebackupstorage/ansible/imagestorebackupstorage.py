@@ -76,7 +76,7 @@ zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
 zstacklib = ZstackLib(zstacklib_args)
 
-if distro == "CentOS" or distro == "RedHat":
+if distro in RPM_BASED_OS:
     if distro_version < 7:
         qemu_pkg = "qemu-kvm"
     else:
@@ -99,7 +99,7 @@ if distro == "CentOS" or distro == "RedHat":
                        "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     if client == "true" and distro_version < 16:
         Warning("Client only support distribution version newer than 16.04")
     apt_install_packages(["qemu-kvm"], host_post_info)
@@ -144,9 +144,9 @@ run_remote_command(command, host_post_info)
 if client != "true":
     # integrate zstack-store with init.d
     run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
-    if distro == "CentOS" or distro == "RedHat":
+    if distro in RPM_BASED_OS:
         command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-imagestorebackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start"
     run_remote_command(command, host_post_info)
 
