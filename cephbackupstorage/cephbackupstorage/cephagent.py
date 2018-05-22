@@ -789,8 +789,8 @@ class CephAgent(object):
             scp_to_pipe_cmd = "scp -P %d -o StrictHostKeyChecking=no %s@%s:%s %s" % (port, url.username, url.hostname, url.path, pipe_path)
             sftp_command = "sftp -o StrictHostKeyChecking=no -o BatchMode=no -P %s -b /dev/stdin %s@%s" % (port, url.username, url.hostname) + " <<EOF\n%s\nEOF\n"
             if url.password is not None:
-                scp_to_pipe_cmd = 'sshpass -p %s %s' % (url.password, scp_to_pipe_cmd)
-                sftp_command = 'sshpass -p %s %s' % (url.password, sftp_command)
+                scp_to_pipe_cmd = 'sshpass -p "%s" %s' % (url.password, scp_to_pipe_cmd)
+                sftp_command = 'sshpass -p "%s" %s' % (url.password, sftp_command)
 
             actual_size = shell.call(sftp_command % ("ls -l " + url.path)).splitlines()[1].strip().split()[4]
             os.mkfifo(pipe_path)
