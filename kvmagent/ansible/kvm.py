@@ -172,7 +172,8 @@ if distro in RPM_BASED_OS:
         dep_list = "bridge-utils device-mapper-multipath dnsmasq expect iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sanlock sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, libvirt_pkg, extra_pkg)
 
         # name: install kvm related packages on RedHat based OS from user defined repo
-        command = ("yum --enablerepo=%s clean metadata && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --skip-broken --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, dep_list, zstack_repo)
+        # update sanlock if possible
+        command = ("yum --enablerepo=%s clean metadata && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' sanlock' && for pkg in $pkg_list; do yum --skip-broken --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, dep_list, zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = dep_list
         run_remote_command(command, host_post_info)
