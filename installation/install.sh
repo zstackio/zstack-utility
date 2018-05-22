@@ -2468,9 +2468,9 @@ if [ -f /etc/yum.repos.d/epel.repo ]; then
     sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
 fi
 
-mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
 umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
+rm -rf /opt/zstack-dvd/Base && mkdir -p /opt/zstack-dvd/Base
+/bin/cp -r /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
 reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
 reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
 reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
@@ -2483,7 +2483,7 @@ echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Update metadata"
 createrepo -g /opt/zstack-dvd/Base/comps.xml /opt/zstack-dvd/Base/ >/dev/null 2>&1 || return 1
-rm -rf /opt/zstack-dvd/repodata >/dev/null 2>&1
+rm -rf /opt/zstack-dvd/{Packages,repodata} >/dev/null 2>&1
 mv /opt/zstack-dvd/Base/* /opt/zstack-dvd/ >/dev/null 2>&1
 rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
 createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || return 1
