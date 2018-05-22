@@ -444,7 +444,7 @@ class SftpBackupStorageAgent(object):
                 port = (url.port, 22)[url.port is None]
                 commond = "sftp -P %d -o StrictHostKeyChecking=no %s@%s:%s %s" % (port, url.username, url.hostname, url.path, cmd.installPath)
                 if url.password is not None:
-                    commond = 'sshpass -p %s %s' % (url.password, commond)
+                    commond = 'sshpass -p "%s" %s' % (url.password, commond)
 
                 shell.call(commond)
             except linux.LinuxError as e:
