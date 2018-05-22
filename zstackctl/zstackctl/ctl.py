@@ -1704,10 +1704,10 @@ class StartCmd(Command):
             if type(port_list) is not list:
                 error("port list should be list")
             for port in port_list:
-                if distro == 'centos':
+                if distro in RPM_BASED_OS:
                     shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
                           '(iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT && service iptables save)' % (protocol, protocol, port, protocol, protocol, port))
-                elif distro == 'Ubuntu':
+                elif distro in DEB_BASED_OS:
                     shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
                           '(iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (protocol, protocol, port, protocol, protocol, port))
                 else:
@@ -2540,10 +2540,10 @@ class AddManagementNodeCmd(Command):
 
     def install_packages(self, pkg_list, host_info):
         distro = platform.dist()[0]
-        if distro == "centos":
+        if distro in RPM_BASED_OS:
             for pkg in pkg_list:
                 yum_install_package(pkg, host_info)
-        elif distro == "Ubuntu":
+        elif distro in DEB_BASED_OS:
             apt_install_packages(pkg_list, host_info)
 
     def run(self, args):
@@ -7417,9 +7417,9 @@ class StartDashboardCmd(Command):
             return
 
         distro = platform.dist()[0]
-        if distro == 'centos':
+        if distro in RPM_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.port)
-        elif distro == 'Ubuntu':
+        elif distro in DEB_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.port)
         else:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.port)
@@ -7653,10 +7653,10 @@ class StartUiCmd(Command):
             return
 
         distro = platform.dist()[0]
-        if distro == 'centos':
+        if distro in RPM_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.webhook_port, args.webhook_port))
-        elif distro == 'Ubuntu':
+        elif distro in DEB_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.webhook_port, args.webhook_port))
         else:
@@ -7920,10 +7920,10 @@ class StartVDIUICmd(Command):
             return
 
         distro = platform.dist()[0]
-        if distro == 'centos':
+        if distro in RPM_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.webhook_port, args.webhook_port))
-        elif distro == 'Ubuntu':
+        elif distro in DEB_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.webhook_port, args.webhook_port))
         else:

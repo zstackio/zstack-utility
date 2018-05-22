@@ -86,7 +86,7 @@ if virtual_env_status is False:
 command = "rm -rf %s && virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         command = ("pkg_list=`rpm -q wget qemu-img-ev libvirt libguestfs-winsupport libguestfs-tools | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
                    " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
@@ -102,7 +102,7 @@ if distro == "RedHat" or distro == "CentOS":
             run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils", "libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
@@ -146,9 +146,9 @@ copy(copy_arg, host_post_info)
 
 
 # name: restart cephbagent
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     command = "service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start && chkconfig zstack-ceph-backupstorage on"
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     command = "update-rc.d zstack-ceph-backupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start"
 run_remote_command(command, host_post_info)
 # change ceph config

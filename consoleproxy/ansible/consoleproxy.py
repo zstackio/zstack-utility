@@ -115,9 +115,9 @@ if copy_consoleproxy != "changed:False":
 
 # name: restart consoleproxy
 if chroot_env == 'false':
-    if distro == "RedHat" or distro == "CentOS":
+    if distro in RPM_BASED_OS:
         command = "service zstack-consoleproxy stop && service zstack-consoleproxy start && chkconfig zstack-consoleproxy on"
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-consoleproxy start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-consoleproxy stop && service zstack-consoleproxy start"
     run_remote_command(command, host_post_info)
 
