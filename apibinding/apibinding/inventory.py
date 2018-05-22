@@ -16807,6 +16807,21 @@ class APIUpdateVCenterMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDDNSTOVPCROUTERMSG_FULL_NAME = 'org.zstack.vpc.APIAddDnsToVpcRouterMsg'
+class APIAddDnsToVpcRouterMsg(object):
+    FULL_NAME='org.zstack.vpc.APIAddDnsToVpcRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.dns = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APICREATEVPCVROUTERMSG_FULL_NAME = 'org.zstack.vpc.APICreateVpcVRouterMsg'
 class APICreateVpcVRouterMsg(object):
     FULL_NAME='org.zstack.vpc.APICreateVpcVRouterMsg'
@@ -16884,6 +16899,51 @@ class APIGetVpcVRouterDistributedRoutingEnabledReply(object):
         self.enabled = None
         self.success = None
         self.error = None
+
+
+APIQUERYVPCROUTERMSG_FULL_NAME = 'org.zstack.vpc.APIQueryVpcRouterMsg'
+class APIQueryVpcRouterMsg(object):
+    FULL_NAME='org.zstack.vpc.APIQueryVpcRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYVPCROUTERREPLY_FULL_NAME = 'org.zstack.vpc.APIQueryVpcRouterReply'
+class APIQueryVpcRouterReply(object):
+    FULL_NAME='org.zstack.vpc.APIQueryVpcRouterReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIREMOVEDNSFROMVPCROUTERMSG_FULL_NAME = 'org.zstack.vpc.APIRemoveDnsFromVpcRouterMsg'
+class APIRemoveDnsFromVpcRouterMsg(object):
+    FULL_NAME='org.zstack.vpc.APIRemoveDnsFromVpcRouterMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.dns = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
 
 
 APISETVPCVROUTERDISTRIBUTEDROUTINGENABLEDMSG_FULL_NAME = 'org.zstack.vpc.APISetVpcVRouterDistributedRoutingEnabledMsg'
@@ -17689,6 +17749,7 @@ api_names = [
     'APIAddDataCenterFromRemoteMsg',
     'APIAddDisasterImageStoreBackupStorageMsg',
     'APIAddDnsToL3NetworkMsg',
+    'APIAddDnsToVpcRouterMsg',
     'APIAddFusionstorBackupStorageMsg',
     'APIAddFusionstorPrimaryStorageMsg',
     'APIAddHostRouteToL3NetworkMsg',
@@ -18666,6 +18727,8 @@ api_names = [
     'APIQueryVpcIkeConfigFromLocalReply',
     'APIQueryVpcIpSecConfigFromLocalMsg',
     'APIQueryVpcIpSecConfigFromLocalReply',
+    'APIQueryVpcRouterMsg',
+    'APIQueryVpcRouterReply',
     'APIQueryVpcUserVpnGatewayFromLocalMsg',
     'APIQueryVpcUserVpnGatewayFromLocalReply',
     'APIQueryVpcVpnConnectionFromLocalMsg',
@@ -18705,6 +18768,7 @@ api_names = [
     'APIRemoveAttributesFromIAM2VirtualIDMsg',
     'APIRemoveCertificateFromLoadBalancerListenerMsg',
     'APIRemoveDnsFromL3NetworkMsg',
+    'APIRemoveDnsFromVpcRouterMsg',
     'APIRemoveHostRouteFromL3NetworkMsg',
     'APIRemoveIAM2VirtualIDsFromGroupMsg',
     'APIRemoveIAM2VirtualIDsFromOrganizationMsg',
@@ -25354,6 +25418,20 @@ class VpcConnectionTO(object):
 
 
 
+class VpcRouterVmInventory(VirtualRouterVmInventory):
+    def __init__(self):
+        super(VpcRouterVmInventory, self).__init__()
+        self.dns = None
+
+    def evaluate(self, inv):
+        super(VpcRouterVmInventory, self).evaluate(inv)
+        if hasattr(inv, 'dns'):
+            self.dns = inv.dns
+        else:
+            self.dns = None
+
+
+
 class VRouterRouteEntryAO(object):
     def __init__(self):
         self.destination = None
@@ -26753,6 +26831,25 @@ class QueryObjectAliyunNasMountTargetInventory(object):
 
     }
 
+class QueryObjectVpcRouterVmInventory(object):
+    PRIMITIVE_FIELDS = ['vmNics','cpuSpeed','zoneUuid','description','type','managementNetworkUuid','uuid','platform','defaultRouteL3NetworkUuid','applianceVmType','hostUuid','lastOpDate','publicNetworkUuid','instanceOfferingUuid','state','imageUuid','createDate','clusterUuid','allVolumes','allocatorStrategy','dns','hypervisorType','cpuNum','defaultL3NetworkUuid','virtualRouterVips','lastHostUuid','memorySize','rootVolumeUuid','name','agentPort','status', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['cluster','image','vmNics','virtualRouterOffering','allVolumes','zone','host','instanceOffering','rootVolume','portForwarding','loadBalancer','vip','eip']
+    QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'image' : 'QueryObjectImageInventory',
+        'vmNics' : 'QueryObjectVmNicInventory',
+        'virtualRouterOffering' : 'QueryObjectVirtualRouterOfferingInventory',
+        'allVolumes' : 'QueryObjectVolumeInventory',
+        'zone' : 'QueryObjectZoneInventory',
+        'host' : 'QueryObjectHostInventory',
+        'instanceOffering' : 'QueryObjectInstanceOfferingInventory',
+        'rootVolume' : 'QueryObjectVolumeInventory',
+        'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
+        'loadBalancer' : 'QueryObjectLoadBalancerInventory',
+        'vip' : 'QueryObjectVipInventory',
+        'eip' : 'QueryObjectEipInventory',
+    }
+
 class QueryObjectSharedResourceInventory(object):
     PRIMITIVE_FIELDS = ['receiverAccountUuid','ownerAccountUuid','lastOpDate','toPublic','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -27091,6 +27188,13 @@ class QueryObjectSftpBackupStorageInventory(object):
         'image' : 'QueryObjectImageInventory',
         'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
         'zone' : 'QueryObjectZoneInventory',
+    }
+
+class QueryObjectVpcRouterDnsInventory(object):
+    PRIMITIVE_FIELDS = ['vpcRouterUuid','dns','lastOpDate','id','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectIdentityZoneInventory(object):
@@ -28091,6 +28195,7 @@ queryMessageInventoryMap = {
     'APIQueryEcsInstanceFromLocalMsg' : QueryObjectEcsInstanceInventory,
     'APIQueryQuotaMsg' : QueryObjectQuotaInventory,
     'APIQueryUsbDeviceMsg' : QueryObjectUsbDeviceInventory,
+    'APIQueryVpcRouterMsg' : QueryObjectVpcRouterVmInventory,
     'APIQueryVCenterMsg' : QueryObjectVCenterInventory,
     'APIQueryIAM2ProjectAttributeMsg' : QueryObjectIAM2ProjectAttributeInventory,
     'APIQueryAliyunNasFileSystemMsg' : QueryObjectAliyunNasFileSystemInventory,
