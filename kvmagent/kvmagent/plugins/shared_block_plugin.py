@@ -306,7 +306,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
             if cmd.forceWipe is True:
-                lvm.wipe_fs(disk.get_path())
+                lvm.wipe_fs([disk.get_path()])
             lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
 
         rsp = AgentRsp
