@@ -12,6 +12,7 @@ LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
+SUPER_BLOCK_BACKUP = "superblock.bak"
 
 
 class LvmlockdLockType(object):
@@ -193,9 +194,25 @@ def stop_vg_lock(vgUuid):
 def get_running_host_id(vgUuid):
     cmd = shell.ShellCmd("sanlock client gets | grep %s | awk -F':' '{ print $2 }'" % vgUuid)
     cmd(is_exception=False)
-    if cmd.stdout.strip == "":
-        raise Exception("can not get running host if for vg %s" % vgUuid)
+    if cmd.stdout.strip() == "":
+        raise Exception("can not get running host id for vg %s" % vgUuid)
     return cmd.stdout
+
+def get_wwid(disk_path):
+    cmd = shell.ShellCmd("udevadm info --name=%s | grep 'disk/by-id.*' -m1 -o | awk -F '/' {' print $3 '}" % disk_path)
+    cmd(is_exception=False)
+    return cmd.stdout.strip()
+
+
+def backup_super_block(disk_path):
+    wwid = get_wwid(disk_path)
+    if wwid is None or wwid == "":
+        logger.warn("can not get wwid of disk %s" % disk_path)
+
+    current_time = time.time()
+    disk_back_file = os.path.join(LVM_CONFIG_BACKUP_PATH, "%s.%s.%s" % (wwid, SUPER_BLOCK_BACKUP, current_time))
+    cmd = shell.ShellCmd("dd if=%s of=%s bs=64KB count=1 conv=notrunc" % (disk_path, disk_back_file))
+    cmd(is_exception=False)
 
 
 def wipe_fs(disks):
@@ -203,7 +220,8 @@ def wipe_fs(disks):
         cmd = shell.ShellCmd("pvdisplay %s" % disk)
         cmd(is_exception=False)
         if cmd.return_code != 0:
-            cmd = shell.ShellCmd("wipefs -a %s" % disk)
+            backup_super_block(disk)
+            cmd = shell.ShellCmd("wipefs -af %s" % disk)
             cmd(is_exception=False)
 
 
