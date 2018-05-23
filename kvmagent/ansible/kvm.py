@@ -187,7 +187,7 @@ if distro == "RedHat" or distro == "CentOS":
         if distro_version >= 7:
             # name: RHEL7 specific packages from user defined repos
             command = ("yum --enablerepo=%s clean metadata && "
-                       "pkg_list=`rpm -q collectd-virt | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
+                       "pkg_list=`rpm -q collectd-virt | grep \"not installed\" | awk '{ print $2 }'`' sanlock' && for pkg "
                        "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
                        "--nogpgcheck install -y $pkg; done;") % (zstack_repo, zstack_repo)
             host_post_info.post_label = "ansible.shell.install.pkg"
