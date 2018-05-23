@@ -77,10 +77,8 @@ zstacklib_args.require_python_env = require_python_env
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    if distro_version < 7:
-        qemu_pkg = "qemu-kvm"
-    else:
-        qemu_pkg = "qemu-kvm-ev"
+    qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 and distro != "Alibaba" else 'qemu-kvm'
+
     if client == "true" :
         if distro_version < 7:
             # change error to warning due to imagestore client will install after add kvm host
