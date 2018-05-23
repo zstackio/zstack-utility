@@ -6531,8 +6531,7 @@ class UpgradeDbCmd(Command):
         db_url = ctl.get_db_url()
         db_url_params = db_url.split('//')
         db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
-        if 'zstack' not in db_url:
-            db_url = '%s/zstack' % db_url.rstrip('/')
+        db_url = '%s/zstack' % db_url.rstrip('/')
 
         db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
 
@@ -6621,8 +6620,7 @@ class UpgradeUIDbCmd(Command):
         db_url = ctl.get_ui_db_url()
         db_url_params = db_url.split('//')
         db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
-        if 'zstack_ui' not in db_url:
-            db_url = '%s/zstack_ui' % db_url.rstrip('/')
+        db_url = '%s/zstack_ui' % db_url.rstrip('/')
 
         db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal(True)
 
