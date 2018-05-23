@@ -295,6 +295,10 @@ class HostPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def fact(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.ignoreMsrs:
+            shell.run("/bin/echo 1 > /sys/module/kvm/parameters/ignore_msrs")
+
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
