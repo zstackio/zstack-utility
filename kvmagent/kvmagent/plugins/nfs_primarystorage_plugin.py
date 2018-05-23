@@ -508,7 +508,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteResponse()
 
-        if cmd.isFolder:
+        if cmd.folder:
             shell.call('rm -rf %s' % cmd.installPath)
         else:
             kvmagent.deleteImage(cmd.installPath)
