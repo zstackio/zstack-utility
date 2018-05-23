@@ -202,13 +202,20 @@ def error(msg):
 def error_not_exit(msg):
     sys.stderr.write(colored('ERROR: %s\n' % msg, 'red'))
 
-def info(*msg):
+def info_verbose(*msg):
     if len(msg) == 1:
         out = '%s\n' % ''.join(msg)
     else:
         out = ''.join(msg)
     now = datetime.now()
     out = "%s " % str(now) + out
+    sys.stdout.write(out)
+
+def info(*msg):
+    if len(msg) == 1:
+        out = '%s\n' % ''.join(msg)
+    else:
+        out = ''.join(msg)
     sys.stdout.write(out)
 
 def get_detail_version():
@@ -4787,7 +4794,7 @@ class CollectLogCmd(Command):
         run_remote_command(command, host_post_info)
 
     def get_sharedblock_log(self, host_post_info, tmp_log_dir):
-        info("Collecting sharedblock log from : %s ..." % host_post_info.host)
+        info_verbose("Collecting sharedblock log from : %s ..." % host_post_info.host)
         target_dir = tmp_log_dir + "sharedblock"
         command = "mkdir -p %s " % target_dir
         run_remote_command(command, host_post_info)
@@ -4826,7 +4833,7 @@ class CollectLogCmd(Command):
     def get_vrouter_log(self, host_post_info, collect_dir):
         #current vrouter log is very small, so collect all logs for debug
         if check_host_reachable(host_post_info) is True:
-            info("Collecting log from vrouter: %s ..." % host_post_info.host)
+            info_verbose("Collecting log from vrouter: %s ..." % host_post_info.host)
             for vrouter_log_dir in CollectLogCmd.vrouter_log_dir_list:
                 local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
                 tmp_log_dir = "/tmp/tmp-log/"
@@ -4842,7 +4849,7 @@ class CollectLogCmd(Command):
 
     def get_host_log(self, host_post_info, collect_dir, collect_full_log=False):
         if check_host_reachable(host_post_info) is True:
-            info("Collecting log from host: %s ..." % host_post_info.host)
+            info_verbose("Collecting log from host: %s ..." % host_post_info.host)
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
             local_collect_dir = collect_dir + 'host-%s/' %  host_post_info.host
             try:
@@ -4895,7 +4902,7 @@ class CollectLogCmd(Command):
     def get_storage_log(self, host_post_info, collect_dir, storage_type, collect_full_log=False):
         collect_log_list = []
         if check_host_reachable(host_post_info) is True:
-            info("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
+            info_verbose("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
             local_collect_dir = collect_dir + storage_type + '-' + host_post_info.host+ '/'
             try:
@@ -5058,7 +5065,7 @@ class CollectLogCmd(Command):
 
 
     def get_local_mn_log(self, collect_dir, collect_full_log=False):
-        info("Collecting log from this management node ...")
+        info_verbose("Collecting log from this management node ...")
         mn_log_dir = collect_dir + 'management-node-%s' % get_default_ip()
         if not os.path.exists(mn_log_dir):
             os.makedirs(mn_log_dir)
@@ -5217,10 +5224,10 @@ class CollectLogCmd(Command):
 
         self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
         if CollectLogCmd.failed_flag is True:
-            info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
-            info(colored("Please check the reason of failed task in log: %s\n" % (CollectLogCmd.logger_dir + CollectLogCmd.logger_file), 'yellow'))
+            info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
+            info_verbose(colored("Please check the reason of failed task in log: %s\n" % (CollectLogCmd.logger_dir + CollectLogCmd.logger_file), 'yellow'))
         else:
-            info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
+            info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
 
 
 class ChangeIpCmd(Command):
