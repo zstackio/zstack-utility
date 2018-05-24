@@ -321,7 +321,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(install_abs_path, False):
             lvm.resize_lv(install_abs_path, cmd.size)
-            shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
+            if not cmd.live:
+                shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
             ret = linux.qcow2_virtualsize(install_abs_path)
 
         rsp = ResizeVolumeRsp()
@@ -588,7 +589,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = GetVolumeSizeRsp()
 
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        rsp.size = lvm.get_lv_size(install_abs_path)
+        rsp.size = linux.qcow2_virtualsize(install_abs_path)
         rsp.actualSize = rsp.size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
