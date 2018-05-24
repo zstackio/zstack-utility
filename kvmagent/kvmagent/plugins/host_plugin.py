@@ -296,8 +296,8 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def fact(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if cmd.ignoreMsrs:
-            shell.run("/bin/echo 1 > /sys/module/kvm/parameters/ignore_msrs")
+        ignore_msrs = 1 if cmd.ignoreMsrs else 0
+        shell.run("/bin/echo %s > /sys/module/kvm/parameters/ignore_msrs" % ignore_msrs)
 
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
