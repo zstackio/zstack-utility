@@ -1908,7 +1908,7 @@ ExecStart=/usr/bin/zstack-ctl start --daemon
 ExecStop=/usr/bin/zstack-ctl stop
 Restart=on-abort
 RemainAfterExit=Yes
-TimeoutStartSec=600
+TimeoutStartSec=2400
 TimeoutStopSec=30
 
 [Install]
