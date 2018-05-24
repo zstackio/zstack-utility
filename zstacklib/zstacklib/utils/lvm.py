@@ -4,6 +4,7 @@ import os.path
 import time
 
 from zstacklib.utils import shell
+from zstacklib.utils import bash
 from zstacklib.utils import log
 from zstacklib.utils import linux
 
@@ -133,21 +134,20 @@ def start_lvmlockd():
         cmd(is_exception=True)
 
 
+@bash.in_bash
 def start_vg_lock(vgUuid):
     @linux.retry(times=20, sleep_time=random.uniform(1,10))
     def vg_lock_is_adding(vgUuid):
         # NOTE(weiw): this means vg locking is adding rather than complete
-        cmd = shell.ShellCmd("sanlock client status | grep -E 's lvm_%s.*\\:0 ADD'" % vgUuid)
-        cmd(is_exception=False)
-        if cmd.return_code == 0:
+        return_code = bash.bash_r("sanlock client status | grep -E 's lvm_%s.*\\:0 ADD'" % vgUuid)
+        if return_code == 0:
             raise RetryException("vg %s lock space is starting" % vgUuid)
         return False
 
     @linux.retry(times=3, sleep_time=random.uniform(0.1, 1))
     def vg_lock_exists(vgUuid):
-        cmd = shell.ShellCmd("lvmlockctl -i | grep %s" % vgUuid)
-        cmd(is_exception=False)
-        if cmd.return_code != 0:
+        return_code = bash.bash_r("lvmlockctl -i | grep %s" % vgUuid)
+        if return_code != 0:
             raise RetryException("can not find lock space for vg %s via lvmlockctl" % vgUuid)
         elif vg_lock_is_adding(vgUuid) is True:
             raise RetryException("lock space for vg %s is adding" % vgUuid)
@@ -156,9 +156,8 @@ def start_vg_lock(vgUuid):
 
     @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
     def start_lock(vgUuid):
-        cmd = shell.ShellCmd("vgchange --lock-start %s" % vgUuid)
-        cmd(is_exception=True)
-        if cmd.return_code != 0:
+        return_code = bash.bash_r("vgchange --lock-start %s" % vgUuid)
+        if return_code != 0:
             raise Exception("vgchange --lock-start failed")
 
         vg_lock_exists(vgUuid)
@@ -205,6 +204,7 @@ def get_running_host_id(vgUuid):
         raise Exception("can not get running host id for vg %s" % vgUuid)
     return cmd.stdout
 
+
 def get_wwid(disk_path):
     cmd = shell.ShellCmd("udevadm info --name=%s | grep 'disk/by-id.*' -m1 -o | awk -F '/' {' print $3 '}" % disk_path)
     cmd(is_exception=False)
@@ -247,20 +247,25 @@ def add_vg_tag(vgUuid, tag):
     cmd = shell.ShellCmd("vgchange --addtag %s %s" % (tag, vgUuid))
     cmd(is_exception=True)
 
+
 def has_lv_tag(path, tag):
     o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings --readonly 2>/dev/null | wc -l" % (tag, path))
     return o.strip() == '1'
+
 
 def clean_lv_tag(path, tag):
     if has_lv_tag(path, tag):
         shell.run('lvchange --deltag %s %s' % (tag, path))
 
+
 def add_lv_tag(path, tag):
     if not has_lv_tag(path, tag):
         shell.run('lvchange --addtag %s %s' % (tag, path))
 
+
 def get_meta_lv_path(path):
     return path+"_meta"
+
 
 def delete_image(path, tag):
     def activate_and_remove(f):
@@ -275,6 +280,7 @@ def delete_image(path, tag):
         activate_and_remove(get_meta_lv_path(fpath))
         fpath = backing
 
+
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | grep -Po '%s::%s::[\d.]*'" % (vgUuid, tag, hostUuid))
     cmd(is_exception=False)
@@ -286,14 +292,16 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd(is_exception=False)
 
 
+@bash.in_bash
 @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
 def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
-    cmd = shell.ShellCmd("lvcreate -an --addtag %s --size %sb --name %s %s" %
+    bash.bash_errorout("lvcreate -an --addtag %s --size %sb --name %s %s" %
                          (tag, calcLvReservedSize(size), lvName, vgName))
-    cmd(is_exception=True)
+    if not lv_exists(path):
+        raise Exception("can not find lv %s after create", path)
 
 
 def get_lv_size(path):
@@ -307,14 +315,14 @@ def resize_lv(path, size):
     cmd(is_exception=True)
 
 
+@bash.in_bash
 @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
 def active_lv(path, shared=False):
     flag = "-ay"
     if shared:
         flag = "-asy"
 
-    cmd = shell.ShellCmd("lvchange %s %s" % (flag, path))
-    cmd(is_exception=True)
+    bash.bash_errorout("lvchange %s %s" % (flag, path))
 
 
 def deactive_lv(path, raise_exception=True):
