@@ -2564,6 +2564,7 @@ class Vm(object):
             #TODO(weiw): this logic should be handled by management
             def sharedblock_volume(_v):
                 if lvm.lv_exists(_v.installPath):
+                    logger.debug("active lv %s before start vm" % _v.installPath)
                     lvm.do_active_lv(_v.installPath, lvm.LvmlockdLockType.EXCLUSIVE, True)
 
             def filebased_volume(_dev_letter, _v):

@@ -319,7 +319,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
-        with lvm.RecursiveOperateLv(install_abs_path, False):
+        with lvm.RecursiveOperateLv(install_abs_path, shared=False):
             lvm.resize_lv(install_abs_path, cmd.size)
             if not cmd.live:
                 shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
@@ -338,7 +338,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True)
 
-        with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True):
+        with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tag=IMAGE_TAG):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
             if not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
@@ -373,7 +373,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         volume_abs_path = translate_absolute_path_from_install_path(cmd.volumePath)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
-        with lvm.RecursiveOperateLv(volume_abs_path, shared=False):
+        with lvm.RecursiveOperateLv(volume_abs_path, shared=False, skip_deactivate_tag=IMAGE_TAG):
             virtual_size = linux.qcow2_virtualsize(volume_abs_path)
             if not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
