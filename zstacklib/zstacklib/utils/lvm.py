@@ -372,11 +372,32 @@ def list_local_active_lvs(vgUuid):
     return result
 
 
+def do_active_lv(absolutePath, lockType, recursive):
+    def handle_lv(lockType, fpath):
+        if lockType > LvmlockdLockType.NULL:
+            active_lv(fpath, lockType == LvmlockdLockType.SHARE)
+        else:
+            deactive_lv(fpath)
+
+    handle_lv(lockType, absolutePath)
+
+    if recursive is False:
+        return
+
+    while linux.qcow2_get_backing_file(absolutePath) != "":
+        install_abs_path = linux.qcow2_get_backing_file(install_abs_path)
+        if lockType == LvmlockdLockType.NULL:
+            handle_lv(LvmlockdLockType.NULL, install_abs_path)
+        else:
+            # activate backing files only in shared mode
+           handle_lv(LvmlockdLockType.SHARE, install_abs_path)
+
+
 @bash.in_bash
 def get_lv_locking_type(path):
     if not lv_is_active(path):
         return LvmlockdLockType.NULL
-    output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 || awk '{print $3}'" % lv_uuid(path))
+    output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
     return LvmlockdLockType.from_abbr(output.strip())
 
 
