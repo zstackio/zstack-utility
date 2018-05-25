@@ -21,6 +21,7 @@ from zstacklib.utils import lichbd
 import zstacklib.utils.lichbd_factory as lichbdfactory
 from zstacklib.utils import linux
 from zstacklib.utils import log
+from zstacklib.utils import lvm
 from zstacklib.utils import shell
 from zstacklib.utils import thread
 from zstacklib.utils import uuidhelper
@@ -2560,10 +2561,17 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
 
+            #TODO(weiw): this logic should be handled by management
+            def sharedblock_volume(_v):
+                if lvm.lv_exists(_v.installPath):
+                    lvm.do_active_lv(_v.installPath, lvm.LvmlockdLockType.EXCLUSIVE, True)
+
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
                 e(disk, 'source', None, {'file': _v.installPath})
+
+                sharedblock_volume(_v)
 
                 if _v.shareable:
                     e(disk, 'shareable')
