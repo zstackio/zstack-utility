@@ -249,6 +249,9 @@ def add_vg_tag(vgUuid, tag):
 
 
 def has_lv_tag(path, tag):
+    if tag == "":
+        logger.debug("check tag is empty, return false")
+        return False
     o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings --readonly 2>/dev/null | wc -l" % (tag, path))
     return o.strip() == '1'
 
@@ -323,13 +326,18 @@ def active_lv(path, shared=False):
         flag = "-asy"
 
     bash.bash_errorout("lvchange %s %s" % (flag, path))
+    if lv_is_active(path) is False:
+        raise Exception("active lv %s with %s failed" % (path, flag))
 
 
+@bash.in_bash
 def deactive_lv(path, raise_exception=True):
     if not lv_exists(path):
         return
-    cmd = shell.ShellCmd("lvchange -an %s" % path)
-    cmd(is_exception=raise_exception)
+    if raise_exception:
+        bash.bash_errorout("lvchange -an %s" % path)
+    else:
+        bash.bash_r("lvchange -an %s" % path)
 
 
 def delete_lv(path, raise_exception=True):
@@ -447,19 +455,21 @@ class OperateLv(object):
 
 
 class RecursiveOperateLv(object):
-    def __init__(self, abs_path, shared=False, delete_when_exception=False):
+    def __init__(self, abs_path, shared=False, skip_deactivate_tag="", delete_when_exception=False):
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
         self.target_lock = LvmlockdLockType.EXCLUSIVE if shared == False else LvmlockdLockType.SHARE
         self.backing = None
         self.delete_when_exception = delete_when_exception
+        self.skip_deactivate_tag = skip_deactivate_tag
 
     def __enter__(self):
         if self.exists_lock < self.target_lock:
             active_lv(self.abs_path, self.shared)
         if linux.qcow2_get_backing_file(self.abs_path) != "":
-            self.backing = RecursiveOperateLv(linux.qcow2_get_backing_file(self.abs_path), True, False)
+            self.backing = RecursiveOperateLv(
+                linux.qcow2_get_backing_file(self.abs_path), True, self.skip_deactivate_tag, False)
 
         if self.backing is not None:
             self.backing.__enter__()
@@ -468,11 +478,14 @@ class RecursiveOperateLv(object):
         if self.backing is not None:
             self.backing.__exit__(exc_type, exc_val, exc_tb)
 
-        if exc_val is not None and self.delete_when_exception is True:
+        if exc_val is not None \
+                and self.delete_when_exception is True\
+                and not has_lv_tag(self.abs_path, self.skip_deactivate_tag):
             delete_lv(self.abs_path, False)
             return
 
-        if self.exists_lock == LvmlockdLockType.NULL:
+        if self.exists_lock == LvmlockdLockType.NULL \
+                and not has_lv_tag(self.abs_path, self.skip_deactivate_tag):
             deactive_lv(self.abs_path, raise_exception=False)
         else:
             active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)
