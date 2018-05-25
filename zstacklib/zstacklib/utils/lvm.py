@@ -385,12 +385,12 @@ def do_active_lv(absolutePath, lockType, recursive):
         return
 
     while linux.qcow2_get_backing_file(absolutePath) != "":
-        install_abs_path = linux.qcow2_get_backing_file(install_abs_path)
+        absolutePath = linux.qcow2_get_backing_file(absolutePath)
         if lockType == LvmlockdLockType.NULL:
-            handle_lv(LvmlockdLockType.NULL, install_abs_path)
+            handle_lv(LvmlockdLockType.NULL, absolutePath)
         else:
             # activate backing files only in shared mode
-           handle_lv(LvmlockdLockType.SHARE, install_abs_path)
+            handle_lv(LvmlockdLockType.SHARE, absolutePath)
 
 
 @bash.in_bash
