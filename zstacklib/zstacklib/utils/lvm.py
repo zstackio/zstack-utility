@@ -23,11 +23,11 @@ class LvmlockdLockType(object):
 
     @staticmethod
     def from_abbr(abbr):
-        if abbr == "sh":
+        if abbr.strip() == "sh":
             return LvmlockdLockType.SHARE
-        elif abbr == "ex":
+        elif abbr.strip() == "ex":
             return LvmlockdLockType.EXCLUSIVE
-        elif abbr == "un":
+        elif abbr.strip() == "un":
             return LvmlockdLockType.NULL
         else:
             raise Exception("unknown lock type %s" % abbr)
@@ -65,6 +65,12 @@ def check_lvm_config_is_default():
         return True
 
 
+def clean_duplicate_configs():
+    cmd = shell.ShellCmd("md5sum %s/* " % LVM_CONFIG_BACKUP_PATH +
+                         " | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
+    cmd(is_exception=False)
+
+
 def backup_lvm_config():
     if not os.path.exists(LVM_CONFIG_PATH):
         logger.warn("can not find lvm config path: %s, backup failed" % LVM_CONFIG_PATH)
@@ -73,6 +79,7 @@ def backup_lvm_config():
     if not os.path.exists(LVM_CONFIG_BACKUP_PATH):
         os.makedirs(LVM_CONFIG_BACKUP_PATH)
 
+    clean_duplicate_configs()
     current_time = time.time()
     cmd = shell.ShellCmd("cp %s/lvm.conf %s/lvm-%s.conf; "
                          "cp %s/lvmlocal.conf %s/lvmlocal-%s.conf" %
@@ -196,22 +203,6 @@ def get_running_host_id(vgUuid):
     if cmd.stdout.strip() == "":
         raise Exception("can not get running host id for vg %s" % vgUuid)
     return cmd.stdout
-
-def get_wwid(disk_path):
-    cmd = shell.ShellCmd("udevadm info --name=%s | grep 'disk/by-id.*' -m1 -o | awk -F '/' {' print $3 '}" % disk_path)
-    cmd(is_exception=False)
-    return cmd.stdout.strip()
-
-
-def backup_super_block(disk_path):
-    wwid = get_wwid(disk_path)
-    if wwid is None or wwid == "":
-        logger.warn("can not get wwid of disk %s" % disk_path)
-
-    current_time = time.time()
-    disk_back_file = os.path.join(LVM_CONFIG_BACKUP_PATH, "%s.%s.%s" % (wwid, SUPER_BLOCK_BACKUP, current_time))
-    cmd = shell.ShellCmd("dd if=%s of=%s bs=64KB count=1 conv=notrunc" % (disk_path, disk_back_file))
-    cmd(is_exception=False)
 
 
 def get_wwid(disk_path):
@@ -381,12 +372,12 @@ def list_local_active_lvs(vgUuid):
     return result
 
 
+@bash.in_bash
 def get_lv_locking_type(path):
     if not lv_is_active(path):
         return LvmlockdLockType.NULL
-    cmd = shell.ShellCmd("lvmlockctl -i | grep %s | awk '{print $3}'" % lv_uuid(path))
-    cmd(is_exception=True)
-    return LvmlockdLockType.from_abbr(cmd.stdout.strip())
+    output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 || awk '{print $3}'" % lv_uuid(path))
+    return LvmlockdLockType.from_abbr(output.strip())
 
 
 def lv_operate(abs_path, shared=False):
