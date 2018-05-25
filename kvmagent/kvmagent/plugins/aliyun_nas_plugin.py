@@ -306,7 +306,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     def umount(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AliyunNasResponse()
-        if linux.is_mounted(path=cmd.mountPath):
+        if naslinux.is_mounted(path=cmd.mountPath):
             ret = linux.umount(cmd.mountPath)
             if not ret:
                 logger.warn(http.path_msg(self.UNMOUNT_PATH, 'unmount %s failed' % cmd.mountPath))
