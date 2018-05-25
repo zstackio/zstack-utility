@@ -23,11 +23,11 @@ class LvmlockdLockType(object):
 
     @staticmethod
     def from_abbr(abbr):
-        if abbr == "sh":
+        if abbr.strip() == "sh":
             return LvmlockdLockType.SHARE
-        elif abbr == "ex":
+        elif abbr.strip() == "ex":
             return LvmlockdLockType.EXCLUSIVE
-        elif abbr == "un":
+        elif abbr.strip() == "un":
             return LvmlockdLockType.NULL
         else:
             raise Exception("unknown lock type %s" % abbr)
@@ -372,12 +372,12 @@ def list_local_active_lvs(vgUuid):
     return result
 
 
+@bash.in_bash
 def get_lv_locking_type(path):
     if not lv_is_active(path):
         return LvmlockdLockType.NULL
-    cmd = shell.ShellCmd("lvmlockctl -i | grep %s | awk '{print $3}'" % lv_uuid(path))
-    cmd(is_exception=True)
-    return LvmlockdLockType.from_abbr(cmd.stdout.strip())
+    output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 || awk '{print $3}'" % lv_uuid(path))
+    return LvmlockdLockType.from_abbr(output.strip())
 
 
 def lv_operate(abs_path, shared=False):
