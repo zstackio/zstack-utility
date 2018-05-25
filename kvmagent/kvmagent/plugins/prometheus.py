@@ -1,6 +1,7 @@
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils.bash import *
 from zstacklib.utils import linux
@@ -149,7 +150,26 @@ LoadPlugin virt
             bash_errorout('chmod +x {{EXPORTER_PATH}}')
             bash_errorout("nohup {{EXPORTER_PATH}} {{ARGUMENTS}} >{{LOG_FILE}} 2>&1 < /dev/null &\ndisown")
 
+        self.install_iptables()
+
         return jsonobject.dumps(rsp)
+
+    @in_bash
+    @lock.file_lock('/run/xtables.lock')
+    def install_iptables(self):
+        def install_iptables_port(port):
+            r, o, e = bash_roe("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s'" % port)
+            if r == 0:
+                rules = o.split('\n')
+                for rule in rules:
+                    rule = rule.replace("-A ", "-D ")
+                    bash_r("iptables %s" % rule)
+
+            bash_r("iptables -w -A INPUT -p tcp --dport %s -j ACCEPT" % port)
+
+        install_iptables_port(7069)
+        install_iptables_port(9100)
+        install_iptables_port(9103)
 
     def install_colletor(self):
         class Collector(object):
