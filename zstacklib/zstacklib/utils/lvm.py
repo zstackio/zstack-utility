@@ -351,10 +351,10 @@ def delete_lv(path, raise_exception=True):
     return cmd.return_code
 
 
+@bash.in_bash
 def lv_exists(path):
-    cmd = shell.ShellCmd("lvs --nolocking --readonly %s" % path)
-    cmd(is_exception=False)
-    return cmd.return_code == 0
+    r = bash.bash_r("lvs --nolocking --readonly %s" % path)
+    return r == 0
 
 
 def lv_uuid(path):
@@ -365,9 +365,8 @@ def lv_uuid(path):
 
 def lv_is_active(path):
     # NOTE(weiw): use readonly to get active may return 'unknown'
-    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -oactive | grep -w active" % path)
-    cmd(is_exception=False)
-    return cmd.return_code == 0
+    r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % path)
+    return r == 0
 
 
 def list_local_active_lvs(vgUuid):
@@ -459,7 +458,7 @@ class RecursiveOperateLv(object):
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
-        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared == False else LvmlockdLockType.SHARE
+        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
         self.backing = None
         self.delete_when_exception = delete_when_exception
         self.skip_deactivate_tag = skip_deactivate_tag
@@ -484,8 +483,11 @@ class RecursiveOperateLv(object):
             delete_lv(self.abs_path, False)
             return
 
-        if self.exists_lock == LvmlockdLockType.NULL \
-                and not has_lv_tag(self.abs_path, self.skip_deactivate_tag):
+        if has_lv_tag(self.abs_path, self.skip_deactivate_tag):
+            logger.debug("the volume has skip tag: %s" % has_lv_tag(self.abs_path, self.skip_deactivate_tag))
+            return
+
+        if self.exists_lock == LvmlockdLockType.NULL:
             deactive_lv(self.abs_path, raise_exception=False)
         else:
             active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)
