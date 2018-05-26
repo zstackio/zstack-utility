@@ -401,6 +401,7 @@ def do_active_lv(absolutePath, lockType, recursive):
 
 
 @bash.in_bash
+@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
 def get_lv_locking_type(path):
     if not lv_is_active(path):
         return LvmlockdLockType.NULL
