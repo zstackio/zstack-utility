@@ -491,7 +491,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath)
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
-        with lvm.RecursiveOperateLv(src_abs_path, shared=True):
+        if cmd.sharedVolume:
+            lvm.do_active_lv(src_abs_path, lvm.LvmlockdLockType.SHARE, True)
+
+        with lvm.RecursiveOperateLv(src_abs_path, shared=cmd.sharedVolume):
             virtual_size = linux.qcow2_virtualsize(src_abs_path)
             if not lvm.lv_exists(dst_abs_path):
                 lvm.create_lv_from_absolute_path(dst_abs_path, virtual_size,
