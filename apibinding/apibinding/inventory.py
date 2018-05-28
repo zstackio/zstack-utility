@@ -7641,6 +7641,37 @@ class APIListPrimaryStorageReply(object):
         self.error = None
 
 
+APIQUERYIMAGECACHEMSG_FULL_NAME = 'org.zstack.header.storage.primary.APIQueryImageCacheMsg'
+class APIQueryImageCacheMsg(object):
+    FULL_NAME='org.zstack.header.storage.primary.APIQueryImageCacheMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYIMAGECACHEREPLY_FULL_NAME = 'org.zstack.header.storage.primary.APIQueryImageCacheReply'
+class APIQueryImageCacheReply(object):
+    FULL_NAME='org.zstack.header.storage.primary.APIQueryImageCacheReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
 APIQUERYPRIMARYSTORAGEMSG_FULL_NAME = 'org.zstack.header.storage.primary.APIQueryPrimaryStorageMsg'
 class APIQueryPrimaryStorageMsg(object):
     FULL_NAME='org.zstack.header.storage.primary.APIQueryPrimaryStorageMsg'
@@ -15667,6 +15698,7 @@ class APIGetEventDataMsg(object):
     def __init__(self):
         self.startTime = None
         self.endTime = None
+        self.offsetAheadOfCurrentTime = None
         self.limit = None
         self.conditions = OptionalList()
         self.session = None
@@ -15694,6 +15726,7 @@ class APIGetMetricDataMsg(object):
         self.metricName = NotNoneField()
         self.startTime = None
         self.endTime = None
+        self.offsetAheadOfCurrentTime = None
         self.period = None
         self.labels = OptionalList()
         self.functions = OptionalList()
@@ -16487,6 +16520,8 @@ api_names = [
     'APIQueryIPSecConnectionReply',
     'APIQueryIdentityZoneFromLocalMsg',
     'APIQueryIdentityZoneFromLocalReply',
+    'APIQueryImageCacheMsg',
+    'APIQueryImageCacheReply',
     'APIQueryImageMsg',
     'APIQueryImageReply',
     'APIQueryImageStoreBackupStorageMsg',
@@ -21315,6 +21350,72 @@ class BackupStorageInventory(object):
 
 
 
+class ImageCacheInventory(object):
+    def __init__(self):
+        self.id = None
+        self.primaryStorageUuid = None
+        self.imageUuid = None
+        self.installUrl = None
+        self.mediaType = None
+        self.size = None
+        self.md5sum = None
+        self.state = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'primaryStorageUuid'):
+            self.primaryStorageUuid = inv.primaryStorageUuid
+        else:
+            self.primaryStorageUuid = None
+
+        if hasattr(inv, 'imageUuid'):
+            self.imageUuid = inv.imageUuid
+        else:
+            self.imageUuid = None
+
+        if hasattr(inv, 'installUrl'):
+            self.installUrl = inv.installUrl
+        else:
+            self.installUrl = None
+
+        if hasattr(inv, 'mediaType'):
+            self.mediaType = inv.mediaType
+        else:
+            self.mediaType = None
+
+        if hasattr(inv, 'size'):
+            self.size = inv.size
+        else:
+            self.size = None
+
+        if hasattr(inv, 'md5sum'):
+            self.md5sum = inv.md5sum
+        else:
+            self.md5sum = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class PrimaryStorageInventory(object):
     def __init__(self):
         self.uuid = None
@@ -23391,10 +23492,18 @@ PRIMARY_STORAGE_TYPE = 'ZSES'
 class GlobalConfig_ALIYUN(object):
     UPLOAD_ECS_IMAGE_FORMAT = 'upload.ecs.image.format'
     ALIYUN_OPENAPI_PAGE_SIZE = 'aliyun.openapi.page.size'
+    USER_DEFINE_API_ENDPOINT = 'user.define.api.endpoint'
 
     @staticmethod
     def get_category():
         return 'aliyun'
+
+class GlobalConfig_ALIYUNNASPRIMARYSTORAGE(object):
+    DELETION_GCINTERVAL = 'deletion.gcInterval'
+
+    @staticmethod
+    def get_category():
+        return 'aliyunNasPrimaryStorage'
 
 class GlobalConfig_APPLIANCEVM(object):
     SSH_TIMEOUT = 'ssh.timeout'
@@ -23477,6 +23586,13 @@ class GlobalConfig_ENCRYPT(object):
     @staticmethod
     def get_category():
         return 'encrypt'
+
+class GlobalConfig_FLATNETWORKPROVIDER(object):
+    ALLOW_DEFAULT_DNS = 'allow.default.dns'
+
+    @staticmethod
+    def get_category():
+        return 'flatNetworkProvider'
 
 class GlobalConfig_FUSIONSTOR(object):
     IMAGECACHE_CLEANUP_INTERVAL = 'imageCache.cleanup.interval'
@@ -23577,6 +23693,7 @@ class GlobalConfig_IMAGE(object):
 
 class GlobalConfig_KVM(object):
     HOST_DNSCHECKALIYUN = 'host.DNSCheckAliyun'
+    IGNOREMSRS = 'ignoreMsrs'
     VM_CPUMODE = 'vm.cpuMode'
     VM_CACHEMODE = 'vm.cacheMode'
     HOST_DNSCHECK163 = 'host.DNSCheck163'
@@ -23587,6 +23704,7 @@ class GlobalConfig_KVM(object):
     VM_MIGRATIONQUANTITY = 'vm.migrationQuantity'
     RESERVEDMEMORY = 'reservedMemory'
     HOST_SYNCLEVEL = 'host.syncLevel'
+    KVM_IGNOREMSRS = 'kvm.ignoreMsrs'
     DATAVOLUME_MAXNUM = 'dataVolume.maxNum'
     HOST_DNSCHECKLIST = 'host.DNSCheckList'
 
@@ -23744,17 +23862,26 @@ class GlobalConfig_PROGRESS(object):
     def get_category():
         return 'progress'
 
+class GlobalConfig_QUERY(object):
+    BATCHQUERY_DEBUG = 'batchQuery.debug'
+
+    @staticmethod
+    def get_category():
+        return 'query'
+
 class GlobalConfig_QUOTA(object):
     IMAGE_SIZE = 'image.size'
     VM_MEMORYSIZE = 'vm.memorySize'
     EIP_NUM = 'eip.num'
     IMAGE_NUM = 'image.num'
     VIP_NUM = 'vip.num'
+    AFFINITYGROUP_NUM = 'affinitygroup.num'
     VOLUME_DATA_NUM = 'volume.data.num'
     L3_NUM = 'l3.num'
     SECURITYGROUP_NUM = 'securityGroup.num'
     SCHEDULER_NUM = 'scheduler.num'
     PORTFORWARDING_NUM = 'portForwarding.num'
+    LISTENER_NUM = 'listener.num'
     VM_CPUNUM = 'vm.cpuNum'
     VM_TOTALNUM = 'vm.totalNum'
     SNAPSHOT_VOLUME_NUM = 'snapshot.volume.num'
@@ -23762,6 +23889,7 @@ class GlobalConfig_QUOTA(object):
     VM_NUM = 'vm.num'
     VOLUME_CAPACITY = 'volume.capacity'
     VXLAN_NUM = 'vxlan.num'
+    SCHEDULER_TRIGGER_NUM = 'scheduler.trigger.num'
 
     @staticmethod
     def get_category():
@@ -23883,8 +24011,10 @@ class GlobalConfig_VYOS(object):
         return 'vyos'
 
 class GlobalConfig_ZWATCH(object):
+    RESOLUTION_DEFAULTALGORITHM_MAXSAMPLES = 'resolution.defaultAlgorithm.maxSamples'
     MANAGEMENTSERVERDIRECTORIESTOMONITOR = 'managementServerDirectoriesToMonitor'
     ALARM_REPEATINTERVAL = 'alarm.repeatInterval'
+    SCRAPE_INTERVAL = 'scrape.interval'
     EVALUATION_INTERVAL = 'evaluation.interval'
     EVALUATION_THREADNUM = 'evaluation.threadNum'
 
@@ -24403,6 +24533,12 @@ class QueryObjectImageBackupStorageRefInventory(object):
      QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
         'backupStorage' : 'QueryObjectBackupStorageInventory',
+     }
+
+class QueryObjectImageCacheInventory(object):
+     PRIMITIVE_FIELDS = ['size','md5sum','lastOpDate','mediaType','id','state','primaryStorageUuid','imageUuid','installUrl','createDate','__userTag__','__systemTag__']
+     EXPANDED_FIELDS = []
+     QUERY_OBJECT_MAP = {
      }
 
 class QueryObjectImageInventory(object):
@@ -25377,6 +25513,7 @@ queryMessageInventoryMap = {
      'APIQueryHybridKeySecretMsg' : QueryObjectHybridAccountInventory,
      'APIQueryIPSecConnectionMsg' : QueryObjectIPsecConnectionInventory,
      'APIQueryIdentityZoneFromLocalMsg' : QueryObjectIdentityZoneInventory,
+     'APIQueryImageCacheMsg' : QueryObjectImageCacheInventory,
      'APIQueryImageMsg' : QueryObjectImageInventory,
      'APIQueryImageStoreBackupStorageMsg' : QueryObjectImageStoreBackupStorageInventory,
      'APIQueryInstanceOfferingMsg' : QueryObjectInstanceOfferingInventory,

@@ -6454,6 +6454,20 @@ class QueryImageAction(inventory.APIQueryImageMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryImageCacheAction(inventory.APIQueryImageCacheMsg):
+    def __init__(self):
+        super(QueryImageCacheAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryImageCacheAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryImageStoreBackupStorageAction(inventory.APIQueryImageStoreBackupStorageMsg):
     def __init__(self):
         super(QueryImageStoreBackupStorageAction, self).__init__()
