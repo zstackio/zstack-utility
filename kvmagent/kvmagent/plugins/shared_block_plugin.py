@@ -499,7 +499,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if not lvm.lv_exists(dst_abs_path):
                 lvm.create_lv_from_absolute_path(dst_abs_path, virtual_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
+            # TODO(weiw): since this is a write operation, should not use shared locking
+            with lvm.RecursiveOperateLv(dst_abs_path, shared=cmd.sharedVolume):
                 if not cmd.fullRebase:
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
                 else:
