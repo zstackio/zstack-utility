@@ -491,21 +491,23 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath)
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
-        if cmd.sharedVolume:
-            lvm.do_active_lv(src_abs_path, lvm.LvmlockdLockType.SHARE, True)
-
-        with lvm.RecursiveOperateLv(src_abs_path, shared=cmd.sharedVolume):
+        with lvm.RecursiveOperateLv(src_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(src_abs_path)
             if not lvm.lv_exists(dst_abs_path):
                 lvm.create_lv_from_absolute_path(dst_abs_path, virtual_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            # TODO(weiw): since this is a write operation, should not use shared locking
-            with lvm.RecursiveOperateLv(dst_abs_path, shared=cmd.sharedVolume):
+            with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
                 if not cmd.fullRebase:
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
                 else:
-                    # TODO(weiw): add tmp disk and then rename is better
-                    linux.create_template(src_abs_path, dst_abs_path)
+                    tmp_lv = 'tmp_%s' % uuidhelper.uuid()
+                    tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), tmp_lv)
+                    logger.debug("creating temp lv %s" % tmp_abs_path)
+                    lvm.create_lv_from_absolute_path(tmp_abs_path, virtual_size,
+                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                    with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
+                        linux.create_template(dst_abs_path, tmp_abs_path)
+                        lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -534,6 +536,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
+                linux.qcow2_fill(0, 1048576, install_abs_path)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)

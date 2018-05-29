@@ -656,6 +656,10 @@ def get_qcow2_base_image_path_recusively(path):
     chain = qcow2_get_file_chain(path)
     return chain[-1]
 
+def qcow2_fill(seek, length, path, raise_excpetion=False):
+    cmd = shell.ShellCmd("qemu-io -c 'write %s %s' %s" % (seek, length, path))
+    cmd(raise_excpetion)
+
 def rmdir_if_empty(dirpath):
     try:
         os.rmdir(dirpath)

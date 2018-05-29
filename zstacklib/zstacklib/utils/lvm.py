@@ -306,6 +306,14 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     if not lv_exists(path):
         raise Exception("can not find lv %s after create", path)
 
+    with OperateLv(path, shared=False):
+        dd_zero(path)
+
+
+def dd_zero(path):
+    cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=65536 count=1 conv=sync,notrunc" % path)
+    cmd(is_exception=False)
+
 
 def get_lv_size(path):
     cmd = shell.ShellCmd("lvs --nolocking --readonly --noheading -osize --units b %s" % path)
@@ -367,6 +375,30 @@ def lv_is_active(path):
     # NOTE(weiw): use readonly to get active may return 'unknown'
     r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % path)
     return r == 0
+
+
+@bash.in_bash
+def lv_rename(old_abs_path, new_abs_path, overwrite=False):
+    if not lv_exists(new_abs_path):
+        return bash.bash_roe("lvrename %s %s" % (old_abs_path, new_abs_path))
+
+    if overwrite is False:
+        raise Exception("lv with name %s is already exists, can not rename lv %s to it" %
+                        (new_abs_path, old_abs_path))
+
+    tmp_path = new_abs_path + "_%s" % int(time.time())
+    r, o, e = lv_rename(new_abs_path, tmp_path)
+    if r != 0:
+        raise Exception("rename lv %s to tmp name %s failed: stdout: %s, stderr: %s" %
+                        (new_abs_path, tmp_path, o, e))
+
+    r, o, e = lv_rename(old_abs_path, new_abs_path)
+    if r != 0:
+        bash.bash_errorout("lvrename %s %s" % (tmp_path, new_abs_path))
+        raise Exception("rename lv %s to tmp name %s failed: stdout: %s, stderr: %s" %
+                        (old_abs_path, new_abs_path, o, e))
+
+    delete_lv(tmp_path, False)
 
 
 def list_local_active_lvs(vgUuid):
