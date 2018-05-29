@@ -3891,6 +3891,17 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @in_bash
     def hot_unplug_pci_device(self, req):
+        @linux.retry(3, 3)
+        def find_pci_device(vmUuid, pciDeviceAddress):
+            bus = pciDeviceAddress.split(":")[0]
+            slot = pciDeviceAddress.split(":")[1].split(".")[0]
+            func = pciDeviceAddress.split(".")[-1]
+
+            cmd = """virsh dumpxml %s | grep -A3 -E '<hostdev.*pci' | grep "<address domain='0x0000' bus='0x%s' slot='0x%s' function='0x%s'/>\"""" % \
+                  (vmUuid, bus, slot, func)
+            r, o, e = bash.bash_roe(cmd)
+            return o != ""
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotUnplugPciDeviceRsp()
         addr = cmd.pciDeviceAddress
@@ -3905,6 +3916,7 @@ class VmPlugin(kvmagent.KvmAgent):
        <address type='pci' domain='%s' bus='%s' slot='%s' function='%s'/>
      </source>
 </hostdev>''' % (domain, bus, slot, function)
+        logger.debug("virsh detach xml: %s" % content)
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
         logger.debug("detach %s to %s finished, %s, %s" % (
@@ -3912,6 +3924,10 @@ class VmPlugin(kvmagent.KvmAgent):
         if r!= 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
+        if find_pci_device(cmd.vmUuid, addr):
+            rsp.success = False
+            rsp.error = "pci device %s still exists on vm %s" % (addr, cmd.vmUuid)
+
         return jsonobject.dumps(rsp)
 
     def _get_next_usb_port(self, vmUuid, bus):
