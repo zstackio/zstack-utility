@@ -680,6 +680,10 @@ def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
     if len(base_image) > 1:
         raise Exception('more than one image file found in cache dir')
 
+def qcow2_fill(seek, length, path, raise_excpetion=False):
+    cmd = shell.ShellCmd("qemu-io -c 'write %s %s' %s" % (seek, length, path))
+    cmd(raise_excpetion)
+
 def rmdir_if_empty(dirpath):
     try:
         os.rmdir(dirpath)
