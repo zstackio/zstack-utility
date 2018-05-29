@@ -3347,6 +3347,17 @@ class VmPlugin(kvmagent.KvmAgent):
         #
         # rsp.states = running_vms
         rsp.states = get_all_vm_states()
+
+        # Occasionally, virsh might not be able to list all VM instances with
+        # uri=qemu://system.  To prevend this situation, we double check the
+        # 'rsp.states' agaist QEMU process lists.
+        output = bash.bash_o("ps x | grep -E -o 'qemu-kvm.*guest=[[:alnum:]]{32}' | awk -F= '{print $2}'").splitlines()
+        for guest in output:
+            if guest in rsp.states:
+                continue
+            logger.warn('guest [%s] not found in virsh list' % guest)
+            rsp.states[guest] = Vm.VM_STATE_RUNNING
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
