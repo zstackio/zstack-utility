@@ -60,7 +60,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.addons = None
         self.useBootMenu = True
         self.vmCpuModel = None
-
+        self.isApplianceVm = False
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -2491,6 +2491,12 @@ class Vm(object):
                 e(devices, 'emulator', cmd.addons['qemuPath'])
             else:
                 e(devices, 'emulator', kvmagent.get_qemu_path())
+            # no default usb controller and tablet device for appliance vm
+            if cmd.isApplianceVm:
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'none'})
+                elements['devices'] = devices
+                return
+
             tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
             e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
             if IS_AARCH64:
@@ -3007,14 +3013,16 @@ class Vm(object):
         make_audio_microphone()
         make_nics()
         make_volumes()
-        make_cdrom()
         make_graphic_console()
-        make_usb_redirect()
         make_addons()
         make_balloon_memory()
         make_console()
         make_sec_label()
         make_controllers()
+        # appliance vm doesn't need any cdrom or usb controller
+        if not cmd.isApplianceVm:
+            make_cdrom()
+            make_usb_redirect()
 
         root = elements['root']
         xml = etree.tostring(root)
