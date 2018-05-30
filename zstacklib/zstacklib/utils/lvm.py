@@ -221,15 +221,31 @@ def backup_super_block(disk_path):
     cmd = shell.ShellCmd("dd if=%s of=%s bs=64KB count=1 conv=notrunc" % (disk_path, disk_back_file))
     cmd(is_exception=False)
 
-
+@bash.in_bash
 def wipe_fs(disks):
     for disk in disks:
         cmd = shell.ShellCmd("pvdisplay %s" % disk)
         cmd(is_exception=False)
-        if cmd.return_code != 0:
-            backup_super_block(disk)
-            cmd = shell.ShellCmd("wipefs -af %s" % disk)
-            cmd(is_exception=False)
+        if cmd.return_code == 0:
+            continue
+
+        backup_super_block(disk)
+        need_flush_mpath = False
+
+        cmd_part = shell.ShellCmd("partprobe -s %s" % disk)
+        cmd_part(is_exception=False)
+
+        cmd_type = shell.ShellCmd("lsblk %s -oTYPE | grep mpath" % disk)
+        cmd_type(is_exception=False)
+        if cmd_type.stdout.strip() != "":
+            need_flush_mpath = True
+
+        cmd_wipefs = shell.ShellCmd("wipefs -af %s" % disk)
+        cmd_wipefs(is_exception=False)
+
+        if need_flush_mpath:
+            cmd_flush_mpath = shell.ShellCmd("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
+            cmd_flush_mpath(is_exception=False)
 
 
 def add_pv(vg_uuid, disk_path, metadata_size):
