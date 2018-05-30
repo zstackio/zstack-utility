@@ -1076,7 +1076,7 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
 def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
     vlan_dev_name = create_vlan_eth(ethname, vlan, ip, netmask)
-    move_route = (ip and netmask)
+    move_route = True
     create_bridge(bridgename, vlan_dev_name, move_route)
 
 def find_process_by_cmdline(cmdlines):
