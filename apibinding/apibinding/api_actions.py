@@ -4718,6 +4718,18 @@ class ExpungeDataVolumeAction(inventory.APIExpungeDataVolumeMsg):
         self.out = evt
         return self.out
 
+class ExpungeIAM2ProjectAction(inventory.APIExpungeIAM2ProjectMsg):
+    def __init__(self):
+        super(ExpungeIAM2ProjectAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ExpungeIAM2ProjectAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ExpungeImageAction(inventory.APIExpungeImageMsg):
     def __init__(self):
         super(ExpungeImageAction, self).__init__()
@@ -8776,6 +8788,18 @@ class RecoverDataVolumeAction(inventory.APIRecoverDataVolumeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RecoverDataVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RecoverIAM2ProjectAction(inventory.APIRecoverIAM2ProjectMsg):
+    def __init__(self):
+        super(RecoverIAM2ProjectAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoverIAM2ProjectAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
