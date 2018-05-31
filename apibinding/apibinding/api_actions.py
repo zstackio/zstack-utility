@@ -6630,34 +6630,6 @@ class QueryAliyunNasAccessGroupAction(inventory.APIQueryAliyunNasAccessGroupMsg)
         self.out = reply.inventories
         return self.out
 
-class QueryAliyunNasFileSystemAction(inventory.APIQueryAliyunNasFileSystemMsg):
-    def __init__(self):
-        super(QueryAliyunNasFileSystemAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryAliyunNasFileSystemAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class QueryAliyunNasMountTargetAction(inventory.APIQueryAliyunNasMountTargetMsg):
-    def __init__(self):
-        super(QueryAliyunNasMountTargetAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryAliyunNasMountTargetAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
 class QueryAliyunRouteEntryFromLocalAction(inventory.APIQueryAliyunRouteEntryFromLocalMsg):
     def __init__(self):
         super(QueryAliyunRouteEntryFromLocalAction, self).__init__()
@@ -6723,34 +6695,6 @@ class QueryApplianceVmAction(inventory.APIQueryApplianceVmMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryApplianceVmAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class QueryArchiveTicketAction(inventory.APIQueryArchiveTicketMsg):
-    def __init__(self):
-        super(QueryArchiveTicketAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryArchiveTicketAction] cannot be None')
-        reply = api.sync_call(self, self.sessionUuid)
-        self.reply = reply
-        self.out = reply.inventories
-        return self.out
-
-class QueryArchiveTicketHistoryAction(inventory.APIQueryArchiveTicketHistoryMsg):
-    def __init__(self):
-        super(QueryArchiveTicketHistoryAction, self).__init__()
-        self.sessionUuid = None
-        self.reply = None
-        self.out = None
-    def run(self):
-        if not self.sessionUuid:
-            raise Exception('sessionUuid of action[QueryArchiveTicketHistoryAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
