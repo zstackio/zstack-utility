@@ -1093,6 +1093,14 @@ def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
             else:
                 return NO_TOOL
 
+    # make sure localhost as 127.0.0.1
+    def check_hosts():
+        cmd = ShellCmd("grep '^\s*127.0.0.1\s' /etc/hosts | grep -q '\slocalhost\s'")
+        cmd(False)
+        if cmd.return_code != 0:
+            ShellCmd("sudo sed -i '1i127.0.0.1   localhost ' /etc/hosts; sudo sync")
+
+    check_hosts()
     what_tool = use_tool()
     if what_tool == USE_CURL:
         return ShellCmd('''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:8080/zstack/api''' % (timeout, timeout, timeout, mn_node))
