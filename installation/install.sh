@@ -2788,12 +2788,15 @@ ip addr show $MANAGEMENT_INTERFACE >/dev/null 2>&1
 if [ $? -ne 0 ];then
     ip addr show |grep $MANAGEMENT_INTERFACE |grep inet >/dev/null 2>&1
     if [ $? -ne 0 ]; then
-        fail2 "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'" 
+        fail2 "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'. Use 'ip addr' to show all interface and IP address." 
     fi
     MANAGEMENT_IP=$MANAGEMENT_INTERFACE
 else
     MANAGEMENT_IP=`ip -4 addr show ${MANAGEMENT_INTERFACE} | grep inet | head -1 | awk '{print $2}' | cut -f1  -d'/'`
     echo "Management node network interface: $MANAGEMENT_INTERFACE" >> $ZSTACK_INSTALL_LOG
+    if [ -z $MANAGEMENT_IP ]; then
+        fail2 "Can not identify IP address for interface: $MANAGEMENT_INTERFACE . Please assign correct interface by '-I MANAGEMENT_NODE_IP_ADDRESS', which has IP address. Use 'ip addr' to show all interface and IP address."
+    fi
 fi
 
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
