@@ -315,19 +315,25 @@ cs_check_hostname(){
 
     current_hostname=`hostname`
     CHANGE_HOSTNAME=`echo $MANAGEMENT_IP | sed 's/\./-/g'`
+    CURRENT_HOST_ITEM="$MANAGEMENT_IP $current_hostname"
     HOSTS_ITEM="$MANAGEMENT_IP $CHANGE_HOSTNAME"
-
-    # insert into /etc/hosts if $HOSTS_ITEM not exists
-    grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
 
     # current hostname is localhost
     if [ "localhost" = $current_hostname ] || [ "localhost.localdomain" = $current_hostname ] ; then
         which hostnamectl >>/dev/null 2>&1
         if [ $? -ne 0 ]; then
+            #hostnamectl only valid in redhat OS.
             hostname $CHANGE_HOSTNAME
         else
             hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+            #If /etc/hostname is same with CHANGE_HOSTNAME, but hostname 
+            # command is different, hostnamectl will not change current 
+            # hostname, so we need to manually reset current hostname as well.
+            hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
         fi
+        # insert into /etc/hosts if $HOSTS_ITEM not exists
+        grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
+
         echo "Your OS hostname is set as $current_hostname, which will block vm live migration. You can set a special hostname, or directly use $CHANGE_HOSTNAME by running following commands in CentOS6:
 
         hostname $CHANGE_HOSTNAME
@@ -343,7 +349,19 @@ or following commands in CentOS7:
 
     # current hostname is not same with IP
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
-    [ $? -ne 0 ] && return 0
+    if [ $? -ne 0 ]; then
+        # insert into /etc/hosts if $HOSTS_ITEM not exists
+        grep -q "$CURRENT_HOST_ITEM" /etc/hosts || echo "$CURRENT_HOST_ITEM" >> /etc/hosts
+        # must reset hostname to keep it same with system to avoid of user manually modify /etc/hostname without reboot system before running installer.
+        which hostnamectl >>/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            hostname $current_hostname
+        else
+            hostnamectl set-hostname $current_hostname >>$ZSTACK_INSTALL_LOG 2>&1
+            hostname $current_hostname >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
+        return 0
+    fi
 
     # current hostname is same with IP
     echo "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
@@ -360,11 +378,12 @@ You can also add '-q' to installer, then Installer will help you to set one.
     which hostnamectl >>/dev/null 2>&1
     if [ $? -ne 0 ]; then
         hostname $CHANGE_HOSTNAME
-        echo "$current_hostname $CHANGE_HOSTNAME" >>/etc/hosts
     else
         hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
-        echo "$current_hostname $CHANGE_HOSTNAME" >>/etc/hosts
+        hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
     fi
+    # insert into /etc/hosts if $HOSTS_ITEM not exists
+    grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
 }
 
 cs_check_mysql_password () {
