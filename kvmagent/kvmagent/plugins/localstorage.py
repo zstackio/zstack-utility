@@ -472,7 +472,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.snapshotInstallPath
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone(install_path, new_volume_path)
+        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
         size = linux.qcow2_virtualsize(new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
         rsp.size = size
@@ -488,7 +488,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname, 0775)
 
         new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone(install_path, new_volume_path)
+        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
         rsp.newVolumeInstallPath = new_volume_path
 
         return jsonobject.dumps(rsp)
@@ -579,9 +579,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 os.makedirs(dirname)
 
             if cmd.backingFile:
-                linux.qcow2_create_with_backing_file(cmd.backingFile, cmd.installUrl)
+                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
             else:
-                linux.qcow2_create(cmd.installUrl, cmd.size)
+                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.uuid, cmd.name, str(e))
@@ -607,7 +607,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0775)
 
-        linux.qcow2_clone(cmd.templatePathInCache, cmd.installUrl)
+        linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installUrl, cmd)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
