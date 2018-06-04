@@ -341,6 +341,7 @@ cs_check_hostname(){
 
 or following commands in CentOS7:
         hostnamectl set-hostname $CHANGE_HOSTNAME
+        hostname $CHANGE_HOSTNAME
         echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
 
 " >> $ZSTACK_INSTALL_LOG
@@ -350,7 +351,7 @@ or following commands in CentOS7:
     # current hostname is not same with IP
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
     if [ $? -ne 0 ]; then
-        # insert into /etc/hosts if $HOSTS_ITEM not exists
+        # insert into /etc/hosts if $CURRENT_HOST_ITEM not exists
         grep -q "$CURRENT_HOST_ITEM" /etc/hosts || echo "$CURRENT_HOST_ITEM" >> /etc/hosts
         # must reset hostname to keep it same with system to avoid of user manually modify /etc/hostname without reboot system before running installer.
         which hostnamectl >>/dev/null 2>&1
@@ -368,6 +369,7 @@ or following commands in CentOS7:
 Please fix it by running following commands in CentOS7:
 
     hostnamectl set-hostname MY_REAL_HOSTNAME
+    hostname MY_REAL_HOSTNAME
     echo \"$current_hostname MY_REAL_HOSTNAME\" >>/etc/hosts
 
 Or use other hostname setting method in other system. 
