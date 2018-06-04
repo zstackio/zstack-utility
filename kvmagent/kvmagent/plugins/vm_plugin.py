@@ -3803,7 +3803,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if cmd.enableIommu is False:
             r = 0
         if r!= 0:
-            r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,radeon\"/g' /etc/default/grub")
+            r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g' /etc/default/grub")
             if r != 0:
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
