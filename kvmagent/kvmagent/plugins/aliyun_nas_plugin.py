@@ -330,9 +330,9 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname)
 
         if cmd.backingFile:
-            linux.qcow2_create_with_backing_file(cmd.backingFile, cmd.installPath)
+            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installPath, cmd)
         else:
-            linux.qcow2_create(cmd.installPath, cmd.size)
+            linux.qcow2_create_with_cmd(cmd.installPath, cmd.size, cmd)
 
         logger.debug(
             'successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
@@ -353,7 +353,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0775)
 
-        linux.qcow2_clone(cmd.templatePathInCache, cmd.installPath)
+        linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installPath, cmd)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
 
@@ -382,7 +382,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.snapshotInstallPath
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone(install_path, new_volume_path)
+        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
         size = linux.qcow2_virtualsize(new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
         rsp.size = size
@@ -395,7 +395,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.imagePath
         new_volume_path = os.path.join(os.path.dirname(cmd.volumePath), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone(install_path, new_volume_path)
+        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
         rsp.newVolumeInstallPath = new_volume_path
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)
