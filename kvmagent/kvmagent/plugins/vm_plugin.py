@@ -3793,16 +3793,40 @@ class VmPlugin(kvmagent.KvmAgent):
         finally:
             os.remove(spath)
 
+    @staticmethod
+    def add_amdgpu_to_blacklist():
+        r_amd = bash.bash_r("grep -E 'modprobe.blacklist.*amdgpu' /etc/default/grub")
+        if r_amd != 0:
+            r_amd, o_amd, e_amd = bash.bash_roe("sed -i 's/radeon/amdgpu,radeon/g' /etc/default/grub")
+            if r_amd != 0:
+                return False, "%s %s" % (e_amd, o_amd)
+            r_amd, o_amd, e_amd = bash.bash_roe("grub2-mkconfig -o /boot/grub2/grub.cfg")
+            if r_amd != 0:
+                return False, "%s %s" % (e_amd, o_amd)
+            r_amd, o_amd, e_amd = bash.bash_roe("grub2-mkconfig -o /etc/grub2-efi.cfg")
+            if r_amd != 0:
+                return False, "%s %s" % (e_amd, o_amd)
+
+        return True, None
+
     @kvmagent.replyerror
     @in_bash
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
         r, o, e = bash.bash_roe("grep -E 'intel_iommu(\ )*=(\ )*on' /etc/default/grub")
-        #Note(WeiW): Skip config iommu if enable iommu is false
+        # Note(WeiW): Skip config iommu if enable iommu is false
         if cmd.enableIommu is False:
             r = 0
-        if r!= 0:
+        # Note(WeiW): Add amdgpu to blacklist for upgrade
+        elif r == 0:
+            success, error = self.add_amdgpu_to_blacklist()
+            if success is False:
+                rsp.success = False
+                rsp.error = error
+                return jsonobject.dumps(rsp)
+
+        if r != 0:
             r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g' /etc/default/grub")
             if r != 0:
                 rsp.success = False
