@@ -10,6 +10,8 @@ import re
 import platform
 
 import libvirt
+#from typing import List, Any, Union
+
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
@@ -206,6 +208,22 @@ class TakeSnapshotResponse(kvmagent.AgentResponse):
         self.size = None
 
 
+class TakeSnapshotsCmd(kvmagent.AgentCommand):
+    snapshotJobs = None  # type: list[VolumeSnapshotJobStruct]
+
+    def __init__(self):
+        super(TakeSnapshotResponse, self).__init__()
+        self.snapshotJobs = []
+
+
+class TakeSnapshotsResponse(kvmagent.AgentResponse):
+    snapshots = None  # type: List[VolumeSnapshotResultStruct]
+
+    def __init__(self):
+        super(TakeSnapshotsResponse, self).__init__()
+        self.snapshots = []
+
+
 class MergeSnapshotRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -306,6 +324,10 @@ class KvmResizeVolumeCommand(kvmagent.AgentCommand):
 class KvmResizeVolumeRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(KvmResizeVolumeRsp, self).__init__()
+
+class BlockStreamResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(BlockStreamResponse, self).__init__()
 
 class VncPortIptableRule(object):
     def __init__(self):
@@ -1175,6 +1197,8 @@ class Vm(object):
     VM_STATE_CRASHED = 'Crashed'
     VM_STATE_SUSPENDED = 'Suspended'
 
+    ALLOW_SNAPSHOT_STATE = (VM_STATE_RUNNING, VM_STATE_PAUSED, VM_STATE_SHUTDOWN)
+
     power_state = {
         VIR_DOMAIN_NOSTATE: VM_STATE_NO_STATE,
         VIR_DOMAIN_RUNNING: VM_STATE_RUNNING,
@@ -1909,6 +1933,71 @@ class Vm(object):
             raise kvmagent.KvmError(
                 'unable to resize volume[id:{1}] of vm[uuid:{0}] because {2}'.format(device_id, self.uuid, e))
 
+    def take_live_volumes_delta_snapshots(self, vs_structs):
+        """
+        :type vs_structs: list[VolumeSnapshotJobStruct]
+        :rtype: list[VolumeSnapshotResultStruct]
+        """
+        disk_names = []
+        return_structs = []
+
+        snapshot = etree.Element('domainsnapshot')
+        disks = e(snapshot, 'disks')
+        logger.debug(snapshot)
+
+        if len(vs_structs) == 0:
+            return return_structs
+
+        def get_size(install_path):
+            """
+            :rtype: long
+            """
+            size = os.path.getsize(install_path)
+            if size is None or size == 0:
+                size = linux.qcow2_virtualsize(install_path)
+            return size
+
+        logger.debug(vs_structs)
+        for vs_struct in vs_structs:
+            if vs_struct.live is False or vs_struct.full is True:
+                raise kvmagent.KvmError("volume %s is not live or full snapshot specified, "
+                                        "can not proceed")
+            target_disk, disk_name = self._get_target_disk(vs_struct.deviceId)
+            if target_disk is None:
+                logger.debug("can not find %s" % vs_struct.deviceId)
+                continue
+
+            snapshot_dir = os.path.dirname(vs_struct.installPath)
+            if not os.path.exists(snapshot_dir):
+                os.makedirs(snapshot_dir)
+
+            disk_names.append(disk_name)
+            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': 'file'})
+            e(d, 'source', None, attrib={'file': vs_struct.installPath})
+            e(d, 'driver', None, attrib={'type': 'qcow2'})
+            return_structs.append(VolumeSnapshotResultStruct(
+                vs_struct.volumeUuid,
+                target_disk.source.file_,
+                vs_struct.installPath,
+                get_size(target_disk.source.file_)))
+
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if disk.target.dev_ not in disk_names:
+                e(disks, 'disk', None, attrib={'name': disk.target.dev_, 'snapshot': 'no'})
+
+        xml = etree.tostring(snapshot)
+        logger.debug('creating live snapshot for vm[uuid:{0}] volumes[id:{1}]:\n{2}'.format(self.uuid, disk_names, xml))
+        snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY | \
+                     libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA | \
+                     libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC
+
+        try:
+            self.domain.snapshotCreateXML(xml, snap_flags)
+            return return_structs
+        except libvirt.libvirtError as ex:
+            logger.warn(linux.get_exception_stacktrace())
+            raise kvmagent.KvmError(
+                'unable to take live snapshot of vm[uuid:{0}] volumes[id:{1}], {2}'.format(self.uuid, disk_names, str(ex)))
 
     def take_volume_snapshot(self, device_id, install_path, full_snapshot=False):
         target_disk, disk_name = self._get_target_disk(device_id)
@@ -1947,18 +2036,7 @@ class Vm(object):
                     'unable to take snapshot of vm[uuid:{0}] volume[id:{1}], {2}'.format(self.uuid, device_id, str(ex)))
 
         def take_full_snapshot():
-            logger.debug('start rebasing to make a full snapshot')
-            self.domain.blockRebase(disk_name, None, 0, 0)
-
-            logger.debug('rebasing full snapshot is in processing')
-
-            def wait_job(_):
-                logger.debug('full snapshot is waiting for blockRebase job completion')
-                return not self._wait_for_block_job(disk_name, abort_on_error=True)
-
-            if not linux.wait_callback_success(wait_job, timeout=21600, ignore_exception_in_callback=True):
-                raise kvmagent.KvmError('live full snapshot failed')
-
+            self.block_stream_disk(device_id)
             return take_delta_snapshot()
 
         if first_snapshot:
@@ -1970,6 +2048,20 @@ class Vm(object):
             return take_full_snapshot()
         else:
             return take_delta_snapshot()
+
+    def block_stream_disk(self, device_id):
+        target_disk, disk_name = self._get_target_disk(device_id)
+        logger.debug('start block stream for disk %s' % disk_name)
+        self.domain.blockRebase(disk_name, None, 0, 0)
+
+        logger.debug('block stream for disk %s in processing' % disk_name)
+
+        def wait_job(_):
+            logger.debug('block stream is waiting for %s blockRebase job completion' % disk_name)
+            return not self._wait_for_block_job(disk_name, abort_on_error=True)
+
+        if not linux.wait_callback_success(wait_job, timeout=21600, ignore_exception_in_callback=True):
+            raise kvmagent.KvmError('block stream failed')
 
     def migrate(self, cmd):
         current_hostname = shell.call('hostname')
@@ -3050,6 +3142,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
+    KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
+    KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
     KVM_LOGOUT_ISCSI_TARGET_PATH = "/iscsi/target/logout"
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
@@ -3652,6 +3746,89 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def take_volumes_snapshots(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: TakeSnapshotsCmd
+        rsp = TakeSnapshotsResponse()  # type: TakeSnapshotsResponse
+
+        for snapshot_job in cmd.snapshotJobs:
+            if snapshot_job.vmInstanceUuid != cmd.snapshotJobs[0].vmInstanceUuid:
+                raise kvmagent.KvmError("can not take snapshot on multiple vms[%s and %s]" %
+                                        snapshot_job.vmInstanceUuid, cmd.snapshotJobs[0].vmInstanceUuid)
+            if snapshot_job.live != cmd.snapshotJobs[0].live:
+                raise kvmagent.KvmError("can not take snapshot on different live status")
+
+        def makedir_if_need(new_path):
+            dirname = os.path.dirname(new_path)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname, 0755)
+
+        def get_size(install_path):
+            """
+            :rtype: long
+            """
+            size = os.path.getsize(install_path)
+            if size is None or size == 0:
+                size = linux.qcow2_virtualsize(install_path)
+            return size
+
+        def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path, new_volume_install_path):
+            """
+            :rtype: (str, str, long)
+            """
+            makedir_if_need(install_path)
+            linux.create_template(previous_install_path, install_path)
+            new_volume_path = new_volume_install_path if new_volume_install_path is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
+            makedir_if_need(new_volume_path)
+            linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
+
+            return install_path, new_volume_path, get_size(install_path)
+
+        def take_delta_snapshot_by_qemu_img_convert(previous_install_path, install_path, new_volume_install_path):
+            """
+            :rtype: (str, str, long)
+            """
+            new_volume_path = new_volume_install_path if new_volume_install_path is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
+            makedir_if_need(new_volume_path)
+            linux.qcow2_clone_with_cmd(previous_install_path, new_volume_path, cmd)
+
+            return previous_install_path, new_volume_path, get_size(install_path)
+
+        vm = get_vm_by_uuid(cmd.snapshotJobs[0].vmInstanceUuid, exception_if_not_existing=False)
+        try:
+            if vm and vm.state not in vm.ALLOW_SNAPSHOT_STATE:
+                raise kvmagent.KvmError(
+                    'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], '
+                    'because vm is not in [{2}], current state is {3}'.format(
+                        vm.uuid, cmd.snapshotJobs[0].deviceId, vm.ALLOW_SNAPSHOT_STATE, vm.state))
+
+            if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
+                rsp.snapshots = vm.take_live_volumes_delta_snapshots(cmd.snapshotJobs)
+            else:
+                if vm and cmd.snapshotJobs[0].live is True:
+                    raise kvmagent.KvmError("expected live snapshot but vm[%s] state is %s" %
+                                            vm.uuid, vm.state)
+                elif not vm and cmd.snapshotJobs[0].live is True:
+                    raise kvmagent.KvmError("expected live snapshot but can not find vm[%s]" %
+                                            cmd.snapshotJobs[0].vmInstanceUuid)
+
+                for snapshot_job in cmd.snapshotJobs:
+                    if snapshot_job.full:
+                        rsp.snapshots.append(VolumeSnapshotResultStruct(
+                            *take_full_snapshot_by_qemu_img_convert(
+                                snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath)))
+                    else:
+                        rsp.snapshots.append(VolumeSnapshotResultStruct(
+                            *take_delta_snapshot_by_qemu_img_convert(
+                                snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath)))
+
+        except kvmagent.KvmError as error:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = str(error)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def take_volume_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeSnapshotResponse()
@@ -3713,15 +3890,31 @@ class VmPlugin(kvmagent.KvmAgent):
                         'took delta snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
                             cmd.vmUuid, cmd.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
-
             rsp.size = os.path.getsize(rsp.snapshotInstallPath)
-            if rsp.size == None or rsp.size == 0:
+            if rsp.size is None or rsp.size == 0:
                 rsp.size = linux.qcow2_virtualsize(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def block_stream(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = BlockStreamResponse()
+        if not cmd.vmUuid:
+            rsp.success = True
+            return jsonobject.dumps(rsp)
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            rsp.success = True
+            return jsonobject.dumps(rsp)
+
+        vm.block_stream_disk(cmd.deviceId)
+        rsp.success = True
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -4071,6 +4264,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
+        http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
+        http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target)
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
@@ -4316,8 +4511,37 @@ class VmPlugin(kvmagent.KvmAgent):
     def configure(self, config):
         self.config = config
 
+
 class EmptyCdromConfig():
     def __init__(self, targetDev, bus, unit):
         self.targetDev = targetDev
         self.bus = bus
         self.unit = unit
+
+
+class VolumeSnapshotJobStruct(object):
+    def __init__(self, volumeUuid, deviceId, installPath, vmInstanceUuid, previousInstallPath,
+                 newVolumeInstallPath, live=True, full=False):
+        self.volumeUuid = volumeUuid
+        self.deviceId = deviceId
+        self.installPath = installPath
+        self.vmInstanceUuid = vmInstanceUuid
+        self.previousInstallPath = previousInstallPath
+        self.newVolumeInstallPath = newVolumeInstallPath
+        self.live = live
+        self.full = full
+
+
+class VolumeSnapshotResultStruct(object):
+    def __init__(self, volumeUuid, previousInstallPath, installPath, size=None):
+        """
+
+        :type volumeUuid: str
+        :type size: long
+        :type installPath: str
+        :type previousInstallPath: str
+        """
+        self.volumeUuid = volumeUuid
+        self.previousInstallPath = previousInstallPath
+        self.installPath = installPath
+        self.size = size
