@@ -3,6 +3,7 @@
 '''
 import Queue
 import os.path
+import tempfile
 import time
 import traceback
 import xml.etree.ElementTree as etree
@@ -15,6 +16,7 @@ import libvirt
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
+from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import bash
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import http
@@ -209,6 +211,12 @@ class TakeSnapshotResponse(kvmagent.AgentResponse):
         self.snapshotInstallPath = None
         self.size = None
 
+class TakeVolumeBackupResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(TakeVolumeBackupResponse, self).__init__()
+        self.backupFile = None
+        self.parentInstallPath = None
+        self.bitmap = None
 
 class TakeSnapshotsCmd(kvmagent.AgentCommand):
     snapshotJobs = None  # type: list[VolumeSnapshotJobStruct]
@@ -3182,6 +3190,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
+    KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
@@ -3940,6 +3949,72 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    # returns tuple: (bitmap, parent)
+    def do_take_volume_backup(self, cmd, drivertype, nodename, topoverlay, dest):
+        isc = ImageStoreClient()
+        bitmap = None
+        parent = None
+
+        if drivertype != 'qcow2':
+            raise kvmagent.KvmError('unsupported volume driver: ' + drivertype)
+
+        if not cmd.bitmap:
+            bitmap = 'zsbitmap%d' % (cmd.deviceId)
+            bf = linux.qcow2_get_backing_file(topoverlay)
+            if bf:
+                imf = isc.upload_image(cmd.hostname, bf)
+                parent = isc._build_install_path(imf.name, imf.id)
+                mode = 'top'
+            else:
+                mode = 'full'
+        else:
+            bitmap, mode = cmd.bitmap, 'auto'
+
+        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest)
+        logger.info('finished backup volume with mode: %s', mode)
+
+        if mode == 'incremental':
+            return bitmap, cmd.lastBackup
+
+        return bitmap, parent
+
+    @kvmagent.replyerror
+    def take_volume_backup(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = TakeVolumeBackupResponse()
+        d = tempfile.mkdtemp()
+        fname = uuidhelper.uuid()+".qcow2"
+
+        try:
+            vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+            if not vm:
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
+
+            if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
+                raise kvmagent.KvmError("failed to prepair backup space for [vm:%s,drive:%s]" % (cmd.vmUuid, nodename))
+
+            target_disk, _ = vm._get_target_disk(cmd.deviceId)
+            bitmap, parent = self.do_take_volume_backup(cmd,
+                    target_disk.driver.type_, # 'qcow2' etc.
+                    'drive-' + target_disk.alias.name_,  # 'virtio-disk0' etc.
+                    target_disk.source.file_,
+                    os.path.join(d, fname))
+            logger.info('finished backup volume with parent: %s', parent)
+            rsp.bitmap = bitmap
+            rsp.parentInstallPath = parent
+            rsp.backupFile = os.path.join(cmd.uploadDir, fname)
+
+        except kvmagent.KvmError as e:
+            logger.warn("take volume backup failed: " + str(e))
+            rsp.error = str(e)
+            rsp.success = False
+
+        finally:
+            linux.fumount(d)
+            linux.rmdir_if_empty(d)
+
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     def block_stream(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -4304,6 +4379,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
+        http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)

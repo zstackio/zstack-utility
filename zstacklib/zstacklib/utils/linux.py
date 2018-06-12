@@ -238,6 +238,19 @@ def remount(url, path, options=None):
     elif o.return_code != 0:
         o.raise_error()
 
+def sshfs_mount(username, hostname, port, password, url, mountpoint):
+    fd, fname = tempfile.mkstemp()
+    os.chmod(fname, 0500)
+    os.write(fd, "#!/bin/bash\n/usr/bin/sshpass -p '%s' ssh -o StrictHostKeyChecking=no -p %d $*\n" % (password, port))
+    os.close(fd)
+
+    ret = shell.run("/usr/bin/sshfs %s@%s:%s %s -o reconnect,allow_root,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
+    os.remove(fname)
+    return ret
+
+def fumount(mountpoint):
+    return shell.run("timeout 10 fusermount -u %s" % mountpoint)
+
 def is_valid_nfs_url(url):
     ts = url.split(':')
     if len(ts) != 2: raise InvalidNfsUrlError(url, 'url should have one and only one ":"')
