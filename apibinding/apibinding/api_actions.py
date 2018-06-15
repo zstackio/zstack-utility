@@ -6700,6 +6700,34 @@ class QueryApplianceVmAction(inventory.APIQueryApplianceVmMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryArchiveTicketAction(inventory.APIQueryArchiveTicketMsg):
+    def __init__(self):
+        super(QueryArchiveTicketAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryArchiveTicketAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryArchiveTicketHistoryAction(inventory.APIQueryArchiveTicketHistoryMsg):
+    def __init__(self):
+        super(QueryArchiveTicketHistoryAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryArchiveTicketHistoryAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryBackupStorageAction(inventory.APIQueryBackupStorageMsg):
     def __init__(self):
         super(QueryBackupStorageAction, self).__init__()
