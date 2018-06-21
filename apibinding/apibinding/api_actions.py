@@ -710,6 +710,18 @@ class AddSimulatorPrimaryStorageAction(inventory.APIAddSimulatorPrimaryStorageMs
         self.out = evt
         return self.out
 
+class AddStackTemplateAction(inventory.APIAddStackTemplateMsg):
+    def __init__(self):
+        super(AddStackTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddStackTemplateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddUserToGroupAction(inventory.APIAddUserToGroupMsg):
     def __init__(self):
         super(AddUserToGroupAction, self).__init__()
@@ -1646,6 +1658,18 @@ class CheckIpAvailabilityAction(inventory.APICheckIpAvailabilityMsg):
         self.out = evt
         return self.out
 
+class CheckStackTemplateParametersAction(inventory.APICheckStackTemplateParametersMsg):
+    def __init__(self):
+        super(CheckStackTemplateParametersAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CheckStackTemplateParametersAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CleanInvalidLdapBindingAction(inventory.APICleanInvalidLdapBindingMsg):
     def __init__(self):
         super(CleanInvalidLdapBindingAction, self).__init__()
@@ -2470,6 +2494,18 @@ class CreateResourcePriceAction(inventory.APICreateResourcePriceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateResourcePriceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateResourceStackAction(inventory.APICreateResourceStackMsg):
+    def __init__(self):
+        super(CreateResourceStackAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateResourceStackAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -3878,6 +3914,18 @@ class DeleteResourcePriceAction(inventory.APIDeleteResourcePriceMsg):
         self.out = evt
         return self.out
 
+class DeleteResourceStackAction(inventory.APIDeleteResourceStackMsg):
+    def __init__(self):
+        super(DeleteResourceStackAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteResourceStackAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteRoleAction(inventory.APIDeleteRoleMsg):
     def __init__(self):
         super(DeleteRoleAction, self).__init__()
@@ -3994,6 +4042,18 @@ class DeleteSecurityGroupRuleAction(inventory.APIDeleteSecurityGroupRuleMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteSecurityGroupRuleAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteStackTemplateAction(inventory.APIDeleteStackTemplateMsg):
+    def __init__(self):
+        super(DeleteStackTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteStackTemplateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -5870,6 +5930,18 @@ class GetResourceAccountAction(inventory.APIGetResourceAccountMsg):
         self.out = evt
         return self.out
 
+class GetResourceFromResourceStackAction(inventory.APIGetResourceFromResourceStackMsg):
+    def __init__(self):
+        super(GetResourceFromResourceStackAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetResourceFromResourceStackAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetResourceNamesAction(inventory.APIGetResourceNamesMsg):
     def __init__(self):
         super(GetResourceNamesAction, self).__init__()
@@ -6430,6 +6502,18 @@ class PowerStatusBaremetalHostAction(inventory.APIPowerStatusBaremetalHostMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[PowerStatusBaremetalHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PreviewResourceStackAction(inventory.APIPreviewResourceStackMsg):
+    def __init__(self):
+        super(PreviewResourceStackAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PreviewResourceStackAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -7115,6 +7199,20 @@ class QueryEmailTriggerActionAction(inventory.APIQueryEmailTriggerActionMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryEmailTriggerActionAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryEventFromResourceStackAction(inventory.APIQueryEventFromResourceStackMsg):
+    def __init__(self):
+        super(QueryEventFromResourceStackAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryEventFromResourceStackAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -7876,6 +7974,20 @@ class QueryResourcePriceAction(inventory.APIQueryResourcePriceMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryResourceStackAction(inventory.APIQueryResourceStackMsg):
+    def __init__(self):
+        super(QueryResourceStackAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryResourceStackAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryRoleAction(inventory.APIQueryRoleMsg):
     def __init__(self):
         super(QueryRoleAction, self).__init__()
@@ -8151,6 +8263,20 @@ class QuerySharedResourceAction(inventory.APIQuerySharedResourceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QuerySharedResourceAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryStackTemplateAction(inventory.APIQueryStackTemplateMsg):
+    def __init__(self):
+        super(QueryStackTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryStackTemplateAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -10938,6 +11064,18 @@ class UpdateQuotaAction(inventory.APIUpdateQuotaMsg):
         self.out = evt
         return self.out
 
+class UpdateResourceStackAction(inventory.APIUpdateResourceStackMsg):
+    def __init__(self):
+        super(UpdateResourceStackAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateResourceStackAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateSNSApplicationEndpointAction(inventory.APIUpdateSNSApplicationEndpointMsg):
     def __init__(self):
         super(UpdateSNSApplicationEndpointAction, self).__init__()
@@ -11030,6 +11168,18 @@ class UpdateSftpBackupStorageAction(inventory.APIUpdateSftpBackupStorageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateSftpBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateStackTemplateAction(inventory.APIUpdateStackTemplateMsg):
+    def __init__(self):
+        super(UpdateStackTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateStackTemplateAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
