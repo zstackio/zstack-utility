@@ -287,13 +287,22 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         except Exception as e:
             raise e
 
-        active_lvs = lvm.list_local_active_lvs(cmd.vgUuid)
-        if len(active_lvs) != 0:
+        @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
+        def deactive_lvs_on_vg(vgUuid):
+            active_lvs = lvm.list_local_active_lvs(vgUuid)
+            if len(active_lvs) == 0:
+                return
             logger.warn("active lvs %s will be deactivate" % active_lvs)
-        lvm.deactive_lv(cmd.vgUuid)
+            lvm.deactive_lv(vgUuid)
+            active_lvs = lvm.list_local_active_lvs(vgUuid)
+            if len(active_lvs) != 0:
+                raise RetryException("lvs [%s] still active, retry deactive again" % active_lvs)
+
+        deactive_lvs_on_vg(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.stop_vg_lock(cmd.vgUuid)
         return jsonobject.dumps(rsp)
+
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)

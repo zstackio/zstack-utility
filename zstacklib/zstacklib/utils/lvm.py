@@ -355,13 +355,18 @@ def active_lv(path, shared=False):
 
 
 @bash.in_bash
+@linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
 def deactive_lv(path, raise_exception=True):
     if not lv_exists(path):
+        return
+    if not lv_is_active(path):
         return
     if raise_exception:
         bash.bash_errorout("lvchange -an %s" % path)
     else:
         bash.bash_r("lvchange -an %s" % path)
+    if lv_is_active(path):
+        raise RetryException("lv %s is still active after lvchange -an" % path)
 
 
 def delete_lv(path, raise_exception=True):
