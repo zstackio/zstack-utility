@@ -221,6 +221,7 @@ def backup_super_block(disk_path):
     cmd = shell.ShellCmd("dd if=%s of=%s bs=64KB count=1 conv=notrunc" % (disk_path, disk_back_file))
     cmd(is_exception=False)
 
+
 @bash.in_bash
 def wipe_fs(disks):
     for disk in disks:
@@ -430,6 +431,26 @@ def list_local_active_lvs(vgUuid):
         if i != "":
             result.append(i)
     return result
+
+
+def check_gl_lock(raise_exception=False):
+    r = bash.bash_r("lvmlockctl -i | grep 'LK GL'")
+    if r == 0:
+        return
+    logger.debug("can not find any gl lock")
+    r, o = bash.bash_ro("vgs --nolocking --noheadings -Svg_lock_type=sanlock -oname")
+    result = []
+    for i in o.strip().split("\n"):
+        if i != "":
+            result.append(i)
+    if len(result) == 0:
+        if raise_exception is True:
+            raise Exception("can not find any sanlock shared vg")
+        else:
+            return
+    r, o, e = bash.bash_roe("lvmlockctl --gl-enable %s" % result[0])
+    if r != 0:
+        raise Exception("failed to enable gl lock on vg: %s" % result[0])
 
 
 def do_active_lv(absolutePath, lockType, recursive):

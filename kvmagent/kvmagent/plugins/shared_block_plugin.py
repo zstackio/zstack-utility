@@ -13,6 +13,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lvm
+from zstacklib.utils import bash
 import zstacklib.utils.uuidhelper as uuidhelper
 
 logger = log.get_logger(__name__)
@@ -207,15 +208,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if forceWipe is True:
                 lvm.wipe_fs(diskPaths)
 
-            cmd = shell.ShellCmd("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
+            r, o, e = bash.bash_roe("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
-            cmd(is_exception=False)
-            if cmd.return_code == 0:
+            if r == 0:
                 return True
             if find_vg(vgUuid) is False:
                 raise Exception("can not find vg %s with disks: %s and create failed for %s " %
-                                (vgUuid, diskPaths, cmd.stderr))
+                                (vgUuid, diskPaths, e))
         except Exception as e:
             raise e
 
@@ -242,12 +242,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
             lvm.config_sanlock_by_sed("renewal_read_extend_sec", "renewal_read_extend_sec=24")
             lvm.config_sanlock_by_sed("debug_renew", "debug_renew=1")
+            lvm.config_sanlock_by_sed("use_watchdog", "use_watchdog=0")
 
         config_lvm(cmd.hostId)
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
             diskPaths.add(disk.get_path())
         lvm.start_lvmlockd()
+        lvm.check_gl_lock()
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
         lvm.start_vg_lock(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
@@ -314,6 +316,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
+            lvm.check_gl_lock()
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()])
             lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
