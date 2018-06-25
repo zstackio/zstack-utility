@@ -397,6 +397,7 @@ class HaPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         rsp.result = self.RET_NOT_STABLE
+        logger.info('scanhost[%s]: %s' % (cmd.ip, rsp.result))
         return jsonobject.dumps(rsp)
 
 
