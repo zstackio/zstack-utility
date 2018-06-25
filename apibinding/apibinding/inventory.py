@@ -26958,6 +26958,7 @@ class GlobalConfig_VM(object):
     VIDEOTYPE = 'videoType'
     BOOTMENU = 'bootMenu'
     EXPUNGEPERIOD = 'expungePeriod'
+    EMULATEHYPERV = 'emulateHyperV'
     DELETIONPOLICY = 'deletionPolicy'
     NUMA = 'numa'
     VMPORTOFF = 'vmPortOff'

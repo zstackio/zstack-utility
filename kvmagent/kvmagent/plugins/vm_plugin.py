@@ -62,6 +62,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.addons = None
         self.useBootMenu = True
         self.vmCpuModel = None
+        self.emulateHyperV = False
         self.isApplianceVm = False
 
 class StartVmResponse(kvmagent.AgentResponse):
@@ -2575,6 +2576,12 @@ class Vm(object):
                 e(kvm, 'hidden', None, {'state': 'on'})
             if cmd.vmPortOff is True:
                 e(features, 'vmport', attrib={'state': 'off'})
+            if cmd.emulateHyperV is True:
+                hyperv = e(features, "hyperv")
+                e(hyperv, 'relaxed', attrib={'state': 'on'})
+                e(hyperv, 'vapic', attrib={'state': 'on'})
+                e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
+                e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
 
         def make_devices():
             root = elements['root']
