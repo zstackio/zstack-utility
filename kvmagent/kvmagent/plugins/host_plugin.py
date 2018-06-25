@@ -446,8 +446,8 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:]) if len(line) > 2 else ""
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
-                    # special case: USB2.0 with full speed should be attached to USB1.1 Controller
-                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep '12MBit/s'" % devId)
+                    # special case: USB2.0 with speed 1.5MBit/s or 12MBit/s should be attached to USB1.1 Controller
+                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % devId)
                     info.usbVersion = info.usbVersion if rst != 0 else '1.1'
                 elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
