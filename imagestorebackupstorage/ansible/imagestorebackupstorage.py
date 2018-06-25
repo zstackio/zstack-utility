@@ -77,7 +77,7 @@ zstacklib_args.require_python_env = require_python_env
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 and distro != "Alibaba" else 'qemu-kvm'
+    qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
 
     if client == "true" :
         if distro_version < 7:
