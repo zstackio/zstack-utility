@@ -202,7 +202,7 @@ def get_running_host_id(vgUuid):
     cmd(is_exception=False)
     if cmd.stdout.strip() == "":
         raise Exception("can not get running host id for vg %s" % vgUuid)
-    return cmd.stdout
+    return cmd.stdout.strip()
 
 
 def get_wwid(disk_path):
