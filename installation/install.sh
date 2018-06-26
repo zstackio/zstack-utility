@@ -2702,9 +2702,7 @@ OPTIND=1
 while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDEFhiklmMNoOqsuz" Option
 do
     case $Option in
-        # -a: do not use yum online repo.
-        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
-        [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
+        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
         c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
         C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
         d ) DEBUG='y';;
