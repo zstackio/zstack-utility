@@ -132,13 +132,18 @@ LoadPlugin virt
                 fd.write(conf)
             need_restart_collectd = True
 
-        pid = linux.find_process_by_cmdline(['collectd', conf_path])
-        if not pid:
-            bash_errorout('collectd -C %s' % conf_path)
+        cpid = linux.find_process_by_cmdline(['collectd', conf_path])
+        mpid = linux.find_process_by_cmdline(['collectdmon', conf_path])
+
+        if not cpid:
+            bash_errorout('collectdmon -- -C %s' % conf_path)
         else:
             if need_restart_collectd:
-                bash_errorout('kill -9 %s' % pid)
-                bash_errorout('collectd -C %s' % conf_path)
+                if not mpid:
+                    bash_errorout('kill -TERM %s' % cpid)
+                    bash_errorout('collectdmon -- -C %s' % conf_path)
+                else:
+                    bash_errorout('kill -HUP %s' % mpid)
 
         pid = linux.find_process_by_cmdline([cmd.binaryPath])
         if not pid:
