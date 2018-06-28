@@ -305,7 +305,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.stop_vg_lock(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
-
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)
     def add_disk(self, req):
@@ -324,7 +323,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
-
 
     @kvmagent.replyerror
     def resize_volume(self, req):
@@ -395,8 +393,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 linux.create_template(volume_abs_path, install_abs_path)
+                logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
+                if cmd.compareQcow2 is True:
+                    logger.debug("comparing qcow2 between %s and %s")
+                    bash.bash_errorout("time qemu-img compare %s %s" % (volume_abs_path, install_abs_path))
+                    logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
 
-        logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
