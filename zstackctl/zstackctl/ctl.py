@@ -7342,6 +7342,27 @@ class InstallLicenseCmd(Command):
             shell('''chown zstack:zstack %s/pri.key''' % license_folder)
             info("successfully installed the private key file to %s/pri.key" % license_folder)
 
+class ClearLicenseCmd(Command):
+    def __init__(self):
+        super(ClearLicenseCmd, self).__init__()
+        self.name = "clear_license"
+        self.description = "clear and backup zstack license files"
+        ctl.register_command(self)
+
+    def run(self, args):
+        license_folder = '/var/lib/zstack/license/'
+        license_bck = license_folder + 'backup/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        license_files = license_folder + '*.txt'
+        license_pri_key = license_folder + 'pri.key'
+
+        if os.path.exists(license_folder + 'license.txt'):
+            shell('''mkdir -p %s''' % license_bck)
+            shell('''/bin/mv -f %s %s''' % (license_files, license_bck))
+            shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
+            info("Successfully clear and backup zstack license files to " + license_bck)
+        else:
+            info("There is no zstack license founded.")
+
 # For UI 1.x
 class StartDashboardCmd(Command):
     PID_FILE = '/var/run/zstack/zstack-dashboard.pid'
@@ -8024,6 +8045,7 @@ def main():
     InstallRabbitCmd()
     InstallManagementNodeCmd()
     InstallLicenseCmd()
+    ClearLicenseCmd()
     ShowConfiguration()
     SetEnvironmentVariableCmd()
     RollbackManagementNodeCmd()
