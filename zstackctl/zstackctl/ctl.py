@@ -1272,7 +1272,13 @@ class ShowStatusCmd(Command):
             if os.path.exists(boot_error_log):
                 info(colored('Management server met an error as below:', 'yellow'))
                 with open(boot_error_log, 'r') as fd:
-                    info(colored(fd.read(), 'red'))
+                    error_msg = json.loads(fd.read())
+                    try:
+                        # strip unimportant messages for json.loads
+                        error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
+                    except (KeyError, ValueError, TypeError):
+                        pass
+                    info(colored(json.dumps(error_msg, indent=4), 'red'))
 
         ctl.internal_run('ui_status', args='-q')
 
@@ -1851,8 +1857,15 @@ class StartCmd(Command):
             def check():
                 if os.path.exists(boot_error_log):
                     with open(boot_error_log, 'r') as fd:
-                        raise CtlError('the management server fails to boot; details can be found in the log[%s],'
-                                       'here is a brief of the error:\n%s' % (log_path, fd.read()))
+                        error_msg = json.loads(fd.read())
+                        try:
+                            # strip unimportant messages for json.loads
+                            error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
+                        except (KeyError, ValueError, TypeError):
+                            pass
+                        raise CtlError('The management server fails to boot, details can be found in [%s].\n'
+                                       'Here is a brief description of the error:\n%s' % \
+                                       (log_path, json.dumps(error_msg, indent=4)))
 
                 cmd = create_check_mgmt_node_command(1, 'localhost')
                 cmd(False)
