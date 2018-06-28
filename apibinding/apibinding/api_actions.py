@@ -5810,6 +5810,18 @@ class GetPrimaryStorageAllocatorStrategiesAction(inventory.APIGetPrimaryStorageA
         self.out = evt
         return self.out
 
+class GetPrimaryStorageCandidatesForVmMigrationAction(inventory.APIGetPrimaryStorageCandidatesForVmMigrationMsg):
+    def __init__(self):
+        super(GetPrimaryStorageCandidatesForVmMigrationAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetPrimaryStorageCandidatesForVmMigrationAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetPrimaryStorageCandidatesForVolumeMigrationAction(inventory.APIGetPrimaryStorageCandidatesForVolumeMigrationMsg):
     def __init__(self):
         super(GetPrimaryStorageCandidatesForVolumeMigrationAction, self).__init__()
@@ -6526,6 +6538,18 @@ class PreviewResourceStackAction(inventory.APIPreviewResourceStackMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[PreviewResourceStackAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class PrimaryStorageMigrateVmAction(inventory.APIPrimaryStorageMigrateVmMsg):
+    def __init__(self):
+        super(PrimaryStorageMigrateVmAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[PrimaryStorageMigrateVmAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
