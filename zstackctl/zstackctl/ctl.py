@@ -1272,7 +1272,13 @@ class ShowStatusCmd(Command):
             if os.path.exists(boot_error_log):
                 info(colored('Management server met an error as below:', 'yellow'))
                 with open(boot_error_log, 'r') as fd:
-                    info(colored(fd.read(), 'red'))
+                    error_msg = json.loads(fd.read())
+                    try:
+                        # strip unimportant messages for json.loads
+                        error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
+                    except (KeyError, ValueError, TypeError):
+                        pass
+                    info(colored(json.dumps(error_msg, indent=4), 'red'))
 
         ctl.internal_run('ui_status', args='-q')
 
@@ -1851,8 +1857,15 @@ class StartCmd(Command):
             def check():
                 if os.path.exists(boot_error_log):
                     with open(boot_error_log, 'r') as fd:
-                        raise CtlError('the management server fails to boot; details can be found in the log[%s],'
-                                       'here is a brief of the error:\n%s' % (log_path, fd.read()))
+                        error_msg = json.loads(fd.read())
+                        try:
+                            # strip unimportant messages for json.loads
+                            error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
+                        except (KeyError, ValueError, TypeError):
+                            pass
+                        raise CtlError('The management server fails to boot, details can be found in [%s].\n'
+                                       'Here is a brief description of the error:\n%s' % \
+                                       (log_path, json.dumps(error_msg, indent=4)))
 
                 cmd = create_check_mgmt_node_command(1, 'localhost')
                 cmd(False)
@@ -7342,6 +7355,27 @@ class InstallLicenseCmd(Command):
             shell('''chown zstack:zstack %s/pri.key''' % license_folder)
             info("successfully installed the private key file to %s/pri.key" % license_folder)
 
+class ClearLicenseCmd(Command):
+    def __init__(self):
+        super(ClearLicenseCmd, self).__init__()
+        self.name = "clear_license"
+        self.description = "clear and backup zstack license files"
+        ctl.register_command(self)
+
+    def run(self, args):
+        license_folder = '/var/lib/zstack/license/'
+        license_bck = license_folder + 'backup/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        license_files = license_folder + '*.txt'
+        license_pri_key = license_folder + 'pri.key'
+
+        if os.path.exists(license_folder + 'license.txt'):
+            shell('''mkdir -p %s''' % license_bck)
+            shell('''/bin/mv -f %s %s''' % (license_files, license_bck))
+            shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
+            info("Successfully clear and backup zstack license files to " + license_bck)
+        else:
+            info("There is no zstack license founded.")
+
 # For UI 1.x
 class StartDashboardCmd(Command):
     PID_FILE = '/var/run/zstack/zstack-dashboard.pid'
@@ -8024,6 +8058,7 @@ def main():
     InstallRabbitCmd()
     InstallManagementNodeCmd()
     InstallLicenseCmd()
+    ClearLicenseCmd()
     ShowConfiguration()
     SetEnvironmentVariableCmd()
     RollbackManagementNodeCmd()
