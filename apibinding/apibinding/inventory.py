@@ -21577,7 +21577,7 @@ class StackParameters(object):
         self.defaultValue = None
         self.description = None
         self.noEcho = None
-        self.lable = None
+        self.label = None
         self.constraintDescription = None
         self.resourceType = None
 
@@ -21607,10 +21607,10 @@ class StackParameters(object):
         else:
             self.noEcho = None
 
-        if hasattr(inv, 'lable'):
-            self.lable = inv.lable
+        if hasattr(inv, 'label'):
+            self.label = inv.label
         else:
-            self.lable = None
+            self.label = None
 
         if hasattr(inv, 'constraintDescription'):
             self.constraintDescription = inv.constraintDescription
