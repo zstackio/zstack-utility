@@ -64,6 +64,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.vmCpuModel = None
         self.emulateHyperV = False
         self.isApplianceVm = False
+        self.systemSerialNumber = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -2566,6 +2567,18 @@ class Vm(object):
             if cmd.useBootMenu:
                 e(os, 'bootmenu', attrib={'enable': 'yes'})
 
+            if cmd.systemSerialNumber:
+                e(os, 'smbios', attrib={'mode': 'sysinfo'})
+
+        def make_sysinfo():
+            if not cmd.systemSerialNumber:
+                return
+
+            root = elements['root']
+            sysinfo = e(root, 'sysinfo', attrib={'type': 'smbios'})
+            system = e(sysinfo, 'system')
+            e(system, 'entry', cmd.systemSerialNumber, attrib={'name': 'serial'})
+
         def make_features():
             root = elements['root']
             features = e(root, 'features')
@@ -3106,6 +3119,7 @@ class Vm(object):
         make_cpu()
         make_memory()
         make_os()
+        make_sysinfo()
         make_features()
         make_devices()
         make_video()
