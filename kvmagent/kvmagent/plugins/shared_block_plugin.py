@@ -90,10 +90,30 @@ class RetryException(Exception):
     pass
 
 
+class SharedBlockMigrateVolumeStruct:
+    volumeUuid = None  # type: str
+    snapshotUuid = None  # type: str
+    currentInstallPath = None  # type: str
+    targetInstallPath = None  # type: str
+    safeMode = False
+    compareQcow2 = True
+    exists_lock = None
+
+    def __init__(self):
+        pass
+
+
 def translate_absolute_path_from_install_path(path):
-    if path == None:
+    if path is None:
         raise Exception("install path can not be null")
     return path.replace("sharedblock:/", "/dev")
+
+
+def get_primary_storage_uuid_from_install_path(path):
+    # type: (str) -> str
+    if path is None:
+        raise Exception("install path can not be null")
+    return path.split("/")[2]
 
 
 class CheckDisk(object):
@@ -152,6 +172,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     GET_VOLUME_SIZE_PATH = "/sharedblock/volume/getsize"
     CHECK_DISKS_PATH = "/sharedblock/disks/check"
     ADD_SHARED_BLOCK = "/sharedblock/disks/add"
+    MIGRATE_DATA_PATH = "/sharedblock/volume/migrate"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -176,6 +197,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
         http_server.register_async_uri(self.ADD_SHARED_BLOCK, self.add_disk)
+        http_server.register_async_uri(self.MIGRATE_DATA_PATH, self.migrate_volumes)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -617,6 +639,51 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.actualSize = rsp.size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def migrate_volumes(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        for struct in cmd.migrateVolumeStructs:
+            target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
+            current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
+            with lvm.OperateLv(current_abs_path, shared=True):
+                virtual_size = linux.qcow2_virtualsize(current_abs_path)
+
+                if not lvm.lv_exists(target_abs_path):
+                    lvm.create_lv_from_absolute_path(target_abs_path, virtual_size,
+                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
+
+        try:
+            for struct in cmd.migrateVolumeStructs:
+                target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
+                current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
+
+                with lvm.RecursiveOperateLv(current_abs_path, shared=True):
+                    previous_ps_uuid = get_primary_storage_uuid_from_install_path(struct.currentInstallPath)
+                    target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
+
+                    current_backing_file = linux.qcow2_get_backing_file(current_abs_path)  # type: str
+
+                    bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
+                    if struct.compareQcow2:
+                        bash.bash_errorout("time qemu-img compare %s %s" % (current_abs_path, target_abs_path))
+                    if current_backing_file is not None and current_backing_file != "":
+                        logger.debug("rebase %s to %s" % (target_abs_path, current_backing_file.replace(previous_ps_uuid, target_ps_uuid)))
+                        linux.qcow2_rebase_no_check(
+                            current_backing_file.replace(previous_ps_uuid, target_ps_uuid), target_abs_path)
+        except Exception as e:
+            for struct in cmd.migrateVolumeStructs:
+                target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
+                lvm.deactive_lv(target_abs_path)
+            raise e
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
 
     @staticmethod
     def calc_qcow2_option(self, options, has_backing_file):
