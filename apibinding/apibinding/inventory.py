@@ -16928,6 +16928,51 @@ class APICreateIAM2TickFlowCollectionMsg(object):
         self.userTags = OptionalList()
 
 
+APIGETTWOFACTORAUTHENTICATIONSECRETMSG_FULL_NAME = 'org.zstack.twoFactorAuthentication.APIGetTwoFactorAuthenticationSecretMsg'
+class APIGetTwoFactorAuthenticationSecretMsg(object):
+    FULL_NAME='org.zstack.twoFactorAuthentication.APIGetTwoFactorAuthenticationSecretMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        #mandatory field
+        self.password = NotNoneField()
+        #mandatory field
+        #valid values: [account, iam2]
+        self.type = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETTWOFACTORAUTHENTICATIONSECRETREPLY_FULL_NAME = 'org.zstack.twoFactorAuthentication.APIGetTwoFactorAuthenticationSecretReply'
+class APIGetTwoFactorAuthenticationSecretReply(object):
+    FULL_NAME='org.zstack.twoFactorAuthentication.APIGetTwoFactorAuthenticationSecretReply'
+    def __init__(self):
+        self.inventory = None
+        self.success = None
+        self.error = None
+
+
+APIGETTWOFACTORAUTHENTICATIONSTATEMSG_FULL_NAME = 'org.zstack.twoFactorAuthentication.APIGetTwoFactorAuthenticationStateMsg'
+class APIGetTwoFactorAuthenticationStateMsg(object):
+    FULL_NAME='org.zstack.twoFactorAuthentication.APIGetTwoFactorAuthenticationStateMsg'
+    def __init__(self):
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIGETTWOFACTORAUTHENTICATIONSTATEREPLY_FULL_NAME = 'org.zstack.twoFactorAuthentication.APIGetTwoFactorAuthenticationStateReply'
+class APIGetTwoFactorAuthenticationStateReply(object):
+    FULL_NAME='org.zstack.twoFactorAuthentication.APIGetTwoFactorAuthenticationStateReply'
+    def __init__(self):
+        self.state = None
+        self.success = None
+        self.error = None
+
+
 APIATTACHUSBDEVICETOVMMSG_FULL_NAME = 'org.zstack.usbDevice.APIAttachUsbDeviceToVmMsg'
 class APIAttachUsbDeviceToVmMsg(object):
     FULL_NAME='org.zstack.usbDevice.APIAttachUsbDeviceToVmMsg'
@@ -18795,6 +18840,10 @@ api_names = [
     'APIGetSupportedCloudFormationResourcesReply',
     'APIGetTaskProgressMsg',
     'APIGetTaskProgressReply',
+    'APIGetTwoFactorAuthenticationSecretMsg',
+    'APIGetTwoFactorAuthenticationSecretReply',
+    'APIGetTwoFactorAuthenticationStateMsg',
+    'APIGetTwoFactorAuthenticationStateReply',
     'APIGetUsbDeviceCandidatesForAttachingVmMsg',
     'APIGetUsbDeviceCandidatesForAttachingVmReply',
     'APIGetUserGroupReply',
@@ -27073,6 +27122,13 @@ class GlobalConfig_TEST(object):
     def get_category():
         return 'Test'
 
+class GlobalConfig_TWOFA(object):
+    TWOFA_ENABLE = 'twofa.enable'
+
+    @staticmethod
+    def get_category():
+        return 'twofa'
+
 class GlobalConfig_VIRTUALROUTER(object):
     AGENT_DEPLOYONSTART = 'agent.deployOnStart'
     VROUTER_ECHOTIMEOUT = 'vrouter.echoTimeout'
@@ -28525,6 +28581,13 @@ class QueryObjectHybridEipAddressInventory(object):
 
     }
 
+class QueryObjectTwoFactorAuthenticationSecretInventory(object):
+    PRIMITIVE_FIELDS = ['lastOpDate','secret','uuid','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectImageBackupStorageRefInventory(object):
     PRIMITIVE_FIELDS = ['installPath','lastOpDate','imageUuid','backupStorageUuid','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['image','backupStorage']
@@ -28805,6 +28868,13 @@ class QueryObjectSchedulerJobSchedulerTriggerInventory(object):
     QUERY_OBJECT_MAP = {
         'trigger' : 'QueryObjectSchedulerTriggerInventory',
         'job' : 'QueryObjectSchedulerJobInventory',
+    }
+
+class QueryObjectTwoFactorAuthenticationSecretInventory(object):
+    PRIMITIVE_FIELDS = ['lastOpDate','secret','uuid','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectEcsImageUsageInventory(object):
