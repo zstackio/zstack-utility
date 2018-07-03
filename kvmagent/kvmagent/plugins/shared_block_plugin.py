@@ -650,7 +650,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
             current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
             with lvm.OperateLv(current_abs_path, shared=True):
-                virtual_size = linux.qcow2_virtualsize(current_abs_path)
+                virtual_size = lvm.get_lv_size(current_abs_path)
 
                 if not lvm.lv_exists(target_abs_path):
                     lvm.create_lv_from_absolute_path(target_abs_path, virtual_size,
@@ -667,14 +667,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
 
                     current_backing_file = linux.qcow2_get_backing_file(current_abs_path)  # type: str
+                    target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
+                    lvm.do_active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE)
 
                     bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
                     if struct.compareQcow2:
                         bash.bash_errorout("time qemu-img compare %s %s" % (current_abs_path, target_abs_path))
                     if current_backing_file is not None and current_backing_file != "":
                         logger.debug("rebase %s to %s" % (target_abs_path, current_backing_file.replace(previous_ps_uuid, target_ps_uuid)))
-                        linux.qcow2_rebase_no_check(
-                            current_backing_file.replace(previous_ps_uuid, target_ps_uuid), target_abs_path)
+                        linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
         except Exception as e:
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
