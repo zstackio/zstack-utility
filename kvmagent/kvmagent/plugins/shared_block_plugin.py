@@ -678,12 +678,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         except Exception as e:
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
-                lvm.deactive_lv(target_abs_path)
+                lvm.delete_lv(target_abs_path, False)
             raise e
+        finally:
+            for struct in cmd.migrateVolumeStructs:
+                target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
+                lvm.deactive_lv(target_abs_path)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
-
 
     @staticmethod
     def calc_qcow2_option(self, options, has_backing_file):
