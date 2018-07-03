@@ -668,7 +668,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
                     current_backing_file = linux.qcow2_get_backing_file(current_abs_path)  # type: str
                     target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
-                    lvm.do_active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE)
+                    lvm.do_active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE, False)
 
                     bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
                     if struct.compareQcow2:
