@@ -370,15 +370,19 @@ def deactive_lv(path, raise_exception=True):
         raise RetryException("lv %s is still active after lvchange -an" % path)
 
 
+@bash.in_bash
 def delete_lv(path, raise_exception=True):
+    logger.debug("deleting lv %s" % path)
     # remove meta-lv if any
     if lv_exists(get_meta_lv_path(path)):
         shell.run("lvremove -y %s" % get_meta_lv_path(path))
     if not lv_exists(path):
         return
-    cmd = shell.ShellCmd("lvremove -y %s" % path)
-    cmd(is_exception=raise_exception)
-    return cmd.return_code
+    if raise_exception:
+        o = bash.bash_errorout("lvremove -y %s" % path)
+    else:
+        o = bash.bash_o("lvremove -y %s" % path)
+    return o
 
 
 @bash.in_bash
