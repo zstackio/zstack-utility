@@ -17,10 +17,14 @@ class ZstackRotatingFileHandler(ConcurrentRotatingFileHandler):
         ConcurrentRotatingFileHandler.__init__(self, filename, **kws)
 
     def doArchive(self, old_log):
-        with open(old_log) as log:
-            with gzip.open(old_log + '.gz', 'wb') as comp_log:
-                comp_log.writelines(log)
-        os.remove(old_log)
+        try:
+            with open(old_log) as log:
+                with gzip.open(old_log + '.gz', 'wb') as comp_log:
+                    comp_log.writelines(log)
+        except:
+            pass
+        finally:
+            os.remove(old_log)
 
     def doRollover(self):
         """
