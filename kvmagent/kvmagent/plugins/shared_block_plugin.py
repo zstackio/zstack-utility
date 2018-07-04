@@ -652,8 +652,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             with lvm.OperateLv(current_abs_path, shared=True):
                 virtual_size = lvm.get_lv_size(current_abs_path)
 
-                if not lvm.lv_exists(target_abs_path):
-                    lvm.create_lv_from_absolute_path(target_abs_path, virtual_size,
+                if lvm.lv_exists(target_abs_path):
+                    target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
+                    raise Exception("found %s already exists on ps %s" %
+                                    (target_abs_path, target_ps_uuid))
+                lvm.create_lv_from_absolute_path(target_abs_path, virtual_size,
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
 
