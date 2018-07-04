@@ -682,7 +682,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 if struct.currentInstallPath == struct.targetInstallPath:
                     logger.debug("current install path %s equals target %s, skip to delete" %
                                  (struct.currentInstallPath, struct.targetInstallPath))
-                lvm.delete_lv(target_abs_path, False)
+                else:
+                    lvm.delete_lv(target_abs_path, False)
             raise e
         finally:
             for struct in cmd.migrateVolumeStructs:
