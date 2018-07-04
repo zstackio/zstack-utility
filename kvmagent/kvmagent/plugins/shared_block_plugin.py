@@ -662,6 +662,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
 
+                with lvm.OperateLv(current_abs_path, shared=True):
+                    bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
+
+            for struct in cmd.migrateVolumeStructs:
                 with lvm.RecursiveOperateLv(current_abs_path, shared=True):
                     previous_ps_uuid = get_primary_storage_uuid_from_install_path(struct.currentInstallPath)
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
@@ -669,13 +673,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     current_backing_file = linux.qcow2_get_backing_file(current_abs_path)  # type: str
                     target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
 
-                    bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
-                    if struct.compareQcow2:
-                        bash.bash_errorout("time qemu-img compare %s %s" % (current_abs_path, target_abs_path))
                     if current_backing_file is not None and current_backing_file != "":
                         lvm.do_active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE, False)
                         logger.debug("rebase %s to %s" % (target_abs_path, current_backing_file.replace(previous_ps_uuid, target_ps_uuid)))
                         linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
+                    if struct.compareQcow2:
+                        bash.bash_errorout("time qemu-img compare %s %s" % (current_abs_path, target_abs_path))
         except Exception as e:
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
