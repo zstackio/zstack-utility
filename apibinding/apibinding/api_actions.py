@@ -10308,6 +10308,18 @@ class UpdateAliyunMountTargetAction(inventory.APIUpdateAliyunMountTargetMsg):
         self.out = evt
         return self.out
 
+class UpdateAliyunNasAccessGroupAction(inventory.APIUpdateAliyunNasAccessGroupMsg):
+    def __init__(self):
+        super(UpdateAliyunNasAccessGroupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateAliyunNasAccessGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class UpdateAliyunRouteInterfaceRemoteAction(inventory.APIUpdateAliyunRouteInterfaceRemoteMsg):
     def __init__(self):
         super(UpdateAliyunRouteInterfaceRemoteAction, self).__init__()
