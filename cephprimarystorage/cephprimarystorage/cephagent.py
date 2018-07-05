@@ -337,20 +337,21 @@ class CephAgent(object):
         @retry()
         def doPing():
             # try to delete test file, ignore the result
-            bash_r('rbd rm %s' % cmd.testImagePath)
-            r, o, e = bash_roe('timeout 60 rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
+            pool, objname = cmd.testImagePath.split('/')
+            bash_r("rados -p '%s' rm '%s'" % (pool, objname))
+            r, o, e = bash_roe("timeout 60 echo zstack | rados -p '%s' put '%s' -" % (pool, objname))
             if r != 0:
                 rsp.success = False
                 rsp.failure = "UnableToCreateFile"
                 if r == 124:
                     # timeout happened
-                    rsp.error = 'failed to create temporary file on ceph, timeout after 60s, %s %s' % (e, o)
+                    rsp.error = 'failed to create heartbeat object on ceph, timeout after 60s, %s %s' % (e, o)
                     raise Exception(rsp.error)
                 else:
                     rsp.error = "%s %s" % (e, o)
 
         doPing()
-        
+
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
