@@ -19,8 +19,6 @@ import platform
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
-from zstacklib.utils import lock
-from zstacklib.utils import sizeunit
 
 
 logger = log.get_logger(__name__)
@@ -666,8 +664,21 @@ def qcow2_virtualsize(file_path):
     return long(out)
 
 def qcow2_get_backing_file(path):
-    out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % path)
-    return out.strip(' \t\r\n')
+    with open(path, 'r') as resp:
+        magic = resp.read(4)
+        if magic != 'QFI\xfb':
+            return ""
+
+        # read backing file info from header
+        resp.seek(8)
+        backing_file_info = resp.read(12)
+        backing_file_offset = struct.unpack('>Q', backing_file_info[:8])[0]
+        if backing_file_offset == 0:
+            return ""
+
+        backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
+        resp.seek(backing_file_offset)
+        return resp.read(backing_file_size)
 
 # Get derived file and all its backing files
 def qcow2_get_file_chain(path):
