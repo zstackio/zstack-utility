@@ -853,6 +853,7 @@ dhcp-range={{g}},static
 {% if o.isDefaultL3Network -%}
 {% if o.gateway -%}
 tag:{{o.tag}},option:router,{{o.gateway}}
+tag:{{o.tag}},option:classless-static-route,0.0.0.0/0,{{o.gateway}}
 {% endif -%}
 {% if o.dns -%}
 tag:{{o.tag}},option:dns-server,{{o.dns}}
