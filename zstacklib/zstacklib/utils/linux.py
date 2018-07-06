@@ -667,14 +667,14 @@ def qcow2_get_backing_file(path):
     with open(path, 'r') as resp:
         magic = resp.read(4)
         if magic != 'QFI\xfb':
-            return None
+            return ""
 
         # read backing file info from header
         resp.seek(8)
         backing_file_info = resp.read(12)
         backing_file_offset = struct.unpack('>Q', backing_file_info[:8])[0]
         if backing_file_offset == 0:
-            return None
+            return ""
 
         backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
         resp.seek(backing_file_offset)
