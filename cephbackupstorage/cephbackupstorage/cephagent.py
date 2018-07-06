@@ -900,15 +900,16 @@ class CephAgent(object):
                         ' may solve this issue' % (cmd.monUuid, cmd.monAddr)
             return jsonobject.dumps(rsp)
 
+        pool, objname = cmd.testImagePath.split('/')
 
-        create_img = shell.ShellCmd('rbd create %s --image-format 2 --size 1' % cmd.testImagePath)
+        create_img = shell.ShellCmd("echo zstack | rados -p '%s' put '%s' -" % (pool, objname))
         create_img(False)
-        if create_img.return_code != 0 and 'File exists' not in create_img.stderr and 'File exists' not in create_img.stdout:
+        if create_img.return_code != 0:
             rsp.success = False
             rsp.failure = 'UnableToCreateFile'
             rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
         else:
-            shell.run('rbd rm %s' % cmd.testImagePath)
+            shell.run("rados -p '%s' rm '%s'" % (pool, objname))
 
         return jsonobject.dumps(rsp)
 
