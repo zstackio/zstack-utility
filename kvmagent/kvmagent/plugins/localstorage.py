@@ -184,13 +184,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         rsp = GetQCOW2ReferenceRsp()
         rsp.referencePaths = []
-        for f in out.split('\n'):
-            f = f.strip(' \t\r\n')
-            if not f: continue
+        real_path = os.path.realpath(cmd.path)
+        for f in out.splitlines():
             backing_file = linux.qcow2_get_backing_file(f)
-            if backing_file == cmd.path:
+            if os.path.realpath(backing_file) == real_path:
                 rsp.referencePaths.append(f)
-
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
