@@ -831,8 +831,12 @@ upgrade_zstack(){
     show_spinner uz_upgrade_zstack_ctl
 
     # configure management.server.ip if not exists
-    zstack-ctl show_configuration | grep 'management.server.ip' >/dev/null 2>&1
+    zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
     [ $? -ne 0 ] && zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
+
+    # configure chrony.serverIp if not exists
+    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
@@ -847,7 +851,7 @@ upgrade_zstack(){
     show_spinner cs_add_cronjob
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
-    show_spinner is_enable_ntpd
+    show_spinner is_enable_chronyd
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
 
@@ -1193,63 +1197,52 @@ install_system_libs(){
     show_spinner ia_install_pip
     show_spinner is_install_virtualenv
     #enable ntpd
-    show_spinner is_enable_ntpd
+    show_spinner is_enable_chronyd
 }
 
-is_enable_ntpd(){
-    echo_subtitle "Enable NTP"
+is_enable_chronyd(){
+    echo_subtitle "Enable chronyd"
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ];then
         if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
-            grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
+            grep '^server 0.centos.pool.ntp.org' /etc/chrony.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
-                echo "server 0.pool.ntp.org iburst" >> /etc/ntp.conf
-                echo "server 1.pool.ntp.org iburst" >> /etc/ntp.conf
+                echo "server 0.pool.ntp.org iburst" >> /etc/chrony.conf
+                echo "server 1.pool.ntp.org iburst" >> /etc/chrony.conf
             fi
-        else
-            cp /etc/ntp.conf /etc/ntp.conf.bak
-            sed -i '/^server/d' /etc/ntp.conf
-            sed -i '/^fudge/d' /etc/ntp.conf
-            echo "server 127.127.1.0" >> /etc/ntp.conf
-            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
         fi
-        grep "server 127.127.1.0" -q /etc/ntp.conf >/dev/null 2>&1
+        grep "^local stratum " -q /etc/chrony.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
-            echo "server 127.127.1.0" >> /etc/ntp.conf
+            echo "local stratum 10" >> /etc/chrony.conf
         fi
-        grep "fudge 127.127.1.0 stratum " -q /etc/ntp.conf >/dev/null 2>&1
+        grep "^allow" -q /etc/chrony.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
-            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
+            echo "allow 0.0.0.0/0" >> /etc/chrony.conf
         fi
-        systemctl disable chronyd.service >> $ZSTACK_INSTALL_LOG 2>&1
-        systemctl enable ntpd >> $ZSTACK_INSTALL_LOG 2>&1
-        systemctl restart ntpd >> $ZSTACK_INSTALL_LOG 2>&1
+
+        systemctl disable ntpd >> $ZSTACK_INSTALL_LOG 2>&1 || true
+        systemctl enable chronyd.service >> $ZSTACK_INSTALL_LOG 2>&1
+        systemctl restart chronyd.service >> $ZSTACK_INSTALL_LOG 2>&1
     else
         if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
-            grep '^server 0.ubuntu.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
+            grep '^server 0.ubuntu.pool.ntp.org' /etc/chrony.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
-                echo "server 0.ubuntu.pool.ntp.org" >> /etc/ntp.conf
-                echo "server ntp.ubuntu.com" >> /etc/ntp.conf
+                echo "server 0.ubuntu.pool.ntp.org" >> /etc/chrony.conf
+                echo "server ntp.ubuntu.com" >> /etc/chrony.conf
             fi
-        else
-            cp /etc/ntp.conf /etc/ntp.conf.bak
-            sed -i '/^server/d' /etc/ntp.conf
-            sed -i '/^fudge/d' /etc/ntp.conf
-            echo "server 127.127.1.0" >> /etc/ntp.conf
-            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
         fi
-        grep "server 127.127.1.0" -q /etc/ntp.conf >/dev/null 2>&1
+        grep "^local stratum " -q /etc/chrony.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
-            echo "server 127.127.1.0" >> /etc/ntp.conf
+            echo "local stratum 10" >> /etc/chrony.conf
         fi
-        grep "fudge 127.127.1.0 stratum " -q /etc/ntp.conf >/dev/null 2>&1
+        grep "^allow" -q /etc/chrony.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
-            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
+            echo "allow 0.0.0.0/0" >> /etc/chrony.conf
         fi
-        update-rc.d ntp defaults >>$ZSTACK_INSTALL_LOG 2>&1
-        service ntp restart >>$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d chrony defaults >>$ZSTACK_INSTALL_LOG 2>&1
+        service chrony restart >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
-        fail "failed to enable ntpd service."
+        fail "failed to enable chrony service."
     fi
 
     pass
@@ -2870,6 +2863,20 @@ echo_hints_to_upgrade_iso()
         "For more information, see ${UPGRADE_WIKI}"
 }
 
+echo_chrony_server_warning_if_need()
+{
+    CHRONY_SERVER=(`zstack-ctl show_configuration | grep "^[[:space:]]chrony.serverIp" | awk -F '=' '{print $2}' | sed s/[[:space:]]//g`)
+    if [ ${#CHRONY_SERVER[*]} -eq 1 ]  && [ x${CHRONY_SERVER[0]} == x${MANAGEMENT_IP} ]; then
+        echo  -e "$(tput setaf 3)-WARNING!!!
+  - chrony server sources is set to management node.
+  - $(tput setaf 1)If management node time is not accurate(e.g. it is VM), data may be lost.$(tput setaf 3)
+  - if management node VM is managed by zsha, please reset it with following command:
+      zsha stop && zsha start.
+  - if not, please use following command to set chrony server:
+      zstack-ctl configure chrony.serverIp.0=CHRONY_SERVER_IP$(tput sgr0)"
+    fi
+}
+
 # CHECK_REPO_VERSION
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     echo_title "Check Repo Version"
@@ -3039,6 +3046,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     fi
     echo ""
     zstack_home=`eval echo ~zstack`
+    echo_chrony_server_warning_if_need
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_star_line
     exit 0
@@ -3086,6 +3094,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo_star_line
     echo "${PRODUCT_NAME} ${VERSION}management node is installed to $ZSTACK_INSTALL_ROOT."
     echo "Mysql and RabbitMQ are not installed. You can use zstack-ctl to install them and start ${PRODUCT_NAME} service later. "
+    echo_chrony_server_warning_if_need
     echo_star_line
     exit 0
 fi
@@ -3107,6 +3116,10 @@ if [ ! -z $NEED_SET_MN_IP ];then
         zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
     fi
 fi
+
+# configure chrony.serverIp if not exists
+zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+[ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
 
 #Install license
 install_license
@@ -3182,4 +3195,6 @@ fi
 [ ! -z $NEED_NFS ] && echo -e "$(tput setaf 7) - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE$(tput sgr0)"
 [ ! -z $NEED_HTTP ] && echo -e "$(tput setaf 7) - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your_image_name to the folder $HTTP_FOLDER, your image local url is http://$MANAGEMENT_IP/image/your_image_name$(tput sgr0)"
 echo -e "$(tput setaf 7) - You can use \`zstack-ctl install_management_node --host=remote_ip\` to install more management nodes$(tput sgr0)"
+
+echo_chrony_server_warning_if_need
 echo_star_line

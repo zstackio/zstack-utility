@@ -1564,15 +1564,12 @@ def do_deploy_chrony(host_post_info, svrs, distro):
         host_post_info.post_label_param = None
         run_remote_command(command, host_post_info)
 
-def enable_ntp(trusted_host, host_post_info, distro):
-    if host_post_info.chrony_servers is None:
-        do_enable_ntp(trusted_host, host_post_info, distro)
-        return
-
+def enable_chrony(trusted_host, host_post_info, distro):
     svrs = host_post_info.chrony_servers.split(',')
     if host_post_info.host in svrs:
         return
 
+    logger.debug("Starting enable chrony service")
     do_deploy_chrony(host_post_info, svrs, distro)
 
 class ZstackLib(object):
@@ -1666,7 +1663,7 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "chrony"]:
                         yum_install_package(pkg, host_post_info)
                     if distro_version >=7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
@@ -1709,7 +1706,7 @@ gpgcheck=0
 name=CentOS-\$releasever - QEMU EV
 baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
 gpgcheck=0
-                    """
+"""
                     host_post_info.post_label = "ansible.shell.deploy.repo"
                     host_post_info.post_label_param = "163"
                     if distro_version >= 7:
@@ -1740,7 +1737,7 @@ name=qemu-kvm-ev-mn
 baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/qemu-kvm-ev/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
-               """
+"""
                     generate_kvm_repo_template = jinja2.Template(generate_kvm_repo_raw_command)
                     generate_kvm_repo_command = generate_kvm_repo_template.render({
                         'yum_server':yum_server
@@ -1752,11 +1749,11 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 # enable alibase repo for yum clean avoid no repo to be clean
                 host_post_info.post_label = "ansible.shell.install.pkg"
                 host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
-                                                  "autoconf,ntp,ntpdate,python-backports-ssl_match_hostname,iptables-services"
+                                                  "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services"
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
+                              "python-setuptools python-pip gcc autoconf chrony | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
@@ -1772,12 +1769,12 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 else:
                     # imagestore do not need python environment and only on centos 7
                     command = (
-                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python ntp "
-                                  "ntpdate iptables-services | grep \"not installed\" | awk '{ print $2 }'` "
+                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python "
+                                  "chrony iptables-services | grep \"not installed\" | awk '{ print $2 }'` "
                                   "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
                     # enable ntp service for RedHat
-                enable_ntp(trusted_host, host_post_info, distro)
+                enable_chrony(trusted_host, host_post_info, distro)
 
         elif distro in DEB_BASED_OS:
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
@@ -1821,9 +1818,9 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
             if require_python_env == "true":
-                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate", "iptables-persistent"]
+                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "chrony", "iptables-persistent"]
                 apt_install_packages(install_pkg_list, host_post_info)
-                enable_ntp(trusted_host, host_post_info, distro)
+                enable_chrony(trusted_host, host_post_info, distro)
         else:
             error("ERROR: Unsupported distribution")
 
