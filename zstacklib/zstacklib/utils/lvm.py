@@ -136,7 +136,7 @@ def start_lvmlockd():
 
 @bash.in_bash
 def start_vg_lock(vgUuid):
-    @linux.retry(times=20, sleep_time=random.uniform(1,10))
+    @linux.retry(times=60, sleep_time=random.uniform(1,10))
     def vg_lock_is_adding(vgUuid):
         # NOTE(weiw): this means vg locking is adding rather than complete
         return_code = bash.bash_r("sanlock client status | grep -E 's lvm_%s.*\\:0 ADD'" % vgUuid)
@@ -154,7 +154,7 @@ def start_vg_lock(vgUuid):
         else:
             return True
 
-    @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
+    @linux.retry(times=30, sleep_time=random.uniform(0.1, 30))
     def start_lock(vgUuid):
         return_code = bash.bash_r("vgchange --lock-start %s" % vgUuid)
         if return_code != 0:
@@ -466,7 +466,7 @@ def do_active_lv(absolutePath, lockType, recursive):
 
     handle_lv(lockType, absolutePath)
 
-    if recursive is False:
+    if recursive is False or lockType is LvmlockdLockType.NULL:
         return
 
     while linux.qcow2_get_backing_file(absolutePath) != "":

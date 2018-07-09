@@ -608,7 +608,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(installPath)
         handle_lv(lockType, install_abs_path)
 
-        if recursive is False:
+        if recursive is False or lockType is lvm.LvmlockdLockType.NULL:
             return
 
         while linux.qcow2_get_backing_file(install_abs_path) != "":
