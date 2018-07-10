@@ -1287,6 +1287,12 @@ class Vm(object):
             raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
                                     " not open after 30 seconds" % (self.uuid, self.get_name()))
 
+    def _wait_for_vm_paused(self, timeout=60):
+        if not linux.wait_callback_success(self.wait_for_state_change, self.VM_STATE_PAUSED, interval=0.5,
+                                           timeout=timeout):
+            raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
+                                    'paused after %s seconds' % (self.uuid, self.get_name(), timeout))
+
     def reboot(self, cmd):
         self.stop(timeout=cmd.timeout)
 
@@ -1302,7 +1308,7 @@ class Vm(object):
 
         self.start(cmd.timeout)
 
-    def start(self, timeout=60):
+    def start(self, timeout=60, create_paused=False):
         # TODO: 1. enable hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
 
@@ -1310,10 +1316,14 @@ class Vm(object):
         def define_xml(conn):
             return conn.defineXML(self.domain_xml)
 
+        flag = (0, libvirt.VIR_DOMAIN_START_PAUSED)[create_paused]
         domain = define_xml()
         self.domain = domain
-        self.domain.createWithFlags(0)
-        self._wait_for_vm_running(timeout)
+        self.domain.createWithFlags(flag)
+        if create_paused:
+            self._wait_for_vm_paused(timeout)
+        else:
+            self._wait_for_vm_running(timeout)
 
     def stop(self, graceful=True, timeout=5, undefine=True):
         def cleanup_addons():
@@ -3226,7 +3236,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     vm.destroy()
 
             vm = Vm.from_StartVmCmd(cmd)
-            vm.start(cmd.timeout)
+            vm.start(cmd.timeout, cmd.createPaused)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
             if "Device or resource busy" in str(e.message):
