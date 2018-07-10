@@ -664,6 +664,11 @@ def qcow2_virtualsize(file_path):
     return long(out)
 
 def qcow2_get_backing_file(path):
+    if not os.path.exists(path):
+        # for rbd image
+        out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % path)
+        return out.strip(' \t\r\n')
+
     with open(path, 'r') as resp:
         magic = resp.read(4)
         if magic != 'QFI\xfb':
