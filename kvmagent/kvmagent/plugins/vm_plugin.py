@@ -707,7 +707,7 @@ class BlkIscsi(object):
                 e(root, 'address', None,{'type' : 'drive', 'bus' : self.addressBus, 'unit' : self.addressUnit})
         else:
             root = etree.Element('disk', {'type': 'block', 'device': 'lun'})
-            e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+            e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard':'unmap'})
             e(root, 'source', attrib={'dev': device_path})
             e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter})
         return root
@@ -978,7 +978,7 @@ class VirtioIscsi(object):
 
     def to_xmlobject(self):
         root = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard':'unmap'})
 
         if self.chap_username and self.chap_password:
             auth = e(root, 'auth', attrib={'username': self.chap_username})
