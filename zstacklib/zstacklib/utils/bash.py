@@ -91,13 +91,13 @@ def bash_errorout(cmd, code=0, pipe_fail=False):
     _, o, _ = bash_roe(cmd, errorout=True, ret_code=code, pipe_fail=pipe_fail)
     return o
 
-def bash_progress_1(cmd, func):
+def bash_progress_1(cmd, func, errorout=True):
     logger.debug(cmd)
     watch_thread = WatchThread_1(func)
     try:
         watch_thread.start()
-        r, o, _ = bash_roe(cmd, errorout=True)
-        return r, o, None
+        r, o, e = bash_roe(cmd, errorout)
+        return r, o, e
     except Exception as ex:
         logger.debug(linux.get_exception_stacktrace())
         return None, None, ex
