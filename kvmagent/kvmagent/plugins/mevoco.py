@@ -821,6 +821,9 @@ dhcp-range={{g}},static
                 dhcp_info.update(d.__dict__)
                 dhcp_info['dns'] = ','.join(d.dns)
                 routes = []
+                # add classless-static-route (option 121) for gateway:
+                if d.isDefaultL3Network:
+                    routes.append(','.join(['0.0.0.0/0', d.gateway]))
                 for route in d.hostRoutes:
                     routes.append(','.join([route.prefix, route.nexthop]))
                 dhcp_info['routes'] = ','.join(routes)
@@ -853,7 +856,6 @@ dhcp-range={{g}},static
 {% if o.isDefaultL3Network -%}
 {% if o.gateway -%}
 tag:{{o.tag}},option:router,{{o.gateway}}
-tag:{{o.tag}},option:classless-static-route,0.0.0.0/0,{{o.gateway}}
 {% endif -%}
 {% if o.dns -%}
 tag:{{o.tag}},option:dns-server,{{o.dns}}
