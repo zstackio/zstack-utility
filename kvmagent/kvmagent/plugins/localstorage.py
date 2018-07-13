@@ -398,9 +398,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
             if cmd.dstUsername == 'root':
                 _, _, err = bash_progress_1(
-                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p \'{{PASSWORD}}\' ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
+                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p \'{{PASSWORD}}\' ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
+
                 if err:
-                    raise err
+                    raise Exception('fail to migrate vm to host, because %s' % str(err))
             else:
                 raise Exception("cannot support migrate to non-root user host")
             written += os.path.getsize(path)
