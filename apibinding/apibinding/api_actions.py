@@ -1994,6 +1994,18 @@ class CreateDataVolumeTemplateFromVolumeAction(inventory.APICreateDataVolumeTemp
         self.out = evt
         return self.out
 
+class CreateDataVolumeTemplateFromVolumeBackupAction(inventory.APICreateDataVolumeTemplateFromVolumeBackupMsg):
+    def __init__(self):
+        super(CreateDataVolumeTemplateFromVolumeBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateDataVolumeTemplateFromVolumeBackupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateDiskOfferingAction(inventory.APICreateDiskOfferingMsg):
     def __init__(self):
         super(CreateDiskOfferingAction, self).__init__()
@@ -2534,6 +2546,18 @@ class CreateRootVolumeTemplateFromRootVolumeAction(inventory.APICreateRootVolume
         self.out = evt
         return self.out
 
+class CreateRootVolumeTemplateFromVolumeBackupAction(inventory.APICreateRootVolumeTemplateFromVolumeBackupMsg):
+    def __init__(self):
+        super(CreateRootVolumeTemplateFromVolumeBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateRootVolumeTemplateFromVolumeBackupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateRootVolumeTemplateFromVolumeSnapshotAction(inventory.APICreateRootVolumeTemplateFromVolumeSnapshotMsg):
     def __init__(self):
         super(CreateRootVolumeTemplateFromVolumeSnapshotAction, self).__init__()
@@ -2794,6 +2818,18 @@ class CreateVniRangeAction(inventory.APICreateVniRangeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateVniRangeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateVolumeBackupAction(inventory.APICreateVolumeBackupMsg):
+    def __init__(self):
+        super(CreateVolumeBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVolumeBackupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4282,6 +4318,18 @@ class DeleteVniRangeAction(inventory.APIDeleteVniRangeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteVniRangeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVolumeBackupAction(inventory.APIDeleteVolumeBackupMsg):
+    def __init__(self):
+        super(DeleteVolumeBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVolumeBackupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -8723,6 +8771,20 @@ class QueryVolumeAction(inventory.APIQueryVolumeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryVolumeAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryVolumeBackupAction(inventory.APIQueryVolumeBackupMsg):
+    def __init__(self):
+        super(QueryVolumeBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryVolumeBackupAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
