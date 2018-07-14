@@ -90,6 +90,14 @@ class RetryException(Exception):
     pass
 
 
+class GetBlockDevicesRsp(AgentRsp):
+    blockDevices = None  # type: list[lvm.SharedBlockCandidateStruct]
+
+    def __init__(self):
+        super(GetBlockDevicesRsp, self).__init__()
+        self.blockDevices = None
+
+
 class SharedBlockMigrateVolumeStruct:
     volumeUuid = None  # type: str
     snapshotUuid = None  # type: str
@@ -173,6 +181,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CHECK_DISKS_PATH = "/sharedblock/disks/check"
     ADD_SHARED_BLOCK = "/sharedblock/disks/add"
     MIGRATE_DATA_PATH = "/sharedblock/volume/migrate"
+    GET_BLOCK_DEVICES_PATH = "/sharedblock/blockdevices"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -198,6 +207,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
         http_server.register_async_uri(self.ADD_SHARED_BLOCK, self.add_disk)
         http_server.register_async_uri(self.MIGRATE_DATA_PATH, self.migrate_volumes)
+        http_server.register_async_uri(self.GET_BLOCK_DEVICES_PATH, self.get_block_devices)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -709,3 +719,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if has_backing_file:
             return re.sub("-o preallocation=\w* ", " ", options)
         return options
+
+    @kvmagent.replyerror
+    def get_block_devices(self, req):
+        rsp = GetBlockDevicesRsp()
+        rsp.blockDevices = lvm.get_block_devices()
+        return jsonobject.dumps(rsp)

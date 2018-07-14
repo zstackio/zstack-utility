@@ -48,6 +48,100 @@ class RetryException(Exception):
     pass
 
 
+class SharedBlockCandidateStruct:
+    wwids = []  # type: list[str]
+    vendor = None  # type: str
+    model = None  # type: str
+    wwn = None  # type: str
+    serial = None  # type: str
+    hctl = None  # type: str
+    type = None  # type: str
+    size = None  # type: long
+
+    def __init__(self):
+        pass
+
+
+def get_block_devices():
+    # 1. get multi path devices
+    # 2. get multi path device information from raw device
+    # 3. get information of other devices
+    mpath_devices = []
+    block_devices = []  # type: List[SharedBlockCandidateStruct]
+    cmd = shell.ShellCmd("multipath -l -v1")
+    cmd(is_exception=True)
+    if cmd.stdout.strip() != "":
+        mpath_devices = cmd.stdout.strip().split("\n")
+
+    for mpath_device in mpath_devices:
+        cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
+        cmd(is_exception=True)
+        if cmd.stdout.strip() == "":
+            continue
+
+        dm = cmd.stdout.strip()
+        slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
+
+        struct = get_device_info(slaves[0])
+        cmd = shell.ShellCmd("multipath -l /dev/mapper/%s | grep %s | grep -o ' (.*) '" % (
+            mpath_device, mpath_device))
+        cmd(is_exception=True)
+        struct.wwids = [cmd.stdout.strip().strip("()")]
+        struct.type = "mpath"
+        block_devices.append(struct)
+
+    disks = shell.call("lsblk -p -o NAME,TYPE | grep disk | awk '{print $1}'").strip().split()
+    for disk in disks:
+        if is_slave_of_multipath(disk):
+            continue
+        d = get_device_info(disk.strip().split("/")[-1])
+        if len(d.wwids) != 0:
+            block_devices.append(d)
+
+    return block_devices
+
+
+def is_slave_of_multipath(dev_path):
+    # type: (str) -> bool
+    r = bash.bash_r("multipath %s -l | grep mpath" % dev_path)
+    if r == 0:
+        return True
+    return False
+
+
+def get_device_info(dev_name):
+    # type: (str) -> SharedBlockCandidateStruct
+    s = SharedBlockCandidateStruct()
+    o = shell.call("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name).strip().split("\n")[0]
+    if o == "":
+        raise Exception("can not get device information from %s" % dev_name)
+
+    def get_data(e):
+        return e.split("=")[1].strip().strip('"')
+
+    def get_wwids(dev):
+        return shell.call("udevadm info -n %s | grep 'by-id' | grep -v DEVLINKS | awk -F 'by-id/' '{print $2}'" % dev).strip().split()
+
+    for entry in o.split('" '):  # type: str
+        if entry.startswith("VENDOR"):
+            s.vendor = get_data(entry)
+        elif entry.startswith("MODEL"):
+            s.model = get_data(entry)
+        elif entry.startswith("WWN"):
+            s.wwn = get_data(entry)
+        elif entry.startswith("SERIAL"):
+            s.serial = get_data(entry)
+        elif entry.startswith('HCTL'):
+            s.hctl = get_data(entry)
+        elif entry.startswith('SIZE'):
+            s.size = get_data(entry)
+        elif entry.startswith('TYPE'):
+            s.type = get_data(entry)
+
+    s.wwids = get_wwids(dev_name)
+    return s
+
+
 def calcLvReservedSize(size):
     # NOTE(weiw): Add additional 12M for every lv
     size = int(size) + 3 * LV_RESERVED_SIZE
@@ -136,7 +230,7 @@ def start_lvmlockd():
 
 @bash.in_bash
 def start_vg_lock(vgUuid):
-    @linux.retry(times=60, sleep_time=random.uniform(1,10))
+    @linux.retry(times=60, sleep_time=random.uniform(1, 10))
     def vg_lock_is_adding(vgUuid):
         # NOTE(weiw): this means vg locking is adding rather than complete
         return_code = bash.bash_r("sanlock client status | grep -E 's lvm_%s.*\\:0 ADD'" % vgUuid)

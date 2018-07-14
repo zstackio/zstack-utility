@@ -52,6 +52,7 @@ class ShellCmd(object):
         return self.stdout
 
 def call(cmd, exception=True, workdir=None):
+    # type: (str, bool, bool) -> str
     return ShellCmd(cmd, workdir)(exception)
 
 def run(cmd, workdir=None):
