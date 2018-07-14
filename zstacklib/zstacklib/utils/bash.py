@@ -68,6 +68,8 @@ def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
 
     if r != ret_code and errorout:
         raise BashError('failed to execute bash[%s], return code: %s, stdout: %s, stderr: %s' % (cmd, r, o, e))
+    if r == ret_code:
+        e = None
 
     return r, o, e
 
