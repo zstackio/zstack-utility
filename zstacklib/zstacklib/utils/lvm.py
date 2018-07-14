@@ -144,7 +144,7 @@ def start_vg_lock(vgUuid):
             raise RetryException("vg %s lock space is starting" % vgUuid)
         return False
 
-    @linux.retry(times=3, sleep_time=random.uniform(0.1, 1))
+    @linux.retry(times=15, sleep_time=random.uniform(0.1, 2))
     def vg_lock_exists(vgUuid):
         return_code = bash.bash_r("lvmlockctl -i | grep %s" % vgUuid)
         if return_code != 0:
@@ -154,7 +154,7 @@ def start_vg_lock(vgUuid):
         else:
             return True
 
-    @linux.retry(times=30, sleep_time=random.uniform(0.1, 30))
+    @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
     def start_lock(vgUuid):
         return_code = bash.bash_r("vgchange --lock-start %s" % vgUuid)
         if return_code != 0:
