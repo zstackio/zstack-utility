@@ -56,6 +56,7 @@ def new_rest_service(config={}):
 def get_http_server():
     return _rest_service.http_server
 
+
 def get_qemu_path():
     global _qemu_path
     if not _qemu_path:

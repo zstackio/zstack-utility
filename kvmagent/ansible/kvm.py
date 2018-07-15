@@ -168,7 +168,7 @@ if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
         extra_pkg = 'collectd-virt' if distro_version >= 7 else ""
-        dep_list = "bridge-utils device-mapper-multipath dnsmasq expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sanlock sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
+        dep_list = "bridge-utils chrony device-mapper-multipath dnsmasq expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sanlock sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
 
         # name: install kvm related packages on RedHat based OS from user defined repo
         # update some packages if possible
@@ -189,7 +189,7 @@ if distro in RPM_BASED_OS:
 
     else:
         # name: install kvm related packages on RedHat based OS from online
-        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
+        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'dnsmasq', 'iproute', 'sshpass',
                     'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
                     'lvm2', 'lvm2-lockd', 'sanlock', 'smartmontools', 'device-mapper-multipath', 'hwdata', 'sg3_utils']:
@@ -295,7 +295,7 @@ if distro in RPM_BASED_OS:
 
 elif distro in DEB_BASED_OS:
     # name: install kvm related packages on Debian based OS
-    install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin',
+    install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin', 'chrony'
                         'vlan', 'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','pv', 'usbutils', 'pciutils', 'expect',
                         'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
     apt_install_packages(install_pkg_list, host_post_info)
