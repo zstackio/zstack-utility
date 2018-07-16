@@ -57,6 +57,7 @@ class SharedBlockCandidateStruct:
     hctl = None  # type: str
     type = None  # type: str
     size = None  # type: long
+    path = None  # type: str
 
     def __init__(self):
         pass
@@ -69,14 +70,14 @@ def get_block_devices():
     mpath_devices = []
     block_devices = []  # type: List[SharedBlockCandidateStruct]
     cmd = shell.ShellCmd("multipath -l -v1")
-    cmd(is_exception=True)
-    if cmd.stdout.strip() != "":
+    cmd(is_exception=False)
+    if cmd.return_code == 0 and cmd.stdout.strip() != "":
         mpath_devices = cmd.stdout.strip().split("\n")
 
     for mpath_device in mpath_devices:
         cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
-        cmd(is_exception=True)
-        if cmd.stdout.strip() == "":
+        cmd(is_exception=False)
+        if cmd.return_code != 0 or cmd.stdout.strip() == "":
             continue
 
         dm = cmd.stdout.strip()
@@ -109,6 +110,13 @@ def is_slave_of_multipath(dev_path):
     return False
 
 
+def is_multipath(dev_name):
+    r = bash.bash_r("multipath /dev/%s -l | grep mpath" % dev_name)
+    if r == 0:
+        return True
+    return False
+
+
 def get_device_info(dev_name):
     # type: (str) -> SharedBlockCandidateStruct
     s = SharedBlockCandidateStruct()
@@ -121,6 +129,9 @@ def get_device_info(dev_name):
 
     def get_wwids(dev):
         return shell.call("udevadm info -n %s | grep 'by-id' | grep -v DEVLINKS | awk -F 'by-id/' '{print $2}'" % dev).strip().split()
+
+    def get_path(dev):
+        return shell.call("udevadm info -n %s | grep 'by-path' | grep -v DEVLINKS | head -n1 | awk -F 'by-path/' '{print $2}'" % dev).strip()
 
     for entry in o.split('" '):  # type: str
         if entry.startswith("VENDOR"):
@@ -139,6 +150,7 @@ def get_device_info(dev_name):
             s.type = get_data(entry)
 
     s.wwids = get_wwids(dev_name)
+    s.path = get_path(dev_name)
     return s
 
 
@@ -348,9 +360,11 @@ def add_pv(vg_uuid, disk_path, metadata_size):
     cmd(is_exception=True)
 
 
-def get_vg_size(vgUuid):
+def get_vg_size(vgUuid, raise_exception=True):
     cmd = shell.ShellCmd("vgs --nolocking --readonly %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
-    cmd(is_exception=True)
+    cmd(is_exception=raise_exception)
+    if cmd.return_code != 0:
+        return None, None
     return cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
 
 
@@ -483,6 +497,13 @@ def delete_lv(path, raise_exception=True):
 def lv_exists(path):
     r = bash.bash_r("lvs --nolocking --readonly %s" % path)
     return r == 0
+
+
+@bash.in_bash
+def vg_exists(vgUuid):
+    cmd = shell.ShellCmd("vgs --nolocking %s" % (vgUuid))
+    cmd(is_exception=False)
+    return cmd.return_code == 0
 
 
 def lv_uuid(path):

@@ -141,13 +141,30 @@ class CheckDisk(object):
                         "or multiple disks qualify but no mpath device found" % self.identifier)
 
     def rescan(self, disk_name=None):
+        """
+
+        :type disk_name: str
+        """
         if disk_name is None:
             disk_name = self.get_path().split("/")[-1]
 
-        cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % disk_name)
-        cmd(is_exception=True)
-        logger.debug("rescaned disk %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
-                     (disk_name, self.identifier, cmd.return_code, cmd.stdout, cmd.stderr))
+        def rescan_slave(slave):
+            _cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % slave)
+            _cmd(is_exception=True)
+            logger.debug("rescaned disk %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
+                         (slave, self.identifier, _cmd.return_code, _cmd.stdout, _cmd.stderr))
+
+        if lvm.is_multipath(disk_name):
+            # disk name is dm-xx when multi path
+            slaves = shell.call("ls /sys/class/block/%s/slaves/" % disk_name).strip().split("\n")
+            for s in slaves:
+                rescan_slave(s)
+            cmd = shell.ShellCmd("multipathd resize map %s" % disk_name)
+            cmd(is_exception=True)
+            logger.debug("resized multipath device %s, return code: %s, stdout %s, stderr: %s" %
+                         (disk_name, cmd.return_code, cmd.stdout, cmd.stderr))
+        else:
+            rescan_slave(disk_name)
 
         cmd = shell.ShellCmd("pvresize /dev/%s" % disk_name)
         cmd(is_exception=True)
@@ -238,8 +255,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if cmd.rescan:
                 disk.rescan(path.split("/")[-1])
 
-        if cmd.vgUuid is not None:
-            rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
+            rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
 
         return jsonobject.dumps(rsp)
 
@@ -255,7 +272,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         try:
             find_vg(vgUuid)
-        except RetryException:
+        except RetryException as e:
             if forceWipe is True:
                 lvm.wipe_fs(diskPaths)
 
