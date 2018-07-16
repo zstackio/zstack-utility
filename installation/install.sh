@@ -1046,8 +1046,6 @@ is_install_general_libs_rh(){
             openssh-server \
             sshpass \
             sudo \
-            ntp \
-            ntpdate \
             bzip2 \
             libffi-devel \
             openssl-devel \
@@ -1152,8 +1150,6 @@ is_install_general_libs_deb(){
         unzip \
         apache2 \
         sshpass \
-        ntp  \
-        ntpdate \
         bzip2 \
         libffi-dev \
         libssl-dev \
@@ -1196,7 +1192,7 @@ install_system_libs(){
     #mysql and rabbitmq will be installed by zstack-ctl later
     show_spinner ia_install_pip
     show_spinner is_install_virtualenv
-    #enable ntpd
+    #enable chronyd
     show_spinner is_enable_chronyd
 }
 
