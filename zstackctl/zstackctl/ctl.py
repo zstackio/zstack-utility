@@ -5497,11 +5497,11 @@ class InstallManagementNodeCmd(Command):
 
     - name: install dependencies on RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
 
     - name: install dependencies on RedHat OS from system repos
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
+      shell: yum clean metadata; yum --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
 
     - name: set java 8 as default runtime
       when: ansible_os_family == 'RedHat'
@@ -5541,8 +5541,6 @@ class InstallManagementNodeCmd(Command):
         - python-pip
         - sshpass
         - bzip2
-        - ntp
-        - ntpdate
         - sudo
         - python-setuptools
 

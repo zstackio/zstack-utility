@@ -164,8 +164,6 @@ netcf-libs
 net-tools
 nfs-utils
 nmap-ncat
-ntp
-ntpdate
 numad
 pango
 perl

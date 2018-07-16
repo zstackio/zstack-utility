@@ -1312,11 +1312,12 @@ enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
                     # install epel-release
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]:
+                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf"]:
                     yum_install_package(pkg, host_post_info)
-                    if distro_version >=7:
-                        # to avoid install some pkgs on virtual router which release is Centos 6.x
-                        yum_install_package("python-backports-ssl_match_hostname", host_post_info)
+                if distro_version >=7:
+                    # to avoid install some pkgs on virtual router which release is Centos 6.x
+                    yum_install_package("chrony", host_post_info)
+                    yum_install_package("python-backports-ssl_match_hostname", host_post_info)
             else:
                 # generate repo defined in zstack_repo
                 if '163' in zstack_repo:
@@ -1386,21 +1387,22 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 # enable alibase repo for yum clean avoid no repo to be clean
                 command = (
                           "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                          "python-setuptools python-pip gcc autoconf ntp ntpdate | grep \"not installed\" | awk"
+                          "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                           "-y $pkg; done;") % zstack_repo
                 run_remote_command(command, host_post_info)
                 if distro_version >= 7:
                     # to avoid install some pkgs on virtual router which release is Centos 6.x
                     command = (
-                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname | "
+                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
+                    # enable chrony service and disable ntp for RedHat 7
+                    service_status("ntpd", "state=stopped enabled=no", host_post_info, ignore_error=True)
+                    service_status("chronyd", "state=restarted enabled=yes", host_post_info)
 
-            # enable ntp service for RedHat
-            service_status("ntpd", "state=restarted enabled=yes", host_post_info)
 
         elif distro in DEB_BASED_OS:
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
@@ -1437,11 +1439,11 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             # install dependency packages for Debian based OS
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
-            install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "ntp", "ntpdate"]
+            install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "chrony"]
             apt_install_packages(install_pkg_list, host_post_info)
 
-            # name: enable ntp service for Debian
-            run_remote_command("update-rc.d ntp defaults; service ntp restart", host_post_info)
+            # name: enable chrony service for Debian
+            run_remote_command("update-rc.d chrony defaults; service ntp stop || true; service chrony restart", host_post_info)
 
         else:
             error("ERROR: Unsupported distribution")

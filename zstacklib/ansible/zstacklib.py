@@ -1663,10 +1663,11 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf", "chrony"]:
+                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf"]:
                         yum_install_package(pkg, host_post_info)
                     if distro_version >=7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
+                        yum_install_package("chrony", host_post_info)
                         yum_install_package("python-backports-ssl_match_hostname", host_post_info)
                         yum_install_package("iptables-services", host_post_info)
             else:
@@ -1753,14 +1754,14 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python-pip gcc autoconf chrony | grep \"not installed\" | awk"
+                              "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
                     if distro_version >= 7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
                         command = (
-                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname  iptables-services| "
+                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony iptables-services| "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % zstack_repo

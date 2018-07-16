@@ -32,7 +32,6 @@ cat > /root/.m2/settings.xml <<EOF
 EOF
 
 yum install -y qemu-system-x86 libvirt-daemon-kvm
-yum install -y ntp
 
 ln -s /root /home/root
 mkdir /home/sftpBackupStorage
