@@ -309,6 +309,15 @@ echo_subtitle(){
     echo -n "    $*:"|tee -a $ZSTACK_INSTALL_LOG
 }
 
+set_tomcat_config() {
+    new_timeout=120000
+    new_max_thread_num=400
+    tomcat_config_path=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf
+    sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
+    sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
+    sed -i 's/redirectPort="8443" \/>/redirectPort="8443" maxHttpHeaderSize="65536" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>/g' $tomcat_config_path/server.xml
+}
+
 cs_check_hostname(){
     which hostname &>/dev/null
     [ $? -ne 0 ] && return 
@@ -1348,6 +1357,9 @@ uz_upgrade_tomcat(){
        fail "chmod failed in: $TOMCAT_PATH/apache-tomcat/bin/*."
     fi
 
+    #If tomcat use the default conf update it
+    set_tomcat_config
+
     pass
 }
 
@@ -2334,15 +2346,6 @@ get_zstack_repo(){
         fi
         YUM_ONLINE_REPO=''
     fi
-}
-
-set_tomcat_config() {
-    new_timeout=120000
-    new_max_thread_num=400
-    tomcat_config_path=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf
-    sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
-    sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
-    sed -i 's/redirectPort="8443" \/>/redirectPort="8443" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>/' $tomcat_config_path/server.xml
 }
 
 check_upgrade_local_repos() {
