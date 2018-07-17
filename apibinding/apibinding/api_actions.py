@@ -9628,6 +9628,18 @@ class RevertVolumeFromSnapshotAction(inventory.APIRevertVolumeFromSnapshotMsg):
         self.out = evt
         return self.out
 
+class RevertVolumeFromVolumeBackupAction(inventory.APIRevertVolumeFromVolumeBackupMsg):
+    def __init__(self):
+        super(RevertVolumeFromVolumeBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RevertVolumeFromVolumeBackupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RevokeResourceSharingAction(inventory.APIRevokeResourceSharingMsg):
     def __init__(self):
         super(RevokeResourceSharingAction, self).__init__()
