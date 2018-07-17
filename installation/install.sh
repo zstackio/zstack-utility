@@ -1035,6 +1035,7 @@ is_install_general_libs_rh(){
             python-devel \
             gcc \
             autoconf \
+            chrony \
             iptables \
             iptables-services \
             tar \
