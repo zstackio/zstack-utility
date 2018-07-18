@@ -2865,7 +2865,7 @@ echo_hints_to_upgrade_iso()
 
 echo_chrony_server_warning_if_need()
 {
-    CHRONY_SERVER=(`zstack-ctl show_configuration | grep "^[[:space:]]chrony.serverIp" | awk -F '=' '{print $2}' | sed s/[[:space:]]//g`)
+    CHRONY_SERVER=(`zstack-ctl show_configuration | grep "^[[:space:]]*chrony.serverIp" | awk -F '=' '{print $2}' | sed s/[[:space:]]//g`)
     if [ ${#CHRONY_SERVER[*]} -eq 1 ]  && [ x${CHRONY_SERVER[0]} == x${MANAGEMENT_IP} ]; then
         echo  -e "$(tput setaf 3)-WARNING!!!
   - chrony server sources is set to management node.
