@@ -5342,6 +5342,12 @@ class ChangeIpCmd(Command):
             ])
             info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
 
+            old_chrony_ips = ctl.read_property_list('chrony.serverIp.')
+            if len(old_chrony_ips) == 1 and old_chrony_ips[0][1] == old_ip:
+                # management.server.ip has been setted when zstack install
+                ctl.write_property(old_chrony_ips[0][0], args.ip)
+                info("Update chrony server ip %s in %s " % (args.ip, zstack_conf_file))
+
             # update zstack db url
             db_url = ctl.read_property('DB.url')
             db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
