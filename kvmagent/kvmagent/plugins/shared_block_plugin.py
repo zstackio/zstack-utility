@@ -157,12 +157,16 @@ class CheckDisk(object):
         if lvm.is_multipath(disk_name):
             # disk name is dm-xx when multi path
             slaves = shell.call("ls /sys/class/block/%s/slaves/" % disk_name).strip().split("\n")
-            for s in slaves:
-                rescan_slave(s)
-            cmd = shell.ShellCmd("multipathd resize map %s" % disk_name)
-            cmd(is_exception=True)
-            logger.debug("resized multipath device %s, return code: %s, stdout %s, stderr: %s" %
-                         (disk_name, cmd.return_code, cmd.stdout, cmd.stderr))
+            if slaves is None or len(slaves) == 0:
+                logger.debug("can not get any slaves of multipath device %s" % disk_name)
+                rescan_slave(disk_name)
+            else:
+                for s in slaves:
+                    rescan_slave(s)
+                cmd = shell.ShellCmd("multipathd resize map %s" % disk_name)
+                cmd(is_exception=True)
+                logger.debug("resized multipath device %s, return code: %s, stdout %s, stderr: %s" %
+                             (disk_name, cmd.return_code, cmd.stdout, cmd.stderr))
         else:
             rescan_slave(disk_name)
 
@@ -276,17 +280,17 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if forceWipe is True:
                 lvm.wipe_fs(diskPaths)
 
-            cmd = shell.ShellCmd("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
+            cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
                          (vgUuid, cmd.return_code, cmd.stdout, cmd.stderr))
-            if cmd.return_code == 0:
+            if cmd.return_code == 0 and find_vg(vgUuid) is True:
                 return True
             if find_vg(vgUuid) is False:
-                raise Exception("can not find vg %s with disks: %s and create failed for %s " %
-                                (vgUuid, diskPaths, cmd.stderr))
+                raise Exception("can not find vg %s with disks: %s and create vg return: %s %s %s " %
+                                (vgUuid, diskPaths, cmd.return_code, cmd.stdout, cmd.stderr))
         except Exception as e:
             raise e
 

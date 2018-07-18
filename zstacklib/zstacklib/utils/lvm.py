@@ -103,11 +103,21 @@ def get_block_devices():
 
 
 @bash.in_bash
-def is_slave_of_multipath(dev_path):
-    # type: (str) -> bool
+def is_multipath_running():
     r = bash.bash_r("multipath -t")
     if r != 0:
-        logger.debug("multipath service not enabled, skip to judge slave")
+        return False
+
+    r = bash.bash_r("pgrep multipathd")
+    if r != 0:
+        return False
+    return True
+
+
+@bash.in_bash
+def is_slave_of_multipath(dev_path):
+    # type: (str) -> bool
+    if is_multipath_running is False:
         return False
 
     r = bash.bash_r("multipath %s -l | grep policy" % dev_path)
@@ -117,6 +127,8 @@ def is_slave_of_multipath(dev_path):
 
 
 def is_multipath(dev_name):
+    if is_multipath_running():
+        return False
     r = bash.bash_r("multipath /dev/%s -l | grep mpath" % dev_name)
     if r == 0:
         return True
