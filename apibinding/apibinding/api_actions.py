@@ -9064,6 +9064,18 @@ class ReconnectVirtualRouterAction(inventory.APIReconnectVirtualRouterMsg):
         self.out = evt
         return self.out
 
+class RecoverBackupFromImageStoreBackupStorageAction(inventory.APIRecoverBackupFromImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(RecoverBackupFromImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoverBackupFromImageStoreBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RecoverDataVolumeAction(inventory.APIRecoverDataVolumeMsg):
     def __init__(self):
         super(RecoverDataVolumeAction, self).__init__()
