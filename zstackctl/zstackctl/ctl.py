@@ -770,6 +770,11 @@ class Ctl(object):
         with on_error('property must be in format of "key=value", no space before and after "="'):
             prop.write_properties(properties)
 
+    def delete_properties(self, properties):
+        prop = PropertyFile(self.properties_file_path)
+        with on_error('property must be in format of "key=value", no space before and after "="'):
+            prop.delete_properties(properties)
+
     def write_property(self, key, value):
         prop = PropertyFile(self.properties_file_path)
         with on_error('property must be in format of "key=value", no space before and after "="'):
@@ -1888,6 +1893,12 @@ class StartCmd(Command):
 
             shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s; sync' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
 
+        def checkSimulator():
+            if args.simulator:
+                ctl.write_properties(['simulatorsOn=true'.split('=', 1)])
+            else:
+                ctl.delete_properties(['simulatorsOn'])
+
         user = getpass.getuser()
         if user != 'root':
             raise CtlError('please use sudo or root user')
@@ -1900,6 +1911,7 @@ class StartCmd(Command):
         prepare_qemu_kvm_repo()
         prepare_setenv()
         open_iptables_port('udp',['123'])
+        checkSimulator()
         prepareBeanRefContextXml()
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quickly
