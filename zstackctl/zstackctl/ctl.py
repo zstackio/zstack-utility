@@ -1793,6 +1793,16 @@ class StartCmd(Command):
                 else:
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
+        def check_chrony():
+            ips = [v for k, v in ctl.read_property_list('chrony.serverIp.')]
+            mn_ip = ctl.read_property('management.server.ip')
+            if mn_ip not in ips:
+                return
+            ret = shell_return("systemctl status chronyd | grep 'active[[:space:]]*(running)'")
+            if ret != 0:
+                warn("chrony is not running, restart it now...")
+                shell("systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd")
+
         def prepare_qemu_kvm_repo():
             OLD_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.6.0'
             NEW_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.9.0'
@@ -1908,6 +1918,7 @@ class StartCmd(Command):
         check_9090()
         check_msyql()
         check_rabbitmq()
+        check_chrony()
         prepare_qemu_kvm_repo()
         prepare_setenv()
         open_iptables_port('udp',['123'])
