@@ -5654,6 +5654,18 @@ class GetLocalStorageHostDiskCapacityAction(inventory.APIGetLocalStorageHostDisk
         self.out = evt
         return self.out
 
+class GetLoginCaptchaAction(inventory.APIGetLoginCaptchaMsg):
+    def __init__(self):
+        super(GetLoginCaptchaAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetLoginCaptchaAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetMetricDataAction(inventory.APIGetMetricDataMsg):
     def __init__(self):
         super(GetMetricDataAction, self).__init__()
@@ -9046,6 +9058,18 @@ class RecoveryVirtualBorderRouterRemoteAction(inventory.APIRecoveryVirtualBorder
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RecoveryVirtualBorderRouterRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RefreshCaptchaAction(inventory.APIRefreshCaptchaMsg):
+    def __init__(self):
+        super(RefreshCaptchaAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RefreshCaptchaAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
