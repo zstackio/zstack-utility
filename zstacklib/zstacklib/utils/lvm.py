@@ -127,7 +127,7 @@ def is_slave_of_multipath(dev_path):
 
 
 def is_multipath(dev_name):
-    if is_multipath_running():
+    if not is_multipath_running():
         return False
     r = bash.bash_r("multipath /dev/%s -l | grep mpath" % dev_name)
     if r == 0:

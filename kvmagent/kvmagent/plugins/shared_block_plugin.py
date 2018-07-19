@@ -148,9 +148,9 @@ class CheckDisk(object):
         if disk_name is None:
             disk_name = self.get_path().split("/")[-1]
 
-        def rescan_slave(slave):
+        def rescan_slave(slave, raise_exception=True):
             _cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % slave)
-            _cmd(is_exception=True)
+            _cmd(is_exception=raise_exception)
             logger.debug("rescaned disk %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
                          (slave, self.identifier, _cmd.return_code, _cmd.stdout, _cmd.stderr))
 
@@ -159,7 +159,7 @@ class CheckDisk(object):
             slaves = shell.call("ls /sys/class/block/%s/slaves/" % disk_name).strip().split("\n")
             if slaves is None or len(slaves) == 0:
                 logger.debug("can not get any slaves of multipath device %s" % disk_name)
-                rescan_slave(disk_name)
+                rescan_slave(disk_name, False)
             else:
                 for s in slaves:
                     rescan_slave(s)
