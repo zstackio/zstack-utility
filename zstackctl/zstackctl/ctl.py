@@ -4815,7 +4815,7 @@ class CollectLogCmd(Command):
         command = "uptime > %s && last reboot >> %s && free -h >> %s && cat /proc/cpuinfo >> %s  && ip addr >> %s && df -h >> %s" % \
                   (host_info_log, host_info_log, host_info_log, host_info_log, host_info_log, host_info_log)
         run_remote_command(command, host_post_info, True, True)
-        command = "cp /var/log/dmesg* /var/log/messages %s" % tmp_log_dir
+        command = "cp /var/log/dmesg* /var/log/messages* %s" % tmp_log_dir
         run_remote_command(command, host_post_info)
         command = "route -n > %s/route_table" % tmp_log_dir
         run_remote_command(command, host_post_info)
@@ -4832,11 +4832,13 @@ class CollectLogCmd(Command):
         command = "mkdir -p %s " % target_dir
         run_remote_command(command, host_post_info)
 
-        command = "lsblk -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN > %s/lsblk_info || true" % target_dir
+        command = "lsblk -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN,SIZE > %s/lsblk_info || true" % target_dir
         run_remote_command(command, host_post_info)
-        command = "ls -l /dev/disk/by-id > %s/ls_dev_disk_by-id_info || true" % target_dir
+        command = "ls -l /dev/disk/by-id > %s/ls_dev_disk_by-id_info && echo || true" % target_dir
         run_remote_command(command, host_post_info)
-        command = "multipath -ll -v3 > %s/ls_dev_disk_by-id_info || true" % target_dir
+        command = "ls -l /dev/disk/by-path >> %s/ls_dev_disk_by-id_info && echo || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "multipath -ll -v3 >> %s/ls_dev_disk_by-id_info || true" % target_dir
         run_remote_command(command, host_post_info)
 
         command = "cp /var/log/sanlock.log %s || true" % target_dir
@@ -5130,7 +5132,7 @@ class CollectLogCmd(Command):
         command = "uptime > %s && last reboot >> %s && free -h >> %s && cat /proc/cpuinfo >> %s  && ip addr >> %s && df -h >> %s" % \
                   (host_info_log, host_info_log, host_info_log, host_info_log, host_info_log, host_info_log)
         commands.getstatusoutput(command)
-        command = "cp /var/log/dmesg* /var/log/messages %s/" % mn_log_dir
+        command = "cp /var/log/dmesg* /var/log/messages* %s/" % mn_log_dir
         commands.getstatusoutput(command)
         command = "cp %s/*git-commit %s/" % (ctl.zstack_home, mn_log_dir)
         commands.getstatusoutput(command)
