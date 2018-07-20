@@ -285,7 +285,7 @@ class DEip(kvmagent.KvmAgent):
         def set_eip_rules():
             DNAT_NAME = "DNAT-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{DNAT_NAME}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} iptables -t nat -N {{DNAT_NAME}}')
+                bash_errorout('eval {{NS}} iptables -w -t nat -N {{DNAT_NAME}}')
 
             create_iptable_rule_if_needed("-t nat", 'PREROUTING -d {{VIP}}/32 -j {{DNAT_NAME}}')
             create_iptable_rule_if_needed("-t nat", '{{DNAT_NAME}} -j DNAT --to-destination {{NIC_IP}}')
@@ -301,7 +301,7 @@ class DEip(kvmagent.KvmAgent):
 
             SNAT_NAME = "SNAT-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{SNAT_NAME}}" > /dev/null ') != 0:
-                bash_errorout('eval {{NS}} iptables -t nat -N {{SNAT_NAME}}')
+                bash_errorout('eval {{NS}} iptables -w -t nat -N {{SNAT_NAME}}')
 
             create_iptable_rule_if_needed("-t nat", "POSTROUTING -s {{NIC_IP}}/32 -j {{SNAT_NAME}}")
             create_iptable_rule_if_needed("-t nat", "{{SNAT_NAME}} -j SNAT --to-source {{VIP}}")
@@ -317,7 +317,7 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}')
-            GATEWAY = bash_o("eval {{NS}} ip link | grep -w {{PRI_IDEV}} -A 1 | awk '/link\/ether/{print $2}'")
+            GATEWAY = bash_o("eval {{NS}} ip link | grep -w {{PRI_IDEV}} -A 1 | awk '/link\/ether/{print $2}'").strip()
             if not GATEWAY:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
 
