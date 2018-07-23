@@ -312,7 +312,15 @@ class HostPlugin(kvmagent.KvmAgent):
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
-            rsp.cpuModelName = "Unknown"
+            cpu_model = None
+            try:
+                cpu_model = self._get_host_cpu_model()
+            except AttributeError:
+                logger.debug("maybe XmlObject has no attribute model, use uname -p to get one")
+                if cpu_model is None:
+                    cpu_model = shell.call('uname -p')
+
+            rsp.cpuModelName = cpu_model
         else:
             if shell.run('grep vmx /proc/cpuinfo') == 0:
                 rsp.hvmCpuFlag = 'vmx'
