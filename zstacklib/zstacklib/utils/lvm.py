@@ -14,6 +14,19 @@ LVM_CONFIG_PATH = "/etc/lvm"
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 SUPER_BLOCK_BACKUP = "superblock.bak"
+COMMON_TAG = "zs;sharedblock"
+VOLUME_TAG = COMMON_TAG + "::volume"
+IMAGE_TAG = COMMON_TAG + "::image"
+
+
+class VmStruct(object):
+    def __init__(self):
+        super(VmStruct, self).__init__()
+        self.pid = ""
+        self.cmdline = ""
+        self.root_volume = ""
+        self.uuid = ""
+        self.volumes = []
 
 
 class LvmlockdLockType(object):
@@ -321,6 +334,11 @@ def stop_vg_lock(vgUuid):
         raise e
 
 
+@bash.in_bash
+def drop_vg_lock(vgUuid):
+    bash.bash_roe("lvmlockctl --drop %s" % vgUuid)
+
+
 def get_running_host_id(vgUuid):
     cmd = shell.ShellCmd("sanlock client gets | grep %s | awk -F':' '{ print $2 }'" % vgUuid)
     cmd(is_exception=False)
@@ -509,6 +527,15 @@ def delete_lv(path, raise_exception=True):
     else:
         o = bash.bash_o("lvremove -y %s" % path)
     return o
+
+
+@bash.in_bash
+def remove_device_map_for_vg(vgUuid):
+    o = bash.bash_o("dmsetup ls | grep %s | awk '{print $1}'" % vgUuid).strip().splitlines()
+    if len(o) == 0:
+        return
+    for dm in o:
+        bash.bash_roe("dmsetup remove %s" % dm.strip())
 
 
 @bash.in_bash
@@ -704,3 +731,200 @@ class RecursiveOperateLv(object):
             deactive_lv(self.abs_path, raise_exception=False)
         else:
             active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)
+
+
+def get_lockspace(vgUuid):
+    output = bash.bash_o("sanlock client gets | awk '{print $2}' | grep %s" % vgUuid)
+    return output.strip()
+
+
+def examine_lockspace(lockspace):
+    r = bash.bash_r("sanlock client examine -s %s" % lockspace)
+    if r != 0:
+        logger.warn("sanlock examine %s failed, return %s" % (lockspace, r))
+        return r
+    r = bash.bash_r("sanlock direct read_leader -s %s" % lockspace)
+    if r != 0:
+        logger.warn("sanlock read leader %s failed, return %s" % (lockspace, r))
+    return r
+
+
+def check_pv_status(vgUuid, timeout):
+    r, o , e = bash.bash_roe("timeout -s SIGKILL %s pvs --noheading --nolocking -Svg_name=%s -oname,missing" % (timeout, vgUuid))
+    if len(o) == 0 or r != 0:
+        logger.warn("can not find shared block in shared block group %s, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, r, o, e))
+        return True, ""
+    for pvs_out in o:
+        if "unknown" in pvs_out:
+            s = "disk in shared block group %s missing" % vgUuid
+            logger.warn("%s, details: %s" % (s, o))
+            return False, s
+        if "missing" in pvs_out:
+            s = "disk %s in shared block group %s exists but state is missing" % (pvs_out.strip().split(" ")[0], vgUuid)
+            logger.warn("%s, details: %s" % (s, o))
+            return False, s
+
+    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s' % (10 if timeout < 10 else timeout, vgUuid))
+    if health != 0:
+        s = "vgck %s failed, details: %s" % (vgUuid, e)
+        logger.warn(s)
+        return False, s
+
+    health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking --readonly --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
+    if health == "":
+        logger.warn("can not get proper attr of vg, return false")
+        return False, "primary storage %s attr get error, expect 'wz--ns' got %s" % (vgUuid, health)
+
+    if health[0] != "w":
+        return False, "primary storage %s permission error, expect 'w' but now is %s, deatils: %s" % (vgUuid, health.stdout.strip()[0], health)
+
+    if health[1] != "z":
+        return False, "primary storage %s resizeable error, expect 'z' but now is %s, deatils: %s" % (vgUuid, health.stdout.strip()[1], health)
+
+    if health[3] != "-":
+        return False, "primary storage %s partial error, expect '-' but now is %s, deatils: %s" % (vgUuid, health.stdout.strip()[3], health)
+
+    if health[5] != "s":
+        return False, "primary storage %s shared mode error, expect 's' but now is %s, deatils: %s" % (vgUuid, health.stdout.strip()[5], health)
+
+    return True, ""
+
+
+def check_vg_status(vgUuid, check_timeout, check_pv=True):
+    # type: (str) -> tuple[bool, str]
+    # 1. examine sanlock lock
+    # 2. check the consistency of volume group
+    # 3. check ps missing
+    # 4. check vg attr
+    lock_space = get_lockspace(vgUuid)
+    if lock_space == "":
+        s = "can not find lockspace of %s" % vgUuid
+        logger.warn(s)
+        return False, s
+
+    if examine_lockspace(lock_space) != 0:
+        return False, "examine lockspace %s failed" % lock_space
+
+    if not check_pv:
+        return True, ""
+
+    return check_pv_status(vgUuid, check_timeout)
+
+
+@bash.in_bash
+def get_pv_name_by_uuid(pvUuid):
+    return bash.bash_o(
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -oname -Spv_uuid=%s" % pvUuid).strip()
+
+
+@bash.in_bash
+def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
+    pv_name = bash.bash_o(
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -oname -Spv_uuid=%s" % pvUuid).strip()
+    one_active_lv = lv_path if lv_path is not None else bash.bash_o(
+        "timeout -s SIGKILL 10 lvs --noheading --nolocking -opath,devices,tags " +
+        "-Sactive=active %s | grep %s | grep %s | awk '{print $1}' | head -n1" % (vgUuid, pv_name, VOLUME_TAG)).strip()
+    if one_active_lv == "":
+        return True
+    r = bash.bash_r("qemu-img info %s" % one_active_lv)
+    if r != 0:
+        return False
+    return True
+
+
+@bash.in_bash
+def get_invalid_pv_uuids(vgUuid, checkIo = False):
+    invalid_pv_uuids = []
+    pvs_outs = bash.bash_o(
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -Svg_name=%s -ouuid,name,missing" % vgUuid).strip().split("\n")
+    if len(pvs_outs) == 0:
+        return
+    for pvs_out in pvs_outs:
+        pv_uuid = pvs_out.strip().split(" ")[0]
+        if "unknown" in pvs_out:
+            invalid_pv_uuids.append(pv_uuid)
+        elif "missing" in pvs_out:
+            invalid_pv_uuids.append(pv_uuid)
+        elif checkIo is True and check_lv_on_pv_valid(vgUuid, pv_uuid) is False:
+            invalid_pv_uuids.append(pv_uuid)
+
+    return invalid_pv_uuids
+
+
+@bash.in_bash
+def is_volume_on_pvs(volume_path, pvUuids, includingMissing=True):
+    files = linux.qcow2_get_file_chain(volume_path)
+    if len(files) == 0:
+        # could not read qcow2
+        logger.debug("can not read volume %s, return true" % volume_path)
+        return True
+    pv_names = []
+    for p in pvUuids:
+        name = get_pv_name_by_uuid(p)
+        if name != "":
+            pv_names.append(get_pv_name_by_uuid(p) + "(")
+
+    if includingMissing:
+        pv_names.append("[unknown](")
+    for f in files:
+        o = bash.bash_o(
+            "timeout -s SIGKILL 10 lvs --noheading --nolocking %s -odevices" % f)  # type: str
+        logger.debug("volume %s is on pv %s" % (volume_path, o))
+        if len(filter(lambda n: o.find(n) > 0, pv_names)) > 0:
+            logger.debug("lv %s on pv %s(%s), return true" % (volume_path, pvUuids, pv_names))
+            return True
+        if o.strip() == "" and includingMissing:
+            logger.debug("pv of lv %s is missing, return true")
+            return True
+    return False
+
+
+@bash.in_bash
+def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
+    # 1. get "-drive ... -device ... bootindex=1,
+    # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
+    # 3. make sure io has error
+    # 4. filter for pv
+    out = bash.bash_o("pgrep -a qemu-kvm | grep %s" % vgUuid).strip().split("\n")
+    if len(out) == 0:
+        return []
+
+    vms = []
+    for o in out:
+        vm = VmStruct()
+        vm.pid = o.split(" ")[0]
+        vm.cmdline = o.split(" ", 3)[-1]
+        vm.uuid = o.split(" -uuid ")[-1].split(" ")[0]
+        if "bootindex=1" in vm.cmdline:
+            vm.root_volume = vm.cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
+        elif " -boot order=dc" in vm.cmdline:
+            # TODO(weiw): maybe support scsi volume as boot volume one day
+            vm.root_volume = vm.cmdline.split("id=drive-virtio-disk0")[0].split(" -drive file=")[-1].split(",")[0]
+        else:
+            logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (vm.pid, vm.cmdline))
+            continue
+
+        r = bash.bash_r("qemu-img info --backing-chain %s" % vm.root_volume)
+        if checkIo is True and r == 0:
+            logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
+            continue
+
+        out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/\"" % vm.uuid).strip().splitlines()
+        if len(out) != 0:
+            for file in out:
+                vm.volumes.append(file.strip().split("'")[1])
+
+        if is_volume_on_pvs(vm.root_volume, pvUuids, True):
+            vms.append(vm)
+
+    return vms
+
+
+@bash.in_bash
+def remove_partial_lv_dm(vgUuid):
+    o = bash.bash_o("lvs --noheading --nolocking --readonly %s -opath,tags -Slv_health_status=partial | grep %s" % (vgUuid, COMMON_TAG)).strip().splitlines()
+    if len(o) == 0:
+        return
+
+    for volume in o:
+        bash.bash_roe("dmsetup remove %s" % volume.strip().split(" ")[0])

@@ -4624,11 +4624,9 @@ class VmPlugin(kvmagent.KvmAgent):
                     if len(used_process) == 0:
                         try:
                             lvm.deactive_lv(volume, False)
-                            logger.debug("deactivated volume %s for event %s happend on vm %s success" % (
-                            volume, event, vm_uuid))
+                            logger.debug("deactivated volume %s for event %s happend on vm %s success" % (volume, event, vm_uuid))
                         except Exception as e:
-                            logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (
-                            volume, event, vm_uuid, e.message))
+                            logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (volume, event, vm_uuid, e.message))
                             content = traceback.format_exc()
                             logger.warn("traceback: %s" % content)
                     else:

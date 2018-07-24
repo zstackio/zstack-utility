@@ -4,6 +4,7 @@ from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import linux
+from zstacklib.utils import lvm
 from zstacklib.utils import thread
 import os.path
 import time
@@ -31,6 +32,7 @@ class ReportPsStatusCmd(object):
         self.hostUuid = None
         self.psUuids = None
         self.psStatus = None
+        self.reason = None
 
 
 def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
@@ -143,6 +145,8 @@ class HaPlugin(kvmagent.KvmAgent):
     CANCEL_SELF_FENCER_PATH = "/ha/selffencer/cancel"
     CEPH_SELF_FENCER = "/ha/ceph/setupselffencer"
     CANCEL_CEPH_SELF_FENCER = "/ha/ceph/cancelselffencer"
+    SHAREDBLOCK_SELF_FENCER = "/ha/sharedblock/setupselffencer"
+    CANCEL_SHAREDBLOCK_SELF_FENCER = "/ha/sharedblock/cancelselffencer"
 
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
@@ -164,6 +168,88 @@ class HaPlugin(kvmagent.KvmAgent):
         with self.fencer_lock:
             for ps_uuid in cmd.psUuids:
                 self.run_filesystem_fencer_timestamp.pop(ps_uuid, None)
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def cancel_sharedblock_self_fencer(self, req):
+        self.run_sharedblock_fencer = False
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def setup_sharedblock_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.run_sharedblock_fencer = True
+
+        @thread.AsyncThread
+        def heartbeat_on_sharedblock():
+            failure = 0
+
+            while self.run_sharedblock_fencer:
+                try:
+                    time.sleep(cmd.interval)
+
+                    health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout)
+                    logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))
+                    if health[0] is True:
+                        failure = 0
+                        continue
+
+                    failure += 1
+                    if failure < cmd.maxAttempts:
+                        continue
+
+                    try:
+                        logger.warn("shared block storage %s fencer fired!" % cmd.vgUuid)
+                        # we will check one qcow2 per pv to determine volumes on pv should be kill
+                        invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
+                        vms = lvm.get_running_vm_root_volume_on_pv(cmd.vgUuid, invalid_pv_uuids, cmd.checkIo)
+                        for vm in vms:
+                            kill = shell.ShellCmd('kill -9 %s' % vm.pid)
+                            kill(False)
+                            if kill.return_code == 0:
+                                logger.warn(
+                                    'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.'
+                                    'failed to run health check %s times' % (vm.uuid, vm.pid, cmd.maxAttempts))
+
+                            else:
+                                logger.warn(
+                                    'failed to kill the vm[uuid:%s, pid:%s] %s' % (vm.uuid, vm.pid, kill.stderr))
+
+                            for volume in vm.volumes:
+                                used_process = linux.linux_lsof(volume)
+                                if len(used_process) == 0:
+                                    try:
+                                        lvm.deactive_lv(volume, False)
+                                    except Exception as e:
+                                        logger.debug("deactivate volume %s for vm %s failed, %s" % (volume, vm.uuid, e.message))
+                                        content = traceback.format_exc()
+                                        logger.warn("traceback: %s" % content)
+                                else:
+                                    logger.debug("volume %s still used: %s, skip to deactivate" % (volume, used_process))
+
+                        lvm.remove_partial_lv_dm(cmd.vgUuid)
+
+                        if lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, False)[0] is False:
+                            lvm.drop_vg_lock(cmd.vgUuid)
+                            lvm.remove_device_map_for_vg(cmd.vgUuid)
+
+                        # reset the failure count
+                        failure = 0
+                    except Exception as e:
+                        logger.warn("kill vm failed, %s" % e.message)
+                        content = traceback.format_exc()
+                        logger.warn("traceback: %s" % content)
+                    finally:
+                        self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
+
+                except Exception as e:
+                    logger.debug('self-fencer on sharedblock primary storage %s stopped abnormally' % cmd.vgUuid)
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+            logger.debug('stop self-fencer on sharedblock primary storage %s' % cmd.vgUuid)
+
+        heartbeat_on_sharedblock()
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -408,6 +494,8 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CEPH_SELF_FENCER, self.setup_ceph_self_fencer)
         http_server.register_async_uri(self.CANCEL_SELF_FENCER_PATH, self.cancel_filesystem_self_fencer)
         http_server.register_async_uri(self.CANCEL_CEPH_SELF_FENCER, self.cancel_ceph_self_fencer)
+        http_server.register_async_uri(self.SHAREDBLOCK_SELF_FENCER, self.setup_sharedblock_self_fencer)
+        http_server.register_async_uri(self.CANCEL_SHAREDBLOCK_SELF_FENCER, self.cancel_sharedblock_self_fencer)
 
     def stop(self):
         pass
@@ -416,7 +504,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.config = config
 
     @thread.AsyncThread
-    def report_storage_status(self, ps_uuids, ps_status):
+    def report_storage_status(self, ps_uuids, ps_status, reason=""):
         url = self.config.get(kvmagent.SEND_COMMAND_URL)
         if not url:
             logger.warn('cannot find SEND_COMMAND_URL, unable to report storages status[psList:%s, status:%s]' % (
@@ -434,6 +522,7 @@ class HaPlugin(kvmagent.KvmAgent):
             cmd.psUuids = ps_uuids
             cmd.hostUuid = host_uuid
             cmd.psStatus = ps_status
+            cmd.reason = reason
 
             logger.debug(
                 'primary storage[psList:%s] has new connection status[%s], report it to %s' % (
