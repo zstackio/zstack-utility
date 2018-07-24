@@ -90,6 +90,14 @@ class RetryException(Exception):
     pass
 
 
+class GetBlockDevicesRsp(AgentRsp):
+    blockDevices = None  # type: list[lvm.SharedBlockCandidateStruct]
+
+    def __init__(self):
+        super(GetBlockDevicesRsp, self).__init__()
+        self.blockDevices = None
+
+
 class SharedBlockMigrateVolumeStruct:
     volumeUuid = None  # type: str
     snapshotUuid = None  # type: str
@@ -132,6 +140,41 @@ class CheckDisk(object):
         raise Exception("can not find disk with %s as wwid, uuid or wwn, "
                         "or multiple disks qualify but no mpath device found" % self.identifier)
 
+    def rescan(self, disk_name=None):
+        """
+
+        :type disk_name: str
+        """
+        if disk_name is None:
+            disk_name = self.get_path().split("/")[-1]
+
+        def rescan_slave(slave, raise_exception=True):
+            _cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % slave)
+            _cmd(is_exception=raise_exception)
+            logger.debug("rescaned disk %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
+                         (slave, self.identifier, _cmd.return_code, _cmd.stdout, _cmd.stderr))
+
+        if lvm.is_multipath(disk_name):
+            # disk name is dm-xx when multi path
+            slaves = shell.call("ls /sys/class/block/%s/slaves/" % disk_name).strip().split("\n")
+            if slaves is None or len(slaves) == 0:
+                logger.debug("can not get any slaves of multipath device %s" % disk_name)
+                rescan_slave(disk_name, False)
+            else:
+                for s in slaves:
+                    rescan_slave(s)
+                cmd = shell.ShellCmd("multipathd resize map %s" % disk_name)
+                cmd(is_exception=True)
+                logger.debug("resized multipath device %s, return code: %s, stdout %s, stderr: %s" %
+                             (disk_name, cmd.return_code, cmd.stdout, cmd.stderr))
+        else:
+            rescan_slave(disk_name)
+
+        cmd = shell.ShellCmd("pvresize /dev/%s" % disk_name)
+        cmd(is_exception=True)
+        logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
+                     (disk_name, self.identifier, cmd.return_code, cmd.stdout, cmd.stderr))
+
     def check_disk_by_uuid(self):
         for cond in ['TYPE=\\\"mpath\\\"', '\"\"']:
             cmd = shell.ShellCmd("lsblk --pair -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN | "
@@ -173,6 +216,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CHECK_DISKS_PATH = "/sharedblock/disks/check"
     ADD_SHARED_BLOCK = "/sharedblock/disks/add"
     MIGRATE_DATA_PATH = "/sharedblock/volume/migrate"
+    GET_BLOCK_DEVICES_PATH = "/sharedblock/blockdevices"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -198,6 +242,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
         http_server.register_async_uri(self.ADD_SHARED_BLOCK, self.add_disk)
         http_server.register_async_uri(self.MIGRATE_DATA_PATH, self.migrate_volumes)
+        http_server.register_async_uri(self.GET_BLOCK_DEVICES_PATH, self.get_block_devices)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -210,13 +255,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
-            disk.get_path()
+            path = disk.get_path()
+            if cmd.rescan:
+                disk.rescan(path.split("/")[-1])
+
+        if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
+            rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
 
         return jsonobject.dumps(rsp)
 
     @staticmethod
     def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
-        @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
+        @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid):
             cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
@@ -226,18 +276,21 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         try:
             find_vg(vgUuid)
-        except RetryException:
+        except RetryException as e:
             if forceWipe is True:
                 lvm.wipe_fs(diskPaths)
 
-            r, o, e = bash.bash_roe("vgcreate --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
+            cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
-            if r == 0:
+            cmd(is_exception=False)
+            logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
+                         (vgUuid, cmd.return_code, cmd.stdout, cmd.stderr))
+            if cmd.return_code == 0 and find_vg(vgUuid) is True:
                 return True
             if find_vg(vgUuid) is False:
-                raise Exception("can not find vg %s with disks: %s and create failed for %s " %
-                                (vgUuid, diskPaths, e))
+                raise Exception("can not find vg %s with disks: %s and create vg return: %s %s %s " %
+                                (vgUuid, diskPaths, cmd.return_code, cmd.stdout, cmd.stderr))
         except Exception as e:
             raise e
 
@@ -709,3 +762,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if has_backing_file:
             return re.sub("-o preallocation=\w* ", " ", options)
         return options
+
+    @kvmagent.replyerror
+    def get_block_devices(self, req):
+        rsp = GetBlockDevicesRsp()
+        rsp.blockDevices = lvm.get_block_devices()
+        return jsonobject.dumps(rsp)

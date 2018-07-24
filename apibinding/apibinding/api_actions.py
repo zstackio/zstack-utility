@@ -5990,6 +5990,18 @@ class GetResourceNamesAction(inventory.APIGetResourceNamesMsg):
         self.out = evt
         return self.out
 
+class GetSharedBlockCandidateAction(inventory.APIGetSharedBlockCandidateMsg):
+    def __init__(self):
+        super(GetSharedBlockCandidateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetSharedBlockCandidateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class GetSupportedCloudFormationResourcesAction(inventory.APIGetSupportedCloudFormationResourcesMsg):
     def __init__(self):
         super(GetSupportedCloudFormationResourcesAction, self).__init__()
@@ -9082,6 +9094,18 @@ class RefreshLoadBalancerAction(inventory.APIRefreshLoadBalancerMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RefreshLoadBalancerAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RefreshSharedblockDeviceCapacityAction(inventory.APIRefreshSharedblockDeviceCapacityMsg):
+    def __init__(self):
+        super(RefreshSharedblockDeviceCapacityAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RefreshSharedblockDeviceCapacityAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
