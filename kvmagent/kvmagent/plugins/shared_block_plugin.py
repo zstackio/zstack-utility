@@ -676,7 +676,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def active_lv(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, raise_exception=False)
 
         self.do_active_lv(cmd.installPath, cmd.lockType, cmd.recursive)
 
