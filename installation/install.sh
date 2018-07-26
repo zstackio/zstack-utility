@@ -316,6 +316,9 @@ set_tomcat_config() {
     sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
     sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
     sed -i 's/redirectPort="8443" \/>/redirectPort="8443" maxHttpHeaderSize="65536" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>/g' $tomcat_config_path/server.xml
+
+    # Fix ZSTAC-13580
+    sed -i '/autoDeploy/a \ \ \ \ \ \ \ \ <Context path="/zstack" reloadable="false" crossContext="true" allowLinking="true"/>' $tomcat_config_path/server.xml
 }
 
 cs_check_hostname(){
@@ -1348,6 +1351,7 @@ uz_upgrade_tomcat(){
 
     cd $upgrade_folder
     unzip -o -d $TOMCAT_PATH apache-tomcat*.zip >>$ZSTACK_INSTALL_LOG 2>&1
+    unzip -o -d $ZSTACK_HOME/../ libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to unzip Tomcat package: $upgrade_folder/apache-tomcat*.zip."
     fi
@@ -1582,14 +1586,15 @@ iz_unzip_tomcat(){
     if [ $? -ne 0 ];then
        fail "failed to unzip Tomcat package: $ZSTACK_INSTALL_ROOT/apache-tomcat*.zip."
     fi
+    unzip -o -d apache-tomcat/webapps/ libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
     apache_temp=`mktemp`
     apache_zip=`ls apache-tomcat*.zip`
     mv $apache_zip $apache_temp
     ln -s apache-tomcat* apache-tomcat
     mv $apache_temp $apache_zip
 
-    #delete unused web app folders 
-    rm -rf $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps/*
+    #delete unused web app folders, 'ROOT' should be left
+    find $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps -not -name 'ROOT' -delete
 
     chmod a+x apache-tomcat/bin/*
     if [ $? -ne 0 ];then
