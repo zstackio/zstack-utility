@@ -77,6 +77,17 @@ class ReInitImageRsp(AliyunNasResponse):
         super(ReInitImageRsp, self).__init__()
         self.newVolumeInstallPath = None
 
+class CheckMountPathRsp(AliyunNasResponse):
+    def __init__(self):
+        super(CheckMountPathRsp, self).__init__()
+        self.datas = []
+
+class MountData(object):
+    def __init__(self):
+        self.mountUrl = None
+        self.mountPath = None
+        self.info = None
+        self.status = None
 
 class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     MOUNT_PATH = "/aliyun/nas/primarystorage/firstmount"
@@ -103,6 +114,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/aliyun/nas/primarystorage/createtemplatefromvolume"
     MERGE_SNAPSHOT_PATH = "/aliyun/nas/primarystorage/mergesnapshot"
     OFFLINE_MERGE_SNAPSHOT_PATH = "/aliyun/nas/primarystorage/snapshot/offlinemerge"
+    CHECK_MOUNT_PATH = "/aliyun/nas/primarystorage/checkmount"
 
 
     def start(self):
@@ -131,6 +143,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.mergesnapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offlinemerge)
         http_server.register_async_uri(self.GET_CAPACITY_PATH, self.getcapacity)
+        http_server.register_async_uri(self.CHECK_MOUNT_PATH, self.checkmountpath)
         self.mount_path = {}
         self.uuid = None
         self.imagestore_client = ImageStoreClient()
@@ -477,4 +490,49 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AliyunNasResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    def findMountUrl(self, mount):
+        if ' on ' not in mount:
+            raise Exception("' on ' not in mount: %s" % mount)
+        return mount.split(' on ')[0].strip()
+
+    def findMountPath(self, mount):
+        if ' on ' not in mount:
+            raise Exception("' on ' not in mount: %s" % mount)
+        tmp = mount.split(' on ')[1]
+        return tmp.split(' ')[0].strip()
+
+    def findMountInfo(self, mount):
+        if ' on ' not in mount:
+            raise Exception("' on ' not in mount: %s" % mount)
+        tmp = mount.split(' on ')[1]
+        if ' (' in tmp:
+            return '(' + tmp.split(' (')[1].strip()
+        else:
+            return None
+
+    @kvmagent.replyerror
+    def checkmountpath(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckMountPathRsp()
+        mounts = naslinux.getMountInfo(cmd.psUrl)
+
+        for mount in mounts:
+            data = MountData()
+            data.mountUrl = self.findMountUrl(mount)
+            data.mountPath = self.findMountPath(mount)
+            try:
+                info = self.findMountInfo(mount)
+                naslinux.checkMountStatus(data.mountUrl, data.mountPath, info)
+                data.status = "Normal"
+            except naslinux.InvalidMountDomainException as e:
+                data.status = "RemoteFault"
+                data.info = str(e)
+            except naslinux.InvalidMountPathException as e:
+                data.status = "LocalFault"
+                data.info = str(e)
+
+            rsp.datas.append(data)
+
         return jsonobject.dumps(rsp)
