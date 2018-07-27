@@ -1277,9 +1277,10 @@ class ShowStatusCmd(Command):
             if os.path.exists(boot_error_log):
                 info(colored('Management server met an error as below:', 'yellow'))
                 with open(boot_error_log, 'r') as fd:
-                    error_msg = json.loads(fd.read())
+                    error_msg = fd.read()
                     try:
                         # strip unimportant messages for json.loads
+                        error_msg = json.loads(error_msg)
                         error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
                     except (KeyError, ValueError, TypeError):
                         pass
@@ -1872,9 +1873,10 @@ class StartCmd(Command):
             def check():
                 if os.path.exists(boot_error_log):
                     with open(boot_error_log, 'r') as fd:
-                        error_msg = json.loads(fd.read())
+                        error_msg = fd.read()
                         try:
                             # strip unimportant messages for json.loads
+                            error_msg = json.loads(error_msg)
                             error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
                         except (KeyError, ValueError, TypeError):
                             pass
