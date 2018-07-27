@@ -2867,13 +2867,8 @@ echo_chrony_server_warning_if_need()
 {
     CHRONY_SERVER=(`zstack-ctl show_configuration | grep "^[[:space:]]*chrony.serverIp" | awk -F '=' '{print $2}' | sed s/[[:space:]]//g`)
     if [ ${#CHRONY_SERVER[*]} -eq 1 ]  && [ x${CHRONY_SERVER[0]} == x${MANAGEMENT_IP} ]; then
-        echo  -e "$(tput setaf 3)-WARNING!!!
-  - chrony server sources is set to management node.
-  - $(tput setaf 1)If management node time is not accurate(e.g. it is VM), data may be lost.$(tput setaf 3)
-  - if management node VM is managed by zsha, please reset it with following command:
-      zsha stop && zsha start.
-  - if not, please use following command to set chrony server:
-      zstack-ctl configure chrony.serverIp.0=CHRONY_SERVER_IP$(tput sgr0)"
+        echo  -e "$(tput setaf 3) - chrony server sources is set to management node by default.$(tput sgr0)"
+        echo ""
     fi
 }
 
