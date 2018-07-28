@@ -3096,7 +3096,7 @@ install_db_msgbus
 #Delete old monitoring data if NEED_DROP_DB
 if [ -n "$NEED_DROP_DB" ]; then
   kill -9 `ps aux | grep "/var/lib/zstack/prometheus/data" | grep -v 'grep' | awk -F ' ' '{ print $2 }'` 2>/dev/null
-  kill -9 `ps aux | grep "/var/lib/zstack/influxdb/influxdb.conf" | grep -v 'grep' | awk -F ' ' '{ print $2 }'` 2>/dev/null
+  pkill -9 influxd 2>/dev/null
   rm -rf /var/lib/zstack/prometheus/data
   rm -rf /var/lib/zstack/influxdb/
 fi
