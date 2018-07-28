@@ -2202,7 +2202,16 @@ class Vm(object):
 
         logger.debug('attaching ISO to the vm[uuid:%s]:\n%s' % (self.uuid, xml))
 
-        self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+        try:
+            self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+        except libvirt.libvirtError as ex:
+            err = str(ex)
+            logger.warn('unable to attach the iso to the VM[uuid:%s], %s' % (self.uuid, err))
+            if 'timed out waiting for disk tray status update' in err:
+                raise Exception(
+                    'unable to attach the iso to the VM[uuid:%s]. It seems met some internal error,'
+                    ' you can reboot the vm and try again' % self.uuid)
+
 
         def check(_):
             me = get_vm_by_uuid(self.uuid)
