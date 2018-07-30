@@ -1795,14 +1795,28 @@ class StartCmd(Command):
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
         def check_chrony():
-            ips = [v for k, v in ctl.read_property_list('chrony.serverIp.')]
+            source_ips = [v for k, v in ctl.read_property_list('chrony.serverIp.')]
             mn_ip = ctl.read_property('management.server.ip')
-            if mn_ip not in ips:
+            chrony_running = shell_return("systemctl status chronyd | grep 'active[[:space:]]*(running)'")
+
+            # mn is chrony server
+            if mn_ip in source_ips:
+                if chrony_running != 0:
+                    warn("chrony is not running, restart it now...")
+                    shell("systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd")
                 return
-            ret = shell_return("systemctl status chronyd | grep 'active[[:space:]]*(running)'")
-            if ret != 0:
-                warn("chrony is not running, restart it now...")
-                shell("systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd")
+                
+            # mn is chrony client
+            old_source_ips = shell("chronyc sources | grep '^\^' | awk '{print $2}'").splitlines()
+            if set(source_ips) == set(old_source_ips):
+                return
+
+            shell('''sed -i /"^[[:space:]#]*server"/d /etc/chrony.conf''')
+            with open('/etc/chrony.conf', 'a') as fd:
+                fd.writelines('\n'.join(["server %s iburst" % ip for ip in source_ips]))
+
+            shell("systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd")
+            info("chronyd restarted")
 
         def prepare_qemu_kvm_repo():
             OLD_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.6.0'
