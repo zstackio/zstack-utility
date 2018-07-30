@@ -1418,8 +1418,8 @@ uz_upgrade_zstack(){
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
     cd $upgrade_folder
 
-    #Do not upgrade db, when using -i
-    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+    #Do not upgrade db, when using -i or -k
+    if [ -z $ONLY_INSTALL_ZSTACK ] || [ -z $NEED_KEEP_DB ]; then
         # check mysql root password
         mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" >/dev/null 2>&1
         [ $? -eq 0 ] || fail "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
@@ -1526,11 +1526,11 @@ uz_upgrade_zstack(){
 uz_upgrade_zstack_ui_db(){
     echo_subtitle "Upgrade ${PRODUCT_NAME} UI Database"
 
-    #Do not upgrade db, when using -i
-    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+    #Do not upgrade zstack_ui db when using -k
+    if [ -z $NEED_KEEP_DB ]; then
         upgrade_mysql_configuration
 
-        # upgrade zstack_ui database
+        # upgrade zstack_ui database --dry-run
         if [ ! -z $DEBUG ]; then
             if [ x"$FORCE" = x'n' ];then
                 zstack-ctl upgrade_ui_db --dry-run
@@ -1553,27 +1553,24 @@ uz_upgrade_zstack_ui_db(){
         fi
     fi
 
-    #Do not upgrade db, when using -i
-    if [ -z $ONLY_INSTALL_ZSTACK ] ; then
+    if [ -z $NEED_KEEP_DB ];then
         # upgrade zstack_ui database
-        if [ -z $NEED_KEEP_DB ];then
-            if [ ! -z $DEBUG ]; then
-                if [ x"$FORCE" = x'n' ];then
-                    zstack-ctl upgrade_ui_db
-                else
-                    zstack-ctl upgrade_ui_db --force
-                fi
+        if [ ! -z $DEBUG ]; then
+            if [ x"$FORCE" = x'n' ];then
+                zstack-ctl upgrade_ui_db
             else
-                if [ x"$FORCE" = x'n' ];then
-                    zstack-ctl upgrade_ui_db >>$ZSTACK_INSTALL_LOG 2>&1
-                else
-                    zstack-ctl upgrade_ui_db --force >>$ZSTACK_INSTALL_LOG 2>&1
-                fi
+                zstack-ctl upgrade_ui_db --force
+            fi
+        else
+            if [ x"$FORCE" = x'n' ];then
+                zstack-ctl upgrade_ui_db >>$ZSTACK_INSTALL_LOG 2>&1
+            else
+                zstack-ctl upgrade_ui_db --force >>$ZSTACK_INSTALL_LOG 2>&1
             fi
         fi
-        if [ $? -ne 0 ];then
-            fail "failed to upgrade zstack_ui database"
-        fi
+    fi
+    if [ $? -ne 0 ];then
+        fail "failed to upgrade zstack_ui database"
     fi
 
     pass
