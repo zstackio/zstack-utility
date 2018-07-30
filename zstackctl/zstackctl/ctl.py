@@ -5101,6 +5101,12 @@ class CollectLogCmd(Command):
             if status is not True:
                 warn("get management-server log failed: %s" % output)
 
+            # collect zstack-ui log if exists
+            command = "/bin/cp -f  %s/../../logs/zstack-ui.log %s" % (ctl.zstack_home, tmp_log_dir)
+            (status, output) = run_remote_command(command, host_post_info, True, True)
+            if status is not True:
+                warn("get zstack-ui log failed: %s" % output)
+
             command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, tmp_log_dir)
             (status, output) = run_remote_command(command, host_post_info, True, True)
             if status is not True:
