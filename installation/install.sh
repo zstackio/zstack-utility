@@ -1591,7 +1591,7 @@ iz_unzip_tomcat(){
     mv $apache_temp $apache_zip
 
     #delete unused web app folders, 'ROOT' should be left
-    find $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps -not -name 'ROOT' -delete
+    find $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps -mindepth 1 -not -name 'ROOT' -delete
 
     chmod a+x apache-tomcat/bin/*
     if [ $? -ne 0 ];then
