@@ -283,15 +283,18 @@ if distro in RPM_BASED_OS:
     libvirtd_status = copy(copy_arg, host_post_info)
 
     # replace qemu-img binary
-    copy_arg = CopyArg()
-    copy_arg.src = "%s" % qemu_img_pkg
-    copy_arg.dest = "%s" % qemu_img_local_pkg
-    copy(copy_arg, host_post_info)
+    command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
+    qemu_img_version = run_remote_command(command, host_post_info, False, True)
+    if '2.6.0' not in qemu_img_version:
+        copy_arg = CopyArg()
+        copy_arg.src = "%s" % qemu_img_pkg
+        copy_arg.dest = "%s" % qemu_img_local_pkg
+        copy(copy_arg, host_post_info)
 
-    command = "/bin/cp %s `which qemu-img`" % qemu_img_local_pkg
-    host_post_info.post_label = "ansible.shell.install.pkg"
-    host_post_info.post_label_param = "qemu-img"
-    run_remote_command(command, host_post_info)
+        command = "for i in {1..5}; do /bin/cp %s `which qemu-img` && break || sleep 2; done" % qemu_img_local_pkg
+        host_post_info.post_label = "ansible.shell.install.pkg"
+        host_post_info.post_label_param = "qemu-img"
+        run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:
     # name: install kvm related packages on Debian based OS
