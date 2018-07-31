@@ -33,6 +33,34 @@ class ImageStoreClient(object):
     def _build_install_path(self, name, imgid):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
+    def upload_image(self, hostname, fpath):
+        imf = self.commit_image(fpath)
+
+        cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, hostname, self.ZSTORE_DEF_PORT, fpath)
+        logger.debug('pushing %s to image store' % fpath)
+        shell.check_run(cmdstr)
+        logger.debug('%s pushed to image store' % fpath)
+
+        return imf
+
+    def commit_image(self, fpath):
+        cmdstr = '%s -json add -file %s' % (self.ZSTORE_CLI_PATH, fpath)
+        logger.debug('adding %s to local image store' % fpath)
+        output = shell.call(cmdstr.encode(encoding="utf-8"))
+        logger.debug('%s added to local image store' % fpath)
+
+        return jsonobject.loads(output.splitlines()[-1])
+
+    def backup_volume(self, vm, node, bitmap, mode, dest):
+        cmdstr = '%s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s' % (self.ZSTORE_CLI_PATH, bitmap, dest, vm, node, mode)
+        return shell.call(cmdstr).strip()
+
+    def image_already_pushed(self, hostname, imf):
+        cmdstr = '%s -url %s:%s info %s' % (self.ZSTORE_CLI_PATH, hostname, self.ZSTORE_DEF_PORT, self._build_install_path(imf.name, imf.id))
+        if shell.run(cmdstr) != 0:
+            return False
+        return True
+
     def upload_to_imagestore(self, cmd, req):
         crsp = self.commit_to_imagestore(cmd, req)
 
