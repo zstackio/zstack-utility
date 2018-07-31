@@ -272,6 +272,10 @@ def get_default_ip():
     cmd(False)
     return cmd.stdout.strip()
 
+def get_ui_address():
+    ui_addr = ctl.read_ui_property("ui_address")
+    return ui_addr if ui_addr else get_default_ip()
+
 def get_yum_repo_from_property():
     yum_repo = ctl.read_property('Ansible.var.zstack_repo')
     if not yum_repo:
@@ -7249,7 +7253,7 @@ class UiStatusCmd(Command):
                 write_status(colored('Stopped', 'red'))
             return False
         elif 'UP' in cmd.stdout:
-            default_ip = get_default_ip()
+            default_ip = get_ui_address()
             if not default_ip:
                 info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
             else:
@@ -7602,7 +7606,7 @@ class StartUiCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    default_ip = get_default_ip()
+                    default_ip = get_ui_address()
                     if not default_ip:
                         info('UI server is still running[PID:%s]' % pid)
                     else:
@@ -7655,6 +7659,12 @@ class StartUiCmd(Command):
 
     def run(self, args):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
+
+        if args.mn_host and not validate_ip(args.mn_host):
+            raise CtlError('%s is invalid mn address' % args.mn_host)
+        if args.webhook_host and not validate_ip(args.webhook_host):
+            raise CtlError('%s is invalid webhook address' % args.webhook_host)
+
         if args.host != 'localhost':
             self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log, args.enable_ssl, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password)
             return
@@ -7818,6 +7828,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1")
         parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000")
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000")
+        parser.add_argument('--ui-address', help="ZStack UI Address.")
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
 
         # arguments for https
@@ -7844,6 +7855,13 @@ class ConfigUiCmd(Command):
         zstackui = ctl.ZSTACK_UI_HOME
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed?' % zstackui)
+
+        if args.mn_host and not validate_ip(args.mn_host):
+            raise CtlError('%s is invalid mn address' % args.mn_host)
+        if args.webhook_host and not validate_ip(args.webhook_host):
+            raise CtlError('%s is invalid webhook address' % args.webhook_host)
+        if args.ui_address and not validate_ip(args.ui_address):
+            raise CtlError('%s is invalid ui address' % args.ui_address)
 
         # init zstack.ui.properties
         if not ctl.read_ui_property("mn_host"):
@@ -7937,6 +7955,10 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("db_username", args.db_username.strip())
         if args.db_password or args.db_password == '':
             ctl.write_ui_property("db_password", args.db_password.strip())
+
+        # ui_address
+        if args.ui_address:
+            ctl.write_ui_property("ui_address", args.ui_address.strip())
 
 # For UI 2.0
 class ShowUiCfgCmd(Command):
