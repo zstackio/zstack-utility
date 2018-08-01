@@ -1531,3 +1531,8 @@ def timeout_isdir(path):
 def set_device_uuid_alias(interf, l2NetworkUuid):
     cmd = shell.ShellCmd("ip link set dev %s alias \"uuid: %s\"" % (interf, l2NetworkUuid))
     cmd(is_exception=False)
+
+def linux_lsof(file):
+    cmd = shell.ShellCmd("lsof %s | grep -v '^COMMAND'" % file)
+    cmd(is_exception=False)
+    return cmd.stdout
