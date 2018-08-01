@@ -5144,6 +5144,12 @@ class CollectLogCmd(Command):
         if status !=0:
             warn("get management-server log failed: %s" % output)
 
+        # collect zstack-ui log if exists
+        command = "/bin/cp -f  %s/../../logs/zstack-ui.log %s" % (ctl.zstack_home, mn_log_dir)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            warn("get zstack-ui log failed: %s" % output)
+
         command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, mn_log_dir)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
