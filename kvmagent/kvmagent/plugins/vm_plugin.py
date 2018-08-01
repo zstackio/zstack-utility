@@ -3529,7 +3529,7 @@ class VmPlugin(kvmagent.KvmAgent):
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
-        output = bash.bash_o("ps x | grep -E -o 'qemu-kvm.*guest=[[:alnum:]]{32}' | awk -F= '{print $2}'").splitlines()
+        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?[a-z0-9]{32}' | grep -E -o '.{32}$'").splitlines()
         for guest in output:
             if guest in rsp.states:
                 continue
