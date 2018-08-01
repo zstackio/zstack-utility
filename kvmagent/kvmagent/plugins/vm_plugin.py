@@ -4560,6 +4560,36 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
+    @bash.in_bash
+    def _release_sharedblocks(self, conn, dom, event, detail, opaque):
+        logger.debug("in release sharedblock, %s %s" % (dom, event))
+        try:
+            event = LibvirtEventManager.event_to_string(event)
+            if event not in (LibvirtEventManager.EVENT_STOPPED, LibvirtEventManager.EVENT_SHUTDOWN):
+                return
+
+            vm_uuid = dom.name()
+            out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/\"" % vm_uuid).strip().splitlines()
+            if len(out) != 0:
+                for file in out:
+                    volume = file.strip().split("'")[1]
+                    used_process = linux.linux_lsof(volume)
+                    if len(used_process) == 0:
+                        try:
+                            lvm.deactive_lv(volume, False)
+                            logger.debug("deactivated volume %s for event %s happend on vm %s success" % (
+                            volume, event, vm_uuid))
+                        except Exception as e:
+                            logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (
+                            volume, event, vm_uuid, e.message))
+                            content = traceback.format_exc()
+                            logger.warn("traceback: %s" % content)
+                    else:
+                        logger.debug("volume %s still used: %s, skip to deactivate" % (volume, used_process))
+        except:
+            content = traceback.format_exc()
+            logger.warn("traceback: %s" % content)
+
     def _set_vnc_port_iptable_rule(self, conn, dom, event, detail, opaque):
         try:
             event = LibvirtEventManager.event_to_string(event)
@@ -4625,6 +4655,7 @@ class VmPlugin(kvmagent.KvmAgent):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                   self._set_vnc_port_iptable_rule)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
         LibvirtAutoReconnect.register_libvirt_callbacks()
 
     def stop(self):
