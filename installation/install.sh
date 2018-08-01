@@ -2499,12 +2499,12 @@ fi
 umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
 rm -rf /opt/zstack-dvd/Base && mkdir -p /opt/zstack-dvd/Base
 /bin/cp -r /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
-reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
-reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
-reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
-reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
-reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
-reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
+reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d || return 1
+reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d || return 1
+reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d || return 1
+reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d || return 1
+reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d || return 1
+reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d || return 1
 rm -f /etc/yum.repos.d/zstack-online-*.repo
 echo_subtitle "Sync from repo.zstack.io"
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
