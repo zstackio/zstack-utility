@@ -25,6 +25,7 @@ remote_user = "root"
 remote_pass = None
 remote_port = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
+update_packages = 'false'
 
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
@@ -172,7 +173,7 @@ if distro in RPM_BASED_OS:
 
         # name: install kvm related packages on RedHat based OS from user defined repo
         # update some packages if possible
-        command = ("yum --enablerepo=%s clean metadata >/dev/null && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' sanlock hwdata sg3_utils' && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done;") % (zstack_repo, dep_list, zstack_repo)
+        command = ("yum --enablerepo=%s clean metadata >/dev/null && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' sanlock hwdata sg3_utils' && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done;") % (zstack_repo, dep_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = dep_list
         run_remote_command(command, host_post_info)
