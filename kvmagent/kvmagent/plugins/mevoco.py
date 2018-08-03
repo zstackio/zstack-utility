@@ -601,10 +601,18 @@ mimetype.assign = (
         index_file_path = os.path.join(meta_root, 'index.html')
         with open(index_file_path, 'w') as fd:
             fd.write('instance-id')
+            if to.metadata.vmHostname:
+                fd.write('\n')
+                fd.write('local-hostname')
 
         instance_id_file_path = os.path.join(meta_root, 'instance-id')
         with open(instance_id_file_path, 'w') as fd:
             fd.write(to.metadata.vmUuid)
+
+        if to.metadata.vmHostname:
+            vm_hostname_file_path = os.path.join(meta_root, 'local-hostname')
+            with open(vm_hostname_file_path, 'w') as fd:
+                fd.write(to.metadata.vmHostname)
 
         if to.userdata:
             userdata_file_path = os.path.join(root, 'user-data')
