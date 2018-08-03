@@ -3529,9 +3529,9 @@ class VmPlugin(kvmagent.KvmAgent):
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?[a-z0-9]{32}' | grep -E -o '.{32}$'").splitlines()
+        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name[[:space:]]+\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
-            if guest in rsp.states:
+            if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
                 continue
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
