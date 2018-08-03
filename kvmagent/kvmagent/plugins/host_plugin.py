@@ -318,7 +318,7 @@ class HostPlugin(kvmagent.KvmAgent):
             except AttributeError:
                 logger.debug("maybe XmlObject has no attribute model, use uname -p to get one")
                 if cpu_model is None:
-                    cpu_model = shell.call('uname -p')
+                    cpu_model = shell.call('uname -p').strip("\t\r\n")
 
             rsp.cpuModelName = cpu_model
         else:
