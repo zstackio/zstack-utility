@@ -173,17 +173,18 @@ if distro in RPM_BASED_OS:
 
         # name: install kvm related packages on RedHat based OS from user defined repo
         # update some packages if possible
-        command = ("yum --enablerepo=%s clean metadata >/dev/null && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' sanlock hwdata sg3_utils' && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done;") % (zstack_repo, dep_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
+        command = ("echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' sanlock hwdata sg3_utils' && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done;") % (dep_list, zstack_repo, dep_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = dep_list
         run_remote_command(command, host_post_info)
 
         if IS_AARCH64:
             # name: aarch64 specific packages from user defined repos
-            command = ("yum --enablerepo=%s clean metadata && "
-                       "pkg_list=`rpm -q AAVMF edk2.git-aarch64 | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
+            arm_dep_list = 'AAVMF edk2.git-aarch64'
+            command = ("echo %s >>/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata && "
+                       "pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
                        "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
-                       "--nogpgcheck install -y $pkg; done;") % (zstack_repo, zstack_repo)
+                       "--nogpgcheck install -y $pkg; done;") % (arm_dep_list, zstack_repo, arm_dep_list, zstack_repo)
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = "AAVMF,edk2.git-aarch64"
             run_remote_command(command, host_post_info)
