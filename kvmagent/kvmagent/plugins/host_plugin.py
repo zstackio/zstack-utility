@@ -28,7 +28,6 @@ import Queue
 
 IS_AARCH64 = platform.machine() == 'aarch64'
 
-
 class ReconnectMeCmd(object):
     def __init__(self):
         self.hostUuid = None
@@ -94,6 +93,15 @@ class UpdateHostOSCmd(kvmagent.AgentCommand):
 class UpdateHostOSRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UpdateHostOSRsp, self).__init__()
+
+class UpdateDependencyCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(UpdateDependencyCmd, self).__init__()
+        self.hostUuid = None
+
+class UpdateDependencyRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateDependencyRsp, self).__init__()
 
 logger = log.get_logger(__name__)
 
@@ -224,6 +232,7 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
+    UPDATE_DEPENDENCY = "/host/updatedependency"
 
     queue = Queue.Queue()
 
@@ -523,6 +532,27 @@ if __name__ == "__main__":
             logger.debug("successfully run: %s" % yum_cmd)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def update_dependency(self, req):
+        rsp = UpdateDependencyRsp()
+        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y"
+        if shell.run("which yum") != 0:
+            rsp.success = False
+            rsp.error = "no yum command found, cannot update kvmagent dependencies"
+        elif shell.run("yum --disablerepo=* --enablerepo=zstack-mn repoinfo") != 0:
+            rsp.success = False
+            rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
+        elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
+            rsp.success = False
+            rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
+        elif shell.run(yum_cmd) != 0:
+            rsp.success = False
+            rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn repo"
+        else:
+            logger.debug("successfully run: %s" % yum_cmd)
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -535,6 +565,7 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.FACT_PATH, self.fact)
         http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
         http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
+        http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
