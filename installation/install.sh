@@ -2745,7 +2745,10 @@ do
         * ) help;;
     esac
 done
-OPTIND=1
+
+# Fix bug ZSTAC-14090
+shift "$((OPTIND-1))"
+[ $# -eq 0 ] || help
 
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
     if [ ! -d /opt/zstack-dvd/ ]; then
