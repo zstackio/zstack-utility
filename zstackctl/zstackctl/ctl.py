@@ -637,6 +637,8 @@ class Ctl(object):
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
     # for console proxy https
     ZSTACK_UI_KEYSTORE_PEM = ZSTACK_UI_HOME + 'ui.keystore.pem'
+    # to set CATALINA_OPTS of zstack-ui.war
+    ZSTACK_UI_CATALINA_OPTS = '-Xmx4096m'
 
     def __init__(self):
         self.commands = {}
@@ -7676,7 +7678,7 @@ class StartUiCmd(Command):
             return
 
         # init zstack.ui.properties
-        ctl.internal_run('config_ui')
+        ctl.internal_run('config_ui', '--init')
 
         # combine with zstack.ui.properties
         cfg_mn_host = ctl.read_ui_property("mn_host")
@@ -7690,6 +7692,7 @@ class StartUiCmd(Command):
         cfg_ssl_keystore = ctl.read_ui_property("ssl_keystore")
         cfg_ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
         cfg_ssl_keystore_password = ctl.read_ui_property("ssl_keystore_password")
+        cfg_catalina_opts = ctl.read_ui_property("catalina_opts") + ' ' + ' '.join(ctl.extra_arguments)
 
         if not args.mn_host:
             args.mn_host = cfg_mn_host
@@ -7771,9 +7774,9 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
         if args.enable_ssl:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -Xmx4096m -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, args.log)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, cfg_catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, args.log)
         else:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -Xmx4096m -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, args.log)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, cfg_catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, args.log)
 
         script(scmd, no_pipe=True)
 
@@ -7828,6 +7831,7 @@ class ConfigUiCmd(Command):
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.ui.properties on the remote machine')
+        parser.add_argument('--init', help='init zstack ui properties to default values', action="store_true", default=False)
         parser.add_argument('--restore', help='restore zstack ui properties to default values', action="store_true", default=False)
         parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1")
         parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080")
@@ -7870,34 +7874,38 @@ class ConfigUiCmd(Command):
             raise CtlError('%s is invalid ui address' % args.ui_address)
 
         # init zstack.ui.properties
-        if not ctl.read_ui_property("mn_host"):
-            ctl.write_ui_property("mn_host", '127.0.0.1')
-        if not ctl.read_ui_property("mn_port"):
-            ctl.write_ui_property("mn_port", '8080')
-        if not ctl.read_ui_property("webhook_host"):
-            ctl.write_ui_property("webhook_host", '127.0.0.1')
-        if not ctl.read_ui_property("webhook_port"):
-            ctl.write_ui_property("webhook_port", '5000')
-        if not ctl.read_ui_property("server_port"):
-            ctl.write_ui_property("server_port", '5000')
-        if not ctl.read_ui_property("log"):
-            ctl.write_ui_property("log", ui_logging_path)
-        if not ctl.read_ui_property("enable_ssl"):
-            ctl.write_ui_property("enable_ssl", 'false')
-        if not ctl.read_ui_property("ssl_keyalias"):
-            ctl.write_ui_property("ssl_keyalias", 'zstackui')
-        if not ctl.read_ui_property("ssl_keystore"):
-            ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
-        if not ctl.read_ui_property("ssl_keystore_type"):
-            ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
-        if not ctl.read_ui_property("ssl_keystore_password"):
-            ctl.write_ui_property("ssl_keystore_password", 'password')
-        if not ctl.read_ui_property("db_url"):
-            ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
-        if not ctl.read_ui_property("db_username"):
-            ctl.write_ui_property("db_username", 'zstack_ui')
-        if not ctl.read_ui_property("db_password"):
-            ctl.write_ui_property("db_password", 'zstack.ui.password')
+        if args.init:
+            if not ctl.read_ui_property("mn_host"):
+                ctl.write_ui_property("mn_host", '127.0.0.1')
+            if not ctl.read_ui_property("mn_port"):
+                ctl.write_ui_property("mn_port", '8080')
+            if not ctl.read_ui_property("webhook_host"):
+                ctl.write_ui_property("webhook_host", '127.0.0.1')
+            if not ctl.read_ui_property("webhook_port"):
+                ctl.write_ui_property("webhook_port", '5000')
+            if not ctl.read_ui_property("server_port"):
+                ctl.write_ui_property("server_port", '5000')
+            if not ctl.read_ui_property("log"):
+                ctl.write_ui_property("log", ui_logging_path)
+            if not ctl.read_ui_property("enable_ssl"):
+                ctl.write_ui_property("enable_ssl", 'false')
+            if not ctl.read_ui_property("ssl_keyalias"):
+                ctl.write_ui_property("ssl_keyalias", 'zstackui')
+            if not ctl.read_ui_property("ssl_keystore"):
+                ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
+            if not ctl.read_ui_property("ssl_keystore_type"):
+                ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
+            if not ctl.read_ui_property("ssl_keystore_password"):
+                ctl.write_ui_property("ssl_keystore_password", 'password')
+            if not ctl.read_ui_property("db_url"):
+                ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+            if not ctl.read_ui_property("db_username"):
+                ctl.write_ui_property("db_username", 'zstack_ui')
+            if not ctl.read_ui_property("db_password"):
+                ctl.write_ui_property("db_password", 'zstack.ui.password')
+            if not ctl.read_ui_property("catalina_opts"):
+                ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
+            return
 
         # restore to default values
         if args.restore:
@@ -7912,6 +7920,10 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
             ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
             ctl.write_ui_property("ssl_keystore_password", 'password')
+            ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+            ctl.write_ui_property("db_username", 'zstack_ui')
+            ctl.write_ui_property("db_password", 'zstack.ui.password')
+            ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
             return
 
         # use 5443 instead if enable_ssl
@@ -7965,6 +7977,10 @@ class ConfigUiCmd(Command):
         # ui_address
         if args.ui_address:
             ctl.write_ui_property("ui_address", args.ui_address.strip())
+
+        # catalina opts
+        if ctl.extra_arguments:
+            ctl.write_ui_property("catalina_opts", ' '.join(ctl.extra_arguments))
 
 # For UI 2.0
 class ShowUiCfgCmd(Command):
