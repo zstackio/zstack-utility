@@ -603,6 +603,16 @@ do_enable_sudo(){
     fi
 }
 
+do_config_limits(){
+[ -f /etc/security/limits.d/10-zstack.conf ] && return
+cat > /etc/security/limits.d/10-zstack.conf << EOF
+zstack  soft  nofile  unlimited
+zstack  hard  nofile  unlimited
+zstack  soft  nproc  unlimited
+zstack  hard  nproc  unlimited
+EOF
+}
+
 do_check_system(){
     echo_subtitle "Check System"
 
@@ -1713,6 +1723,7 @@ config_system(){
         show_spinner cs_setup_http
     fi
     do_enable_sudo
+    do_config_limits
 }
 
 cs_add_cronjob(){
