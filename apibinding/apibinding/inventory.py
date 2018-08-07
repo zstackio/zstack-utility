@@ -3466,6 +3466,29 @@ class APICreateResourceStackMsg(object):
         self.systemTags = OptionalList()
         self.userTags = OptionalList()
 
+APIDECODESTACKTEMPLATEMSG_FULL_NAME = 'org.zstack.header.cloudformation.APIDecodeStackTemplateMsg'
+class APIDecodeStackTemplateMsg(object):
+    FULL_NAME='org.zstack.header.cloudformation.APIDecodeStackTemplateMsg'
+    def __init__(self):
+        #valid values: [zstack]
+        self.type = None
+        self.templateContent = None
+        self.uuid = None
+        self.parameters = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDECODESTACKTEMPLATEREPLY_FULL_NAME = 'org.zstack.header.cloudformation.APIDecodeStackTemplateReply'
+class APIDecodeStackTemplateReply(object):
+    FULL_NAME='org.zstack.header.cloudformation.APIDecodeStackTemplateReply'
+    def __init__(self):
+        self.resources = OptionalList()
+        self.success = None
+        self.error = None
+
 
 APIDELETERESOURCESTACKMSG_FULL_NAME = 'org.zstack.header.cloudformation.APIDeleteResourceStackMsg'
 class APIDeleteResourceStackMsg(object):
@@ -18792,6 +18815,8 @@ api_names = [
     'APICreateWebhookMsg',
     'APICreateZoneMsg',
     'APIDebugSignalMsg',
+    'APIDecodeStackTemplateMsg',
+    'APIDecodeStackTemplateReply',
     'APIDeleteAccountMsg',
     'APIDeleteAffinityGroupMsg',
     'APIDeleteAlarmMsg',

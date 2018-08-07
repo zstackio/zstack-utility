@@ -2966,6 +2966,18 @@ class DebugSignalAction(inventory.APIDebugSignalMsg):
         self.out = evt
         return self.out
 
+class DecodeStackTemplateAction(inventory.APIDecodeStackTemplateMsg):
+    def __init__(self):
+        super(DecodeStackTemplateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DecodeStackTemplateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteAccountAction(inventory.APIDeleteAccountMsg):
     def __init__(self):
         super(DeleteAccountAction, self).__init__()
