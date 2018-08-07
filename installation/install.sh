@@ -693,6 +693,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
         chown -R zstack.zstack $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     do_enable_sudo
+    do_config_limits
     pass
 }
 
@@ -1723,7 +1724,6 @@ config_system(){
         show_spinner cs_setup_http
     fi
     do_enable_sudo
-    do_config_limits
 }
 
 cs_add_cronjob(){
