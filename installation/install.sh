@@ -604,12 +604,12 @@ do_enable_sudo(){
 }
 
 do_config_limits(){
-[ -f /etc/security/limits.d/10-zstack.conf ] && return
+nr_open=`sysctl -n fs.nr_open`
 cat > /etc/security/limits.d/10-zstack.conf << EOF
-zstack  soft  nofile  unlimited
-zstack  hard  nofile  unlimited
-zstack  soft  nproc  unlimited
-zstack  hard  nproc  unlimited
+zstack  soft  nofile  $nr_open
+zstack  hard  nofile  $nr_open
+zstack  soft  nproc  $nr_open
+zstack  hard  nproc  $nr_open
 EOF
 }
 
