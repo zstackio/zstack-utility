@@ -101,7 +101,7 @@ if distro in RPM_BASED_OS:
 elif distro in DEB_BASED_OS:
     if client == "true" and distro_version < 16:
         Warning("Client only support distribution version newer than 16.04")
-    apt_install_packages(["qemu-kvm sshfs"], host_post_info)
+    apt_install_packages(["qemu-kvm", "sshfs"], host_post_info)
 
 else:
     error("ERROR: Unsupported distribution")
