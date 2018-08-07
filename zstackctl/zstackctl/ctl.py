@@ -1799,15 +1799,21 @@ class StartCmd(Command):
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
         def check_chrony():
+            if ctl.read_property('syncNodeTime') == "false":
+                return
+
             source_ips = [v for k, v in ctl.read_property_list('chrony.serverIp.')]
+            if not source_ips:
+                error("chrony server not configured!")
+
             mn_ip = ctl.read_property('management.server.ip')
             chrony_running = shell_return("systemctl status chronyd | grep 'active[[:space:]]*(running)'")
 
             # mn is chrony server
             if mn_ip in source_ips:
                 if chrony_running != 0:
-                    warn("chrony is not running, restart it now...")
-                    shell("systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd")
+                    warn("chrony source is set to management node, but server is not running, try to restart it now...")
+                    shell("systemctl disable ntpd || true; systemctl enable chronyd ; systemctl restart chronyd")
                 return
                 
             # mn is chrony client
@@ -1819,7 +1825,7 @@ class StartCmd(Command):
             with open('/etc/chrony.conf', 'a') as fd:
                 fd.writelines('\n'.join(["server %s iburst" % ip for ip in source_ips]))
 
-            shell("systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd")
+            shell("systemctl disable ntpd || true; systemctl enable chronyd || true; systemctl restart chronyd || true")
             info("chronyd restarted")
 
         def prepare_qemu_kvm_repo():
