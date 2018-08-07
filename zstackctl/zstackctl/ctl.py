@@ -1801,6 +1801,9 @@ class StartCmd(Command):
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
         def check_chrony():
+            if ctl.read_property('syncNodeTime') == "false":
+                return
+
             source_ips = [v for k, v in ctl.read_property_list('chrony.serverIp.')]
             if not source_ips:
                 error("chrony.serverIp not configured")
@@ -1811,7 +1814,7 @@ class StartCmd(Command):
             # mn is chrony server
             if mn_ip in source_ips:
                 if chrony_running != 0:
-                    warn("management node is setted to chrony source, but server is not running, try to restart it now...")
+                    warn("chrony source is set to management node, but server is not running, try to restart it now...")
                     shell("systemctl disable ntpd || true; systemctl enable chronyd ; systemctl restart chronyd")
                 return
                 

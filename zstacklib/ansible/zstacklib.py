@@ -1565,6 +1565,9 @@ def do_deploy_chrony(host_post_info, svrs, distro):
         run_remote_command(command, host_post_info)
 
 def enable_chrony(trusted_host, host_post_info, distro):
+    if not host_post_info.chrony_servers:
+        return
+
     svrs = host_post_info.chrony_servers.split(',')
     if host_post_info.host in svrs:
         return
