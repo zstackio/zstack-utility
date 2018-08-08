@@ -49,7 +49,7 @@ def remount(url, path, options=None):
 def getMountInfo(url):
     if url:
         url = url.rstrip('/')
-        cmdstr = "mount | grep ':/%s'" % url
+        cmdstr = "mount | grep '/%s'" % url
     else:
         raise Exception('url cannot be None')
     cmd = shell.ShellCmd(cmdstr)
