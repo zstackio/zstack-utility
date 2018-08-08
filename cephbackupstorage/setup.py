@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '2.6.0'
+version = '3.0.0'
 
 setup(name='cephbackupstorage',
       version=version,
