@@ -75,10 +75,24 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = IscsiLoginRsp()
 
+        @linux.retry(times=5, sleep_time=1)
+        def discovery_iscsi(iscsiServerIp, iscsiServerPort):
+            r, iqns, e = bash.bash_roe(
+                "timeout 10 iscsiadm -m discovery --type sendtargets --portal %s:%s | awk '{print $2}'" % (
+                    iscsiServerIp, iscsiServerPort)).strip().splitlines()
+            if r != 0:
+                raise RetryException("can not discovery iscsi portal %s:%s" % (iscsiServerIp, iscsiServerPort))
+
+
+
         iqns = cmd.iscsiTargets
         if iqns is None or len(iqns) == 0:
-            iqns = bash.bash_o("iscsiadm -m discovery --type sendtargets --portal %s:%s | awk '{print $2}'" % (
-                cmd.iscsiServerIp, cmd.iscsiServerPort)).strip().splitlines()
+            try:
+                discovery_iscsi(cmd.iscsiServerIp, cmd.iscsiServerPort)
+            except Exception as e:
+                rsp.error = "login iscsi server %s:%s failed, because %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, e.message)
+                rsp.success = False
+                return jsonobject.dumps(rsp)
 
         if iqns is None or len(iqns) == 0:
             rsp.iscsiTargetStructList = []
