@@ -129,6 +129,7 @@ class UploadTask(object):
         self.progress = 0
         self.lastError = None
         self.lastOpTime = linux.get_current_timestamp()
+        self.image_format = "raw"
 
     def fail(self, reason):
         self.completed = True
@@ -236,6 +237,23 @@ def get_boundary(entity):
 
     return ib
 
+def get_image_format_from_buf(qhdr):
+    if qhdr[:4] == 'QFI\xfb':
+        if qhdr[16:20] == '\x00\x00\x00\00':
+            return "qcow2"
+        else:
+            return "derivedQcow2"
+
+    if qhdr[0x8001:0x8006] == 'CD001':
+        return 'iso'
+
+    if qhdr[0x8801:0x8806] == 'CD001':
+        return 'iso'
+
+    if qhdr[0x9001:0x9006] == 'CD001':
+        return 'iso'
+    return "raw"
+
 def stream_body(task, fpath, entity, boundary):
     def _progress_consumer(total):
         task.downloadedSize = total
@@ -268,6 +286,16 @@ def stream_body(task, fpath, entity, boundary):
         return
 
     file_format = None
+    qcow2_length = 0x9007
+    image_format = "raw"
+    image_header_file = "tmp/%s_header" % task.imageUuid
+    shell.check_run("rbd export %s - | head -%d > %s" % (task.tmpPath, qcow2_length, image_header_file))
+    fd = open(image_header_file)
+    qhdr = fd.read(qcow2_length)
+    fd.close()
+    linux.rm_file_force(image_header_file)
+    if len(qhdr) >= qcow2_length:
+        image_format = get_image_format_from_buf(qhdr)
 
     try:
         file_format = linux.get_img_fmt('rbd:'+task.tmpPath)
@@ -293,9 +321,12 @@ def stream_body(task, fpath, entity, boundary):
         finally:
             if conf_path:
                 os.remove(conf_path)
+
+        image_format = "raw"
     else:
         shell.check_run('rbd mv %s %s' % (task.tmpPath, task.dstPath))
 
+    task.image_format = image_format
     task.success()
 
 # ------------------------------------------------------------------ #
@@ -655,6 +686,8 @@ class CephAgent(object):
             rsp.success = False
             rsp.error = task.lastError
 
+        rsp.format = task.image_format
+
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -682,21 +715,8 @@ class CephAgent(object):
                 resp.close()
             if len(qhdr) < qcow2_length:
                 return "raw"
-            if qhdr[:4] == 'QFI\xfb':
-                if qhdr[16:20] == '\x00\x00\x00\00':
-                    return "qcow2"
-                else:
-                    return "derivedQcow2"
 
-            if qhdr[0x8001:0x8006] == 'CD001':
-                return 'iso'
-
-            if qhdr[0x8801:0x8806] == 'CD001':
-                return 'iso'
-
-            if qhdr[0x9001:0x9006] == 'CD001':
-                return 'iso'
-            return "raw"
+            return get_image_format_from_buf(qhdr)
 
         def get_origin_format(fpath, fail_if_has_backing_file=True):
             image_format = _get_origin_format(fpath)
