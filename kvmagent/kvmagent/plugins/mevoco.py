@@ -18,6 +18,9 @@ import os.path
 import re
 import threading
 import time
+import email
+import cStringIO as c
+from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
 
 logger = log.get_logger(__name__)
@@ -582,6 +585,21 @@ mimetype.assign = (
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_vmdata(self, to):
+        def packUserdata(userdataList):
+            if len(userdataList) == 1:
+                return userdataList[0]
+
+            combined_message = MIMEMultipart()
+            for userdata in userdataList:
+                userdata = userdata.strip(),
+                msg = email.message_from_file(c.StringIO(userdata))
+                for part in msg.walk():
+                    if part.get_content_maintype() == 'multipart':
+                        continue
+                    combined_message.attach(part)
+
+            return combined_message.__str__()
+
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         http_root = os.path.join(conf_folder, 'html')
         meta_data_json = '''\
@@ -614,10 +632,10 @@ mimetype.assign = (
             with open(vm_hostname_file_path, 'w') as fd:
                 fd.write(to.metadata.vmHostname)
 
-        if to.userdata:
+        if to.userdataList:
             userdata_file_path = os.path.join(root, 'user-data')
             with open(userdata_file_path, 'w') as fd:
-                fd.write(to.userdata)
+                fd.write(packUserdata(to.userdataList))
 
             windows_meta_data_json_path = os.path.join(root, 'meta_data.json')
             with open(windows_meta_data_json_path, 'w') as fd:
@@ -625,7 +643,7 @@ mimetype.assign = (
 
             windows_userdata_file_path = os.path.join(root, 'user_data')
             with open(windows_userdata_file_path, 'w') as fd:
-                fd.write(to.userdata)
+                fd.write(packUserdata(to.userdataList))
 
             windows_meta_data_password = os.path.join(root, 'password')
             with open(windows_meta_data_password, 'w') as fd:
