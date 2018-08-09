@@ -865,15 +865,15 @@ def is_volume_on_pvs(volume_path, pvUuids, includingMissing=True):
             pv_names.append(get_pv_name_by_uuid(p) + "(")
 
     if includingMissing:
-        pv_names.append("[unknown](")
+        pv_names.append("unknown")
     for f in files:
         o = bash.bash_o(
-            "timeout -s SIGKILL 10 lvs --noheading --nolocking %s -odevices" % f)  # type: str
+            "timeout -s SIGKILL 10 lvs --noheading --nolocking %s -odevices" % f).strip().lower()  # type: str
         logger.debug("volume %s is on pv %s" % (volume_path, o))
-        if len(filter(lambda n: o.find(n) > 0, pv_names)) > 0:
+        if len(filter(lambda n: o.find(n.lower()) > 0, pv_names)) > 0:
             logger.debug("lv %s on pv %s(%s), return true" % (volume_path, pvUuids, pv_names))
             return True
-        if o.strip() == "" and includingMissing:
+        if o == "" and includingMissing:
             logger.debug("pv of lv %s is missing, return true")
             return True
     return False
