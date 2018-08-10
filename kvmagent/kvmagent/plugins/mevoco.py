@@ -591,7 +591,7 @@ mimetype.assign = (
 
             combined_message = MIMEMultipart()
             for userdata in userdataList:
-                userdata = userdata.strip(),
+                userdata = userdata.strip()
                 msg = email.message_from_file(c.StringIO(userdata))
                 for part in msg.walk():
                     if part.get_content_maintype() == 'multipart':
