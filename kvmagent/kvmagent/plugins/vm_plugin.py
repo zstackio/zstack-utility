@@ -3956,18 +3956,18 @@ class VmPlugin(kvmagent.KvmAgent):
         parent = None
         mode = None
 
-        if drivertype != 'qcow2':
-            raise kvmagent.KvmError('unsupported volume driver: ' + drivertype)
-
         if not cmd.bitmap:
             bitmap = 'zsbitmap%d' % (cmd.deviceId)
-            bf = linux.qcow2_get_backing_file(topoverlay)
-            if bf:
-                imf = isc.upload_image(cmd.hostname, bf)
-                parent = isc._build_install_path(imf.name, imf.id)
-                mode = 'top'
-            else:
+            if drivertype != 'qcow2':
                 mode = 'full'
+            else:
+                bf = linux.qcow2_get_backing_file(topoverlay)
+                if bf:
+                    imf = isc.upload_image(cmd.hostname, bf)
+                    parent = isc._build_install_path(imf.name, imf.id)
+                    mode = 'top'
+                else:
+                    mode = 'full'
         else:
             bitmap, mode = cmd.bitmap, 'auto'
 
