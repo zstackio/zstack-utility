@@ -7401,6 +7401,7 @@ class InstallLicenseCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--license', '-f', help="path to the license file", required=True)
         parser.add_argument('--prikey', help="[OPTIONAL] the path to the private key used to generate license request")
+        parser.add_argument('--addon', '-a', help="install add one license file", action='store_true', default=False)
 
     def run(self, args):
         lpath = expand_path(args.license)
@@ -7416,9 +7417,15 @@ class InstallLicenseCmd(Command):
         license_folder = '/var/lib/zstack/license'
         shell('''mkdir -p %s''' % license_folder)
         shell('''chown zstack:zstack %s''' % license_folder)
-        shell('''yes | cp %s %s/license.txt''' % (lpath, license_folder))
-        shell('''chown zstack:zstack %s/license.txt''' % license_folder)
-        info("successfully installed the license file to %s/license.txt" % license_folder)
+
+        if args.addon:
+            license_file_name = "license_" + uuid.uuid4().hex
+        else:
+            license_file_name = "license.txt"
+
+        shell('''yes | cp %s %s/%s''' % (lpath, license_folder, license_file_name))
+        shell('''chown zstack:zstack %s/%s''' % (license_folder, license_file_name))
+        info("successfully installed the license file to %s/%s" % (license_folder, license_file_name))
         if ppath:
             shell('''yes | cp %s %s/pri.key''' % (ppath, license_folder))
             shell('''chown zstack:zstack %s/pri.key''' % license_folder)
