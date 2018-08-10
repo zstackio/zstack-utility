@@ -3950,24 +3950,28 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     # returns tuple: (bitmap, parent)
-    def do_take_volume_backup(self, cmd, drivertype, nodename, topoverlay, dest):
+    def do_take_volume_backup(self, cmd, drivertype, nodename, source, dest):
         isc = ImageStoreClient()
         bitmap = None
         parent = None
         mode = None
+        topoverlay = None
 
-        if drivertype != 'qcow2':
-            raise kvmagent.KvmError('unsupported volume driver: ' + drivertype)
+        if drivertype == 'qcow2':
+            topoverlay = source.file_
 
         if not cmd.bitmap:
             bitmap = 'zsbitmap%d' % (cmd.deviceId)
-            bf = linux.qcow2_get_backing_file(topoverlay)
-            if bf:
-                imf = isc.upload_image(cmd.hostname, bf)
-                parent = isc._build_install_path(imf.name, imf.id)
-                mode = 'top'
-            else:
+            if drivertype != 'qcow2':
                 mode = 'full'
+            else:
+                bf = linux.qcow2_get_backing_file(topoverlay)
+                if bf:
+                    imf = isc.upload_image(cmd.hostname, bf)
+                    parent = isc._build_install_path(imf.name, imf.id)
+                    mode = 'top'
+                else:
+                    mode = 'full'
         else:
             bitmap, mode = cmd.bitmap, 'auto'
 
@@ -4003,7 +4007,7 @@ class VmPlugin(kvmagent.KvmAgent):
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
                     'drive-' + target_disk.alias.name_,  # 'virtio-disk0' etc.
-                    target_disk.source.file_,
+                    target_disk.source,
                     os.path.join(d, fname))
             logger.info('finished backup volume with parent: %s', parent)
             rsp.bitmap = bitmap
