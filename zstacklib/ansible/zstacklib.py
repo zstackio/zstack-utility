@@ -1766,6 +1766,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % zstack_repo
                         run_remote_command(command, host_post_info)
+                        enable_chrony(trusted_host, host_post_info, distro)
 
                 else:
                     # imagestore do not need python environment and only on centos 7
@@ -1774,8 +1775,8 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                                   "chrony iptables-services | grep \"not installed\" | awk '{ print $2 }'` "
                                   "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
                     run_remote_command(command, host_post_info)
-                    # enable ntp service for RedHat
-                enable_chrony(trusted_host, host_post_info, distro)
+                    # enable chrony service for RedHat
+                    enable_chrony(trusted_host, host_post_info, distro)
 
         elif distro in DEB_BASED_OS:
             command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
