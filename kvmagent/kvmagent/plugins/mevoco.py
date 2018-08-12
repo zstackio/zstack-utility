@@ -18,6 +18,9 @@ import os.path
 import re
 import threading
 import time
+import email
+import cStringIO as c
+from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
 
 logger = log.get_logger(__name__)
@@ -235,7 +238,7 @@ class DhcpEnv(object):
         # Note(WeiW): fix dhcp checksum, see more at #982
         ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
         if ret != 0:
-            bash_errorout('iptables -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
+            bash_errorout('iptables -w -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
@@ -378,7 +381,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         BR_NAME = cmd.bridgeName
-        CHAIN_NAME = "USERDATA-%s" % BR_NAME
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, cmd.l3NetworkUuid[0:8])
+        else:
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], cmd.l3NetworkUuid[0:8])
 
         o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
         o = o.strip(" \t\r\n")
@@ -390,6 +397,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 cmds.append(EBTABLES_CMD + " -t filter %s" % l.replace("-A", "-D"))
                 cmds.append(EBTABLES_CMD + " -t nat %s" % l.replace("-A", "-D"))
 
+            cmds.append(EBTABLES_CMD + " -t nat -X %s" % CHAIN_NAME)
             bash_r("\n".join(cmds))
 
         bash_errorout("ps aux | grep lighttpd | grep {{BR_NAME}} | grep -w userdata | awk '{print $2}' | xargs -r kill -9")
@@ -473,44 +481,49 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         ETH_NAME = BR_NAME.replace('br_', '', 1).replace('_', '.', 1)
         MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
         CHAIN_NAME="USERDATA-%s" % BR_NAME
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, to.l3NetworkUuid[0:8])
+        else:
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12 : len(BR_NAME)], to.l3NetworkUuid[0:8])
 
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -t nat -N {{EBCHAIN_NAME}}')
 
-        if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{CHAIN_NAME}}"') != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{CHAIN_NAME}}')
+        if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "--logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}"') != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}')
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         cidr = ip.IpAddress(to.vmIp).toCidr(to.netmask)
         RULE = "-p IPv4 --ip-dst 169.254.169.254 --ip-source %s -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, MAC.replace(":0", ":"))
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -I {{CHAIN_NAME}} {{RULE}}')
+            bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -t nat -A {{EBCHAIN_NAME}} -j RETURN')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} >/dev/null 2>&1')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -N {{EBCHAIN_NAME}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{CHAIN_NAME}}')
+            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-i {{ETH_NAME}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} | grep -- "-i {{ETH_NAME}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-o {{ETH_NAME}} -j DROP" > /dev/null')
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} | grep -- "-o {{ETH_NAME}} -j DROP" > /dev/null')
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
 
-        ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+        ret = bash_r("ebtables-save | grep '\-A {{EBCHAIN_NAME}} -j RETURN'")
         if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
+            bash_errorout(EBTABLES_CMD + ' -A {{EBCHAIN_NAME}} -j RETURN')
 
         self.work_userdata_iptables(CHAIN_NAME, to)
 
@@ -572,6 +585,21 @@ mimetype.assign = (
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_vmdata(self, to):
+        def packUserdata(userdataList):
+            if len(userdataList) == 1:
+                return userdataList[0]
+
+            combined_message = MIMEMultipart()
+            for userdata in userdataList:
+                userdata = userdata.strip()
+                msg = email.message_from_file(c.StringIO(userdata))
+                for part in msg.walk():
+                    if part.get_content_maintype() == 'multipart':
+                        continue
+                    combined_message.attach(part)
+
+            return combined_message.__str__()
+
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         http_root = os.path.join(conf_folder, 'html')
         meta_data_json = '''\
@@ -591,15 +619,23 @@ mimetype.assign = (
         index_file_path = os.path.join(meta_root, 'index.html')
         with open(index_file_path, 'w') as fd:
             fd.write('instance-id')
+            if to.metadata.vmHostname:
+                fd.write('\n')
+                fd.write('local-hostname')
 
         instance_id_file_path = os.path.join(meta_root, 'instance-id')
         with open(instance_id_file_path, 'w') as fd:
             fd.write(to.metadata.vmUuid)
 
-        if to.userdata:
+        if to.metadata.vmHostname:
+            vm_hostname_file_path = os.path.join(meta_root, 'local-hostname')
+            with open(vm_hostname_file_path, 'w') as fd:
+                fd.write(to.metadata.vmHostname)
+
+        if to.userdataList:
             userdata_file_path = os.path.join(root, 'user-data')
             with open(userdata_file_path, 'w') as fd:
-                fd.write(to.userdata)
+                fd.write(packUserdata(to.userdataList))
 
             windows_meta_data_json_path = os.path.join(root, 'meta_data.json')
             with open(windows_meta_data_json_path, 'w') as fd:
@@ -607,7 +643,7 @@ mimetype.assign = (
 
             windows_userdata_file_path = os.path.join(root, 'user_data')
             with open(windows_userdata_file_path, 'w') as fd:
-                fd.write(to.userdata)
+                fd.write(packUserdata(to.userdataList))
 
             windows_meta_data_password = os.path.join(root, 'password')
             with open(windows_meta_data_password, 'w') as fd:
@@ -749,6 +785,7 @@ mimetype.assign = (
                 namespace_dhcp[d.namespaceName] = lst
             lst.append(d)
 
+        @in_bash
         def apply(dhcp):
             bridge_name = dhcp[0].bridgeName
             namespace_name = dhcp[0].namespaceName
@@ -810,6 +847,9 @@ dhcp-range={{g}},static
                 dhcp_info.update(d.__dict__)
                 dhcp_info['dns'] = ','.join(d.dns)
                 routes = []
+                # add classless-static-route (option 121) for gateway:
+                if d.isDefaultL3Network:
+                    routes.append(','.join(['0.0.0.0/0', d.gateway]))
                 for route in d.hostRoutes:
                     routes.append(','.join([route.prefix, route.nexthop]))
                 dhcp_info['routes'] = ','.join(routes)
@@ -955,6 +995,7 @@ sed -i '/^$/d' {{DNS}}
                 namespace_dhcp[d.namespaceName] = lst
             lst.append(d)
 
+        @in_bash
         def release(dhcp):
             for d in dhcp:
                 conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(d.namespaceName)

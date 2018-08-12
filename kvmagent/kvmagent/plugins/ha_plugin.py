@@ -367,7 +367,7 @@ class HaPlugin(kvmagent.KvmAgent):
         success = 0
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for i in range(0, cmd.times):
-            if shell.run("nmap -sP -PI %s | grep 'Host is up'" % cmd.ip) == 0:
+            if shell.run("nmap --host-timeout 30s -sP -PI %s | grep 'Host is up'" % cmd.ip) == 0:
                 success += 1
 
             time.sleep(cmd.interval)
@@ -383,7 +383,7 @@ class HaPlugin(kvmagent.KvmAgent):
         # WE SUCCEED A FEW TIMES, IT SEEMS THE CONNECTION NOT STABLE
         success = 0
         for i in range(0, cmd.successTimes):
-            if shell.run("nmap -sP -PI %s | grep 'Host is up'" % cmd.ip) == 0:
+            if shell.run("nmap --host-timeout 30s -sP -PI %s | grep 'Host is up'" % cmd.ip) == 0:
                 success += 1
 
             time.sleep(cmd.successInterval)
@@ -397,6 +397,7 @@ class HaPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         rsp.result = self.RET_NOT_STABLE
+        logger.info('scanhost[%s]: %s' % (cmd.ip, rsp.result))
         return jsonobject.dumps(rsp)
 
 

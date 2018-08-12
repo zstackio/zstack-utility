@@ -165,7 +165,7 @@ class ConcurrentRotatingFileHandler(BaseRotatingHandler):
             try:
                 if not self.stream.closed:
                     # Flushing probably isn't technically necessary, but it feels right
-                    self.stream.flush()
+                    #self.stream.flush()
                     self.stream.close()
             finally:
                 self.stream = None

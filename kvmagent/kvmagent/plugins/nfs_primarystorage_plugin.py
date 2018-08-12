@@ -138,6 +138,7 @@ class GetVolumeBaseImagePathRsp(NfsResponse):
     def __init__(self):
         super(GetVolumeBaseImagePathRsp, self).__init__()
         self.path = None
+        self.size = None
 
 class ResizeVolumeRsp(NfsResponse):
     def __init__(self):
@@ -304,7 +305,16 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def get_volume_base_image_path(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVolumeBaseImagePathRsp()
-        rsp.path = linux.get_qcow2_base_image_path_recusively(cmd.installPath)
+
+        if not os.path.basename(cmd.installDir).endswith(cmd.volumeUuid):
+            raise Exception('maybe you pass a wrong install dir')
+
+        path = linux.get_qcow2_base_image_recusively(cmd.volumeInstallDir, cmd.imageCacheDir)
+        if not path:
+            return jsonobject.dumps(rsp)
+
+        rsp.path = path
+        rsp.size = linux.get_qcow2_file_chain_size(path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -462,8 +472,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = ReInitImageResponse()
 
         install_path = cmd.imagePath
-        new_volume_path = os.path.join(os.path.dirname(cmd.volumePath), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone(install_path, new_volume_path)
+        dirname = os.path.dirname(cmd.volumePath)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname, 0775)
+
+        new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
+        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
         rsp.newVolumeInstallPath = new_volume_path
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
@@ -475,7 +489,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.snapshotInstallPath
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone(install_path, new_volume_path)
+        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
         rsp.newVolumeInstallPath = new_volume_path
         size = linux.qcow2_virtualsize(new_volume_path)
         rsp.size = size
@@ -494,7 +508,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteResponse()
 
-        if cmd.isFolder:
+        if cmd.folder:
             shell.call('rm -rf %s' % cmd.installPath)
         else:
             kvmagent.deleteImage(cmd.installPath)
@@ -561,7 +575,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
                 
-            linux.qcow2_create(cmd.installUrl, cmd.size)
+            linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.uuid, cmd.name, str(e))
@@ -637,7 +651,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(dirname):
                 os.makedirs(dirname, 0775)
                 
-            linux.qcow2_clone(cmd.templatePathInCache, cmd.installUrl)
+            linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installUrl, cmd)
             logger.debug('successfully create root volume[%s] from template in cache[%s]' % (cmd.installUrl, cmd.templatePathInCache))
             meta = VolumeMeta()
             meta.account_uuid = cmd.accountUuid

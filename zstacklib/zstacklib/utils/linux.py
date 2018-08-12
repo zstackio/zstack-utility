@@ -19,8 +19,6 @@ import platform
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
-from zstacklib.utils import lock
-from zstacklib.utils import sizeunit
 
 
 logger = log.get_logger(__name__)
@@ -239,6 +237,19 @@ def remount(url, path, options=None):
                         (path, url))
     elif o.return_code != 0:
         o.raise_error()
+
+def sshfs_mount(username, hostname, port, password, url, mountpoint):
+    fd, fname = tempfile.mkstemp()
+    os.chmod(fname, 0500)
+    os.write(fd, "#!/bin/bash\n/usr/bin/sshpass -p '%s' ssh -o StrictHostKeyChecking=no -p %d $*\n" % (password, port))
+    os.close(fd)
+
+    ret = shell.run("/usr/bin/sshfs %s@%s:%s %s -o reconnect,allow_root,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
+    os.remove(fname)
+    return ret
+
+def fumount(mountpoint):
+    return shell.run("timeout 10 fusermount -u %s" % mountpoint)
 
 def is_valid_nfs_url(url):
     ts = url.split(':')
@@ -573,7 +584,17 @@ def qcow2_clone(src, dst):
     shell.check_run('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s' % (fmt, src, dst))
     shell.check_run('chmod 666 %s' % dst)
 
+def qcow2_clone_with_cmd(src, dst, cmd=None):
+    if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
+        qcow2_clone(src, dst)
+    else:
+        qcow2_clone_with_option(src, dst, cmd.kvmHostAddons.qcow2Options)
+
 def qcow2_clone_with_option(src, dst, opt=""):
+    # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
+    pattern = re.compile("\-o\ preallocation\=\w+ ")
+    opt = re.sub(pattern, " ", opt)
+
     fmt = get_img_fmt(src)
     shell.check_run('/usr/bin/qemu-img create -F %s %s -b %s -f qcow2 %s' % (fmt, opt, src, dst))
     shell.check_run('chmod 666 %s' % dst)
@@ -586,6 +607,12 @@ def qcow2_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))
     shell.check_run('chmod 666 %s' % dst)
 
+def qcow2_create_with_cmd(dst, size, cmd=None):
+    if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
+        qcow2_create(dst, size)
+    else:
+        qcow2_create_with_option(dst, size, cmd.kvmHostAddons.qcow2Options)
+
 def qcow2_create_with_option(dst, size, opt=""):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
     shell.check_run('chmod 666 %s' % dst)
@@ -595,8 +622,19 @@ def qcow2_create_with_backing_file(backing_file, dst):
     shell.call('/usr/bin/qemu-img create -F %s -f qcow2 -b %s %s' % (fmt, backing_file, dst))
     shell.call('chmod 666 %s' % dst)
 
+def qcow2_create_with_backing_file_and_cmd(backing_file, dst, cmd=None):
+    if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
+        qcow2_create_with_backing_file(backing_file, dst)
+    else:
+        qcow2_create_with_backing_file_and_option(backing_file, dst, cmd.kvmHostAddons.qcow2Options)
+
 def qcow2_create_with_backing_file_and_option(backing_file, dst, opt=""):
     fmt = get_img_fmt(backing_file)
+
+    # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
+    pattern = re.compile("\-o\ preallocation\=\w+ ")
+    opt = re.sub(pattern, " ", opt)
+
     shell.call('/usr/bin/qemu-img create -F %s -f qcow2 %s -b %s %s' % (fmt, opt, backing_file, dst))
     shell.call('chmod 666 %s' % dst)
 
@@ -639,22 +677,68 @@ def qcow2_virtualsize(file_path):
     return long(out)
 
 def qcow2_get_backing_file(path):
-    out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % path)
-    return out.strip(' \t\r\n')
+    if not os.path.exists(path):
+        # for rbd image
+        out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % path)
+        return out.strip(' \t\r\n')
+
+    with open(path, 'r') as resp:
+        magic = resp.read(4)
+        if magic != 'QFI\xfb':
+            return ""
+
+        # read backing file info from header
+        resp.seek(8)
+        backing_file_info = resp.read(12)
+        backing_file_offset = struct.unpack('>Q', backing_file_info[:8])[0]
+        if backing_file_offset == 0:
+            return ""
+
+        backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
+        resp.seek(backing_file_offset)
+        return resp.read(backing_file_size)
 
 # Get derived file and all its backing files
 def qcow2_get_file_chain(path):
-    chain = [ path ]
-    bf = qcow2_get_backing_file(path)
-    while bf:
-        chain.append(bf)
-        bf = qcow2_get_backing_file(bf)
+    out = shell.call("qemu-img info --backing-chain %s | grep 'image:' | awk '{print $2}'" % path)
+    return out.splitlines()
 
-    return chain
+def get_qcow2_file_chain_size(path):
+    chain = qcow2_get_file_chain(path)
+    size = 0L
+    for path in chain:
+        size += os.path.getsize(path)
+    return size
 
-def get_qcow2_base_image_path_recusively(path):
+def get_qcow2_base_backing_file_recusively(path):
     chain = qcow2_get_file_chain(path)
     return chain[-1]
+
+def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
+    real_vol_dir = os.path.realpath(vol_install_dir)
+    real_cache_dir = os.path.realpath(image_cache_dir)
+    backing_files = shell.call(
+        "set -o pipefail; find %s -type f -name '*.qcow2' -exec qemu-img info {} \;| grep 'backing file:' | awk '{print $3}'"
+        % real_vol_dir).splitlines()
+
+    base_image = set()
+    for backing_file in backing_files:
+        real_image_path = os.path.realpath(backing_file)
+        if real_image_path.startswith(real_cache_dir):
+            base_image.add(real_image_path)
+
+    if len(base_image) == 1:
+        return base_image.pop()
+
+    if len(base_image) == 0:
+        return None
+
+    if len(base_image) > 1:
+        raise Exception('more than one image file found in cache dir')
+
+def qcow2_fill(seek, length, path, raise_excpetion=False):
+    cmd = shell.ShellCmd("qemu-io -c 'write %s %s' %s" % (seek, length, path))
+    cmd(raise_excpetion)
 
 def rmdir_if_empty(dirpath):
     try:
@@ -1036,7 +1120,7 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
         if ip:
             shell.call('ifconfig %s %s netmask %s' % (vlan_dev_name, ip, netmask))
     else:
-        if get_device_ip(vlan_dev_name) != ip:
+        if ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
             # recreate device and configure ip
             delete_vlan_eth(vlan_dev_name)
             shell.call('vconfig add %s %s' % (ethname, vlan))
@@ -1048,7 +1132,7 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
 def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
     vlan_dev_name = create_vlan_eth(ethname, vlan, ip, netmask)
-    move_route = (ip and netmask)
+    move_route = True
     create_bridge(bridgename, vlan_dev_name, move_route)
 
 def find_process_by_cmdline(cmdlines):
@@ -1447,3 +1531,8 @@ def timeout_isdir(path):
 def set_device_uuid_alias(interf, l2NetworkUuid):
     cmd = shell.ShellCmd("ip link set dev %s alias \"uuid: %s\"" % (interf, l2NetworkUuid))
     cmd(is_exception=False)
+
+def linux_lsof(file):
+    cmd = shell.ShellCmd("lsof %s | grep -v '^COMMAND'" % file)
+    cmd(is_exception=False)
+    return cmd.stdout

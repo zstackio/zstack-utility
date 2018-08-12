@@ -107,6 +107,10 @@
             <arg value="${remove.pypi.symlink}" />
             <arg value="${pypi.parent.dir}/pypi" />
         </exec>
+        <exec executable="cp" dir="${pypi.parent.dir}/pypi/simple/websockify" failonerror="true">
+             <arg value="websockify-0.6.1.zip" />
+             <arg value="./websockify-0.6.1.1.zip" />
+        </exec>
     </target>
 
     <target name="copy-centos6-repo" >
@@ -376,6 +380,11 @@
         <exec executable="cp" dir="${libs.dir}" failonerror="true">
             <arg value="-f" />
             <arg value="${centos7.unzip.aarch64.rpm}" />
+            <arg value="./" />
+        </exec>
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${tomcat.root.app.zip}" />
             <arg value="./" />
         </exec>
     </target>

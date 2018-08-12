@@ -75,7 +75,7 @@ else:
 
 run_remote_command("rm -rf %s/*" % cephp_root, host_post_info)
 
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         command = ("pkg_list=`rpm -q wget qemu-img-ev libvirt libguestfs-winsupport libguestfs-tools"
                    " | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
@@ -102,7 +102,7 @@ if distro == "RedHat" or distro == "CentOS":
     copy_arg.dest = "/etc/sysconfig/libvirtd"
     libvirtd_status = copy(copy_arg, host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
@@ -161,10 +161,10 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart cephpagent
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     command = "service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start" \
               " && chkconfig zstack-ceph-primarystorage on"
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     command = "update-rc.d zstack-ceph-primarystorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start"
 run_remote_command(command, host_post_info)
 # change ceph config
@@ -196,12 +196,12 @@ host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
 run_remote_command(command, host_post_info)
 
 # name: restart libvirt
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     if libvirtd_status != "changed:False" or libvirtd_conf_status != "changed:False" \
             or qemu_conf_status != "changed:False":
         # name: restart redhat libvirtd
         service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     if libvirt_bin_status != "changed:False" or libvirtd_conf_status != "changed:False" \
             or qemu_conf_status != "changed:False":
         # name: restart debian libvirtd

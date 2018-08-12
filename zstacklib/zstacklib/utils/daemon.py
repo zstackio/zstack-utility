@@ -2,6 +2,7 @@
 
 import sys, os, time, atexit
 import traceback
+import locale
 from signal import SIGTERM,SIGKILL 
 from zstacklib.utils import linux
 from zstacklib.utils import log
@@ -91,6 +92,8 @@ class Daemon(object):
         print "Start Daemon..."
         # Check for a pidfile to see if the daemon already runs
         try:
+            locale.setlocale(locale.LC_ALL, 'C')
+
             pf = file(self.pidfile,'r')
             pid = int(pf.read().strip())
             pf.close()

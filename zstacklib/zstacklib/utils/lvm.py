@@ -4,6 +4,7 @@ import os.path
 import time
 
 from zstacklib.utils import shell
+from zstacklib.utils import bash
 from zstacklib.utils import log
 from zstacklib.utils import linux
 
@@ -12,6 +13,7 @@ LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
+SUPER_BLOCK_BACKUP = "superblock.bak"
 
 
 class LvmlockdLockType(object):
@@ -21,11 +23,11 @@ class LvmlockdLockType(object):
 
     @staticmethod
     def from_abbr(abbr):
-        if abbr == "sh":
+        if abbr.strip() == "sh":
             return LvmlockdLockType.SHARE
-        elif abbr == "ex":
+        elif abbr.strip() == "ex":
             return LvmlockdLockType.EXCLUSIVE
-        elif abbr == "un":
+        elif abbr.strip() == "un":
             return LvmlockdLockType.NULL
         else:
             raise Exception("unknown lock type %s" % abbr)
@@ -46,6 +48,130 @@ class RetryException(Exception):
     pass
 
 
+class SharedBlockCandidateStruct:
+    wwids = []  # type: list[str]
+    vendor = None  # type: str
+    model = None  # type: str
+    wwn = None  # type: str
+    serial = None  # type: str
+    hctl = None  # type: str
+    type = None  # type: str
+    size = None  # type: long
+    path = None  # type: str
+
+    def __init__(self):
+        pass
+
+
+def get_block_devices():
+    # 1. get multi path devices
+    # 2. get multi path device information from raw device
+    # 3. get information of other devices
+    mpath_devices = []
+    block_devices = []  # type: List[SharedBlockCandidateStruct]
+    cmd = shell.ShellCmd("multipath -l -v1")
+    cmd(is_exception=False)
+    if cmd.return_code == 0 and cmd.stdout.strip() != "":
+        mpath_devices = cmd.stdout.strip().split("\n")
+
+    for mpath_device in mpath_devices:
+        cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
+        cmd(is_exception=False)
+        if cmd.return_code != 0 or cmd.stdout.strip() == "":
+            continue
+
+        dm = cmd.stdout.strip()
+        slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
+
+        struct = get_device_info(slaves[0])
+        cmd = shell.ShellCmd("multipath -l /dev/mapper/%s | grep %s | grep -o ' (.*) '" % (
+            mpath_device, mpath_device))
+        cmd(is_exception=True)
+        struct.wwids = [cmd.stdout.strip().strip("()")]
+        struct.type = "mpath"
+        block_devices.append(struct)
+
+    disks = shell.call("lsblk -p -o NAME,TYPE | grep disk | awk '{print $1}'").strip().split()
+    for disk in disks:
+        if is_slave_of_multipath(disk):
+            continue
+        d = get_device_info(disk.strip().split("/")[-1])
+        if len(d.wwids) != 0:
+            block_devices.append(d)
+
+    return block_devices
+
+
+@bash.in_bash
+def is_multipath_running():
+    r = bash.bash_r("multipath -t")
+    if r != 0:
+        return False
+
+    r = bash.bash_r("pgrep multipathd")
+    if r != 0:
+        return False
+    return True
+
+
+@bash.in_bash
+def is_slave_of_multipath(dev_path):
+    # type: (str) -> bool
+    if is_multipath_running is False:
+        return False
+
+    r = bash.bash_r("multipath %s -l | grep policy" % dev_path)
+    if r == 0:
+        return True
+    return False
+
+
+def is_multipath(dev_name):
+    if not is_multipath_running():
+        return False
+    r = bash.bash_r("multipath /dev/%s -l | grep mpath" % dev_name)
+    if r == 0:
+        return True
+    return False
+
+
+def get_device_info(dev_name):
+    # type: (str) -> SharedBlockCandidateStruct
+    s = SharedBlockCandidateStruct()
+    o = shell.call("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name).strip().split("\n")[0]
+    if o == "":
+        raise Exception("can not get device information from %s" % dev_name)
+
+    def get_data(e):
+        return e.split("=")[1].strip().strip('"')
+
+    def get_wwids(dev):
+        return shell.call("udevadm info -n %s | grep 'by-id' | grep -v DEVLINKS | awk -F 'by-id/' '{print $2}'" % dev).strip().split()
+
+    def get_path(dev):
+        return shell.call("udevadm info -n %s | grep 'by-path' | grep -v DEVLINKS | head -n1 | awk -F 'by-path/' '{print $2}'" % dev).strip()
+
+    for entry in o.split('" '):  # type: str
+        if entry.startswith("VENDOR"):
+            s.vendor = get_data(entry)
+        elif entry.startswith("MODEL"):
+            s.model = get_data(entry)
+        elif entry.startswith("WWN"):
+            s.wwn = get_data(entry)
+        elif entry.startswith("SERIAL"):
+            s.serial = get_data(entry)
+        elif entry.startswith('HCTL'):
+            s.hctl = get_data(entry)
+        elif entry.startswith('SIZE'):
+            s.size = get_data(entry)
+        elif entry.startswith('TYPE'):
+            s.type = get_data(entry)
+
+    s.wwids = get_wwids(dev_name)
+    s.path = get_path(dev_name)
+    return s
+
+
 def calcLvReservedSize(size):
     # NOTE(weiw): Add additional 12M for every lv
     size = int(size) + 3 * LV_RESERVED_SIZE
@@ -63,6 +189,12 @@ def check_lvm_config_is_default():
         return True
 
 
+def clean_duplicate_configs():
+    cmd = shell.ShellCmd("md5sum %s/* " % LVM_CONFIG_BACKUP_PATH +
+                         " | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
+    cmd(is_exception=False)
+
+
 def backup_lvm_config():
     if not os.path.exists(LVM_CONFIG_PATH):
         logger.warn("can not find lvm config path: %s, backup failed" % LVM_CONFIG_PATH)
@@ -71,6 +203,7 @@ def backup_lvm_config():
     if not os.path.exists(LVM_CONFIG_BACKUP_PATH):
         os.makedirs(LVM_CONFIG_BACKUP_PATH)
 
+    clean_duplicate_configs()
     current_time = time.time()
     cmd = shell.ShellCmd("cp %s/lvm.conf %s/lvm-%s.conf; "
                          "cp %s/lvmlocal.conf %s/lvmlocal-%s.conf" %
@@ -125,32 +258,30 @@ def start_lvmlockd():
         cmd(is_exception=True)
 
 
+@bash.in_bash
 def start_vg_lock(vgUuid):
-    @linux.retry(times=20, sleep_time=random.uniform(1,10))
+    @linux.retry(times=60, sleep_time=random.uniform(1, 10))
     def vg_lock_is_adding(vgUuid):
         # NOTE(weiw): this means vg locking is adding rather than complete
-        cmd = shell.ShellCmd("sanlock client status | grep -E 's lvm_%s.*\\:0 ADD'" % vgUuid)
-        cmd(is_exception=False)
-        if cmd.return_code == 0:
+        return_code = bash.bash_r("sanlock client status | grep -E 's lvm_%s.*\\:0 ADD'" % vgUuid)
+        if return_code == 0:
             raise RetryException("vg %s lock space is starting" % vgUuid)
         return False
 
-    @linux.retry(times=3, sleep_time=random.uniform(0.1, 1))
+    @linux.retry(times=15, sleep_time=random.uniform(0.1, 2))
     def vg_lock_exists(vgUuid):
-        cmd = shell.ShellCmd("lvmlockctl -i | grep %s" % vgUuid)
-        cmd(is_exception=False)
-        if cmd.return_code != 0:
+        return_code = bash.bash_r("lvmlockctl -i | grep %s" % vgUuid)
+        if return_code != 0:
             raise RetryException("can not find lock space for vg %s via lvmlockctl" % vgUuid)
-        elif vg_lock_is_adding(vgUuid) is False:
-            return True
+        elif vg_lock_is_adding(vgUuid) is True:
+            raise RetryException("lock space for vg %s is adding" % vgUuid)
         else:
-            return False
+            return True
 
     @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
     def start_lock(vgUuid):
-        cmd = shell.ShellCmd("vgchange --lock-start %s" % vgUuid)
-        cmd(is_exception=True)
-        if cmd.return_code != 0:
+        return_code = bash.bash_r("vgchange --lock-start %s" % vgUuid)
+        if return_code != 0:
             raise Exception("vgchange --lock-start failed")
 
         vg_lock_exists(vgUuid)
@@ -163,9 +294,95 @@ def start_vg_lock(vgUuid):
         raise e
 
 
-def get_vg_size(vgUuid):
-    cmd = shell.ShellCmd("vgs --nolocking --readonly %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
+def stop_vg_lock(vgUuid):
+    @linux.retry(times=3, sleep_time=random.uniform(0.1, 1))
+    def vg_lock_not_exists(vgUuid):
+        cmd = shell.ShellCmd("lvmlockctl -i | grep %s" % vgUuid)
+        cmd(is_exception=False)
+        if cmd.return_code == 0:
+            raise RetryException("lock space for vg %s still exists" % vgUuid)
+        else:
+            return True
+
+    @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
+    def stop_lock(vgUuid):
+        cmd = shell.ShellCmd("vgchange --lock-stop %s" % vgUuid)
+        cmd(is_exception=True)
+        if cmd.return_code != 0:
+            raise Exception("vgchange --lock-stop failed")
+
+        vg_lock_not_exists(vgUuid)
+
+    try:
+        vg_lock_not_exists(vgUuid)
+    except RetryException:
+        stop_lock(vgUuid)
+    except Exception as e:
+        raise e
+
+
+def get_running_host_id(vgUuid):
+    cmd = shell.ShellCmd("sanlock client gets | grep %s | awk -F':' '{ print $2 }'" % vgUuid)
+    cmd(is_exception=False)
+    if cmd.stdout.strip() == "":
+        raise Exception("can not get running host id for vg %s" % vgUuid)
+    return cmd.stdout.strip()
+
+
+def get_wwid(disk_path):
+    cmd = shell.ShellCmd("udevadm info --name=%s | grep 'disk/by-id.*' -m1 -o | awk -F '/' {' print $3 '}" % disk_path)
+    cmd(is_exception=False)
+    return cmd.stdout.strip()
+
+
+def backup_super_block(disk_path):
+    wwid = get_wwid(disk_path)
+    if wwid is None or wwid == "":
+        logger.warn("can not get wwid of disk %s" % disk_path)
+
+    current_time = time.time()
+    disk_back_file = os.path.join(LVM_CONFIG_BACKUP_PATH, "%s.%s.%s" % (wwid, SUPER_BLOCK_BACKUP, current_time))
+    cmd = shell.ShellCmd("dd if=%s of=%s bs=64KB count=1 conv=notrunc" % (disk_path, disk_back_file))
+    cmd(is_exception=False)
+
+
+@bash.in_bash
+def wipe_fs(disks):
+    for disk in disks:
+        cmd = shell.ShellCmd("pvdisplay %s" % disk)
+        cmd(is_exception=False)
+        if cmd.return_code == 0:
+            continue
+
+        backup_super_block(disk)
+        need_flush_mpath = False
+
+        cmd_part = shell.ShellCmd("partprobe -s %s" % disk)
+        cmd_part(is_exception=False)
+
+        cmd_type = shell.ShellCmd("lsblk %s -oTYPE | grep mpath" % disk)
+        cmd_type(is_exception=False)
+        if cmd_type.stdout.strip() != "":
+            need_flush_mpath = True
+
+        cmd_wipefs = shell.ShellCmd("wipefs -af %s" % disk)
+        cmd_wipefs(is_exception=False)
+
+        if need_flush_mpath:
+            cmd_flush_mpath = shell.ShellCmd("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
+            cmd_flush_mpath(is_exception=False)
+
+
+def add_pv(vg_uuid, disk_path, metadata_size):
+    cmd = shell.ShellCmd("vgextend --metadatasize %s %s %s" % (metadata_size, vg_uuid, disk_path))
     cmd(is_exception=True)
+
+
+def get_vg_size(vgUuid, raise_exception=True):
+    cmd = shell.ShellCmd("vgs --nolocking --readonly %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
+    cmd(is_exception=raise_exception)
+    if cmd.return_code != 0:
+        return None, None
     return cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
 
 
@@ -173,20 +390,28 @@ def add_vg_tag(vgUuid, tag):
     cmd = shell.ShellCmd("vgchange --addtag %s %s" % (tag, vgUuid))
     cmd(is_exception=True)
 
+
 def has_lv_tag(path, tag):
+    if tag == "":
+        logger.debug("check tag is empty, return false")
+        return False
     o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings --readonly 2>/dev/null | wc -l" % (tag, path))
     return o.strip() == '1'
+
 
 def clean_lv_tag(path, tag):
     if has_lv_tag(path, tag):
         shell.run('lvchange --deltag %s %s' % (tag, path))
 
+
 def add_lv_tag(path, tag):
     if not has_lv_tag(path, tag):
         shell.run('lvchange --addtag %s %s' % (tag, path))
 
+
 def get_meta_lv_path(path):
     return path+"_meta"
+
 
 def delete_image(path, tag):
     def activate_and_remove(f):
@@ -201,6 +426,7 @@ def delete_image(path, tag):
         activate_and_remove(get_meta_lv_path(fpath))
         fpath = backing
 
+
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | grep -Po '%s::%s::[\d.]*'" % (vgUuid, tag, hostUuid))
     cmd(is_exception=False)
@@ -212,14 +438,24 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd(is_exception=False)
 
 
+@bash.in_bash
 @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
 def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
-    cmd = shell.ShellCmd("lvcreate -an --addtag %s --size %sb --name %s %s" %
+    bash.bash_errorout("lvcreate -an --addtag %s --size %sb --name %s %s" %
                          (tag, calcLvReservedSize(size), lvName, vgName))
-    cmd(is_exception=True)
+    if not lv_exists(path):
+        raise Exception("can not find lv %s after create", path)
+
+    with OperateLv(path, shared=False):
+        dd_zero(path)
+
+
+def dd_zero(path):
+    cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=65536 count=1 conv=sync,notrunc" % path)
+    cmd(is_exception=False)
 
 
 def get_lv_size(path):
@@ -233,36 +469,57 @@ def resize_lv(path, size):
     cmd(is_exception=True)
 
 
+@bash.in_bash
 @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
 def active_lv(path, shared=False):
     flag = "-ay"
     if shared:
         flag = "-asy"
 
-    cmd = shell.ShellCmd("lvchange %s %s" % (flag, path))
-    cmd(is_exception=True)
+    bash.bash_errorout("lvchange %s %s" % (flag, path))
+    if lv_is_active(path) is False:
+        raise Exception("active lv %s with %s failed" % (path, flag))
 
 
+@bash.in_bash
+@linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
 def deactive_lv(path, raise_exception=True):
     if not lv_exists(path):
         return
-    cmd = shell.ShellCmd("lvchange -an %s" % path)
-    cmd(is_exception=raise_exception)
+    if not lv_is_active(path):
+        return
+    if raise_exception:
+        bash.bash_errorout("lvchange -an %s" % path)
+    else:
+        bash.bash_r("lvchange -an %s" % path)
+    if lv_is_active(path):
+        raise RetryException("lv %s is still active after lvchange -an" % path)
 
 
+@bash.in_bash
 def delete_lv(path, raise_exception=True):
+    logger.debug("deleting lv %s" % path)
     # remove meta-lv if any
     if lv_exists(get_meta_lv_path(path)):
         shell.run("lvremove -y %s" % get_meta_lv_path(path))
     if not lv_exists(path):
         return
-    cmd = shell.ShellCmd("lvremove -y %s" % path)
-    cmd(is_exception=raise_exception)
-    return cmd.return_code
+    if raise_exception:
+        o = bash.bash_errorout("lvremove -y %s" % path)
+    else:
+        o = bash.bash_o("lvremove -y %s" % path)
+    return o
 
 
+@bash.in_bash
 def lv_exists(path):
-    cmd = shell.ShellCmd("lvs --nolocking --readonly %s" % path)
+    r = bash.bash_r("lvs --nolocking --readonly %s" % path)
+    return r == 0
+
+
+@bash.in_bash
+def vg_exists(vgUuid):
+    cmd = shell.ShellCmd("vgs --nolocking %s" % (vgUuid))
     cmd(is_exception=False)
     return cmd.return_code == 0
 
@@ -274,17 +531,93 @@ def lv_uuid(path):
 
 
 def lv_is_active(path):
-    cmd = shell.ShellCmd("lvs --nolocking --readonly --noheadings %s -oactive | grep active" % path)
+    # NOTE(weiw): use readonly to get active may return 'unknown'
+    r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % path)
+    return r == 0
+
+
+@bash.in_bash
+def lv_rename(old_abs_path, new_abs_path, overwrite=False):
+    if not lv_exists(new_abs_path):
+        return bash.bash_roe("lvrename %s %s" % (old_abs_path, new_abs_path))
+
+    if overwrite is False:
+        raise Exception("lv with name %s is already exists, can not rename lv %s to it" %
+                        (new_abs_path, old_abs_path))
+
+    tmp_path = new_abs_path + "_%s" % int(time.time())
+    r, o, e = lv_rename(new_abs_path, tmp_path)
+    if r != 0:
+        raise Exception("rename lv %s to tmp name %s failed: stdout: %s, stderr: %s" %
+                        (new_abs_path, tmp_path, o, e))
+
+    r, o, e = lv_rename(old_abs_path, new_abs_path)
+    if r != 0:
+        bash.bash_errorout("lvrename %s %s" % (tmp_path, new_abs_path))
+        raise Exception("rename lv %s to tmp name %s failed: stdout: %s, stderr: %s" %
+                        (old_abs_path, new_abs_path, o, e))
+
+    delete_lv(tmp_path, False)
+
+
+def list_local_active_lvs(vgUuid):
+    cmd = shell.ShellCmd("lvs --nolocking %s --noheadings -opath -Slv_active=active" % vgUuid)
     cmd(is_exception=False)
-    return cmd.return_code == 0
+    result = []
+    for i in cmd.stdout.strip().split("\n"):
+        if i != "":
+            result.append(i)
+    return result
 
 
+def check_gl_lock(raise_exception=False):
+    r = bash.bash_r("lvmlockctl -i | grep 'LK GL'")
+    if r == 0:
+        return
+    logger.debug("can not find any gl lock")
+    r, o = bash.bash_ro("vgs --nolocking --noheadings -Svg_lock_type=sanlock -oname")
+    result = []
+    for i in o.strip().split("\n"):
+        if i != "":
+            result.append(i)
+    if len(result) == 0:
+        if raise_exception is True:
+            raise Exception("can not find any sanlock shared vg")
+        else:
+            return
+    r, o, e = bash.bash_roe("lvmlockctl --gl-enable %s" % result[0])
+    if r != 0:
+        raise Exception("failed to enable gl lock on vg: %s" % result[0])
+
+
+def do_active_lv(absolutePath, lockType, recursive):
+    def handle_lv(lockType, fpath):
+        if lockType > LvmlockdLockType.NULL:
+            active_lv(fpath, lockType == LvmlockdLockType.SHARE)
+        else:
+            deactive_lv(fpath)
+
+    handle_lv(lockType, absolutePath)
+
+    if recursive is False or lockType is LvmlockdLockType.NULL:
+        return
+
+    while linux.qcow2_get_backing_file(absolutePath) != "":
+        absolutePath = linux.qcow2_get_backing_file(absolutePath)
+        if lockType == LvmlockdLockType.NULL:
+            handle_lv(LvmlockdLockType.NULL, absolutePath)
+        else:
+            # activate backing files only in shared mode
+            handle_lv(LvmlockdLockType.SHARE, absolutePath)
+
+
+@bash.in_bash
+@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
 def get_lv_locking_type(path):
     if not lv_is_active(path):
         return LvmlockdLockType.NULL
-    cmd = shell.ShellCmd("lvmlockctl -i | grep %s | awk '{print $3}'" % lv_uuid(path))
-    cmd(is_exception=True)
-    return LvmlockdLockType.from_abbr(cmd.stdout.strip())
+    output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
+    return LvmlockdLockType.from_abbr(output.strip())
 
 
 def lv_operate(abs_path, shared=False):
@@ -310,17 +643,22 @@ def qcow2_lv_recursive_operate(abs_path, shared=False):
 
 
 class OperateLv(object):
-    def __init__(self, abs_path, shared=False):
+    def __init__(self, abs_path, shared=False, delete_when_exception=False):
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
-        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared == False else LvmlockdLockType.SHARE
+        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
+        self.delete_when_exception = delete_when_exception
 
     def __enter__(self):
         if self.exists_lock < self.target_lock:
             active_lv(self.abs_path, self.shared)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_val is not None and self.delete_when_exception is True:
+            delete_lv(self.abs_path, False)
+            return
+
         if self.exists_lock == LvmlockdLockType.NULL:
             deactive_lv(self.abs_path, raise_exception=False)
         else:
@@ -328,18 +666,21 @@ class OperateLv(object):
 
 
 class RecursiveOperateLv(object):
-    def __init__(self, abs_path, shared=False):
+    def __init__(self, abs_path, shared=False, skip_deactivate_tag="", delete_when_exception=False):
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
-        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared == False else LvmlockdLockType.SHARE
+        self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
         self.backing = None
+        self.delete_when_exception = delete_when_exception
+        self.skip_deactivate_tag = skip_deactivate_tag
 
     def __enter__(self):
         if self.exists_lock < self.target_lock:
             active_lv(self.abs_path, self.shared)
         if linux.qcow2_get_backing_file(self.abs_path) != "":
-            self.backing = RecursiveOperateLv(linux.qcow2_get_backing_file(self.abs_path), True)
+            self.backing = RecursiveOperateLv(
+                linux.qcow2_get_backing_file(self.abs_path), True, self.skip_deactivate_tag, False)
 
         if self.backing is not None:
             self.backing.__enter__()
@@ -347,6 +688,18 @@ class RecursiveOperateLv(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.backing is not None:
             self.backing.__exit__(exc_type, exc_val, exc_tb)
+
+        if exc_val is not None \
+                and self.delete_when_exception is True\
+                and not has_lv_tag(self.abs_path, self.skip_deactivate_tag):
+            delete_lv(self.abs_path, False)
+            return
+
+        if has_lv_tag(self.abs_path, self.skip_deactivate_tag):
+            logger.debug("the volume %s has skip tag: %s" %
+                         (self.abs_path, has_lv_tag(self.abs_path, self.skip_deactivate_tag)))
+            return
+
         if self.exists_lock == LvmlockdLockType.NULL:
             deactive_lv(self.abs_path, raise_exception=False)
         else:

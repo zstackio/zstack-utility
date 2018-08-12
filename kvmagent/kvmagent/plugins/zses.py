@@ -60,6 +60,7 @@ class GetVolumeBaseImagePathRsp(AgentResponse):
     def __init__(self):
         super(GetVolumeBaseImagePathRsp, self).__init__()
         self.path = None
+        self.size = None
 
 class GetQCOW2ReferenceRsp(AgentResponse):
     def __init__(self):
@@ -141,13 +142,11 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
 
         rsp = GetQCOW2ReferenceRsp()
         rsp.referencePaths = []
-        for f in out.split('\n'):
-            f = f.strip(' \t\r\n')
-            if not f: continue
+        real_path = os.path.realpath(cmd.path)
+        for f in out.splitlines():
             backing_file = linux.qcow2_get_backing_file(f)
-            if backing_file == cmd.path:
+            if os.path.realpath(backing_file) == real_path:
                 rsp.referencePaths.append(f)
-
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -161,7 +160,16 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
     def get_volume_base_image_path(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVolumeBaseImagePathRsp()
-        rsp.path = linux.get_qcow2_base_image_path_recusively(cmd.installPath)
+
+        if not os.path.basename(cmd.installDir).endswith(cmd.volumeUuid):
+            raise Exception('maybe you pass a wrong install dir')
+
+        path = linux.get_qcow2_base_image_recusively(cmd.volumeInstallDir, cmd.imageCacheDir)
+        if not path:
+            return jsonobject.dumps(rsp)
+
+        rsp.path = path
+        rsp.size = linux.get_qcow2_file_chain_size(path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -348,9 +356,10 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
 
             if cmd.dstUsername == 'root':
                 _, _, err = bash_progress_1(
-                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p "{{PASSWORD}}" ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress)
+                    'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -p \'{{PASSWORD}}\' ssh -o StrictHostKeyChecking=no -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
+
                 if err:
-                    raise err
+                    raise Exception('fail to migrate vm to host, because %s' % str(err))
             else:
                 raise Exception("cannot support migrate to non-root user host")
             written += os.path.getsize(path)
@@ -420,7 +429,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.snapshotInstallPath
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone(install_path, new_volume_path)
+        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
         rsp.newVolumeInstallPath = new_volume_path
         return jsonobject.dumps(rsp)
 
@@ -513,9 +522,9 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
                 os.makedirs(dirname)
 
             if cmd.backingFile:
-                linux.qcow2_create_with_backing_file(cmd.backingFile, cmd.installUrl)
+                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
             else:
-                linux.qcow2_create(cmd.installUrl, cmd.size)
+                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.uuid, cmd.name, str(e))
@@ -541,7 +550,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0775)
 
-        linux.qcow2_clone(cmd.templatePathInCache, cmd.installUrl)
+        linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installUrl, cmd)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 

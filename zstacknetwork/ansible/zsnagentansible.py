@@ -73,7 +73,7 @@ zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
 zstacklib = ZstackLib(zstacklib_args)
 
-if distro == "CentOS" or distro == "RedHat":
+if distro in RPM_BASED_OS:
     if zstack_repo == 'false':
         yum_install_package("libpcap", host_post_info)
     else:
@@ -81,7 +81,7 @@ if distro == "CentOS" or distro == "RedHat":
                    "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % ("libpcap", zstack_repo)
         run_remote_command(command, host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     apt_install_packages(["libpcap"], host_post_info)
 
 else:
@@ -107,14 +107,14 @@ run_remote_command(add_true_in_command(command), host_post_info)
 # integrate zstack-store with init.d
 run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent /etc/init.d/"), host_post_info)
 if tmout != None:
-    if distro == "CentOS" or distro == "RedHat":
+    if distro in RPM_BASED_OS:
         command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on" % (tmout)
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start" % (tmout)
 else:
-    if distro == "CentOS" or distro == "RedHat":
+    if distro in RPM_BASED_OS:
         command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
-    elif distro == "Debian" or distro == "Ubuntu":
+    elif distro in DEB_BASED_OS:
         command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
 run_remote_command(add_true_in_command(command), host_post_info)
 

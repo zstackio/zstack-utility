@@ -24,8 +24,14 @@ import time
 import libvirt
 import pyudev
 import traceback
+import Queue
 
 IS_AARCH64 = platform.machine() == 'aarch64'
+
+class ReconnectMeCmd(object):
+    def __init__(self):
+        self.hostUuid = None
+        self.reason = None
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -88,6 +94,15 @@ class UpdateHostOSRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UpdateHostOSRsp, self).__init__()
 
+class UpdateDependencyCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(UpdateDependencyCmd, self).__init__()
+        self.hostUuid = None
+
+class UpdateDependencyRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateDependencyRsp, self).__init__()
+
 logger = log.get_logger(__name__)
 
 def _get_memory(word):
@@ -95,7 +110,7 @@ def _get_memory(word):
     (name, capacity) = out.split(':')
     capacity = re.sub('[k|K][b|B]', '', capacity).strip()
     #capacity = capacity.rstrip('kB').rstrip('KB').rstrip('kb').strip()
-    return sizeunit.KiloByte.toByte(long(capacity))   
+    return sizeunit.KiloByte.toByte(long(capacity))
 
 def _get_total_memory():
     return _get_memory('MemTotal')
@@ -217,6 +232,9 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
+    UPDATE_DEPENDENCY = "/host/updatedependency"
+
+    queue = Queue.Queue()
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -272,13 +290,13 @@ class HostPlugin(kvmagent.KvmAgent):
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
         rsp.iptablesSucc = apply_iptables_result
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def ping(self, req):
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def echo(self, req):
         logger.debug('get echoed')
@@ -286,6 +304,10 @@ class HostPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def fact(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        ignore_msrs = 1 if cmd.ignoreMsrs else 0
+        shell.run("/bin/echo %s > /sys/module/kvm/parameters/ignore_msrs" % ignore_msrs)
+
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
@@ -299,6 +321,15 @@ class HostPlugin(kvmagent.KvmAgent):
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
+            cpu_model = None
+            try:
+                cpu_model = self._get_host_cpu_model()
+            except AttributeError:
+                logger.debug("maybe XmlObject has no attribute model, use uname -p to get one")
+                if cpu_model is None:
+                    cpu_model = shell.call('uname -p').strip("\t\r\n")
+
+            rsp.cpuModelName = cpu_model
         else:
             if shell.run('grep vmx /proc/cpuinfo') == 0:
                 rsp.hvmCpuFlag = 'vmx'
@@ -334,23 +365,23 @@ class HostPlugin(kvmagent.KvmAgent):
         ret = jsonobject.dumps(rsp)
         logger.debug('get host capacity: %s' % ret)
         return ret
-    
+
     def _heartbeat_func(self, heartbeat_file):
         class Heartbeat(object):
             def __init__(self):
                 self.current = None
-        
+
         hb = Heartbeat()
         hb.current = time.time()
         with open(heartbeat_file, 'w') as fd:
             fd.write(jsonobject.dumps(hb))
         return True
-    
+
     @kvmagent.replyerror
     def setup_heartbeat_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetupMountablePrimaryStorageHeartbeatResponse()
-        
+
         for hb in cmd.heartbeatFilePaths:
             hb_dir = os.path.dirname(hb)
             mount_path = os.path.dirname(hb_dir)
@@ -358,21 +389,21 @@ class HostPlugin(kvmagent.KvmAgent):
                 rsp.error = '%s is not mounted, setup heartbeat file[%s] failed' % (mount_path, hb)
                 rsp.success = False
                 return jsonobject.dumps(rsp)
-            
+
         for hb in cmd.heartbeatFilePaths:
             t = self.heartbeat_timer.get(hb, None)
             if t:
                 t.cancel()
-            
+
             hb_dir = os.path.dirname(hb)
             if not os.path.exists(hb_dir):
                 os.makedirs(hb_dir, 0755)
-                
+
             t = thread.timer(cmd.heartbeatInterval, self._heartbeat_func, args=[hb], stop_on_exception=False)
             t.start()
             self.heartbeat_timer[hb] = t
             logger.debug('create heartbeat file at[%s]' % hb)
-            
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -432,6 +463,9 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:]) if len(line) > 2 else ""
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
+                    # special case: USB2.0 with speed 1.5MBit/s or 12MBit/s should be attached to USB1.1 Controller
+                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % devId)
+                    info.usbVersion = info.usbVersion if rst != 0 else '1.1'
                 elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
                 elif line[0] == 'iProduct' and len(line) > 2:
@@ -498,9 +532,30 @@ if __name__ == "__main__":
             logger.debug("successfully run: %s" % yum_cmd)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def update_dependency(self, req):
+        rsp = UpdateDependencyRsp()
+        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y"
+        if shell.run("which yum") != 0:
+            rsp.success = False
+            rsp.error = "no yum command found, cannot update kvmagent dependencies"
+        elif shell.run("yum --disablerepo=* --enablerepo=zstack-mn repoinfo") != 0:
+            rsp.success = False
+            rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
+        elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
+            rsp.success = False
+            rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
+        elif shell.run(yum_cmd) != 0:
+            rsp.success = False
+            rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn repo"
+        else:
+            logger.debug("successfully run: %s" % yum_cmd)
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
-        
+
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.PING_PATH, self.ping)
@@ -510,6 +565,7 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.FACT_PATH, self.fact)
         http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
         http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
+        http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
@@ -517,6 +573,49 @@ if __name__ == "__main__":
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)
+
+        @thread.AsyncThread
+        def wait_end_signal():
+            while True:
+                try:
+                    self.queue.get(True)
+
+                    # the libvirt has been stopped or restarted
+                    # to prevent fd leak caused by broken libvirt connection
+                    # we have to ask mgmt server to reboot the agent
+                    url = self.config.get(kvmagent.SEND_COMMAND_URL)
+                    if not url:
+                        logger.warn('cannot find SEND_COMMAND_URL, unable to ask the mgmt server to reconnect us')
+                        os._exit(1)
+
+                    host_uuid = self.config.get(kvmagent.HOST_UUID)
+                    if not host_uuid:
+                        logger.warn('cannot find HOST_UUID, unable to ask the mgmt server to reconnect us')
+                        os._exit(1)
+
+                    logger.warn("libvirt has been rebooted or stopped, ask the mgmt server to reconnt us")
+                    cmd = ReconnectMeCmd()
+                    cmd.hostUuid = host_uuid
+                    cmd.reason = "libvirt rebooted or stopped"
+                    http.json_dump_post(url, cmd, {'commandpath': '/kvm/reconnectme'})
+                    os._exit(1)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        wait_end_signal()
+
+        @thread.AsyncThread
+        def monitor_libvirt():
+            while True:
+                if shell.run('pid=$(cat /var/run/libvirtd.pid); ps -p $pid > /dev/null') != 0:
+                    logger.warn(
+                        "cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
+                    self.queue.put("exit")
+
+                time.sleep(20)
+
+        monitor_libvirt()
 
 
     def stop(self):

@@ -74,7 +74,7 @@ else:
 
 run_remote_command("rm -rf %s/*" % vr_root, host_post_info)
 
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         # name: install vr related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q haproxy dnsmasq | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
@@ -84,7 +84,7 @@ if distro == "RedHat" or distro == "CentOS":
         # name: install virtual router related packages for RedHat
         for pkg in ["haproxy", "dnsmasq"]:
             yum_install_package(pkg, host_post_info)
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     # name: install virtual router related packages for Debian
     apt_install_packages(["dnsmasq"], host_post_info)
 else:
@@ -168,7 +168,7 @@ if chroot_env == 'false':
     # name: restart dnsmasq
     service_status("dnsmasq", "state=restarted enabled=yes", host_post_info)
 else:
-    if distro == "RedHat" or distro == "CentOS":
+    if distro in RPM_BASED_OS:
         service_status("zstack-virtualrouter", "enabled=yes state=stopped", host_post_info)
     else:
         command = "sed -i '/zstack-virtualrouter start/d' /etc/rc.local"

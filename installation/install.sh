@@ -309,25 +309,43 @@ echo_subtitle(){
     echo -n "    $*:"|tee -a $ZSTACK_INSTALL_LOG
 }
 
+set_tomcat_config() {
+    new_timeout=120000
+    new_max_thread_num=400
+    tomcat_config_path=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf
+    sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
+    sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
+    sed -i 's/redirectPort="8443" \/>/redirectPort="8443" maxHttpHeaderSize="65536" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>/g' $tomcat_config_path/server.xml
+
+    # Fix ZSTAC-13580
+    sed -i '/autoDeploy/a \ \ \ \ \ \ \ \ <Context path="/zstack" reloadable="false" crossContext="true" allowLinking="true"/>' $tomcat_config_path/server.xml
+}
+
 cs_check_hostname(){
     which hostname &>/dev/null
     [ $? -ne 0 ] && return 
 
     current_hostname=`hostname`
     CHANGE_HOSTNAME=`echo $MANAGEMENT_IP | sed 's/\./-/g'`
+    CURRENT_HOST_ITEM="$MANAGEMENT_IP $current_hostname"
     HOSTS_ITEM="$MANAGEMENT_IP $CHANGE_HOSTNAME"
-
-    # insert into /etc/hosts if $HOSTS_ITEM not exists
-    grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
 
     # current hostname is localhost
     if [ "localhost" = $current_hostname ] || [ "localhost.localdomain" = $current_hostname ] ; then
         which hostnamectl >>/dev/null 2>&1
         if [ $? -ne 0 ]; then
+            #hostnamectl only valid in redhat OS.
             hostname $CHANGE_HOSTNAME
         else
             hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+            #If /etc/hostname is same with CHANGE_HOSTNAME, but hostname 
+            # command is different, hostnamectl will not change current 
+            # hostname, so we need to manually reset current hostname as well.
+            hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
         fi
+        # insert into /etc/hosts if $HOSTS_ITEM not exists
+        grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
+
         echo "Your OS hostname is set as $current_hostname, which will block vm live migration. You can set a special hostname, or directly use $CHANGE_HOSTNAME by running following commands in CentOS6:
 
         hostname $CHANGE_HOSTNAME
@@ -335,6 +353,7 @@ cs_check_hostname(){
 
 or following commands in CentOS7:
         hostnamectl set-hostname $CHANGE_HOSTNAME
+        hostname $CHANGE_HOSTNAME
         echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
 
 " >> $ZSTACK_INSTALL_LOG
@@ -343,13 +362,26 @@ or following commands in CentOS7:
 
     # current hostname is not same with IP
     ip addr | grep inet |awk '{print $2}'|grep $current_hostname &> /dev/null
-    [ $? -ne 0 ] && return 0
+    if [ $? -ne 0 ]; then
+        # insert into /etc/hosts if $CURRENT_HOST_ITEM not exists
+        grep -q "$CURRENT_HOST_ITEM" /etc/hosts || echo "$CURRENT_HOST_ITEM" >> /etc/hosts
+        # must reset hostname to keep it same with system to avoid of user manually modify /etc/hostname without reboot system before running installer.
+        which hostnamectl >>/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            hostname $current_hostname
+        else
+            hostnamectl set-hostname $current_hostname >>$ZSTACK_INSTALL_LOG 2>&1
+            hostname $current_hostname >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
+        return 0
+    fi
 
     # current hostname is same with IP
     echo "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
 Please fix it by running following commands in CentOS7:
 
     hostnamectl set-hostname MY_REAL_HOSTNAME
+    hostname MY_REAL_HOSTNAME
     echo \"$current_hostname MY_REAL_HOSTNAME\" >>/etc/hosts
 
 Or use other hostname setting method in other system. 
@@ -360,11 +392,12 @@ You can also add '-q' to installer, then Installer will help you to set one.
     which hostnamectl >>/dev/null 2>&1
     if [ $? -ne 0 ]; then
         hostname $CHANGE_HOSTNAME
-        echo "$current_hostname $CHANGE_HOSTNAME" >>/etc/hosts
     else
         hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
-        echo "$current_hostname $CHANGE_HOSTNAME" >>/etc/hosts
+        hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
     fi
+    # insert into /etc/hosts if $HOSTS_ITEM not exists
+    grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
 }
 
 cs_check_mysql_password () {
@@ -570,6 +603,16 @@ do_enable_sudo(){
     fi
 }
 
+do_config_limits(){
+nr_open=`sysctl -n fs.nr_open`
+cat > /etc/security/limits.d/10-zstack.conf << EOF
+zstack  soft  nofile  $nr_open
+zstack  hard  nofile  $nr_open
+zstack  soft  nproc  $nr_open
+zstack  hard  nproc  $nr_open
+EOF
+}
+
 do_check_system(){
     echo_subtitle "Check System"
 
@@ -650,6 +693,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
         chown -R zstack.zstack $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     do_enable_sudo
+    do_config_limits
     pass
 }
 
@@ -707,6 +751,8 @@ ia_install_python_gcc_rh(){
 
 ia_install_pip(){
     echo_subtitle "Install PIP"
+    rpm -q python2-pip >/dev/null 2>&1 && return
+
     if [ ! -z $DEBUG ]; then
         easy_install -i $pypi_source_easy_install --upgrade pip
     else
@@ -773,6 +819,21 @@ download_zstack(){
     show_spinner iz_unpack_zstack
 }
 
+# create symbol links for zstack-repo
+iu_deploy_zstack_repo() {
+    echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
+
+    BASEARCH=`uname -m`
+    DISTRO=$(sed -n 's/^distroverpkg=//p' /etc/yum.conf)
+    RELEASEVER=$(rpm -q --qf "%{version}" -f /etc/$DISTRO)
+    [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
+    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/{x86_64,aarch64}
+    ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
+    ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
+    ln -s /opt/zstack-dvd-altarch/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/os >/dev/null 2>&1
+    ln -s /opt/zstack-dvd-altarch/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/qemu-kvm-ev >/dev/null 2>&1
+}
+
 unpack_zstack_into_tomcat(){
     echo_title "Install ${PRODUCT_NAME} Package"
     echo ""
@@ -782,6 +843,7 @@ unpack_zstack_into_tomcat(){
     fi
     show_spinner iz_unzip_tomcat
     show_spinner iz_install_zstack
+    show_spinner iu_deploy_zstack_repo
 }
 
 upgrade_zstack(){
@@ -790,6 +852,15 @@ upgrade_zstack(){
 
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
+
+    # configure management.server.ip if not exists
+    zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
+
+    # configure chrony.serverIp if not exists
+    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
     fi
@@ -798,13 +869,13 @@ upgrade_zstack(){
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
+    show_spinner iu_deploy_zstack_repo
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
-    show_spinner is_enable_ntpd
+    show_spinner is_enable_chronyd
     show_spinner cs_config_zstack_properties
-    show_spinner cs_config_catalina_option
     show_spinner cs_append_iptables
 
     # if -i is used, then do not upgrade zstack ui
@@ -855,7 +926,7 @@ upgrade_zstack(){
 
     #set zstack upgrade params 
     upgrade_params=''
-    post_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
+    post_upgrade_version=`zstack-ctl get_version`
 
     for item in ${upgrade_params_array[*]}; do
         version=`echo $item | cut -d ',' -f 1`
@@ -869,6 +940,10 @@ upgrade_zstack(){
         fi
     done
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
+
+    # set ticket.sns.topic.http.url if not exists
+    zstack-ctl show_configuration | grep 'ticket.sns.topic.http.url' >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure ticket.sns.topic.http.url=http://localhost:5000/zwatch/webhook
 
     # set sns.systemTopic.endpoints.http.url if not exists
     zstack-ctl show_configuration | grep 'sns.systemTopic.endpoints.http.url' >/dev/null 2>&1
@@ -983,6 +1058,7 @@ is_install_general_libs_rh(){
             python-devel \
             gcc \
             autoconf \
+            chrony \
             iptables \
             iptables-services \
             tar \
@@ -994,8 +1070,6 @@ is_install_general_libs_rh(){
             openssh-server \
             sshpass \
             sudo \
-            ntp \
-            ntpdate \
             bzip2 \
             libffi-devel \
             openssl-devel \
@@ -1100,8 +1174,6 @@ is_install_general_libs_deb(){
         unzip \
         apache2 \
         sshpass \
-        ntp  \
-        ntpdate \
         bzip2 \
         libffi-dev \
         libssl-dev \
@@ -1144,64 +1216,53 @@ install_system_libs(){
     #mysql and rabbitmq will be installed by zstack-ctl later
     show_spinner ia_install_pip
     show_spinner is_install_virtualenv
-    #enable ntpd
-    show_spinner is_enable_ntpd
+    #enable chronyd
+    show_spinner is_enable_chronyd
 }
 
-is_enable_ntpd(){
-    echo_subtitle "Enable NTP"
+is_enable_chronyd(){
+    echo_subtitle "Enable chronyd"
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ];then
         if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
-            grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
+            grep '^server 0.centos.pool.ntp.org' /etc/chrony.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
-                echo "server 0.pool.ntp.org iburst" >> /etc/ntp.conf
-                echo "server 1.pool.ntp.org iburst" >> /etc/ntp.conf
+                echo "server 0.pool.ntp.org iburst" >> /etc/chrony.conf
+                echo "server 1.pool.ntp.org iburst" >> /etc/chrony.conf
             fi
-        else
-            cp /etc/ntp.conf /etc/ntp.conf.bak
-            sed -i '/^server/d' /etc/ntp.conf
-            sed -i '/^fudge/d' /etc/ntp.conf
-            echo "server 127.127.1.0" >> /etc/ntp.conf
-            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
         fi
-        grep "server 127.127.1.0" -q /etc/ntp.conf >/dev/null 2>&1
+        grep "^local stratum " -q /etc/chrony.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
-            echo "server 127.127.1.0" >> /etc/ntp.conf
+            echo "local stratum 10" >> /etc/chrony.conf
         fi
-        grep "fudge 127.127.1.0 stratum " -q /etc/ntp.conf >/dev/null 2>&1
+        grep "^allow" -q /etc/chrony.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
-            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
+            echo "allow 0.0.0.0/0" >> /etc/chrony.conf
         fi
-        systemctl disable chronyd.service >> $ZSTACK_INSTALL_LOG 2>&1
-        systemctl enable ntpd >> $ZSTACK_INSTALL_LOG 2>&1
-        systemctl restart ntpd >> $ZSTACK_INSTALL_LOG 2>&1
+
+        systemctl disable ntpd >> $ZSTACK_INSTALL_LOG 2>&1 || true
+        systemctl enable chronyd.service >> $ZSTACK_INSTALL_LOG 2>&1
+        systemctl restart chronyd.service >> $ZSTACK_INSTALL_LOG 2>&1
     else
         if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
-            grep '^server 0.ubuntu.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1
+            grep '^server 0.ubuntu.pool.ntp.org' /etc/chrony.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
-                echo "server 0.ubuntu.pool.ntp.org" >> /etc/ntp.conf
-                echo "server ntp.ubuntu.com" >> /etc/ntp.conf
+                echo "server 0.ubuntu.pool.ntp.org" >> /etc/chrony.conf
+                echo "server ntp.ubuntu.com" >> /etc/chrony.conf
             fi
-        else
-            cp /etc/ntp.conf /etc/ntp.conf.bak
-            sed -i '/^server/d' /etc/ntp.conf
-            sed -i '/^fudge/d' /etc/ntp.conf
-            echo "server 127.127.1.0" >> /etc/ntp.conf
-            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
         fi
-        grep "server 127.127.1.0" -q /etc/ntp.conf >/dev/null 2>&1
+        grep "^local stratum " -q /etc/chrony.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
-            echo "server 127.127.1.0" >> /etc/ntp.conf
+            echo "local stratum 10" >> /etc/chrony.conf
         fi
-        grep "fudge 127.127.1.0 stratum " -q /etc/ntp.conf >/dev/null 2>&1
+        grep "^allow" -q /etc/chrony.conf >/dev/null 2>&1
         if [ $? -ne 0 ];then
-            echo "fudge 127.127.1.0 stratum 10" >> /etc/ntp.conf
+            echo "allow 0.0.0.0/0" >> /etc/chrony.conf
         fi
-        update-rc.d ntp defaults >>$ZSTACK_INSTALL_LOG 2>&1
-        service ntp restart >>$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d chrony defaults >>$ZSTACK_INSTALL_LOG 2>&1
+        service chrony restart >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
-        fail "failed to enable ntpd service."
+        fail "failed to enable chrony service."
     fi
 
     pass
@@ -1301,6 +1362,7 @@ uz_upgrade_tomcat(){
 
     cd $upgrade_folder
     unzip -o -d $TOMCAT_PATH apache-tomcat*.zip >>$ZSTACK_INSTALL_LOG 2>&1
+    unzip -o -d $ZSTACK_HOME/../ libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to unzip Tomcat package: $upgrade_folder/apache-tomcat*.zip."
     fi
@@ -1309,6 +1371,9 @@ uz_upgrade_tomcat(){
     if [ $? -ne 0 ];then
        fail "chmod failed in: $TOMCAT_PATH/apache-tomcat/bin/*."
     fi
+
+    #If tomcat use the default conf update it
+    set_tomcat_config
 
     pass
 }
@@ -1364,8 +1429,8 @@ uz_upgrade_zstack(){
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
     cd $upgrade_folder
 
-    #Do not upgrade db, when using -i
-    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+    #Do not upgrade db, when using -i or -k
+    if [ -z $ONLY_INSTALL_ZSTACK ] || [ -z $NEED_KEEP_DB ]; then
         # check mysql root password
         mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" >/dev/null 2>&1
         [ $? -eq 0 ] || fail "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
@@ -1472,11 +1537,11 @@ uz_upgrade_zstack(){
 uz_upgrade_zstack_ui_db(){
     echo_subtitle "Upgrade ${PRODUCT_NAME} UI Database"
 
-    #Do not upgrade db, when using -i
-    if [ -z $ONLY_INSTALL_ZSTACK ]; then
+    #Do not upgrade zstack_ui db when using -k
+    if [ -z $NEED_KEEP_DB ]; then
         upgrade_mysql_configuration
 
-        # upgrade zstack_ui database
+        # upgrade zstack_ui database --dry-run
         if [ ! -z $DEBUG ]; then
             if [ x"$FORCE" = x'n' ];then
                 zstack-ctl upgrade_ui_db --dry-run
@@ -1499,27 +1564,24 @@ uz_upgrade_zstack_ui_db(){
         fi
     fi
 
-    #Do not upgrade db, when using -i
-    if [ -z $ONLY_INSTALL_ZSTACK ] ; then
+    if [ -z $NEED_KEEP_DB ];then
         # upgrade zstack_ui database
-        if [ -z $NEED_KEEP_DB ];then
-            if [ ! -z $DEBUG ]; then
-                if [ x"$FORCE" = x'n' ];then
-                    zstack-ctl upgrade_ui_db
-                else
-                    zstack-ctl upgrade_ui_db --force
-                fi
+        if [ ! -z $DEBUG ]; then
+            if [ x"$FORCE" = x'n' ];then
+                zstack-ctl upgrade_ui_db
             else
-                if [ x"$FORCE" = x'n' ];then
-                    zstack-ctl upgrade_ui_db >>$ZSTACK_INSTALL_LOG 2>&1
-                else
-                    zstack-ctl upgrade_ui_db --force >>$ZSTACK_INSTALL_LOG 2>&1
-                fi
+                zstack-ctl upgrade_ui_db --force
+            fi
+        else
+            if [ x"$FORCE" = x'n' ];then
+                zstack-ctl upgrade_ui_db >>$ZSTACK_INSTALL_LOG 2>&1
+            else
+                zstack-ctl upgrade_ui_db --force >>$ZSTACK_INSTALL_LOG 2>&1
             fi
         fi
-        if [ $? -ne 0 ];then
-            fail "failed to upgrade zstack_ui database"
-        fi
+    fi
+    if [ $? -ne 0 ];then
+        fail "failed to upgrade zstack_ui database"
     fi
 
     pass
@@ -1532,14 +1594,15 @@ iz_unzip_tomcat(){
     if [ $? -ne 0 ];then
        fail "failed to unzip Tomcat package: $ZSTACK_INSTALL_ROOT/apache-tomcat*.zip."
     fi
+    unzip -o -d apache-tomcat/webapps/ libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
     apache_temp=`mktemp`
     apache_zip=`ls apache-tomcat*.zip`
     mv $apache_zip $apache_temp
     ln -s apache-tomcat* apache-tomcat
     mv $apache_temp $apache_zip
 
-    #delete unused web app folders 
-    rm -rf $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps/*
+    #delete unused web app folders, 'ROOT' should be left
+    find $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps -mindepth 1 -not -name 'ROOT' -delete
 
     chmod a+x apache-tomcat/bin/*
     if [ $? -ne 0 ];then
@@ -1557,15 +1620,6 @@ iz_install_zstack(){
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
     ln -s $CATALINA_ZSTACK_PATH/VERSION $ZSTACK_INSTALL_ROOT/VERSION  
-    #create symbolic link for /opt/zstack-dvd for hosts doing offline 
-    # installation
-    rm -f $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
-    ln -s /opt/zstack-dvd $ZSTACK_HOME/static/zstack-dvd >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-        fail "failed to create symbolic link for $ZSTACK_HOME/static/zstack-dvd . 
-        The contents in the folder: `ls $ZSTACK_HOME/static/zstack-dvd` . 
-        If this folder existed. Please move it to other place and rerun the installation."
-    fi
     pass
 }
 
@@ -1662,7 +1716,6 @@ config_system(){
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
-    show_spinner cs_config_catalina_option
     show_spinner cs_append_iptables
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
@@ -1860,18 +1913,6 @@ cs_config_tomcat(){
     cat >> $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/setenv.sh <<EOF
 export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true -Djava.security.egd=file:/dev/./urandom"
 EOF
-    pass
-}
-
-cs_config_catalina_option(){
-    echo_subtitle "Config catalina option"
-    catalina_opt=$(zstack-ctl getenv CATALINA_OPTS | awk -F '=' '{print $2}' | grep -v "^$")
-
-    if [[ ! "$catalina_opt" =~ "OmitStackTraceInFastThrow" ]];  then
-        catalina_opt="-XX:-OmitStackTraceInFastThrow $catalina_opt"
-    fi
-
-    zstack-ctl setenv CATALINA_OPTS="$catalina_opt"
     pass
 }
 
@@ -2320,15 +2361,6 @@ get_zstack_repo(){
     fi
 }
 
-set_tomcat_config() {
-    new_timeout=120000
-    new_max_thread_num=400
-    tomcat_config_path=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf
-    sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
-    sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
-    sed -i 's/redirectPort="8443" \/>/redirectPort="8443" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>/' $tomcat_config_path/server.xml
-}
-
 check_upgrade_local_repos() {
 echo_subtitle "Check local repo version"
 [ -f ".repo_version" ] || return 1
@@ -2475,22 +2507,22 @@ if [ -f /etc/yum.repos.d/epel.repo ]; then
     sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
 fi
 
-mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
 umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
-reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
-reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
-reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
-reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
-reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
-reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
+rm -rf /opt/zstack-dvd/Base && mkdir -p /opt/zstack-dvd/Base
+/bin/cp -r /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
+reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d || return 1
+reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d || return 1
+reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d || return 1
+reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d || return 1
+reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d || return 1
+reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d || return 1
 rm -f /etc/yum.repos.d/zstack-online-*.repo
 echo_subtitle "Sync from repo.zstack.io"
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Update metadata"
 createrepo -g /opt/zstack-dvd/Base/comps.xml /opt/zstack-dvd/Base/ >/dev/null 2>&1 || return 1
-rm -rf /opt/zstack-dvd/repodata >/dev/null 2>&1
+rm -rf /opt/zstack-dvd/{Packages,repodata} >/dev/null 2>&1
 mv /opt/zstack-dvd/Base/* /opt/zstack-dvd/ >/dev/null 2>&1
 rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
 createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || return 1
@@ -2676,9 +2708,7 @@ OPTIND=1
 while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDEFhiklmMNoOqsuz" Option
 do
     case $Option in
-        # -a: do not use yum online repo.
-        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
-        [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
+        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
         c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
         C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
         d ) DEBUG='y';;
@@ -2726,7 +2756,10 @@ do
         * ) help;;
     esac
 done
-OPTIND=1
+
+# Fix bug ZSTAC-14090
+shift "$((OPTIND-1))"
+[ $# -eq 0 ] || help
 
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
     if [ ! -d /opt/zstack-dvd/ ]; then
@@ -2783,12 +2816,15 @@ ip addr show $MANAGEMENT_INTERFACE >/dev/null 2>&1
 if [ $? -ne 0 ];then
     ip addr show |grep $MANAGEMENT_INTERFACE |grep inet >/dev/null 2>&1
     if [ $? -ne 0 ]; then
-        fail2 "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'" 
+        fail2 "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'. Use 'ip addr' to show all interface and IP address." 
     fi
     MANAGEMENT_IP=$MANAGEMENT_INTERFACE
 else
     MANAGEMENT_IP=`ip -4 addr show ${MANAGEMENT_INTERFACE} | grep inet | head -1 | awk '{print $2}' | cut -f1  -d'/'`
     echo "Management node network interface: $MANAGEMENT_INTERFACE" >> $ZSTACK_INSTALL_LOG
+    if [ -z $MANAGEMENT_IP ]; then
+        fail2 "Can not identify IP address for interface: $MANAGEMENT_INTERFACE . Please assign correct interface by '-I MANAGEMENT_NODE_IP_ADDRESS', which has IP address. Use 'ip addr' to show all interface and IP address."
+    fi
 fi
 
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
@@ -2841,6 +2877,15 @@ echo_hints_to_upgrade_iso()
         "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
         "# bash zstack-upgrade ${ISO_NAME}\n" \
         "For more information, see ${UPGRADE_WIKI}"
+}
+
+echo_chrony_server_warning_if_need()
+{
+    CHRONY_SERVER=(`zstack-ctl show_configuration | grep "^[[:space:]]*chrony.serverIp" | awk -F '=' '{print $2}' | sed s/[[:space:]]//g`)
+    if [ ${#CHRONY_SERVER[*]} -eq 1 ]  && [ x${CHRONY_SERVER[0]} == x${MANAGEMENT_IP} ]; then
+        echo  -e "$(tput setaf 3) - chrony server sources is set to management node by default.$(tput sgr0)"
+        echo ""
+    fi
 }
 
 # CHECK_REPO_VERSION
@@ -2954,7 +2999,13 @@ check_system
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
-    pre_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
+    # no get_version before zstack 2.4.0
+    zstack-ctl get_version >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        pre_upgrade_version=`zstack-ctl get_version`
+    else
+        pre_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
+    fi
 
     #only upgrade zstack
     upgrade_zstack
@@ -3006,6 +3057,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     fi
     echo ""
     zstack_home=`eval echo ~zstack`
+    echo_chrony_server_warning_if_need
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_star_line
     exit 0
@@ -3016,7 +3068,6 @@ unpack_zstack_into_tomcat
 
 #Do not config NFS or HTTP when installing ZStack product
 [ ! -z $INSTALL_MONITOR ] && NEED_NFS='' && NEED_HTTP=''
-
 
 #Install ${PRODUCT_NAME} required system libs through ansible
 install_system_libs
@@ -3054,6 +3105,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo_star_line
     echo "${PRODUCT_NAME} ${VERSION}management node is installed to $ZSTACK_INSTALL_ROOT."
     echo "Mysql and RabbitMQ are not installed. You can use zstack-ctl to install them and start ${PRODUCT_NAME} service later. "
+    echo_chrony_server_warning_if_need
     echo_star_line
     exit 0
 fi
@@ -3061,12 +3113,24 @@ fi
 #Install Mysql and Rabbitmq
 install_db_msgbus
 
+#Delete old monitoring data if NEED_DROP_DB
+if [ -n "$NEED_DROP_DB" ]; then
+  kill -9 `ps aux | grep "/var/lib/zstack/prometheus/data" | grep -v 'grep' | awk -F ' ' '{ print $2 }'` 2>/dev/null
+  pkill -9 influxd 2>/dev/null
+  rm -rf /var/lib/zstack/prometheus/data
+  rm -rf /var/lib/zstack/influxdb/
+fi
+
+zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
 if [ ! -z $NEED_SET_MN_IP ];then
-    zstack-ctl configure management.server.ip=${MANAGEMENT_IP}
     if [ -z $CONSOLE_PROXY_ADDRESS ];then
-        zstack-ctl configure consoleProxyOverriddenIp=${MANAGEMENT_IP}
+        zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
     fi
 fi
+
+# configure chrony.serverIp if not exists
+zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+[ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
 
 #Install license
 install_license
@@ -3142,4 +3206,6 @@ fi
 [ ! -z $NEED_NFS ] && echo -e "$(tput setaf 7) - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE$(tput sgr0)"
 [ ! -z $NEED_HTTP ] && echo -e "$(tput setaf 7) - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your_image_name to the folder $HTTP_FOLDER, your image local url is http://$MANAGEMENT_IP/image/your_image_name$(tput sgr0)"
 echo -e "$(tput setaf 7) - You can use \`zstack-ctl install_management_node --host=remote_ip\` to install more management nodes$(tput sgr0)"
+
+echo_chrony_server_warning_if_need
 echo_star_line

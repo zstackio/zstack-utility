@@ -72,7 +72,7 @@ else:
 
 run_remote_command("rm -rf %s/*" % fusionstorp_root, host_post_info)
 
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img-ev" % zstack_repo
         run_remote_command(command, host_post_info)
@@ -87,7 +87,7 @@ if distro == "RedHat" or distro == "CentOS":
             run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
 
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils"]
     apt_install_packages(install_pkg_list, host_post_info)
 else:
@@ -137,9 +137,9 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 # name: restart fusionstorpagent
-if distro == "RedHat" or distro == "CentOS":
+if distro in RPM_BASED_OS:
     command = "service zstack-fusionstor-primarystorage stop && service zstack-fusionstor-primarystorage start && chkconfig zstack-fusionstor-primarystorage on"
-elif distro == "Debian" or distro == "Ubuntu":
+elif distro in DEB_BASED_OS:
     command = "update-rc.d zstack-fusionstor-primarystorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-fusionstor-primarystorage stop &&  service zstack-fusionstor-primarystorage start"
 run_remote_command(command, host_post_info)
 

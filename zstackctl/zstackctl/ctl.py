@@ -115,6 +115,8 @@ if [ $? -ne 0 ]; then
     echo "tmpdir=$mysql_tmp_path"
     sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
+
+sync
 '''
 
 def signal_handler(signal, frame):
@@ -200,6 +202,15 @@ def error(msg):
 def error_not_exit(msg):
     sys.stderr.write(colored('ERROR: %s\n' % msg, 'red'))
 
+def info_verbose(*msg):
+    if len(msg) == 1:
+        out = '%s\n' % ''.join(msg)
+    else:
+        out = ''.join(msg)
+    now = datetime.now()
+    out = "%s " % str(now) + out
+    sys.stdout.write(out)
+
 def info(*msg):
     if len(msg) == 1:
         out = '%s\n' % ''.join(msg)
@@ -260,6 +271,10 @@ def get_default_ip():
     cmd = ShellCmd("""dev=`ip route|grep default|head -n 1|awk -F "dev" '{print $2}' | awk -F " " '{print $1}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|head -n 1 |awk -F '/' '{print $1}'""")
     cmd(False)
     return cmd.stdout.strip()
+
+def get_ui_address():
+    ui_addr = ctl.read_ui_property("ui_address")
+    return ui_addr if ui_addr else get_default_ip()
 
 def get_yum_repo_from_property():
     yum_repo = ctl.read_property('Ansible.var.zstack_repo')
@@ -622,11 +637,13 @@ class Ctl(object):
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
     # for console proxy https
     ZSTACK_UI_KEYSTORE_PEM = ZSTACK_UI_HOME + 'ui.keystore.pem'
+    # to set CATALINA_OPTS of zstack-ui.war
+    ZSTACK_UI_CATALINA_OPTS = '-Xmx4096m'
 
     def __init__(self):
         self.commands = {}
         self.command_list = []
-        self.main_parser = CtlParser(prog='zstackctl', description="ZStack management tool", formatter_class=argparse.RawTextHelpFormatter)
+        self.main_parser = CtlParser(prog='zstack-ctl', description="ZStack management tool", formatter_class=argparse.RawTextHelpFormatter)
         self.main_parser.add_argument('-v', help="verbose, print execution details", dest="verbose", action="store_true", default=False)
         self.zstack_home = None
         self.properties_file_path = None
@@ -758,6 +775,11 @@ class Ctl(object):
         prop = PropertyFile(self.properties_file_path)
         with on_error('property must be in format of "key=value", no space before and after "="'):
             prop.write_properties(properties)
+
+    def delete_properties(self, properties):
+        prop = PropertyFile(self.properties_file_path)
+        with on_error('property must be in format of "key=value", no space before and after "="'):
+            prop.delete_properties(properties)
 
     def write_property(self, key, value):
         prop = PropertyFile(self.properties_file_path)
@@ -1082,6 +1104,14 @@ def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
             else:
                 return NO_TOOL
 
+    # make sure localhost as 127.0.0.1
+    def check_hosts():
+        cmd = ShellCmd("grep '^\s*127.0.0.1\s' /etc/hosts | grep -q '\slocalhost\s'")
+        cmd(False)
+        if cmd.return_code != 0:
+            ShellCmd("sudo sed -i '1i127.0.0.1   localhost ' /etc/hosts; sudo sync")
+
+    check_hosts()
     what_tool = use_tool()
     if what_tool == USE_CURL:
         return ShellCmd('''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:8080/zstack/api''' % (timeout, timeout, timeout, mn_node))
@@ -1253,7 +1283,14 @@ class ShowStatusCmd(Command):
             if os.path.exists(boot_error_log):
                 info(colored('Management server met an error as below:', 'yellow'))
                 with open(boot_error_log, 'r') as fd:
-                    info(colored(fd.read(), 'red'))
+                    error_msg = fd.read()
+                    try:
+                        # strip unimportant messages for json.loads
+                        error_msg = json.loads(error_msg)
+                        error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
+                    except (KeyError, ValueError, TypeError):
+                        pass
+                    info(colored(json.dumps(error_msg, indent=4), 'red'))
 
         ctl.internal_run('ui_status', args='-q')
 
@@ -1693,10 +1730,10 @@ class StartCmd(Command):
             if type(port_list) is not list:
                 error("port list should be list")
             for port in port_list:
-                if distro == 'centos':
+                if distro in RPM_BASED_OS:
                     shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
                           '(iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT && service iptables save)' % (protocol, protocol, port, protocol, protocol, port))
-                elif distro == 'Ubuntu':
+                elif distro in DEB_BASED_OS:
                     shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
                           '(iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (protocol, protocol, port, protocol, protocol, port))
                 else:
@@ -1763,6 +1800,36 @@ class StartCmd(Command):
                 else:
                     check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
 
+        def check_chrony():
+            if ctl.read_property('syncNodeTime') == "false":
+                return
+
+            source_ips = [v for k, v in ctl.read_property_list('chrony.serverIp.')]
+            if not source_ips:
+                error("chrony.serverIp not configured")
+
+            mn_ip = ctl.read_property('management.server.ip')
+            chrony_running = shell_return("systemctl status chronyd | grep 'active[[:space:]]*(running)'")
+
+            # mn is chrony server
+            if mn_ip in source_ips:
+                if chrony_running != 0:
+                    warn("chrony source is set to management node, but server is not running, try to restart it now...")
+                    shell("systemctl disable ntpd || true; systemctl enable chronyd ; systemctl restart chronyd")
+                return
+                
+            # mn is chrony client
+            old_source_ips = shell("chronyc sources | grep '^\^' | awk '{print $2}'").splitlines()
+            if set(source_ips) == set(old_source_ips):
+                return
+
+            shell('''sed -i /"^[[:space:]#]*server"/d /etc/chrony.conf''')
+            with open('/etc/chrony.conf', 'a') as fd:
+                fd.writelines('\n'.join(["server %s iburst" % ip for ip in source_ips]))
+
+            shell("systemctl disable ntpd || true; systemctl enable chronyd || true; systemctl restart chronyd || true")
+            info("chronyd restarted")
+
         def prepare_qemu_kvm_repo():
             OLD_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.6.0'
             NEW_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.9.0'
@@ -1790,6 +1857,8 @@ class StartCmd(Command):
                 '-Djava.net.preferIPv4Stack=true',
                 '-Dcom.sun.management.jmxremote=true',
                 '-Djava.security.egd=file:/dev/./urandom',
+                '-XX:-OmitStackTraceInFastThrow',
+                '-XX:MaxMetaspaceSize=512m'
             ]
 
             if ctl.extra_arguments:
@@ -1830,8 +1899,16 @@ class StartCmd(Command):
             def check():
                 if os.path.exists(boot_error_log):
                     with open(boot_error_log, 'r') as fd:
-                        raise CtlError('the management server fails to boot; details can be found in the log[%s],'
-                                       'here is a brief of the error:\n%s' % (log_path, fd.read()))
+                        error_msg = fd.read()
+                        try:
+                            # strip unimportant messages for json.loads
+                            error_msg = json.loads(error_msg)
+                            error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
+                        except (KeyError, ValueError, TypeError):
+                            pass
+                        raise CtlError('The management server fails to boot, details can be found in [%s].\n'
+                                       'Here is a brief description of the error:\n%s' % \
+                                       (log_path, json.dumps(error_msg, indent=4)))
 
                 cmd = create_check_mgmt_node_command(1, 'localhost')
                 cmd(False)
@@ -1852,7 +1929,13 @@ class StartCmd(Command):
             else:
                 beanXml = "zstack.xml"
 
-            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
+            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s; sync' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
+
+        def checkSimulator():
+            if args.simulator:
+                ctl.write_properties(['simulatorsOn=true'.split('=', 1)])
+            else:
+                ctl.delete_properties(['simulatorsOn'])
 
         user = getpass.getuser()
         if user != 'root':
@@ -1863,9 +1946,11 @@ class StartCmd(Command):
         check_9090()
         check_msyql()
         check_rabbitmq()
+        check_chrony()
         prepare_qemu_kvm_repo()
         prepare_setenv()
         open_iptables_port('udp',['123'])
+        checkSimulator()
         prepareBeanRefContextXml()
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quickly
@@ -1887,6 +1972,7 @@ class StartCmd(Command):
         info('successfully started management node')
 
         ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
+        shell('sync')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
@@ -2526,10 +2612,10 @@ class AddManagementNodeCmd(Command):
 
     def install_packages(self, pkg_list, host_info):
         distro = platform.dist()[0]
-        if distro == "centos":
+        if distro in RPM_BASED_OS:
             for pkg in pkg_list:
                 yum_install_package(pkg, host_info)
-        elif distro == "Ubuntu":
+        elif distro in DEB_BASED_OS:
             apt_install_packages(pkg_list, host_info)
 
     def run(self, args):
@@ -4246,7 +4332,7 @@ class ResetRabbitCmd(Command):
 
         ip = get_default_ip()
         replaced_ip = ip.replace(".", "\.")
-        shell("sed -i '/%s /c\%s %s' /etc/hosts" % (replaced_ip, ip, new_hostname))
+        shell("sed -i '/%s /c\%s %s' /etc/hosts; sync" % (replaced_ip, ip, new_hostname))
 
 class InstallRabbitCmd(Command):
     def __init__(self):
@@ -4714,7 +4800,7 @@ class RestoreMysqlCmd(Command):
 
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack/"
-    vrouter_log_dir = "/home/vyos/zvr/"
+    vrouter_log_dir_list = ["/home/vyos/zvr", "/var/log/zstack"]
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
                      'zstack-agent/collectd.log','zstack-agent/server.log']
     bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
@@ -4768,39 +4854,76 @@ class CollectLogCmd(Command):
         command = "uptime > %s && last reboot >> %s && free -h >> %s && cat /proc/cpuinfo >> %s  && ip addr >> %s && df -h >> %s" % \
                   (host_info_log, host_info_log, host_info_log, host_info_log, host_info_log, host_info_log)
         run_remote_command(command, host_post_info, True, True)
-        command = "cp /var/log/dmesg* /var/log/messages %s" % tmp_log_dir
+        command = "cp /var/log/dmesg* /var/log/messages* %s" % tmp_log_dir
         run_remote_command(command, host_post_info)
         command = "route -n > %s/route_table" % tmp_log_dir
         run_remote_command(command, host_post_info)
         command = "iptables-save > %s/iptables_info" % tmp_log_dir
         run_remote_command(command, host_post_info)
+        command = "ebtables-save > %s/ebtables_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
         command = "journalctl -x > %s/journalctl_info" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+
+    def get_sharedblock_log(self, host_post_info, tmp_log_dir):
+        info_verbose("Collecting sharedblock log from : %s ..." % host_post_info.host)
+        target_dir = tmp_log_dir + "sharedblock"
+        command = "mkdir -p %s " % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "lsblk -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN,SIZE > %s/lsblk_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "ls -l /dev/disk/by-id > %s/ls_dev_disk_by-id_info && echo || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "ls -l /dev/disk/by-path >> %s/ls_dev_disk_by-id_info && echo || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "multipath -ll -v3 >> %s/ls_dev_disk_by-id_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "cp /var/log/sanlock.log %s || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "lvmlockctl -i > %s/lvmlockctl_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "sanlock client status > %s/sanlock_client_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "sanlock client host_status> %s/sanlock_host_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+
+        command = "lvs --nolocking -oall > %s/lvm_lvs_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "vgs --nolocking -oall > %s/lvm_vgs_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "lvmconfig --type diff > %s/lvm_config_diff_info || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "cp -r /etc/lvm/ %s || true" % target_dir
+        run_remote_command(command, host_post_info)
+        command = "cp -r /etc/sanlock %s || true" % target_dir
         run_remote_command(command, host_post_info)
 
     def get_pkg_list(self, host_post_info, tmp_log_dir):
         command = "rpm -qa | sort > %s/pkg_list" % tmp_log_dir
         run_remote_command(command, host_post_info)
 
-
     def get_vrouter_log(self, host_post_info, collect_dir):
         #current vrouter log is very small, so collect all logs for debug
         if check_host_reachable(host_post_info) is True:
-            info("Collecting log from vrouter: %s ..." % host_post_info.host)
-            local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
-            tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.vrouter_log_dir
-            command = "mkdir -p %s " % tmp_log_dir
-            run_remote_command(command, host_post_info)
-            command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
-            run_remote_command(command, host_post_info)
-            command = "cp %s/*.log %s/*.json %s" % (CollectLogCmd.vrouter_log_dir, CollectLogCmd.vrouter_log_dir,tmp_log_dir)
-            run_remote_command(command, host_post_info)
-            self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
+            info_verbose("Collecting log from vrouter: %s ..." % host_post_info.host)
+            for vrouter_log_dir in CollectLogCmd.vrouter_log_dir_list:
+                local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
+                tmp_log_dir = "/tmp/tmp-log/"
+                command = "mkdir -p %s " % tmp_log_dir
+                run_remote_command(command, host_post_info)
+                command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
+                run_remote_command(command, host_post_info)
+                command = "cp -r %s %s" % (vrouter_log_dir, tmp_log_dir)
+                run_remote_command(command, host_post_info)
+                self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
             warn("Vrouter %s is unreachable!" % host_post_info.host)
 
     def get_host_log(self, host_post_info, collect_dir, collect_full_log=False):
         if check_host_reachable(host_post_info) is True:
-            info("Collecting log from host: %s ..." % host_post_info.host)
+            info_verbose("Collecting log from host: %s ..." % host_post_info.host)
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
             local_collect_dir = collect_dir + 'host-%s/' %  host_post_info.host
             try:
@@ -4843,6 +4966,7 @@ class CollectLogCmd(Command):
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
+            self.get_sharedblock_log(host_post_info, tmp_log_dir)
             self.get_pkg_list(host_post_info, tmp_log_dir)
             self.compress_and_fetch_log(local_collect_dir,tmp_log_dir,host_post_info)
 
@@ -4852,7 +4976,7 @@ class CollectLogCmd(Command):
     def get_storage_log(self, host_post_info, collect_dir, storage_type, collect_full_log=False):
         collect_log_list = []
         if check_host_reachable(host_post_info) is True:
-            info("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
+            info_verbose("Collecting log from %s storage: %s ..." % (storage_type, host_post_info.host))
             tmp_log_dir = "%s/tmp-log/" % CollectLogCmd.zstack_log_dir
             local_collect_dir = collect_dir + storage_type + '-' + host_post_info.host+ '/'
             try:
@@ -4989,6 +5113,12 @@ class CollectLogCmd(Command):
             if status is not True:
                 warn("get management-server log failed: %s" % output)
 
+            # collect zstack-ui log if exists
+            command = "/bin/cp -f  %s/../../logs/zstack-ui.log %s" % (ctl.zstack_home, tmp_log_dir)
+            (status, output) = run_remote_command(command, host_post_info, True, True)
+            if status is not True:
+                warn("get zstack-ui log failed: %s" % output)
+
             command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, tmp_log_dir)
             (status, output) = run_remote_command(command, host_post_info, True, True)
             if status is not True:
@@ -5015,7 +5145,7 @@ class CollectLogCmd(Command):
 
 
     def get_local_mn_log(self, collect_dir, collect_full_log=False):
-        info("Collecting log from this management node ...")
+        info_verbose("Collecting log from this management node ...")
         mn_log_dir = collect_dir + 'management-node-%s' % get_default_ip()
         if not os.path.exists(mn_log_dir):
             os.makedirs(mn_log_dir)
@@ -5025,6 +5155,12 @@ class CollectLogCmd(Command):
         (status, output) = commands.getstatusoutput(command)
         if status !=0:
             warn("get management-server log failed: %s" % output)
+
+        # collect zstack-ui log if exists
+        command = "/bin/cp -f  %s/../../logs/zstack-ui.log %s" % (ctl.zstack_home, mn_log_dir)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            warn("get zstack-ui log failed: %s" % output)
 
         command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, mn_log_dir)
         (status, output) = commands.getstatusoutput(command)
@@ -5047,7 +5183,7 @@ class CollectLogCmd(Command):
         command = "uptime > %s && last reboot >> %s && free -h >> %s && cat /proc/cpuinfo >> %s  && ip addr >> %s && df -h >> %s" % \
                   (host_info_log, host_info_log, host_info_log, host_info_log, host_info_log, host_info_log)
         commands.getstatusoutput(command)
-        command = "cp /var/log/dmesg* /var/log/messages %s/" % mn_log_dir
+        command = "cp /var/log/dmesg* /var/log/messages* %s/" % mn_log_dir
         commands.getstatusoutput(command)
         command = "cp %s/*git-commit %s/" % (ctl.zstack_home, mn_log_dir)
         commands.getstatusoutput(command)
@@ -5174,10 +5310,10 @@ class CollectLogCmd(Command):
 
         self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
         if CollectLogCmd.failed_flag is True:
-            info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
-            info(colored("Please check the reason of failed task in log: %s\n" % (CollectLogCmd.logger_dir + CollectLogCmd.logger_file), 'yellow'))
+            info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
+            info_verbose(colored("Please check the reason of failed task in log: %s\n" % (CollectLogCmd.logger_dir + CollectLogCmd.logger_file), 'yellow'))
         else:
-            info("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
+            info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
 
 
 class ChangeIpCmd(Command):
@@ -5259,6 +5395,12 @@ class ChangeIpCmd(Command):
             ])
             info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
 
+            old_chrony_ips = ctl.read_property_list('chrony.serverIp.')
+            if len(old_chrony_ips) == 1 and old_chrony_ips[0][1] == old_ip:
+                # management.server.ip has been setted when zstack install
+                ctl.write_property(old_chrony_ips[0][0], args.ip)
+                info("Update chrony server ip %s in %s " % (args.ip, zstack_conf_file))
+
             # update zstack db url
             db_url = ctl.read_property('DB.url')
             db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
@@ -5269,13 +5411,14 @@ class ChangeIpCmd(Command):
             info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
 
             # update zstack_ui db url
-            db_url = ctl.read_ui_property('db_url')
-            db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
-            db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
-            ctl.write_ui_properties([
-              ('db_url', db_new_url),
-            ])
-            info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
+            if os.path.isfile(ctl.ui_properties_file_path):
+                db_url = ctl.read_ui_property('db_url')
+                db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
+                db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
+                ctl.write_ui_properties([
+                    ('db_url', db_new_url),
+                ])
+                info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
@@ -5425,11 +5568,11 @@ class InstallManagementNodeCmd(Command):
 
     - name: install dependencies on RedHat OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
 
     - name: install dependencies on RedHat OS from system repos
       when: ansible_os_family == 'RedHat' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 ntp ntpdate sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
+      shell: yum clean metadata; yum --nogpgcheck install -y dmidecode java-1.8.0-openjdk wget python-devel gcc autoconf tar gzip unzip python-pip openssh-clients sshpass bzip2 sudo libselinux-python python-setuptools iptables-services libffi-devel openssl-devel
 
     - name: set java 8 as default runtime
       when: ansible_os_family == 'RedHat'
@@ -5469,8 +5612,6 @@ class InstallManagementNodeCmd(Command):
         - python-pip
         - sshpass
         - bzip2
-        - ntp
-        - ntpdate
         - sudo
         - python-setuptools
 
@@ -5628,6 +5769,8 @@ which ansible-playbook &> /dev/null
 if [ $$? -ne 0 ]; then
     pip install -i file://$pypi_path/simple --trusted-host localhost ansible
 fi
+
+sync
 '''
         t = string.Template(post_script)
         post_script = t.substitute({
@@ -5814,6 +5957,7 @@ yum clean all >/dev/null 2>&1
         })
 
         ansible(yaml, host_info.host, args.debug, private_key)
+        shell('sync')
         info('successfully installed new management node on machine(%s)' % host_info.host)
 
 class ShowConfiguration(Command):
@@ -6094,27 +6238,21 @@ class InstallZstackUiCmd(Command):
         if not os.path.isdir(tools_path):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % tools_path)
 
-        ui_binary = None
-        for l in os.listdir(tools_path):
-            if l.startswith('zstack-ui'):
-                ui_binary = l
-                break
-
-        if not ui_binary:
+        ui_binary = 'zstack-ui.war'
+        if not ui_binary in os.listdir(tools_path):
             raise CtlError('cannot find zstack-ui package under %s, please make sure you have installed ZStack management node' % tools_path)
-
         ui_binary_path = os.path.join(tools_path, ui_binary)
 
         yaml = '''---
-- hosts: $host
+- hosts: ${host}
   remote_user: root
   tasks:
     - name: create zstack-ui directory
-      shell: "mkdir -p {{ui_home}}/tmp"
+      shell: "mkdir -p ${ui_home}/tmp"
     - name: copy zstack-ui package
-      copy: src=$src dest=$dest
+      copy: src=${src} dest=${dest}
     - name: decompress zstack-ui package
-      shell: "rm -rf {{ui_home}}/tmp; unzip {{dest}} -d {{ui_home}}/tmp"
+      shell: "rm -rf ${ui_home}/tmp; unzip ${dest} -d ${ui_home}/tmp"
 '''
 
         t = string.Template(yaml)
@@ -6483,8 +6621,7 @@ class UpgradeDbCmd(Command):
         db_url = ctl.get_db_url()
         db_url_params = db_url.split('//')
         db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
-        if 'zstack' not in db_url:
-            db_url = '%s/zstack' % db_url.rstrip('/')
+        db_url = '%s/zstack' % db_url.rstrip('/')
 
         db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
 
@@ -6573,8 +6710,7 @@ class UpgradeUIDbCmd(Command):
         db_url = ctl.get_ui_db_url()
         db_url_params = db_url.split('//')
         db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
-        if 'zstack_ui' not in db_url:
-            db_url = '%s/zstack_ui' % db_url.rstrip('/')
+        db_url = '%s/zstack_ui' % db_url.rstrip('/')
 
         db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal(True)
 
@@ -7131,7 +7267,7 @@ class UiStatusCmd(Command):
                 write_status(colored('Stopped', 'red'))
             return False
         elif 'UP' in cmd.stdout:
-            default_ip = get_default_ip()
+            default_ip = get_ui_address()
             if not default_ip:
                 info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
             else:
@@ -7265,6 +7401,7 @@ class InstallLicenseCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--license', '-f', help="path to the license file", required=True)
         parser.add_argument('--prikey', help="[OPTIONAL] the path to the private key used to generate license request")
+        parser.add_argument('--addon', '-a', help="install add one license file", action='store_true', default=False)
 
     def run(self, args):
         lpath = expand_path(args.license)
@@ -7280,13 +7417,40 @@ class InstallLicenseCmd(Command):
         license_folder = '/var/lib/zstack/license'
         shell('''mkdir -p %s''' % license_folder)
         shell('''chown zstack:zstack %s''' % license_folder)
-        shell('''yes | cp %s %s/license.txt''' % (lpath, license_folder))
-        shell('''chown zstack:zstack %s/license.txt''' % license_folder)
-        info("successfully installed the license file to %s/license.txt" % license_folder)
+
+        if args.addon:
+            license_file_name = "license_" + uuid.uuid4().hex
+        else:
+            license_file_name = "license.txt"
+
+        shell('''yes | cp %s %s/%s''' % (lpath, license_folder, license_file_name))
+        shell('''chown zstack:zstack %s/%s''' % (license_folder, license_file_name))
+        info("successfully installed the license file to %s/%s" % (license_folder, license_file_name))
         if ppath:
             shell('''yes | cp %s %s/pri.key''' % (ppath, license_folder))
             shell('''chown zstack:zstack %s/pri.key''' % license_folder)
             info("successfully installed the private key file to %s/pri.key" % license_folder)
+
+class ClearLicenseCmd(Command):
+    def __init__(self):
+        super(ClearLicenseCmd, self).__init__()
+        self.name = "clear_license"
+        self.description = "clear and backup zstack license files"
+        ctl.register_command(self)
+
+    def run(self, args):
+        license_folder = '/var/lib/zstack/license/'
+        license_bck = license_folder + 'backup/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        license_files = license_folder + '*.txt'
+        license_pri_key = license_folder + 'pri.key'
+
+        if os.path.exists(license_folder + 'license.txt'):
+            shell('''mkdir -p %s''' % license_bck)
+            shell('''/bin/mv -f %s %s''' % (license_files, license_bck))
+            shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
+            info("Successfully clear and backup zstack license files to " + license_bck)
+        else:
+            info("There is no zstack license founded.")
 
 # For UI 1.x
 class StartDashboardCmd(Command):
@@ -7369,9 +7533,9 @@ class StartDashboardCmd(Command):
             return
 
         distro = platform.dist()[0]
-        if distro == 'centos':
+        if distro in RPM_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.port)
-        elif distro == 'Ubuntu':
+        elif distro in DEB_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.port)
         else:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.port)
@@ -7463,7 +7627,7 @@ class StartUiCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    default_ip = get_default_ip()
+                    default_ip = get_ui_address()
                     if not default_ip:
                         info('UI server is still running[PID:%s]' % pid)
                     else:
@@ -7516,12 +7680,18 @@ class StartUiCmd(Command):
 
     def run(self, args):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
+
+        if args.mn_host and not validate_ip(args.mn_host):
+            raise CtlError('%s is invalid mn address' % args.mn_host)
+        if args.webhook_host and not validate_ip(args.webhook_host):
+            raise CtlError('%s is invalid webhook address' % args.webhook_host)
+
         if args.host != 'localhost':
             self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log, args.enable_ssl, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password)
             return
 
         # init zstack.ui.properties
-        ctl.internal_run('config_ui')
+        ctl.internal_run('config_ui', '--init')
 
         # combine with zstack.ui.properties
         cfg_mn_host = ctl.read_ui_property("mn_host")
@@ -7535,6 +7705,7 @@ class StartUiCmd(Command):
         cfg_ssl_keystore = ctl.read_ui_property("ssl_keystore")
         cfg_ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
         cfg_ssl_keystore_password = ctl.read_ui_property("ssl_keystore_password")
+        cfg_catalina_opts = ctl.read_ui_property("catalina_opts") + ' ' + ' '.join(ctl.extra_arguments)
 
         if not args.mn_host:
             args.mn_host = cfg_mn_host
@@ -7579,8 +7750,12 @@ class StartUiCmd(Command):
         # convert args.ssl_keystore to .pem
         if args.ssl_keystore_type != 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
             raise CtlError('%s not found.' % ctl.ZSTACK_UI_KEYSTORE_PEM)
-        if args.ssl_keystore_type == 'PKCS12':
+        if args.ssl_keystore_type == 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
             self._gen_ssl_keystore_pem_from_pkcs12(args.ssl_keystore, args.ssl_keystore_password)
+
+        # auto configure consoleProxyCertFile if not configured already
+        if args.ssl_keystore_type == 'PKCS12' and not ctl.read_property('consoleProxyCertFile'):
+            ctl.write_property('consoleProxyCertFile', ctl.ZSTACK_UI_KEYSTORE_PEM)
 
         # ui_db
         self._get_db_info()
@@ -7601,10 +7776,10 @@ class StartUiCmd(Command):
             return
 
         distro = platform.dist()[0]
-        if distro == 'centos':
+        if distro in RPM_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.webhook_port, args.webhook_port))
-        elif distro == 'Ubuntu':
+        elif distro in DEB_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.webhook_port, args.webhook_port))
         else:
@@ -7612,9 +7787,9 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
         if args.enable_ssl:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, args.log)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, cfg_catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, args.log)
         else:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, args.log)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s >>%s/zstack-ui.log 2>&1 &'" % (args.log, cfg_catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, args.log)
 
         script(scmd, no_pipe=True)
 
@@ -7669,12 +7844,14 @@ class ConfigUiCmd(Command):
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.ui.properties on the remote machine')
+        parser.add_argument('--init', help='init zstack ui properties to default values', action="store_true", default=False)
         parser.add_argument('--restore', help='restore zstack ui properties to default values', action="store_true", default=False)
         parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1")
         parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080")
         parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1")
         parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000")
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000")
+        parser.add_argument('--ui-address', help="ZStack UI Address.")
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
 
         # arguments for https
@@ -7702,35 +7879,46 @@ class ConfigUiCmd(Command):
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed?' % zstackui)
 
+        if args.mn_host and not validate_ip(args.mn_host):
+            raise CtlError('%s is invalid mn address' % args.mn_host)
+        if args.webhook_host and not validate_ip(args.webhook_host):
+            raise CtlError('%s is invalid webhook address' % args.webhook_host)
+        if args.ui_address and not validate_ip(args.ui_address):
+            raise CtlError('%s is invalid ui address' % args.ui_address)
+
         # init zstack.ui.properties
-        if not ctl.read_ui_property("mn_host"):
-            ctl.write_ui_property("mn_host", '127.0.0.1')
-        if not ctl.read_ui_property("mn_port"):
-            ctl.write_ui_property("mn_port", '8080')
-        if not ctl.read_ui_property("webhook_host"):
-            ctl.write_ui_property("webhook_host", '127.0.0.1')
-        if not ctl.read_ui_property("webhook_port"):
-            ctl.write_ui_property("webhook_port", '5000')
-        if not ctl.read_ui_property("server_port"):
-            ctl.write_ui_property("server_port", '5000')
-        if not ctl.read_ui_property("log"):
-            ctl.write_ui_property("log", ui_logging_path)
-        if not ctl.read_ui_property("enable_ssl"):
-            ctl.write_ui_property("enable_ssl", 'false')
-        if not ctl.read_ui_property("ssl_keyalias"):
-            ctl.write_ui_property("ssl_keyalias", 'zstackui')
-        if not ctl.read_ui_property("ssl_keystore"):
-            ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
-        if not ctl.read_ui_property("ssl_keystore_type"):
-            ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
-        if not ctl.read_ui_property("ssl_keystore_password"):
-            ctl.write_ui_property("ssl_keystore_password", 'password')
-        if not ctl.read_ui_property("db_url"):
-            ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
-        if not ctl.read_ui_property("db_username"):
-            ctl.write_ui_property("db_username", 'zstack_ui')
-        if not ctl.read_ui_property("db_password"):
-            ctl.write_ui_property("db_password", 'zstack.ui.password')
+        if args.init:
+            if not ctl.read_ui_property("mn_host"):
+                ctl.write_ui_property("mn_host", '127.0.0.1')
+            if not ctl.read_ui_property("mn_port"):
+                ctl.write_ui_property("mn_port", '8080')
+            if not ctl.read_ui_property("webhook_host"):
+                ctl.write_ui_property("webhook_host", '127.0.0.1')
+            if not ctl.read_ui_property("webhook_port"):
+                ctl.write_ui_property("webhook_port", '5000')
+            if not ctl.read_ui_property("server_port"):
+                ctl.write_ui_property("server_port", '5000')
+            if not ctl.read_ui_property("log"):
+                ctl.write_ui_property("log", ui_logging_path)
+            if not ctl.read_ui_property("enable_ssl"):
+                ctl.write_ui_property("enable_ssl", 'false')
+            if not ctl.read_ui_property("ssl_keyalias"):
+                ctl.write_ui_property("ssl_keyalias", 'zstackui')
+            if not ctl.read_ui_property("ssl_keystore"):
+                ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
+            if not ctl.read_ui_property("ssl_keystore_type"):
+                ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
+            if not ctl.read_ui_property("ssl_keystore_password"):
+                ctl.write_ui_property("ssl_keystore_password", 'password')
+            if not ctl.read_ui_property("db_url"):
+                ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+            if not ctl.read_ui_property("db_username"):
+                ctl.write_ui_property("db_username", 'zstack_ui')
+            if not ctl.read_ui_property("db_password"):
+                ctl.write_ui_property("db_password", 'zstack.ui.password')
+            if not ctl.read_ui_property("catalina_opts"):
+                ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
+            return
 
         # restore to default values
         if args.restore:
@@ -7745,6 +7933,10 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
             ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
             ctl.write_ui_property("ssl_keystore_password", 'password')
+            ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+            ctl.write_ui_property("db_username", 'zstack_ui')
+            ctl.write_ui_property("db_password", 'zstack.ui.password')
+            ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
             return
 
         # use 5443 instead if enable_ssl
@@ -7794,6 +7986,14 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("db_username", args.db_username.strip())
         if args.db_password or args.db_password == '':
             ctl.write_ui_property("db_password", args.db_password.strip())
+
+        # ui_address
+        if args.ui_address:
+            ctl.write_ui_property("ui_address", args.ui_address.strip())
+
+        # catalina opts
+        if ctl.extra_arguments:
+            ctl.write_ui_property("catalina_opts", ' '.join(ctl.extra_arguments))
 
 # For UI 2.0
 class ShowUiCfgCmd(Command):
@@ -7868,10 +8068,10 @@ class StartVDIUICmd(Command):
             return
 
         distro = platform.dist()[0]
-        if distro == 'centos':
+        if distro in RPM_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.webhook_port, args.webhook_port))
-        elif distro == 'Ubuntu':
+        elif distro in DEB_BASED_OS:
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.webhook_port, args.webhook_port))
         else:
@@ -7908,6 +8108,17 @@ class StartVDIUICmd(Command):
         with open('/var/run/zstack/zstack-vdi.port', 'w') as fd:
             fd.write(args.server_port)
 
+class GetZStackVersion(Command):
+    def __init__(self):
+        super(GetZStackVersion, self).__init__()
+        self.name = "get_version"
+        self.description = "get zstack version from database, eg. 2.4.0"
+        ctl.register_command(self)
+
+    def run(self, args):
+        hostname, port, user, password = ctl.get_live_mysql_portal()
+        version = get_zstack_version(hostname, port, user, password)
+        sys.stdout.write(version + '\n')
 
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
@@ -7955,6 +8166,7 @@ def main():
     InstallRabbitCmd()
     InstallManagementNodeCmd()
     InstallLicenseCmd()
+    ClearLicenseCmd()
     ShowConfiguration()
     SetEnvironmentVariableCmd()
     RollbackManagementNodeCmd()
@@ -7984,6 +8196,7 @@ def main():
     VDIUiStatusCmd()
     ShowSessionCmd()
     DropSessionCmd()
+    GetZStackVersion()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard

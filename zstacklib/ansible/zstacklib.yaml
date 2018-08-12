@@ -38,11 +38,11 @@
 
 - name: install libselinux-python and other command system libs from user defined repos
   when: ansible_os_family == 'RedHat' and yum_repos != 'false'
-  shell: "yum --enablerepo=alibase clean metadata && yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y  libselinux-python python-devel python-setuptools python-pip gcc autoconf ntp ntpdate"
+  shell: "yum --enablerepo=alibase clean metadata && yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y  libselinux-python python-devel python-setuptools python-pip gcc autoconf"
 
 - name: install libselinux-python and other command system libs from system repos
   when: ansible_os_family == 'RedHat' and yum_repos == 'false'
-  shell: "yum --enablerepo=alibase clean metadata && yum --nogpgcheck install -y libselinux-python python-devel python-setuptools python-pip gcc autoconf ntp ntpdate"
+  shell: "yum --enablerepo=alibase clean metadata && yum --nogpgcheck install -y libselinux-python python-devel python-setuptools python-pip gcc autoconf"
 
 - name: install dependency packages for Debian based OS
   when: ansible_os_family == 'Debian'
@@ -53,16 +53,6 @@
     - python-pip
     - gcc
     - autoconf
-    - ntp
-    - ntpdate
-
-- name: enable ntp service for RedHat
-  when: ansible_os_family == 'RedHat'
-  shell: grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1; if [ $? -ne 0 ]; then echo "server 0.centos.pool.ntp.org iburst" >> /etc/ntp.conf; echo "server 1.centos.pool.ntp.org iburst" >> /etc/ntp.conf; fi; chkconfig ntpd on; service ntpd restart
-
-- name: enable ntp service for Debian
-  when: ansible_os_family == 'Debian'
-  shell: grep '^server 0.centos.pool.ntp.org' /etc/ntp.conf >/dev/null 2>&1; if [ $? -ne 0 ]; then echo "server 0.ubuntu.pool.ntp.org iburst" >> /etc/ntp.conf; echo "server ntp.ubuntu.com" >> /etc/ntp.conf; fi; update-rc.d ntp defaults; service ntp restart
 
 - shell: pip --version | grep 7.0.3
   register: pip_ret
