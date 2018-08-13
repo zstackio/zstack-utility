@@ -387,7 +387,7 @@ Parse command parameters error:
                                                    'op': '!=', 'value': value})
                             else:
                                 conditions.append({'name': key[:-1],
-                                                   'op': 'is not null', 'value': ''})
+                                                   'op': 'is not null'})
 
                         elif key.endswith(gt):
                             conditions.append({'name': key[:-1],
@@ -425,7 +425,7 @@ Parse command parameters error:
                                                    'op': eq, 'value': value})
                             else:
                                 conditions.append({'name': key,
-                                                   'op': 'is null', 'value': ''})
+                                                   'op': 'is null'})
 
                     elif key == 'conditions':
                         conditions.extend(eval(value))
