@@ -2567,6 +2567,10 @@ class Vm(object):
                     cpu = e(root, 'cpu')
                 e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
+            if cmd.addons.cpuPinning:
+                for rule in cmd.addons.cpuPinning:
+                    e(tune, 'vcpupin', attrib={'vcpu': str(rule.vCpu), 'cpuset': rule.pCpuSet})
+
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
