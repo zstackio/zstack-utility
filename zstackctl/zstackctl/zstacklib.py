@@ -1384,20 +1384,19 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                     })
                     run_remote_command(generate_kvm_repo_command, host_post_info)
                 # install libselinux-python and other command system libs from user defined repos
-                # enable alibase repo for yum clean avoid no repo to be clean
                 command = (
-                          "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
+                          "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                           "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                          "-y $pkg; done;") % zstack_repo
+                          "-y $pkg; done;") % (zstack_repo, zstack_repo)
                 run_remote_command(command, host_post_info)
                 if distro_version >= 7:
                     # to avoid install some pkgs on virtual router which release is Centos 6.x
                     command = (
-                                  "yum clean --enablerepo=alibase metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
+                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                                  "-y $pkg; done;") % zstack_repo
+                                  "-y $pkg; done;") % (zstack_repo, zstack_repo)
                     run_remote_command(command, host_post_info)
                     # enable chrony service and disable ntp for RedHat 7
                     service_status("ntpd", "state=stopped enabled=no", host_post_info, ignore_error=True)
