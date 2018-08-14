@@ -306,7 +306,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVolumeBaseImagePathRsp()
 
-        if not os.path.basename(cmd.installDir).endswith(cmd.volumeUuid):
+        if not os.path.basename(cmd.volumeInstallDir).endswith(cmd.volumeUuid):
             raise Exception('maybe you pass a wrong install dir')
 
         path = linux.get_qcow2_base_image_recusively(cmd.volumeInstallDir, cmd.imageCacheDir)
