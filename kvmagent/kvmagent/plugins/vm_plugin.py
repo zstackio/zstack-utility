@@ -39,6 +39,10 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
+class RetryException(Exception):
+    pass
+
+
 class NicTO(object):
     def __init__(self):
         self.mac = None
@@ -4610,6 +4614,13 @@ class VmPlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
         logger.debug("in release sharedblock, %s %s" % (dom, event))
+
+        @linux.retry(times=5, sleep_time=1)
+        def wait_volume_unused(volume):
+            used_process = linux.linux_lsof(volume)
+            if len(used_process) != 0:
+                raise RetryException("volume %s still used: %s" % (volume, used_process))
+
         try:
             event = LibvirtEventManager.event_to_string(event)
             if event not in (LibvirtEventManager.EVENT_STOPPED, LibvirtEventManager.EVENT_SHUTDOWN):
@@ -4620,7 +4631,11 @@ class VmPlugin(kvmagent.KvmAgent):
             if len(out) != 0:
                 for file in out:
                     volume = file.strip().split("'")[1]
-                    used_process = linux.linux_lsof(volume)
+
+                    try:
+                        wait_volume_unused(volume)
+                    finally:
+                        used_process = linux.linux_lsof(volume)
                     if len(used_process) == 0:
                         try:
                             lvm.deactive_lv(volume, False)

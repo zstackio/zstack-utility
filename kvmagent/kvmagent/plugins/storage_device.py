@@ -83,8 +83,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if r != 0:
                 raise RetryException("can not discovery iscsi portal %s:%s" % (iscsiServerIp, iscsiServerPort))
 
-
-
         iqns = cmd.iscsiTargets
         if iqns is None or len(iqns) == 0:
             try:
