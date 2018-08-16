@@ -169,7 +169,7 @@ if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
         extra_pkg = 'collectd-virt' if distro_version >= 7 else ""
-        dep_list = "bridge-utils chrony device-mapper-multipath dnsmasq expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sanlock sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
+        dep_list = "bridge-utils chrony device-mapper-multipath dnsmasq expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients OVMF pciutils python-pyudev pv rsync sanlock sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
 
         # name: install kvm related packages on RedHat based OS from user defined repo
         # update some packages if possible
