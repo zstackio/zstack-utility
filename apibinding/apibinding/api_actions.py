@@ -3542,6 +3542,18 @@ class DeleteEipAction(inventory.APIDeleteEipMsg):
         self.out = evt
         return self.out
 
+class DeleteExportedDatabaseBackupFromBackupStorageAction(inventory.APIDeleteExportedDatabaseBackupFromBackupStorageMsg):
+    def __init__(self):
+        super(DeleteExportedDatabaseBackupFromBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteExportedDatabaseBackupFromBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class DeleteExportedImageFromBackupStorageAction(inventory.APIDeleteExportedImageFromBackupStorageMsg):
     def __init__(self):
         super(DeleteExportedImageFromBackupStorageAction, self).__init__()
@@ -4958,6 +4970,18 @@ class DownloadBackupFileFromPublicCloudAction(inventory.APIDownloadBackupFileFro
         self.out = evt
         return self.out
 
+class ExportDatabaseBackupFromBackupStorageAction(inventory.APIExportDatabaseBackupFromBackupStorageMsg):
+    def __init__(self):
+        super(ExportDatabaseBackupFromBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ExportDatabaseBackupFromBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ExportImageFromBackupStorageAction(inventory.APIExportImageFromBackupStorageMsg):
     def __init__(self):
         super(ExportImageFromBackupStorageAction, self).__init__()
@@ -5506,6 +5530,18 @@ class GetDataVolumeAttachableVmAction(inventory.APIGetDataVolumeAttachableVmMsg)
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[GetDataVolumeAttachableVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class GetDatabaseBackupFromImageStoreAction(inventory.APIGetDatabaseBackupFromImageStoreMsg):
+    def __init__(self):
+        super(GetDatabaseBackupFromImageStoreAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[GetDatabaseBackupFromImageStoreAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -7289,6 +7325,20 @@ class QueryDataCenterFromLocalAction(inventory.APIQueryDataCenterFromLocalMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[QueryDataCenterFromLocalAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryDatabaseBackupAction(inventory.APIQueryDatabaseBackupMsg):
+    def __init__(self):
+        super(QueryDatabaseBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryDatabaseBackupAction] cannot be None')
         reply = api.sync_call(self, self.sessionUuid)
         self.reply = reply
         self.out = reply.inventories
@@ -9250,6 +9300,18 @@ class RecoverDataVolumeAction(inventory.APIRecoverDataVolumeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RecoverDataVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RecoverDatabaseFromBackupAction(inventory.APIRecoverDatabaseFromBackupMsg):
+    def __init__(self):
+        super(RecoverDatabaseFromBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoverDatabaseFromBackupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
