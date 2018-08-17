@@ -7205,6 +7205,18 @@ class APIQueryLongJobReply(object):
         self.error = None
 
 
+APIRERUNLONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APIRerunLongJobMsg'
+class APIRerunLongJobMsg(object):
+    FULL_NAME='org.zstack.header.longjob.APIRerunLongJobMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APISUBMITLONGJOBMSG_FULL_NAME = 'org.zstack.header.longjob.APISubmitLongJobMsg'
 class APISubmitLongJobMsg(object):
     FULL_NAME='org.zstack.header.longjob.APISubmitLongJobMsg'
@@ -17865,6 +17877,136 @@ class APIUpdateUsbDeviceMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDV2VCONVERSIONHOSTMSG_FULL_NAME = 'org.zstack.v2v.APIAddV2VConversionHostMsg'
+class APIAddV2VConversionHostMsg(object):
+    FULL_NAME='org.zstack.v2v.APIAddV2VConversionHostMsg'
+    def __init__(self):
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        #mandatory field
+        #valid values: [VMWARE]
+        self.type = NotNoneField()
+        #mandatory field
+        self.hostUuid = NotNoneField()
+        #mandatory field
+        self.storagePath = NotNoneField()
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICHANGEV2VCONVERSIONHOSTSTATEMSG_FULL_NAME = 'org.zstack.v2v.APIChangeV2VConversionHostStateMsg'
+class APIChangeV2VConversionHostStateMsg(object):
+    FULL_NAME='org.zstack.v2v.APIChangeV2VConversionHostStateMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        #valid values: [enable, disable]
+        self.stateEvent = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APICONVERTVMFROMFOREIGNHYPERVISORMSG_FULL_NAME = 'org.zstack.v2v.APIConvertVmFromForeignHypervisorMsg'
+class APIConvertVmFromForeignHypervisorMsg(object):
+    FULL_NAME='org.zstack.v2v.APIConvertVmFromForeignHypervisorMsg'
+    def __init__(self):
+        #mandatory field
+        self.url = NotNoneField()
+        #mandatory field
+        self.name = NotNoneField()
+        self.description = None
+        self.conversionHostUuid = None
+        #mandatory field
+        self.cpuNum = NotNoneField()
+        #mandatory field
+        self.memorySize = NotNoneField()
+        self.zoneUuid = None
+        self.clusterUuid = None
+        self.hostUuid = None
+        #mandatory field
+        self.primaryStorageUuid = NotNoneField()
+        #mandatory field
+        self.l3NetworkUuids = NotNoneList()
+        self.defaultL3NetworkUuid = None
+        #valid values: [Linux, Windows, WindowsVirtio, Paravirtualization, Other]
+        self.platform = None
+        #valid values: [UserVm, ApplianceVm]
+        self.type = None
+        #valid values: [InstantStart, JustConvert]
+        self.strategy = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEV2VCONVERSIONHOSTMSG_FULL_NAME = 'org.zstack.v2v.APIDeleteV2VConversionHostMsg'
+class APIDeleteV2VConversionHostMsg(object):
+    FULL_NAME='org.zstack.v2v.APIDeleteV2VConversionHostMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYV2VCONVERSIONHOSTMSG_FULL_NAME = 'org.zstack.v2v.APIQueryV2VConversionHostMsg'
+class APIQueryV2VConversionHostMsg(object):
+    FULL_NAME='org.zstack.v2v.APIQueryV2VConversionHostMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYV2VCONVERSIONHOSTREPLY_FULL_NAME = 'org.zstack.v2v.APIQueryV2VConversionHostReply'
+class APIQueryV2VConversionHostReply(object):
+    FULL_NAME='org.zstack.v2v.APIQueryV2VConversionHostReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIUPDATEV2VCONVERSIONHOSTMSG_FULL_NAME = 'org.zstack.v2v.APIUpdateV2VConversionHostMsg'
+class APIUpdateV2VConversionHostMsg(object):
+    FULL_NAME='org.zstack.v2v.APIUpdateV2VConversionHostMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.description = None
+        self.storagePath = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDVCENTERMSG_FULL_NAME = 'org.zstack.vmware.APIAddVCenterMsg'
 class APIAddVCenterMsg(object):
     FULL_NAME='org.zstack.vmware.APIAddVCenterMsg'
@@ -19095,6 +19237,7 @@ api_names = [
     'APIAddSimulatorPrimaryStorageMsg',
     'APIAddStackTemplateMsg',
     'APIAddUserToGroupMsg',
+    'APIAddV2VConversionHostMsg',
     'APIAddVCenterMsg',
     'APIAddVRouterRouteEntryMsg',
     'APIAddVmNicToLoadBalancerMsg',
@@ -19170,6 +19313,7 @@ api_names = [
     'APIChangeSecurityGroupStateMsg',
     'APIChangeTicketFlowCollectionStateMsg',
     'APIChangeTicketStatusMsg',
+    'APIChangeV2VConversionHostStateMsg',
     'APIChangeVipStateMsg',
     'APIChangeVmImageMsg',
     'APIChangeVmPasswordMsg',
@@ -19188,6 +19332,7 @@ api_names = [
     'APICloneEcsInstanceFromLocalVmMsg',
     'APICloneVmInstanceMsg',
     'APICommitVolumeAsImageMsg',
+    'APIConvertVmFromForeignHypervisorMsg',
     'APICreateAccountMsg',
     'APICreateAffinityGroupMsg',
     'APICreateAlarmMsg',
@@ -19398,6 +19543,7 @@ api_names = [
     'APIDeleteTicketMsg',
     'APIDeleteUserGroupMsg',
     'APIDeleteUserMsg',
+    'APIDeleteV2VConversionHostMsg',
     'APIDeleteVCenterMsg',
     'APIDeleteVRouterRouteEntryMsg',
     'APIDeleteVRouterRouteTableMsg',
@@ -20048,6 +20194,8 @@ api_names = [
     'APIQueryUserReply',
     'APIQueryUserTagMsg',
     'APIQueryUserTagReply',
+    'APIQueryV2VConversionHostMsg',
+    'APIQueryV2VConversionHostReply',
     'APIQueryVCenterBackupStorageMsg',
     'APIQueryVCenterBackupStorageReply',
     'APIQueryVCenterClusterMsg',
@@ -20166,6 +20314,7 @@ api_names = [
     'APIRenewSessionMsg',
     'APIReply',
     'APIRequestConsoleAccessMsg',
+    'APIRerunLongJobMsg',
     'APIResizeDataVolumeMsg',
     'APIResizeRootVolumeMsg',
     'APIRestartResourceStackMsg',
@@ -20359,6 +20508,7 @@ api_names = [
     'APIUpdateUsbDeviceMsg',
     'APIUpdateUserGroupMsg',
     'APIUpdateUserMsg',
+    'APIUpdateV2VConversionHostMsg',
     'APIUpdateVCenterMsg',
     'APIUpdateVRouterRouteTableMsg',
     'APIUpdateVipMsg',
@@ -27586,6 +27736,66 @@ class UsbDeviceInventory(object):
 
 
 
+class V2VConversionHostInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.type = None
+        self.hostUuid = None
+        self.storagePath = None
+        self.state = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'hostUuid'):
+            self.hostUuid = inv.hostUuid
+        else:
+            self.hostUuid = None
+
+        if hasattr(inv, 'storagePath'):
+            self.storagePath = inv.storagePath
+        else:
+            self.storagePath = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class ESXHostInventory(HostInventory):
     def __init__(self):
         super(ESXHostInventory, self).__init__()
@@ -28725,6 +28935,16 @@ class GlobalConfig_TWOFA(object):
     def get_category():
         return 'twofa'
 
+class GlobalConfig_V2V(object):
+    V2V_WINVIRTIODRIVERISOPATH = 'v2v.winVirtioDriverIsoPath'
+    V2V_HOSTALLOCATORSTRATEGY = 'v2v.hostAllocatorStrategy'
+    V2V_PARALLELISMDEGREE = 'v2v.parallelismDegree'
+    V2V_VIRTV2VDOCKERIMAGEPATH = 'v2v.virtv2vDockerImagePath'
+
+    @staticmethod
+    def get_category():
+        return 'v2v'
+
 class GlobalConfig_VCENTER(object):
     VCENTER_EVENT_READ_INTERVAL = 'vcenter.event.read.interval'
     VCENTER_METRICS_READ_INTERVAL = 'vcenter.metrics.read.interval'
@@ -28752,6 +28972,7 @@ class GlobalConfig_VIRTUALROUTER(object):
 class GlobalConfig_VM(object):
     VIDEOTYPE = 'videoType'
     BOOTMENU = 'bootMenu'
+    ADDITIONALQMP = 'additionalQmp'
     EXPUNGEPERIOD = 'expungePeriod'
     EMULATEHYPERV = 'emulateHyperV'
     DELETIONPOLICY = 'deletionPolicy'
@@ -28821,6 +29042,13 @@ class QueryObjectHybridAccountInventory(object):
 
     }
 
+class QueryObjectShareableVolumeVmInstanceRefInventory(object):
+    PRIMITIVE_FIELDS = ['volumeUuid','lastOpDate','uuid','deviceId','vmInstanceUuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectIAM2ProjectAttributeInventory(object):
     PRIMITIVE_FIELDS = ['name','type','uuid','value','projectUuid', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -28828,8 +29056,8 @@ class QueryObjectIAM2ProjectAttributeInventory(object):
 
     }
 
-class QueryObjectShareableVolumeVmInstanceRefInventory(object):
-    PRIMITIVE_FIELDS = ['volumeUuid','lastOpDate','uuid','deviceId','vmInstanceUuid','createDate', '__systemTag__', '__userTag__']
+class QueryObjectVipQosInventory(object):
+    PRIMITIVE_FIELDS = ['outboundBandwidth','port','vipUuid','inboundBandwidth','lastOpDate','type','uuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -28851,13 +29079,6 @@ class QueryObjectApplianceVmInventory(object):
         'portForwarding' : 'QueryObjectPortForwardingRuleInventory',
         'vip' : 'QueryObjectVipInventory',
         'eip' : 'QueryObjectEipInventory',
-    }
-
-class QueryObjectVipQosInventory(object):
-    PRIMITIVE_FIELDS = ['outboundBandwidth','port','vipUuid','inboundBandwidth','lastOpDate','type','uuid','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
     }
 
 class QueryObjectAliyunSnapshotInventory(object):
@@ -28922,13 +29143,6 @@ class QueryObjectOssBucketInventory(object):
 
     }
 
-class QueryObjectSchedulerJobInventory(object):
-    PRIMITIVE_FIELDS = ['jobData','triggersUuid','name','lastOpDate','description','state','targetResourceUuid','uuid','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = ['trigger']
-    QUERY_OBJECT_MAP = {
-        'trigger' : 'QueryObjectSchedulerTriggerInventory',
-    }
-
 class QueryObjectTicketStatusHistoryInventory(object):
     PRIMITIVE_FIELDS = ['operationContextType','toStatus','fromStatus','lastOpDate','comment','operatorUuid','ticketUuid','operatorType','operationContext','uuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -28936,15 +29150,15 @@ class QueryObjectTicketStatusHistoryInventory(object):
 
     }
 
-class QueryObjectVpcVpnGatewayInventory(object):
-    PRIMITIVE_FIELDS = ['accountName','endDate','description','publicIp','businessStatus','type','vSwitchUuid','uuid','spec','name','lastOpDate','gatewayId','status','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
+class QueryObjectSchedulerJobInventory(object):
+    PRIMITIVE_FIELDS = ['jobData','triggersUuid','name','lastOpDate','description','state','targetResourceUuid','uuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['trigger']
     QUERY_OBJECT_MAP = {
-
+        'trigger' : 'QueryObjectSchedulerTriggerInventory',
     }
 
-class QueryObjectFusionstorPrimaryStorageMonInventory(object):
-    PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','primaryStorageUuid','createDate','status', '__systemTag__', '__userTag__']
+class QueryObjectVpcVpnGatewayInventory(object):
+    PRIMITIVE_FIELDS = ['accountName','endDate','description','publicIp','businessStatus','type','vSwitchUuid','uuid','spec','name','lastOpDate','gatewayId','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -28956,6 +29170,13 @@ class QueryObjectTicketFlowCollectionInventory(object):
     QUERY_OBJECT_MAP = {
         'flows' : 'QueryObjectTicketFlowInventory',
         'flow' : 'QueryObjectTicketFlowInventory',
+    }
+
+class QueryObjectFusionstorPrimaryStorageMonInventory(object):
+    PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','primaryStorageUuid','createDate','status', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectHybridConnectionRefInventory(object):
@@ -29048,6 +29269,13 @@ class QueryObjectFusionstorBackupStorageInventory(object):
         'zone' : 'QueryObjectZoneInventory',
     }
 
+class QueryObjectQuotaInventory(object):
+    PRIMITIVE_FIELDS = ['identityType','identityUuid','name','lastOpDate','uuid','value','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['account']
+    QUERY_OBJECT_MAP = {
+        'account' : 'QueryObjectAccountInventory',
+    }
+
 class QueryObjectAliyunEbsPrimaryStorageInventory(object):
     PRIMITIVE_FIELDS = ['availableCapacity','mountPath','secretKey','appName','zoneUuid','description','riverClusterId','systemUsedCapacity','aZone','type','uuid','totalPhysicalCapacity','url','attachedClusterUuids','totalCapacity','name','lastOpDate','state','oceanUrl','availablePhysicalCapacity','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['volume','volumeSnapshot','zone','cluster']
@@ -29056,13 +29284,6 @@ class QueryObjectAliyunEbsPrimaryStorageInventory(object):
         'volumeSnapshot' : 'QueryObjectVolumeSnapshotInventory',
         'zone' : 'QueryObjectZoneInventory',
         'cluster' : 'QueryObjectClusterInventory',
-    }
-
-class QueryObjectQuotaInventory(object):
-    PRIMITIVE_FIELDS = ['identityType','identityUuid','name','lastOpDate','uuid','value','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = ['account']
-    QUERY_OBJECT_MAP = {
-        'account' : 'QueryObjectAccountInventory',
     }
 
 class QueryObjectIAM2VirtualIDAttributeInventory(object):
@@ -29138,6 +29359,13 @@ class QueryObjectIAM2VirtualIDInventory(object):
         'groups' : 'QueryObjectIAM2VirtualIDGroupInventory',
     }
 
+class QueryObjectSystemTagInventory(object):
+    PRIMITIVE_FIELDS = ['lastOpDate','tag','type','uuid','inherent','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectImageInventory(object):
     PRIMITIVE_FIELDS = ['actualSize','format','description','mediaType','type','uuid','url','platform','guestOsType','exportMd5Sum','system','size','exportUrl','md5Sum','name','lastOpDate','state','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['volume','backupStorageRefs','backupStorage']
@@ -29145,13 +29373,6 @@ class QueryObjectImageInventory(object):
         'volume' : 'QueryObjectVolumeInventory',
         'backupStorageRefs' : 'QueryObjectImageBackupStorageRefInventory',
         'backupStorage' : 'QueryObjectBackupStorageInventory',
-    }
-
-class QueryObjectSystemTagInventory(object):
-    PRIMITIVE_FIELDS = ['lastOpDate','tag','type','uuid','inherent','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
     }
 
 class QueryObjectLoadBalancerListenerVmNicRefInventory(object):
@@ -29212,15 +29433,15 @@ class QueryObjectL3NetworkDnsInventory(object):
 
     }
 
-class QueryObjectIPsecPeerCidrInventory(object):
-    PRIMITIVE_FIELDS = ['lastOpDate','cidr','uuid','connectionUuid','createDate', '__systemTag__', '__userTag__']
+class QueryObjectDataVolumeUsageInventory(object):
+    PRIMITIVE_FIELDS = ['volumeUuid','volumeName','lastOpDate','accountUuid','volumeStatus','id','inventory','volumeSize','dateInLong','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
     }
 
-class QueryObjectDataVolumeUsageInventory(object):
-    PRIMITIVE_FIELDS = ['volumeUuid','volumeName','lastOpDate','accountUuid','volumeStatus','id','inventory','volumeSize','dateInLong','createDate', '__systemTag__', '__userTag__']
+class QueryObjectIPsecPeerCidrInventory(object):
+    PRIMITIVE_FIELDS = ['lastOpDate','cidr','uuid','connectionUuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -29266,13 +29487,6 @@ class QueryObjectUserPolicyRefInventory(object):
         'policy' : 'QueryObjectPolicyInventory',
     }
 
-class QueryObjectVpcUserVpnGatewayInventory(object):
-    PRIMITIVE_FIELDS = ['accountName','ip','name','lastOpDate','dataCenterUuid','description','type','uuid','gatewayId','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectL2VlanNetworkInventory(object):
     PRIMITIVE_FIELDS = ['vlan','physicalInterface','name','zoneUuid','lastOpDate','description','type','uuid','attachedClusterUuids','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['l3Network','zone','cluster']
@@ -29280,6 +29494,13 @@ class QueryObjectL2VlanNetworkInventory(object):
         'l3Network' : 'QueryObjectL3NetworkInventory',
         'zone' : 'QueryObjectZoneInventory',
         'cluster' : 'QueryObjectClusterInventory',
+    }
+
+class QueryObjectVpcUserVpnGatewayInventory(object):
+    PRIMITIVE_FIELDS = ['accountName','ip','name','lastOpDate','dataCenterUuid','description','type','uuid','gatewayId','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectPciDevicePciDeviceOfferingRefInventory(object):
@@ -29334,6 +29555,13 @@ class QueryObjectVolumeSnapshotInventory(object):
         'backupStorage' : 'QueryObjectBackupStorageInventory',
     }
 
+class QueryObjectV2VConversionHostInventory(object):
+    PRIMITIVE_FIELDS = ['hostUuid','name','lastOpDate','description','storagePath','state','type','uuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['host']
+    QUERY_OBJECT_MAP = {
+        'host' : 'QueryObjectHostInventory',
+    }
+
 class QueryObjectPolicyInventory(object):
     PRIMITIVE_FIELDS = ['name','accountUuid','statements','uuid', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['account','user','group']
@@ -29362,6 +29590,13 @@ class QueryObjectKVMHostInventory(object):
         'zone' : 'QueryObjectZoneInventory',
     }
 
+class QueryObjectAlarmLabelInventory(object):
+    PRIMITIVE_FIELDS = ['uuid','value','key','operator', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectAliyunNasMountTargetInventory(object):
     PRIMITIVE_FIELDS = ['nasFileSystemUuid','accessGroupUuid','mountDomain','name','lastOpDate','description','type','uuid','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -29369,8 +29604,8 @@ class QueryObjectAliyunNasMountTargetInventory(object):
 
     }
 
-class QueryObjectAlarmLabelInventory(object):
-    PRIMITIVE_FIELDS = ['uuid','value','key','operator', '__systemTag__', '__userTag__']
+class QueryObjectSharedResourceInventory(object):
+    PRIMITIVE_FIELDS = ['receiverAccountUuid','ownerAccountUuid','lastOpDate','toPublic','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -29394,13 +29629,6 @@ class QueryObjectVpcRouterVmInventory(object):
         'vip' : 'QueryObjectVipInventory',
         'eip' : 'QueryObjectEipInventory',
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
-    }
-
-class QueryObjectSharedResourceInventory(object):
-    PRIMITIVE_FIELDS = ['receiverAccountUuid','ownerAccountUuid','lastOpDate','toPublic','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
     }
 
 class QueryObjectMonitorTriggerActionRefInventory(object):
@@ -29508,19 +29736,19 @@ class QueryObjectPrimaryStorageClusterRefInventory(object):
         'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
     }
 
-class QueryObjectIAM2VirtualIDRoleRefInventory(object):
-    PRIMITIVE_FIELDS = ['virtualIDUuid','lastOpDate','roleUuid','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = ['roles','virtualIDs']
-    QUERY_OBJECT_MAP = {
-        'roles' : 'QueryObjectRoleInventory',
-        'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
-    }
-
 class QueryObjectIAM2VirtualIDGroupInventory(object):
     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','uuid','projectUuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['attributes','roles','virtualIDs']
     QUERY_OBJECT_MAP = {
         'attributes' : 'QueryObjectIAM2VirtualIDGroupAttributeInventory',
+        'roles' : 'QueryObjectRoleInventory',
+        'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
+    }
+
+class QueryObjectIAM2VirtualIDRoleRefInventory(object):
+    PRIMITIVE_FIELDS = ['virtualIDUuid','lastOpDate','roleUuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['roles','virtualIDs']
+    QUERY_OBJECT_MAP = {
         'roles' : 'QueryObjectRoleInventory',
         'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
     }
@@ -29693,15 +29921,15 @@ class QueryObjectSNSSubscriberInventory(object):
         'topics' : 'QueryObjectSNSTopicInventory',
     }
 
-class QueryObjectNotificationInventory(object):
-    PRIMITIVE_FIELDS = ['opaque','type','uuid','content','sender','name','lastOpDate','arguments','time','resourceUuid','status','resourceType','createDate', '__systemTag__', '__userTag__']
+class QueryObjectConsoleProxyInventory(object):
+    PRIMITIVE_FIELDS = ['agentType','scheme','proxyIdentity','uuid','targetPort','agentIp','token','proxyPort','proxyHostname','targetHostname','lastOpDate','vmInstanceUuid','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
     }
 
-class QueryObjectConsoleProxyInventory(object):
-    PRIMITIVE_FIELDS = ['agentType','scheme','proxyIdentity','uuid','targetPort','agentIp','token','proxyPort','proxyHostname','targetHostname','lastOpDate','vmInstanceUuid','status','createDate', '__systemTag__', '__userTag__']
+class QueryObjectNotificationInventory(object):
+    PRIMITIVE_FIELDS = ['opaque','type','uuid','content','sender','name','lastOpDate','arguments','time','resourceUuid','status','resourceType','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -29776,19 +30004,19 @@ class QueryObjectIdentityZoneInventory(object):
 
     }
 
+class QueryObjectAlarmActionInventory(object):
+    PRIMITIVE_FIELDS = ['actionUuid','actionType','alarmUuid', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectSNSEmailEndpointInventory(object):
     PRIMITIVE_FIELDS = ['name','platformUuid','lastOpDate','description','state','type','uuid','email','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['platform','topics']
     QUERY_OBJECT_MAP = {
         'platform' : 'QueryObjectSNSApplicationPlatformInventory',
         'topics' : 'QueryObjectSNSTopicInventory',
-    }
-
-class QueryObjectAlarmActionInventory(object):
-    PRIMITIVE_FIELDS = ['actionUuid','actionType','alarmUuid', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
     }
 
 class QueryObjectLoadBalancerListenerInventory(object):
@@ -29937,18 +30165,18 @@ class QueryObjectCephPrimaryStorageMonInventory(object):
 
     }
 
-class QueryObjectSchedulerTriggerInventory(object):
-    PRIMITIVE_FIELDS = ['cron','schedulerInterval','name','lastOpDate','description','jobsUuid','startTime','stopTime','schedulerType','uuid','repeatCount','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = ['job']
-    QUERY_OBJECT_MAP = {
-        'job' : 'QueryObjectSchedulerJobInventory',
-    }
-
 class QueryObjectEventSubscriptionLabelInventory(object):
     PRIMITIVE_FIELDS = ['uuid','value','key','operator', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
+    }
+
+class QueryObjectSchedulerTriggerInventory(object):
+    PRIMITIVE_FIELDS = ['cron','schedulerInterval','name','lastOpDate','description','jobsUuid','startTime','stopTime','schedulerType','uuid','repeatCount','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['job']
+    QUERY_OBJECT_MAP = {
+        'job' : 'QueryObjectSchedulerJobInventory',
     }
 
 class QueryObjectVCenterPrimaryStorageInventory(object):
@@ -29992,6 +30220,13 @@ class QueryObjectTicketInventory(object):
 
     }
 
+class QueryObjectStackTemplateInventory(object):
+    PRIMITIVE_FIELDS = ['md5sum','name','lastOpDate','description','state','type','uuid','version','content','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectUserGroupInventory(object):
     PRIMITIVE_FIELDS = ['name','lastOpDate','accountUuid','description','uuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['account','user','policy']
@@ -30007,13 +30242,6 @@ class QueryObjectIscsiServerInventory(object):
     QUERY_OBJECT_MAP = {
         'iscsiCluster' : 'QueryObjectIscsiServerClusterRefInventory',
         'iscsiTarget' : 'QueryObjectIscsiTargetInventory',
-    }
-
-class QueryObjectStackTemplateInventory(object):
-    PRIMITIVE_FIELDS = ['md5sum','name','lastOpDate','description','state','type','uuid','version','content','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
     }
 
 class QueryObjectPciDeviceOfferingInventory(object):
@@ -30075,18 +30303,18 @@ class QueryObjectEcsImageInventory(object):
         'snapshotRef' : 'QueryObjectAliyunSnapshotInventory',
     }
 
-class QueryObjectInstanceOfferingInventory(object):
-    PRIMITIVE_FIELDS = ['memorySize','sortKey','cpuSpeed','allocatorStrategy','name','lastOpDate','description','state','type','uuid','cpuNum','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = ['vmInstance']
-    QUERY_OBJECT_MAP = {
-        'vmInstance' : 'QueryObjectVmInstanceInventory',
-    }
-
 class QueryObjectBaremetalPxeServerInventory(object):
     PRIMITIVE_FIELDS = ['name','lastOpDate','description','dhcpRangeNetmask','dhcpInterface','uuid','dhcpRangeBegin','dhcpRangeEnd','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
+    }
+
+class QueryObjectInstanceOfferingInventory(object):
+    PRIMITIVE_FIELDS = ['memorySize','sortKey','cpuSpeed','allocatorStrategy','name','lastOpDate','description','state','type','uuid','cpuNum','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['vmInstance']
+    QUERY_OBJECT_MAP = {
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
     }
 
 class QueryObjectDahoVllsInventory(object):
@@ -30114,13 +30342,6 @@ class QueryObjectVipPeerL3NetworkRefInventory(object):
         'vip' : 'QueryObjectVipInventory',
     }
 
-class QueryObjectIAM2ProjectTemplateInventory(object):
-    PRIMITIVE_FIELDS = ['template','name','lastOpDate','description','uuid','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectVmUsageInventory(object):
     PRIMITIVE_FIELDS = ['memorySize','vmUuid','name','lastOpDate','accountUuid','id','state','inventory','cpuNum','dateInLong','rootVolumeSize','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -30128,8 +30349,15 @@ class QueryObjectVmUsageInventory(object):
 
     }
 
+class QueryObjectIAM2ProjectTemplateInventory(object):
+    PRIMITIVE_FIELDS = ['template','name','lastOpDate','description','uuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectVmNicInventory(object):
-    PRIMITIVE_FIELDS = ['metaData','netmask','ip','lastOpDate','l3NetworkUuid','uuid','deviceId','mac','gateway','vmInstanceUuid','createDate', '__systemTag__', '__userTag__']
+    PRIMITIVE_FIELDS = ['metaData','netmask','ip','lastOpDate','l3NetworkUuid','hypervisorType','uuid','deviceId','mac','gateway','vmInstanceUuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['vmInstance','portForwarding','l3Network','eip','securityGroup','loadBalancerListener']
     QUERY_OBJECT_MAP = {
         'vmInstance' : 'QueryObjectVmInstanceInventory',
@@ -30235,19 +30463,19 @@ class QueryObjectHybridEipAddressInventory(object):
 
     }
 
-class QueryObjectTwoFactorAuthenticationSecretInventory(object):
-    PRIMITIVE_FIELDS = ['lastOpDate','secret','uuid','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectImageBackupStorageRefInventory(object):
     PRIMITIVE_FIELDS = ['installPath','lastOpDate','imageUuid','backupStorageUuid','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['image','backupStorage']
     QUERY_OBJECT_MAP = {
         'image' : 'QueryObjectImageInventory',
         'backupStorage' : 'QueryObjectBackupStorageInventory',
+    }
+
+class QueryObjectTwoFactorAuthenticationSecretInventory(object):
+    PRIMITIVE_FIELDS = ['lastOpDate','secret','uuid','resourceUuid','resourceType','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectArchiveTicketInventory(object):
@@ -30257,14 +30485,6 @@ class QueryObjectArchiveTicketInventory(object):
 
     }
 
-class QueryObjectSNSHttpEndpointInventory(object):
-    PRIMITIVE_FIELDS = ['name','platformUuid','lastOpDate','description','state','type','uuid','url','username','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = ['platform','topics']
-    QUERY_OBJECT_MAP = {
-        'platform' : 'QueryObjectSNSApplicationPlatformInventory',
-        'topics' : 'QueryObjectSNSTopicInventory',
-    }
-
 class QueryObjectSimulatorHostInventory(object):
     PRIMITIVE_FIELDS = ['clusterUuid','zoneUuid','availableCpuCapacity','description','cpuCapacity','hypervisorType','totalMemoryCapacity','uuid','cpuSockets','cpuNum','memoryCapacity','managementIp','name','lastOpDate','totalCpuCapacity','availableMemoryCapacity','state','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['cluster','vmInstance','zone']
@@ -30272,6 +30492,14 @@ class QueryObjectSimulatorHostInventory(object):
         'cluster' : 'QueryObjectClusterInventory',
         'vmInstance' : 'QueryObjectVmInstanceInventory',
         'zone' : 'QueryObjectZoneInventory',
+    }
+
+class QueryObjectSNSHttpEndpointInventory(object):
+    PRIMITIVE_FIELDS = ['name','platformUuid','lastOpDate','description','state','type','uuid','url','username','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['platform','topics']
+    QUERY_OBJECT_MAP = {
+        'platform' : 'QueryObjectSNSApplicationPlatformInventory',
+        'topics' : 'QueryObjectSNSTopicInventory',
     }
 
 class QueryObjectEmailTriggerActionInventory(object):
@@ -30341,18 +30569,18 @@ class QueryObjectVpcVpnIkeConfigInventory(object):
 
     }
 
-class QueryObjectSNSTextTemplateInventory(object):
-    PRIMITIVE_FIELDS = ['template','name','defaultTemplate','lastOpDate','description','applicationPlatformType','uuid','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectIscsiLunInventory(object):
     PRIMITIVE_FIELDS = ['iscsiTargetUuid','hctl','wwid','type','uuid','wwn','path','size','serial','vendor','lastOpDate','model','multipathDeviceUuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['iscsiTarget']
     QUERY_OBJECT_MAP = {
         'iscsiTarget' : 'QueryObjectIscsiTargetInventory',
+    }
+
+class QueryObjectSNSTextTemplateInventory(object):
+    PRIMITIVE_FIELDS = ['template','name','defaultTemplate','lastOpDate','description','applicationPlatformType','uuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectEcsVSwitchInventory(object):
@@ -30499,6 +30727,13 @@ class QueryObjectIAM2ProjectInventory(object):
         'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
     }
 
+class QueryObjectCephBackupStorageMonInventory(object):
+    PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','status', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectNetworkServiceProviderInventory(object):
     PRIMITIVE_FIELDS = ['attachedL2NetworkUuids','name','lastOpDate','description','type','networkServiceTypes','uuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -30523,13 +30758,6 @@ class QueryObjectVirtualRouterVmInventory(object):
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
         'vip' : 'QueryObjectVipInventory',
         'eip' : 'QueryObjectEipInventory',
-    }
-
-class QueryObjectCephBackupStorageMonInventory(object):
-    PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','status', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
     }
 
 class QueryObjectAlertInventory(object):
@@ -30683,13 +30911,6 @@ class QueryObjectIAM2VirtualIDOrganizationRefInventory(object):
         'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
     }
 
-class QueryObjectIPsecL3NetworkRefInventory(object):
-    PRIMITIVE_FIELDS = ['lastOpDate','l3NetworkUuid','uuid','connectionUuid','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectVmNicSecurityGroupRefInventory(object):
     PRIMITIVE_FIELDS = ['vmNicUuid','securityGroupUuid','lastOpDate','vmInstanceUuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['vmNic','securityGroup']
@@ -30700,6 +30921,13 @@ class QueryObjectVmNicSecurityGroupRefInventory(object):
 
 class QueryObjectNetworkServiceProviderL2NetworkRefInventory(object):
     PRIMITIVE_FIELDS = ['l2NetworkUuid','networkServiceProviderUuid', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
+class QueryObjectIPsecL3NetworkRefInventory(object):
+    PRIMITIVE_FIELDS = ['lastOpDate','l3NetworkUuid','uuid','connectionUuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -30740,6 +30968,13 @@ class QueryObjectCloudFormationStackResourceRefInventory(object):
 
     }
 
+class QueryObjectAliyunProxyVpcInventory(object):
+    PRIMITIVE_FIELDS = ['vpcName','isDefault','cidrBlock','lastOpDate','description','vRouterUuid','uuid','aliyunProxyVSwitches','status','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
+    }
+
 class QueryObjectImageStoreBackupStorageInventory(object):
     PRIMITIVE_FIELDS = ['sshPort','availableCapacity','attachedZoneUuids','description','type','uuid','url','hostname','totalCapacity','name','lastOpDate','state','username','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['image','volumeSnapshot','zone']
@@ -30749,174 +30984,168 @@ class QueryObjectImageStoreBackupStorageInventory(object):
         'zone' : 'QueryObjectZoneInventory',
     }
 
-class QueryObjectAliyunProxyVpcInventory(object):
-    PRIMITIVE_FIELDS = ['vpcName','isDefault','cidrBlock','lastOpDate','description','vRouterUuid','uuid','aliyunProxyVSwitches','status','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 queryMessageInventoryMap = {
-    'APIQueryDahoVllMsg' : QueryObjectDahoVllsInventory,
-    'APIQuerySNSApplicationEndpointMsg' : QueryObjectSNSApplicationEndpointInventory,
-    'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
-    'APIQueryBaremetalInstanceMsg' : QueryObjectBaremetalInstanceInventory,
-    'APIQueryNotificationSubscriptionMsg' : QueryObjectNotificationSubscriptionInventory,
-    'APIQueryIAM2VirtualIDMsg' : QueryObjectIAM2VirtualIDInventory,
-    'APIQueryIpRangeMsg' : QueryObjectIpRangeInventory,
-    'APIQueryImageMsg' : QueryObjectImageInventory,
-    'APIQueryArchiveTicketMsg' : QueryObjectArchiveTicketInventory,
-    'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,
-    'APIQueryDataCenterFromLocalMsg' : QueryObjectDataCenterInventory,
-    'APIQueryVipMsg' : QueryObjectVipInventory,
-    'APIQueryBaremetalChassisMsg' : QueryObjectBaremetalChassisInventory,
-    'APIQueryQuotaMsg' : QueryObjectQuotaInventory,
-    'APIQueryAliyunEbsPrimaryStorageMsg' : QueryObjectAliyunEbsPrimaryStorageInventory,
-    'APIQueryLdapServerMsg' : QueryObjectLdapServerInventory,
-    'APIQueryVirtualRouterVmMsg' : QueryObjectVirtualRouterVmInventory,
-    'APIQueryIAM2ProjectTemplateMsg' : QueryObjectIAM2ProjectTemplateInventory,
-    'APIQueryPrimaryStorageMsg' : QueryObjectPrimaryStorageInventory,
-    'APIQuerySchedulerJobMsg' : QueryObjectSchedulerJobInventory,
-    'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
-    'APIQueryVRouterRouteEntryMsg' : QueryObjectVRouterRouteEntryInventory,
-    'APIQueryL2VxlanNetworkPoolMsg' : QueryObjectL2VxlanNetworkPoolInventory,
-    'APIQueryNasMountTargetMsg' : QueryObjectNasMountTargetInventory,
-    'APIQueryIPSecConnectionMsg' : QueryObjectIPsecConnectionInventory,
-    'APIQueryLongJobMsg' : QueryObjectLongJobInventory,
-    'APIQuerySNSTopicSubscriberMsg' : QueryObjectSNSSubscriberInventory,
-    'APIQuerySNSTextTemplateMsg' : QueryObjectSNSTextTemplateInventory,
-    'APIQueryAccountMsg' : QueryObjectAccountInventory,
-    'APIQueryHybridEipFromLocalMsg' : QueryObjectHybridEipAddressInventory,
-    'APIQueryVolumeMsg' : QueryObjectVolumeInventory,
-    'APIQueryEventFromResourceStackMsg' : QueryObjectCloudFormationStackEventInventory,
-    'APIQueryAliyunRouterInterfaceFromLocalMsg' : QueryObjectAliyunRouterInterfaceInventory,
-    'APIQueryLocalStorageResourceRefMsg' : QueryObjectLocalStorageResourceRefInventory,
-    'APIQueryL2NetworkMsg' : QueryObjectL2NetworkInventory,
-    'APIQueryVCenterMsg' : QueryObjectVCenterInventory,
-    'APIQueryVRouterRouteTableMsg' : QueryObjectVRouterRouteTableInventory,
-    'APIQueryShareableVolumeVmInstanceRefMsg' : QueryObjectShareableVolumeVmInstanceRefInventory,
-    'APIQueryEcsSecurityGroupRuleFromLocalMsg' : QueryObjectEcsSecurityGroupRuleInventory,
-    'APIQueryHybridKeySecretMsg' : QueryObjectHybridAccountInventory,
-    'APIQueryBaremetalPxeServerMsg' : QueryObjectBaremetalPxeServerInventory,
-    'APIQuerySftpBackupStorageMsg' : QueryObjectSftpBackupStorageInventory,
-    'APIQueryIAM2ProjectMsg' : QueryObjectIAM2ProjectInventory,
-    'APIQueryVmNicMsg' : QueryObjectVmNicInventory,
-    'APIQueryIAM2VirtualIDGroupAttributeMsg' : QueryObjectIAM2VirtualIDGroupAttributeInventory,
-    'APIQueryAliyunSnapshotFromLocalMsg' : QueryObjectAliyunSnapshotInventory,
-    'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
-    'APIQueryTicketHistoryMsg' : QueryObjectTicketStatusHistoryInventory,
-    'APIQueryTicketFlowCollectionMsg' : QueryObjectTicketFlowCollectionInventory,
-    'APIQueryVCenterDatacenterMsg' : QueryObjectVCenterDatacenterInventory,
-    'APIQueryInstanceOfferingMsg' : QueryObjectInstanceOfferingInventory,
-    'APIQueryClusterMsg' : QueryObjectClusterInventory,
-    'APIQueryPortForwardingRuleMsg' : QueryObjectPortForwardingRuleInventory,
-    'APIQueryStackTemplateMsg' : QueryObjectStackTemplateInventory,
-    'APIQuerySharedResourceMsg' : QueryObjectSharedResourceInventory,
-    'APIQueryVpcVpnGatewayFromLocalMsg' : QueryObjectVpcVpnGatewayInventory,
-    'APIQueryEcsImageFromLocalMsg' : QueryObjectEcsImageInventory,
-    'APIQueryNetworkServiceL3NetworkRefMsg' : QueryObjectNetworkServiceL3NetworkRefInventory,
-    'APIQueryVmInstanceMsg' : QueryObjectVmInstanceInventory,
-    'APIQueryCephPrimaryStorageMsg' : QueryObjectCephPrimaryStorageInventory,
-    'APIQuerySNSTopicMsg' : QueryObjectSNSTopicInventory,
-    'APIQueryDahoVllVbrRefMsg' : QueryObjectDahoVllVbrRefInventory,
-    'APIQueryTicketFlowMsg' : QueryObjectTicketFlowInventory,
-    'APIQueryL2VlanNetworkMsg' : QueryObjectL2VlanNetworkInventory,
-    'APIQueryAliyunDiskFromLocalMsg' : QueryObjectAliyunDiskInventory,
-    'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
-    'APIQueryPciDevicePciDeviceOfferingMsg' : QueryObjectPciDevicePciDeviceOfferingRefInventory,
-    'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
-    'APIQueryWebhookMsg' : QueryObjectWebhookInventory,
     'APIQueryIdentityZoneFromLocalMsg' : QueryObjectIdentityZoneInventory,
-    'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,
-    'APIQueryVolumeSnapshotTreeMsg' : QueryObjectVolumeSnapshotTreeInventory,
-    'APIQuerySecurityGroupMsg' : QueryObjectSecurityGroupInventory,
-    'APIQueryAlertMsg' : QueryObjectAlertInventory,
-    'APIQuerySharedBlockMsg' : QueryObjectSharedBlockInventory,
-    'APIQuerySharedBlockGroupPrimaryStorageHostRefMsg' : QueryObjectSharedBlockGroupPrimaryStorageHostRefInventory,
-    'APIQueryVmNicInSecurityGroupMsg' : QueryObjectVmNicSecurityGroupRefInventory,
-    'APIQueryPciDeviceMsg' : QueryObjectPciDeviceInventory,
-    'APIQueryOssBucketFileNameMsg' : QueryObjectOssBucketInventory,
-    'APIQueryHostMsg' : QueryObjectHostInventory,
-    'APIQueryAliyunProxyVSwitchMsg' : QueryObjectAliyunProxyVSwitchInventory,
-    'APIQueryIAM2OrganizationAttributeMsg' : QueryObjectIAM2OrganizationAttributeInventory,
-    'APIQueryZoneMsg' : QueryObjectZoneInventory,
-    'APIQueryNotificationMsg' : QueryObjectNotificationInventory,
-    'APIQueryL3NetworkMsg' : QueryObjectL3NetworkInventory,
-    'APIQueryCephPrimaryStoragePoolMsg' : QueryObjectCephPrimaryStoragePoolInventory,
-    'APIQueryNasFileSystemMsg' : QueryObjectNasFileSystemInventory,
-    'APIQueryResourceStackMsg' : QueryObjectResourceStackInventory,
-    'APIQueryNetworkServiceProviderMsg' : QueryObjectNetworkServiceProviderInventory,
-    'APIQueryLdapBindingMsg' : QueryObjectLdapAccountRefInventory,
-    'APIQuerySNSEmailEndpointMsg' : QueryObjectSNSEmailEndpointInventory,
-    'APIQueryVpcRouterMsg' : QueryObjectVpcRouterVmInventory,
-    'APIQuerySNSDingTalkEndpointMsg' : QueryObjectSNSDingTalkEndpointInventory,
-    'APIQueryFusionstorBackupStorageMsg' : QueryObjectFusionstorBackupStorageInventory,
-    'APIQueryAlarmMsg' : QueryObjectAlarmInventory,
-    'APIQuerySNSEmailPlatformMsg' : QueryObjectSNSEmailPlatformInventory,
-    'APIQueryDatabaseBackupMsg' : QueryObjectDatabaseBackupInventory,
-    'APIQueryMonitorTriggerMsg' : QueryObjectMonitorTriggerInventory,
-    'APIQueryIAM2VirtualIDAttributeMsg' : QueryObjectIAM2VirtualIDAttributeInventory,
-    'APIQueryVirtualRouterVRouterRouteTableRefMsg' : QueryObjectVirtualRouterVRouterRouteTableRefInventory,
-    'APIQueryLoadBalancerMsg' : QueryObjectLoadBalancerInventory,
-    'APIQueryVpcUserVpnGatewayFromLocalMsg' : QueryObjectVpcUserVpnGatewayInventory,
-    'APIQuerySharedBlockGroupPrimaryStorageMsg' : QueryObjectSharedBlockGroupPrimaryStorageInventory,
-    'APIQueryVpcIkeConfigFromLocalMsg' : QueryObjectVpcVpnIkeConfigInventory,
-    'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
-    'APIQueryAliyunRouteEntryFromLocalMsg' : QueryObjectVpcVirtualRouteEntryInventory,
-    'APIQueryVolumeSnapshotMsg' : QueryObjectVolumeSnapshotInventory,
-    'APIQueryVpcVpnConnectionFromLocalMsg' : QueryObjectVpcVpnConnectionInventory,
-    'APIQueryVCenterPrimaryStorageMsg' : QueryObjectVCenterPrimaryStorageInventory,
-    'APIQueryEmailTriggerActionMsg' : QueryObjectEmailTriggerActionInventory,
-    'APIQueryLoadBalancerListenerMsg' : QueryObjectLoadBalancerListenerInventory,
-    'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
-    'APIQueryAffinityGroupMsg' : QueryObjectAffinityGroupInventory,
-    'APIQueryIAM2VirtualIDGroupMsg' : QueryObjectIAM2VirtualIDGroupInventory,
-    'APIQueryResourcePriceMsg' : QueryObjectPriceInventory,
-    'APIQueryUserMsg' : QueryObjectUserInventory,
-    'APIQueryGCJobMsg' : QueryObjectGarbageCollectorInventory,
-    'APIQuerySNSApplicationPlatformMsg' : QueryObjectSNSApplicationPlatformInventory,
-    'APIQueryUserTagMsg' : QueryObjectUserTagInventory,
-    'APIQueryVpcIpSecConfigFromLocalMsg' : QueryObjectVpcVpnIpSecConfigInventory,
-    'APIQueryPolicyMsg' : QueryObjectPolicyInventory,
-    'APIQueryIscsiLunMsg' : QueryObjectIscsiLunInventory,
-    'APIQueryUsbDeviceMsg' : QueryObjectUsbDeviceInventory,
-    'APIQueryDahoDataCenterConnectionMsg' : QueryObjectDahoConnectionInventory,
     'APIQueryEcsInstanceFromLocalMsg' : QueryObjectEcsInstanceInventory,
-    'APIQueryGlobalConfigMsg' : QueryObjectGlobalConfigInventory,
-    'APIQueryCertificateMsg' : QueryObjectCertificateInventory,
-    'APIQueryEmailMediaMsg' : QueryObjectEmailMediaInventory,
-    'APIQueryIAM2ProjectAttributeMsg' : QueryObjectIAM2ProjectAttributeInventory,
-    'APIQueryDahoCloudConnectionMsg' : QueryObjectDahoCloudConnectionInventory,
-    'APIQueryTicketMsg' : QueryObjectTicketInventory,
-    'APIQuerySecurityGroupRuleMsg' : QueryObjectSecurityGroupRuleInventory,
-    'APIQueryL2VxlanNetworkMsg' : QueryObjectL2VxlanNetworkInventory,
-    'APIQueryEcsVpcFromLocalMsg' : QueryObjectEcsVpcInventory,
-    'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg' : QueryObjectConnectionRelationShipInventory,
-    'APIQueryAliyunProxyVpcMsg' : QueryObjectAliyunProxyVpcInventory,
-    'APIQueryVolumeBackupMsg' : QueryObjectVolumeBackupInventory,
-    'APIQueryManagementNodeMsg' : QueryObjectManagementNodeInventory,
-    'APIQueryVtepMsg' : QueryObjectVtepInventory,
-    'APIQuerySystemTagMsg' : QueryObjectSystemTagInventory,
-    'APIQueryImageCacheMsg' : QueryObjectImageCacheInventory,
-    'APIQuerySNSHttpEndpointMsg' : QueryObjectSNSHttpEndpointInventory,
-    'APIQueryIscsiServerMsg' : QueryObjectIscsiServerInventory,
-    'APIQueryMonitorTriggerActionMsg' : QueryObjectMonitorTriggerActionInventory,
-    'APIQueryPciDeviceOfferingMsg' : QueryObjectPciDeviceOfferingInventory,
-    'APIQueryRoleMsg' : QueryObjectRoleInventory,
-    'APIQueryEipMsg' : QueryObjectEipInventory,
-    'APIQueryConnectionAccessPointFromLocalMsg' : QueryObjectConnectionAccessPointInventory,
-    'APIQueryVCenterClusterMsg' : QueryObjectVCenterClusterInventory,
-    'APIQueryEcsVSwitchFromLocalMsg' : QueryObjectEcsVSwitchInventory,
-    'APIQueryArchiveTicketHistoryMsg' : QueryObjectArchiveTicketStatusHistoryInventory,
-    'APIQueryAliyunNasAccessGroupMsg' : QueryObjectAliyunNasAccessGroupInventory,
-    'APIQueryAliyunVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
-    'APIQueryVirtualBorderRouterFromLocalMsg' : QueryObjectVirtualBorderRouterInventory,
-    'APIQueryVniRangeMsg' : QueryObjectVniRangeInventory,
-    'APIQueryMediaMsg' : QueryObjectMediaInventory,
-    'APIQuerySchedulerTriggerMsg' : QueryObjectSchedulerTriggerInventory,
+    'APIQueryNasFileSystemMsg' : QueryObjectNasFileSystemInventory,
+    'APIQueryVmInstanceMsg' : QueryObjectVmInstanceInventory,
     'APIQueryVCenterBackupStorageMsg' : QueryObjectVCenterBackupStorageInventory,
-    'APIQueryEventSubscriptionMsg' : QueryObjectEventSubscriptionInventory,
-    'APIQueryIAM2OrganizationMsg' : QueryObjectIAM2OrganizationInventory,
+    'APIQueryVpcVpnConnectionFromLocalMsg' : QueryObjectVpcVpnConnectionInventory,
+    'APIQueryImageMsg' : QueryObjectImageInventory,
+    'APIQueryPolicyMsg' : QueryObjectPolicyInventory,
+    'APIQueryMonitorTriggerActionMsg' : QueryObjectMonitorTriggerActionInventory,
+    'APIQueryEventFromResourceStackMsg' : QueryObjectCloudFormationStackEventInventory,
+    'APIQueryQuotaMsg' : QueryObjectQuotaInventory,
+    'APIQueryNasMountTargetMsg' : QueryObjectNasMountTargetInventory,
+    'APIQueryPortForwardingRuleMsg' : QueryObjectPortForwardingRuleInventory,
+    'APIQueryPciDeviceMsg' : QueryObjectPciDeviceInventory,
+    'APIQueryEipMsg' : QueryObjectEipInventory,
+    'APIQueryAlertMsg' : QueryObjectAlertInventory,
+    'APIQueryInstanceOfferingMsg' : QueryObjectInstanceOfferingInventory,
+    'APIQueryEmailTriggerActionMsg' : QueryObjectEmailTriggerActionInventory,
+    'APIQueryAliyunSnapshotFromLocalMsg' : QueryObjectAliyunSnapshotInventory,
+    'APIQuerySchedulerTriggerMsg' : QueryObjectSchedulerTriggerInventory,
+    'APIQueryTicketHistoryMsg' : QueryObjectTicketStatusHistoryInventory,
+    'APIQueryVniRangeMsg' : QueryObjectVniRangeInventory,
+    'APIQueryStackTemplateMsg' : QueryObjectStackTemplateInventory,
+    'APIQueryUsbDeviceMsg' : QueryObjectUsbDeviceInventory,
+    'APIQueryAliyunRouterInterfaceFromLocalMsg' : QueryObjectAliyunRouterInterfaceInventory,
+    'APIQueryDahoCloudConnectionMsg' : QueryObjectDahoCloudConnectionInventory,
+    'APIQueryBaremetalPxeServerMsg' : QueryObjectBaremetalPxeServerInventory,
+    'APIQuerySecurityGroupRuleMsg' : QueryObjectSecurityGroupRuleInventory,
+    'APIQueryIAM2VirtualIDMsg' : QueryObjectIAM2VirtualIDInventory,
+    'APIQueryDiskOfferingMsg' : QueryObjectDiskOfferingInventory,
+    'APIQueryClusterMsg' : QueryObjectClusterInventory,
     'APIQueryImageStoreBackupStorageMsg' : QueryObjectImageStoreBackupStorageInventory,
+    'APIQueryLoadBalancerMsg' : QueryObjectLoadBalancerInventory,
+    'APIQueryIscsiLunMsg' : QueryObjectIscsiLunInventory,
+    'APIQuerySNSTopicMsg' : QueryObjectSNSTopicInventory,
+    'APIQueryConnectionAccessPointFromLocalMsg' : QueryObjectConnectionAccessPointInventory,
+    'APIQueryTicketMsg' : QueryObjectTicketInventory,
+    'APIQueryAffinityGroupMsg' : QueryObjectAffinityGroupInventory,
+    'APIQueryVpcVpnGatewayFromLocalMsg' : QueryObjectVpcVpnGatewayInventory,
+    'APIQueryDataCenterFromLocalMsg' : QueryObjectDataCenterInventory,
+    'APIQueryNotificationSubscriptionMsg' : QueryObjectNotificationSubscriptionInventory,
+    'APIQuerySharedResourceMsg' : QueryObjectSharedResourceInventory,
+    'APIQueryEcsImageFromLocalMsg' : QueryObjectEcsImageInventory,
+    'APIQuerySNSApplicationEndpointMsg' : QueryObjectSNSApplicationEndpointInventory,
+    'APIQueryDahoVllMsg' : QueryObjectDahoVllsInventory,
+    'APIQueryVolumeBackupMsg' : QueryObjectVolumeBackupInventory,
+    'APIQuerySharedBlockGroupPrimaryStorageHostRefMsg' : QueryObjectSharedBlockGroupPrimaryStorageHostRefInventory,
+    'APIQueryIAM2VirtualIDAttributeMsg' : QueryObjectIAM2VirtualIDAttributeInventory,
+    'APIQueryTicketFlowCollectionMsg' : QueryObjectTicketFlowCollectionInventory,
+    'APIQuerySNSTextTemplateMsg' : QueryObjectSNSTextTemplateInventory,
+    'APIQueryAliyunEbsPrimaryStorageMsg' : QueryObjectAliyunEbsPrimaryStorageInventory,
+    'APIQueryConnectionBetweenL3NetworkAndAliyunVSwitchMsg' : QueryObjectConnectionRelationShipInventory,
+    'APIQueryVRouterRouteTableMsg' : QueryObjectVRouterRouteTableInventory,
+    'APIQueryL2NetworkMsg' : QueryObjectL2NetworkInventory,
+    'APIQueryAliyunRouteEntryFromLocalMsg' : QueryObjectVpcVirtualRouteEntryInventory,
+    'APIQueryIAM2OrganizationMsg' : QueryObjectIAM2OrganizationInventory,
+    'APIQueryL2VlanNetworkMsg' : QueryObjectL2VlanNetworkInventory,
+    'APIQueryV2VConversionHostMsg' : QueryObjectV2VConversionHostInventory,
+    'APIQuerySNSEmailEndpointMsg' : QueryObjectSNSEmailEndpointInventory,
+    'APIQueryVCenterDatacenterMsg' : QueryObjectVCenterDatacenterInventory,
+    'APIQueryZoneMsg' : QueryObjectZoneInventory,
+    'APIQueryMonitorTriggerMsg' : QueryObjectMonitorTriggerInventory,
+    'APIQueryFusionstorPrimaryStorageMsg' : QueryObjectFusionstorPrimaryStorageInventory,
+    'APIQueryResourceStackMsg' : QueryObjectResourceStackInventory,
+    'APIQueryAliyunNasAccessGroupMsg' : QueryObjectAliyunNasAccessGroupInventory,
+    'APIQueryAccountMsg' : QueryObjectAccountInventory,
+    'APIQueryResourcePriceMsg' : QueryObjectPriceInventory,
+    'APIQueryVmNicMsg' : QueryObjectVmNicInventory,
+    'APIQueryIAM2VirtualIDGroupMsg' : QueryObjectIAM2VirtualIDGroupInventory,
+    'APIQuerySystemTagMsg' : QueryObjectSystemTagInventory,
+    'APIQueryLongJobMsg' : QueryObjectLongJobInventory,
+    'APIQueryEcsVSwitchFromLocalMsg' : QueryObjectEcsVSwitchInventory,
+    'APIQuerySharedBlockMsg' : QueryObjectSharedBlockInventory,
+    'APIQueryUserTagMsg' : QueryObjectUserTagInventory,
+    'APIQueryUserMsg' : QueryObjectUserInventory,
+    'APIQueryArchiveTicketMsg' : QueryObjectArchiveTicketInventory,
+    'APIQuerySNSHttpEndpointMsg' : QueryObjectSNSHttpEndpointInventory,
+    'APIQueryWebhookMsg' : QueryObjectWebhookInventory,
+    'APIQueryVirtualRouterVmMsg' : QueryObjectVirtualRouterVmInventory,
+    'APIQueryIpRangeMsg' : QueryObjectIpRangeInventory,
+    'APIQueryConsoleProxyAgentMsg' : QueryObjectConsoleProxyAgentInventory,
+    'APIQueryFusionstorBackupStorageMsg' : QueryObjectFusionstorBackupStorageInventory,
+    'APIQueryL2VxlanNetworkPoolMsg' : QueryObjectL2VxlanNetworkPoolInventory,
+    'APIQueryBackupStorageMsg' : QueryObjectBackupStorageInventory,
+    'APIQueryAccountResourceRefMsg' : QueryObjectAccountResourceRefInventory,
+    'APIQueryVtepMsg' : QueryObjectVtepInventory,
+    'APIQueryDahoVllVbrRefMsg' : QueryObjectDahoVllVbrRefInventory,
+    'APIQueryVCenterPrimaryStorageMsg' : QueryObjectVCenterPrimaryStorageInventory,
+    'APIQueryHybridKeySecretMsg' : QueryObjectHybridAccountInventory,
+    'APIQueryUserGroupMsg' : QueryObjectUserGroupInventory,
+    'APIQueryLdapBindingMsg' : QueryObjectLdapAccountRefInventory,
+    'APIQueryEmailMediaMsg' : QueryObjectEmailMediaInventory,
+    'APIQueryIAM2VirtualIDGroupAttributeMsg' : QueryObjectIAM2VirtualIDGroupAttributeInventory,
+    'APIQueryVpcIkeConfigFromLocalMsg' : QueryObjectVpcVpnIkeConfigInventory,
+    'APIQuerySNSDingTalkEndpointMsg' : QueryObjectSNSDingTalkEndpointInventory,
+    'APIQuerySftpBackupStorageMsg' : QueryObjectSftpBackupStorageInventory,
+    'APIQueryAliyunProxyVpcMsg' : QueryObjectAliyunProxyVpcInventory,
+    'APIQueryAliyunDiskFromLocalMsg' : QueryObjectAliyunDiskInventory,
     'APIQueryEcsSecurityGroupFromLocalMsg' : QueryObjectEcsSecurityGroupInventory,
+    'APIQueryHybridEipFromLocalMsg' : QueryObjectHybridEipAddressInventory,
+    'APIQueryCertificateMsg' : QueryObjectCertificateInventory,
+    'APIQueryVirtualRouterOfferingMsg' : QueryObjectVirtualRouterOfferingInventory,
+    'APIQuerySNSApplicationPlatformMsg' : QueryObjectSNSApplicationPlatformInventory,
+    'APIQueryVCenterMsg' : QueryObjectVCenterInventory,
+    'APIQueryIAM2ProjectAttributeMsg' : QueryObjectIAM2ProjectAttributeInventory,
+    'APIQueryAlarmMsg' : QueryObjectAlarmInventory,
+    'APIQuerySNSTopicSubscriberMsg' : QueryObjectSNSSubscriberInventory,
+    'APIQueryEcsVpcFromLocalMsg' : QueryObjectEcsVpcInventory,
+    'APIQueryOssBucketFileNameMsg' : QueryObjectOssBucketInventory,
+    'APIQueryVolumeSnapshotMsg' : QueryObjectVolumeSnapshotInventory,
+    'APIQueryShareableVolumeVmInstanceRefMsg' : QueryObjectShareableVolumeVmInstanceRefInventory,
+    'APIQueryIAM2ProjectMsg' : QueryObjectIAM2ProjectInventory,
+    'APIQueryVolumeMsg' : QueryObjectVolumeInventory,
+    'APIQueryNetworkServiceProviderMsg' : QueryObjectNetworkServiceProviderInventory,
+    'APIQueryManagementNodeMsg' : QueryObjectManagementNodeInventory,
+    'APIQueryVpcIpSecConfigFromLocalMsg' : QueryObjectVpcVpnIpSecConfigInventory,
+    'APIQueryApplianceVmMsg' : QueryObjectApplianceVmInventory,
+    'APIQueryArchiveTicketHistoryMsg' : QueryObjectArchiveTicketStatusHistoryInventory,
+    'APIQueryEventSubscriptionMsg' : QueryObjectEventSubscriptionInventory,
+    'APIQueryDatabaseBackupMsg' : QueryObjectDatabaseBackupInventory,
+    'APIQuerySchedulerJobMsg' : QueryObjectSchedulerJobInventory,
+    'APIQueryBaremetalInstanceMsg' : QueryObjectBaremetalInstanceInventory,
+    'APIQueryVpcRouterMsg' : QueryObjectVpcRouterVmInventory,
+    'APIQueryTicketFlowMsg' : QueryObjectTicketFlowInventory,
+    'APIQueryMediaMsg' : QueryObjectMediaInventory,
+    'APIQueryL3NetworkMsg' : QueryObjectL3NetworkInventory,
+    'APIQueryGCJobMsg' : QueryObjectGarbageCollectorInventory,
+    'APIQueryIscsiServerMsg' : QueryObjectIscsiServerInventory,
+    'APIQueryLoadBalancerListenerMsg' : QueryObjectLoadBalancerListenerInventory,
+    'APIQueryVirtualRouterVRouterRouteTableRefMsg' : QueryObjectVirtualRouterVRouterRouteTableRefInventory,
+    'APIQuerySecurityGroupMsg' : QueryObjectSecurityGroupInventory,
+    'APIQueryPciDeviceOfferingMsg' : QueryObjectPciDeviceOfferingInventory,
+    'APIQueryIAM2OrganizationAttributeMsg' : QueryObjectIAM2OrganizationAttributeInventory,
+    'APIQuerySharedBlockGroupPrimaryStorageMsg' : QueryObjectSharedBlockGroupPrimaryStorageInventory,
+    'APIQueryRoleMsg' : QueryObjectRoleInventory,
+    'APIQueryPciDevicePciDeviceOfferingMsg' : QueryObjectPciDevicePciDeviceOfferingRefInventory,
+    'APIQuerySNSEmailPlatformMsg' : QueryObjectSNSEmailPlatformInventory,
+    'APIQueryVCenterClusterMsg' : QueryObjectVCenterClusterInventory,
+    'APIQueryL2VxlanNetworkMsg' : QueryObjectL2VxlanNetworkInventory,
+    'APIQueryIPSecConnectionMsg' : QueryObjectIPsecConnectionInventory,
+    'APIQueryVRouterRouteEntryMsg' : QueryObjectVRouterRouteEntryInventory,
+    'APIQueryImageCacheMsg' : QueryObjectImageCacheInventory,
+    'APIQueryEcsSecurityGroupRuleFromLocalMsg' : QueryObjectEcsSecurityGroupRuleInventory,
+    'APIQueryPrimaryStorageMsg' : QueryObjectPrimaryStorageInventory,
+    'APIQueryHostMsg' : QueryObjectHostInventory,
+    'APIQueryAliyunVirtualRouterFromLocalMsg' : QueryObjectVpcVirtualRouterInventory,
+    'APIQueryLdapServerMsg' : QueryObjectLdapServerInventory,
+    'APIQueryCephPrimaryStoragePoolMsg' : QueryObjectCephPrimaryStoragePoolInventory,
+    'APIQueryCephPrimaryStorageMsg' : QueryObjectCephPrimaryStorageInventory,
+    'APIQueryLocalStorageResourceRefMsg' : QueryObjectLocalStorageResourceRefInventory,
+    'APIQueryVipMsg' : QueryObjectVipInventory,
+    'APIQueryVpcUserVpnGatewayFromLocalMsg' : QueryObjectVpcUserVpnGatewayInventory,
+    'APIQueryGlobalConfigMsg' : QueryObjectGlobalConfigInventory,
+    'APIQueryAliyunProxyVSwitchMsg' : QueryObjectAliyunProxyVSwitchInventory,
+    'APIQueryCephBackupStorageMsg' : QueryObjectCephBackupStorageInventory,
+    'APIQueryVirtualBorderRouterFromLocalMsg' : QueryObjectVirtualBorderRouterInventory,
+    'APIQueryVmNicInSecurityGroupMsg' : QueryObjectVmNicSecurityGroupRefInventory,
+    'APIQueryDahoDataCenterConnectionMsg' : QueryObjectDahoConnectionInventory,
+    'APIQueryBaremetalChassisMsg' : QueryObjectBaremetalChassisInventory,
+    'APIQueryNetworkServiceL3NetworkRefMsg' : QueryObjectNetworkServiceL3NetworkRefInventory,
+    'APIQueryNotificationMsg' : QueryObjectNotificationInventory,
+    'APIQueryVolumeSnapshotTreeMsg' : QueryObjectVolumeSnapshotTreeInventory,
+    'APIQueryIAM2ProjectTemplateMsg' : QueryObjectIAM2ProjectTemplateInventory,
 }

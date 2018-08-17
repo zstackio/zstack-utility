@@ -758,6 +758,18 @@ class AddUserToGroupAction(inventory.APIAddUserToGroupMsg):
         self.out = evt
         return self.out
 
+class AddV2VConversionHostAction(inventory.APIAddV2VConversionHostMsg):
+    def __init__(self):
+        super(AddV2VConversionHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[AddV2VConversionHostAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class AddVCenterAction(inventory.APIAddVCenterMsg):
     def __init__(self):
         super(AddVCenterAction, self).__init__()
@@ -1634,6 +1646,18 @@ class ChangeTicketStatusAction(inventory.APIChangeTicketStatusMsg):
         self.out = evt
         return self.out
 
+class ChangeV2VConversionHostStateAction(inventory.APIChangeV2VConversionHostStateMsg):
+    def __init__(self):
+        super(ChangeV2VConversionHostStateAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ChangeV2VConversionHostStateAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class ChangeVipStateAction(inventory.APIChangeVipStateMsg):
     def __init__(self):
         super(ChangeVipStateAction, self).__init__()
@@ -1798,6 +1822,18 @@ class CommitVolumeAsImageAction(inventory.APICommitVolumeAsImageMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CommitVolumeAsImageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class ConvertVmFromForeignHypervisorAction(inventory.APIConvertVmFromForeignHypervisorMsg):
+    def __init__(self):
+        super(ConvertVmFromForeignHypervisorAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[ConvertVmFromForeignHypervisorAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4294,6 +4330,18 @@ class DeleteUserGroupAction(inventory.APIDeleteUserGroupMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteUserGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteV2VConversionHostAction(inventory.APIDeleteV2VConversionHostMsg):
+    def __init__(self):
+        super(DeleteV2VConversionHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteV2VConversionHostAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -8766,6 +8814,20 @@ class QueryUserTagAction(inventory.APIQueryUserTagMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryV2VConversionHostAction(inventory.APIQueryV2VConversionHostMsg):
+    def __init__(self):
+        super(QueryV2VConversionHostAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryV2VConversionHostAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryVCenterAction(inventory.APIQueryVCenterMsg):
     def __init__(self):
         super(QueryVCenterAction, self).__init__()
@@ -9852,6 +9914,18 @@ class RequestConsoleAccessAction(inventory.APIRequestConsoleAccessMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[RequestConsoleAccessAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RerunLongJobAction(inventory.APIRerunLongJobMsg):
+    def __init__(self):
+        super(RerunLongJobAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RerunLongJobAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -11878,6 +11952,18 @@ class UpdateUserGroupAction(inventory.APIUpdateUserGroupMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[UpdateUserGroupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class UpdateV2VConversionHostAction(inventory.APIUpdateV2VConversionHostMsg):
+    def __init__(self):
+        super(UpdateV2VConversionHostAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[UpdateV2VConversionHostAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
