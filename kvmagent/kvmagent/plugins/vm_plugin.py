@@ -67,6 +67,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.emulateHyperV = False
         self.isApplianceVm = False
         self.systemSerialNumber = None
+        self.bootMode = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -2586,6 +2587,10 @@ class Vm(object):
                 e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
             else:
                 e(os, 'type', 'hvm', attrib={'machine': 'pc'})
+                # if boot mode is UEFI
+                if cmd.bootMode == "UEFI":
+                    e(os, 'loader', '/usr/share/OVMF/OVMF_CODE.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/OVMF_VARS.fd'})
             # if not booting from cdrom, don't add any boot element in os section
             if cmd.bootDev[0] == "cdrom":
                 for boot_dev in cmd.bootDev:
