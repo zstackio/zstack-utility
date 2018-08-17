@@ -154,6 +154,7 @@ class CephAgent(object):
     GET_VOLUME_SNAPINFOS_PATH = "/ceph/primarystorage/volume/getsnapinfos"
     UPLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/commit"
     DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
+    DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -189,6 +190,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.MIGRATE_VOLUME_PATH, self.migrate_volume)
         self.http_server.register_async_uri(self.MIGRATE_VOLUME_SNAPSHOT_PATH, self.migrate_volume_snapshot)
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
+        self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -677,7 +679,7 @@ class CephAgent(object):
 
         try:
             shell.call(
-                'set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s "cat %s" | rbd import --image-format 2 - %s/%s' %
+                'set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s "cat \'%s\'" | rbd import --image-format 2 - %s/%s' %
                 (port, prikey_file, hostname, cmd.backupStorageInstallPath, pool, tmp_image_name))
         finally:
             os.remove(prikey_file)
@@ -702,7 +704,8 @@ class CephAgent(object):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
+                # rbd:pool/image_name may already exist
+                shell.call('qemu-img convert -n -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
                     pool, tmp_image_name, pool, image_name, conf_path))
                 shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
@@ -810,6 +813,11 @@ class CephAgent(object):
         rsp.snapInfos = jsonobject.loads(ret)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    @in_bash
+    def download_from_kvmhost(self, req):
+        return self.sftp_download(req)
 
 class CephDaemon(daemon.Daemon):
     def __init__(self, pidfile):
