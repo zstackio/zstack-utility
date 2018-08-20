@@ -3624,13 +3624,47 @@ class VmPlugin(kvmagent.KvmAgent):
             type = cmd.type
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
-            logger.debug('however, the stop operation is still considered as success')
+            # domain not found with virsh, try ps and kill
+            self.kill_vm(cmd.uuid)
+            logger.debug('the stop operation is still considered as success')
             return
         if str(type) == "cold":
             vm.stop(graceful=False)
 
         else:
             vm.stop(timeout=cmd.timeout / 2)
+
+    def kill_vm(self, vm_uuid):
+        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name[[:space:]]+\K%s,' | sed 's/.$//'" % vm_uuid)
+
+        if vm_uuid not in output:
+            return
+
+        vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
+        vm_pid.strip(' \t\n\r')
+
+        def loop_kill(_):
+            if shell.run('ps -p %s > /dev/null' % vm_pid):
+                kill = shell.ShellCmd('kill %s' % vm_pid)
+                kill(False)
+            else:
+                return True
+
+        if not linux.wait_callback_success(loop_kill, None, timeout=60):
+            logger.debug("failed to kill vm[uuid:%s, pid:%s]" % (vm_uuid, vm_pid))
+        else:
+            return
+
+        def loop_kill_force(_):
+            if shell.run('ps -p %s > /dev/null' % vm_pid):
+                kill = shell.ShellCmd('kill -9 %s' % vm_pid)
+                kill(False)
+            else:
+                return True
+
+        if not linux.wait_callback_success(loop_kill_force, None, timeout=60):
+            logger.debug("failed to kill vm[uuid:%s, pid:%s]" % (vm_uuid, vm_pid))
+            raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
     @kvmagent.replyerror
     def stop_vm(self, req):
