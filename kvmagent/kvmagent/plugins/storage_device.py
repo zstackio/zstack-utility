@@ -1,3 +1,5 @@
+import random
+
 from kvmagent import kvmagent
 
 from zstacklib.utils import lock
@@ -84,6 +86,14 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 raise RetryException("can not discovery iscsi portal %s:%s" % (iscsiServerIp, iscsiServerPort))
             return [i.strip().split(" ")[-1] for i in o.splitlines()]
 
+        @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+        def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iqn):
+            disks_by_dev = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (iscsiServerIp, iscsiServerPort, iqn)).strip()
+            sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (iscsiServerIp, iscsiServerPort, iqn)).strip("[]\n ")
+            disks_by_iscsi = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep Lun" % sid).strip()
+            if disks_by_dev != disks_by_iscsi:
+                raise RetryException("disks number by /dev/disk not equal to iscsiadm")
+
         iqns = cmd.iscsiTargets
         if iqns is None or len(iqns) == 0:
             try:
@@ -115,13 +125,16 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                         iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserPassword))
             bash.bash_o('iscsiadm --mode node --targetname "%s" -p %s:%s --login' % (
                 iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
-            if bash.bash_r("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)) != 0:
-                rsp.iscsiTargetStructList.append(t)
-                continue
-            disks = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)).strip().splitlines()
-            for d in disks:
-                t.iscsiLunStructList.append(self.get_disk_info_by_path(d.strip()))
-            rsp.iscsiTargetStructList.append(t)
+            try:
+                wait_iscsi_mknode(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)
+            finally:
+                if bash.bash_r("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)) != 0:
+                    rsp.iscsiTargetStructList.append(t)
+                else:
+                    disks = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)).strip().splitlines()
+                    for d in disks:
+                        t.iscsiLunStructList.append(self.get_disk_info_by_path(d.strip()))
+                    rsp.iscsiTargetStructList.append(t)
 
         return jsonobject.dumps(rsp)
 
@@ -154,7 +167,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         iqns = cmd.iscsiTargets
         if iqns is None or len(iqns) == 0:
-            iqns = shell.call("iscsiadm -m discovery --type sendtargets --portal %s:%s | awk '{print $2}'" % (
+            iqns = shell.call("timeout 10 iscsiadm -m discovery --type sendtargets --portal %s:%s | awk '{print $2}'" % (
                 cmd.iscsiServerIp, cmd.iscsiServerPort)).strip().splitlines()
 
         if iqns is None or len(iqns) == 0:
@@ -162,7 +175,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         for iqn in iqns:
-            shell.call('iscsiadm --mode node --targetname "%s" -p %s:%s --logout' % (
+            shell.call('timeout 10 iscsiadm --mode node --targetname "%s" -p %s:%s --logout' % (
                 iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
 
         return jsonobject.dumps(rsp)
