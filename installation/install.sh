@@ -3205,7 +3205,6 @@ if [ ! -z QUIET_INSTALLATION ]; then
 fi
 [ ! -z $NEED_NFS ] && echo -e "$(tput setaf 7) - $MANAGEMENT_IP:$NFS_FOLDER is configured for primary storage as an EXAMPLE$(tput sgr0)"
 [ ! -z $NEED_HTTP ] && echo -e "$(tput setaf 7) - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your_image_name to the folder $HTTP_FOLDER, your image local url is http://$MANAGEMENT_IP/image/your_image_name$(tput sgr0)"
-echo -e "$(tput setaf 7) - You can use \`zstack-ctl install_management_node --host=remote_ip\` to install more management nodes$(tput sgr0)"
 
 echo_chrony_server_warning_if_need
 echo_star_line
