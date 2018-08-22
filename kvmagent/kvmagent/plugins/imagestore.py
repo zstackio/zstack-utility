@@ -55,6 +55,13 @@ class ImageStoreClient(object):
         cmdstr = '%s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s' % (self.ZSTORE_CLI_PATH, bitmap, dest, vm, node, mode)
         return shell.call(cmdstr).strip()
 
+    # args -> (bitmap, mode, drive)
+    # {'drive-virtio-disk0': { "backupFile": "foo", "mode":"full" },
+    #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
+    def backup_volumes(self, vm, args, dstdir):
+        cmdstr = '%s batbak -domain %s -destdir %s -args %s' % (self.ZSTORE_CLI_PATH, vm, dstdir, ':'.join([ "%s,%s,%s" % x for x in args ]))
+        return shell.call(cmdstr).strip()
+
     def image_already_pushed(self, hostname, imf):
         cmdstr = '%s -url %s:%s info %s' % (self.ZSTORE_CLI_PATH, hostname, self.ZSTORE_DEF_PORT, self._build_install_path(imf.name, imf.id))
         if shell.run(cmdstr) != 0:

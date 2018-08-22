@@ -223,6 +223,18 @@ class TakeVolumeBackupResponse(kvmagent.AgentResponse):
         self.parentInstallPath = None
         self.bitmap = None
 
+class VolumeBackupInfo(object):
+    def __init__(self, deviceId, bitmap, backupFile, parentInstallPath):
+        self.deviceId = deviceId
+        self.bitmap = bitmap
+        self.backupFile = backupFile
+        self.parentInstallPath = parentInstallPath
+
+class TakeVolumesBackupsResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(TakeVolumesBackupsResponse, self).__init__()
+        self.backupInfos = [] # type: list[VolumeBackupInfo]
+
 class TakeSnapshotsCmd(kvmagent.AgentCommand):
     snapshotJobs = None  # type: list[VolumeSnapshotJobStruct]
 
@@ -3206,6 +3218,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
+    KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
     KVM_LOGOUT_ISCSI_TARGET_PATH = "/iscsi/target/logout"
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
@@ -3996,6 +4009,76 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def push_backing_files(self, isc, hostname, drivertype, source):
+        if drivertype != 'qcow2':
+            return None
+
+        bf = linux.qcow2_get_backing_file(source.file_)
+        if bf:
+            imf = isc.upload_image(hostname, bf)
+            return imf
+
+        return None
+
+    # returns list[VolumeBackupInfo]
+    def do_take_volumes_backup(self, cmd, target_disks, bitmaps, dstdir):
+        isc = ImageStoreClient()
+        backupArgs = {}
+        parents = {}
+
+        for deviceId in cmd.deviceIds:
+            target_disk = target_disks[deviceId]
+            drivertype = target_disk.driver.type_
+            nodename = 'drive-' + target_disk.alias.name_
+            source = target_disk.source
+            bitmap = bitmaps[deviceId]
+
+            if bitmap:
+                backupArgs[deviceId] = bitmap, 'auto', nodename
+            else:
+                bm = 'zsbitmap%d' % deviceId
+                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source)
+                if imf:
+                    parent = isc._build_install_path(imf.name, imf.id)
+                    parents[deviceId] = parent
+                    backupArgs[deviceId] = bm, 'top', nodename
+                else:
+                    backupArgs[deviceId] = bm, 'full', nodename
+
+        logger.info('taking backup for vm: %s' % cmd.vmUuid)
+        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir)
+        logger.info('completed backup for vm: %s' % cmd.vmUuid)
+
+        backres = jsonobject.loads(res)
+        bkinfos = []
+
+        for deviceId in cmd.deviceIds:
+            nodename = backupArgs[deviceId][2]
+            nodebak = backres[nodename]
+
+            installPath = None
+            if nodebak.mode == 'incremental':
+                installPath = self.getLastBackup(deviceId, cmd.backupInfos)
+            else:
+                installPath = parents.get(deviceId)
+
+            info = VolumeBackupInfo(deviceId,
+                    backupArgs[deviceId][0],
+                    nodebak.backupFile,
+                    installPath)
+
+            if nodebak.mode == 'top' and info.parentInstallPath is None:
+                target_disk = target_disks[deviceId]
+                drivertype = target_disk.driver.type_
+                source = target_disk.source
+                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source)
+                parent = isc._build_install_path(imf.name, imf.id)
+                info.parentInstallPath = parent
+
+            bkinfos.append(info)
+
+        return bkinfos
+
     # returns tuple: (bitmap, parent)
     def do_take_volume_backup(self, cmd, drivertype, nodename, source, dest):
         isc = ImageStoreClient()
@@ -4023,7 +4106,7 @@ class VmPlugin(kvmagent.KvmAgent):
             bitmap, mode = cmd.bitmap, 'auto'
 
         mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest)
-        logger.info('finished backup volume with mode: %s', mode)
+        logger.info('finished backup volume with mode: %s' % mode)
 
         if mode == 'incremental':
             return bitmap, cmd.lastBackup
@@ -4034,6 +4117,64 @@ class VmPlugin(kvmagent.KvmAgent):
             parent = isc._build_install_path(imf.name, imf.id)
 
         return bitmap, parent
+
+    def getLastBackup(self, deviceId, backupInfos):
+        for info in backupInfos:
+            if info.deviceId == deviceId:
+                return info.lastBackup
+
+        return None
+
+    def getBitmap(self, deviceId, backupInfos):
+        for info in backupInfos:
+            if info.deviceId == deviceId:
+                return info.bitmap
+
+        return None
+
+    @kvmagent.replyerror
+    def take_volumes_backups(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = TakeVolumesBackupsResponse()
+        d = tempfile.mkdtemp() # temporary mount point
+
+        try:
+            vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+            if not vm:
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
+
+            if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
+                raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
+
+            target_disks = {}
+            for deviceId in cmd.deviceIds:
+                target_disk, _ = vm._get_target_disk(deviceId)
+                target_disks[deviceId] = target_disk
+
+            bitmaps = {}
+            for deviceId in cmd.deviceIds:
+                bitmap = self.getBitmap(deviceId, cmd.backupInfos)
+                bitmaps[deviceId] = bitmap
+
+            res = self.do_take_volumes_backup(cmd,
+                    target_disks,
+                    bitmaps,
+                    d)
+
+            for r in res:
+                r.backupFile = os.path.join(cmd.uploadDir, r.backupFile)
+            rsp.backupInfos = res
+
+        except kvmagent.KvmError as e:
+            logger.warn("take vm[uuid:%s] backup failed: %s" % (cmd.vmUuid, str(e)))
+            rsp.error = str(e)
+            rsp.success = False
+
+        finally:
+            linux.fumount(d)
+            linux.rmdir_if_empty(d)
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def take_volume_backup(self, req):
@@ -4048,7 +4189,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
 
             if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                raise kvmagent.KvmError("failed to prepair backup space for [vm:%s,drive:%s]" % (cmd.vmUuid, nodename))
+                raise kvmagent.KvmError("failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
 
             target_disk, _ = vm._get_target_disk(cmd.deviceId)
             bitmap, parent = self.do_take_volume_backup(cmd,
@@ -4056,7 +4197,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     'drive-' + target_disk.alias.name_,  # 'virtio-disk0' etc.
                     target_disk.source,
                     os.path.join(d, fname))
-            logger.info('finished backup volume with parent: %s', parent)
+            logger.info('finished backup volume with parent: %s' % parent)
             rsp.bitmap = bitmap
             rsp.parentInstallPath = parent
             rsp.backupFile = os.path.join(cmd.uploadDir, fname)
@@ -4438,6 +4579,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
+        http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target)
