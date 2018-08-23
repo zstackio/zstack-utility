@@ -2102,6 +2102,18 @@ class CreateDataVolumeTemplateFromVolumeBackupAction(inventory.APICreateDataVolu
         self.out = evt
         return self.out
 
+class CreateDatabaseBackupAction(inventory.APICreateDatabaseBackupMsg):
+    def __init__(self):
+        super(CreateDatabaseBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateDatabaseBackupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateDiskOfferingAction(inventory.APICreateDiskOfferingMsg):
     def __init__(self):
         super(CreateDiskOfferingAction, self).__init__()
@@ -3382,6 +3394,18 @@ class DeleteDataVolumeAction(inventory.APIDeleteDataVolumeMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteDataVolumeAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteDatabaseBackupAction(inventory.APIDeleteDatabaseBackupMsg):
+    def __init__(self):
+        super(DeleteDatabaseBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteDatabaseBackupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -10438,6 +10462,18 @@ class SyncDataCenterFromRemoteAction(inventory.APISyncDataCenterFromRemoteMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncDataCenterFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncDatabaseBackupFromImageStoreBackupStorageAction(inventory.APISyncDatabaseBackupFromImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(SyncDatabaseBackupFromImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncDatabaseBackupFromImageStoreBackupStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
