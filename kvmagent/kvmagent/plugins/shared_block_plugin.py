@@ -267,11 +267,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @staticmethod
     def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
-        def find_vg(vgUuid):
+        def find_vg(vgUuid, raise_exception = True):
             cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
-            if cmd.return_code != 0:
+            if cmd.return_code != 0 and raise_exception:
                 raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
+            elif cmd.return_code != 0:
+                return False
             return True
 
         try:
@@ -286,11 +288,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
                          (vgUuid, cmd.return_code, cmd.stdout, cmd.stderr))
-            if cmd.return_code == 0 and find_vg(vgUuid) is True:
+            if cmd.return_code == 0 and find_vg(vgUuid, False) is True:
                 return True
-            if find_vg(vgUuid) is False:
+            try:
+                if find_vg(vgUuid) is True:
+                    return True
+            except RetryException as ee:
                 raise Exception("can not find vg %s with disks: %s and create vg return: %s %s %s " %
                                 (vgUuid, diskPaths, cmd.return_code, cmd.stdout, cmd.stderr))
+            except Exception as ee:
+                raise ee
         except Exception as e:
             raise e
 

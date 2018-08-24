@@ -80,6 +80,7 @@ def bash_ro(cmd, pipe_fail=False):
 
 # @return: stdout
 def bash_o(cmd, pipe_fail=False):
+    # type: (str, bool) -> str
     _, o, _ = bash_roe(cmd, pipe_fail=pipe_fail)
     return o
 

@@ -1532,6 +1532,35 @@ def set_device_uuid_alias(interf, l2NetworkUuid):
     cmd = shell.ShellCmd("ip link set dev %s alias \"uuid: %s\"" % (interf, l2NetworkUuid))
     cmd(is_exception=False)
 
+def is_zstack_vm(vmUuid):
+    cmd = shell.ShellCmd("virsh metadata %s --uri http://zstack.org | grep zstack" % vmUuid)
+    cmd(is_exception=False)
+    return cmd.return_code == 0
+
+
+def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
+    libvirt_uuid_pattern = "'[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}'"
+    cmd = shell.ShellCmd("pgrep -a qemu-kvm | grep -E -o '\-name %s' | awk '{print $2}'" % libvirt_uuid_pattern)
+    cmd(is_exception=False)
+    vms_by_ps = cmd.stdout.strip().split() # type: list
+
+    cmd = shell.ShellCmd("virsh list --uuid")
+    cmd(is_exception=False)
+    vms_by_virsh = cmd.stdout.strip().split()  # type: list
+
+    unmanaged_vms = []
+    for vm in vms_by_ps:
+        if vm not in vms_by_virsh:
+            unmanaged_vms.append(vm)
+
+    if not include_not_zstack_but_in_virsh:
+        return unmanaged_vms
+
+    for vm in vms_by_virsh:
+        if not is_zstack_vm(vm):
+            unmanaged_vms.append(vm)
+    return unmanaged_vms
+
 def linux_lsof(file):
     cmd = shell.ShellCmd("lsof %s | grep -v '^COMMAND'" % file)
     cmd(is_exception=False)
