@@ -391,9 +391,12 @@ def wipe_fs(disks):
             cmd_flush_mpath(is_exception=False)
 
 
+@bash.in_bash
+@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
 def add_pv(vg_uuid, disk_path, metadata_size):
-    cmd = shell.ShellCmd("vgextend --metadatasize %s %s %s" % (metadata_size, vg_uuid, disk_path))
-    cmd(is_exception=True)
+    bash.bash_errorout("vgextend --metadatasize %s %s %s" % (metadata_size, vg_uuid, disk_path))
+    if bash.bash_r("pvs --nolocking --readonly %s | grep %s" % (disk_path, vg_uuid)):
+        raise Exception("disk %s not added to vg %s after vgextend" % (disk_path, vg_uuid))
 
 
 def get_vg_size(vgUuid, raise_exception=True):
