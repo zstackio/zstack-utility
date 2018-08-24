@@ -8470,6 +8470,34 @@ class QueryTicketAction(inventory.APIQueryTicketMsg):
         self.out = reply.inventories
         return self.out
 
+class QueryTicketFlowAction(inventory.APIQueryTicketFlowMsg):
+    def __init__(self):
+        super(QueryTicketFlowAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryTicketFlowAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
+class QueryTicketFlowCollectionAction(inventory.APIQueryTicketFlowCollectionMsg):
+    def __init__(self):
+        super(QueryTicketFlowCollectionAction, self).__init__()
+        self.sessionUuid = None
+        self.reply = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[QueryTicketFlowCollectionAction] cannot be None')
+        reply = api.sync_call(self, self.sessionUuid)
+        self.reply = reply
+        self.out = reply.inventories
+        return self.out
+
 class QueryTicketHistoryAction(inventory.APIQueryTicketHistoryMsg):
     def __init__(self):
         super(QueryTicketHistoryAction, self).__init__()
