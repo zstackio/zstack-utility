@@ -88,10 +88,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
         def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iqn):
-            disks_by_dev = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (iscsiServerIp, iscsiServerPort, iqn)).strip()
+            disks_by_dev = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (iscsiServerIp, iscsiServerPort, iqn)).strip().splitlines()
             sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (iscsiServerIp, iscsiServerPort, iqn)).strip("[]\n ")
-            disks_by_iscsi = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep Lun" % sid).strip()
-            if disks_by_dev != disks_by_iscsi:
+            disks_by_iscsi = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep Lun" % sid).strip().splitlines()
+            if len(disks_by_dev) != len(disks_by_iscsi):
                 raise RetryException("disks number by /dev/disk not equal to iscsiadm")
 
         iqns = cmd.iscsiTargets
