@@ -16336,6 +16336,155 @@ class APIUpdateCephPrimaryStoragePoolMsg(object):
         self.userTags = OptionalList()
 
 
+APIADDISCSISERVERMSG_FULL_NAME = 'org.zstack.storage.device.iscsi.APIAddIscsiServerMsg'
+class APIAddIscsiServerMsg(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIAddIscsiServerMsg'
+    def __init__(self):
+        self.name = None
+        #mandatory field
+        self.ip = NotNoneField()
+        self.port = None
+        self.chapUserName = None
+        self.chapUserPassword = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIATTACHISCSISERVERTOCLUSTERMSG_FULL_NAME = 'org.zstack.storage.device.iscsi.APIAttachIscsiServerToClusterMsg'
+class APIAttachIscsiServerToClusterMsg(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIAttachIscsiServerToClusterMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.clusterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDELETEISCSISERVERMSG_FULL_NAME = 'org.zstack.storage.device.iscsi.APIDeleteIscsiServerMsg'
+class APIDeleteIscsiServerMsg(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIDeleteIscsiServerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.deleteMode = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIDETACHISCSISERVERFROMCLUSTERMSG_FULL_NAME = 'org.zstack.storage.device.iscsi.APIDetachIscsiServerFromClusterMsg'
+class APIDetachIscsiServerFromClusterMsg(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIDetachIscsiServerFromClusterMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        #mandatory field
+        self.clusterUuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYISCSILUNMSG_FULL_NAME = 'org.zstack.storage.device.iscsi.APIQueryIscsiLunMsg'
+class APIQueryIscsiLunMsg(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIQueryIscsiLunMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYISCSILUNREPLY_FULL_NAME = 'org.zstack.storage.device.iscsi.APIQueryIscsiLunReply'
+class APIQueryIscsiLunReply(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIQueryIscsiLunReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIQUERYISCSISERVERMSG_FULL_NAME = 'org.zstack.storage.device.iscsi.APIQueryIscsiServerMsg'
+class APIQueryIscsiServerMsg(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIQueryIscsiServerMsg'
+    def __init__(self):
+        #mandatory field
+        self.conditions = NotNoneList()
+        self.limit = None
+        self.start = None
+        self.count = None
+        self.groupBy = None
+        self.replyWithCount = None
+        self.sortBy = None
+        #valid values: [asc, desc]
+        self.sortDirection = None
+        self.fields = OptionalList()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIQUERYISCSISERVERREPLY_FULL_NAME = 'org.zstack.storage.device.iscsi.APIQueryIscsiServerReply'
+class APIQueryIscsiServerReply(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIQueryIscsiServerReply'
+    def __init__(self):
+        self.inventories = OptionalList()
+        self.total = None
+        self.success = None
+        self.error = None
+
+
+APIREFRESHISCSISERVERMSG_FULL_NAME = 'org.zstack.storage.device.iscsi.APIRefreshIscsiServerMsg'
+class APIRefreshIscsiServerMsg(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIRefreshIscsiServerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
+APIUPDATEISCSISERVERMSG_FULL_NAME = 'org.zstack.storage.device.iscsi.APIUpdateIscsiServerMsg'
+class APIUpdateIscsiServerMsg(object):
+    FULL_NAME='org.zstack.storage.device.iscsi.APIUpdateIscsiServerMsg'
+    def __init__(self):
+        #mandatory field
+        self.uuid = NotNoneField()
+        self.name = None
+        self.chapUserName = None
+        self.chapUserPassword = None
+        #valid values: [Enabled, Disabled]
+        self.state = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIADDFUSIONSTORBACKUPSTORAGEMSG_FULL_NAME = 'org.zstack.storage.fusionstor.backup.APIAddFusionstorBackupStorageMsg'
 class APIAddFusionstorBackupStorageMsg(object):
     FULL_NAME='org.zstack.storage.fusionstor.backup.APIAddFusionstorBackupStorageMsg'
@@ -18648,6 +18797,7 @@ api_names = [
     'APIAddImageStoreBackupStorageMsg',
     'APIAddIpRangeByNetworkCidrMsg',
     'APIAddIpRangeMsg',
+    'APIAddIscsiServerMsg',
     'APIAddKVMHostMsg',
     'APIAddLabelToAlarmMsg',
     'APIAddLabelToEventSubscriptionMsg',
@@ -18689,6 +18839,7 @@ api_names = [
     'APIAttachEipMsg',
     'APIAttachHybridEipToEcsMsg',
     'APIAttachHybridKeyMsg',
+    'APIAttachIscsiServerToClusterMsg',
     'APIAttachIsoToVmInstanceMsg',
     'APIAttachL2NetworkToClusterMsg',
     'APIAttachL3NetworkToVmMsg',
@@ -18928,6 +19079,7 @@ api_names = [
     'APIDeleteImageMsg',
     'APIDeleteInstanceOfferingMsg',
     'APIDeleteIpRangeMsg',
+    'APIDeleteIscsiServerMsg',
     'APIDeleteL2NetworkMsg',
     'APIDeleteL3NetworkMsg',
     'APIDeleteLdapBindingMsg',
@@ -19007,6 +19159,7 @@ api_names = [
     'APIDetachEipMsg',
     'APIDetachHybridEipFromEcsMsg',
     'APIDetachHybridKeyMsg',
+    'APIDetachIscsiServerFromClusterMsg',
     'APIDetachIsoFromVmInstanceMsg',
     'APIDetachL2NetworkFromClusterMsg',
     'APIDetachL3NetworkFromVmMsg',
@@ -19484,6 +19637,10 @@ api_names = [
     'APIQueryInstanceOfferingReply',
     'APIQueryIpRangeMsg',
     'APIQueryIpRangeReply',
+    'APIQueryIscsiLunMsg',
+    'APIQueryIscsiLunReply',
+    'APIQueryIscsiServerMsg',
+    'APIQueryIscsiServerReply',
     'APIQueryL2NetworkMsg',
     'APIQueryL2NetworkReply',
     'APIQueryL2VlanNetworkMsg',
@@ -19688,6 +19845,7 @@ api_names = [
     'APIRecoveryVirtualBorderRouterRemoteMsg',
     'APIRefreshCaptchaMsg',
     'APIRefreshCaptchaReply',
+    'APIRefreshIscsiServerMsg',
     'APIRefreshLoadBalancerMsg',
     'APIRefreshSharedblockDeviceCapacityMsg',
     'APIReimageVmInstanceMsg',
@@ -19880,6 +20038,7 @@ api_names = [
     'APIUpdateImageStoreBackupStorageMsg',
     'APIUpdateInstanceOfferingMsg',
     'APIUpdateIpRangeMsg',
+    'APIUpdateIscsiServerMsg',
     'APIUpdateKVMHostMsg',
     'APIUpdateL2NetworkMsg',
     'APIUpdateL3NetworkMsg',
@@ -20074,6 +20233,127 @@ class AliyunProxyVSwitchInventory(object):
 
         if hasattr(inv, 'status'):
             self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'isDefault'):
+            self.isDefault = inv.isDefault
+        else:
+            self.isDefault = None
+
+
+
+class AliyunProxyVpcInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.vpcName = None
+        self.cidrBlock = None
+        self.vRouterUuid = None
+        self.status = None
+        self.aliyunProxyVSwitches = None
+        self.description = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.isDefault = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'vpcName'):
+            self.vpcName = inv.vpcName
+        else:
+            self.vpcName = None
+
+        if hasattr(inv, 'cidrBlock'):
+            self.cidrBlock = inv.cidrBlock
+        else:
+            self.cidrBlock = None
+
+        if hasattr(inv, 'vRouterUuid'):
+            self.vRouterUuid = inv.vRouterUuid
+        else:
+            self.vRouterUuid = None
+
+        if hasattr(inv, 'status'):
+            self.status = inv.status
+        else:
+            self.status = None
+
+        if hasattr(inv, 'aliyunProxyVSwitches'):
+            self.aliyunProxyVSwitches = inv.aliyunProxyVSwitches
+        else:
+            self.aliyunProxyVSwitches = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+        if hasattr(inv, 'isDefault'):
+            self.isDefault = inv.isDefault
+        else:
+            self.isDefault = None
+
+
+
+class VmInstanceInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.description = None
+        self.zoneUuid = None
+        self.clusterUuid = None
+        self.imageUuid = None
+        self.hostUuid = None
+        self.lastHostUuid = None
+        self.instanceOfferingUuid = None
+        self.rootVolumeUuid = None
+        self.platform = None
+        self.defaultL3NetworkUuid = None
+        self.type = None
+        self.hypervisorType = None
+        self.memorySize = None
+        self.cpuNum = None
+        self.cpuSpeed = None
+        self.allocatorStrategy = None
+        self.createDate = None
+        self.lastOpDate = None
+        self.state = None
+        self.internalId = None
+        self.vmNics = None
+        self.allVolumes = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'description'):
+            self.description = inv.description
+        else:
+            self.description = None
+
+        if hasattr(inv, 'zoneUuid'):
+            self.zoneUuid = inv.zoneUuid
         else:
             self.status = None
 
@@ -26432,6 +26712,252 @@ class SftpBackupStorageInventory(BackupStorageInventory):
 
 
 
+class IscsiLunInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.iscsiTargetUuid = None
+        self.wwid = None
+        self.vendor = None
+        self.model = None
+        self.wwn = None
+        self.serial = None
+        self.hctl = None
+        self.type = None
+        self.path = None
+        self.size = None
+        self.multipathDeviceUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'iscsiTargetUuid'):
+            self.iscsiTargetUuid = inv.iscsiTargetUuid
+        else:
+            self.iscsiTargetUuid = None
+
+        if hasattr(inv, 'wwid'):
+            self.wwid = inv.wwid
+        else:
+            self.wwid = None
+
+        if hasattr(inv, 'vendor'):
+            self.vendor = inv.vendor
+        else:
+            self.vendor = None
+
+        if hasattr(inv, 'model'):
+            self.model = inv.model
+        else:
+            self.model = None
+
+        if hasattr(inv, 'wwn'):
+            self.wwn = inv.wwn
+        else:
+            self.wwn = None
+
+        if hasattr(inv, 'serial'):
+            self.serial = inv.serial
+        else:
+            self.serial = None
+
+        if hasattr(inv, 'hctl'):
+            self.hctl = inv.hctl
+        else:
+            self.hctl = None
+
+        if hasattr(inv, 'type'):
+            self.type = inv.type
+        else:
+            self.type = None
+
+        if hasattr(inv, 'path'):
+            self.path = inv.path
+        else:
+            self.path = None
+
+        if hasattr(inv, 'size'):
+            self.size = inv.size
+        else:
+            self.size = None
+
+        if hasattr(inv, 'multipathDeviceUuid'):
+            self.multipathDeviceUuid = inv.multipathDeviceUuid
+        else:
+            self.multipathDeviceUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class IscsiServerClusterRefInventory(object):
+    def __init__(self):
+        self.id = None
+        self.iscsiServerUuid = None
+        self.clusterUuid = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'id'):
+            self.id = inv.id
+        else:
+            self.id = None
+
+        if hasattr(inv, 'iscsiServerUuid'):
+            self.iscsiServerUuid = inv.iscsiServerUuid
+        else:
+            self.iscsiServerUuid = None
+
+        if hasattr(inv, 'clusterUuid'):
+            self.clusterUuid = inv.clusterUuid
+        else:
+            self.clusterUuid = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class IscsiServerInventory(object):
+    def __init__(self):
+        self.uuid = None
+        self.name = None
+        self.ip = None
+        self.port = None
+        self.chapUserName = None
+        self.chapUserPassword = None
+        self.state = None
+        self.iscsiTargets = None
+        self.iscsiClusterRefs = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'name'):
+            self.name = inv.name
+        else:
+            self.name = None
+
+        if hasattr(inv, 'ip'):
+            self.ip = inv.ip
+        else:
+            self.ip = None
+
+        if hasattr(inv, 'port'):
+            self.port = inv.port
+        else:
+            self.port = None
+
+        if hasattr(inv, 'chapUserName'):
+            self.chapUserName = inv.chapUserName
+        else:
+            self.chapUserName = None
+
+        if hasattr(inv, 'chapUserPassword'):
+            self.chapUserPassword = inv.chapUserPassword
+        else:
+            self.chapUserPassword = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'iscsiTargets'):
+            self.iscsiTargets = inv.iscsiTargets
+        else:
+            self.iscsiTargets = None
+
+        if hasattr(inv, 'iscsiClusterRefs'):
+            self.iscsiClusterRefs = inv.iscsiClusterRefs
+        else:
+            self.iscsiClusterRefs = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
+class IscsiTargetInventory(object):
+    def __init__(self):
+        self.iscsiServerUuid = None
+        self.uuid = None
+        self.iqn = None
+        self.state = None
+        self.iscsiLuns = None
+        self.createDate = None
+        self.lastOpDate = None
+
+    def evaluate(self, inv):
+        if hasattr(inv, 'iscsiServerUuid'):
+            self.iscsiServerUuid = inv.iscsiServerUuid
+        else:
+            self.iscsiServerUuid = None
+
+        if hasattr(inv, 'uuid'):
+            self.uuid = inv.uuid
+        else:
+            self.uuid = None
+
+        if hasattr(inv, 'iqn'):
+            self.iqn = inv.iqn
+        else:
+            self.iqn = None
+
+        if hasattr(inv, 'state'):
+            self.state = inv.state
+        else:
+            self.state = None
+
+        if hasattr(inv, 'iscsiLuns'):
+            self.iscsiLuns = inv.iscsiLuns
+        else:
+            self.iscsiLuns = None
+
+        if hasattr(inv, 'createDate'):
+            self.createDate = inv.createDate
+        else:
+            self.createDate = None
+
+        if hasattr(inv, 'lastOpDate'):
+            self.lastOpDate = inv.lastOpDate
+        else:
+            self.lastOpDate = None
+
+
+
 class SharedBlockGroupPrimaryStorageHostRefInventory(object):
     def __init__(self):
         self.primaryStorageUuid = None
@@ -27900,7 +28426,9 @@ class GlobalConfig_SECURITYGROUP(object):
 
 class GlobalConfig_SHAREDBLOCK(object):
     DELETION_GCINTERVAL = 'deletion.gcInterval'
+    DISABLE_HOST_WHEN_STORAGE_FAILURE = 'disable.host.when.storage.failure'
     QCOW2_ALLOCATION = 'qcow2.allocation'
+    FENCER_CHECK_IO = 'fencer.check.io'
     SNAPSHOT_SHRINK = 'snapshot.shrink'
     SNAPSHOT_COMPARE = 'snapshot.compare'
     QCOW2_CLUSTER_SIZE = 'qcow2.cluster.size'
@@ -27915,6 +28443,14 @@ class GlobalConfig_SHAREDMOUNTPOINTPRIMARYSTORAGE(object):
     @staticmethod
     def get_category():
         return 'sharedMountPointPrimaryStorage'
+
+class GlobalConfig_STORAGEDEVICE(object):
+    ENABLE_FC_DEVICE_SCAN = 'enable.fc.device.scan'
+    ENABLE_MULTIPATH = 'enable.multipath'
+
+    @staticmethod
+    def get_category():
+        return 'storageDevice'
 
 class GlobalConfig_TEST(object):
     TEST = 'Test'
@@ -28024,12 +28560,14 @@ class GlobalConfig_ZWATCH(object):
     def get_category():
         return 'zwatch'
 
+
 class QueryObjectHybridAccountInventory(object):
     PRIMITIVE_FIELDS = ['hybridUserName','hybridAccountId','accountUuid','description','type','uuid','current','akey','hybridUserId','name','userUuid','lastOpDate','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
     }
+
 
 class QueryObjectShareableVolumeVmInstanceRefInventory(object):
     PRIMITIVE_FIELDS = ['volumeUuid','lastOpDate','uuid','deviceId','vmInstanceUuid','createDate', '__systemTag__', '__userTag__']
@@ -28139,12 +28677,14 @@ class QueryObjectSchedulerJobInventory(object):
         'trigger' : 'QueryObjectSchedulerTriggerInventory',
     }
 
+
 class QueryObjectOssBucketInventory(object):
     PRIMITIVE_FIELDS = ['bucketName','current','regionName','lastOpDate','dataCenterUuid','description','uuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
     }
+
 
 class QueryObjectVpcVpnGatewayInventory(object):
     PRIMITIVE_FIELDS = ['accountName','endDate','description','publicIp','businessStatus','type','vSwitchUuid','uuid','spec','name','lastOpDate','gatewayId','status','createDate', '__systemTag__', '__userTag__']
@@ -28275,6 +28815,13 @@ class QueryObjectAliyunEbsPrimaryStorageInventory(object):
         'cluster' : 'QueryObjectClusterInventory',
     }
 
+class QueryObjectQuotaInventory(object):
+    PRIMITIVE_FIELDS = ['identityType','identityUuid','name','lastOpDate','uuid','value','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['account']
+    QUERY_OBJECT_MAP = {
+        'account' : 'QueryObjectAccountInventory',
+    }
+
 class QueryObjectIAM2VirtualIDAttributeInventory(object):
     PRIMITIVE_FIELDS = ['virtualIDUuid','name','type','uuid','value', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -28282,15 +28829,15 @@ class QueryObjectIAM2VirtualIDAttributeInventory(object):
 
     }
 
-class QueryObjectDahoCloudConnectionInventory(object):
-    PRIMITIVE_FIELDS = ['cloud','accessPointName','usedBandwidth','bandwidth','accessPointId','name','lastOpDate','connectionId','description','dataCenterUuid','uuid','createDate', '__systemTag__', '__userTag__']
+class QueryObjectNetworkServiceTypeInventory(object):
+    PRIMITIVE_FIELDS = ['networkServiceProviderUuid','type', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
     }
 
-class QueryObjectNetworkServiceTypeInventory(object):
-    PRIMITIVE_FIELDS = ['networkServiceProviderUuid','type', '__systemTag__', '__userTag__']
+class QueryObjectDahoCloudConnectionInventory(object):
+    PRIMITIVE_FIELDS = ['cloud','accessPointName','usedBandwidth','bandwidth','accessPointId','name','lastOpDate','connectionId','description','dataCenterUuid','uuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -28379,19 +28926,19 @@ class QueryObjectGarbageCollectorInventory(object):
 
     }
 
-class QueryObjectNasMountTargetInventory(object):
-    PRIMITIVE_FIELDS = ['nasFileSystemUuid','mountDomain','name','lastOpDate','description','type','uuid','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectIAM2OrganizationInventory(object):
     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','type','uuid','parentUuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['attributes','virtualIDs']
     QUERY_OBJECT_MAP = {
         'attributes' : 'QueryObjectIAM2OrganizationAttributeInventory',
         'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
+    }
+
+class QueryObjectNasMountTargetInventory(object):
+    PRIMITIVE_FIELDS = ['nasFileSystemUuid','mountDomain','name','lastOpDate','description','type','uuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectNotificationSubscriptionInventory(object):
@@ -28629,6 +29176,14 @@ class QueryObjectVirtualRouterLoadBalancerRefInventory(object):
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
     }
 
+class QueryObjectIscsiServerClusterRefInventory(object):
+    PRIMITIVE_FIELDS = ['clusterUuid','lastOpDate','iscsiServerUuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['cluster','iscsiServer']
+    QUERY_OBJECT_MAP = {
+        'cluster' : 'QueryObjectClusterInventory',
+        'iscsiServer' : 'QueryObjectIscsiServerInventory',
+    }
+
 class QueryObjectConnectionAccessPointInventory(object):
     PRIMITIVE_FIELDS = ['hostOperator','accessPointId','name','lastOpDate','dataCenterUuid','description','type','uuid','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -28710,19 +29265,19 @@ class QueryObjectPrimaryStorageClusterRefInventory(object):
         'primaryStorage' : 'QueryObjectPrimaryStorageInventory',
     }
 
-class QueryObjectIAM2VirtualIDRoleRefInventory(object):
-    PRIMITIVE_FIELDS = ['virtualIDUuid','lastOpDate','roleUuid','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = ['roles','virtualIDs']
-    QUERY_OBJECT_MAP = {
-        'roles' : 'QueryObjectRoleInventory',
-        'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
-    }
-
 class QueryObjectIAM2VirtualIDGroupInventory(object):
     PRIMITIVE_FIELDS = ['name','lastOpDate','description','state','uuid','projectUuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['attributes','roles','virtualIDs']
     QUERY_OBJECT_MAP = {
         'attributes' : 'QueryObjectIAM2VirtualIDGroupAttributeInventory',
+        'roles' : 'QueryObjectRoleInventory',
+        'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
+    }
+
+class QueryObjectIAM2VirtualIDRoleRefInventory(object):
+    PRIMITIVE_FIELDS = ['virtualIDUuid','lastOpDate','roleUuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['roles','virtualIDs']
+    QUERY_OBJECT_MAP = {
         'roles' : 'QueryObjectRoleInventory',
         'virtualIDs' : 'QueryObjectIAM2VirtualIDInventory',
     }
@@ -28763,15 +29318,15 @@ class QueryObjectL2VxlanNetworkPoolInventory(object):
         'cluster' : 'QueryObjectClusterInventory',
     }
 
-class QueryObjectOssUploadPartsInventory(object):
-    PRIMITIVE_FIELDS = ['total','uploadId','partSize','ossBucketUuid','lastOpDate','partNumber','eTag','fileKey','id','partCRC','createDate', '__systemTag__', '__userTag__']
+class QueryObjectImageCacheInventory(object):
+    PRIMITIVE_FIELDS = ['size','md5sum','lastOpDate','mediaType','id','state','primaryStorageUuid','imageUuid','installUrl','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
     }
 
-class QueryObjectImageCacheInventory(object):
-    PRIMITIVE_FIELDS = ['size','md5sum','lastOpDate','mediaType','id','state','primaryStorageUuid','imageUuid','installUrl','createDate', '__systemTag__', '__userTag__']
+class QueryObjectOssUploadPartsInventory(object):
+    PRIMITIVE_FIELDS = ['total','uploadId','partSize','ossBucketUuid','lastOpDate','partNumber','eTag','fileKey','id','partCRC','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -28978,19 +29533,19 @@ class QueryObjectIdentityZoneInventory(object):
 
     }
 
-class QueryObjectAlarmActionInventory(object):
-    PRIMITIVE_FIELDS = ['actionUuid','actionType','alarmUuid', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectSNSEmailEndpointInventory(object):
     PRIMITIVE_FIELDS = ['name','platformUuid','lastOpDate','description','state','type','uuid','email','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['platform','topics']
     QUERY_OBJECT_MAP = {
         'platform' : 'QueryObjectSNSApplicationPlatformInventory',
         'topics' : 'QueryObjectSNSTopicInventory',
+    }
+
+class QueryObjectAlarmActionInventory(object):
+    PRIMITIVE_FIELDS = ['actionUuid','actionType','alarmUuid', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectLoadBalancerListenerInventory(object):
@@ -29093,13 +29648,6 @@ class QueryObjectVirtualRouterVipInventory(object):
         'applianceVm' : 'QueryObjectApplianceVmInventory',
     }
 
-class QueryObjectWebhookInventory(object):
-    PRIMITIVE_FIELDS = ['opaque','name','lastOpDate','description','type','uuid','url','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectBaremetalChassisInventory(object):
     PRIMITIVE_FIELDS = ['clusterUuid','ipmiPort','zoneUuid','description','ipmiAddress','uuid','name','lastOpDate','state','ipmiUsername','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['cluster','zone','hardwareInfos','baremetalInstance']
@@ -29108,6 +29656,13 @@ class QueryObjectBaremetalChassisInventory(object):
         'zone' : 'QueryObjectZoneInventory',
         'hardwareInfos' : 'QueryObjectBaremetalHardwareInfoInventory',
         'baremetalInstance' : 'QueryObjectBaremetalInstanceInventory',
+    }
+
+class QueryObjectWebhookInventory(object):
+    PRIMITIVE_FIELDS = ['opaque','name','lastOpDate','description','type','uuid','url','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectUserGroupPolicyRefInventory(object):
@@ -29179,6 +29734,14 @@ class QueryObjectSNSDingTalkEndpointInventory(object):
         'topics' : 'QueryObjectSNSTopicInventory',
     }
 
+class QueryObjectIscsiTargetInventory(object):
+    PRIMITIVE_FIELDS = ['iqn','iscsiLuns','lastOpDate','uuid','iscsiServerUuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['iscsiLun','iscsiServer']
+    QUERY_OBJECT_MAP = {
+        'iscsiLun' : 'QueryObjectIscsiLunInventory',
+        'iscsiServer' : 'QueryObjectIscsiServerInventory',
+    }
+
 class QueryObjectTicketInventory(object):
     PRIMITIVE_FIELDS = ['accountSystemType','flowCollectionUuid','request','name','lastOpDate','description','currentFlowUuid','uuid','accountSystemContext','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -29191,6 +29754,14 @@ class QueryObjectStackTemplateInventory(object):
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
+    }
+
+class QueryObjectIscsiServerInventory(object):
+    PRIMITIVE_FIELDS = ['iscsiTargets','port','ip','name','lastOpDate','state','iscsiClusterRefs','uuid','chapUserPassword','chapUserName','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['iscsiCluster','iscsiTarget']
+    QUERY_OBJECT_MAP = {
+        'iscsiCluster' : 'QueryObjectIscsiServerClusterRefInventory',
+        'iscsiTarget' : 'QueryObjectIscsiTargetInventory',
     }
 
 class QueryObjectUserGroupInventory(object):
@@ -29282,6 +29853,13 @@ class QueryObjectInstanceOfferingInventory(object):
         'vmInstance' : 'QueryObjectVmInstanceInventory',
     }
 
+class QueryObjectInstanceOfferingInventory(object):
+    PRIMITIVE_FIELDS = ['memorySize','sortKey','cpuSpeed','allocatorStrategy','name','lastOpDate','description','state','type','uuid','cpuNum','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['vmInstance']
+    QUERY_OBJECT_MAP = {
+        'vmInstance' : 'QueryObjectVmInstanceInventory',
+    }
+
 class QueryObjectL2VxlanNetworkInventory(object):
     PRIMITIVE_FIELDS = ['vni','physicalInterface','name','zoneUuid','lastOpDate','description','poolUuid','type','uuid','attachedClusterUuids','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['vxlanPool','l3Network','zone','cluster']
@@ -29300,15 +29878,15 @@ class QueryObjectVipPeerL3NetworkRefInventory(object):
         'vip' : 'QueryObjectVipInventory',
     }
 
-class QueryObjectVmUsageInventory(object):
-    PRIMITIVE_FIELDS = ['memorySize','vmUuid','name','lastOpDate','accountUuid','id','state','inventory','cpuNum','dateInLong','rootVolumeSize','createDate', '__systemTag__', '__userTag__']
+class QueryObjectIAM2ProjectTemplateInventory(object):
+    PRIMITIVE_FIELDS = ['template','name','lastOpDate','description','uuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
     }
 
-class QueryObjectIAM2ProjectTemplateInventory(object):
-    PRIMITIVE_FIELDS = ['template','name','lastOpDate','description','uuid','createDate', '__systemTag__', '__userTag__']
+class QueryObjectVmUsageInventory(object):
+    PRIMITIVE_FIELDS = ['memorySize','vmUuid','name','lastOpDate','accountUuid','id','state','inventory','cpuNum','dateInLong','rootVolumeSize','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 
@@ -29518,6 +30096,13 @@ class QueryObjectSNSTextTemplateInventory(object):
 
     }
 
+class QueryObjectIscsiLunInventory(object):
+    PRIMITIVE_FIELDS = ['iscsiTargetUuid','hctl','wwid','type','uuid','wwn','path','size','serial','vendor','lastOpDate','model','multipathDeviceUuid','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['iscsiTarget']
+    QUERY_OBJECT_MAP = {
+        'iscsiTarget' : 'QueryObjectIscsiTargetInventory',
+    }
+
 class QueryObjectEcsVSwitchInventory(object):
     PRIMITIVE_FIELDS = ['availableIpAddressCount','vSwitchId','ecsVpcUuid','cidrBlock','name','identityZoneUuid','lastOpDate','description','uuid','status','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
@@ -29669,13 +30254,6 @@ class QueryObjectNetworkServiceProviderInventory(object):
 
     }
 
-class QueryObjectCephBackupStorageMonInventory(object):
-    PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','status', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = []
-    QUERY_OBJECT_MAP = {
-
-    }
-
 class QueryObjectVirtualRouterVmInventory(object):
     PRIMITIVE_FIELDS = ['cpuSpeed','zoneUuid','description','type','managementNetworkUuid','uuid','platform','defaultRouteL3NetworkUuid','applianceVmType','hostUuid','lastOpDate','publicNetworkUuid','instanceOfferingUuid','state','imageUuid','createDate','clusterUuid','allocatorStrategy','hypervisorType','cpuNum','defaultL3NetworkUuid','virtualRouterVips','lastHostUuid','memorySize','rootVolumeUuid','name','agentPort','status', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['cluster','image','vmNics','virtualRouterOffering','allVolumes','zone','host','instanceOffering','rootVolume','portForwarding','loadBalancer','vip','eip']
@@ -29693,6 +30271,13 @@ class QueryObjectVirtualRouterVmInventory(object):
         'loadBalancer' : 'QueryObjectLoadBalancerInventory',
         'vip' : 'QueryObjectVipInventory',
         'eip' : 'QueryObjectEipInventory',
+    }
+
+class QueryObjectCephBackupStorageMonInventory(object):
+    PRIMITIVE_FIELDS = ['sshPort','monUuid','hostname','monAddr','sshUsername','monPort','lastOpDate','sshPassword','backupStorageUuid','createDate','status', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = []
+    QUERY_OBJECT_MAP = {
+
     }
 
 class QueryObjectSchedulerJobSchedulerTriggerInventory(object):
@@ -29789,13 +30374,6 @@ class QueryObjectEipInventory(object):
         'vip' : 'QueryObjectVipInventory',
     }
 
-class QueryObjectDahoVllVbrRefInventory(object):
-    PRIMITIVE_FIELDS = ['vllUuid','vbrUuid','lastOpDate','id','createDate', '__systemTag__', '__userTag__']
-    EXPANDED_FIELDS = ['vbr']
-    QUERY_OBJECT_MAP = {
-        'vbr' : 'QueryObjectVirtualBorderRouterInventory',
-    }
-
 class QueryObjectSecurityGroupInventory(object):
     PRIMITIVE_FIELDS = ['attachedL3NetworkUuids','name','lastOpDate','description','state','uuid','createDate', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = ['rules','vmNic','l3Network']
@@ -29803,6 +30381,13 @@ class QueryObjectSecurityGroupInventory(object):
         'rules' : 'QueryObjectSecurityGroupRuleInventory',
         'vmNic' : 'QueryObjectVmNicInventory',
         'l3Network' : 'QueryObjectL3NetworkInventory',
+    }
+
+class QueryObjectDahoVllVbrRefInventory(object):
+    PRIMITIVE_FIELDS = ['vllUuid','vbrUuid','lastOpDate','id','createDate', '__systemTag__', '__userTag__']
+    EXPANDED_FIELDS = ['vbr']
+    QUERY_OBJECT_MAP = {
+        'vbr' : 'QueryObjectVirtualBorderRouterInventory',
     }
 
 class QueryObjectTicketOperatorInventory(object):
@@ -29854,8 +30439,8 @@ class QueryObjectVmNicSecurityGroupRefInventory(object):
         'securityGroup' : 'QueryObjectSecurityGroupInventory',
     }
 
-class QueryObjectIPsecL3NetworkRefInventory(object):
-    PRIMITIVE_FIELDS = ['lastOpDate','l3NetworkUuid','uuid','connectionUuid','createDate', '__systemTag__', '__userTag__']
+class QueryObjectNetworkServiceProviderL2NetworkRefInventory(object):
+    PRIMITIVE_FIELDS = ['l2NetworkUuid','networkServiceProviderUuid', '__systemTag__', '__userTag__']
     EXPANDED_FIELDS = []
     QUERY_OBJECT_MAP = {
 

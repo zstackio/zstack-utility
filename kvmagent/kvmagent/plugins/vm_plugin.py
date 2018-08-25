@@ -39,6 +39,10 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
+class RetryException(Exception):
+    pass
+
+
 class NicTO(object):
     def __init__(self):
         self.mac = None
@@ -67,6 +71,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.emulateHyperV = False
         self.isApplianceVm = False
         self.systemSerialNumber = None
+        self.bootMode = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -2567,6 +2572,10 @@ class Vm(object):
                     cpu = e(root, 'cpu')
                 e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
+            if cmd.addons.cpuPinning:
+                for rule in cmd.addons.cpuPinning:
+                    e(tune, 'vcpupin', attrib={'vcpu': str(rule.vCpu), 'cpuset': rule.pCpuSet})
+
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
@@ -2586,6 +2595,10 @@ class Vm(object):
                 e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
             else:
                 e(os, 'type', 'hvm', attrib={'machine': 'pc'})
+                # if boot mode is UEFI
+                if cmd.bootMode == "UEFI":
+                    e(os, 'loader', '/usr/share/OVMF/OVMF_CODE.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/OVMF_VARS.fd'})
             # if not booting from cdrom, don't add any boot element in os section
             if cmd.bootDev[0] == "cdrom":
                 for boot_dev in cmd.bootDev:
@@ -3619,13 +3632,47 @@ class VmPlugin(kvmagent.KvmAgent):
             type = cmd.type
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
-            logger.debug('however, the stop operation is still considered as success')
+            # domain not found with virsh, try ps and kill
+            self.kill_vm(cmd.uuid)
+            logger.debug('the stop operation is still considered as success')
             return
         if str(type) == "cold":
             vm.stop(graceful=False)
 
         else:
             vm.stop(timeout=cmd.timeout / 2)
+
+    def kill_vm(self, vm_uuid):
+        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name[[:space:]]+\K%s,' | sed 's/.$//'" % vm_uuid)
+
+        if vm_uuid not in output:
+            return
+
+        vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
+        vm_pid.strip(' \t\n\r')
+
+        def loop_kill(_):
+            if shell.run('ps -p %s > /dev/null' % vm_pid):
+                kill = shell.ShellCmd('kill %s' % vm_pid)
+                kill(False)
+            else:
+                return True
+
+        if not linux.wait_callback_success(loop_kill, None, timeout=60):
+            logger.debug("failed to kill vm[uuid:%s, pid:%s]" % (vm_uuid, vm_pid))
+        else:
+            return
+
+        def loop_kill_force(_):
+            if shell.run('ps -p %s > /dev/null' % vm_pid):
+                kill = shell.ShellCmd('kill -9 %s' % vm_pid)
+                kill(False)
+            else:
+                return True
+
+        if not linux.wait_callback_success(loop_kill_force, None, timeout=60):
+            logger.debug("failed to kill vm[uuid:%s, pid:%s]" % (vm_uuid, vm_pid))
+            raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
     @kvmagent.replyerror
     def stop_vm(self, req):
@@ -4567,6 +4614,13 @@ class VmPlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
         logger.debug("in release sharedblock, %s %s" % (dom, event))
+
+        @linux.retry(times=5, sleep_time=1)
+        def wait_volume_unused(volume):
+            used_process = linux.linux_lsof(volume)
+            if len(used_process) != 0:
+                raise RetryException("volume %s still used: %s" % (volume, used_process))
+
         try:
             event = LibvirtEventManager.event_to_string(event)
             if event not in (LibvirtEventManager.EVENT_STOPPED, LibvirtEventManager.EVENT_SHUTDOWN):
@@ -4577,15 +4631,17 @@ class VmPlugin(kvmagent.KvmAgent):
             if len(out) != 0:
                 for file in out:
                     volume = file.strip().split("'")[1]
-                    used_process = linux.linux_lsof(volume)
+
+                    try:
+                        wait_volume_unused(volume)
+                    finally:
+                        used_process = linux.linux_lsof(volume)
                     if len(used_process) == 0:
                         try:
                             lvm.deactive_lv(volume, False)
-                            logger.debug("deactivated volume %s for event %s happend on vm %s success" % (
-                            volume, event, vm_uuid))
+                            logger.debug("deactivated volume %s for event %s happend on vm %s success" % (volume, event, vm_uuid))
                         except Exception as e:
-                            logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (
-                            volume, event, vm_uuid, e.message))
+                            logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (volume, event, vm_uuid, e.message))
                             content = traceback.format_exc()
                             logger.warn("traceback: %s" % content)
                     else:

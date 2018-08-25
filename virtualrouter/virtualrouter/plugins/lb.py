@@ -61,6 +61,11 @@ listen {{listenerUuid}}
 
         conf_file = self._make_conf_file_path(to.lbUuid, to.listenerUuid)
 
+        md5sum = ''
+        # if the first time to create lb, no config file will be found
+        if os.path.exists(conf_file):
+            md5sum = shell.call('md5sum %s' % conf_file)
+
         context = {}
         context.update(to.__dict__)
         for p in to.parameters:
@@ -78,6 +83,9 @@ listen {{listenerUuid}}
         conf = conf_tmpt.render(context)
         with open(conf_file, 'w') as fd:
             fd.write(conf)
+
+        if md5sum == shell.call('md5sum %s' % conf_file):
+            return
 
         shell.call("iptables -I INPUT -d %s -p tcp --dport %s --syn -j DROP && sleep 0.5" % (to.vip, to.loadBalancerPort))
         @rollbackable
