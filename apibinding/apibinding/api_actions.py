@@ -1718,6 +1718,18 @@ class CheckIpAvailabilityAction(inventory.APICheckIpAvailabilityMsg):
         self.out = evt
         return self.out
 
+class CheckResourcePermissionAction(inventory.APICheckResourcePermissionMsg):
+    def __init__(self):
+        super(CheckResourcePermissionAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CheckResourcePermissionAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CheckStackTemplateParametersAction(inventory.APICheckStackTemplateParametersMsg):
     def __init__(self):
         super(CheckStackTemplateParametersAction, self).__init__()
@@ -2830,6 +2842,18 @@ class CreateVirtualRouterVmAction(inventory.APICreateVirtualRouterVmMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[CreateVirtualRouterVmAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class CreateVmBackupAction(inventory.APICreateVmBackupMsg):
+    def __init__(self):
+        super(CreateVmBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVmBackupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -4306,6 +4330,18 @@ class DeleteVirtualRouterLocalAction(inventory.APIDeleteVirtualRouterLocalMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[DeleteVirtualRouterLocalAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class DeleteVmBackupAction(inventory.APIDeleteVmBackupMsg):
+    def __init__(self):
+        super(DeleteVmBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[DeleteVmBackupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -9242,6 +9278,18 @@ class RecoverImageAction(inventory.APIRecoverImageMsg):
         self.out = evt
         return self.out
 
+class RecoverVmBackupFromImageStoreBackupStorageAction(inventory.APIRecoverVmBackupFromImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(RecoverVmBackupFromImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RecoverVmBackupFromImageStoreBackupStorageAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class RecoverVmInstanceAction(inventory.APIRecoverVmInstanceMsg):
     def __init__(self):
         super(RecoverVmInstanceAction, self).__init__()
@@ -9754,6 +9802,18 @@ class ResumeVmInstanceAction(inventory.APIResumeVmInstanceMsg):
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[ResumeVmInstanceAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class RevertVmFromVmBackupAction(inventory.APIRevertVmFromVmBackupMsg):
+    def __init__(self):
+        super(RevertVmFromVmBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[RevertVmFromVmBackupAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
@@ -10484,6 +10544,18 @@ class SyncVirtualBorderRouterFromRemoteAction(inventory.APISyncVirtualBorderRout
     def run(self):
         if not self.sessionUuid:
             raise Exception('sessionUuid of action[SyncVirtualBorderRouterFromRemoteAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
+class SyncVmBackupFromImageStoreBackupStorageAction(inventory.APISyncVmBackupFromImageStoreBackupStorageMsg):
+    def __init__(self):
+        super(SyncVmBackupFromImageStoreBackupStorageAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[SyncVmBackupFromImageStoreBackupStorageAction] cannot be None')
         evt = api.async_call(self, self.sessionUuid)
         self.out = evt
         return self.out
