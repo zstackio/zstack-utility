@@ -7,6 +7,8 @@ import os
 import subprocess
 import signal
 import getpass
+import urlparse
+
 import simplejson
 from termcolor import colored
 import ConfigParser
@@ -1477,11 +1479,20 @@ class TailLogCmd(Command):
         self.description = "shortcut to print management node log to stdout"
         ctl.register_command(self)
 
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--listen-port', help='if set, web browser can get log via EventSource.', default=None)
+
     def run(self, args):
         log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
         log_path = os.path.normpath(log_path)
         if not os.path.isfile(log_path):
             raise CtlError('cannot find %s' % log_path)
+
+        if args.listen_port:
+            cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
+&& tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s''' % (log_path, args.listen_port)
+            shell(cmd)
+            return
 
         script = ShellCmd('tail -f %s' % log_path, pipe=False)
         script()
@@ -4702,6 +4713,7 @@ class DumpMysqlCmd(Command):
             else:
                 info("Sync ZStack backup to remote host %s:%s and delete expired files on remote successfully! " % (remote_host_ip, self.remote_backup_dir))
 
+
 class RestoreMysqlCmd(Command):
     status, all_local_ip = commands.getstatusoutput("ip a")
 
@@ -4724,6 +4736,10 @@ class RestoreMysqlCmd(Command):
         parser.add_argument('--ui-mysql-root-password',
                             help="mysql root password of zstack_ui database, same as --mysql-root-password by default",
                             default=None)
+        parser.add_argument('--skip-ui',
+                            help="skip restore ui db",
+                            action="store_true",
+                            default=False)
 
     def test_mysql_connection(self, db_connect_password, db_port, db_hostname):
         command = "mysql -uroot %s -P %s  %s -e 'show databases'  >> /dev/null 2>&1" \
@@ -4770,12 +4786,14 @@ class RestoreMysqlCmd(Command):
             ui_db_hostname = "--host %s" % ui_db_hostname
         self.test_mysql_connection(ui_db_connect_password, ui_db_port, ui_db_hostname)
 
+        running = 'true' in create_check_mgmt_node_command()(False)
+
         info("Backup mysql before restore data ...")
-        shell_no_pipe('zstack-ctl dump_mysql')
-        shell_no_pipe('zstack-ctl stop')
+        ctl.internal_run('dump_mysql')
+        ctl.internal_run('stop_node')
 
         info("Starting restore zstack data ...")
-        for database in ['zstack','zstack_rest']:
+        for database in ['zstack', 'zstack_rest']:
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)
             shell_no_pipe(command)
@@ -4787,6 +4805,13 @@ class RestoreMysqlCmd(Command):
                   % (db_backup_name, db_hostname_origin_cp, db_connect_password, db_hostname, db_port, database)
             shell_no_pipe(command)
 
+        if args.skip_ui:
+            if not running:
+                info("Recover data successfully! You can start node by: zstack-ctl start")
+            ctl.internal_run('start_node')
+            return
+
+        ctl.internal_run('stop_ui')
         info("Starting restore zstack_ui data ...")
         command = "mysql -uroot %s -P %s  %s -e 'drop database if exists zstack_ui; create database zstack_ui' >> /dev/null 2>&1" \
                   % (ui_db_connect_password, db_port, ui_db_hostname)
@@ -4795,8 +4820,138 @@ class RestoreMysqlCmd(Command):
               % (db_backup_name, ui_db_hostname_origin_cp, ui_db_connect_password, ui_db_hostname, ui_db_port)
         shell_no_pipe(command)
 
-        #shell_no_pipe('zstack-ctl start_node')
         info("Recover data successfully! You can start node by: zstack-ctl start")
+
+
+class PullDatabaseBackupCmd(Command):
+    mysql_backup_dir = "/var/lib/zstack/mysql-backup/"
+    ZSTORE_PROTOSTR = "zstore://"
+
+    def __init__(self):
+        super(PullDatabaseBackupCmd, self).__init__()
+        self.name = "pull_database_backup"
+        self.description = (
+            "pull database backup from backup storage"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--backup-storage-url',
+                            help="The backup storage install url, must include username, password, hostnamem, ssh port,"
+                                 " install path. e.g. ssh://username:password@hostname:port/bspath",
+                            required=True)
+        parser.add_argument('--backup-install-path',
+                            help="database backup install path",
+                            required=True)
+        parser.add_argument('--registry-port', '-p',
+                            help="image store",
+                            default=None)
+
+    def run(self, args):
+        back_info = args.backup_install_path.replace(self.ZSTORE_PROTOSTR, "").replace("/", ":")
+        local_path = os.path.join(self.mysql_backup_dir, "zsdb")
+        if not os.path.exists(self.mysql_backup_dir):
+            os.mkdir(self.mysql_backup_dir)
+
+        cmd = "pull -installpath %s %s" % (local_path, back_info)
+        runImageStoreCliCmd(args.backup_storage_url, args.registry_port, cmd)
+
+        def get_file_name():
+            try:
+                root = simplejson.loads(text)
+                desc = root['desc']
+                return simplejson.loads(desc)['name']
+            except:
+                shell("rm -f %s*" % local_path)
+                error("it is not a database backup")
+
+        with open(local_path + ".imf2", 'r') as fd:
+            text = fd.read()
+            new_path = os.path.join(self.mysql_backup_dir, get_file_name())
+            os.rename(local_path, new_path)
+            info("backup path: %s\nit do not contains zstack_ui database" % new_path)
+        os.remove(local_path + ".imf2")
+
+class ScanDatabaseBackupCmd(Command):
+    BACKUP_NAME = "zsbak"
+    ZSTORE_PROTOSTR = "zstore://"
+
+    def __init__(self):
+        super(ScanDatabaseBackupCmd, self).__init__()
+        self.name = "scan_database_backup"
+        self.description = (
+            "scan database backups from backup storage"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--backup-storage-url',
+                            help="The backup storage install url, must include username, password, hostnamem, ssh port,"
+                                 " install path. e.g. ssh://username:password@hostname:port/bspath",
+                            required=True)
+        parser.add_argument('--json', '-j',
+                            help="output via json",
+                            action="store_true",
+                            default=False)
+        parser.add_argument('--registry-port', '-p',
+                            help="image store",
+                            default=None)
+
+    def run(self, args):
+        cmd = "images -name %s" % self.BACKUP_NAME
+        _, out, _ = runImageStoreCliCmd(args.backup_storage_url, args.registry_port, cmd)
+        roots = simplejson.loads(out)
+        backups = []
+        for root in roots:
+            metadata = simplejson.loads(root['desc'])
+            metadata['installPath'] = "%s%s/%s" % (self.ZSTORE_PROTOSTR, root['name'], root['id'])
+            backups.append(metadata)
+
+        if args.json:
+            info(simplejson.dumps(backups))
+        elif backups:
+            info("name\t\t\tinstall path\t\t\t\tversion\t\t\tcreated time")
+            for backup in backups:
+                info("%s\t%s\t%s\t%s" % (backup['name'], backup['installPath'], backup['version'], backup['createdTime']))
+
+
+def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
+    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli"
+    ZSTORE_CLI_CA = "/var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
+    ZSTORE_DEF_PORT = 8000
+
+    def prepare_ca():
+        temp_dir = tempfile.mkdtemp()
+        scp_cmd = "sshpass -p '%s' scp -P %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s@%s:%s %s" % \
+                  (password, port, username, hostname, ZSTORE_CLI_CA, temp_dir)
+        shell(scp_cmd)
+        return os.path.join(temp_dir, 'ca.pem')
+
+    def check_server():
+        start_cmd = "/usr/local/zstack/imagestore/bin/zstore -conf /usr/local/zstack/imagestore/bin/zstore.yaml -logfile /var/log/zstack/zstack-store/zstore.log"
+        ssh_cmd = "sshpass -p '%s' ssh -p %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s@%s" % (
+            password, port, username, hostname)
+
+        shell("%s 'ps -e | grep zstore || %s'" % (ssh_cmd, start_cmd))
+
+    url = urlparse.urlparse(raw_bs_url)
+    username = url.username
+    password = url.password
+    hostname = url.hostname
+    port = (url.port, 22)[url.port is None]
+    registry_port = (ZSTORE_DEF_PORT, registry_port)[registry_port is not None]
+
+    check_server()
+    ca_path = prepare_ca()
+
+    cmd = "%s -json -rootca %s -url %s:%s %s" % (ZSTORE_CLI_PATH, ca_path, hostname, registry_port, command)
+    code, o, e = shell_return_stdout_stderr(cmd)
+    shell("rm -rf %s" % os.path.dirname(ca_path), is_exception=False)
+    if code != 0 and is_exception:
+        error("fail to run image store cli[%s]: %s" % (command, e))
+
+    return code, o, e
+
 
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack/"
@@ -8169,6 +8324,7 @@ def main():
     ClearLicenseCmd()
     ShowConfiguration()
     SetEnvironmentVariableCmd()
+    PullDatabaseBackupCmd()
     RollbackManagementNodeCmd()
     RollbackDatabaseCmd()
     ResetAdminPasswordCmd()
@@ -8177,6 +8333,7 @@ def main():
     RestartNodeCmd()
     RestoreMysqlCmd()
     RecoverHACmd()
+    ScanDatabaseBackupCmd()
     ShowStatusCmd()
     StartCmd()
     StopCmd()

@@ -1472,6 +1472,9 @@ uz_upgrade_zstack(){
         fail "failed to upgrade zstack-cli"
     fi
 
+    bash ${zstore_bin} >>$ZSTACK_INSTALL_LOG 2>&1
+    chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
+
     if [ ! -z $DEBUG ]; then
         zstack-ctl upgrade_management_node --war-file $upgrade_folder/zstack.war 
     else
@@ -1631,6 +1634,9 @@ iz_install_zstackcli(){
     if [ $? -ne 0 ];then
        fail "failed to install zstackcli in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
     fi
+
+    bash ${zstore_bin} >>$ZSTACK_INSTALL_LOG 2>&1
+    chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
     pass
 }
 
@@ -2801,9 +2807,12 @@ echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 pypi_source_easy_install="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
 pypi_source_pip="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
 unzip_el6_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el6*.rpm"
+
 if [ `uname -m` == "aarch64" ]; then
+    zstore_bin="${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/imagestorebackupstorage/zstack-store.aarch64.bin"
     unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*aarch64*.rpm"
 else
+    zstore_bin="${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/imagestorebackupstorage/zstack-store.bin"
     unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*x86_64*.rpm"
 fi
 
