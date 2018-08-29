@@ -4072,8 +4072,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 drivertype = target_disk.driver.type_
                 source = target_disk.source
                 imf = self.push_backing_files(isc, cmd.hostname, drivertype, source)
-                parent = isc._build_install_path(imf.name, imf.id)
-                info.parentInstallPath = parent
+                if imf:
+                    parent = isc._build_install_path(imf.name, imf.id)
+                    info.parentInstallPath = parent
 
             bkinfos.append(info)
 
