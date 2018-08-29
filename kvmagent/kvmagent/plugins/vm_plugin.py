@@ -4112,7 +4112,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if mode == 'incremental':
             return bitmap, cmd.lastBackup
 
-        if mode == 'top' and parent is None:
+        if mode == 'top' and parent is None and topoverlay != None:
             bf = linux.qcow2_get_backing_file(topoverlay)
             imf = isc.upload_image(cmd.hostname, bf)
             parent = isc._build_install_path(imf.name, imf.id)
