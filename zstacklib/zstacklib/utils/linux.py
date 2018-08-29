@@ -184,7 +184,7 @@ def get_folder_size(path = "."):
     for dirpath, dirnames, filenames in os.walk(path):
         for f in filenames:
             fp = os.path.join(dirpath, f)
-            total_size += (os.path.getsize(fp) if os.path.isfile(fp) else 0)
+            total_size += (get_local_file_disk_usage(fp) if os.path.isfile(fp) else 0)
     return total_size
 
 def is_mounted(path=None, url=None):
@@ -298,7 +298,7 @@ def shellquote(s):
 def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callback_data=None, cert_check=False):
     def get_percentage(filesize, dst):
         try:
-            curr_size = os.path.getsize(dst)
+            curr_size = get_local_file_size(dst)
             p = round(float(curr_size)/float(filesize) * 100, 2)
             return p
         except Exception as e:
@@ -412,8 +412,15 @@ def ssh(hostname, sshkey, cmd, user='root', sshPort=22):
             os.remove(sshkey_file)
 
 def get_local_file_size(path):
-    size = os.path.getsize(path)
-    return size
+    return os.path.getsize(path)
+
+def get_local_file_disk_usage(path):
+    if os.path.isdir(path):
+        return os.path.getsize(path)
+    fmt = get_img_fmt(path)
+    if fmt == 'qcow2':
+        return int(shell.call("du -a --block-size=1 %s | awk '{print $1}'" % path).strip())
+    return os.path.getsize(path)
 
 def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root', sshPort=22):
     def create_ssh_key_file():
@@ -474,7 +481,7 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
 
     def caculate_percentage(total_size):
         if os.path.exists(download_to):
-            curr_size = os.path.getsize(download_to)
+            curr_size = get_local_file_size(download_to)
             #print 'curr:%s total: %s' % (curr_size, total_size)
             return round(float(curr_size)/float(total_size) * 100, 2)
         else:
@@ -553,8 +560,8 @@ def qcow2_size_and_actual_size(file_path):
         actual_size = None
     else:
         # actual_size = sizeunit.get_size(actual_size)
-        # use the os.path.getsize instead of parsing qemu-img output as it's not accurate
-        actual_size = os.path.getsize(file_path)
+        # use the get_local_file_size instead of parsing qemu-img output as it's not accurate
+        actual_size = get_local_file_disk_usage(file_path)
 
     return virtual_size, actual_size
 
@@ -707,7 +714,7 @@ def get_qcow2_file_chain_size(path):
     chain = qcow2_get_file_chain(path)
     size = 0L
     for path in chain:
-        size += os.path.getsize(path)
+        size += get_local_file_disk_usage(path)
     return size
 
 def get_qcow2_base_backing_file_recusively(path):
