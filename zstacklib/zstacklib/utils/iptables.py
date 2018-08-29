@@ -540,12 +540,15 @@ class IPTables(Node):
         try:
             shell.call('/sbin/iptables-restore < %s' % f)
         except Exception as e:
+            res = shell.call('lsof /run/xtables.lock')
             err ='''Failed to apply iptables rules:
 shell error description:
 %s
+result of lsof /run/xtables.lock
+%s
 iptable rules:
 %s
-''' % (str(e), content)
+''' % (str(e), str(res), content)
             raise IPTablesError(err)
         finally:
             os.remove(f)
