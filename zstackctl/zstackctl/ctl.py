@@ -303,6 +303,9 @@ def get_host_list(table_name):
     host_vo = query.query()
     return host_vo
 
+def get_mn_list():
+    return get_host_list("ManagementNodeVO")
+
 def get_vrouter_list():
     ip_list = []
     db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
@@ -5399,6 +5402,9 @@ class CollectLogCmd(Command):
         collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
+        if len(get_mn_list()) > 1:
+            warn("there are multiple zstack management node[hostName: %s] exist, need to collect management log on others manually" %
+                 map(lambda x: x["hostName"], get_mn_list()))
         if os.path.exists(InstallHACmd.conf_file) is not True:
             self.get_local_mn_log(collect_dir, args.full)
         else:
