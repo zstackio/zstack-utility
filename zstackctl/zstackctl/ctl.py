@@ -5839,7 +5839,7 @@ class InstallManagementNodeCmd(Command):
       script: $setup_account
 
     - name: change owner of /var/lib/zstack/
-      shell: "mkdir -p /var/lib/zstack/; chown -R zstack:zstack /var/lib/zstack/; chmod -R 755 /var/lib/zstack/;"
+      shell: "mkdir -p /var/lib/zstack/; chown -R zstack:zstack /var/lib/zstack/"
 '''
 
         pre_script = '''
