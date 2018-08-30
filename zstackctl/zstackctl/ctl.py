@@ -1662,6 +1662,7 @@ class StartCmd(Command):
     #MINIMAL_MEM_SIZE unit is KB, here is 6GB, in linxu, 6GB is 5946428 KB
     #Save some memory for kdump etc. The actual limitation is 5000000KB
     MINIMAL_MEM_SIZE = 5000000
+    SIMULATOR = 'SIMULATOR'
 
     def __init__(self):
         super(StartCmd, self).__init__()
@@ -1933,8 +1934,15 @@ class StartCmd(Command):
                     mgmt_ip = ''
                 raise CtlError('no management-node-ready message received within %s seconds%s, please check error in log file %s' % (timeout, mgmt_ip, log_path))
 
-        def prepareBeanRefContextXml():
+        def prepare_env():
             if args.simulator:
+                ctl.put_envs([(self.SIMULATOR, 'True')])
+
+        def is_simulator_on():
+            return ctl.get_env(self.SIMULATOR) == 'True'
+
+        def prepareBeanRefContextXml():
+            if is_simulator_on():
                 beanXml = "simulator/zstack-simulator2.xml"
                 info("--simulator is set, ZStack will start in simulator mode")
             else:
@@ -1943,7 +1951,7 @@ class StartCmd(Command):
             shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s; sync' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
 
         def checkSimulator():
-            if args.simulator:
+            if is_simulator_on():
                 ctl.write_properties(['simulatorsOn=true'.split('=', 1)])
             else:
                 ctl.delete_properties(['simulatorsOn'])
@@ -1952,6 +1960,7 @@ class StartCmd(Command):
         if user != 'root':
             raise CtlError('please use sudo or root user')
 
+        prepare_env()
         check_java_version()
         check_8080()
         check_9090()
