@@ -656,6 +656,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = CheckBitsRsp()
         install_abs_path = translate_absolute_path_from_install_path(cmd.path)
         rsp.existing = lvm.lv_exists(install_abs_path)
+        if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
+            rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         return jsonobject.dumps(rsp)
 
     def do_active_lv(self, installPath, lockType, recursive):
