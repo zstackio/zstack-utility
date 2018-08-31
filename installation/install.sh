@@ -2,6 +2,7 @@
 # Mevoco Installer
 # Usage: bash install.sh
 #DEBUG='y'
+PROGNAME=$0
 PRODUCT_NAME=${PRODUCT_NAME:-"ZStack"}
 SS100='SS100'
 SS100_STORAGE='SS100-Storage'
@@ -2560,7 +2561,7 @@ yum clean all >/dev/null 2>&1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 }
 
-help (){
+usage (){
     echo "
 ${PRODUCT_NAME} Installer.
 
@@ -2568,7 +2569,7 @@ The script can install ${PRODUCT_NAME} related software.
 
 Warning: This script will disable SELinux on RedHat series OS (CentOS/Redhat RHEL)
 
-Usage: $0 [options]
+Usage: ${PROGNAME} [options]
 
 Options:
   -a    equal to -nH
@@ -2672,38 +2673,38 @@ Following command will install the ${PRODUCT_NAME} management node to /usr/local
 
 And an empty password is set to the root user of MySQL.
 
-# $0 -a
+# ${PROGNAME} -a
 
 --
 
 In addition to all above results, below command sets MySQL user 'zstack' password to DB_ZSTACK_PASSWORD by using the MySQL 'root' user password DB_ROOT_PASSWORD
 , and uses the IP of eth1 for deploying MySQL and RabbitMQ.
 
-# $0 -r /home/zstack -a -P DB_ROOT_PASSWORD -p DB_ZSTACK_PASSWORD -I eth1
+# ${PROGNAME} -r /home/zstack -a -P DB_ROOT_PASSWORD -p DB_ZSTACK_PASSWORD -I eth1
 
 --
 
 Following command only installs ${PRODUCT_NAME} management node and dependent software.
 
-# $0 -i
+# ${RPOGNAME} -i
 
 --
 
 Following command only installs ${PRODUCT_NAME} management node and monitor.
 
-# $0 -m
+# ${PROGNAME} -m
 
 --
 
 Following command installs ${PRODUCT_NAME} management node and monitor. It will use aliyun yum mirror source.
 
-# $0 -m -R aliyun
+# ${PROGNAME} -m -R aliyun
 
 --
 
 Following command installs ${PRODUCT_NAME} management node and monitor. It will use aliyun yum mirror source. It will also use quiet installation to try to fix system configuration issue. 
 
-# $0 -m -R aliyun -q
+# ${PROGNAME} -m -R aliyun -q
 
 ------------
 "
@@ -2759,13 +2760,13 @@ do
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
         z ) NOT_START_ZSTACK='y';;
-        * ) help;;
+        * ) usage;;
     esac
 done
 
 # Fix bug ZSTAC-14090
-shift "$((OPTIND-1))"
-[ $# -eq 0 ] || help
+[ $# -eq $((OPTIND-1)) ] || usage
+OPTIND=1
 
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
     if [ ! -d /opt/zstack-dvd/ ]; then
