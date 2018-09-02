@@ -145,9 +145,9 @@ class ResizeVolumeRsp(NfsResponse):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
-class NfsToNfsMigrateVolumeRsp(NfsResponse):
+class NfsToNfsMigrateBitsRsp(NfsResponse):
     def __init__(self):
-        super(NfsToNfsMigrateVolumeRsp, self).__init__()
+        super(NfsToNfsMigrateBitsRsp, self).__init__()
 
 class NfsRebaseVolumeBackingFileRsp(NfsResponse):
     def __init__(self):
@@ -184,7 +184,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
-    NFS_TO_NFS_MIGRATE_VOLUME_PATH = "/nfsprimarystorage/migratevolume"
+    NFS_TO_NFS_MIGRATE_BITS_PATH = "/nfsprimarystorage/migratebits"
     NFS_REBASE_VOLUME_BACKING_FILE_PATH = "/nfsprimarystorage/rebasevolumebackingfile"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "unable to find image in cache"
@@ -217,7 +217,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.update_mount_point)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
-        http_server.register_async_uri(self.NFS_TO_NFS_MIGRATE_VOLUME_PATH, self.migrate_volume)
+        http_server.register_async_uri(self.NFS_TO_NFS_MIGRATE_BITS_PATH, self.migrate_bits)
         http_server.register_async_uri(self.NFS_REBASE_VOLUME_BACKING_FILE_PATH, self.rebase_volume_backing_file)
         self.mount_path = {}
         self.image_cache = None
@@ -227,19 +227,19 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         pass
 
     @kvmagent.replyerror
-    def migrate_volume(self, req):
+    def migrate_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = NfsToNfsMigrateVolumeRsp()
+        rsp = NfsToNfsMigrateBitsRsp()
 
         # Report task progress based on flow chain for now
         # To get more accurate progress, we need to report from here someday
 
-        # begin volume migration, then check md5 sums
-        shell.call("mkdir -p %s; cp -r %s/* %s" % (cmd.dstVolumeFolderPath, cmd.srcVolumeFolderPath, cmd.dstVolumeFolderPath))
-        src_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcVolumeFolderPath)
-        dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.dstVolumeFolderPath)
+        # begin migration, then check md5 sums
+        shell.call("mkdir -p %s; cp -r %s/* %s" % (cmd.dstFolderPath, cmd.srcFolderPath, cmd.dstFolderPath))
+        src_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcFolderPath)
+        dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.dstFolderPath)
         if src_md5 != dst_md5:
-            rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcVolumeFolderPath, cmd.dstVolumeFolderPath)
+            rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcFolderPath, cmd.dstFolderPath)
             rsp.success = False
 
         return jsonobject.dumps(rsp)
