@@ -339,7 +339,7 @@ class CephAgent(object):
             # try to delete test file, ignore the result
             pool, objname = cmd.testImagePath.split('/')
             bash_r("rados -p '%s' rm '%s'" % (pool, objname))
-            r, o, e = bash_roe("timeout 60 echo zstack | rados -p '%s' put '%s' -" % (pool, objname))
+            r, o, e = bash_roe("echo zstack | timeout 60 rados -p '%s' put '%s' -" % (pool, objname))
             if r != 0:
                 rsp.success = False
                 rsp.failure = "UnableToCreateFile"
