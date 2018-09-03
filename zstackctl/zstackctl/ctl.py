@@ -4614,6 +4614,9 @@ class DumpMysqlCmd(Command):
                             help="The filename prefix you want to save the backup database under local backup dir, default filename "
                                  "prefix is 'zstack-backup-db', local backup dir is '/var/lib/zstack/mysql-backup/'",
                             default="zstack-backup-db")
+        parser.add_argument('--file-path',
+                            help="specify a absolute path to dump db, default is '/var/lib/zstack/mysql-backup/zstack-backup-db-$TIMESTAMP.gz'",
+                            required=False)
         parser.add_argument('--keep-amount',type=int,
                             help="The amount of backup files you want to keep, older backup files will be deleted, default number is 60",
                             default=60)
@@ -4655,7 +4658,11 @@ class DumpMysqlCmd(Command):
         db_backup_dir = "/var/lib/zstack/mysql-backup/"
         if os.path.exists(db_backup_dir) is False:
             os.mkdir(db_backup_dir)
-        db_backup_name = db_backup_dir + file_name + "-" + backup_timestamp
+
+        if args.file_path:
+            db_backupf_file_path = args.file_path
+        else:
+            db_backupf_file_path = db_backup_dir + file_name + "-" + backup_timestamp + ".gz"
         if args.delete_expired_file is not False and args.host_info is None:
             error("Please specify remote host info with '--host' before you want to delete remote host expired files")
         if args.host_info is not None:
@@ -4697,9 +4704,9 @@ class DumpMysqlCmd(Command):
                 ui_db_connect_password = "-p" + ui_db_password
             command_2 = "mysqldump --databases -u %s %s --host %s -P %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_hostname, ui_db_port)
 
-        cmd = ShellCmd("(%s; %s) | gzip > %s" % (command_1, command_2, db_backup_name + ".gz"))
+        cmd = ShellCmd("(%s; %s) | gzip > %s" % (command_1, command_2, db_backupf_file_path))
         cmd(True)
-        info("Backup mysql successfully! You can check the file at %s.gz" % db_backup_name)
+        info("Backup mysql successfully! You can check the file at %s" % db_backupf_file_path)
 
         # remove old file
         if len(os.listdir(db_backup_dir)) > keep_amount:
@@ -4872,7 +4879,7 @@ class PullDatabaseBackupCmd(Command):
             text = fd.read()
             new_path = os.path.join(self.mysql_backup_dir, get_file_name())
             os.rename(local_path, new_path)
-            info("backup path: %s\nit do not contains zstack_ui database" % new_path)
+            info("backup path: %s" % new_path)
         os.remove(local_path + ".imf2")
 
 class ScanDatabaseBackupCmd(Command):
