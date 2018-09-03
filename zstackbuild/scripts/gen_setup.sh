@@ -15,8 +15,8 @@ cd \$tmpdir
     exit 1;
   fi
   PRODUCT_NAME=$1 PRODUCT_VERSION=$2 CHECK_REPO_VERSION=$3 bash ./install.sh -o -f zstack*.tgz \$*
-  ret=\$?
-  rm -rf \$tmpdir
-  exit \$ret
-) 9>tmp_lock_file
+) 9>/tmp/zstack_lock_file
+ret=\$?
+rm -rf \$tmpdir /tmp/zstack_lock_file
+exit \$ret
 EOF
