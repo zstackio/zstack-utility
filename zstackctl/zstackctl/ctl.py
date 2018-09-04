@@ -1219,9 +1219,15 @@ class ShowStatusCmd(Command):
             "log file: %s" % log_path
         ]
 
-
         def check_zstack_status():
             cmd = create_check_mgmt_node_command()
+
+            def dump_mn():
+                if pid:
+                    os.kill(int(pid), 3)
+
+                shell_return("echo 'management node became Unknown on %s, you can check status in catalina.out' >> %s"
+                             % (datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), log_path))
 
             def write_status(status):
                 info('MN status: %s' % status)
@@ -1237,6 +1243,7 @@ class ShowStatusCmd(Command):
                     write_status('%s, the management node seems to become zombie as it stops responding APIs but the '
                                  'process(PID: %s) is still running. Please stop the node using zstack-ctl stop_node' %
                                  (colored('Unknown', 'yellow'), pid))
+                    dump_mn()
                 else:
                     write_status(colored('Stopped', 'red'))
                 return False
@@ -1247,6 +1254,7 @@ class ShowStatusCmd(Command):
                 write_status(colored('Running', 'green') + ' [PID:%s]' % pid)
             else:
                 write_status('Unknown')
+                dump_mn()
 
         def show_version():
             try:
@@ -5282,9 +5290,18 @@ class CollectLogCmd(Command):
             if status is not True:
                 warn("get zstack-api log failed: %s" % output)
 
+            command = "/bin/cp -f  %s/../../logs/catalina.out %s" % (ctl.zstack_home, tmp_log_dir)
+            (status, output) = run_remote_command(command, host_post_info, True, True)
+            if status is not True:
+                warn("get catalina log failed: %s" % output)
+
             if collect_full_log:
                 for item in range(0, 15):
                     log_name = "management-server-" + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
+                    command = "/bin/cp -rf %s/../../logs/%s* %s/" % (ctl.zstack_home, log_name, tmp_log_dir)
+                    (status, output) = run_remote_command(command, host_post_info, True, True)
+
+                    log_name = "catalina." + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
                     command = "/bin/cp -rf %s/../../logs/%s* %s/" % (ctl.zstack_home, log_name, tmp_log_dir)
                     (status, output) = run_remote_command(command, host_post_info, True, True)
 
@@ -5325,9 +5342,18 @@ class CollectLogCmd(Command):
         if status != 0:
             warn("get zstack-api log failed: %s" % output)
 
+        command = "/bin/cp -f  %s/../../logs/catalina.out %s" % (ctl.zstack_home, mn_log_dir)
+        (status, output) = commands.getstatusoutput(command)
+        if status != 0:
+            warn("get catalina log failed: %s" % output)
+
         if collect_full_log:
             for item in range(0, 15):
                 log_name = "management-server-" + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
+                command = "/bin/cp -rf %s/../../logs/%s* %s/" % (ctl.zstack_home, log_name, mn_log_dir)
+                (status, output) = commands.getstatusoutput(command)
+
+                log_name = "catalina." + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
                 command = "/bin/cp -rf %s/../../logs/%s* %s/" % (ctl.zstack_home, log_name, mn_log_dir)
                 (status, output) = commands.getstatusoutput(command)
 
@@ -5380,6 +5406,11 @@ class CollectLogCmd(Command):
         return host_post_info
 
     def run(self, args):
+        # dump mn status
+        mn_pid = get_management_node_pid()
+        if mn_pid:
+            os.kill(int(mn_pid), 3)
+
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
         # create log
