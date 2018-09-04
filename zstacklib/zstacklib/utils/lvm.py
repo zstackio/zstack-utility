@@ -88,29 +88,46 @@ def get_block_devices():
         mpath_devices = cmd.stdout.strip().split("\n")
 
     for mpath_device in mpath_devices:
-        cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
-        cmd(is_exception=False)
-        if cmd.return_code != 0 or cmd.stdout.strip() == "":
+        try:
+            cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
+            cmd(is_exception=False)
+            if cmd.return_code != 0 or cmd.stdout.strip() == "":
+                continue
+
+            dm = cmd.stdout.strip()
+            slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
+            if slaves is None or len(slaves) == 0:
+                struct = SharedBlockCandidateStruct()
+                cmd = shell.ShellCmd("multipath -l /dev/mapper/%s | grep %s | grep -o ' (.*) '" % (
+                    mpath_device, mpath_device))
+                cmd(is_exception=True)
+                struct.wwids = [cmd.stdout.strip().strip("()")]
+                struct.type = "mpath"
+                block_devices.append(struct)
+                continue
+
+            struct = get_device_info(slaves[0])
+            cmd = shell.ShellCmd("multipath -l /dev/mapper/%s | grep %s | grep -o ' (.*) '" % (
+                mpath_device, mpath_device))
+            cmd(is_exception=True)
+            struct.wwids = [cmd.stdout.strip().strip("()")]
+            struct.type = "mpath"
+            block_devices.append(struct)
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
             continue
-
-        dm = cmd.stdout.strip()
-        slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
-
-        struct = get_device_info(slaves[0])
-        cmd = shell.ShellCmd("multipath -l /dev/mapper/%s | grep %s | grep -o ' (.*) '" % (
-            mpath_device, mpath_device))
-        cmd(is_exception=True)
-        struct.wwids = [cmd.stdout.strip().strip("()")]
-        struct.type = "mpath"
-        block_devices.append(struct)
 
     disks = shell.call("lsblk -p -o NAME,TYPE | grep disk | awk '{print $1}'").strip().split()
     for disk in disks:
-        if is_slave_of_multipath(disk):
+        try:
+            if is_slave_of_multipath(disk):
+                continue
+            d = get_device_info(disk.strip().split("/")[-1])
+            if len(d.wwids) != 0:
+                block_devices.append(d)
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
             continue
-        d = get_device_info(disk.strip().split("/")[-1])
-        if len(d.wwids) != 0:
-            block_devices.append(d)
 
     return block_devices
 
