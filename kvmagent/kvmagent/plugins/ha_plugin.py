@@ -147,6 +147,8 @@ class HaPlugin(kvmagent.KvmAgent):
     CANCEL_CEPH_SELF_FENCER = "/ha/ceph/cancelselffencer"
     SHAREDBLOCK_SELF_FENCER = "/ha/sharedblock/setupselffencer"
     CANCEL_SHAREDBLOCK_SELF_FENCER = "/ha/sharedblock/cancelselffencer"
+    ALIYUN_NAS_SELF_FENCER = "/ha/aliyun/nas/setupselffencer"
+    CANCEL_NAS_SELF_FENCER = "/ha/aliyun/nas/cancelselffencer"
 
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
@@ -168,6 +170,70 @@ class HaPlugin(kvmagent.KvmAgent):
         with self.fencer_lock:
             for ps_uuid in cmd.psUuids:
                 self.run_filesystem_fencer_timestamp.pop(ps_uuid, None)
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def cancel_aliyun_nas_self_fencer(self, req):
+        self.run_aliyunnas_fencer = False
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def setup_aliyun_nas_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.run_aliyunnas_fencer = True
+
+        @thread.AsyncThread
+        def heartbeat_on_aliyunnas():
+            failure = 0
+
+            while self.run_aliyunnas_fencer:
+                try:
+                    time.sleep(cmd.interval)
+
+                    mount_path = cmd.mountPath
+                    if not linux.timeout_isdir(mount_path) or not linux.is_mounted(path=mount_path):
+                        continue
+
+                    test_file = os.path.join(mount_path, cmd.heartbeat, '%s-ping-test-file-%s' % (cmd.uuid, kvmagent.HOST_UUID))
+                    touch = shell.ShellCmd('timeout 60 touch %s' % test_file)
+                    touch(False)
+                    if touch.return_code == 124:
+                        logger.debug('unable to access the mount path[%s] of the aliyun nas primary storage[uuid:%s] in 60s, timeout' %
+                            (mount_path, cmd.uuid))
+                        shell.call('rm -f %s' % test_file)
+                        continue
+                    elif touch.return_code != 0:
+                        logger.debug('touch file failed, cause: %s' % touch.stderr)
+                        failure += 1
+                    else:
+                        failure = 0
+                        shell.call('rm -f %s' % test_file)
+                        continue
+
+                    if failure < cmd.maxAttempts:
+                        continue
+
+                    try:
+                        logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
+                        kill_vm(cmd.maxAttempts)
+
+                        # reset the failure count
+                        failure = 0
+                    except Exception as e:
+                        logger.warn("kill vm failed, %s" % e.message)
+                        content = traceback.format_exc()
+                        logger.warn("traceback: %s" % content)
+                    finally:
+                        self.report_storage_status([cmd.uuid], 'Disconnected')
+
+                except Exception as e:
+                    logger.debug('self-fencer on aliyun nas primary storage %s stopped abnormally' % cmd.uuid)
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+            logger.debug('stop self-fencer on aliyun nas primary storage %s' % cmd.uuid)
+
+        heartbeat_on_aliyunnas()
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -496,6 +562,8 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_CEPH_SELF_FENCER, self.cancel_ceph_self_fencer)
         http_server.register_async_uri(self.SHAREDBLOCK_SELF_FENCER, self.setup_sharedblock_self_fencer)
         http_server.register_async_uri(self.CANCEL_SHAREDBLOCK_SELF_FENCER, self.cancel_sharedblock_self_fencer)
+        http_server.register_async_uri(self.ALIYUN_NAS_SELF_FENCER, self.setup_aliyun_nas_self_fencer)
+        http_server.register_async_uri(self.CANCEL_NAS_SELF_FENCER, self.cancel_aliyun_nas_self_fencer)
 
     def stop(self):
         pass
