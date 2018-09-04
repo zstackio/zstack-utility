@@ -4756,7 +4756,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
-        logger.debug("in release sharedblock, %s %s" % (dom, event))
+        logger.debug("in release sharedblock, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
 
         @linux.retry(times=5, sleep_time=1)
         def wait_volume_unused(volume):
@@ -4766,7 +4766,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         try:
             event = LibvirtEventManager.event_to_string(event)
-            if event not in (LibvirtEventManager.EVENT_STOPPED, LibvirtEventManager.EVENT_SHUTDOWN):
+            if event not in (LibvirtEventManager.EVENT_SHUTDOWN):
                 return
 
             vm_uuid = dom.name()
