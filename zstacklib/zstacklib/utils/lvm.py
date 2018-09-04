@@ -502,10 +502,16 @@ def get_lv_size(path):
     return cmd.stdout.strip().strip("B")
 
 
+@bash.in_bash
 def resize_lv(path, size):
-    cmd = shell.ShellCmd("lvresize --size %sb %s" % (calcLvReservedSize(size), path))
-    cmd(is_exception=True)
-
+    r, o, e = bash.bash_roe("lvresize --size %sb %s" % (calcLvReservedSize(size), path))
+    if r == 0:
+        return
+    elif "matches existing size" in e or "matches existing size" in o:
+        return
+    else:
+        raise Exception("resize lv %s to size %s failed, return code: %s, stdout: %s, stderr: %s" %
+                        (path, size, r, o, e))
 
 @bash.in_bash
 @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
