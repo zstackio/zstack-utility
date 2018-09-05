@@ -123,8 +123,11 @@ def get_block_devices():
             if is_slave_of_multipath(disk):
                 continue
             d = get_device_info(disk.strip().split("/")[-1])
-            if len(d.wwids) != 0:
-                block_devices.append(d)
+            if len(d.wwids) is 0:
+                continue
+            if get_pv_uuid_by_path("/dev/disk/by-id/%s" % d.wwids[0]) not in ("", None):
+                d.type = "lvm-pv"
+            block_devices.append(d)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             continue
@@ -382,12 +385,17 @@ def backup_super_block(disk_path):
 
 
 @bash.in_bash
-def wipe_fs(disks):
+def wipe_fs(disks, expected_vg=None):
     for disk in disks:
-        cmd = shell.ShellCmd("pvdisplay %s" % disk)
+        exists_vg = None
+        cmd = shell.ShellCmd("pvdisplay %s | grep %s" % (disk, expected_vg))
         cmd(is_exception=False)
         if cmd.return_code == 0:
             continue
+
+        r, o = bash.bash_ro("pvs --nolocking --noheading -o vg_name %s" % disk)
+        if r == 0 and o.strip() != "":
+            exists_vg = o.strip()
 
         backup_super_block(disk)
         need_flush_mpath = False
@@ -406,6 +414,15 @@ def wipe_fs(disks):
         if need_flush_mpath:
             cmd_flush_mpath = shell.ShellCmd("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
             cmd_flush_mpath(is_exception=False)
+
+        if exists_vg is not None:
+            logger.debug("found vg %s exists on this pv %s, start wipe" %
+                         (exists_vg, disk))
+            try:
+                drop_vg_lock(exists_vg)
+                remove_device_map_for_vg(exists_vg)
+            finally:
+                pass
 
 
 @bash.in_bash
@@ -623,6 +640,7 @@ def list_local_active_lvs(vgUuid):
     return result
 
 
+@bash.in_bash
 def check_gl_lock(raise_exception=False):
     r = bash.bash_r("lvmlockctl -i | grep 'LK GL'")
     if r == 0:
@@ -841,6 +859,12 @@ def check_vg_status(vgUuid, check_timeout, check_pv=True):
 def get_pv_name_by_uuid(pvUuid):
     return bash.bash_o(
         "timeout -s SIGKILL 10 pvs --noheading --nolocking -oname -Spv_uuid=%s" % pvUuid).strip()
+
+
+@bash.in_bash
+def get_pv_uuid_by_path(pvPath):
+    return bash.bash_o(
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -ouuid %s" % pvPath).strip()
 
 
 @bash.in_bash
