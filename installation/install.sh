@@ -106,6 +106,26 @@ LICENSE_FOLDER='/var/lib/zstack/license/'
 ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
+# start/stop zstack_tui
+ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
+start_zstack_tui() {
+  cat $ZSTACK_TUI_SERVICE | grep 'zstack_tui' >/dev/null 2>&1 || return
+  sed -i 's/Restart=no/Restart=always/g' $ZSTACK_TUI_SERVICE
+  systemctl daemon-reload
+  systemctl start getty@tty1.service
+}
+
+stop_zstack_tui() {
+  ps -ef | grep zstack_tui | grep -v 'grep' >/dev/null 2>&1 || return
+  sed -i 's/Restart=always/Restart=no/g' $ZSTACK_TUI_SERVICE
+  systemctl daemon-reload
+  pkill -9 zstack_tui
+}
+
+# stop zstack_tui to prevent zstack auto installation
+stop_zstack_tui
+
+
 #define extra upgrade params
 #USE THIS PATTERN: upgrade_params_array[INDEX]='VERSION,PARAM'
 declare -A upgrade_params_array
@@ -278,6 +298,7 @@ fail(){
     echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
     echo "-------------"
+    start_zstack_tui
     exit 1
 }
 
@@ -290,6 +311,7 @@ fail2(){
     echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
     echo "-------------"
+    start_zstack_tui
     exit 1
 }
 
@@ -3028,6 +3050,7 @@ if [ x"$UPGRADE" = x'y' ]; then
         echo -e "$(tput setaf 2)zstack-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
         echo ""
         echo_star_line
+        start_zstack_tui
         exit 0
     fi
 
@@ -3070,6 +3093,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo_chrony_server_warning_if_need
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_star_line
+    start_zstack_tui
     exit 0
 fi
 
@@ -3092,6 +3116,7 @@ if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo "${PRODUCT_NAME} management node and Tomcat are not installed."
     echo "P.S.: selinux is disabled!"
     echo_star_line
+    start_zstack_tui
     exit 0
 fi
 
@@ -3117,6 +3142,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo "Mysql and RabbitMQ are not installed. You can use zstack-ctl to install them and start ${PRODUCT_NAME} service later. "
     echo_chrony_server_warning_if_need
     echo_star_line
+    start_zstack_tui
     exit 0
 fi
 
@@ -3218,3 +3244,4 @@ fi
 
 echo_chrony_server_warning_if_need
 echo_star_line
+start_zstack_tui
