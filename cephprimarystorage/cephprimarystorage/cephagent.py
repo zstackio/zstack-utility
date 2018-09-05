@@ -405,10 +405,13 @@ class CephAgent(object):
                 report.progress_report(get_exact_percent(percent, stage), "report")
             return synced
 
-        bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
+        _, _, err = bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
+
+        if err:
+            raise err
 
         rsp = CpRsp()
         rsp.size = self._get_file_size(dst_path)
