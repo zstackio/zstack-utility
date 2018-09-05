@@ -280,7 +280,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             find_vg(vgUuid)
         except RetryException as e:
             if forceWipe is True:
-                lvm.wipe_fs(diskPaths)
+                lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(),
@@ -332,7 +332,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             diskPaths.add(disk.get_path())
         lvm.start_lvmlockd()
         lvm.check_gl_lock()
+        logger.debug("find/create vg %s lock..." % cmd.vgUuid)
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
+
+        logger.debug("starting vg %s lock..." % cmd.vgUuid)
         lvm.start_vg_lock(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time()))
@@ -399,7 +402,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         else:
             lvm.check_gl_lock()
             if cmd.forceWipe is True:
-                lvm.wipe_fs([disk.get_path()])
+                lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
             lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
 
         rsp = AgentRsp

@@ -29,6 +29,7 @@ import glob
 from shutil import copyfile
 
 from zstacklib import *
+from zstacklib.utils import misc
 import jinja2
 import socket
 import struct
@@ -5030,6 +5031,7 @@ class CollectLogCmd(Command):
 
         (status, output) = commands.getstatusoutput("rm -f %s/collect-log.tar.gz" % local_collect_dir)
 
+    @misc.ignoreerror
     def get_system_log(self, host_post_info, tmp_log_dir):
         # collect uptime and last reboot log and dmesg
         host_info_log = tmp_log_dir + "host_info"
@@ -5047,6 +5049,7 @@ class CollectLogCmd(Command):
         command = "journalctl -x > %s/journalctl_info" % tmp_log_dir
         run_remote_command(command, host_post_info)
 
+    @misc.ignoreerror
     def get_sharedblock_log(self, host_post_info, tmp_log_dir):
         info_verbose("Collecting sharedblock log from : %s ..." % host_post_info.host)
         target_dir = tmp_log_dir + "sharedblock"
@@ -5086,6 +5089,7 @@ class CollectLogCmd(Command):
         command = "rpm -qa | sort > %s/pkg_list" % tmp_log_dir
         run_remote_command(command, host_post_info)
 
+    @misc.ignoreerror
     def get_vrouter_log(self, host_post_info, collect_dir):
         #current vrouter log is very small, so collect all logs for debug
         if check_host_reachable(host_post_info) is True:
@@ -5103,6 +5107,7 @@ class CollectLogCmd(Command):
         else:
             warn("Vrouter %s is unreachable!" % host_post_info.host)
 
+    @misc.ignoreerror
     def get_host_log(self, host_post_info, collect_dir, collect_full_log=False):
         if check_host_reachable(host_post_info) is True:
             info_verbose("Collecting log from host: %s ..." % host_post_info.host)
@@ -5155,6 +5160,7 @@ class CollectLogCmd(Command):
         else:
             warn("Host %s is unreachable!" % host_post_info.host)
 
+    @misc.ignoreerror
     def get_storage_log(self, host_post_info, collect_dir, storage_type, collect_full_log=False):
         collect_log_list = []
         if check_host_reachable(host_post_info) is True:
@@ -5276,6 +5282,7 @@ class CollectLogCmd(Command):
         else:
             warn("unknown target type: %s" % type)
 
+    @misc.ignoreerror
     def get_management_node_log(self, collect_dir, host_post_info, collect_full_log=False):
         '''management.log maybe not exist, so collect latest files, maybe a tarball'''
         if check_host_reachable(host_post_info) is True:
@@ -5334,7 +5341,7 @@ class CollectLogCmd(Command):
         else:
             warn("Management node %s is unreachable!" % host_post_info.host)
 
-
+    @misc.ignoreerror
     def get_local_mn_log(self, collect_dir, collect_full_log=False):
         info_verbose("Collecting log from this management node ...")
         mn_log_dir = collect_dir + 'management-node-%s' % get_default_ip()
