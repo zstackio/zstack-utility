@@ -158,6 +158,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.run_ceph_fencer = False
         self.run_filesystem_fencer_timestamp = {}
         self.fencer_lock = threading.RLock()
+        self.run_sharedblock_fencer = {}
 
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
@@ -238,19 +239,20 @@ class HaPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def cancel_sharedblock_self_fencer(self, req):
-        self.run_sharedblock_fencer = False
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.run_sharedblock_fencer[cmd.vgUuid] = False
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
     def setup_sharedblock_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.run_sharedblock_fencer = True
+        self.run_sharedblock_fencer[cmd.vgUuid] = True
 
         @thread.AsyncThread
         def heartbeat_on_sharedblock():
             failure = 0
 
-            while self.run_sharedblock_fencer:
+            while self.run_sharedblock_fencer[cmd.vgUuid] is True:
                 try:
                     time.sleep(cmd.interval)
 
