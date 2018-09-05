@@ -109,15 +109,15 @@ ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 # start/stop zstack_tui
 ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
 start_zstack_tui() {
-  cat $ZSTACK_TUI_SERVICE | grep 'zstack_tui' >/dev/null 2>&1 || return
-  sed -i 's/Restart=no/Restart=always/g' $ZSTACK_TUI_SERVICE
+  cat $ZSTACK_TUI_SERVICE 2>/dev/null | grep 'zstack_tui' >/dev/null 2>&1 || return
+  sed -i 's/Restart=no/Restart=always/g' $ZSTACK_TUI_SERVICE 2>/dev/null
   systemctl daemon-reload
   systemctl start getty@tty1.service
 }
 
 stop_zstack_tui() {
   ps -ef | grep zstack_tui | grep -v 'grep' >/dev/null 2>&1 || return
-  sed -i 's/Restart=always/Restart=no/g' $ZSTACK_TUI_SERVICE
+  sed -i 's/Restart=always/Restart=no/g' $ZSTACK_TUI_SERVICE 2>/dev/null
   systemctl daemon-reload
   pkill -9 zstack_tui
 }
