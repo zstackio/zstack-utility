@@ -4803,7 +4803,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         try:
             event = LibvirtEventManager.event_to_string(event)
-            if event not in (LibvirtEventManager.EVENT_SHUTDOWN):
+            if event not in (LibvirtEventManager.EVENT_SHUTDOWN,):
                 return
 
             vm_uuid = dom.name()
