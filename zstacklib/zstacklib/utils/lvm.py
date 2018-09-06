@@ -530,6 +530,7 @@ def resize_lv(path, size):
         raise Exception("resize lv %s to size %s failed, return code: %s, stdout: %s, stderr: %s" %
                         (path, size, r, o, e))
 
+
 @bash.in_bash
 @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
 def active_lv(path, shared=False):
