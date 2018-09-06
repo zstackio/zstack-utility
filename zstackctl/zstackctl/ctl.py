@@ -29,7 +29,6 @@ import glob
 from shutil import copyfile
 
 from zstacklib import *
-from zstacklib.utils import misc
 import jinja2
 import socket
 import struct
@@ -5031,7 +5030,8 @@ class CollectLogCmd(Command):
 
         (status, output) = commands.getstatusoutput("rm -f %s/collect-log.tar.gz" % local_collect_dir)
 
-    @misc.ignoreerror
+
+    @ignoreerror
     def get_system_log(self, host_post_info, tmp_log_dir):
         # collect uptime and last reboot log and dmesg
         host_info_log = tmp_log_dir + "host_info"
