@@ -39,6 +39,8 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
+QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
+
 class RetryException(Exception):
     pass
 
@@ -69,6 +71,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.useBootMenu = True
         self.vmCpuModel = None
         self.emulateHyperV = False
+        self.additionalQmp = True
         self.isApplianceVm = False
         self.systemSerialNumber = None
         self.bootMode = None
@@ -2648,6 +2651,17 @@ class Vm(object):
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
 
+        def make_qemu_commandline():
+            if not os.path.exists(QMP_SOCKET_PATH):
+                os.mkdir(QMP_SOCKET_PATH)
+
+            root = elements['root']
+            qcmd = e(root, 'qemu:commandline')
+            e(qcmd, "qemu:arg", attrib={"value": "-s"})
+            e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
+            e(qcmd, "qemu:arg", attrib={"value": "unix:%s/%s.sock,server,nowait" %
+                                        (QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+
         def make_devices():
             root = elements['root']
             devices = e(root, 'devices')
@@ -3188,6 +3202,9 @@ class Vm(object):
         if not cmd.isApplianceVm:
             make_cdrom()
             make_usb_redirect()
+
+        if cmd.additionalQmp:
+            make_qemu_commandline()
 
         root = elements['root']
         xml = etree.tostring(root)
