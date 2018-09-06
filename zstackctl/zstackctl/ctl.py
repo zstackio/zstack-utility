@@ -1959,8 +1959,7 @@ class StartCmd(Command):
             else:
                 ctl.delete_properties(['simulatorsOn'])
 
-        user = getpass.getuser()
-        if user != 'root':
+        if os.getuid() != 0:
             raise CtlError('please use sudo or root user')
 
         prepare_env()
@@ -4818,9 +4817,9 @@ class RestoreMysqlCmd(Command):
             shell_no_pipe(command)
 
         if args.skip_ui:
-            if not running:
-                info("Recover data successfully! You can start node by: zstack-ctl start")
-            ctl.internal_run('start_node')
+            if running:
+                info("Recover data successfully! start management node now")
+                ctl.internal_run('start_node')
             return
 
         ctl.internal_run('stop_ui')
