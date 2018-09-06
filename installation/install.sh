@@ -112,7 +112,7 @@ start_zstack_tui() {
   cat $ZSTACK_TUI_SERVICE 2>/dev/null | grep 'zstack_tui' >/dev/null 2>&1 || return
   sed -i 's/Restart=no/Restart=always/g' $ZSTACK_TUI_SERVICE 2>/dev/null
   systemctl daemon-reload
-  systemctl start getty@tty1.service
+  systemctl start getty@tty1.service &
 }
 
 stop_zstack_tui() {
