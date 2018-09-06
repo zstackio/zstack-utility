@@ -30,6 +30,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import thread
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
+from zstacklib.utils import misc
 
 logger = log.get_logger(__name__)
 
@@ -4623,6 +4624,9 @@ class VmPlugin(kvmagent.KvmAgent):
 
         self.register_libvirt_event()
 
+        self.enable_auto_extend = True
+        self.auto_extend_size = 1073741824
+
         # the virtio-channel directory used by VR.
         # libvirt won't create this directory when migrating a VR,
         # we have to do this otherwise VR migration may fail
@@ -4772,6 +4776,54 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(content)
 
     @bash.in_bash
+    @misc.ignoreerror
+    def _extend_sharedblock(self, conn, dom, event, detail, opaque):
+        logger.debug("in extend sharedblock, %s %s %s %s" % (dom.name(), type(dom), LibvirtEventManager.event_to_string(event), detail))
+
+        if not self.enable_auto_extend:
+            return
+
+        def check_lv(file):
+            image_offest = int(bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % file).strip())
+            lv_size = int(lvm.get_lv_size(file))
+            virtual_size = int(linux.qcow2_virtualsize(file))
+            return image_offest < lv_size < virtual_size, image_offest, lv_size, virtual_size
+
+        @thread.AsyncThread
+        def extend_lv(event, path, vm_uuid):
+            r, image_offest, lv_size, virtual_size = check_lv(path)
+            if r:
+                logger.debug("lv image offest: %s, lv size: %s, virtual size: %s, skip to extend" %
+                             (image_offest, lv_size, virtual_size))
+                return
+
+            extend_size = lv_size + self.auto_extend_size if virtual_size> lv_size + self.auto_extend_size else virtual_size
+            lvm.resize_lv(path, extend_size)
+
+        @lock.lock("sharedblock-extend-vm-%s" % dom.name())
+        def handle_event(dom, event):
+            disk_errors = dom.diskErrors()  # type: dict
+            vm_uuid = dom.name()
+            fixed = False
+            for device, error in disk_errors.viewitems():
+                if error == libvirt.VIR_DOMAIN_DISK_ERROR_NO_SPACE:
+                    fixed = True
+                    path = bash.bash_o("virsh dumpxml %s | egrep \"target dev='%s'|source file\" | grep target -B1" %
+                                       (dom.name(), device)).strip().split("'")[1]
+                    extend_lv(event, path, vm_uuid)
+
+            if fixed is True:
+                vm = get_vm_by_uuid_no_retry(dom.name(), False)
+                vm.resume()
+
+        event = LibvirtEventManager.event_to_string(event)
+        if event not in (LibvirtEventManager.EVENT_SUSPENDED,LibvirtEventManager.EVENT_STOPPED):
+            return
+        if detail not in (libvirt.VIR_DOMAIN_EVENT_SUSPENDED_IOERROR,libvirt.VIR_DOMAIN_EVENT_STOP):
+            return
+        handle_event(dom, event)
+
+    @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
         logger.debug("in release sharedblock, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
 
@@ -4881,6 +4933,7 @@ class VmPlugin(kvmagent.KvmAgent):
                                                   self._set_vnc_port_iptable_rule)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
         LibvirtAutoReconnect.register_libvirt_callbacks()
 
     def stop(self):
