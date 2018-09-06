@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import pprint
+import traceback
+
 import ansible.runner
 import ansible.constants
 import os
@@ -28,6 +31,19 @@ ansible.constants.HOST_KEY_CHECKING = False
 
 RPM_BASED_OS = "CentOS", "RedHat", "Alibaba"
 DEB_BASED_OS = "Ubuntu", "Debian"
+
+
+def ignoreerror(func):
+    @functools.wraps(func)
+    def wrap(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            content = traceback.format_exc()
+            err = '%s\n%s\nargs:%s' % (str(e), content, pprint.pformat([args, kwargs]))
+            logger.warn(err)
+    return wrap
+
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
