@@ -90,6 +90,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iqn):
             disks_by_dev = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (iscsiServerIp, iscsiServerPort, iqn)).strip().splitlines()
             sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (iscsiServerIp, iscsiServerPort, iqn)).strip("[]\n ")
+            if sid == "" or sid is None:
+                raise RetryException("sid not found")
             disks_by_iscsi = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep Lun" % sid).strip().splitlines()
             if len(disks_by_dev) != len(disks_by_iscsi):
                 raise RetryException("disks number by /dev/disk not equal to iscsiadm")
@@ -113,19 +115,19 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for iqn in iqns:
             t = IscsiTargetStruct()
             t.iqn = iqn
-            if cmd.iscsiChapUserName and cmd.iscsiChapUserPassword:
-                bash.bash_o(
-                    'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (
-                        iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
-                bash.bash_o(
-                    'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.username --value=%s' % (
-                        iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserName))
-                bash.bash_o(
-                    'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
-                        iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserPassword))
-            bash.bash_o('iscsiadm --mode node --targetname "%s" -p %s:%s --login' % (
-                iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
             try:
+                if cmd.iscsiChapUserName and cmd.iscsiChapUserPassword:
+                    bash.bash_o(
+                        'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (
+                            iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
+                    bash.bash_o(
+                        'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.username --value=%s' % (
+                            iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserName))
+                    bash.bash_o(
+                        'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
+                            iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserPassword))
+                bash.bash_o('iscsiadm --mode node --targetname "%s" -p %s:%s --login' %
+                            (iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
                 wait_iscsi_mknode(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)
             finally:
                 if bash.bash_r("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)) != 0:
