@@ -4863,6 +4863,10 @@ class PullDatabaseBackupCmd(Command):
         parser.add_argument('--registry-port', '-p',
                             help="image store",
                             default=None)
+        parser.add_argument('--json', '-j',
+                            help="output via json",
+                            action="store_true",
+                            default=False)
 
     def run(self, args):
         back_info = args.backup_install_path.replace(self.ZSTORE_PROTOSTR, "").replace("/", ":")
@@ -4873,21 +4877,34 @@ class PullDatabaseBackupCmd(Command):
         cmd = "pull -installpath %s %s" % (local_path, back_info)
         runImageStoreCliCmd(args.backup_storage_url, args.registry_port, cmd)
 
-        def get_file_name():
+        def print_info():
+            metadata['installPath'] = new_path
+            if args.json:
+                info(simplejson.dumps(metadata))
+            else:
+                info("export path\t\t\t\t\t\t\tversion\t\tcreated time\n%s\t%s\t%s" % (
+                    metadata['installPath'], metadata['version'], metadata['createdTime']))
+
+        def get_metadata():
             try:
                 root = simplejson.loads(text)
                 desc = root['desc']
-                return simplejson.loads(desc)['name']
+                metadata = simplejson.loads(desc)
+                assert metadata['name'] and metadata['version'] and metadata['createdTime']
+                return metadata
             except:
                 shell("rm -f %s*" % local_path)
                 error("it is not a database backup")
 
         with open(local_path + ".imf2", 'r') as fd:
             text = fd.read()
-            new_path = os.path.join(self.mysql_backup_dir, get_file_name())
-            os.rename(local_path, new_path)
-            info("backup path: %s" % new_path)
+            metadata = get_metadata()
         os.remove(local_path + ".imf2")
+
+        new_path = os.path.join(self.mysql_backup_dir, get_metadata()['name'])
+        os.rename(local_path, new_path)
+        print_info()
+
 
 class ScanDatabaseBackupCmd(Command):
     BACKUP_NAME = "zsbak"
