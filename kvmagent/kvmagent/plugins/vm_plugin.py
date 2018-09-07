@@ -503,6 +503,17 @@ class LibvirtEventManager(object):
         EVENT_SHUTDOWN
     )
 
+    suspend_events = {}
+    suspend_events[0] = "VIR_DOMAIN_EVENT_SUSPENDED_PAUSED"
+    suspend_events[1] = "VIR_DOMAIN_EVENT_SUSPENDED_MIGRATED"
+    suspend_events[2] = "VIR_DOMAIN_EVENT_SUSPENDED_IOERROR"
+    suspend_events[3] = "VIR_DOMAIN_EVENT_SUSPENDED_WATCHDOG"
+    suspend_events[4] = "VIR_DOMAIN_EVENT_SUSPENDED_RESTORED"
+    suspend_events[5] = "VIR_DOMAIN_EVENT_SUSPENDED_FROM_SNAPSHOT"
+    suspend_events[6] = "VIR_DOMAIN_EVENT_SUSPENDED_API_ERROR"
+    suspend_events[7] = "VIR_DOMAIN_EVENT_SUSPENDED_POSTCOPY"
+    suspend_events[8] = "VIR_DOMAIN_EVENT_SUSPENDED_POSTCOPY_FAILED"
+
     def __init__(self):
         self.stopped = False
         libvirt.virEventRegisterDefaultImpl()
@@ -528,6 +539,10 @@ class LibvirtEventManager(object):
     @staticmethod
     def event_to_string(index):
         return LibvirtEventManager.event_strings[index]
+
+    @staticmethod
+    def suspend_event_to_string(index):
+        return LibvirtEventManager.suspend_events[index]
 
 
 class LibvirtAutoReconnect(object):
@@ -4778,48 +4793,58 @@ class VmPlugin(kvmagent.KvmAgent):
     @bash.in_bash
     @misc.ignoreerror
     def _extend_sharedblock(self, conn, dom, event, detail, opaque):
-        logger.debug("in extend sharedblock, %s %s %s %s" % (dom.name(), type(dom), LibvirtEventManager.event_to_string(event), detail))
+        logger.debug("in extend sharedblock, %s %s %s %s" %
+                     (dom.name(), type(dom), LibvirtEventManager.event_to_string(event), LibvirtEventManager.suspend_event_to_string(detail)))
 
         if not self.enable_auto_extend:
             return
 
-        def check_lv(file):
-            image_offest = int(bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % file).strip())
+        def check_lv(file, vm, device):
+            virtual_size, image_offest, _ = vm.domain.blockInfo(device)
             lv_size = int(lvm.get_lv_size(file))
-            virtual_size = int(linux.qcow2_virtualsize(file))
+            # image_offest = int(bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % file).strip())
+            # virtual_size = int(linux.qcow2_virtualsize(file))
             return image_offest < lv_size < virtual_size, image_offest, lv_size, virtual_size
 
-        @thread.AsyncThread
-        def extend_lv(event, path, vm_uuid):
-            r, image_offest, lv_size, virtual_size = check_lv(path)
+        def extend_lv(event, path, vm, device):
+            r, image_offest, lv_size, virtual_size = check_lv(path, vm, device)
+            logger.debug("lv %s image offest: %s, lv size: %s, virtual size: %s" %
+                         (path, image_offest, lv_size, virtual_size))
             if r:
-                logger.debug("lv image offest: %s, lv size: %s, virtual size: %s, skip to extend" %
-                             (image_offest, lv_size, virtual_size))
+                logger.debug("lv %s skip to extend for event %s" % (path, event))
                 return
 
             extend_size = lv_size + self.auto_extend_size if virtual_size> lv_size + self.auto_extend_size else virtual_size
             lvm.resize_lv(path, extend_size)
+            logger.debug("lv %s extend to %s success" % (path, extend_size))
 
+        def get_path_by_device(device_name, vm):
+            for dev in vm.domain_xmlobject.devices.disk:
+                if dev.get_child_node("target").dev_ == device_name:
+                    return dev.get_child_node("source").file_
+
+        @thread.AsyncThread
         @lock.lock("sharedblock-extend-vm-%s" % dom.name())
         def handle_event(dom, event):
             disk_errors = dom.diskErrors()  # type: dict
             vm_uuid = dom.name()
             fixed = False
+            vm = get_vm_by_uuid_no_retry(dom.name(), False)
+
             for device, error in disk_errors.viewitems():
                 if error == libvirt.VIR_DOMAIN_DISK_ERROR_NO_SPACE:
                     fixed = True
-                    path = bash.bash_o("virsh dumpxml %s | egrep \"target dev='%s'|source file\" | grep target -B1" %
-                                       (dom.name(), device)).strip().split("'")[1]
-                    extend_lv(event, path, vm_uuid)
+                    logger.debug("disk %s of vm %s got ENOSPC" % (device, dom.name()))
+                    path = get_path_by_device(device, vm)
+                    extend_lv(event, path, vm, device)
 
             if fixed is True:
-                vm = get_vm_by_uuid_no_retry(dom.name(), False)
                 vm.resume()
 
         event = LibvirtEventManager.event_to_string(event)
-        if event not in (LibvirtEventManager.EVENT_SUSPENDED,LibvirtEventManager.EVENT_STOPPED):
+        if event not in (LibvirtEventManager.EVENT_SUSPENDED,):
             return
-        if detail not in (libvirt.VIR_DOMAIN_EVENT_SUSPENDED_IOERROR,libvirt.VIR_DOMAIN_EVENT_STOP):
+        if detail not in (libvirt.VIR_DOMAIN_EVENT_SUSPENDED_IOERROR,):
             return
         handle_event(dom, event)
 
