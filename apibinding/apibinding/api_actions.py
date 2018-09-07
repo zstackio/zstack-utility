@@ -2870,6 +2870,18 @@ class CreateVmBackupAction(inventory.APICreateVmBackupMsg):
         self.out = evt
         return self.out
 
+class CreateVmFromVmBackupAction(inventory.APICreateVmFromVmBackupMsg):
+    def __init__(self):
+        super(CreateVmFromVmBackupAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVmFromVmBackupAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateVmInstanceAction(inventory.APICreateVmInstanceMsg):
     def __init__(self):
         super(CreateVmInstanceAction, self).__init__()
