@@ -24,6 +24,15 @@
         <copy file="${zstack.source}/build/target/zstack.war" todir="${build.dir}" overwrite="true" />
 
         <exec executable="bash" dir="${zstack.source}" failonerror="true">
+            <arg value="${build.zstack.pyapis.script}" />
+            <arg value="${zstack.source}" />
+            <arg value="${zstack.source}/build/target" />
+        </exec>
+
+        <copy file="${zstack.source}/build/target/zstack-python-template/python/api_actions.py" todir="${pyapis.source.folder}" overwrite="true" />
+        <copy file="${zstack.source}/build/target/zstack-python-template/python/inventory.py" todir="${pyapis.source.folder}" overwrite="true" />
+
+        <exec executable="bash" dir="${zstack.source}" failonerror="true">
             <arg value="${build.zstack.pysdk.script}" />
             <arg value="${zstack.source}" />
         </exec>

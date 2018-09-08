@@ -225,7 +225,8 @@
         <echo message="[zstack_build_root] default path is /usr/local/zstack/root/, which is defined in build.properties. It should be the same parent folder for zstack-utility and zstack-woodpecker." />
     </target>
 
-    <target name="do-build" depends="prepare, build-zstack-war" >
+
+    <target name="do-build-zstack" depends="prepare, build-zstack-war" >
         <parallel failonany="true">
             <sequential>
                 <antcall target="build-zstacklib"/>
@@ -258,9 +259,6 @@
                 <antcall target="build-zstack-dashboard-on-condition"/>
             </sequential>
             <sequential>
-                <antcall target="build-zstack-ui-war-on-condition"/>
-            </sequential>
-            <sequential>
                 <antcall target="build-iscsi"/>
             </sequential>
             <sequential>
@@ -289,6 +287,17 @@
             </sequential>
             <sequential>
                 <antcall target="check-zstack-distro"/>
+            </sequential>
+        </parallel>
+    </target>
+
+    <target name="do-build" depends="prepare" >
+        <parallel failonany="true">
+            <sequential>
+                <antcall target="do-build-zstack"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-zstack-ui-war-on-condition"/>
             </sequential>
         </parallel>
     </target>
