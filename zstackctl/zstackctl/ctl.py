@@ -5547,6 +5547,9 @@ class ChangeIpCmd(Command):
         parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
         parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
 
+    def isVirtualIp(self, ip):
+        return shell("ip a | grep -w %s" % ip).strip().endswith("zsvip")
+
     def run(self, args):
         if args.ip == '0.0.0.0':
             raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
@@ -5564,6 +5567,9 @@ class ChangeIpCmd(Command):
         for input_ip in [cloudbus_server_ip, mysql_ip]:
             if not ip_check.match(input_ip):
                 info("The ip address you input: %s seems not a valid ip" % input_ip)
+                return 1
+            if self.isVirtualIp(input_ip):
+                info("The ip address you input: %s is a virtual ip" % input_ip)
                 return 1
 
         # Update /etc/hosts
