@@ -11,6 +11,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 import os
 import traceback
+import netaddr
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
@@ -228,6 +229,22 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def check_vxlan_cidr(self, req):
+
+        def filter_vxlan_nics(nics, interf, requireIp):
+            valid_nics = nics
+
+            if interf:
+                for nic in valid_nics:
+                    if interf not in nic.keys():
+                        valid_nics.remove(nic)
+
+            if requireIp:
+                for nic in valid_nics:
+                    if requireIp not in nic.values():
+                        valid_nics.remove(nic)
+
+            return valid_nics
+
         # Check qualified interface with cidr and interface name (if provided).
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckVxlanCidrResponse()
@@ -235,7 +252,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
         interf = cmd.physicalInterfaceName
 
         nics = linux.get_nics_by_cidr(cmd.cidr)
+        nics = filter_vxlan_nics(nics, interf, cmd.vtepip)
         ips = set(map(lambda d: d.values()[0], nics))
+
         if len(nics) == 0:
             rsp.error = "can not find qualify interface for cidr [%s]" % cmd.cidr
         elif len(nics) == 1 and interf:
