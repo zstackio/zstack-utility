@@ -2,6 +2,7 @@
 @author: Frank
 '''
 import Queue
+import functools
 import os.path
 import tempfile
 import time
@@ -3817,6 +3818,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
+        touchQmpSocketWhenExists(cmd.vmInstanceUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -4589,6 +4591,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
         vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
         vm.resize_volume(cmd.deviceId, cmd.deviceType, cmd.size)
+
+        touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
     def start(self):
@@ -5001,3 +5005,11 @@ class VolumeSnapshotResultStruct(object):
         self.previousInstallPath = previousInstallPath
         self.installPath = installPath
         self.size = size
+
+
+@bash.in_bash
+@misc.ignoreerror
+def touchQmpSocketWhenExists(vmUuid):
+    path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
+    if os.path.exists(path):
+        bash.bash_roe("touch %s" % path)
