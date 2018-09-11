@@ -83,13 +83,13 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 "timeout 10 iscsiadm -m discovery --type sendtargets --portal %s:%s" % (
                     iscsiServerIp, iscsiServerPort))
             if r != 0:
-                raise RetryException("can not discovery iscsi portal %s:%s" % (iscsiServerIp, iscsiServerPort))
+                raise RetryException("can not discovery iscsi portal %s:%s, cause %s" % (iscsiServerIp, iscsiServerPort, e))
             return [i.strip().split(" ")[-1] for i in o.splitlines()]
 
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
-        def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iqn):
-            disks_by_dev = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (iscsiServerIp, iscsiServerPort, iqn)).strip().splitlines()
-            sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (iscsiServerIp, iscsiServerPort, iqn)).strip("[]\n ")
+        def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iscsiIqn):
+            disks_by_dev = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (iscsiServerIp, iscsiServerPort, iscsiIqn)).strip().splitlines()
+            sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (iscsiServerIp, iscsiServerPort, iscsiIqn)).strip("[]\n ")
             if sid == "" or sid is None:
                 raise RetryException("sid not found")
             disks_by_iscsi = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep Lun" % sid).strip().splitlines()
