@@ -282,8 +282,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if forceWipe is True:
                 lvm.wipe_fs(diskPaths, vgUuid)
 
-            cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
-                                 (INIT_TAG, hostUuid, time.time(),
+            cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
+                                 (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname"),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
@@ -338,7 +338,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         logger.debug("starting vg %s lock..." % cmd.vgUuid)
         lvm.start_vg_lock(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
-        lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time()))
+        lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)

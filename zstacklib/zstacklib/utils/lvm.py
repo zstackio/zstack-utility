@@ -483,7 +483,7 @@ def delete_image(path, tag):
 
 
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
-    cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | grep -Po '%s::%s::[\d.]*'" % (vgUuid, tag, hostUuid))
+    cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | tr ',' '\n' | grep %s | grep %s" % (vgUuid, tag, hostUuid))
     cmd(is_exception=False)
     exists_tags = cmd.stdout.strip().split("\n")
     if len(exists_tags) == 0:
