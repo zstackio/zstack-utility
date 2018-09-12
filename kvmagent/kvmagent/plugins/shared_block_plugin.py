@@ -283,7 +283,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
-                                 (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname"),
+                                 (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
