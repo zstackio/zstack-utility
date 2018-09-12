@@ -806,8 +806,8 @@ class CephAgent(object):
             port = (url.port, 22)[url.port is None]
             _, PFILE = tempfile.mkstemp()
             pipe_path = PFILE + "fifo"
-            scp_to_pipe_cmd = "scp -P %d -o StrictHostKeyChecking=no %s@%s:%s %s" % (port, url.username, url.hostname, url.path, pipe_path)
-            sftp_command = "sftp -o StrictHostKeyChecking=no -o BatchMode=no -P %s -b /dev/stdin %s@%s" % (port, url.username, url.hostname) + " <<EOF\n%s\nEOF\n"
+            scp_to_pipe_cmd = "scp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s:%s %s" % (port, url.username, url.hostname, url.path, pipe_path)
+            sftp_command = "sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=no -P %s -b /dev/stdin %s@%s" % (port, url.username, url.hostname) + " <<EOF\n%s\nEOF\n"
             if url.password is not None:
                 scp_to_pipe_cmd = 'sshpass -p "%s" %s' % (url.password, scp_to_pipe_cmd)
                 sftp_command = 'sshpass -p "%s" %s' % (url.password, sftp_command)
@@ -977,12 +977,12 @@ class CephAgent(object):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        rst = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
+        rst = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, image_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
         if rst != 0:
             return rst
 
         src_md5 = self._read_file_content('/tmp/%s_src_md5' % image_uuid)
-        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid))
+        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid))
         if src_md5 != dst_md5:
             return -1
         else:
