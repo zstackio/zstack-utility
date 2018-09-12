@@ -416,7 +416,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if not cmd.live:
                 shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
             ret = linux.qcow2_virtualsize(install_abs_path)
-        lvm.active_lv(install_abs_path)
 
         rsp = ResizeVolumeRsp()
         rsp.size = ret
