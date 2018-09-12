@@ -175,7 +175,7 @@ rm -f %s
 exit $ret
 EOF''' % (remote_path, cmd, remote_path, ' '.join(params), remote_path)
 
-    scmd = ShellCmd('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "%s"' % (ip, script), pipe=pipe)
+    scmd = ShellCmd('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "%s"' % (ip, script), pipe=pipe)
     scmd(False)
     return scmd
 
@@ -330,7 +330,7 @@ def get_ha_mn_list(conf_file):
 def stop_mevoco(host_post_info):
     command = "zstack-ctl stop_node && zstack-ctl stop_ui"
     logger.debug("[ HOST: %s ] INFO: starting run shell command: '%s' " % (host_post_info.host, command))
-    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'" %
                                                (host_post_info.private_key, host_post_info.host, command))
     if status != 0:
         logger.error("[ HOST: %s ] INFO: shell command: '%s' failed" % (host_post_info.host, command))
@@ -341,7 +341,7 @@ def stop_mevoco(host_post_info):
 def start_mevoco(host_post_info):
     command = "zstack-ctl start_node && zstack-ctl start_ui"
     logger.debug("[ HOST: %s ] INFO: starting run shell command: '%s' " % (host_post_info.host, command))
-    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+    (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'" %
                                                (host_post_info.private_key, host_post_info.host, command))
     if status != 0:
         logger.error("[ HOST: %s ] FAIL: shell command: '%s' failed" % (host_post_info.host, command))
@@ -427,8 +427,8 @@ def check_host_info_format(host_info, with_public_key=False):
         return (user, password, ip, port)
 
 def check_host_password(password, ip):
-    command ='timeout 10 sshpass -p "%s" ssh -q -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no -o ' \
-             'StrictHostKeyChecking=no  root@%s echo ""' % (password, ip)
+    command ='timeout 10 sshpass -p "%s" ssh -q -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no -o ' \
+             'StrictHostKeyChecking=no root@%s echo ""' % (password, ip)
     (status, output) = commands.getstatusoutput(command)
     if status != 0:
         error("Connect to host: '%s' with password '%s' failed! Please check password firstly and make sure you have "
@@ -452,7 +452,7 @@ def get_ip_by_interface(device_name):
 
 def start_remote_mn( host_post_info):
     command = "zstack-ctl start_node && zstack-ctl start_ui"
-    (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+    (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'" %
                                                 (UpgradeHACmd.private_key_name, host_post_info.host, command))
     if status != 0:
         error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
@@ -1200,7 +1200,7 @@ class ShowStatusCmd(Command):
         parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
 
     def _stop_remote(self, args):
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl status"' % args.host)
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl status"' % args.host)
 
     def run(self, args):
         self.quiet = args.quiet
@@ -1689,7 +1689,7 @@ class StartCmd(Command):
 
     def _start_remote(self, args):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl start_node --timeout=%s"' % (args.host, args.timeout))
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl start_node --timeout=%s"' % (args.host, args.timeout))
 
     def check_cpu_mem(self):
         if multiprocessing.cpu_count() < StartCmd.MINIMAL_CPU_NUMBER:
@@ -2438,7 +2438,7 @@ class UpgradeHACmd(Command):
         mevoco_bin = os.path.basename(mevoco_installer)
         command = "rm -rf /tmp/zstack_upgrade.lock && cd %s && bash %s -u -i " % (mevoco_dir, mevoco_bin)
         logger.debug("[ HOST: %s ] INFO: starting run shell command: '%s' " % (host_post_info.host, command))
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'" %
                                                    (UpgradeHACmd.private_key_name, host_post_info.host, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
@@ -2592,7 +2592,7 @@ class AddManagementNodeCmd(Command):
                             default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no' \
                  ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
@@ -3118,7 +3118,7 @@ class InstallHACmd(Command):
 
         # add ha public key to host1
         ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
-                                  "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s'" % \
+                                  "PubkeyAuthentication=no -o StrictHostKeyChecking=no root@%s '%s'" % \
                                   (args.host1_password, args.host1, add_public_key_command)
         (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
         if status != 0:
@@ -3126,7 +3126,7 @@ class InstallHACmd(Command):
 
         # add ha public key to host2
         ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
-                                  "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
+                                  "PubkeyAuthentication=no -o StrictHostKeyChecking=no root@%s '%s' " % \
                                   (args.host2_password, args.host2, add_public_key_command)
         (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
         if status != 0:
@@ -3135,7 +3135,7 @@ class InstallHACmd(Command):
         # add ha public key to host3
         if args.host3_info is not False:
             ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
-                                              "PubkeyAuthentication=no -o StrictHostKeyChecking=no  root@%s '%s' " % \
+                                              "PubkeyAuthentication=no -o StrictHostKeyChecking=no root@%s '%s' " % \
                                               (args.host3_password, args.host3, add_public_key_command)
             (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
             if status != 0:
@@ -3474,16 +3474,16 @@ class InstallHACmd(Command):
         if args.host3_info is not False:
             run_remote_command(command, self.host3_post_info)
         command = "zstack-ctl start"
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'" %
                                                              (private_key_name, args.host1, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host1, output))
-        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+        (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'" %
                                                              (private_key_name, args.host2, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (args.host2, output))
         if args.host3_info is not False:
-            (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+            (status, output)= commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'" %
                                                                  (private_key_name, args.host3, command))
             if status != 0:
                 error("Something wrong on host: %s\n %s" % (args.host3, output))
@@ -5726,7 +5726,7 @@ class InstallManagementNodeCmd(Command):
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o  PubkeyAuthentication=no' \
+        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no' \
                  ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
@@ -6721,7 +6721,7 @@ class UpgradeMultiManagementNodeCmd(Command):
     def start_mn(self, host_post_info):
         command = "zstack-ctl start_node && zstack-ctl start_ui"
         #Ansible finish command will lead mn stop, so use ssh native connection to start mn
-        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -i %s root@%s '%s'" %
+        (status, output) = commands.getstatusoutput("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'" %
                                                     (host_post_info.private_key, host_post_info.host, command))
         if status != 0:
             error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
@@ -7453,7 +7453,7 @@ class UiStatusCmd(Command):
         parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
 
     def _remote_status(self, host):
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  %s "/usr/bin/zstack-ctl ui_status"' % host)
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl ui_status"' % host)
 
     def run(self, args):
         self.quiet = args.quiet
