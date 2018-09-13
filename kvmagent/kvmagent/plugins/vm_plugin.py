@@ -2674,7 +2674,6 @@ class Vm(object):
 
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
-            e(qcmd, "qemu:arg", attrib={"value": "-s"})
             e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
             e(qcmd, "qemu:arg", attrib={"value": "unix:%s/%s.sock,server,nowait" %
                                         (QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
