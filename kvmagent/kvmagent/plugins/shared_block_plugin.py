@@ -3,8 +3,6 @@ import re
 import random
 import time
 
-from zstacklib.utils import lock
-
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
@@ -12,6 +10,7 @@ from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import linux
+from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
 import zstacklib.utils.uuidhelper as uuidhelper
@@ -460,7 +459,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tag=IMAGE_TAG):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
             if not lvm.lv_exists(install_abs_path):
-                lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
+                lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options)
@@ -652,14 +651,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             backing_abs_path = translate_absolute_path_from_install_path(cmd.backingFile)
             with lvm.RecursiveOperateLv(backing_abs_path, shared=True):
                 virtual_size = linux.qcow2_virtualsize(backing_abs_path)
+
                 if not lvm.lv_exists(install_abs_path):
-                    lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
+                    lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                     linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options)
         elif not lvm.lv_exists(install_abs_path):
             qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, False)
-            lvm.create_lv_from_absolute_path(install_abs_path, cmd.size,
+            lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)

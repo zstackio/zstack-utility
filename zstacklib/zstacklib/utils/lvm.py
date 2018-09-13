@@ -21,6 +21,12 @@ COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
+thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
+
+
+class VolumeProvisioningStrategy(object):
+    ThinProvisioning = "ThinProvisioning"
+    ThickProvisioning = "ThickProvisioning"
 
 
 class VmStruct(object):
@@ -558,6 +564,13 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
 
     with OperateLv(path, shared=False):
         dd_zero(path)
+
+
+def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume"):
+    if cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
+        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag)
+    else:
+        create_lv_from_absolute_path(path, size, tag)
 
 
 def dd_zero(path):
