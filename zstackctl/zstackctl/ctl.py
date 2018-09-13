@@ -4685,31 +4685,33 @@ class DumpMysqlCmd(Command):
             if os.path.isfile(private_key) is not True:
                 error("Didn't find private key: %s" % private_key)
             check_host_connection_with_key(remote_host_ip, remote_host_user, private_key)
+
+        mysqldump_options = "--single-transaction --quick"
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
             if db_password is None or db_password == "":
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command_1 = "mysqldump --databases -u %s %s -P %s zstack zstack_rest" % (db_user, db_connect_password, db_port)
+            command_1 = "mysqldump --databases -u %s %s -P %s %s zstack zstack_rest" % (db_user, db_connect_password, db_port, mysqldump_options)
         else:
             if db_password is None or db_password == "":
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command_1 = "mysqldump --databases -u %s %s --host %s -P %s zstack zstack_rest" % (db_user, db_connect_password, db_hostname, db_port)
+            command_1 = "mysqldump --databases -u %s %s --host %s -P %s %s zstack zstack_rest" % (db_user, db_connect_password, db_hostname, db_port, mysqldump_options)
 
         if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1":
             if ui_db_password is None or ui_db_password == "":
                 ui_db_connect_password = ""
             else:
                 ui_db_connect_password = "-p" + ui_db_password
-            command_2 = "mysqldump --databases -u %s %s -P %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_port)
+            command_2 = "mysqldump --databases -u %s %s -P %s %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_port, mysqldump_options)
         else:
             if ui_db_password is None or ui_db_password == "":
                 ui_db_connect_password = ""
             else:
                 ui_db_connect_password = "-p" + ui_db_password
-            command_2 = "mysqldump --databases -u %s %s --host %s -P %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_hostname, ui_db_port)
+            command_2 = "mysqldump --databases -u %s %s --host %s -P %s %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_hostname, ui_db_port, mysqldump_options)
 
         cmd = ShellCmd("(%s; %s) | gzip > %s" % (command_1, command_2, db_backupf_file_path))
         cmd(True)
