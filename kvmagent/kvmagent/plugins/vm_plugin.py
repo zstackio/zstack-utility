@@ -3473,12 +3473,49 @@ class VmPlugin(kvmagent.KvmAgent):
                         pass
         return device_id
 
+    def _get_volume_bandwidth_value(self, vm_uuid, device_id, mode):
+        cmd_base = "virsh blkdeviotune %s %s" % (vm_uuid, device_id)
+        if mode == "total":
+            return shell.call('%s | grep -w total_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
+        elif mode == "read":
+            return shell.call('%s | grep -w read_bytes_sec | awk \'{print $3}\'' % cmd_base).strip()
+        elif mode == "write":
+            return shell.call('%s | grep -w write_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
+
     @kvmagent.replyerror
     def set_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        shell.call('virsh blkdeviotune %s %s --total_bytes_sec %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
+
+        ## total and read/write of bytes_sec cannot be set at the same time
+        ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
+        cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
+        if cmd.totalBandwidth > 0:  # to set
+            if cmd.mode == "total":  # to set total(read/write reset)
+                shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
+            elif cmd.mode == "read":  # to set read(write reserved, total reset)
+                write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
+                shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.totalBandwidth, write_bytes_sec))
+            elif cmd.mode == "write":  # to set write(read reserved, total reset)
+                read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
+                shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, read_bytes_sec, cmd.totalBandwidth))
+        else:  # to delete
+            is_total_mode = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "total") != "0"
+            if cmd.mode == "all":  # to delete all(read/write reset)
+                shell.call('%s --total_bytes_sec 0' % (cmd_base))
+            elif cmd.mode == "total":  # to delete total
+                if is_total_mode:
+                    shell.call('%s --total_bytes_sec 0' % (cmd_base))
+            elif cmd.mode == "read":  # to delete read(write reserved, total reset)
+                if not is_total_mode:
+                    write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
+                    shell.call('%s --read_bytes_sec 0 --write_bytes_sec %s' % (cmd_base, write_bytes_sec))
+            elif cmd.mode == "write":  # to delete write(read reserved, total reset)
+                if not is_total_mode:
+                    read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
+                    shell.call('%s --read_bytes_sec %s --write_bytes_sec 0' % (cmd_base, read_bytes_sec))
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
