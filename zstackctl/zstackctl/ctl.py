@@ -170,9 +170,9 @@ cat << EOF1 > %s
 %s
 EOF1
 /bin/bash %s %s
-ret=$?
+ret=\$?
 rm -f %s
-exit $ret
+exit \$ret
 EOF''' % (remote_path, cmd, remote_path, ' '.join(params), remote_path)
 
     scmd = ShellCmd('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "%s"' % (ip, script), pipe=pipe)
