@@ -1762,6 +1762,22 @@ class Vm(object):
                 else:
                     return blk_fusionstor()
 
+        def block_volume():
+            def blk():
+                disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
+                e(disk, 'driver', None,
+                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                e(disk, 'source', None, {'dev': volume.installPath})
+
+                if volume.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    e(disk, 'wwn', volume.wwn)
+                else:
+                    e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+
+                return etree.tostring(disk)
+            return blk()
+
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
         elif volume.deviceType == 'file':
@@ -1772,6 +1788,8 @@ class Vm(object):
             xml = fusionstor_volume()
         elif volume.deviceType == 'scsilun':
             xml = scsilun_volume()
+        elif volume.deviceType == 'block':
+            xml = block_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -1807,6 +1825,9 @@ class Vm(object):
                         elif volume.deviceType == 'scsilun':
                             if xmlobject.has_element(disk,
                                                      'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
+                        elif volume.deviceType == 'block':
+                            if xmlobject.has_element(disk,
+                                                     'source') and disk.source.dev__ and disk.source.dev_ in volume.installPath:
                                 return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
@@ -1852,6 +1873,8 @@ class Vm(object):
                 fmt = 'sd%s'
             elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
                 fmt = ('hd%s', 'vd%s', 'sd%s')[max(volume.useVirtio, volume.useVirtioSCSI * 2)]
+            elif volume.deviceType == 'block':
+                fmt = 'vd%s'
             else:
                 raise Exception('unsupported deviceType[%s]' % volume.deviceType)
 
@@ -2958,6 +2981,46 @@ class Vm(object):
                 else:
                     return fusionstor_blk()
 
+            def block_volume(_dev_letter, _v):
+                disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
+                e(disk, 'driver', None,
+                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                e(disk, 'source', None, {'dev': _v.installPath})
+
+                if _v.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
+                    e(disk, 'wwn', _v.wwn)
+                else:
+                    e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+
+                return disk
+
+            def volume_qos(volume_xml_obj):
+                if not cmd.addons:
+                    return
+
+                vol_qos = cmd.addons['VolumeQos']
+                if not vol_qos:
+                    return
+
+                qos = vol_qos[v.volumeUuid]
+                if not qos:
+                    return
+
+                if not qos.totalBandwidth and not qos.totalIops:
+                    return
+
+                iotune = e(volume_xml_obj, 'iotune')
+                if qos.totalBandwidth:
+                    e(iotune, 'total_bytes_sec', str(qos.totalBandwidth))
+                if qos.totalIops:
+                    # e(iotune, 'total_iops_sec', str(qos.totalIops))
+                    e(iotune, 'read_iops_sec', str(qos.totalIops))
+                    e(iotune, 'write_iops_sec', str(qos.totalIops))
+                    # e(iotune, 'read_iops_sec_max', str(qos.totalIops))
+                    # e(iotune, 'write_iops_sec_max', str(qos.totalIops))
+                    # e(iotune, 'total_iops_sec_max', str(qos.totalIops))
+
             def volume_native_aio(volume_xml_obj):
                 if not cmd.addons:
                     return
@@ -2992,6 +3055,8 @@ class Vm(object):
                     vol = ceph_volume(dev_letter, v)
                 elif v.deviceType == 'fusionstor':
                     vol = fusionstor_volume(dev_letter, v)
+                elif v.deviceType == 'block':
+                    vol = block_volume(dev_letter, v)
                 else:
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
