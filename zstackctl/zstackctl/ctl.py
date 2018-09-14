@@ -5550,7 +5550,7 @@ class ChangeIpCmd(Command):
         parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
 
     def isVirtualIp(self, ip):
-        return shell("ip a | grep -w %s" % ip).strip().endswith("zsvip")
+        return shell("ip a | grep -w %s" % ip).strip().endswith("zs")
 
     def run(self, args):
         if args.ip == '0.0.0.0':
