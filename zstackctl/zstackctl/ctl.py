@@ -175,7 +175,7 @@ rm -f %s
 exit \$ret
 EOF''' % (remote_path, cmd, remote_path, ' '.join(params), remote_path)
 
-    scmd = ShellCmd('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "%s"' % (ip, script), pipe=pipe)
+    scmd = ShellCmd("ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s '%s'" % (ip, script), pipe=pipe)
     scmd(False)
     return scmd
 
