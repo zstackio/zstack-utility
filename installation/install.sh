@@ -116,6 +116,7 @@ start_zstack_tui() {
 }
 
 stop_zstack_tui() {
+  [ -z $ZS_AUTO_INSTALL ] || return
   ps -ef | grep zstack_tui | grep -v 'grep' >/dev/null 2>&1 || return
   sed -i 's/Restart=always/Restart=no/g' $ZSTACK_TUI_SERVICE 2>/dev/null
   systemctl daemon-reload
@@ -124,7 +125,6 @@ stop_zstack_tui() {
 
 # stop zstack_tui to prevent zstack auto installation
 stop_zstack_tui
-
 
 #define extra upgrade params
 #USE THIS PATTERN: upgrade_params_array[INDEX]='VERSION,PARAM'
