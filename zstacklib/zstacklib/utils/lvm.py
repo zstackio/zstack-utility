@@ -597,6 +597,16 @@ def resize_lv(path, size):
 
 
 @bash.in_bash
+def resize_lv_from_cmd(path, size, cmd):
+    if cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
+        resize_lv(path, size)
+
+    current_size = int(get_lv_size(path))
+    if current_size - int(size) > cmd.addons[thinProvisioningInitializeSize]:
+        resize_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
+
+
+@bash.in_bash
 @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
 def active_lv(path, shared=False):
     flag = "-ay"

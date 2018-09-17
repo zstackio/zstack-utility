@@ -438,7 +438,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         with lvm.RecursiveOperateLv(install_abs_path, shared=False):
-            lvm.resize_lv(install_abs_path, cmd.size)
+            lvm.resize_lv_from_cmd(install_abs_path, cmd.size, cmd)
             if not cmd.live:
                 shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
             ret = linux.qcow2_virtualsize(install_abs_path)
@@ -580,7 +580,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             size = linux.qcow2_virtualsize(snapshot_abs_path)
             new_volume_path = "/dev/%s/%s" % (cmd.vgUuid, uuidhelper.uuid())
 
-            lvm.create_lv_from_absolute_path(new_volume_path, size,
+            lvm.create_lv_from_cmd(new_volume_path, size, cmd,
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(new_volume_path, shared=False, delete_when_exception=True):
                 linux.qcow2_clone_with_option(snapshot_abs_path, new_volume_path, qcow2_options)
@@ -743,13 +743,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
             current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
             with lvm.OperateLv(current_abs_path, shared=True):
-                virtual_size = lvm.get_lv_size(current_abs_path)
+                lv_size = lvm.get_lv_size(current_abs_path)
 
                 if lvm.lv_exists(target_abs_path):
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
                     raise Exception("found %s already exists on ps %s" %
                                     (target_abs_path, target_ps_uuid))
-                lvm.create_lv_from_absolute_path(target_abs_path, virtual_size,
+                lvm.create_lv_from_absolute_path(target_abs_path, lv_size,
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
 
