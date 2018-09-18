@@ -4833,7 +4833,7 @@ class VmPlugin(kvmagent.KvmAgent):
     @bash.in_bash
     @misc.ignoreerror
     def _extend_sharedblock(self, conn, dom, event, detail, opaque):
-        logger.debug("in extend sharedblock, %s %s %s %s" %
+        logger.debug("extend sharedblock got event from libvirt, %s %s %s %s" %
                      (dom.name(), type(dom), LibvirtEventManager.event_to_string(event), LibvirtEventManager.suspend_event_to_string(detail)))
 
         if not self.enable_auto_extend:
@@ -4890,7 +4890,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
-        logger.debug("in release sharedblock, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
+        logger.debug("release sharedblock got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
 
         @linux.retry(times=5, sleep_time=1)
         def wait_volume_unused(volume):
