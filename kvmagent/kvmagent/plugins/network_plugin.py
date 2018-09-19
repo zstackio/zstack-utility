@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import copy
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
@@ -228,13 +229,34 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def check_vxlan_cidr(self, req):
-        # Check qualified interface with cidr and interface name (if provided).
+
+        def filter_vxlan_nics(nics, interf, requireIp):
+            valid_nics = copy.copy(nics)
+
+            if interf:
+                for nic in valid_nics:
+                    if interf not in nic.keys():
+                        valid_nics.remove(nic)
+
+            if requireIp:
+                for nic in valid_nics:
+                    if requireIp not in nic.values():
+                        valid_nics.remove(nic)
+
+            return valid_nics
+
+        # Check qualified interface with cidr and interface name, vtepip address (if provided).
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckVxlanCidrResponse()
         rsp.success = False
         interf = cmd.physicalInterfaceName
 
         nics = linux.get_nics_by_cidr(cmd.cidr)
+        temp_nics = filter_vxlan_nics(nics, interf, cmd.vtepip)
+        # if there is no valid nic after filter, try all nics match the cidr of vxlan pool
+        if len(temp_nics) != 0:
+            nics = temp_nics
+
         ips = set(map(lambda d: d.values()[0], nics))
         if len(nics) == 0:
             rsp.error = "can not find qualify interface for cidr [%s]" % cmd.cidr
