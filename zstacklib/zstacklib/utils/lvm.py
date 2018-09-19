@@ -165,6 +165,10 @@ def is_multipath(dev_name):
     r = bash.bash_r("multipath /dev/%s -l | grep mpath" % dev_name)
     if r == 0:
         return True
+
+    slaves = shell.call("ls /sys/class/block/%s/slaves/" % dev_name).strip().split("\n")
+    if slaves is not None and len(slaves) > 0:
+        return True
     return False
 
 
