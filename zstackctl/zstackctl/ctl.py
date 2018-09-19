@@ -5024,7 +5024,7 @@ class CollectLogCmd(Command):
         shell(command, False)
 
     def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info):
-        command = "cd %s && tar zcf ../collect-log.tar.gz ." % tmp_log_dir
+        command = "cd %s && tar zcf ../collect-log.tar.gz . --ignore-failed-read --warning=no-file-changed || true" % tmp_log_dir
         run_remote_command(command, host_post_info)
         fetch_arg = FetchArg()
         fetch_arg.src =  "%s/../collect-log.tar.gz " % tmp_log_dir
