@@ -422,9 +422,15 @@ def get_local_file_disk_usage(path):
         return int(shell.call("du -a --block-size=1 %s | awk '{print $1}'" % path).strip())
     return os.path.getsize(path)
 
-def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root', sshPort=22):
+def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root', sshPort=22, bandWidth=None):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
+
+    # scp bandwidth limit
+    if bandWidth is not None:
+        bandWidth = '-l %s' % (long(bandWidth) / 1024)
+    else:
+        bandWidth = ''
 
     sshkey_file = create_ssh_key_file()
     os.chmod(sshkey_file, 0600)
@@ -432,7 +438,7 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
-        scp_cmd = 'scp -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath)
+        scp_cmd = 'scp {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath, bandWidth)
         shell.call(scp_cmd)
         os.chmod(dst_filepath, 0664)
     finally:

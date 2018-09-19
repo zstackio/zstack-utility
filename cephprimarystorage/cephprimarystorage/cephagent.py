@@ -665,6 +665,11 @@ class CephAgent(object):
         prikey = cmd.sshKey
         port = cmd.sshPort
 
+        if cmd.bandWidth is not None:
+            bandWidth = 'pv -q -L %s |' % cmd.bandWidth
+        else:
+            bandWidth = ''
+
         pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
         tmp_image_name = 'tmp-%s' % image_name
 
@@ -679,8 +684,8 @@ class CephAgent(object):
 
         try:
             shell.call(
-                'set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s "cat \'%s\'" | rbd import --image-format 2 - %s/%s' %
-                (port, prikey_file, hostname, cmd.backupStorageInstallPath, pool, tmp_image_name))
+                'set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s "cat \'%s\'" | %s rbd import --image-format 2 - %s/%s' %
+                (port, prikey_file, hostname, cmd.backupStorageInstallPath, bandWidth ,pool, tmp_image_name))
         finally:
             os.remove(prikey_file)
 
