@@ -518,7 +518,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
 
         with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort)
+            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, cmd.bandWidth)
         logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
 
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, False)
