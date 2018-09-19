@@ -1565,22 +1565,32 @@ class Vm(object):
             if not addons:
                 return
 
-            vol_qos = addons['VolumeQos']
-            if not vol_qos:
-                return
+            for key in ["VolumeQos", "VolumeReadQos", "VolumeWriteQos"]:
+                vol_qos = addons[key]
+                if not vol_qos:
+                    continue
 
-            qos = vol_qos[volume.volumeUuid]
-            if not qos:
-                return
+                qos = vol_qos[volume.volumeUuid]
+                if not qos:
+                    continue
+                if not qos.totalBandwidth and not qos.totalIops:
+                    continue
 
-            if not qos.totalBandwidth and not qos.totalIops:
-                return
+                mode = None
+                if key == 'VolumeQos':
+                    mode = "total"
+                elif key == 'VolumeReadQos':
+                    mode = "read"
+                elif key == 'VolumeWriteQos':
+                    mode = "write"
 
-            iotune = e(volume_xml_obj, 'iotune')
-            if qos.totalBandwidth:
-                e(iotune, 'total_bytes_sec', str(qos.totalBandwidth))
-            if qos.totalIops:
-                e(iotune, 'total_iops_sec', str(qos.totalIops))
+                iotune = e(volume_xml_obj, 'iotune')
+                if qos.totalBandwidth:
+                    virsh_key = "%s_bytes_sec" % mode
+                    e(iotune, virsh_key, str(qos.totalBandwidth))
+                if qos.totalIops:
+                    virsh_key = "%_iops_sec" % mode
+                    e(iotune, virsh_key, str(qos.totalIops))
 
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
@@ -3491,7 +3501,7 @@ class VmPlugin(kvmagent.KvmAgent):
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
         if cmd.totalBandwidth > 0:  # to set
-            if cmd.mode == "total":  # to set total(read/write reset)
+            if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
                 shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
             elif cmd.mode == "read":  # to set read(write reserved, total reset)
                 write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
@@ -3503,7 +3513,7 @@ class VmPlugin(kvmagent.KvmAgent):
             is_total_mode = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "total") != "0"
             if cmd.mode == "all":  # to delete all(read/write reset)
                 shell.call('%s --total_bytes_sec 0' % (cmd_base))
-            elif cmd.mode == "total":  # to delete total
+            elif (cmd.mode == "total") or (cmd.mode is None):  # to delete total
                 if is_total_mode:
                     shell.call('%s --total_bytes_sec 0' % (cmd_base))
             elif cmd.mode == "read":  # to delete read(write reserved, total reset)
