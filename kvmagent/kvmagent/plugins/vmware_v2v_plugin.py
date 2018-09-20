@@ -123,7 +123,15 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 rsp.dataVolumeVirtualSizes.append(vSize)
             else:
                 break
+
+        xml = r"%s/%s.xml" % (storagePath, cmd.srcVmName)
+        if _check_str_in_file(xml, "<nvram>"):
+            rsp.bootMode = 'UEFI'
         return jsonobject.dumps(rsp)
+
+    def _check_str_in_file(fname, txt):
+        with open(fname) as dataf:
+            return any(txt in line for line in dataf)
 
     @in_bash
     def _get_qcow2_sizes(self, path):
