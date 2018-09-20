@@ -2569,10 +2569,15 @@ echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 # - update squashfs.img if .repo_version < 170704
 REMOTESQUASHFS=${BASEURL}/LiveOS/squashfs.img
 LOCALSQUASHFS=/opt/zstack-dvd/LiveOS/squashfs.img
+REMOTEV2VIMG=${BASEURL}/virt_v2v_image.tgz
+LOCALV2VIMG=/opt/zstack-dvd/virt_v2v_image.tgz
 REPOVERSION=`cat /opt/zstack-dvd/.repo_version`
 if [ $REPOVERSION -lt 170704 ]; then
 	rm -f $LOCALSQUASHFS
 	wget -c $REMOTESQUASHFS -O $LOCALSQUASHFS || return 1
+fi
+if [ $REPOVERSION -lt 180920 ]; then
+	wget -c $REMOTEV2VIMG -O $LOCALV2VIMG || return 1
 fi
 echo_subtitle "Update non-rpm archives"
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
@@ -2584,6 +2589,7 @@ echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 echo_subtitle "Cleanup"
 rm -f /opt/zstack-dvd/comps.xml
 yum clean all >/dev/null 2>&1
+rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 }
 

@@ -2639,8 +2639,8 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'machine': 'pc'})
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI":
-                    e(os, 'loader', '/usr/share/OVMF/OVMF_CODE.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
-                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/OVMF_VARS.fd'})
+                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
             # if not booting from cdrom, don't add any boot element in os section
             if cmd.bootDev[0] == "cdrom":
                 for boot_dev in cmd.bootDev:
