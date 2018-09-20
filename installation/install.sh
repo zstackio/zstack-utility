@@ -873,6 +873,10 @@ upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
 
+    if pgrep -x zstack-hamon >/dev/null; then
+        fail2 "You are upgrading ${PRODUCT_NAME} under HA environment.\nPlease run: 'zsha2 upgrade-mn installer.bin' instead.\n"
+    fi
+
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
 
