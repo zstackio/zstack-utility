@@ -13,6 +13,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import lock
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
+from zstacklib.utils import misc
 import os.path
 import re
 
@@ -336,6 +337,15 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             return True
         return False
 
+    @misc.ignoreerror
+    def _cleanup_conntrack(self, ip=None):
+        if ip:
+            shell.call("sudo conntrack -d %s -D" % ip)
+            logger.debug('clean up conntrack -d %s -D' % ip)
+        else:
+            shell.call("sudo conntrack -D")
+            logger.debug('clean up conntrack -D')
+
     def _apply_rules_using_iprange_match(self, cmd, iptable=None, ipset_mn=None):
         if not iptable:
             ipt = iptables.from_iptables_save()
@@ -356,6 +366,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 self._apply_rules_on_vnic_chain(ipt, ips_mn, rto)
             else:
                 raise Exception('unknown action code: %s' % rto.actionCode)
+            self._cleanup_conntrack(rto.vmNicIp)
 
         default_accept_rule = "-A %s -j ACCEPT" % self.ZSTACK_DEFAULT_CHAIN
         ipt.remove_rule(default_accept_rule)
@@ -423,6 +434,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
 
         ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
+        self._cleanup_conntrack()
+
         return jsonobject.dumps(rsp)
 
     @lock.file_lock('/run/xtables.lock')
@@ -448,6 +461,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 ipt.remove_rule(str(rule))
             ipt.iptable_restore()
             ips_mn.clean_ipsets(to_del_ipset_names)
+        self._cleanup_conntrack()
 
         return jsonobject.dumps(rsp)
 
@@ -461,6 +475,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         if not default_chain:
             self._create_default_rules(ipt)
             ipt.iptable_restore()
+            self._cleanup_conntrack()
 
         return jsonobject.dumps(rsp)
 
