@@ -78,3 +78,43 @@ class IpAddress(object):
         maskbits = linux.netmask_to_cidr(netmask)
 
         return '%s.%s.%s.%s/%s' % (cidr[0], cidr[1], cidr[2], cidr[3], maskbits)
+
+class Ipv6Address(object):
+        '''
+        Help to save and compare IP Address.
+        '''
+
+        def __init__(self, ip):
+            # ipv6 address includes 8 strings
+            self.ips = ["", "", "", "", "", "", "", ""]
+            self.prefix = ["", "", "", "", "", "", "", ""]
+            temp = ip.split('::')
+            pos = 0
+            for item in temp[0].split(":"):
+                self.ips[pos] = item
+                self.prefix[pos] = item
+                pos = pos + 1
+
+            if len(temp) == 2:
+                addr = temp[1].split(":")
+                addr_len = len(addr)
+                pos = 8 - addr_len
+                for item in addr:
+                    self.ips[pos] = item
+                    pos = pos + 1
+
+        def get_solicited_node_multicast_address(self):
+            ip = "ff02::1:ff"
+            if len(self.ips[6]) >= 2:
+                ip += self.ips[6][-2:]
+            else:
+                ip += self.ips[6]
+            return ip + ":" + self.ips[7]
+
+        def get_prefix(self, prefixlen):
+            temp = []
+            for item in self.prefix:
+                if item != "":
+                    temp.append(item)
+
+            return ":".join(temp) + "::/" + str(prefixlen)

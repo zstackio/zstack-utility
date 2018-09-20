@@ -131,6 +131,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.call('modprobe br_netfilter || true')
         shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
         shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
+        shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-ip6tables')
+        shell.call('echo 1 > /proc/sys/net/ipv6/conf/default/forwarding')
 
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
