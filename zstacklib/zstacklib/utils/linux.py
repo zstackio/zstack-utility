@@ -465,7 +465,7 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
     def get_file_size():
         try:
             keyfile_path = create_ssh_key_file()
-            batch_cmd = 'ls -s %s' % filename
+            batch_cmd = "ls -s '%s'" % filename
             cmdstr = '/usr/bin/ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s %s "%s"' % (sshPort, keyfile_path, hostname, batch_cmd)
             cmd = shell.ShellCmd(cmdstr)
             cmd()
@@ -495,7 +495,7 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
         if get_size:
             return file_size
         keyfile_path = create_ssh_key_file()
-        batch_file_path = write_to_temp_file('get %s %s' % (filename, download_to))
+        batch_file_path = write_to_temp_file("get '%s' %s" % (filename, download_to))
         cmd = '/usr/bin/sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentityFile=%s -b %s %s' % (keyfile_path, batch_file_path, hostname)
         process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, executable='/bin/sh', universal_newlines=True, close_fds=True)
         is_timeout = False
