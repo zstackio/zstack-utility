@@ -42,8 +42,11 @@ class LvmlockdLockType(object):
             return LvmlockdLockType.EXCLUSIVE
         elif abbr.strip() == "un":
             return LvmlockdLockType.NULL
+        elif abbr.strip() == "":
+            logger.warn("can not get correct lvm lock type! use null as a safe choice")
+            return LvmlockdLockType.NULL
         else:
-            raise Exception("unknown lock type %s" % abbr)
+            raise Exception("unknown lock type from abbr: %s" % abbr)
 
     @staticmethod
     def from_str(string):
@@ -54,7 +57,7 @@ class LvmlockdLockType(object):
         elif string == "EXCLUSIVE":
             return LvmlockdLockType.NULL
         else:
-            raise Exception("unknown lock type %s" % string)
+            raise Exception("unknown lock type from str: %s" % string)
 
 
 class RetryException(Exception):
