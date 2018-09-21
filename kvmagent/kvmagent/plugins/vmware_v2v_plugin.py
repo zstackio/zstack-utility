@@ -135,7 +135,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
     @in_bash
     def _get_qcow2_sizes(self, path):
-        cmd = "qemu-img info --output=json " + path
+        cmd = "qemu-img info --output=json '%s'" % path
         _, output = commands.getstatusoutput(cmd)
         return long(json.loads(output)['actual-size']), long(json.loads(output)['virtual-size'])
 
