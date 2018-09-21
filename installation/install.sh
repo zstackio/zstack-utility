@@ -1104,6 +1104,7 @@ is_install_general_libs_rh(){
             bash-completion \
             dmidecode \
             $mysql_pkg \
+            MySQL-python \
             python-backports-ssl_match_hostname \
             python-setuptools"
 
