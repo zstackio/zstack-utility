@@ -803,6 +803,14 @@ def check_pv_status(vgUuid, timeout):
         logger.warn(s)
         return False, s
 
+    if e is not None and e != "":
+        for es in e.strip().splitlines():
+            if "WARNING" in es:
+                continue
+            s = "vgck %s failed, details: %s" % (vgUuid, e)
+            logger.warn(s)
+            return False, s
+
     health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking --readonly --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
     if health == "":
         logger.warn("can not get proper attr of vg, return false")
