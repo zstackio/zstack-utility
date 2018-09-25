@@ -823,7 +823,7 @@ def check_pv_status(vgUuid, timeout):
         return False, s
 
     if e is not None and e != "":
-        for es in e.splitlines():
+        for es in e.strip().splitlines():
             if "WARNING" in es:
                 continue
             s = "vgck %s failed, details: %s" % (vgUuid, e)
