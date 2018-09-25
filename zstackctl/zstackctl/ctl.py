@@ -1705,9 +1705,8 @@ class StartCmd(Command):
         hn = shell('hostname').strip()
         if '.' in hn:
             error("The hostname cannot contain '.', current hostname is '%s'.\n"
-                  "Please use the following commands to modify hostname and reset rabbitmq:\n"
-                  " # hostnamectl set-hostname $NEW_HOSTNAME\n"
-                  " # zstack-ctl reset_rabbitmq" % hn)
+                  "Please use the following commands to modify hostname:\n"
+                  " # hostnamectl set-hostname $NEW_HOSTNAME")
 
     def run(self, args):
         self.check_cpu_mem()
@@ -1763,66 +1762,6 @@ class StartCmd(Command):
                     shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
                           'iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT ' % (protocol, protocol, port, protocol, protocol, port))
 
-        def check_rabbitmq():
-            RABBIT_PORT = 5672
-
-            def check_username_password_if_need(ip, username, password):
-                if not username or not password:
-                    return
-
-                cmd = ShellCmd('curl -u %s:%s http://%s:15672/api/whoami' % (username, password, ip))
-                cmd(False)
-                if cmd.return_code == 7:
-                    warn('unable to connect to the rabbitmq management plugin at %s:15672. The possible reasons are:\n'
-                         '  1) the plugin is not installed, you can install it by "rabbitmq-plugins enable rabbitmq_management,"\n'
-                         '     then restart the rabbitmq by "service rabbitmq-server restart"\n'
-                         '  2) the port 15672 is blocked by the firewall\n'
-                         'without the plugin, we cannot check the validity of the rabbitmq username/password configured in zstack.properties' % ip)
-
-                elif cmd.return_code != 0:
-                    cmd.raise_error()
-                else:
-                    if 'error' in cmd.stdout:
-                        raise CtlError('unable to connect to the rabbitmq server[ip:%s] with username/password configured in zstack.properties.\n'
-                                       'If you have reset the rabbimtq server, get the username/password from zstack.properties and do followings on the rabbitmq server:\n'
-                                       '1) rabbitmqctl add_user $username $password\n'
-                                       '2) rabbitmqctl set_user_tags $username administrator\n'
-                                       '3) rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"\n' % ip)
-
-
-            with on_error('unable to get RabbitMQ server IPs from %s, please check CloudBus.serverIp.0'):
-                ips = ctl.read_property_list('CloudBus.serverIp.')
-                if not ips:
-                    raise CtlError('no RabbitMQ IPs defined in %s, please specify it use CloudBus.serverIp.0=the_ip' % ctl.properties_file_path)
-
-                rabbit_username = ctl.read_property('CloudBus.rabbitmqUsername')
-                rabbit_password = ctl.read_property('CloudBus.rabbitmqPassword')
-
-                if rabbit_password and not rabbit_username:
-                    raise CtlError('CloudBus.rabbitmqPassword is set but CloudBus.rabbitmqUsername is missing in zstack.properties')
-                elif not rabbit_password and rabbit_username:
-                    raise CtlError('CloudBus.rabbitmqUsername is set but CloudBus.rabbitmqPassword is missing in zstack.properties')
-
-                success = False
-                workable_ip = None
-                for key, ip in ips:
-                    if ":" in ip:
-                        ip, port = ip.split(':')
-                    else:
-                        port = RABBIT_PORT
-
-                    if check_ip_port(ip, port):
-                        workable_ip = ip
-                        success = True
-                    else:
-                        warn('cannot connect to the RabbitMQ server[ip:%s, port:%s]' % (ip, RABBIT_PORT))
-
-                if not success:
-                    raise CtlError('cannot connect to all RabbitMQ servers[ip:%s, port:%s] defined in %s, please reset rabbitmq by: "zstack-ctl reset_rabbitmq"' %
-                                    (ips, RABBIT_PORT, ctl.properties_file_path))
-                else:
-                    check_username_password_if_need(workable_ip, rabbit_username, rabbit_password)
-
         def check_chrony():
             if ctl.read_property('syncNodeTime') == "false":
                 return
@@ -1840,7 +1779,7 @@ class StartCmd(Command):
                     warn("chrony source is set to management node, but server is not running, try to restart it now...")
                     shell("systemctl disable ntpd || true; systemctl enable chronyd ; systemctl restart chronyd")
                 return
-                
+
             # mn is chrony client
             old_source_ips = shell("chronyc sources | grep '^\^' | awk '{print $2}'").splitlines()
             if set(source_ips) == set(old_source_ips):
@@ -1975,7 +1914,6 @@ class StartCmd(Command):
         check_8080()
         check_9090()
         check_msyql()
-        check_rabbitmq()
         check_chrony()
         prepare_qemu_kvm_repo()
         prepare_setenv()
@@ -2317,7 +2255,7 @@ ip addr | grep $ip > /dev/null
 
 echo "The hostname($hostname) of your machine is resolved to IP($ip) which is none of IPs of your machine.
 It's likely your DNS server has been hijacking, please try fixing it or add \"ip_of_your_host $hostname\" to /etc/hosts.
-DNS hijacking will cause MySQL and RabbitMQ not working."
+DNS hijacking will cause MySQL not working."
 exit 1
 '''
         fd, pre_install_script_path = tempfile.mkstemp()
@@ -2751,7 +2689,6 @@ class RecoverHACmd(Command):
     def reboot_cluster_service(self, host_post_info):
         service_status("haproxy", "state=started", host_post_info)
         service_status("keepalived", "state=started", host_post_info)
-        service_status("rabbitmq-server", "state=started", host_post_info)
 
     def recover_mysql(self, host_post_info, host_post_info_list):
         for host_info in host_post_info_list:
@@ -2889,7 +2826,7 @@ class InstallHACmd(Command):
     logger_dir = "/var/log/zstack/"
     logger_file = "ha.log"
     bridge = ""
-    SpinnerInfo.spinner_status = {'mysql':False,'rabbitmq':False, 'haproxy_keepalived':False,
+    SpinnerInfo.spinner_status = {'mysql':False,'haproxy_keepalived':False,
                       'Mevoco':False, 'stop_mevoco':False, 'check_init':False, 'recovery_cluster':False}
     ha_config_content = None
     def __init__(self):
@@ -2922,8 +2859,7 @@ class InstallHACmd(Command):
         parser.add_argument('--mysql-user-password','--user-pass',
                             help="Password of MySQL user zstack", default="zstack123")
         parser.add_argument('--rabbit-password','--rabbit-pass',
-                            help="RabbitMQ password; if set, the password will be created on RabbitMQ for username "
-                                 "specified by --rabbit-username. [DEFAULT] rabbitmq default password",
+                            help="obsoleted since 3.0.1",
                             default="zstack123")
         parser.add_argument('--drop', action='store_true', default=False,
                             help="Force delete mysql data for re-deploy HA")
@@ -3210,18 +3146,15 @@ class InstallHACmd(Command):
                     # make sure vip will be on this host, so start haproxy firstly
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
-                    service_status("rabbitmq-server","state=started", self.host1_post_info)
                     #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=started", self.host2_post_info)
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
-                    service_status("rabbitmq-server","state=started", self.host2_post_info)
                     if args.host3_info is not False:
                         #run_remote_command(command, self.host3_post_info)
                         service_status("mysql","state=started", self.host3_post_info)
                         service_status("haproxy","state=started", self.host3_post_info)
                         service_status("keepalived","state=started", self.host3_post_info)
-                        service_status("rabbitmq-server","state=started", self.host3_post_info)
                     #command = "service mysql restart"
                     #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=restarted", self.host1_post_info)
@@ -3229,18 +3162,15 @@ class InstallHACmd(Command):
                 elif local_ip == self.host2_post_info.host:
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
-                    service_status("rabbitmq-server","state=started", self.host2_post_info)
                     #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=started", self.host1_post_info)
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
-                    service_status("rabbitmq-server","state=started", self.host1_post_info)
                     if args.host3_info is not False:
                         #run_remote_command(command, self.host3_post_info)
                         service_status("mysql","state=started", self.host3_post_info)
                         service_status("haproxy","state=started", self.host3_post_info)
                         service_status("keepalived","state=started", self.host3_post_info)
-                        service_status("rabbitmq-server","state=started", self.host3_post_info)
                     #command = "service mysql restart"
                     #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=restarted", self.host2_post_info)
@@ -3248,16 +3178,13 @@ class InstallHACmd(Command):
                     # localhost must be host3
                     service_status("haproxy","state=started", self.host3_post_info)
                     service_status("keepalived","state=started", self.host3_post_info)
-                    service_status("rabbitmq-server","state=started", self.host3_post_info)
                     #run_remote_command(command, self.host1_post_info)
                     service_status("mysql","state=started", self.host1_post_info)
                     service_status("haproxy","state=started", self.host1_post_info)
                     service_status("keepalived","state=started", self.host1_post_info)
-                    service_status("rabbitmq-server","state=started", self.host1_post_info)
                     service_status("mysql","state=started", self.host2_post_info)
                     service_status("haproxy","state=started", self.host2_post_info)
                     service_status("keepalived","state=started", self.host2_post_info)
-                    service_status("rabbitmq-server","state=started", self.host2_post_info)
                     #command = "service mysql restart"
                     #run_remote_command(command, self.host2_post_info)
                     service_status("mysql","state=restarted", self.host3_post_info)
@@ -3381,15 +3308,6 @@ class InstallHACmd(Command):
         ZstackSpinner(spinner_info)
         MysqlHA()()
 
-        # setup rabbitmq ha
-        spinner_info = SpinnerInfo()
-        spinner_info.output ="Starting to deploy Rabbitmq HA"
-        spinner_info.name = 'rabbitmq'
-        SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
-        SpinnerInfo.spinner_status['rabbitmq'] = True
-        ZstackSpinner(spinner_info)
-        RabbitmqHA()()
-
         # setup haproxy and keepalived
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting to deploy Haproxy and Keepalived"
@@ -3421,8 +3339,6 @@ class InstallHACmd(Command):
         command = "zstack-ctl configure DB.url=jdbc:mysql://%s:53306/{database}?connectTimeout=%d\&socketTimeout=%d"\
                        % (args.vip, local_map['mysql_connect_timeout'], local_map['mysql_socket_timeout'])
         run_remote_command(command, self.host1_post_info)
-        command = "zstack-ctl configure CloudBus.rabbitmqPassword=%s" % args.mysql_user_password
-        run_remote_command(command, self.host1_post_info)
 
         # copy zstack-1 property to zstack-2 and update the management.server.ip
         # update zstack-1 firstly
@@ -3430,15 +3346,6 @@ class InstallHACmd(Command):
                     "regexp='^CloudBus\.serverIp\.0' line='CloudBus.serverIp.0=%s'" % args.vip, self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='^CloudBus\.serverIp\.1' state=absent" , self.host1_post_info)
-        update_file("%s" % ctl.properties_file_path,
-                    "regexp='^CloudBus\.rabbitmqUsername' line='CloudBus.rabbitmqUsername=zstack'",
-                    self.host1_post_info)
-        update_file("%s" % ctl.properties_file_path,
-                    "regexp='^CloudBus\.rabbitmqPassword' line='CloudBus.rabbitmqPassword=%s'"
-                    % args.rabbit_password, self.host1_post_info)
-        update_file("%s" % ctl.properties_file_path,
-                    "regexp='^CloudBus\.rabbitmqHeartbeatTimeout' line='CloudBus.rabbitmqHeartbeatTimeout=10'",
-                    self.host1_post_info)
         update_file("%s" % ctl.properties_file_path,
                     "regexp='management\.server\.ip' line='management.server.ip = %s'" %
                     args.host1, self.host1_post_info)
@@ -3501,10 +3408,9 @@ class InstallHACmd(Command):
         print '''HA deploy finished!
 Mysql user 'root' password: %s
 Mysql user 'zstack' password: %s
-Rabbitmq user 'zstack' password: %s
 Mevoco is running, visit %s in Chrome or Firefox with default user/password : %s
 You can check the cluster status at %s with user/passwd : %s
-       ''' % (args.mysql_root_password, args.mysql_user_password, args.rabbit_password,
+       ''' % (args.mysql_root_password, args.mysql_user_password,
               colored('http://%s:8888' % args.vip, 'blue'), colored('admin/password', 'yellow'),
               colored('http://%s:9132/zstack' % args.vip, 'blue'), colored('zstack/zstack123', 'yellow'))
 
@@ -3612,15 +3518,6 @@ listen  proxy-mysql 0.0.0.0:53306
     server zstack-2 {{ host2 }}:3306 backup weight 10 check port 6033 inter 3s rise 2 fall 2
     option tcpka
 
-listen  proxy-rabbitmq 0.0.0.0:55672
-    mode tcp
-    balance source
-    timeout client  3h
-    timeout server  3h
-    server zstack-1 {{ host1 }}:5672 weight 10 check inter 3s rise 2 fall 2
-    server zstack-2 {{ host2 }}:5672 backup weight 10 check inter 3s rise 2 fall 2
-    option tcpka
-
 # dashboard not installed, so haproxy will report error
 listen  proxy-ui 0.0.0.0:8888
     mode http
@@ -3684,16 +3581,6 @@ listen  proxy-mysql 0.0.0.0:53306
     server zstack-1 {{ host1 }}:3306 weight 10 check port 6033 inter 3s rise 2 fall 2
     server zstack-2 {{ host2 }}:3306 backup weight 10 check port 6033 inter 3s rise 2 fall 2
     server zstack-3 {{ host3 }}:3306 backup weight 10 check port 6033 inter 3s rise 2 fall 2
-    option tcpka
-
-listen  proxy-rabbitmq 0.0.0.0:55672
-    mode tcp
-    balance source
-    timeout client  3h
-    timeout server  3h
-    server zstack-1 {{ host1 }}:5672 weight 10 check inter 3s rise 2 fall 2
-    server zstack-2 {{ host2 }}:5672 backup weight 10 check inter 3s rise 2 fall 2
-    server zstack-3 {{ host3 }}:5672 backup weight 10 check inter 3s rise 2 fall 2
     option tcpka
 
 # dashboard not installed, so haproxy will report error
@@ -4256,76 +4143,13 @@ echo $TIMEST >> /var/log/check-network.log
         if len(self.host_post_info_list) == 3:
             service_status("crond","state=started enabled=yes",self.host3_post_info)
 
-
-
 class RabbitmqHA(InstallHACmd):
     def __init__(self):
         super(RabbitmqHA, self).__init__()
         self.name = "rabbitmq ha"
         self.description = "rabbitmq HA setup"
-        self.host_post_info_list = InstallHACmd.host_post_info_list
-        self.host1_post_info = self.host_post_info_list[0]
-        self.host2_post_info = self.host_post_info_list[1]
-        if len(self.host_post_info_list) == 3:
-            self.host3_post_info = self.host_post_info_list[2]
-        self.yum_repo = self.host1_post_info.yum_repo
-        self.rabbit_password= self.host1_post_info.rabbit_password
     def __call__(self):
-        command = ("yum clean --enablerepo=zstack-local metadata && pkg_list=`rpm -q rabbitmq-server"
-               " | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-               "--disablerepo=* --enablerepo=%s,mariadb install -y $pkg; done;") % self.yum_repo
-        run_remote_command(command, self.host1_post_info)
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
-        # clear erlang process for new deploy
-        command = "echo True || pkill -f .*erlang.*  > /dev/null 2>&1 && rm -rf /var/lib/rabbitmq/* "
-        run_remote_command(command, self.host1_post_info)
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
-
-        # to stop rabbitmq-server for new installation
-        service_status("rabbitmq-server","state=stopped", self.host1_post_info, True)
-        service_status("rabbitmq-server", "state=stopped", self.host2_post_info, True)
-        if len(self.host_post_info_list) == 3:
-            service_status("rabbitmq-server", "state=stopped", self.host3_post_info, True)
-
-        # to start rabbitmq-server
-        service_status("rabbitmq-server","state=started enabled=yes", self.host1_post_info)
-        service_status("rabbitmq-server", "state=started enabled=yes", self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            service_status("rabbitmq-server", "state=started enabled=yes", self.host3_post_info)
-        # add zstack user in this cluster
-        command = "rabbitmqctl add_user zstack %s" %  self.rabbit_password
-        run_remote_command(command, self.host1_post_info)
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
-        command = "rabbitmqctl set_user_tags zstack administrator"
-        run_remote_command(command, self.host1_post_info)
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
-        command = "rabbitmqctl change_password zstack %s" % self.rabbit_password
-        run_remote_command(command, self.host1_post_info)
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
-        command = 'rabbitmqctl set_permissions -p \/ zstack ".*" ".*" ".*"'
-        run_remote_command(command, self.host1_post_info)
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
-        command = "rabbitmq-plugins enable rabbitmq_management"
-        run_remote_command(command, self.host1_post_info)
-        run_remote_command(command, self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
-        service_status("rabbitmq-server","state=restarted enabled=yes", self.host1_post_info)
-        service_status("rabbitmq-server", "state=restarted enabled=yes", self.host2_post_info)
-        if len(self.host_post_info_list) == 3:
-            service_status("rabbitmq-server", "state=restarted enabled=yes", self.host3_post_info)
+        info("zstack no longer depend on rabbitmq, exit")
 
 class ResetRabbitCmd(Command):
     def __init__(self):
@@ -4333,36 +4157,8 @@ class ResetRabbitCmd(Command):
         self.name = "reset_rabbitmq"
         self.description = "Reset RabbitMQ message broker on local machine based on current configuration in zstack.properties."
         ctl.register_command(self)
-
-    def install_argparse_arguments(self, parser):
-        pass
-
     def run(self, args):
-        rabbitmq_ip = ctl.read_property('CloudBus.serverIp.0')
-        rabbitmq_user = ctl.read_property('CloudBus.rabbitmqUsername')
-        rabbitmq_passwd = ctl.read_property('CloudBus.rabbitmqPassword')
-
-        new_hostname = shell("hostname").strip()
-        info("hostname is %s now" % new_hostname)
-
-        if shell_return("service rabbitmq-server restart") != 0:
-            error("restart rabbitmq failed")
-
-        user_list = shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl list_users | awk  '{print $1}'").split(
-            "\n")
-        if rabbitmq_user in user_list:
-            shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl delete_user %s" % rabbitmq_user)
-        shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl add_user %s %s" % (rabbitmq_user, rabbitmq_passwd))
-        shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl set_user_tags %s administrator" % rabbitmq_user)
-        shell("export HOSTNAME=" + new_hostname + " && rabbitmqctl set_permissions -p / %s \".*\" \".*\" \".*\"" % rabbitmq_user)
-
-        if shell_return("service rabbitmq-server restart") != 0:
-            error("restart rabbitmq failed")
-        info("reset rabbitmq success")
-
-        ip = get_default_ip()
-        replaced_ip = ip.replace(".", "\.")
-        shell("sed -i '/%s /c\%s %s' /etc/hosts; sync" % (replaced_ip, ip, new_hostname))
+        info("zstack no longer depend on rabbitmq, exit")
 
 class InstallRabbitCmd(Command):
     def __init__(self):
@@ -4371,191 +4167,8 @@ class InstallRabbitCmd(Command):
         self.description = "install RabbitMQ message broker on local or remote machine."
         ctl.register_command(self)
 
-    def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='host IP, for example, 192.168.0.212, please specify the real IP rather than "localhost" or "127.0.0.1" when installing on local machine; otherwise management nodes on other machines cannot access the RabbitMQ.', required=True)
-        parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
-        parser.add_argument('--no-update', help="don't update the IP address to 'CloudBus.serverIp.0' in zstack.properties", action="store_true", default=False)
-        parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
-        parser.add_argument('--rabbit-username', help="RabbitMQ username; if set, the username will be created on RabbitMQ. [DEFAULT] rabbitmq default username", default=None)
-        parser.add_argument('--rabbit-password', help="RabbitMQ password; if set, the password will be created on RabbitMQ for username specified by --rabbit-username. [DEFAULT] rabbitmq default password", default=None)
-        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
-
     def run(self, args):
-        if (args.rabbit_password is None and args.rabbit_username) or (args.rabbit_username and args.rabbit_password is None):
-            raise CtlError('--rabbit-username and --rabbit-password must be both set or not set')
-
-        if not args.yum:
-            args.yum = get_yum_repo_from_property()
-
-        yaml = '''---
-- hosts: $host
-  remote_user: root
-
-  vars:
-      yum_repo: "$yum_repo"
-
-  tasks:
-    - name: pre-install script
-      script: $pre_install_script
-
-    - name: install RabbitMQ on RedHat OS from user defined yum repo
-      when: ansible_os_family == 'RedHat' and yum_repo != 'false'
-      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y rabbitmq-server libselinux-python iptables-services
-
-    - name: install RabbitMQ on RedHat OS from online
-      when: ansible_os_family == 'RedHat' and yum_repo == 'false'
-      shell: yum clean metadata; yum --nogpgcheck install -y rabbitmq-server libselinux-python iptables-services
-
-    - name: install iptables-persistent for Ubuntu
-      when: ansible_os_family == 'Debian'
-      apt: pkg={{item}} update_cache=yes
-      with_items:
-        - iptables-persistent
-
-    - name: install RabbitMQ on Ubuntu OS
-      when: ansible_os_family == 'Debian'
-      apt: pkg={{item}} update_cache=yes
-      with_items:
-        - rabbitmq-server
-
-    - name: open 5672 port
-      when: ansible_os_family != 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT
-
-    - name: open 5673 port
-      when: ansible_os_family != 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5673 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5673 -j ACCEPT
-
-    - name: open 15672 port
-      when: ansible_os_family != 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT
-
-    - name: save iptables
-      when: ansible_os_family != 'RedHat'
-      shell: /etc/init.d/iptables-persistent save
-
-    - name: open 5672 port
-      when: ansible_os_family == 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5672 -j ACCEPT
-
-    - name: open 5673 port
-      when: ansible_os_family == 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 5673 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5673 -j ACCEPT
-
-    - name: open 15672 port
-      when: ansible_os_family == 'RedHat'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 15672 -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 15672 -j ACCEPT
-
-    - name: save iptables
-      when: ansible_os_family == 'RedHat'
-      shell: service iptables save
-
-    - name: install rabbitmq management plugin
-      shell: rabbitmq-plugins enable rabbitmq_management
-
-    - name: enable RabbitMQ
-      service: name=rabbitmq-server state=restarted enabled=yes
-
-    - name: post-install script
-      script: $post_install_script
-'''
-
-        pre_script = '''
-if [ -f /etc/redhat-release ] ; then
-
-grep ' 7' /etc/redhat-release
-if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-fi
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
-fi
-
-###################
-#Check DNS hijacking
-###################
-
-hostname=`hostname`
-
-pintret=`ping -c 1 -W 2 $hostname 2>/dev/null | head -n1`
-echo $pintret | grep 'PING' > /dev/null
-[ $? -ne 0 ] && exit 0
-
-ip=`echo $pintret | cut -d' ' -f 3 | cut -d'(' -f 2 | cut -d')' -f 1`
-
-ip_1=`echo $ip | cut -d'.' -f 1`
-[ "127" = "$ip_1" ] && exit 0
-
-ip addr | grep $ip > /dev/null
-[ $? -eq 0 ] && exit 0
-
-echo "The hostname($hostname) of your machine is resolved to IP($ip) which is none of IPs of your machine.
-It's likely your DNS server has been hijacking, please try fixing it or add \"ip_of_your_host $hostname\" to /etc/hosts.
-DNS hijacking will cause MySQL and RabbitMQ not working."
-exit 1
-'''
-        fd, pre_script_path = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write(pre_script)
-
-        def cleanup_prescript():
-            os.remove(pre_script_path)
-
-        self.install_cleanup_routine(cleanup_prescript)
-
-        if args.rabbit_username and args.rabbit_password:
-            post_script = '''set -x
-rabbitmqctl list_users|grep 'zstack'
-if [ $$? -ne 0 ]; then
-    set -e
-    rabbitmqctl add_user $username $password
-    rabbitmqctl set_user_tags $username administrator
-    rabbitmqctl set_permissions -p / $username ".*" ".*" ".*"
-fi
-'''
-            t = string.Template(post_script)
-            post_script = t.substitute({
-                'username': args.rabbit_username,
-                'password': args.rabbit_password
-            })
-        else:
-            post_script = ''
-
-        fd, post_script_path = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write(post_script)
-
-        def cleanup_postscript():
-            os.remove(post_script_path)
-
-        self.install_cleanup_routine(cleanup_postscript)
-
-        t = string.Template(yaml)
-        if args.yum:
-            yum_repo = args.yum
-        else:
-            yum_repo = 'false'
-        yaml = t.substitute({
-            'host': args.host,
-            'pre_install_script': pre_script_path,
-            'yum_folder': ctl.zstack_home,
-            'yum_repo': yum_repo,
-            'post_install_script': post_script_path
-        })
-
-        ansible(yaml, args.host, args.debug, args.ssh_key)
-
-        if not args.no_update:
-            ctl.write_property('CloudBus.serverIp.0', args.host)
-            info('updated CloudBus.serverIp.0=%s in %s' % (args.host, ctl.properties_file_path))
-
-        if args.rabbit_username and args.rabbit_password:
-            ctl.write_property('CloudBus.rabbitmqUsername', args.rabbit_username)
-            info('updated CloudBus.rabbitmqUsername=%s in %s' % (args.rabbit_username, ctl.properties_file_path))
-            ctl.write_property('CloudBus.rabbitmqPassword', args.rabbit_password)
-            info('updated CloudBus.rabbitmqPassword=%s in %s' % (args.rabbit_password, ctl.properties_file_path))
+        info("zstack no longer depend on rabbitmq, exit")
 
 class ChangeMysqlPasswordCmd(Command):
     def __init__(self):
@@ -5664,8 +5277,7 @@ class ChangeIpCmd(Command):
 
         # Update iptables
         mysql_ports = {3306}
-        mq_ports = {4369, 5672, 15672, 25672}
-        ports = mysql_ports | mq_ports
+        ports = mysql_ports
 
         cmd = "/sbin/iptables-save | grep INPUT | grep '%s'" % '\\|'.join('dport %s ' % port for port in ports)
         o = ShellCmd(cmd)
@@ -5688,23 +5300,12 @@ class ChangeIpCmd(Command):
 
         if mysql_ip != args.ip:
             ports -= mysql_ports
-        if cloudbus_server_ip != args.ip:
-            ports -= mq_ports
         for port in ports:
             shell('iptables -A INPUT -p tcp --dport %s -j REJECT' % port)
             shell('iptables -I INPUT -p tcp --dport %s -d %s -j ACCEPT' % (port, args.ip))
             shell('iptables -I INPUT -p tcp --dport %s -d 127.0.0.1 -j ACCEPT' % port)
 
         info("update iptables rules successfully")
-
-        # Reset RabbitMQ
-        info("Starting reset rabbitmq...")
-
-        if shell_return("zstack-ctl reset_rabbitmq") != 0:
-            error("Reset rabbitMQ failed\n"
-                  "Change ip failed")
-
-        info("Reset rabbitMQ successfully")
         info("Change ip successfully")
 
 
@@ -7952,7 +7553,7 @@ class StartUiCmd(Command):
             args.mn_port = cfg_mn_port
         if not args.webhook_host:
             args.webhook_host = cfg_webhook_host
-        if not args.webhook_port: 
+        if not args.webhook_port:
             args.webhook_port = cfg_webhook_port
         if not args.server_port:
             args.server_port = cfg_server_port

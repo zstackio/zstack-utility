@@ -400,7 +400,7 @@ or following commands in CentOS7:
     fi
 
     # current hostname is same with IP
-    echo "Your OS hostname is set as $current_hostname, which is same with your IP address. It will make rabbitmq-server installation failed. 
+    echo "Your OS hostname is set as $current_hostname, which is same with your IP address. It will cause some problem.
 Please fix it by running following commands in CentOS7:
 
     hostnamectl set-hostname MY_REAL_HOSTNAME
@@ -1241,7 +1241,7 @@ install_system_libs(){
     echo_title "Install System Libs"
     echo ""
     is_install_system_libs
-    #mysql and rabbitmq will be installed by zstack-ctl later
+    #mysql will be installed by zstack-ctl later
     show_spinner ia_install_pip
     show_spinner is_install_virtualenv
     #enable chronyd
@@ -1536,30 +1536,6 @@ uz_upgrade_zstack(){
         if [ $? -ne 0 ];then
             fail "failed to upgrade database"
         fi
-        #reset rabbitmq, since rabbitmq queue was changed.
-        #echo "reset rabbitmq" >>$ZSTACK_INSTALL_LOG 2>&1
-        #rabbitmqctl stop_app  >>$ZSTACK_INSTALL_LOG 2>&1
-        #rabbitmqctl reset  >>$ZSTACK_INSTALL_LOG 2>&1
-        #rabbitmqctl start_app  >>$ZSTACK_INSTALL_LOG 2>&1
-        #if [ $? -ne 0 ];then
-        #    fail "failed to reset rabbitmq and start rabbitmq"
-        #fi
-        #rabbitmq_user_password=`zstack-ctl show_configuration|grep CloudBus.rabbitmqPassword|awk '{print $3}'|tr -d '\n'|tr -d '\r'` >>$ZSTACK_INSTALL_LOG 2>&1
-        #rabbitmq_user_name=`zstack-ctl show_configuration|grep CloudBus.rabbitmqUsername|awk '{print $3}'|tr -d '\n'|tr -d '\r'` >>$ZSTACK_INSTALL_LOG 2>&1
-        #if [ ! -z $rabbitmq_user_name ]; then
-        #    rabbitmqctl add_user $rabbitmq_user_name $rabbitmq_user_password >>$ZSTACK_INSTALL_LOG 2>&1
-        #    if [ $? -ne 0 ];then
-        #        fail "failed to add user for rabbitmq"
-        #    fi
-        #    rabbitmqctl set_user_tags $rabbitmq_user_name administrator >>$ZSTACK_INSTALL_LOG 2>&1
-        #    if [ $? -ne 0 ];then
-        #        fail "failed to set user for rabbitmq"
-        #    fi
-        #    rabbitmqctl set_permissions -p / $rabbitmq_user_name ".*" ".*" ".*" >>$ZSTACK_INSTALL_LOG 2>&1
-        #    if [ $? -ne 0 ];then
-        #        fail "failed to set user permissions for rabbitmq"
-        #    fi
-        #fi
     fi
 
     pass
@@ -1691,10 +1667,10 @@ install_zstack(){
     fi
 }
 
-install_db_msgbus(){
-    echo_title "Install Database and Message Bus"
+install_db(){
+    echo_title "Install Database"
     echo ""
-    #generate ssh key for install mysql and rabbitmq by ansible remote host
+    #generate ssh key for install mysql by ansible remote host
     ssh_tmp_dir=`mktemp`
     /bin/rm -rf $ssh_tmp_dir
     mkdir -p $ssh_tmp_dir
@@ -1705,12 +1681,9 @@ install_db_msgbus(){
     show_spinner cs_deploy_db
     #deploy initial database of zstack_ui
     show_spinner cs_deploy_ui_db
-    #check hostname and ip again before install rabbitmq
+    #check hostname and ip again
     ia_check_ip_hijack
-    #install rabbitmq server
-    show_spinner cs_install_rabbitmq $ssh_tmp_dir
     cs_clean_ssh_tmp_key $ssh_tmp_dir
-    #show_spinner cs_start_rabbitmq
 }
 
 install_license(){
@@ -1798,10 +1771,6 @@ cs_config_zstack_properties(){
     if [ $? -ne 0 ];then
         fail "failed to change owner for /var/lib/zstack"
     fi
-    if [ x"$UPGRADE" = x'n' ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
-        zstack-ctl configure CloudBus.rabbitmqUsername=zstack
-        zstack-ctl configure CloudBus.rabbitmqPassword=zstack.password
-    fi
     if [ ! -z $ZSTACK_PROPERTIES_REPO ];then
         zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_PROPERTIES_REPO
     fi
@@ -1887,25 +1856,6 @@ cs_install_mysql(){
     pass
 }
 
-cs_install_rabbitmq(){
-    echo_subtitle "Install Rabbitmq Server"
-    rsa_key_file=$1/id_rsa
-    common_params="--host=$MANAGEMENT_IP --ssh-key=$rsa_key_file --rabbit-username=zstack --rabbit-password=zstack.password"
-    if [ -z $ZSTACK_YUM_REPOS ];then
-        echo "zstack-ctl install_rabbitmq $common_params" >>$ZSTACK_INSTALL_LOG
-        zstack-ctl install_rabbitmq $common_params --debug >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        echo "zstack-ctl install_rabbitmq $common_params --yum=$ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
-        zstack-ctl install_rabbitmq $common_params --yum=$ZSTACK_YUM_REPOS --debug >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-
-    if [ $? -ne 0 ];then
-        cs_clean_ssh_tmp_key $1
-        fail "failed to install rabbitmq server."
-    fi
-    pass
-}
-
 cs_clean_ssh_tmp_key(){
     #echo_subtitle "Clean up ssh temp key"
     rsa_pub_key_file=$1/id_rsa.pub
@@ -1954,7 +1904,7 @@ cs_append_iptables(){
     echo_subtitle "Append iptables"
     if [ "$NEED_SET_MN_IP" == "y" ]; then
         management_addr=`ip addr show |grep ${MANAGEMENT_IP}|awk '{print $2}'`
-        ports=(3306 4369 15672 25672)
+        ports=(3306)
         for port in ${ports[@]}
         do
             iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport $port -j REJECT" || iptables -A INPUT -p tcp --dport $port -j REJECT >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1985,7 +1935,7 @@ cs_enable_zstack_service(){
         cat > /etc/systemd/system/zstack.service <<EOF
 [Unit]
 Description=zstack Service
-After=syslog.target network.target rabbitmq-server.service mariadb.service
+After=syslog.target network.target mariadb.service
 Before=shutdown.target reboot.target halt.target
 
 [Service]
@@ -2643,9 +2593,9 @@ Options:
         e.g. -I eth0, -I eth0:1, -I 192.168.0.1
         the network interface (e.g. eth0) or IP address for management network.
         The IP address of this interface will be configured as IP of MySQL 
-        server and RabbitMQ server, if they are installed on this machine.
-        Remote ${PRODUCT_NAME} managemet nodes will use this IP to access MySQL and 
-        RabbitMQ. By default, the installer script will grab the IP of 
+        server, if they are installed on this machine.
+        Remote ${PRODUCT_NAME} managemet nodes will use this IP to access MySQL.
+        By default, the installer script will grab the IP of
         interface providing default routing from routing table. 
         If multiple IP addresses share same net device, e.g. em1, em1:1, em1:2.
         The network interface should be the exact name, like -I em1:1
@@ -2700,7 +2650,6 @@ Following command will install the ${PRODUCT_NAME} management node to /usr/local
 . ${PRODUCT_NAME} command line tool (zstack-cli)
 . ${PRODUCT_NAME} control tool (zstack-ctl)
 . MySQL
-. RabbitMQ server
 . NFS server
 . Apache HTTP server
 
@@ -2711,7 +2660,7 @@ And an empty password is set to the root user of MySQL.
 --
 
 In addition to all above results, below command sets MySQL user 'zstack' password to DB_ZSTACK_PASSWORD by using the MySQL 'root' user password DB_ROOT_PASSWORD
-, and uses the IP of eth1 for deploying MySQL and RabbitMQ.
+, and uses the IP of eth1 for deploying MySQL.
 
 # ${PROGNAME} -r /home/zstack -a -P DB_ROOT_PASSWORD -p DB_ZSTACK_PASSWORD -I eth1
 
@@ -3150,15 +3099,15 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo ""
     echo_star_line
     echo "${PRODUCT_NAME} ${VERSION}management node is installed to $ZSTACK_INSTALL_ROOT."
-    echo "Mysql and RabbitMQ are not installed. You can use zstack-ctl to install them and start ${PRODUCT_NAME} service later. "
+    echo "Mysql and are not installed. You can use zstack-ctl to install them and start ${PRODUCT_NAME} service later. "
     echo_chrony_server_warning_if_need
     echo_star_line
     start_zstack_tui
     exit 0
 fi
 
-#Install Mysql and Rabbitmq
-install_db_msgbus
+#Install Mysql
+install_db
 
 #Delete old monitoring data if NEED_DROP_DB
 if [ -n "$NEED_DROP_DB" ]; then
@@ -3236,10 +3185,10 @@ if [ ! -z QUIET_INSTALLATION ]; then
     else
         echo -e "\n$(tput setaf 6) User select QUIET installation. Installation does following changes for user:"
         if [ ! -z "$CHANGE_HOSTNAME" ]; then
-            echo " - HOSTNAME is changed to '$CHANGE_HOSTNAME' to avoid of rabbitmq and mysql server installation failure."
+            echo " - HOSTNAME is changed to '$CHANGE_HOSTNAME' to avoid of mysql server installation failure."
         fi
         if [ ! -z "$CHANGE_HOSTS" ]; then
-            echo " - /etc/hosts is added a new line: '$CHANGE_HOSTNAME' to avoid of rabbitmq server installation failure."
+            echo " - /etc/hosts is added a new line: '$CHANGE_HOSTNAME'"
         fi
         if [ ! -z "$DELETE_PY_CRYPTO" ]; then
             echo " - 'python-crypto' rpm is removed to avoid of confliction with Ansible."
