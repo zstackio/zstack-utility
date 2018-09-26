@@ -307,8 +307,12 @@ def stream_body(task, fpath, entity, boundary):
                 conf_path = linux.write_to_temp_file(conf)
 
             shell.check_run('qemu-img convert -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % (task.tmpPath, task.dstPath, conf_path))
-            shell.check_run('rbd rm %s' % task.tmpPath)
+        except Exception as e:
+            task.fail('cannot convert Qcow2 image %s to rbd' % task.imageUuid)
+            logger.warn('convert image %s failed: %s', (task.imageUuid, str(e)))
+            return
         finally:
+            shell.run('rbd rm %s' % task.tmpPath)
             if conf_path:
                 os.remove(conf_path)
     else:
