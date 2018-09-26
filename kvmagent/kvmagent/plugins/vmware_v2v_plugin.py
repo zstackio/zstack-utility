@@ -105,7 +105,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 zs_virt_v2v {1}'.format(cmd.storagePath, virt_v2v_cmd)
         if shell.run(docker_run_cmd) != 0:
             rsp.success = False
-            rsp.error = "failed to run virt-v2v command: " + docker_run_cmd
+            rsp.error = "failed to run virt-v2v command"
             return jsonobject.dumps(rsp)
 
         rootVol = r"%s/%s-sda" % (storagePath, cmd.srcVmName)
