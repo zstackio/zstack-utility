@@ -1555,7 +1555,7 @@ def do_deploy_chrony(host_post_info, svrs, distro):
     if distro in RPM_BASED_OS:
         yum_install_package("chrony", host_post_info)
         # ensure config file not locked by user
-        run_remote_command("chattr -i /etc/chrony.conf")
+        run_remote_command("chattr -i /etc/chrony.conf", host_post_info)
         replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
         for svr in svrs:
             update_file("/etc/chrony.conf", "regexp='#server %s' state=absent" % svr, host_post_info)
