@@ -17951,6 +17951,8 @@ class APIConvertVmFromForeignHypervisorMsg(object):
         self.type = None
         #valid values: [InstantStart, JustConvert]
         self.strategy = None
+        self.longJobName = None
+        self.longJobDescription = None
         self.resourceUuid = None
         self.session = None
         self.timeout = None
