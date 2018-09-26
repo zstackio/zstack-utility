@@ -13,6 +13,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import lock
 from zstacklib.utils.bash import *
 
 logger = log.get_logger(__name__)
@@ -536,6 +537,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @lock.lock('mount')
     def mount(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MountResponse()
