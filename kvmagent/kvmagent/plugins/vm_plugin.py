@@ -4528,7 +4528,7 @@ class VmPlugin(kvmagent.KvmAgent):
             slot = pciDeviceAddress.split(":")[1].split(".")[0]
             func = pciDeviceAddress.split(".")[-1]
 
-            cmd = """virsh dumpxml %s | grep -A3 -E '<hostdev.*pci' | grep "<address domain='0x0000' bus='0x%s' slot='0x%s' function='0x%s'/>\"""" % \
+            cmd = """virsh dumpxml %s | grep -A3 -E '<hostdev.*pci' | grep "<address domain='0x0000' bus='0x%s' slot='0x%s' function='0x%s'/>" """ % \
                   (vmUuid, bus, slot, func)
             r, o, e = bash.bash_roe(cmd)
             return o != ""
@@ -4820,6 +4820,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 'the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will'
                 ' boot from hdd' % vm_uuid)
 
+            try: dom.destroy()
+            except: pass
+
             self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
             boot_dev = xmlobject.XmlObject('boot')
             boot_dev.put_attr('dev', 'hd')
@@ -4831,7 +4834,15 @@ class VmPlugin(kvmagent.KvmAgent):
             for key, val in curr_meta.iteritems():
                 curr_meta[key].set_tag('zs:zstack')
 
-            dom.destroy()
+            # In case CD-ROM has been ejected
+            disks = domain_xmlobject.devices.get_children_nodes()['disk']
+            for disk in disks:
+                if disk.device_ != 'cdrom':
+                    continue
+
+                target = disk.get_child_node('target')
+                if target and target.has_element('tray_'):
+                    target.tray_ = 'closed'
 
             xml = domain_xmlobject.dump()
             domain = conn.defineXML(xml)
