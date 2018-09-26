@@ -12,9 +12,12 @@ logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
+SANLOCK_IO_TIMEOUT = 40
+LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
+LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 SUPER_BLOCK_BACKUP = "superblock.bak"
-COMMON_TAG = "zs;sharedblock"
+COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
 
@@ -289,10 +292,32 @@ def config_lvmlocal_conf(node, value):
     cmd(is_exception=True)
 
 
+@bash.in_bash
 def start_lvmlockd():
-    for service in ["lvm2-lvmlockd", "wdmd", "sanlock"]:
+    for service in ["wdmd", "sanlock"]:
         cmd = shell.ShellCmd("systemctl start %s" % service)
         cmd(is_exception=True)
+
+    if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
+        os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
+    r = bash.bash_r("pgrep lvmlockd")
+    if r != 0:
+        bash.bash_errorout("nohup lvmlockd --daemon-debug --sanlock-timeout %s --adopt 1  >> %s 2>&1 &" %
+                         (SANLOCK_IO_TIMEOUT, LVMLOCKD_LOG_FILE_PATH))
+
+    if not os.path.exists(LVMLOCKD_LOG_LOGROTATE_PATH):
+        content = """/var/log/lvmlockd/lvmlockd.log {
+    rotate 5
+    missingok
+    copytruncate
+    size 30M
+    compress
+    compresscmd /usr/bin/xz
+    uncompresscmd /usr/bin/unxz
+    compressext .xz
+}"""
+        with open(LVMLOCKD_LOG_LOGROTATE_PATH, 'w') as f:
+            f.write(content)
 
 
 @bash.in_bash
@@ -782,11 +807,48 @@ def examine_lockspace(lockspace):
     return r
 
 
+def check_stuck_vglk():
+    @linux.retry(3, 0.1)
+    def is_stuck_vglk():
+        r, o, e = bash.bash_roe("sanlock client status | grep ':VGLK:'")
+        if r != 0:
+            return
+        else:
+            raise RetryException("found sanlock vglk lock stuck")
+    try:
+        is_stuck_vglk()
+    except Exception as e:
+        r, o, e = bash.bash_roe("sanlock client status | grep ':VGLK:'")
+        if r != 0:
+            return
+        if len(o.strip().splitlines()) == 0:
+            return
+        for stucked in o.strip().splitlines():  # type: str
+            if "ADD" in stucked or "REM" in stucked:
+                continue
+            cmd = "sanlock client release -%s" % stucked.replace(" p ", " -p ")
+            r, o, e = bash.bash_roe(cmd)
+            logger.warn("find stuck vglk and already released, detail: [return_code: %s, stdout: %s, stderr: %s]" %
+                        (r, o, e))
+
+
+@bash.in_bash
+def fix_global_lock():
+    vg_names = bash.bash_o("lvmlockctl -i | grep lock_type=sanlock | awk '{print $2}'").strip().splitlines()  # type: list
+    vg_names.sort()
+    if len(vg_names) < 2:
+        return
+    for vg_name in vg_names[1:]:
+        bash.bash_roe("lvmlockctl --gl-disable %s" % vg_name)
+    bash.bash_roe("lvmlockctl --gl-enable %s" % vg_names[0])
+
+
 def check_pv_status(vgUuid, timeout):
     r, o , e = bash.bash_roe("timeout -s SIGKILL %s pvs --noheading --nolocking -Svg_name=%s -oname,missing" % (timeout, vgUuid))
     if len(o) == 0 or r != 0:
-        logger.warn("can not find shared block in shared block group %s, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, r, o, e))
-        return True, ""
+        s = "can not find shared block in shared block group %s, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, r, o, e)
+        logger.warn(s)
+        return False, s
     for pvs_out in o:
         if "unknown" in pvs_out:
             s = "disk in shared block group %s missing" % vgUuid
@@ -797,17 +859,21 @@ def check_pv_status(vgUuid, timeout):
             logger.warn("%s, details: %s" % (s, o))
             return False, s
 
-    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s' % (10 if timeout < 10 else timeout, vgUuid))
+    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (15 if timeout < 15 else timeout, vgUuid))
+    check_stuck_vglk()
+
     if health != 0:
-        s = "vgck %s failed, details: %s" % (vgUuid, e)
+        s = "vgck %s failed, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, health, o, e)
         logger.warn(s)
         return False, s
 
-    if e is not None and e != "":
-        for es in e.strip().splitlines():
+    if o is not None and o != "":
+        for es in o.strip().splitlines():
             if "WARNING" in es:
                 continue
-            s = "vgck %s failed, details: %s" % (vgUuid, e)
+            if "Duplicate sanlock global lock" in es:
+                fix_global_lock()
+            s = "vgck %s failed, details: %s" % (vgUuid, o)
             logger.warn(s)
             return False, s
 
