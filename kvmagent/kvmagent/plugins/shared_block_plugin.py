@@ -328,6 +328,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_sanlock_by_sed("debug_renew", "debug_renew=1")
             lvm.config_sanlock_by_sed("use_watchdog", "use_watchdog=0")
 
+            sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], bash.bash_o("hostname").strip()[:20])
+            lvm.config_sanlock_by_sed("our_host_name", "our_host_name=%s" % sanlock_hostname)
+
         config_lvm(cmd.hostId)
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
