@@ -20,6 +20,7 @@ SUPER_BLOCK_BACKUP = "superblock.bak"
 COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
+ENABLE_DUP_GLOBAL_CHECK = False
 
 
 class VmStruct(object):
@@ -853,6 +854,8 @@ def check_stuck_vglk():
 
 @bash.in_bash
 def fix_global_lock():
+    if not ENABLE_DUP_GLOBAL_CHECK:
+        return
     vg_names = bash.bash_o("lvmlockctl -i | grep lock_type=sanlock | awk '{print $2}'").strip().splitlines()  # type: list
     vg_names.sort()
     if len(vg_names) < 2:
