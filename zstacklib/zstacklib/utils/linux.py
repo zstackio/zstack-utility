@@ -295,6 +295,9 @@ def get_file_size_by_http_head(url):
 def shellquote(s):
     return "'" + s.replace("'", "'\\''") + "'"
 
+def remote_shell_quote(s):
+    return ("\\''" + s.replace("'", "'\\''") + "'\\'").encode('utf8')
+
 def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callback_data=None, cert_check=False):
     def get_percentage(filesize, dst):
         try:
@@ -438,7 +441,7 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
-        scp_cmd = 'scp {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:"\'{4}\'" {5}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath, bandWidth)
+        scp_cmd = 'scp {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, remote_shell_quote(src_filepath), dst_filepath, bandWidth)
         shell.call(scp_cmd)
         os.chmod(dst_filepath, 0664)
     finally:
