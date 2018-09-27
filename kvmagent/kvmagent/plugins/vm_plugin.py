@@ -4834,8 +4834,8 @@ class VmPlugin(kvmagent.KvmAgent):
             domain_xml = dom.XMLDesc(0)
             domain_xmlobject = xmlobject.loads(domain_xml)
             vm_uuid = dom.name()
-            boot_dev = domain_xmlobject.os.get_child_node_as_list('boot')[0]
-            if boot_dev.dev_ != 'cdrom':
+            boot_devs = domain_xmlobject.os.get_child_node_as_list('boot')
+            if len(boot_devs) == 0 or boot_devs[0].dev_ != 'cdrom':
                 logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (
                     vm_uuid, boot_dev.dev_))
                 return
