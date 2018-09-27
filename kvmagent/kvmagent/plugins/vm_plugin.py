@@ -480,6 +480,21 @@ LIBVIRT_VERSION = get_libvirt_version()
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
+# Occasionally, libvirt might fail to list VM ...
+def get_console_without_libvirt(vmUuid):
+    output = bash.bash_o("""ps x | awk '/qemu[-]kvm.*%s/{print $1, index($0, " -vnc ")}'""" % vmUuid).splitlines()
+    if len(output) != 1:
+        return None, None
+
+    pid, idx = output.split()
+    proto = 'vnc' if int(idx) != 0 else 'spice'
+
+    output = bash.bash_o("""lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
+    if len(output) == 1:
+        return proto, int(output[0])
+    logger.warn("get_port_without_libvirt: unexpected output: %s" % output)
+    return None, None
+
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
     EVENT_UNDEFINED = "Undefined"
@@ -3622,15 +3637,24 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
         return jsonobject.dumps(rsp)
 
+    def get_vm_console_info(self, vmUuid):
+        try:
+            vm = get_vm_by_uuid(vmUuid)
+            return vm.get_console_protocol(), vm.get_console_port()
+        except kvmagent.KvmError as e:
+            proto, port = get_console_without_libvirt(vmUuid)
+            if port:
+                return proto, port
+            raise e
+
     @kvmagent.replyerror
     def get_console_port(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVncPortResponse()
         try:
-            vm = get_vm_by_uuid(cmd.vmUuid)
-            port = vm.get_console_port()
+            proto, port = self.get_vm_console_info(cmd.vmUuid)
             rsp.port = port
-            rsp.protocol = vm.get_console_protocol()
+            rsp.protocol = proto
             logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.vmUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
