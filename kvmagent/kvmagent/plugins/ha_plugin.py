@@ -190,7 +190,7 @@ class HaPlugin(kvmagent.KvmAgent):
                 try:
                     time.sleep(cmd.interval)
 
-                    health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout)
+                    health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, check_pv=False)
                     logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))
                     if health[0] is True:
                         failure = 0
@@ -202,6 +202,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     try:
                         logger.warn("shared block storage %s fencer fired!" % cmd.vgUuid)
+                        self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
+
                         # we will check one qcow2 per pv to determine volumes on pv should be kill
                         invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
                         vms = lvm.get_running_vm_root_volume_on_pv(cmd.vgUuid, invalid_pv_uuids, cmd.checkIo)
@@ -231,7 +233,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
                         lvm.remove_partial_lv_dm(cmd.vgUuid)
 
-                        if lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, False)[0] is False:
+                        if lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, True)[0] is False:
                             lvm.drop_vg_lock(cmd.vgUuid)
                             lvm.remove_device_map_for_vg(cmd.vgUuid)
 
@@ -241,8 +243,6 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn("kill vm failed, %s" % e.message)
                         content = traceback.format_exc()
                         logger.warn("traceback: %s" % content)
-                    finally:
-                        self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
 
                 except Exception as e:
                     logger.debug('self-fencer on sharedblock primary storage %s stopped abnormally' % cmd.vgUuid)
