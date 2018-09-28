@@ -3050,6 +3050,18 @@ class CreateVpnIpsecConfigAction(inventory.APICreateVpnIpsecConfigMsg):
         self.out = evt
         return self.out
 
+class CreateVxlanVtepAction(inventory.APICreateVxlanVtepMsg):
+    def __init__(self):
+        super(CreateVxlanVtepAction, self).__init__()
+        self.sessionUuid = None
+        self.out = None
+    def run(self):
+        if not self.sessionUuid:
+            raise Exception('sessionUuid of action[CreateVxlanVtepAction] cannot be None')
+        evt = api.async_call(self, self.sessionUuid)
+        self.out = evt
+        return self.out
+
 class CreateWebhookAction(inventory.APICreateWebhookMsg):
     def __init__(self):
         super(CreateWebhookAction, self).__init__()
