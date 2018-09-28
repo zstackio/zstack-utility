@@ -13561,6 +13561,22 @@ class APIUpdateNasMountTargetMsg(object):
         self.userTags = OptionalList()
 
 
+APICREATEVXLANVTEPMSG_FULL_NAME = 'org.zstack.network.l2.vxlan.vtep.APICreateVxlanVtepMsg'
+class APICreateVxlanVtepMsg(object):
+    FULL_NAME='org.zstack.network.l2.vxlan.vtep.APICreateVxlanVtepMsg'
+    def __init__(self):
+        #mandatory field
+        self.hostUuid = NotNoneField()
+        #mandatory field
+        self.poolUuid = NotNoneField()
+        self.vtepIp = None
+        self.resourceUuid = None
+        self.session = None
+        self.timeout = None
+        self.systemTags = OptionalList()
+        self.userTags = OptionalList()
+
+
 APIQUERYVTEPMSG_FULL_NAME = 'org.zstack.network.l2.vxlan.vtep.APIQueryVtepMsg'
 class APIQueryVtepMsg(object):
     FULL_NAME='org.zstack.network.l2.vxlan.vtep.APIQueryVtepMsg'
@@ -19436,6 +19452,7 @@ api_names = [
     'APICreateVpcVpnConnectionRemoteMsg',
     'APICreateVpnIkeConfigMsg',
     'APICreateVpnIpsecConfigMsg',
+    'APICreateVxlanVtepMsg',
     'APICreateWebhookMsg',
     'APICreateZoneMsg',
     'APIDebugSignalMsg',
