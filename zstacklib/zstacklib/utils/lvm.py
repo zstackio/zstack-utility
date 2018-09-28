@@ -286,6 +286,22 @@ def config_sanlock_by_sed(keyword, entry):
     cmd(is_exception=False)
 
 
+def config_lvmlockd_by_sed():
+    cmd = shell.ShellCmd(
+        "sed -i 's/.*ExecStart=.*/ExecStart=\\/usr\\/sbin\\/lvmlockd --daemon-debug --sanlock-timeout %s/g' /usr/lib/systemd/system/lvm2-lvmlockd.service" % SANLOCK_IO_TIMEOUT)
+    cmd(is_exception=False)
+
+    if bash.bash_r("grep StandardOutput /usr/lib/systemd/system/lvm2-lvmlockd.service") != 0:
+        cmd = shell.ShellCmd(
+            "sed -i '/ExecStart/a StandardOutput=%s' /usr/lib/systemd/system/lvm2-lvmlockd.service" % LVMLOCKD_LOG_FILE_PATH)
+        cmd(is_exception=False)
+
+    if bash.bash_r("grep StandardError /usr/lib/systemd/system/lvm2-lvmlockd.service") != 0:
+        cmd = shell.ShellCmd(
+            "sed -i '/ExecStart/a StandardError=%s' /usr/lib/systemd/system/lvm2-lvmlockd.service" % LVMLOCKD_LOG_FILE_PATH)
+        cmd(is_exception=False)
+
+
 def config_lvm_conf(node, value):
     cmd = shell.ShellCmd("lvmconfig --mergedconfig --config %s=%s -f /etc/lvm/lvm.conf" % (node, value))
     cmd(is_exception=True)
@@ -298,16 +314,13 @@ def config_lvmlocal_conf(node, value):
 
 @bash.in_bash
 def start_lvmlockd():
-    for service in ["wdmd", "sanlock"]:
-        cmd = shell.ShellCmd("systemctl start %s" % service)
-        cmd(is_exception=True)
-
     if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
-    r = bash.bash_r("pgrep lvmlockd")
-    if r != 0:
-        bash.bash_errorout("nohup lvmlockd --daemon-debug --sanlock-timeout %s --adopt 1  >> %s 2>&1 &" %
-                         (SANLOCK_IO_TIMEOUT, LVMLOCKD_LOG_FILE_PATH))
+
+    config_lvmlockd_by_sed()
+    for service in ["wdmd", "sanlock", "lvm2-lvmlockd"]:
+        cmd = shell.ShellCmd("systemctl start %s" % service)
+        cmd(is_exception=True)
 
     if not os.path.exists(LVMLOCKD_LOG_LOGROTATE_PATH):
         content = """/var/log/lvmlockd/lvmlockd.log {
@@ -680,6 +693,16 @@ def check_gl_lock(raise_exception=False):
     if r == 0:
         return
     logger.debug("can not find any gl lock")
+
+    r, o = bash.bash_ro("lvmlockctl -i | grep 'lock_type=sanlock' | awk '{print $2}'")
+    if len(o.strip().splitlines()) != 0:
+        for i in o.strip().splitlines():
+            if i == "":
+                continue
+            r, o, e = bash.bash_roe("lvmlockctl --gl-enable %s" % i)
+            if r != 0:
+                raise Exception("failed to enable gl lock on vg: %s, %s, %s" % (i, o, e))
+
     r, o = bash.bash_ro("vgs --nolocking --noheadings -Svg_lock_type=sanlock -oname")
     result = []
     for i in o.strip().split("\n"):
@@ -821,9 +844,9 @@ def examine_lockspace(lockspace):
     if r != 0:
         logger.warn("sanlock examine %s failed, return %s" % (lockspace, r))
         return r
-    r = bash.bash_r("sanlock direct read_leader -s %s" % lockspace)
-    if r != 0:
-        logger.warn("sanlock read leader %s failed, return %s" % (lockspace, r))
+    # r = bash.bash_r("sanlock direct read_leader -s %s" % lockspace)
+    # if r != 0:
+    #     logger.warn("sanlock read leader %s failed, return %s" % (lockspace, r))
     return r
 
 
@@ -881,23 +904,9 @@ def check_pv_status(vgUuid, timeout):
             logger.warn("%s, details: %s" % (s, o))
             return False, s
 
-    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (15 if timeout < 15 else timeout, vgUuid))
-    check_stuck_vglk()
-
-    if health != 0:
-        s = "vgck %s failed, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, health, o, e)
-        logger.warn(s)
-        return False, s
-
-    if o is not None and o != "":
-        for es in o.strip().splitlines():
-            if "WARNING" in es:
-                continue
-            if "Duplicate sanlock global lock" in es:
-                fix_global_lock()
-            s = "vgck %s failed, details: %s" % (vgUuid, o)
-            logger.warn(s)
-            return False, s
+    r, s = lvm_vgck(vgUuid, timeout)
+    if r is False:
+        return r, s
 
     health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking --readonly --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
     if health == "":
@@ -919,6 +928,30 @@ def check_pv_status(vgUuid, timeout):
     return True, ""
 
 
+def lvm_vgck(vgUuid, timeout):
+    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (15 if timeout < 15 else timeout, vgUuid))
+    check_stuck_vglk()
+
+    if health != 0:
+        s = "vgck %s failed, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, health, o, e)
+        logger.warn(s)
+        return False, s
+
+    if o is not None and o != "":
+        for es in o.strip().splitlines():
+            if "WARNING" in es:
+                continue
+            if "Duplicate sanlock global lock" in es:
+                fix_global_lock()
+                continue
+            if es.strip() == "":
+                continue
+            s = "vgck %s failed, details: %s" % (vgUuid, o)
+            logger.warn(s)
+            return False, s
+    return True, ""
+
+
 def check_vg_status(vgUuid, check_timeout, check_pv=True):
     # type: (str) -> tuple[bool, str]
     # 1. examine sanlock lock
@@ -931,13 +964,67 @@ def check_vg_status(vgUuid, check_timeout, check_pv=True):
         logger.warn(s)
         return False, s
 
+    r, s = check_sanlock_renewal_failure(lock_space)
+    if r is False:
+        return r, s
+
+    r, s = check_sanlock_status(lock_space)
+    if r is False:
+        return r, s
+
     if examine_lockspace(lock_space) != 0:
         return False, "examine lockspace %s failed" % lock_space
+
+    if not set_sanlock_event(lock_space):
+        return False, "sanlock set event on lock space %s failed" % lock_space
 
     if not check_pv:
         return True, ""
 
     return check_pv_status(vgUuid, check_timeout)
+
+
+def set_sanlock_event(lockspace):
+    """
+
+    :type lockspace: str
+    """
+    host_id = lockspace.split(":")[1]
+    r, o, e = bash.bash_roe("sanlock client set_event -s %s -i %s -e 1 -d 1" % (lockspace, host_id))
+    return r == 0
+
+
+def check_sanlock_renewal_failure(lockspace):
+    r, o, e = bash.bash_roe("sanlock client renewal -s %s" % lockspace)
+    last_record = o.strip().splitlines()[-1]
+    errors = int(last_record.split("next_errors=")[-1])
+    if errors > 2:
+        return False, "sanlock renew lease of lockspace %s failed for %s times, storage may failed" % (
+        lockspace, errors)
+    return True, ""
+
+
+def check_sanlock_status(lockspace):
+    r, o, e = bash.bash_roe("sanlock client status -D | grep %s -A 18" % lockspace)
+    if r != 0:
+        return False, "sanlock can not get lockspace %s status" % lockspace
+
+    renewal_last_result = 0
+    renewal_last_attempt = 0
+    renewal_last_success = 0
+    for i in o.strip().splitlines():
+        if "renewal_last_result" in i:
+            renewal_last_result = int(i.strip().split("=")[-1])
+        if "renewal_last_attempt" in i:
+            renewal_last_attempt = int(i.strip().split("=")[-1])
+        if "renewal_last_success" in i:
+            renewal_last_success = int(i.strip().split("=")[-1])
+    if renewal_last_result != 0:
+        if (renewal_last_attempt > renewal_last_success and renewal_last_attempt - renewal_last_success > 100) or (
+                100 < renewal_last_attempt < renewal_last_success):
+            return False, "sanlock last renewal failed with %s and last attempt is %s, last success is %s" % (
+                renewal_last_result, renewal_last_attempt, renewal_last_success)
+    return True, ""
 
 
 @bash.in_bash
