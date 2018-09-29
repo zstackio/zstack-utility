@@ -2190,36 +2190,14 @@ class Vm(object):
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
     def _interface_cmd_to_xml(self, cmd):
-        nic = cmd.nic
+        interface = Vm._build_interface_xml(cmd.nic)
 
-        interface = etree.Element('interface', attrib={'type': 'bridge'})
-        e(interface, 'mac', None, attrib={'address': nic.mac})
-        e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
-        e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
-        e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-        if nic.useVirtio:
-            e(interface, 'model', None, attrib={'type': 'virtio'})
-        else:
-            e(interface, 'model', None, attrib={'type': 'e1000'})
+        def addon():
+            if cmd.addons and cmd.addons['NicQos']:
+                qos = cmd.addons['NicQos']
+                Vm._add_qos_to_interface(interface, qos)
 
-        def nic_qos():
-            if not cmd.addons:
-                return
-
-            qos = cmd.addons['NicQos']
-            if not qos:
-                return
-
-            if not qos.outboundBandwidth and not qos.inboundBandwidth:
-                return
-
-            bandwidth = e(interface, 'bandwidth')
-            if qos.outboundBandwidth:
-                e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 8 / 1024)})
-            if qos.inboundBandwidth:
-                e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 8 / 1024)})
-
-        nic_qos()
+        addon()
 
         return etree.tostring(interface)
 
@@ -2380,9 +2358,7 @@ class Vm(object):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ == cmd.nic.mac:
-                    s = shell.ShellCmd('ip link | grep -w %s > /dev/null' % cmd.nic.nicInternalName)
-                    s(False)
-                    return s.return_code == 0
+                    return shell.run('ip link | grep -w -q %s' % cmd.nic.nicInternalName) == 0
 
             return False
 
@@ -2430,9 +2406,7 @@ class Vm(object):
                 if iface.mac.address_ == cmd.nic.mac:
                     return False
 
-            s = shell.ShellCmd('ip link show dev %s > /dev/null' % cmd.nic.nicInternalName)
-            s(False)
-            return s.return_code != 0
+            return shell.run('ip link show dev %s > /dev/null' % cmd.nic.nicInternalName) != 0
 
         if check_device(None):
             return
@@ -2460,6 +2434,42 @@ class Vm(object):
         # in 10 seconds, no attach-nic operation can be performed,
         # to work around libvirt bug
         self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
+
+    def update_nic(self, cmd):
+        self._wait_vm_run_until_seconds(10)
+        self.timeout_object.wait_until_object_timeout('%s-update-nic' % self.uuid)
+        self._update_nic(cmd)
+
+        self.timeout_object.put('%s-update-nic' % self.uuid, 10)
+
+    def _update_nic(self, cmd):
+        if not cmd.nics:
+            return
+
+        def check_device(nic):
+            self.refresh()
+            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ == nic.mac:
+                    return shell.run('ip link | grep -w -q %s' % nic.nicInternalName) == 0
+
+            return False
+
+        def addon(nic_xml_object):
+            if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
+                qos = cmd.addons['NicQos'][nic.uuid]
+                Vm._add_qos_to_interface(nic_xml_object, qos)
+
+        for nic in cmd.nics:
+            interface = Vm._build_interface_xml(nic)
+            addon(interface)
+            xml = etree.tostring(interface)
+            logger.debug('updating nic:\n%s' % xml)
+            if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
+                self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+            else:
+                self.domain.updateDeviceFlags(xml)
+            if not linux.wait_callback_success(check_device, nic, interval=0.5, timeout=30):
+                raise Exception('nic device does not show after 30 seconds')
 
     def _check_qemuga_info(self, info):
         if info:
@@ -2567,7 +2577,6 @@ class Vm(object):
 
     @staticmethod
     def from_StartVmCmd(cmd):
-        use_virtio = cmd.useVirtio
         use_numa = cmd.useNuma
 
         elements = {}
@@ -2974,43 +2983,15 @@ class Vm(object):
             if not cmd.nics:
                 return
 
-            def nic_qos(nic_xml_object):
-                if not cmd.addons:
-                    return
-
-                nqos = cmd.addons['NicQos']
-                if not nqos:
-                    return
-
-                qos = nqos[nic.uuid]
-                if not qos:
-                    return
-
-                if not qos.outboundBandwidth and not qos.inboundBandwidth:
-                    return
-
-                bandwidth = e(nic_xml_object, 'bandwidth')
-                if qos.outboundBandwidth:
-                    e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 1024 / 8)})
-                if qos.inboundBandwidth:
-                    e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 1024 / 8)})
+            def addon(nic_xml_object):
+                if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
+                    qos = cmd.addons['NicQos'][nic.uuid]
+                    Vm._add_qos_to_interface(nic_xml_object, qos)
 
             devices = elements['devices']
             for nic in cmd.nics:
-                interface = e(devices, 'interface', None, {'type': 'bridge'})
-                e(interface, 'mac', None, {'address': nic.mac})
-                if nic.ip is not None and nic.ip != "":
-                    filterref = e(interface, 'filterref', None, {'filter':'clean-traffic'})
-                    e(filterref, 'parameter', None, {'name':'IP', 'value': nic.ip})
-                e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-                e(interface, 'source', None, {'bridge': nic.bridgeName})
-                if use_virtio:
-                    e(interface, 'model', None, {'type': 'virtio'})
-                else:
-                    e(interface, 'model', None, {'type': 'e1000'})
-                e(interface, 'target', None, {'dev': nic.nicInternalName})
-
-                nic_qos(interface)
+                interface = Vm._build_interface_xml(nic, devices)
+                addon(interface)
 
         def make_meta():
             root = elements['root']
@@ -3256,6 +3237,36 @@ class Vm(object):
         vm.domain_xmlobject = xmlobject.loads(xml)
         return vm
 
+    @staticmethod
+    def _build_interface_xml(nic, devices=None):
+        if devices:
+            interface = e(devices, 'interface', None, {'type': 'bridge'})
+        else:
+            interface = etree.Element('interface', attrib={'type': 'bridge'})
+
+        e(interface, 'mac', None, attrib={'address': nic.mac})
+        e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
+        e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
+        e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
+        if nic.ip:
+            filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
+            e(filterref, 'parameter', None, {'name': 'IP', 'value': nic.ip})
+        if nic.useVirtio:
+            e(interface, 'model', None, attrib={'type': 'virtio'})
+        else:
+            e(interface, 'model', None, attrib={'type': 'e1000'})
+        return interface
+
+    @staticmethod
+    def _add_qos_to_interface(interface, qos):
+        if not qos.outboundBandwidth and not qos.inboundBandwidth:
+            return
+
+        bandwidth = e(interface, 'bandwidth')
+        if qos.outboundBandwidth:
+            e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 1024 / 8)})
+        if qos.inboundBandwidth:
+            e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 1024 / 8)})
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
@@ -3282,6 +3293,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
     KVM_ATTACH_NIC_PATH = "/vm/attachnic"
     KVM_DETACH_NIC_PATH = "/vm/detachnic"
+    KVM_UPDATE_NIC_PATH = "/vm/updatenic"
     KVM_CREATE_SECRET = "/vm/createcephsecret"
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
@@ -3404,6 +3416,16 @@ class VmPlugin(kvmagent.KvmAgent):
 
         vm = get_vm_by_uuid(cmd.vmUuid)
         vm.detach_nic(cmd)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def update_nic(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.vmInstanceUuid)
+        vm.update_nic(cmd)
 
         return jsonobject.dumps(rsp)
 
@@ -4694,6 +4716,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
         http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
+        http_server.register_async_uri(self.KVM_UPDATE_NIC_PATH, self.update_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
