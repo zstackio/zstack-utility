@@ -13,6 +13,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import http
 from zstacklib.utils.bash import in_bash
+from zstacklib.utils.linux import shellquote
 
 logger = log.get_logger(__name__)
 
@@ -95,13 +96,13 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         virt_v2v_cmd = 'virt-v2v \
-                -ic vpx://{0}?no_verify=1 \'{1}\' \
+                -ic vpx://{0}?no_verify=1 {1} \
                 -it vddk \
                 --vddk-libdir=/home/v2v/vmware-vix-disklib-distrib \
                 --vddk-thumbprint={3}    \
                 -o local -os {2} \
                 --password-file {2}/passwd \
-                -of qcow2 --compress > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, cmd.srcVmName, storagePath, cmd.thumbprint)
+                -of qcow2 --compress > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storagePath, cmd.thumbprint)
         docker_run_cmd = 'systemctl start docker && docker run --rm -v /usr/local/zstack:/usr/local/zstack -v {0}:{0} \
                 -e VIRTIO_WIN=/usr/local/zstack/zstack-windows-virtio-driver.iso \
                 -e PATH=/home/v2v/nbdkit:$PATH \
