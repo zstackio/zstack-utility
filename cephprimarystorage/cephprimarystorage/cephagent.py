@@ -16,6 +16,7 @@ from zstacklib.utils.rollback import rollback, rollbackable
 import os
 from zstacklib.utils import shell
 from imagestore import ImageStoreClient
+from zstacklib.utils.linux import remote_shell_quote
 
 logger = log.get_logger(__name__)
 
@@ -683,9 +684,7 @@ class CephAgent(object):
         _0()
 
         try:
-            shell.call(
-                'set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s "cat \'%s\'" | %s rbd import --image-format 2 - %s/%s' %
-                (port, prikey_file, hostname, cmd.backupStorageInstallPath, bandWidth ,pool, tmp_image_name))
+            shell.call('set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s cat %s | %s rbd import --image-format 2 - %s/%s' % (port, prikey_file, hostname, remote_shell_quote(cmd.backupStorageInstallPath), bandWidth, pool, tmp_image_name))
         finally:
             os.remove(prikey_file)
 

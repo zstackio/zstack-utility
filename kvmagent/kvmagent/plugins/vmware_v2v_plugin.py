@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import os
 import json
 import commands
@@ -91,8 +94,8 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "failed to create storagePath {} in v2v conversion host[hostUuid:{}]".format(storagePath, cmd.hostUuid)
             return jsonobject.dumps(rsp)
 
-        virt_v2v_cmd = 'virt-v2v -v -x \
-                -ic vpx://{0}?no_verify=1 "{1}" \
+        virt_v2v_cmd = 'virt-v2v \
+                -ic vpx://{0}?no_verify=1 \'{1}\' \
                 -it vddk \
                 --vddk-libdir=/home/v2v/vmware-vix-disklib-distrib \
                 --vddk-thumbprint={3}    \
@@ -102,10 +105,18 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         docker_run_cmd = 'systemctl start docker && docker run --rm -v /usr/local/zstack:/usr/local/zstack -v {0}:{0} \
                 -e VIRTIO_WIN=/usr/local/zstack/zstack-windows-virtio-driver.iso \
                 -e PATH=/home/v2v/nbdkit:$PATH \
-                zs_virt_v2v {1}'.format(cmd.storagePath, virt_v2v_cmd)
+                zs_virt_v2v {1}'.format(cmd.storagePath.rstrip('/'), virt_v2v_cmd)
         if shell.run(docker_run_cmd) != 0:
             rsp.success = False
             rsp.error = "failed to run virt-v2v command"
+
+            # create folder to save virt-v2v log
+            v2v_log_file = "/tmp/v2v_log/%s-virt-v2v-log" % cmd.dstVmUuid
+            tail_cmd = 'mkdir -p /tmp/v2v_log; tail -c 1M %s/virt_v2v_log > %s' % (storagePath, v2v_log_file)
+            shell.run(tail_cmd)
+            with open(v2v_log_file, 'a') as fd:
+                fd.write('\n>>> VCenter Password: %s\n' % cmd.vCenterPassword)
+                fd.write('\n>>> virt_v2v command: %s\n' % docker_run_cmd)
             return jsonobject.dumps(rsp)
 
         rootVol = r"%s/%s-sda" % (storagePath, cmd.srcVmName)
