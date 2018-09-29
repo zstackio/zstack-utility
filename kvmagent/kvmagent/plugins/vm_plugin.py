@@ -2737,6 +2737,9 @@ class Vm(object):
     @staticmethod
     def from_StartVmCmd(cmd):
         use_numa = cmd.useNuma
+        machineType = cmd.machineType
+        if machineType != "pc" and machineType != "q35":
+            machineType = "pc"
 
         elements = {}
 
@@ -2819,7 +2822,7 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
                 e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
             else:
-                e(os, 'type', 'hvm', attrib={'machine': 'pc'})
+                e(os, 'type', 'hvm', attrib={'machine': machineType})
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI":
                     e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
@@ -2918,7 +2921,12 @@ class Vm(object):
                         for i in xrange(len(cdrom_device_id_list)):
                             empty_cdrom_configs.append(
                                 EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[i], str(i / 2), str(i % 2)))
-                else:
+                elif machineType == 'q35':
+                    EMPTY_CDROM_CONFIGS = [
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '0'),
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '0', '1'),
+                    ]
+                else:  ## machineType=pc
                     # bus 0 unit 0 already use by root volume
                     empty_cdrom_configs = [
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
@@ -2936,7 +2944,8 @@ class Vm(object):
                     e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
                     e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
                 else:
-                    e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'ide'})
+                    target_bus = 'sata' if (machineType == 'q35') else 'ide'
+                    e(cdrom, 'target', None, {'dev': targetDev, 'bus': target_bus})
                     e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
                 e(cdrom, 'readonly', None)
                 return cdrom
@@ -3239,11 +3248,12 @@ class Vm(object):
                 return
 
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
-            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+            model_value = 'ich9-ehci1' if (machineType == 'q35') else 'ehci'
+            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': model_value})
             e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
             # USB2.0 Controller for redirect
-            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': model_value})
             e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
             chan = e(devices, 'channel', None, {'type': 'spicevmc'})
             e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
@@ -3414,6 +3424,11 @@ class Vm(object):
         def make_controllers():
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
+
+            if machineType == "q35":
+                controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
+                e(controller, 'alias', None, {'name': 'sata'})
+                e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
 
         make_root()
         make_meta()
