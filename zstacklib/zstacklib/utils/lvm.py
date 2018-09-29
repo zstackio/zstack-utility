@@ -996,6 +996,8 @@ def set_sanlock_event(lockspace):
 def check_sanlock_renewal_failure(lockspace):
     r, o, e = bash.bash_roe("sanlock client renewal -s %s" % lockspace)
     last_record = o.strip().splitlines()[-1]
+    if "next_errors=" not in last_record:
+        return True, ""
     errors = int(last_record.split("next_errors=")[-1])
     if errors > 2:
         return False, "sanlock renew lease of lockspace %s failed for %s times, storage may failed" % (
@@ -1018,9 +1020,9 @@ def check_sanlock_status(lockspace):
             renewal_last_attempt = int(i.strip().split("=")[-1])
         if "renewal_last_success" in i:
             renewal_last_success = int(i.strip().split("=")[-1])
-    if renewal_last_result != 0:
+    if renewal_last_result != 1:
         if (renewal_last_attempt > renewal_last_success and renewal_last_attempt - renewal_last_success > 100) or (
-                100 < renewal_last_attempt < renewal_last_success):
+                100 < renewal_last_attempt < renewal_last_success - 100 < renewal_last_success):
             return False, "sanlock last renewal failed with %s and last attempt is %s, last success is %s" % (
                 renewal_last_result, renewal_last_attempt, renewal_last_success)
     return True, ""
