@@ -4829,46 +4829,31 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
+    # WARNING: it contains quite a few hacks to avoid xmlobject#loads()
     def _vm_reboot_event(self, conn, dom, opaque):
         try:
             domain_xml = dom.XMLDesc(0)
-            domain_xmlobject = xmlobject.loads(domain_xml)
             vm_uuid = dom.name()
-            boot_devs = domain_xmlobject.os.get_child_node_as_list('boot')
-            if len(boot_devs) == 0 or boot_devs[0].dev_ != 'cdrom':
+
+            match = re.search(r"""<boot\s+dev='""", domain_xml)
+            lindex = 0 if match is None else match.end()
+            rindex = domain_xml[lindex:].index("'")
+            if lindex == 0 or domain_xml[lindex:lindex+rindex] != 'cdrom':
                 logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (
-                    vm_uuid, boot_dev.dev_))
+                    vm_uuid, domain_xml[lindex:lindex+rindex]))
                 return
 
             logger.debug(
                 'the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will'
                 ' boot from hdd' % vm_uuid)
 
+            self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
+
             try: dom.destroy()
             except: pass
 
-            self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
-            boot_dev = xmlobject.XmlObject('boot')
-            boot_dev.put_attr('dev', 'hd')
-            domain_xmlobject.os.replace_node('boot', boot_dev)
-
-            #the metadata was wrongly renamed to strange string.
-            curr_meta = domain_xmlobject.metadata.get_children_nodes()
-            domain_xmlobject.metadata.put_attr('xmlns:zs', ZS_XML_NAMESPACE)
-            for key, val in curr_meta.iteritems():
-                curr_meta[key].set_tag('zs:zstack')
-
-            # In case CD-ROM has been ejected
-            disks = domain_xmlobject.devices.get_children_nodes()['disk']
-            for disk in disks:
-                if disk.device_ != 'cdrom':
-                    continue
-
-                target = disk.get_child_node('target')
-                if target and target.has_element('tray_'):
-                    target.tray_ = 'closed'
-
-            xml = domain_xmlobject.dump()
+            domain_xml = domain_xml[:lindex] + 'hd' + domain_xml[lindex+rindex:]
+            xml = re.sub(r"""\stray\s*=\s*'open'""", """ tray='closed'""", domain_xml)
             domain = conn.defineXML(xml)
             domain.createWithFlags(0)
         except:
