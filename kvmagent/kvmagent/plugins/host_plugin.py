@@ -314,10 +314,15 @@ class HostPlugin(kvmagent.KvmAgent):
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
+        system_product_name = shell.call('dmidecode -s system-product-name').strip()
+        host_cpu_info = shell.call("grep -m2 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
+
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
-
+        rsp.systemProductName = system_product_name
+        rsp.hostCpuModelName = host_cpu_info[0]
+        rsp.cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
