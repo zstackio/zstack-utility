@@ -112,7 +112,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "failed to run virt-v2v command"
 
             # create folder to save virt-v2v log
-            v2v_log_file = "/tmp/v2v_log/%s-virt-v2v-log" % cmd.dstVmUuid
+            v2v_log_file = "/tmp/v2v_log/%s-virt-v2v-log" % cmd.longJobUuid
             tail_cmd = 'mkdir -p /tmp/v2v_log; tail -c 1M %s/virt_v2v_log > %s' % (storagePath, v2v_log_file)
             shell.run(tail_cmd)
             with open(v2v_log_file, 'a') as fd:
