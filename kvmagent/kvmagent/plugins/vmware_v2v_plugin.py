@@ -137,7 +137,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 break
 
         xml = r"%s/%s.xml" % (storagePath, cmd.srcVmName)
-        if self._check_str_in_file(xml, "<nvram>"):
+        if self._check_str_in_file(xml, "<nvram "):
             rsp.bootMode = 'UEFI'
         return jsonobject.dumps(rsp)
 
