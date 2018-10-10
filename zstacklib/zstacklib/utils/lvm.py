@@ -175,12 +175,14 @@ def is_multipath(dev_name):
 
     slaves = shell.call("ls /sys/class/block/%s/slaves/" % dev_name).strip().split("\n")
     if slaves is not None and len(slaves) > 0:
+        if len(slaves) == 0 and slaves[0] == "":
+            return False
         return True
     return False
 
 
 def get_multipath_name(dev_name):
-    return bash.bash_r("multipath /dev/%s -l -v1" % dev_name)
+    return bash.bash_o("multipath /dev/%s -l -v1" % dev_name).strip()
 
 
 def get_device_info(dev_name):
