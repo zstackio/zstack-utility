@@ -3666,18 +3666,16 @@ class VmPlugin(kvmagent.KvmAgent):
     def _stop_vm(self, cmd):
         try:
             vm = get_vm_by_uuid(cmd.uuid)
-            type = cmd.type
+
+            if str(cmd.type) == "cold":
+                vm.stop(graceful=False)
+            else:
+                vm.stop(timeout=cmd.timeout / 2)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
-            # domain not found with virsh, try ps and kill
+        finally:
+            # libvirt is not reliable, c.f. ZSTAC-15412
             self.kill_vm(cmd.uuid)
-            logger.debug('the stop operation is still considered as success')
-            return
-        if str(type) == "cold":
-            vm.stop(graceful=False)
-
-        else:
-            vm.stop(timeout=cmd.timeout / 2)
 
     def kill_vm(self, vm_uuid):
         output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
@@ -3685,8 +3683,8 @@ class VmPlugin(kvmagent.KvmAgent):
         if vm_uuid not in output:
             return
 
-        vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
-        vm_pid.strip(' \t\n\r')
+        logger.debug('killing vm %s' % vm_uuid)
+        vm_pid = shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % vm_uuid).strip()
 
         def loop_kill(_):
             if shell.run('ps -p %s > /dev/null' % vm_pid):
