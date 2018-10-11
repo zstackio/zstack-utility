@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-baremetalpxeserver builder" basedir="../">
+    <property name="baremetalpxeserver.bdir" location="${build.dir}/baremetalpxeserver" />
+    <property name="baremetalpxeserver.ansible.dir" location="${ansible.dir}/baremetalpxeserver/" />
+
+    <target name="build-baremetalpxeserver" >
+        <makeDir dir="${baremetalpxeserver.bdir}" />
+
+        <checkProperty property="baremetalpxeserver.source" />
+        <checkProperty property="baremetalpxeserver.serviceFile" />
+        <checkFile file="${baremetalpxeserver.source}" />
+        <checkFile file="${baremetalpxeserver.source}/setup.py" />
+        <checkFile file="${baremetalpxeserver.serviceFile}" />
+
+        <delete dir="${baremetalpxeserver.source}/dist" />
+
+        <exec executable="python" dir="${baremetalpxeserver.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${baremetalpxeserver.bdir}/">
+            <fileset dir="${baremetalpxeserver.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-baremetalpxeserver">
+        <makeDir dir="${baremetalpxeserver.ansible.dir}" />
+
+        <copy todir="${baremetalpxeserver.ansible.dir}">
+            <fileset dir="${baremetalpxeserver.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${baremetalpxeserver.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${baremetalpxeserver.serviceFile}" todir="${baremetalpxeserver.ansible.dir}" />
+    </target>
+</project>
