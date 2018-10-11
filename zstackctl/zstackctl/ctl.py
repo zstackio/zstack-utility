@@ -7250,6 +7250,9 @@ class InstallLicenseCmd(Command):
         if not os.path.isfile(lpath):
             raise CtlError('cannot find the license file at %s' % args.license)
 
+        if ctl.extra_arguments:
+            raise CtlError('illegal arguments %s' % ctl.extra_arguments)
+
         ppath = None
         if args.prikey:
             ppath = expand_path(args.prikey)
