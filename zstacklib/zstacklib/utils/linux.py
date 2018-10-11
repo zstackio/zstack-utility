@@ -238,10 +238,24 @@ def remount(url, path, options=None):
     elif o.return_code != 0:
         o.raise_error()
 
-def sshfs_mount(username, hostname, port, password, url, mountpoint):
+def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth=None):
     fd, fname = tempfile.mkstemp()
     os.chmod(fname, 0500)
-    os.write(fd, "#!/bin/bash\n/usr/bin/sshpass -p '%s' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %d $*\n" % (password, port))
+
+    if not writebandwidth:
+        os.write(fd,
+                 "#!/bin/bash\n/usr/bin/sshpass -p '%s' ssh "
+                 "-o StrictHostKeyChecking=no "
+                 "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
+                 password, port))
+    else:
+        os.write(fd,
+                 "#!/bin/bash\n/usr/bin/sshpass -p '%s' ssh "
+                 "-o 'ProxyCommand pv -q -L %sk | nc %s %s' "
+                 "-o StrictHostKeyChecking=no "
+                 "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
+                     password, writebandwidth / 1024, hostname, port, port))
+
     os.close(fd)
 
     ret = shell.run("/usr/bin/sshfs %s@%s:%s %s -o reconnect,allow_root,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))

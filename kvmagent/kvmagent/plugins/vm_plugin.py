@@ -4269,8 +4269,12 @@ class VmPlugin(kvmagent.KvmAgent):
             if not vm:
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
 
-            if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
+            if not cmd.backupWriteBandwidth:
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
+                    raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
+            else:
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.backupWriteBandwidth):
+                    raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
 
             target_disks = {}
             for deviceId in cmd.deviceIds:
@@ -4314,8 +4318,14 @@ class VmPlugin(kvmagent.KvmAgent):
             if not vm:
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
 
-            if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                raise kvmagent.KvmError("failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
+            if not cmd.backupWriteBandwidth:
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
+                    raise kvmagent.KvmError(
+                        "failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
+            else:
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.backupWriteBandwidth):
+                    raise kvmagent.KvmError(
+                        "failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
 
             target_disk, _ = vm._get_target_disk(cmd.deviceId)
             bitmap, parent = self.do_take_volume_backup(cmd,
