@@ -4696,7 +4696,7 @@ class CollectLogCmd(Command):
         command = "multipath -ll -v3 >> %s/ls_dev_disk_by-id_info || true" % target_dir
         run_remote_command(command, host_post_info)
 
-        command = "cp /var/log/sanlock.log %s || true" % target_dir
+        command = "cp /var/log/sanlock.log* %s || true" % target_dir
         run_remote_command(command, host_post_info)
         command = "cp /var/log/lvmlock/lvmlockd.log %s || true" % target_dir
         run_remote_command(command, host_post_info)

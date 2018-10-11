@@ -186,7 +186,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def scan_sg_devices(self, req):
         rsp = AgentRsp()
-        bash.bash_roe("sg_scan -i")
+        bash.bash_roe("/usr/bin/rescan-scsi-bus.sh")
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
