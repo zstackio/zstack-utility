@@ -316,13 +316,16 @@ class HostPlugin(kvmagent.KvmAgent):
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
         system_product_name = shell.call('dmidecode -s system-product-name').strip()
         host_cpu_info = shell.call("grep -m2 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
+        host_cpu_model_name = host_cpu_info[0]
+        transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
+        static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
         rsp.systemProductName = system_product_name
-        rsp.hostCpuModelName = host_cpu_info[0]
-        rsp.cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
+        rsp.hostCpuModelName = host_cpu_model_name
+        rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
