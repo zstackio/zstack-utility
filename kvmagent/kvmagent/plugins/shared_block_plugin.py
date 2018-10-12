@@ -728,8 +728,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = GetVolumeSizeRsp()
 
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        rsp.size = lvm.get_lv_size(install_abs_path)
-        rsp.actualSize = rsp.size
+        with lvm.OperateLv(install_abs_path, shared=True):
+            rsp.size = linux.qcow2_virtualsize(install_abs_path)
+        rsp.actualSize = lvm.get_lv_size(install_abs_path)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
