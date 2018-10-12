@@ -16,6 +16,7 @@ from zstacklib.utils.rollback import rollback, rollbackable
 import os
 from zstacklib.utils import shell
 from imagestore import ImageStoreClient
+from zstacklib.utils.linux import remote_shell_quote
 
 logger = log.get_logger(__name__)
 
@@ -154,6 +155,7 @@ class CephAgent(object):
     GET_VOLUME_SNAPINFOS_PATH = "/ceph/primarystorage/volume/getsnapinfos"
     UPLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/commit"
     DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
+    DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -189,6 +191,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.MIGRATE_VOLUME_PATH, self.migrate_volume)
         self.http_server.register_async_uri(self.MIGRATE_VOLUME_SNAPSHOT_PATH, self.migrate_volume_snapshot)
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
+        self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -644,11 +647,11 @@ class CephAgent(object):
         prikey_file = linux.write_to_temp_file(cmd.sshKey)
 
         bs_folder = os.path.dirname(cmd.backupStorageInstallPath)
-        shell.call('ssh -p %d -o StrictHostKeyChecking=no -i %s root@%s "mkdir -p %s"' %
+        shell.call('ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s "mkdir -p %s"' %
                    (cmd.sshPort, prikey_file, cmd.hostname, bs_folder))
 
         try:
-            shell.call("set -o pipefail; rbd export %s - | ssh -o StrictHostKeyChecking=no -i %s root@%s 'cat > %s'" %
+            shell.call("set -o pipefail; rbd export %s - | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s 'cat > %s'" %
                        (src_path, prikey_file, cmd.hostname, cmd.backupStorageInstallPath))
         finally:
             os.remove(prikey_file)
@@ -663,6 +666,11 @@ class CephAgent(object):
         prikey = cmd.sshKey
         port = cmd.sshPort
 
+        if cmd.bandWidth is not None:
+            bandWidth = 'pv -q -L %s |' % cmd.bandWidth
+        else:
+            bandWidth = ''
+
         pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
         tmp_image_name = 'tmp-%s' % image_name
 
@@ -676,9 +684,7 @@ class CephAgent(object):
         _0()
 
         try:
-            shell.call(
-                'set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -i %s root@%s "cat %s" | rbd import --image-format 2 - %s/%s' %
-                (port, prikey_file, hostname, cmd.backupStorageInstallPath, pool, tmp_image_name))
+            shell.call('set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s cat %s | %s rbd import --image-format 2 - %s/%s' % (port, prikey_file, hostname, remote_shell_quote(cmd.backupStorageInstallPath), bandWidth, pool, tmp_image_name))
         finally:
             os.remove(prikey_file)
 
@@ -702,7 +708,8 @@ class CephAgent(object):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
+                # rbd:pool/image_name may already exist
+                shell.call('qemu-img convert -n -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
                     pool, tmp_image_name, pool, image_name, conf_path))
                 shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
@@ -747,12 +754,12 @@ class CephAgent(object):
 
         # Report task progress based on flow chain for now
         # To get more accurate progress, we need to report from here someday, using pv
-        ret = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, volume_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid, dst_install_path))
+        ret = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, volume_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid, dst_install_path))
         if ret != 0:
             return ret
 
         src_md5 = self._read_file_content('/tmp/%s_src_md5' % volume_uuid)
-        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid))
+        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid))
         if src_md5 != dst_md5:
             return -1
         else:
@@ -775,14 +782,14 @@ class CephAgent(object):
         dst_install_path = self._normalize_install_path(dst_install_path)
 
         if parent_uuid == "":
-            ret = shell.run('rbd export-diff %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (src_snapshot_path, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
+            ret = shell.run('rbd export-diff %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (src_snapshot_path, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
         else:
-            ret = shell.run('rbd export-diff --from-snap %s %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (parent_uuid, src_snapshot_path, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
+            ret = shell.run('rbd export-diff --from-snap %s %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (parent_uuid, src_snapshot_path, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
         if ret != 0:
             return ret
 
         src_md5 = self._read_file_content('/tmp/%s_src_md5' % snapshot_uuid)
-        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid))
+        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid))
         if src_md5 != dst_md5:
             return -1
         else:
@@ -810,6 +817,11 @@ class CephAgent(object):
         rsp.snapInfos = jsonobject.loads(ret)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    @in_bash
+    def download_from_kvmhost(self, req):
+        return self.sftp_download(req)
 
 class CephDaemon(daemon.Daemon):
     def __init__(self, pidfile):

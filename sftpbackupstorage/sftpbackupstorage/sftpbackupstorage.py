@@ -442,7 +442,7 @@ class SftpBackupStorageAgent(object):
         elif cmd.urlScheme == self.URL_SFTP:
             try:
                 port = (url.port, 22)[url.port is None]
-                commond = "sftp -P %d -o StrictHostKeyChecking=no %s@%s:%s %s" % (port, url.username, url.hostname, url.path, cmd.installPath)
+                commond = "sftp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s:%s %s" % (port, url.username, url.hostname, url.path, cmd.installPath)
                 if url.password is not None:
                     commond = 'sshpass -p "%s" %s' % (url.password, commond)
 

@@ -238,10 +238,24 @@ def remount(url, path, options=None):
     elif o.return_code != 0:
         o.raise_error()
 
-def sshfs_mount(username, hostname, port, password, url, mountpoint):
+def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth=None):
     fd, fname = tempfile.mkstemp()
     os.chmod(fname, 0500)
-    os.write(fd, "#!/bin/bash\n/usr/bin/sshpass -p '%s' ssh -o StrictHostKeyChecking=no -p %d $*\n" % (password, port))
+
+    if not writebandwidth:
+        os.write(fd,
+                 "#!/bin/bash\n/usr/bin/sshpass -p '%s' ssh "
+                 "-o StrictHostKeyChecking=no "
+                 "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
+                 password, port))
+    else:
+        os.write(fd,
+                 "#!/bin/bash\n/usr/bin/sshpass -p '%s' ssh "
+                 "-o 'ProxyCommand pv -q -L %sk | nc %s %s' "
+                 "-o StrictHostKeyChecking=no "
+                 "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
+                     password, writebandwidth / 1024, hostname, port, port))
+
     os.close(fd)
 
     ret = shell.run("/usr/bin/sshfs %s@%s:%s %s -o reconnect,allow_root,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
@@ -294,6 +308,9 @@ def get_file_size_by_http_head(url):
 
 def shellquote(s):
     return "'" + s.replace("'", "'\\''") + "'"
+
+def remote_shell_quote(s):
+    return ("\\''" + s.replace("'", "'\\''") + "'\\'").encode('utf8')
 
 def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callback_data=None, cert_check=False):
     def get_percentage(filesize, dst):
@@ -406,7 +423,7 @@ def ssh(hostname, sshkey, cmd, user='root', sshPort=22):
     shell.call('chmod 600 %s' % sshkey_file)
 
     try:
-        return shell.call('ssh -p %d -o StrictHostKeyChecking=no -i %s %s@%s "%s"' % (sshPort, sshkey_file, user, hostname, cmd))
+        return shell.call('ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s %s@%s "%s"' % (sshPort, sshkey_file, user, hostname, cmd))
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
@@ -422,9 +439,15 @@ def get_local_file_disk_usage(path):
         return int(shell.call("du -a --block-size=1 %s | awk '{print $1}'" % path).strip())
     return os.path.getsize(path)
 
-def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root', sshPort=22):
+def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='root', sshPort=22, bandWidth=None):
     def create_ssh_key_file():
         return write_to_temp_file(sshkey)
+
+    # scp bandwidth limit
+    if bandWidth is not None:
+        bandWidth = '-l %s' % (long(bandWidth) / 1024)
+    else:
+        bandWidth = ''
 
     sshkey_file = create_ssh_key_file()
     os.chmod(sshkey_file, 0600)
@@ -432,7 +455,7 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
-        scp_cmd = 'scp -P {0} -o StrictHostKeyChecking=no -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, src_filepath, dst_filepath)
+        scp_cmd = 'scp {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, remote_shell_quote(src_filepath), dst_filepath, bandWidth)
         shell.call(scp_cmd)
         os.chmod(dst_filepath, 0664)
     finally:
@@ -450,9 +473,9 @@ def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root'
     shell.call('chmod 600 %s' % sshkey_file)
     try:
         dst_dir = os.path.dirname(dst_filepath)
-        ssh_cmd = 'ssh -p %d -o StrictHostKeyChecking=no -i %s %s@%s "mkdir -m 777 -p %s"' % (sshPort, sshkey_file, host_account, hostname, dst_dir)
+        ssh_cmd = 'ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s %s@%s "mkdir -m 777 -p %s"' % (sshPort, sshkey_file, host_account, hostname, dst_dir)
         shell.call(ssh_cmd)
-        scp_cmd = 'scp -P %d -o StrictHostKeyChecking=no -i %s %s %s@%s:%s' % (sshPort, sshkey_file, src_filepath, host_account, hostname, dst_filepath)
+        scp_cmd = 'scp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s %s %s@%s:%s' % (sshPort, sshkey_file, src_filepath, host_account, hostname, dst_filepath)
         shell.call(scp_cmd)
     finally:
         if sshkey_file:
@@ -465,8 +488,8 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
     def get_file_size():
         try:
             keyfile_path = create_ssh_key_file()
-            batch_cmd = 'ls -s %s' % filename
-            cmdstr = '/usr/bin/ssh -p %d -o StrictHostKeyChecking=no -i %s %s "%s"' % (sshPort, keyfile_path, hostname, batch_cmd)
+            batch_cmd = "ls -s '%s'" % filename
+            cmdstr = '/usr/bin/ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s %s "%s"' % (sshPort, keyfile_path, hostname, batch_cmd)
             cmd = shell.ShellCmd(cmdstr)
             cmd()
             output = cmd.stdout.strip()
@@ -495,8 +518,8 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
         if get_size:
             return file_size
         keyfile_path = create_ssh_key_file()
-        batch_file_path = write_to_temp_file('get %s %s' % (filename, download_to))
-        cmd = '/usr/bin/sftp -o StrictHostKeyChecking=no -o IdentityFile=%s -b %s %s' % (keyfile_path, batch_file_path, hostname)
+        batch_file_path = write_to_temp_file("get '%s' %s" % (filename, download_to))
+        cmd = '/usr/bin/sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentityFile=%s -b %s %s' % (keyfile_path, batch_file_path, hostname)
         process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, executable='/bin/sh', universal_newlines=True, close_fds=True)
         is_timeout = False
         count = 0

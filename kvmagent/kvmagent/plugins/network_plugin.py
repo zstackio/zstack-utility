@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import copy
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
@@ -11,6 +12,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 import os
 import traceback
+import netaddr
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
@@ -228,41 +230,77 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def check_vxlan_cidr(self, req):
-        # Check qualified interface with cidr and interface name (if provided).
+
+        def filter_vxlan_nics(nics, interf, requireIp):
+            valid_nics = copy.copy(nics)
+
+            if interf:
+                for nic in valid_nics:
+                    if interf not in nic.keys():
+                        valid_nics.remove(nic)
+
+            if requireIp:
+                for nic in valid_nics:
+                    if requireIp not in nic.values():
+                        valid_nics.remove(nic)
+
+            return valid_nics
+
+        # Check qualified interface with cidr and interface name, vtepip address (if provided).
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckVxlanCidrResponse()
         rsp.success = False
         interf = cmd.physicalInterfaceName
 
         nics = linux.get_nics_by_cidr(cmd.cidr)
+        temp_nics = filter_vxlan_nics(nics, interf, cmd.vtepip)
+        # if there is no valid nic after filter, try all nics match the cidr of vxlan pool
+        if len(temp_nics) != 0:
+            nics = temp_nics
+
         ips = set(map(lambda d: d.values()[0], nics))
-        if len(nics) == 0:
+        nicnames = set(map(lambda d: d.keys()[0], nics))
+
+        ''' there are 4 cases:
+            1. there is no interface has ip address matched the vxlan or vxpool cidr
+            2. there is only 1 interface with 1 ip address matched
+            3. there is only 1 interface with more than 1 ip address matched
+               in this case, we always return the first 1 ip address
+            4. there has multiple interfaces with ip address matched
+            #1, #4 will response error
+        '''
+
+        if len(nicnames) == 0:
+            # case #1
             rsp.error = "can not find qualify interface for cidr [%s]" % cmd.cidr
-        elif len(nics) == 1 and interf:
+        elif len(nicnames) == 1 and interf:
+            # case #2 #3
             if nics[0].keys()[0] == interf:
                 rsp.vtepIp = nics[0].values()[0]
                 rsp.success = True
             else:
                 rsp.error = "the interface with cidr [%s] is not the interface [%s] which provided" % (cmd.cidr, interf)
-        elif len(nics) == 1:
+        elif len(nicnames) == 1:
+            # case #2 #3
             rsp.vtepIp = nics[0].values()[0]
             rsp.success = True
-        elif len(nics) > 1 and interf:
+        elif len(nicnames) > 1 and interf:
+            # case #4
             for nic in nics:
                 if nic.keys()[0] == interf:
                     rsp.vtepIp = nics[0].values()[0]
                     rsp.success = True
             if rsp.vtepIp == None:
                 rsp.error = "no interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr, interf)
-        elif len(nics) == 2 and (linux.is_vif_on_bridge(nics[0].keys()[0], nics[1].keys()[0]) or linux.is_vif_on_bridge(nics[1].keys()[0], nics[0].keys()[0])):
+        elif len(nicnames) == 2 and (linux.is_vif_on_bridge(nicnames[0], nicnames[1]) or linux.is_vif_on_bridge(nicnames[1], nicnames[0])):
             # Note(WeiW): This is a work around for case of a interface bound to a bridge and have same ip address,
             # see at zstackio/issues#4056, but note this wont make assurance that routing is true
             rsp.vtepIp = nics[0].values()[0]
             rsp.success = True
-        elif len(nics) > 1 and len(ips) == 1:
+        elif len(nicnames) > 1 and len(ips) == 1:
             rsp.error = "the qualified vtep ip bound to multiple interfaces"
         else:
-            rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % (cmd.cidr)
+            rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % cmd.cidr
 
         return jsonobject.dumps(rsp)
 

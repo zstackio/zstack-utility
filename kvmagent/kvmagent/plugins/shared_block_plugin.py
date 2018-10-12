@@ -191,6 +191,15 @@ class CheckDisk(object):
             if cmd.return_code == 0:
                 return cmd.stdout.strip()
 
+    def set_fail_if_no_path(self, disk_name=None):
+        if disk_name is None:
+            disk_name = self.get_path().split("/")[-1]
+        if not lvm.is_multipath(disk_name):
+            return
+        multipath_name = lvm.get_multipath_name(disk_name)
+        cmd = shell.ShellCmd('dmsetup message %s 0 "fail_if_no_path"' % multipath_name)
+        cmd(is_exception=False)
+
 
 class SharedBlockPlugin(kvmagent.KvmAgent):
 
@@ -217,6 +226,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     ADD_SHARED_BLOCK = "/sharedblock/disks/add"
     MIGRATE_DATA_PATH = "/sharedblock/volume/migrate"
     GET_BLOCK_DEVICES_PATH = "/sharedblock/blockdevices"
+    DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -243,6 +253,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ADD_SHARED_BLOCK, self.add_disk)
         http_server.register_async_uri(self.MIGRATE_DATA_PATH, self.migrate_volumes)
         http_server.register_async_uri(self.GET_BLOCK_DEVICES_PATH, self.get_block_devices)
+        http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -258,6 +269,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             path = disk.get_path()
             if cmd.rescan:
                 disk.rescan(path.split("/")[-1])
+            if cmd.failIfNoPath:
+                disk.set_fail_if_no_path(path.split("/")[-1])
 
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
@@ -282,8 +295,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if forceWipe is True:
                 lvm.wipe_fs(diskPaths, vgUuid)
 
-            cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s' --metadatasize %s %s %s" %
-                                 (INIT_TAG, hostUuid, time.time(),
+            cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
+                                 (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
@@ -326,6 +339,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_sanlock_by_sed("debug_renew", "debug_renew=1")
             lvm.config_sanlock_by_sed("use_watchdog", "use_watchdog=0")
 
+            sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], bash.bash_o("hostname").strip()[:20])
+            lvm.config_sanlock_by_sed("our_host_name", "our_host_name=%s" % sanlock_hostname)
+
         config_lvm(cmd.hostId)
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
@@ -335,10 +351,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
 
+        lvm.check_stuck_vglk()
         logger.debug("starting vg %s lock..." % cmd.vgUuid)
         lvm.start_vg_lock(cmd.vgUuid)
+
+        if lvm.lvm_vgck(cmd.vgUuid, 15)[0] is False:
+            lvm.drop_vg_lock(cmd.vgUuid)
+            logger.debug("restarting vg %s lock..." % cmd.vgUuid)
+            lvm.check_gl_lock()
+            lvm.start_vg_lock(cmd.vgUuid)
+
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
-        lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time()))
+        lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
@@ -419,7 +443,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if not cmd.live:
                 shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
             ret = linux.qcow2_virtualsize(install_abs_path)
-        lvm.active_lv(install_abs_path)
 
         rsp = ResizeVolumeRsp()
         rsp.size = ret
@@ -511,19 +534,23 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
 
-        size = linux.sftp_get(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, True)
         if not lvm.lv_exists(install_abs_path):
+            size = linux.sftp_get(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, True)
             lvm.create_lv_from_absolute_path(install_abs_path, size,
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
 
         with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort)
+            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, cmd.bandWidth)
         logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
 
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, False)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def download_from_kvmhost(self, req):
+        return self.download_from_sftp(req)
 
     @kvmagent.replyerror
     def upload_to_imagestore(self, req):

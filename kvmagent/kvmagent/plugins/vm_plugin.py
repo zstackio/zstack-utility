@@ -2,6 +2,7 @@
 @author: Frank
 '''
 import Queue
+import functools
 import os.path
 import tempfile
 import time
@@ -483,6 +484,21 @@ LIBVIRT_VERSION = get_libvirt_version()
 
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
+
+# Occasionally, libvirt might fail to list VM ...
+def get_console_without_libvirt(vmUuid):
+    output = bash.bash_o("""ps x | awk '/qemu[-]kvm.*%s/{print $1, index($0, " -vnc ")}'""" % vmUuid).splitlines()
+    if len(output) != 1:
+        return None, None
+
+    pid, idx = output.split()
+    proto = 'vnc' if int(idx) != 0 else 'spice'
+
+    output = bash.bash_o("""lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
+    if len(output) == 1:
+        return proto, int(output[0])
+    logger.warn("get_port_without_libvirt: unexpected output: %s" % output)
+    return None, None
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
@@ -1564,22 +1580,32 @@ class Vm(object):
             if not addons:
                 return
 
-            vol_qos = addons['VolumeQos']
-            if not vol_qos:
-                return
+            for key in ["VolumeQos", "VolumeReadQos", "VolumeWriteQos"]:
+                vol_qos = addons[key]
+                if not vol_qos:
+                    continue
 
-            qos = vol_qos[volume.volumeUuid]
-            if not qos:
-                return
+                qos = vol_qos[volume.volumeUuid]
+                if not qos:
+                    continue
+                if not qos.totalBandwidth and not qos.totalIops:
+                    continue
 
-            if not qos.totalBandwidth and not qos.totalIops:
-                return
+                mode = None
+                if key == 'VolumeQos':
+                    mode = "total"
+                elif key == 'VolumeReadQos':
+                    mode = "read"
+                elif key == 'VolumeWriteQos':
+                    mode = "write"
 
-            iotune = e(volume_xml_obj, 'iotune')
-            if qos.totalBandwidth:
-                e(iotune, 'total_bytes_sec', str(qos.totalBandwidth))
-            if qos.totalIops:
-                e(iotune, 'total_iops_sec', str(qos.totalIops))
+                iotune = e(volume_xml_obj, 'iotune')
+                if qos.totalBandwidth:
+                    virsh_key = "%s_bytes_sec" % mode
+                    e(iotune, virsh_key, str(qos.totalBandwidth))
+                if qos.totalIops:
+                    virsh_key = "%_iops_sec" % mode
+                    e(iotune, virsh_key, str(qos.totalIops))
 
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
@@ -2164,36 +2190,14 @@ class Vm(object):
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
     def _interface_cmd_to_xml(self, cmd):
-        nic = cmd.nic
+        interface = Vm._build_interface_xml(cmd.nic)
 
-        interface = etree.Element('interface', attrib={'type': 'bridge'})
-        e(interface, 'mac', None, attrib={'address': nic.mac})
-        e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
-        e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
-        e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-        if nic.useVirtio:
-            e(interface, 'model', None, attrib={'type': 'virtio'})
-        else:
-            e(interface, 'model', None, attrib={'type': 'e1000'})
+        def addon():
+            if cmd.addons and cmd.addons['NicQos']:
+                qos = cmd.addons['NicQos']
+                Vm._add_qos_to_interface(interface, qos)
 
-        def nic_qos():
-            if not cmd.addons:
-                return
-
-            qos = cmd.addons['NicQos']
-            if not qos:
-                return
-
-            if not qos.outboundBandwidth and not qos.inboundBandwidth:
-                return
-
-            bandwidth = e(interface, 'bandwidth')
-            if qos.outboundBandwidth:
-                e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 8 / 1024)})
-            if qos.inboundBandwidth:
-                e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 8 / 1024)})
-
-        nic_qos()
+        addon()
 
         return etree.tostring(interface)
 
@@ -2354,9 +2358,7 @@ class Vm(object):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ == cmd.nic.mac:
-                    s = shell.ShellCmd('ip link | grep -w %s > /dev/null' % cmd.nic.nicInternalName)
-                    s(False)
-                    return s.return_code == 0
+                    return shell.run('ip link | grep -w -q %s' % cmd.nic.nicInternalName) == 0
 
             return False
 
@@ -2404,9 +2406,7 @@ class Vm(object):
                 if iface.mac.address_ == cmd.nic.mac:
                     return False
 
-            s = shell.ShellCmd('ip link show dev %s > /dev/null' % cmd.nic.nicInternalName)
-            s(False)
-            return s.return_code != 0
+            return shell.run('ip link show dev %s > /dev/null' % cmd.nic.nicInternalName) != 0
 
         if check_device(None):
             return
@@ -2434,6 +2434,42 @@ class Vm(object):
         # in 10 seconds, no attach-nic operation can be performed,
         # to work around libvirt bug
         self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
+
+    def update_nic(self, cmd):
+        self._wait_vm_run_until_seconds(10)
+        self.timeout_object.wait_until_object_timeout('%s-update-nic' % self.uuid)
+        self._update_nic(cmd)
+
+        self.timeout_object.put('%s-update-nic' % self.uuid, 10)
+
+    def _update_nic(self, cmd):
+        if not cmd.nics:
+            return
+
+        def check_device(nic):
+            self.refresh()
+            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ == nic.mac:
+                    return shell.run('ip link | grep -w -q %s' % nic.nicInternalName) == 0
+
+            return False
+
+        def addon(nic_xml_object):
+            if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
+                qos = cmd.addons['NicQos'][nic.uuid]
+                Vm._add_qos_to_interface(nic_xml_object, qos)
+
+        for nic in cmd.nics:
+            interface = Vm._build_interface_xml(nic)
+            addon(interface)
+            xml = etree.tostring(interface)
+            logger.debug('updating nic:\n%s' % xml)
+            if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
+                self.domain.updateDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+            else:
+                self.domain.updateDeviceFlags(xml)
+            if not linux.wait_callback_success(check_device, nic, interval=0.5, timeout=30):
+                raise Exception('nic device does not show after 30 seconds')
 
     def _check_qemuga_info(self, info):
         if info:
@@ -2541,7 +2577,6 @@ class Vm(object):
 
     @staticmethod
     def from_StartVmCmd(cmd):
-        use_virtio = cmd.useVirtio
         use_numa = cmd.useNuma
 
         elements = {}
@@ -2628,8 +2663,8 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'machine': 'pc'})
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI":
-                    e(os, 'loader', '/usr/share/OVMF/OVMF_CODE.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
-                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/OVMF_VARS.fd'})
+                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
             # if not booting from cdrom, don't add any boot element in os section
             if cmd.bootDev[0] == "cdrom":
                 for boot_dev in cmd.bootDev:
@@ -2673,7 +2708,6 @@ class Vm(object):
 
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
-            e(qcmd, "qemu:arg", attrib={"value": "-s"})
             e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
             e(qcmd, "qemu:arg", attrib={"value": "unix:%s/%s.sock,server,nowait" %
                                         (QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
@@ -2949,43 +2983,15 @@ class Vm(object):
             if not cmd.nics:
                 return
 
-            def nic_qos(nic_xml_object):
-                if not cmd.addons:
-                    return
-
-                nqos = cmd.addons['NicQos']
-                if not nqos:
-                    return
-
-                qos = nqos[nic.uuid]
-                if not qos:
-                    return
-
-                if not qos.outboundBandwidth and not qos.inboundBandwidth:
-                    return
-
-                bandwidth = e(nic_xml_object, 'bandwidth')
-                if qos.outboundBandwidth:
-                    e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 1024 / 8)})
-                if qos.inboundBandwidth:
-                    e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 1024 / 8)})
+            def addon(nic_xml_object):
+                if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
+                    qos = cmd.addons['NicQos'][nic.uuid]
+                    Vm._add_qos_to_interface(nic_xml_object, qos)
 
             devices = elements['devices']
             for nic in cmd.nics:
-                interface = e(devices, 'interface', None, {'type': 'bridge'})
-                e(interface, 'mac', None, {'address': nic.mac})
-                if nic.ip is not None and nic.ip != "":
-                    filterref = e(interface, 'filterref', None, {'filter':'clean-traffic'})
-                    e(filterref, 'parameter', None, {'name':'IP', 'value': nic.ip})
-                e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-                e(interface, 'source', None, {'bridge': nic.bridgeName})
-                if use_virtio:
-                    e(interface, 'model', None, {'type': 'virtio'})
-                else:
-                    e(interface, 'model', None, {'type': 'e1000'})
-                e(interface, 'target', None, {'dev': nic.nicInternalName})
-
-                nic_qos(interface)
+                interface = Vm._build_interface_xml(nic, devices)
+                addon(interface)
 
         def make_meta():
             root = elements['root']
@@ -3231,6 +3237,36 @@ class Vm(object):
         vm.domain_xmlobject = xmlobject.loads(xml)
         return vm
 
+    @staticmethod
+    def _build_interface_xml(nic, devices=None):
+        if devices:
+            interface = e(devices, 'interface', None, {'type': 'bridge'})
+        else:
+            interface = etree.Element('interface', attrib={'type': 'bridge'})
+
+        e(interface, 'mac', None, attrib={'address': nic.mac})
+        e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
+        e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
+        e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
+        if nic.ip:
+            filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
+            e(filterref, 'parameter', None, {'name': 'IP', 'value': nic.ip})
+        if nic.useVirtio:
+            e(interface, 'model', None, attrib={'type': 'virtio'})
+        else:
+            e(interface, 'model', None, attrib={'type': 'e1000'})
+        return interface
+
+    @staticmethod
+    def _add_qos_to_interface(interface, qos):
+        if not qos.outboundBandwidth and not qos.inboundBandwidth:
+            return
+
+        bandwidth = e(interface, 'bandwidth')
+        if qos.outboundBandwidth:
+            e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 1024 / 8)})
+        if qos.inboundBandwidth:
+            e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 1024 / 8)})
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
@@ -3257,6 +3293,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
     KVM_ATTACH_NIC_PATH = "/vm/attachnic"
     KVM_DETACH_NIC_PATH = "/vm/detachnic"
+    KVM_UPDATE_NIC_PATH = "/vm/updatenic"
     KVM_CREATE_SECRET = "/vm/createcephsecret"
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
@@ -3383,6 +3420,16 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def update_nic(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.vmInstanceUuid)
+        vm.update_nic(cmd)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def start_vm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = StartVmResponse()
@@ -3472,12 +3519,49 @@ class VmPlugin(kvmagent.KvmAgent):
                         pass
         return device_id
 
+    def _get_volume_bandwidth_value(self, vm_uuid, device_id, mode):
+        cmd_base = "virsh blkdeviotune %s %s" % (vm_uuid, device_id)
+        if mode == "total":
+            return shell.call('%s | grep -w total_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
+        elif mode == "read":
+            return shell.call('%s | grep -w read_bytes_sec | awk \'{print $3}\'' % cmd_base).strip()
+        elif mode == "write":
+            return shell.call('%s | grep -w write_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
+
     @kvmagent.replyerror
     def set_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        shell.call('virsh blkdeviotune %s %s --total_bytes_sec %s' % (cmd.vmUuid, device_id, cmd.totalBandwidth))
+
+        ## total and read/write of bytes_sec cannot be set at the same time
+        ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
+        cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
+        if cmd.totalBandwidth > 0:  # to set
+            if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
+                shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
+            elif cmd.mode == "read":  # to set read(write reserved, total reset)
+                write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
+                shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.totalBandwidth, write_bytes_sec))
+            elif cmd.mode == "write":  # to set write(read reserved, total reset)
+                read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
+                shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, read_bytes_sec, cmd.totalBandwidth))
+        else:  # to delete
+            is_total_mode = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "total") != "0"
+            if cmd.mode == "all":  # to delete all(read/write reset)
+                shell.call('%s --total_bytes_sec 0' % (cmd_base))
+            elif (cmd.mode == "total") or (cmd.mode is None):  # to delete total
+                if is_total_mode:
+                    shell.call('%s --total_bytes_sec 0' % (cmd_base))
+            elif cmd.mode == "read":  # to delete read(write reserved, total reset)
+                if not is_total_mode:
+                    write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
+                    shell.call('%s --read_bytes_sec 0 --write_bytes_sec %s' % (cmd_base, write_bytes_sec))
+            elif cmd.mode == "write":  # to delete write(read reserved, total reset)
+                if not is_total_mode:
+                    read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
+                    shell.call('%s --read_bytes_sec %s --write_bytes_sec 0' % (cmd_base, read_bytes_sec))
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -3588,7 +3672,7 @@ class VmPlugin(kvmagent.KvmAgent):
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name[[:space:]]+\K.*?,' | sed 's/.$//'").splitlines()
+        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
             if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
                 continue
@@ -3655,15 +3739,24 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
         return jsonobject.dumps(rsp)
 
+    def get_vm_console_info(self, vmUuid):
+        try:
+            vm = get_vm_by_uuid(vmUuid)
+            return vm.get_console_protocol(), vm.get_console_port()
+        except kvmagent.KvmError as e:
+            proto, port = get_console_without_libvirt(vmUuid)
+            if port:
+                return proto, port
+            raise e
+
     @kvmagent.replyerror
     def get_console_port(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVncPortResponse()
         try:
-            vm = get_vm_by_uuid(cmd.vmUuid)
-            port = vm.get_console_port()
+            proto, port = self.get_vm_console_info(cmd.vmUuid)
             rsp.port = port
-            rsp.protocol = vm.get_console_protocol()
+            rsp.protocol = proto
             logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.vmUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -3675,27 +3768,25 @@ class VmPlugin(kvmagent.KvmAgent):
     def _stop_vm(self, cmd):
         try:
             vm = get_vm_by_uuid(cmd.uuid)
-            type = cmd.type
+
+            if str(cmd.type) == "cold":
+                vm.stop(graceful=False)
+            else:
+                vm.stop(timeout=cmd.timeout / 2)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
-            # domain not found with virsh, try ps and kill
+        finally:
+            # libvirt is not reliable, c.f. ZSTAC-15412
             self.kill_vm(cmd.uuid)
-            logger.debug('the stop operation is still considered as success')
-            return
-        if str(type) == "cold":
-            vm.stop(graceful=False)
-
-        else:
-            vm.stop(timeout=cmd.timeout / 2)
 
     def kill_vm(self, vm_uuid):
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name[[:space:]]+\K%s,' | sed 's/.$//'" % vm_uuid)
+        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
 
         if vm_uuid not in output:
             return
 
-        vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
-        vm_pid.strip(' \t\n\r')
+        logger.debug('killing vm %s' % vm_uuid)
+        vm_pid = shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % vm_uuid).strip()
 
         def loop_kill(_):
             if shell.run('ps -p %s > /dev/null' % vm_pid):
@@ -3817,6 +3908,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
+        touchQmpSocketWhenExists(cmd.vmInstanceUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -4177,8 +4269,12 @@ class VmPlugin(kvmagent.KvmAgent):
             if not vm:
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
 
-            if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
+            if not cmd.backupWriteBandwidth:
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
+                    raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
+            else:
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.backupWriteBandwidth):
+                    raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
 
             target_disks = {}
             for deviceId in cmd.deviceIds:
@@ -4222,8 +4318,14 @@ class VmPlugin(kvmagent.KvmAgent):
             if not vm:
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
 
-            if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                raise kvmagent.KvmError("failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
+            if not cmd.backupWriteBandwidth:
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
+                    raise kvmagent.KvmError(
+                        "failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
+            else:
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.backupWriteBandwidth):
+                    raise kvmagent.KvmError(
+                        "failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
 
             target_disk, _ = vm._get_target_disk(cmd.deviceId)
             bitmap, parent = self.do_take_volume_backup(cmd,
@@ -4480,7 +4582,7 @@ class VmPlugin(kvmagent.KvmAgent):
             slot = pciDeviceAddress.split(":")[1].split(".")[0]
             func = pciDeviceAddress.split(".")[-1]
 
-            cmd = """virsh dumpxml %s | grep -A3 -E '<hostdev.*pci' | grep "<address domain='0x0000' bus='0x%s' slot='0x%s' function='0x%s'/>\"""" % \
+            cmd = """virsh dumpxml %s | grep -A3 -E '<hostdev.*pci' | grep "<address domain='0x0000' bus='0x%s' slot='0x%s' function='0x%s'/>" """ % \
                   (vmUuid, bus, slot, func)
             r, o, e = bash.bash_roe(cmd)
             return o != ""
@@ -4589,6 +4691,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
         vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
         vm.resize_volume(cmd.deviceId, cmd.deviceType, cmd.size)
+
+        touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
     def start(self):
@@ -4620,6 +4724,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
         http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
+        http_server.register_async_uri(self.KVM_UPDATE_NIC_PATH, self.update_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
@@ -4755,15 +4860,18 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
+    # WARNING: it contains quite a few hacks to avoid xmlobject#loads()
     def _vm_reboot_event(self, conn, dom, opaque):
         try:
             domain_xml = dom.XMLDesc(0)
-            domain_xmlobject = xmlobject.loads(domain_xml)
             vm_uuid = dom.name()
-            boot_dev = domain_xmlobject.os.get_child_node_as_list('boot')[0]
-            if boot_dev.dev_ != 'cdrom':
+
+            match = re.search(r"""<boot\s+dev='""", domain_xml)
+            lindex = 0 if match is None else match.end()
+            rindex = domain_xml[lindex:].index("'")
+            if lindex == 0 or domain_xml[lindex:lindex+rindex] != 'cdrom':
                 logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (
-                    vm_uuid, boot_dev.dev_))
+                    vm_uuid, domain_xml[lindex:lindex+rindex]))
                 return
 
             logger.debug(
@@ -4771,19 +4879,12 @@ class VmPlugin(kvmagent.KvmAgent):
                 ' boot from hdd' % vm_uuid)
 
             self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
-            boot_dev = xmlobject.XmlObject('boot')
-            boot_dev.put_attr('dev', 'hd')
-            domain_xmlobject.os.replace_node('boot', boot_dev)
 
-            #the metadata was wrongly renamed to strange string.
-            curr_meta = domain_xmlobject.metadata.get_children_nodes()
-            domain_xmlobject.metadata.put_attr('xmlns:zs', ZS_XML_NAMESPACE)
-            for key, val in curr_meta.iteritems():
-                curr_meta[key].set_tag('zs:zstack')
+            try: dom.destroy()
+            except: pass
 
-            dom.destroy()
-
-            xml = domain_xmlobject.dump()
+            domain_xml = domain_xml[:lindex] + 'hd' + domain_xml[lindex+rindex:]
+            xml = re.sub(r"""\stray\s*=\s*'open'""", """ tray='closed'""", domain_xml)
             domain = conn.defineXML(xml)
             domain.createWithFlags(0)
         except:
@@ -4793,7 +4894,7 @@ class VmPlugin(kvmagent.KvmAgent):
     @bash.in_bash
     @misc.ignoreerror
     def _extend_sharedblock(self, conn, dom, event, detail, opaque):
-        logger.debug("in extend sharedblock, %s %s %s %s" %
+        logger.debug("extend sharedblock got event from libvirt, %s %s %s %s" %
                      (dom.name(), type(dom), LibvirtEventManager.event_to_string(event), LibvirtEventManager.suspend_event_to_string(detail)))
 
         if not self.enable_auto_extend:
@@ -4850,7 +4951,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
-        logger.debug("in release sharedblock, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
+        logger.debug("release sharedblock got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
 
         @linux.retry(times=5, sleep_time=1)
         def wait_volume_unused(volume):
@@ -5001,3 +5102,11 @@ class VolumeSnapshotResultStruct(object):
         self.previousInstallPath = previousInstallPath
         self.installPath = installPath
         self.size = size
+
+
+@bash.in_bash
+@misc.ignoreerror
+def touchQmpSocketWhenExists(vmUuid):
+    path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
+    if os.path.exists(path):
+        bash.bash_roe("touch %s" % path)
