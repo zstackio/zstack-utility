@@ -22,18 +22,23 @@ class AgentRsp(object):
         self.success = True
         self.error = None
 
+class CheckBitsRsp(AgentRsp):
+    def __init__(self):
+        super(CheckBitsRsp, self).__init__()
+        self.existing = False
+
 class ConvertRsp(AgentRsp):
     def __init__(self):
-        self.rootVolumeActualSize = None
-        self.rootVolumeVirtualSize = None
-        self.dataVolumeActualSizes = []
-        self.dataVolumeVirtualSizes = []
+        super(ConvertRsp, self).__init__()
+        self.rootVolumeInfo = None
+        self.dataVolumeInfos = []
         self.bootMode = None
 
 class VMwareV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/vmwarev2v/conversionhost/init"
     CONVERT_PATH = "/vmwarev2v/conversionhost/convert"
     CLEAN_PATH = "/vmwarev2v/conversionhost/clean"
+    CHECK_BITS = "/vmwarev2v/conversionhost/checkbits"
     CONFIG_QOS_PATH = "/vmwarev2v/conversionhost/qos/config"
     DELETE_QOS_PATH = "/vmwarev2v/conversionhost/qos/delete"
 
@@ -42,6 +47,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.INIT_PATH, self.init)
         http_server.register_async_uri(self.CONVERT_PATH, self.convert)
         http_server.register_async_uri(self.CLEAN_PATH, self.clean)
+        http_server.register_async_uri(self.CHECK_BITS, self.check_bits)
         http_server.register_async_uri(self.CONFIG_QOS_PATH, self.config_qos)
         http_server.register_async_uri(self.DELETE_QOS_PATH, self.delete_qos)
 
@@ -88,7 +94,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     def convert(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConvertRsp()
-        storagePath = '{}/{}'.format(cmd.storagePath, cmd.dstVmUuid)
+        storagePath = '{}/{}'.format(cmd.storagePath, cmd.srcVmUuid)
         cmdstr = "mkdir -p {0} && echo '{1}' > {0}/passwd".format(storagePath, cmd.vCenterPassword)
         if shell.run(cmdstr) != 0:
             rsp.success = False
@@ -125,14 +131,21 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = "failed to convert root volume of " + cmd.srcVmName
             return jsonobject.dumps(rsp)
-        rsp.rootVolumeActualSize, rsp.rootVolumeVirtualSize = self._get_qcow2_sizes(rootVol)
+        root_volume_actual_size, root_volume_virtual_size = self._get_qcow2_sizes(rootVol)
+        rsp.rootVolumeInfo = {"installPath": rootVol,
+                              "actualSize": root_volume_actual_size,
+                              "virtualSize": root_volume_virtual_size,
+                              "deviceId": 0}
 
+        rsp.dataVolumeInfos = []
         for dev in 'bcdefghijklmnopqrstuvwxyz':
             dataVol = r"%s/%s-sd%c" % (storagePath, cmd.srcVmName, dev)
             if os.path.exists(dataVol):
                 aSize, vSize = self._get_qcow2_sizes(dataVol)
-                rsp.dataVolumeActualSizes.append(aSize)
-                rsp.dataVolumeVirtualSizes.append(vSize)
+                rsp.dataVolumeInfos.append({"installPath": dataVol,
+                                            "actualSize": aSize,
+                                            "virtualSize": vSize,
+                                            "deviceId": ord(dev) - ord('a')})
             else:
                 break
 
@@ -162,6 +175,14 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             cleanUpPath = '{}/{}'.format(cmd.storagePath, cmd.dstVmUuid)
         cmdstr = "/bin/rm -rf " + cleanUpPath
         shell.run(cmdstr)
+        return jsonobject.dumps(rsp)
+
+    @in_bash
+    @kvmagent.replyerror
+    def check_bits(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckBitsRsp()
+        rsp.existing = os.path.exists(cmd.path)
         return jsonobject.dumps(rsp)
 
     @in_bash
