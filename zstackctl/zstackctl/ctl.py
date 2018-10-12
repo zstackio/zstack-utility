@@ -7247,6 +7247,7 @@ class InstallLicenseCmd(Command):
 
     def run(self, args):
         lpath = expand_path(args.license)
+
         if not os.path.isfile(lpath):
             raise CtlError('cannot find the license file at %s' % args.license)
 
@@ -7263,14 +7264,19 @@ class InstallLicenseCmd(Command):
         shell('''mkdir -p %s''' % license_folder)
         shell('''chown zstack:zstack %s''' % license_folder)
 
-        if args.addon:
-            license_file_name = "license_" + uuid.uuid4().hex
+        if shell_return("gzip -t %s" % lpath) == 0:
+            packaged_license_folder = license_folder + '/packaged/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+            shell('''mkdir -p %s''' % packaged_license_folder)
+            shell('''tar zxf %s -C %s''' % (lpath, packaged_license_folder))
+            shell('''chown -R zstack:zstack %s''' % packaged_license_folder)
+            info("successfully installed the license files to %s" % packaged_license_folder)
         else:
-            license_file_name = "license.txt"
+            license_file_name = "license_" + uuid.uuid4().hex
 
-        shell('''yes | cp %s %s/%s''' % (lpath, license_folder, license_file_name))
-        shell('''chown zstack:zstack %s/%s''' % (license_folder, license_file_name))
-        info("successfully installed the license file to %s/%s" % (license_folder, license_file_name))
+            shell('''yes | cp %s %s/%s''' % (lpath, license_folder, license_file_name))
+            shell('''chown zstack:zstack %s/%s''' % (license_folder, license_file_name))
+            info("successfully installed the license file to %s/%s" % (license_folder, license_file_name))
+
         if ppath:
             shell('''yes | cp %s %s/pri.key''' % (ppath, license_folder))
             shell('''chown zstack:zstack %s/pri.key''' % license_folder)
@@ -7293,9 +7299,15 @@ class ClearLicenseCmd(Command):
             shell('''mkdir -p %s''' % license_bck)
             shell('''/bin/mv -f %s %s''' % (license_files, license_bck))
             shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
-            info("Successfully clear and backup zstack license files to " + license_bck)
-        else:
-            info("There is no zstack license founded.")
+
+        if os.path.isdir(license_folder + 'packaged'):
+            shell('''mkdir -p %s''' % license_bck)
+            shell('''/bin/mv -f %s %s''' % (license_folder + 'packaged', license_bck))
+            shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
+
+        shell('''find %s -maxdepth 1 -name 'license_*' -type f -exec mv {} %s \;''' % (license_folder, license_bck))
+
+        info("Successfully clear and backup zstack license files to " + license_bck)
 
 # For UI 1.x
 class StartDashboardCmd(Command):
