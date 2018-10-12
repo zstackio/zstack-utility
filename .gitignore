@@ -40,6 +40,8 @@ zstackbuild/centos7_repo/
 centos6_repo
 centos7_repo
 zstackbuild/scripts/setup.sh
+apibinding/apibinding/api_actions.py
+apibinding/apibinding/inventory.py
 *.orig
 .pydevproject
 .project
