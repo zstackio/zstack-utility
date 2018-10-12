@@ -340,10 +340,10 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     @misc.ignoreerror
     def _cleanup_conntrack(self, ip=None):
         if ip:
-            shell.call("sudo conntrack -d %s -D" % ip)
+            shell.call("conntrack -d %s -D" % ip, exception=False)
             logger.debug('clean up conntrack -d %s -D' % ip)
         else:
-            shell.call("sudo conntrack -D")
+            shell.call("conntrack -D", exception=False)
             logger.debug('clean up conntrack -D')
 
     def _apply_rules_using_iprange_match(self, cmd, iptable=None, ipset_mn=None):
