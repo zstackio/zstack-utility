@@ -181,7 +181,7 @@ def is_multipath(dev_name):
 
     slaves = shell.call("ls /sys/class/block/%s/slaves/" % dev_name).strip().split("\n")
     if slaves is not None and len(slaves) > 0:
-        if len(slaves) == 0 and slaves[0] == "":
+        if len(slaves) == 1 and slaves[0] == "":
             return False
         return True
     return False
@@ -602,8 +602,10 @@ def resize_lv_from_cmd(path, size, cmd):
         resize_lv(path, size)
 
     current_size = int(get_lv_size(path))
-    if current_size - int(size) > cmd.addons[thinProvisioningInitializeSize]:
+    if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
         resize_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
+    else:
+        resize_lv(path, size)
 
 
 @bash.in_bash
