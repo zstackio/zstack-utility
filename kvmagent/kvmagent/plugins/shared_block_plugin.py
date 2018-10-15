@@ -13,6 +13,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
+from zstacklib.utils.plugin import completetask
 import zstacklib.utils.uuidhelper as uuidhelper
 
 logger = log.get_logger(__name__)
@@ -540,6 +541,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
 
+        self.do_download_from_sftp(cmd, install_abs_path)
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    def do_download_from_sftp(self, cmd, install_abs_path):
         if not lvm.lv_exists(install_abs_path):
             size = linux.sftp_get(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, True)
             lvm.create_lv_from_absolute_path(install_abs_path, size,
@@ -551,12 +558,22 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, False)
 
-        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
-        return jsonobject.dumps(rsp)
-
     @kvmagent.replyerror
+    @completetask
     def download_from_kvmhost(self, req):
-        return self.download_from_sftp(req)
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
+
+        # todo: assume agent will not restart, maybe need clean
+        last_task = self.load_and_save_task(req, rsp, os.path.exists, install_abs_path)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
+
+        self.do_download_from_sftp(cmd, install_abs_path)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def upload_to_imagestore(self, req):

@@ -6,15 +6,16 @@ import pprint
 import traceback
 
 import zstacklib.utils.daemon as daemon
-import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.lock as lock
 import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils.report import *
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
+from zstacklib.utils.plugin import completetask
 import os
 from zstacklib.utils import shell
+from zstacklib.utils import plugin
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
@@ -124,7 +125,7 @@ def replyerror(func):
     return wrap
 
 
-class CephAgent(object):
+class CephAgent(plugin.TaskManager):
     INIT_PATH = "/ceph/primarystorage/init"
     CREATE_VOLUME_PATH = "/ceph/primarystorage/volume/createempty"
     DELETE_PATH = "/ceph/primarystorage/delete"
@@ -161,6 +162,7 @@ class CephAgent(object):
     http_server.logfile_path = log.get_logfile_path()
 
     def __init__(self):
+        super(CephAgent, self).__init__()
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.ADD_POOL_PATH, self.add_pool)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
@@ -633,7 +635,9 @@ class CephAgent(object):
         call_string = 'rbd create --size %s --image-format 2 %s ' % (size_M, path)
         if cmd.shareable:
             call_string = call_string + " --image-shared"
-        shell.call(call_string)
+
+        skip_cmd = "rbd info %s ||" % path if cmd.skipIfExisting else ""
+        shell.call(skip_cmd + call_string)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -659,9 +663,19 @@ class CephAgent(object):
         return jsonobject.dumps(AgentResponse())
 
     @replyerror
-    @rollback
     def sftp_download(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
+
+        self.do_sftp_download(cmd, pool, image_name)
+
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @rollback
+    @in_bash
+    def do_sftp_download(self, cmd, pool, image_name):
         hostname = cmd.hostname
         prikey = cmd.sshKey
         port = cmd.sshPort
@@ -671,7 +685,6 @@ class CephAgent(object):
         else:
             bandWidth = ''
 
-        pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
         tmp_image_name = 'tmp-%s' % image_name
 
         prikey_file = linux.write_to_temp_file(prikey)
@@ -717,10 +730,6 @@ class CephAgent(object):
                     os.remove(conf_path)
         else:
             shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
-
-        rsp = AgentResponse()
-        self._set_capacity_to_response(rsp)
-        return jsonobject.dumps(rsp)
 
     @replyerror
     def delete(self, req):
@@ -819,9 +828,24 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     @replyerror
-    @in_bash
+    @completetask
+    @rollback
     def download_from_kvmhost(self, req):
-        return self.sftp_download(req)
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
+
+        def validate_task_result_existing(_):
+            return shell.run("rbd ls %s | grep -q %s" % (pool, image_name)) == 0
+
+        last_task = self.load_and_save_task(req, rsp, validate_task_result_existing, None)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
+
+        self.do_sftp_download(cmd, pool, image_name)
+        return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):
     def __init__(self, pidfile):

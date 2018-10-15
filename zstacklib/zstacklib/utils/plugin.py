@@ -4,21 +4,123 @@
 '''
 
 import abc
+import functools
 import os
 import os.path
 import imp
 import inspect
+import threading
+
 import log
 import ConfigParser
+
+import time
+from zstacklib.utils import jsonobject, http
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
 
 logger = log.get_logger(__name__)
 
-class Plugin(object):
+
+class TaskProgressInfo(object):
+    def __init__(self, key, req, rsp):
+        self.key = key
+        self.rsp = rsp
+        self.req = req
+        self.agent_pid = os.getpid()
+        self.completed = False
+        self.current_pid = None
+        self.current_process_cmd = None
+        self.current_process_name = None
+        self.current_process_return_code = None
+
+
+def completetask(func):
+    @functools.wraps(func)
+    def wrap(*args, **kwargs):
+        err = None
+        task_manager = args[0]
+        req = args[1]
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            err = str(e)
+            raise
+        finally:
+            task_manager.complete_task(req=req, err=err)
+    return wrap
+
+class TaskManager(object):
+    def __init__(self):
+        '''
+        Constructor
+        '''
+        self.mapper_lock = threading.RLock()
+        self.longjob_progress_mapper = {}
+        pass
+
+    def load_task(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.identificationCode in self.longjob_progress_mapper.keys():
+            return self.longjob_progress_mapper[cmd.identificationCode]
+        return None
+
+    # todo : load task when agent restart
+    def load_and_save_task(self, req, rsp, validate_task_result_existing, args):
+        assert validate_task_result_existing, "you must validate task result has not been clean"
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if not cmd.identificationCode:
+            return None
+        with self.mapper_lock:
+            if validate_task_result_existing(args) and cmd.identificationCode in self.longjob_progress_mapper.keys():
+                return self.longjob_progress_mapper[cmd.identificationCode]
+            else:
+                self.longjob_progress_mapper[cmd.identificationCode] = TaskProgressInfo(req=req, rsp=rsp, key=cmd.identificationCode)
+                return None
+
+    def complete_task(self, req, err=None):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if not cmd.identificationCode:
+            return
+
+        assert self.longjob_progress_mapper[cmd.identificationCode], "you must save task before complete it."
+        task_info = self.longjob_progress_mapper[cmd.identificationCode]
+        if err:
+            task_info.rsp.success = False
+            task_info.rsp.error = err
+
+        task_info.completed = True
+        # threading.Timer(300, self.longjob_progress_mapper.pop, args=[cmd.identificationCode]).start()
+
+    def wait_task_complete(self, task_info, timeout=259200):
+        interval = 60
+        key = task_info.key
+        assert self.longjob_progress_mapper[key].completed is not None, "last task must be existing"
+
+        def do_wait():
+            waited_time = 0
+            while not self.longjob_progress_mapper[key].completed:
+                time.sleep(interval)
+                waited_time += interval
+                if timeout < waited_time:
+                    return None
+
+            return self.longjob_progress_mapper[key]
+
+        completed_task = do_wait()
+        if completed_task:
+            return completed_task.rsp
+        else:
+            rsp = task_info.rsp
+            rsp.success = False
+            rsp.error = "timeout to wait other task"
+            return rsp
+
+class Plugin(TaskManager):
     __metaclass__  = abc.ABCMeta
     
     def __init__(self):
+        super(Plugin, self).__init__()
         self.config = None
         
     def configure(self, config=None):

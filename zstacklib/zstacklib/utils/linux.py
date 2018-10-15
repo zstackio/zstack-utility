@@ -1595,3 +1595,9 @@ def linux_lsof(file):
     cmd = shell.ShellCmd("lsof %s | grep -v '^COMMAND'" % file)
     cmd(is_exception=False)
     return cmd.stdout
+
+def read_file(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, 'r') as fd:
+        return fd.read()

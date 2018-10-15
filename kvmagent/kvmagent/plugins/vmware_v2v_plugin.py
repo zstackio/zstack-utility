@@ -4,7 +4,6 @@
 import os
 import json
 import commands
-import traceback
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -12,8 +11,10 @@ from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import http
+from zstacklib.utils import thread
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils.linux import shellquote
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -91,15 +92,42 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
     @in_bash
     @kvmagent.replyerror
+    @completetask
     def convert(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConvertRsp()
-        storagePath = '{}/{}'.format(cmd.storagePath, cmd.srcVmUuid)
-        cmdstr = "mkdir -p {0} && echo '{1}' > {0}/passwd".format(storagePath, cmd.vCenterPassword)
+
+        storage_dir = '{}/{}'.format(cmd.storagePath, cmd.srcVmUuid)
+
+        def validate_and_make_dir(_dir):
+            existing = os.path.exists(_dir)
+            if not existing:
+                shell.call("mkdir -p %s" % _dir)
+            return existing
+
+        last_task = self.load_and_save_task(req, rsp, validate_and_make_dir, storage_dir)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
+
+        new_task = self.load_task(req)
+
+        cmdstr = "echo '{1}' > {0}/passwd".format(storage_dir, cmd.vCenterPassword)
         if shell.run(cmdstr) != 0:
             rsp.success = False
-            rsp.error = "failed to create storagePath {} in v2v conversion host[hostUuid:{}]".format(storagePath, cmd.hostUuid)
+            rsp.error = "failed to create passwd {} in v2v conversion host".format(storage_dir)
             return jsonobject.dumps(rsp)
+
+
+        @thread.AsyncThread
+        def save_pid():
+            linux.wait_callback_success(os.path.exists, v2v_pid_path)
+            with open(v2v_pid_path, 'r') as fd:
+                new_task.current_pid = fd.read().strip()
+            new_task.current_process_cmd = echo_pid_cmd
+            new_task.current_process_name = "virt_v2v_cmd"
+            logger.debug("longjob[uuid:%s] saved process[pid:%s, name:%s]" %
+                         (cmd.longJobUuid, new_task.current_pid, new_task.current_process_name))
 
         virt_v2v_cmd = 'virt-v2v \
                 -ic vpx://{0}?no_verify=1 {1} \
@@ -108,50 +136,81 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 --vddk-thumbprint={3}    \
                 -o local -os {2} \
                 --password-file {2}/passwd \
-                -of qcow2 --compress > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storagePath, cmd.thumbprint)
+                -of qcow2 --compress > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir, cmd.thumbprint)
         docker_run_cmd = 'systemctl start docker && docker run --rm -v /usr/local/zstack:/usr/local/zstack -v {0}:{0} \
                 -e VIRTIO_WIN=/usr/local/zstack/zstack-windows-virtio-driver.iso \
                 -e PATH=/home/v2v/nbdkit:$PATH \
                 zs_virt_v2v {1}'.format(cmd.storagePath.rstrip('/'), virt_v2v_cmd)
-        if shell.run(docker_run_cmd) != 0:
+
+        v2v_pid_path = os.path.join(storage_dir, "convert.pid")
+        v2v_cmd_ret_path = os.path.join(storage_dir, "convert.ret")
+        echo_pid_cmd = "echo $$ > %s; %s; ret=$?; echo $ret > %s; exit $ret" % (v2v_pid_path, docker_run_cmd, v2v_cmd_ret_path)
+
+        def run_convert_if_need():
+            def do_run():
+                save_pid()
+                ret = shell.run(echo_pid_cmd)
+                new_task.current_process_return_code = ret
+                return ret
+
+            pid = linux.read_file(v2v_pid_path)
+            if not pid:
+                return do_run()
+
+            pid = int(pid.strip())
+            process_completed = os.path.exists(v2v_cmd_ret_path)
+            process_has_been_killed = not os.path.exists(v2v_cmd_ret_path) and not os.path.exists('/proc/%d' % pid)
+            process_still_running = not os.path.exists(v2v_cmd_ret_path) and os.path.exists('/proc/%d' % pid)
+            if process_has_been_killed:
+                return do_run()
+
+            if process_still_running:
+                linux.wait_callback_success(os.path.exists, v2v_cmd_ret_path, timeout=259200, interval=60)
+
+            ret = linux.read_file(v2v_cmd_ret_path)
+            return int(ret.strip() if ret else 126)
+
+        if run_convert_if_need() != 0:
+            v2v_log_file = "/tmp/v2v_log/%s-virt-v2v-log" % cmd.longJobUuid
+
             rsp.success = False
-            rsp.error = "failed to run virt-v2v command"
+            rsp.error = "failed to run virt-v2v command, log in conversion host: %s" % v2v_log_file
 
             # create folder to save virt-v2v log
-            v2v_log_file = "/tmp/v2v_log/%s-virt-v2v-log" % cmd.longJobUuid
-            tail_cmd = 'mkdir -p /tmp/v2v_log; tail -c 1M %s/virt_v2v_log > %s' % (storagePath, v2v_log_file)
+            tail_cmd = 'mkdir -p /tmp/v2v_log; tail -c 1M %s/virt_v2v_log > %s' % (storage_dir, v2v_log_file)
             shell.run(tail_cmd)
             with open(v2v_log_file, 'a') as fd:
                 fd.write('\n>>> VCenter Password: %s\n' % cmd.vCenterPassword)
                 fd.write('\n>>> virt_v2v command: %s\n' % docker_run_cmd)
             return jsonobject.dumps(rsp)
 
-        rootVol = r"%s/%s-sda" % (storagePath, cmd.srcVmName)
-        if not os.path.exists(rootVol):
+        root_vol = r"%s/%s-sda" % (storage_dir, cmd.srcVmName)
+        if not os.path.exists(root_vol):
             rsp.success = False
             rsp.error = "failed to convert root volume of " + cmd.srcVmName
             return jsonobject.dumps(rsp)
-        root_volume_actual_size, root_volume_virtual_size = self._get_qcow2_sizes(rootVol)
-        rsp.rootVolumeInfo = {"installPath": rootVol,
+        root_volume_actual_size, root_volume_virtual_size = self._get_qcow2_sizes(root_vol)
+        rsp.rootVolumeInfo = {"installPath": root_vol,
                               "actualSize": root_volume_actual_size,
                               "virtualSize": root_volume_virtual_size,
                               "deviceId": 0}
 
         rsp.dataVolumeInfos = []
         for dev in 'bcdefghijklmnopqrstuvwxyz':
-            dataVol = r"%s/%s-sd%c" % (storagePath, cmd.srcVmName, dev)
-            if os.path.exists(dataVol):
-                aSize, vSize = self._get_qcow2_sizes(dataVol)
-                rsp.dataVolumeInfos.append({"installPath": dataVol,
+            data_vol = r"%s/%s-sd%c" % (storage_dir, cmd.srcVmName, dev)
+            if os.path.exists(data_vol):
+                aSize, vSize = self._get_qcow2_sizes(data_vol)
+                rsp.dataVolumeInfos.append({"installPath": data_vol,
                                             "actualSize": aSize,
                                             "virtualSize": vSize,
                                             "deviceId": ord(dev) - ord('a')})
             else:
                 break
 
-        xml = r"%s/%s.xml" % (storagePath, cmd.srcVmName)
+        xml = r"%s/%s.xml" % (storage_dir, cmd.srcVmName)
         if self._check_str_in_file(xml, "<nvram "):
             rsp.bootMode = 'UEFI'
+
         return jsonobject.dumps(rsp)
 
     def _check_str_in_file(self, fname, txt):
