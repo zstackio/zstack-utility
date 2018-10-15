@@ -491,7 +491,7 @@ def get_console_without_libvirt(vmUuid):
     if len(output) != 1:
         return None, None
 
-    pid, idx = output.split()
+    pid, idx = output[0].split()
     proto = 'vnc' if int(idx) != 0 else 'spice'
 
     output = bash.bash_o("""lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
