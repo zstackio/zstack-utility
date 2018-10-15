@@ -454,7 +454,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         template_abs_path_cache = translate_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True)
+        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
 
         with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tag=IMAGE_TAG):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
@@ -574,7 +574,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RevertVolumeFromSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
-        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True)
+        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
 
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             size = linux.qcow2_virtualsize(snapshot_abs_path)
@@ -647,7 +647,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         if cmd.backingFile:
-            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True)
+            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
             backing_abs_path = translate_absolute_path_from_install_path(cmd.backingFile)
             with lvm.RecursiveOperateLv(backing_abs_path, shared=True):
                 virtual_size = linux.qcow2_virtualsize(backing_abs_path)
@@ -658,7 +658,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                     linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options)
         elif not lvm.lv_exists(install_abs_path):
-            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, False)
+            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, False, cmd.provisioning)
             lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
@@ -797,10 +797,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @staticmethod
-    def calc_qcow2_option(self, options, has_backing_file):
+    def calc_qcow2_option(self, options, has_backing_file, provisioning=None):
         if options is None or options == "":
             return " "
-        if has_backing_file:
+        if has_backing_file or provisioning == lvm.VolumeProvisioningStrategy.ThinProvisioning:
             return re.sub("-o preallocation=\w* ", " ", options)
         return options
 
