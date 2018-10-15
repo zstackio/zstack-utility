@@ -169,10 +169,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     def clean(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        if not cmd.dstVmUuid:
+        if not cmd.srcVmUuid:
             cleanUpPath = cmd.storagePath
         else:
-            cleanUpPath = '{}/{}'.format(cmd.storagePath, cmd.dstVmUuid)
+            cleanUpPath = '{}/{}'.format(cmd.storagePath, cmd.srcVmUuid)
         cmdstr = "/bin/rm -rf " + cleanUpPath
         shell.run(cmdstr)
         return jsonobject.dumps(rsp)
