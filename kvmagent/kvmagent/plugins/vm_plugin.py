@@ -4150,6 +4150,10 @@ class VmPlugin(kvmagent.KvmAgent):
         isc = ImageStoreClient()
         backupArgs = {}
         parents = {}
+        speed = 0
+
+        if cmd.volumeWriteBandwidth:
+            speed = cmd.volumeWriteBandwidth
 
         for deviceId in cmd.deviceIds:
             target_disk = target_disks[deviceId]
@@ -4159,16 +4163,16 @@ class VmPlugin(kvmagent.KvmAgent):
             bitmap = bitmaps[deviceId]
 
             if bitmap:
-                backupArgs[deviceId] = bitmap, 'auto', nodename
+                backupArgs[deviceId] = bitmap, 'auto', nodename, speed
             else:
                 bm = 'zsbitmap%d' % deviceId
                 imf = self.push_backing_files(isc, cmd.hostname, drivertype, source)
                 if imf:
                     parent = isc._build_install_path(imf.name, imf.id)
                     parents[deviceId] = parent
-                    backupArgs[deviceId] = bm, 'top', nodename
+                    backupArgs[deviceId] = bm, 'top', nodename, speed
                 else:
-                    backupArgs[deviceId] = bm, 'full', nodename
+                    backupArgs[deviceId] = bm, 'full', nodename, speed
 
         logger.info('taking backup for vm: %s' % cmd.vmUuid)
         res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir)
@@ -4212,6 +4216,7 @@ class VmPlugin(kvmagent.KvmAgent):
         parent = None
         mode = None
         topoverlay = None
+        speed = 0
 
         if drivertype == 'qcow2':
             topoverlay = source.file_
@@ -4231,7 +4236,10 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             bitmap, mode = cmd.bitmap, 'auto'
 
-        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest)
+        if cmd.volumeWriteBandwidth:
+            speed = cmd.volumeWriteBandwidth
+
+        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed)
         logger.info('finished backup volume with mode: %s' % mode)
 
         if mode == 'incremental':
@@ -4269,11 +4277,11 @@ class VmPlugin(kvmagent.KvmAgent):
             if not vm:
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
 
-            if not cmd.backupWriteBandwidth:
+            if not cmd.networkWriteBandwidth:
                 if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
                     raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
             else:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.backupWriteBandwidth):
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
                     raise kvmagent.KvmError("failed to prepair backup space for [vm:%s]" % cmd.vmUuid)
 
             target_disks = {}
@@ -4318,12 +4326,12 @@ class VmPlugin(kvmagent.KvmAgent):
             if not vm:
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
 
-            if not cmd.backupWriteBandwidth:
+            if not cmd.networkWriteBandwidth:
                 if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
                     raise kvmagent.KvmError(
                         "failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
             else:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.backupWriteBandwidth):
+                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
                     raise kvmagent.KvmError(
                         "failed to prepair backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
 
