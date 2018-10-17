@@ -235,16 +235,18 @@ class VolumeBackupInfo(object):
         self.backupFile = backupFile
         self.parentInstallPath = parentInstallPath
 
+
 class TakeVolumesBackupsResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumesBackupsResponse, self).__init__()
         self.backupInfos = [] # type: list[VolumeBackupInfo]
 
+
 class TakeSnapshotsCmd(kvmagent.AgentCommand):
     snapshotJobs = None  # type: list[VolumeSnapshotJobStruct]
 
     def __init__(self):
-        super(TakeSnapshotResponse, self).__init__()
+        super(TakeSnapshotsCmd, self).__init__()
         self.snapshotJobs = []
 
 
@@ -254,6 +256,17 @@ class TakeSnapshotsResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeSnapshotsResponse, self).__init__()
         self.snapshots = []
+
+
+class CancelBackupJobsCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(CancelBackupJobsCmd, self).__init__()
+        self.vmUuid = None
+
+
+class CancelBackupJobsResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CancelBackupJobsResponse, self).__init__()
 
 
 class MergeSnapshotRsp(kvmagent.AgentResponse):
@@ -3288,6 +3301,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
+    KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH = "/vm/volume/cancel/backupjobs"
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
     KVM_LOGOUT_ISCSI_TARGET_PATH = "/iscsi/target/logout"
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
@@ -4145,6 +4159,10 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return None
 
+    def do_cancel_backup_jobs(self, cmd):
+        isc = ImageStoreClient()
+        isc.stop_backup_jobs(cmd.vmUuid)
+
     # returns list[VolumeBackupInfo]
     def do_take_volumes_backup(self, cmd, target_disks, bitmaps, dstdir):
         isc = ImageStoreClient()
@@ -4267,6 +4285,24 @@ class VmPlugin(kvmagent.KvmAgent):
         return None
 
     @kvmagent.replyerror
+    def cancel_backup_jobs(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = TakeVolumesBackupsResponse()
+
+        try:
+            vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+            if not vm:
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
+
+            self.do_cancel_backup_jobs(cmd)
+        except kvmagent.KvmError as e:
+            logger.warn("cancel vm[uuid:%s] backup failed: %s" % (cmd.vmUuid, str(e)))
+            rsp.error = str(e)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def take_volumes_backups(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumesBackupsResponse()
@@ -4275,7 +4311,7 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
             if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
 
             if not cmd.networkWriteBandwidth:
                 if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
@@ -4303,11 +4339,10 @@ class VmPlugin(kvmagent.KvmAgent):
                 r.backupFile = os.path.join(cmd.uploadDir, r.backupFile)
             rsp.backupInfos = res
 
-        except kvmagent.KvmError as e:
+        except Exception as e:
             logger.warn("take vm[uuid:%s] backup failed: %s" % (cmd.vmUuid, str(e)))
             rsp.error = str(e)
             rsp.success = False
-
         finally:
             linux.fumount(d)
             linux.rmdir_if_empty(d)
@@ -4324,7 +4359,7 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
             if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.Uuid)
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
 
             if not cmd.networkWriteBandwidth:
                 if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
@@ -4346,7 +4381,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.parentInstallPath = parent
             rsp.backupFile = os.path.join(cmd.uploadDir, fname)
 
-        except kvmagent.KvmError as e:
+        except Exception as e:
             logger.warn("take volume backup failed: " + str(e))
             rsp.error = str(e)
             rsp.success = False
@@ -4726,6 +4761,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups)
+        http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target)
