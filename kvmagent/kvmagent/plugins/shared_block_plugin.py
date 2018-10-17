@@ -504,11 +504,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
-                    bash.bash_errorout("time qemu-img compare %s %s" % (volume_abs_path, install_abs_path))
+                    if not self.compare_md5sum(volume_abs_path, install_abs_path):
+                        raise Exception("qcow2 %s and %s are not identical" % (volume_abs_path, install_abs_path))
                     logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    @bash.in_bash
+    def compare_md5sum(src, dst):
+        src_md5 = bash.bash_o("md5sum %s | awk '{print $1}'" % src).strip()
+        dst_md5 = bash.bash_o("md5sum %s | awk '{print $1}'" % dst).strip()
+        return src_md5 == dst_md5
 
     @kvmagent.replyerror
     def upload_to_sftp(self, req):
@@ -750,7 +758,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
                     raise Exception("found %s already exists on ps %s" %
                                     (target_abs_path, target_ps_uuid))
-                lvm.create_lv_from_absolute_path(target_abs_path, lv_size,
+                lvm.create_lv_from_absolute_path(target_abs_path, lvm.getOriginalSize(lv_size),
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
 
@@ -777,7 +785,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                         logger.debug("rebase %s to %s" % (target_abs_path, target_backing_file))
                         linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
                     if struct.compareQcow2:
-                        bash.bash_errorout("time qemu-img compare %s %s" % (current_abs_path, target_abs_path))
+                        logger.debug("comparing qcow2 between %s and %s")
+                        if not self.compare_md5sum(current_abs_path, target_abs_path):
+                            raise Exception("qcow2 %s and %s are not identical" % (current_abs_path, target_abs_path))
+                        logger.debug("confirmed qcow2 %s and %s are identical" % (current_abs_path, target_abs_path))
         except Exception as e:
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)

@@ -236,6 +236,12 @@ def calcLvReservedSize(size):
     return size
 
 
+def getOriginalSize(size):
+    size = int(size) - (int(size) / 1024 / 1024 / 1024 / 4) * LV_RESERVED_SIZE
+    size = int(size) - 3 * LV_RESERVED_SIZE
+    return size
+
+
 def check_lvm_config_is_default():
     cmd = shell.ShellCmd("lvmconfig --type diff")
     cmd(is_exception=True)
