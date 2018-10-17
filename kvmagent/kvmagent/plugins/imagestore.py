@@ -51,6 +51,10 @@ class ImageStoreClient(object):
 
         return jsonobject.loads(output.splitlines()[-1])
 
+    def stop_backup_jobs(self, vm):
+        cmdstr = '%s stopbak -domain %s' % (self.ZSTORE_CLI_PATH, vm)
+        return shell.call(cmdstr).strip()
+
     def backup_volume(self, vm, node, bitmap, mode, dest, speed):
         cmdstr = '%s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s -speed %s' % (self.ZSTORE_CLI_PATH, bitmap, dest, vm, node, mode, speed)
         return shell.call(cmdstr).strip()
