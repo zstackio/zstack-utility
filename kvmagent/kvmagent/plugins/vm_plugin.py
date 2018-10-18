@@ -479,7 +479,7 @@ def find_namespace_node(root, path, name):
 
 def find_zstack_metadata_node(root, name):
     zs = find_namespace_node(root, 'metadata', 'zstack')
-    if not zs:
+    if zs is None:
         return None
 
     return zs.find(name)
@@ -1568,6 +1568,38 @@ class Vm(object):
         self._attach_data_volume(volume, addons)
         self.timeout_object.put('attach-volume-%s' % self.uuid, 10)
 
+    @staticmethod
+    def set_volume_qos(addons, volumeUuid, volume_xml_obj):
+        if not addons:
+            return
+
+        for key in ["VolumeQos", "VolumeReadQos", "VolumeWriteQos"]:
+            vol_qos = addons[key]
+            if not vol_qos:
+                continue
+
+            qos = vol_qos[volumeUuid]
+            if not qos:
+                continue
+            if not qos.totalBandwidth and not qos.totalIops:
+                continue
+
+            mode = None
+            if key == 'VolumeQos':
+                mode = "total"
+            elif key == 'VolumeReadQos':
+                mode = "read"
+            elif key == 'VolumeWriteQos':
+                mode = "write"
+
+            iotune = e(volume_xml_obj, 'iotune')
+            if qos.totalBandwidth:
+                virsh_key = "%s_bytes_sec" % mode
+                e(iotune, virsh_key, str(qos.totalBandwidth))
+            if qos.totalIops:
+                virsh_key = "%_iops_sec" % mode
+                e(iotune, virsh_key, str(qos.totalIops))
+
     def _attach_data_volume(self, volume, addons):
         if volume.deviceId >= len(self.DEVICE_LETTERS):
             err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 24 allowed" % (
@@ -1589,37 +1621,6 @@ class Vm(object):
 
             drivers[0].set("io", "native")
 
-        def volume_qos(volume_xml_obj):
-            if not addons:
-                return
-
-            for key in ["VolumeQos", "VolumeReadQos", "VolumeWriteQos"]:
-                vol_qos = addons[key]
-                if not vol_qos:
-                    continue
-
-                qos = vol_qos[volume.volumeUuid]
-                if not qos:
-                    continue
-                if not qos.totalBandwidth and not qos.totalIops:
-                    continue
-
-                mode = None
-                if key == 'VolumeQos':
-                    mode = "total"
-                elif key == 'VolumeReadQos':
-                    mode = "read"
-                elif key == 'VolumeWriteQos':
-                    mode = "write"
-
-                iotune = e(volume_xml_obj, 'iotune')
-                if qos.totalBandwidth:
-                    virsh_key = "%s_bytes_sec" % mode
-                    e(iotune, virsh_key, str(qos.totalBandwidth))
-                if qos.totalIops:
-                    virsh_key = "%_iops_sec" % mode
-                    e(iotune, virsh_key, str(qos.totalIops))
-
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode})
@@ -1640,7 +1641,7 @@ class Vm(object):
                 else:
                     e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
 
-            volume_qos(disk)
+            Vm.set_volume_qos(addons, volume.volumeUuid, disk)
             volume_native_aio(disk)
             return etree.tostring(disk)
 
@@ -1653,7 +1654,7 @@ class Vm(object):
                 vi.volume_uuid = volume.volumeUuid
                 vi.chap_username = volume.chapUsername
                 vi.chap_password = volume.chapPassword
-                volume_qos(vi)
+                Vm.set_volume_qos(addons, volume.volumeUuid, vi)
                 volume_native_aio(vi)
                 return etree.tostring(vi.to_xmlobject())
 
@@ -1665,7 +1666,7 @@ class Vm(object):
                 bi.volume_uuid = volume.volumeUuid
                 bi.chap_username = volume.chapUsername
                 bi.chap_password = volume.chapPassword
-                volume_qos(bi)
+                Vm.set_volume_qos(addons, volume.volumeUuid, bi)
                 volume_native_aio(bi)
                 return etree.tostring(bi.to_xmlobject())
 
@@ -1680,7 +1681,7 @@ class Vm(object):
                 vc.volume = volume
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vc.to_xmlobject()
-                volume_qos(xml_obj)
+                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
@@ -1692,7 +1693,7 @@ class Vm(object):
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = ic.to_xmlobject()
-                volume_qos(xml_obj)
+                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
@@ -1701,7 +1702,7 @@ class Vm(object):
                 vsc.volume = volume
                 vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vsc.to_xmlobject()
-                volume_qos(xml_obj)
+                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
@@ -1719,7 +1720,7 @@ class Vm(object):
                 vc.volume = volume
                 vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vc.to_xmlobject()
-                volume_qos(xml_obj)
+                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
@@ -1728,7 +1729,7 @@ class Vm(object):
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = ic.to_xmlobject()
-                volume_qos(xml_obj)
+                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
@@ -1737,7 +1738,7 @@ class Vm(object):
                 vsc.volume = volume
                 vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
                 xml_obj = vsc.to_xmlobject()
-                volume_qos(xml_obj)
+                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
                 return etree.tostring(xml_obj)
 
@@ -2921,32 +2922,6 @@ class Vm(object):
                 else:
                     return fusionstor_blk()
 
-            def volume_qos(volume_xml_obj):
-                if not cmd.addons:
-                    return
-
-                vol_qos = cmd.addons['VolumeQos']
-                if not vol_qos:
-                    return
-
-                qos = vol_qos[v.volumeUuid]
-                if not qos:
-                    return
-
-                if not qos.totalBandwidth and not qos.totalIops:
-                    return
-
-                iotune = e(volume_xml_obj, 'iotune')
-                if qos.totalBandwidth:
-                    e(iotune, 'total_bytes_sec', str(qos.totalBandwidth))
-                if qos.totalIops:
-                    # e(iotune, 'total_iops_sec', str(qos.totalIops))
-                    e(iotune, 'read_iops_sec', str(qos.totalIops))
-                    e(iotune, 'write_iops_sec', str(qos.totalIops))
-                    # e(iotune, 'read_iops_sec_max', str(qos.totalIops))
-                    # e(iotune, 'write_iops_sec_max', str(qos.totalIops))
-                    # e(iotune, 'total_iops_sec_max', str(qos.totalIops))
-
             def volume_native_aio(volume_xml_obj):
                 if not cmd.addons:
                     return
@@ -2988,7 +2963,7 @@ class Vm(object):
                 # set boot order for root volume when boot from hd
                 if v.deviceId == 0 and cmd.bootDev[0] == 'hd' and cmd.useBootMenu:
                     e(vol, 'boot', None, {'order': '1'})
-                volume_qos(vol)
+                Vm.set_volume_qos(cmd.addons, v.volumeUuid, vol)
                 volume_native_aio(vol)
                 devices.append(vol)
 
