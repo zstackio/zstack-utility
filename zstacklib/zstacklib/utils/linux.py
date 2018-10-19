@@ -1417,13 +1417,14 @@ class TimeoutObject(object):
         clean_timeout_object()
 
 def kill_process(pid, timeout=5):
+    def check(_):
+        return not os.path.exists('/proc/%s' % pid)
+
+    if check(None):
+        return
+
     logger.debug("kill -15 process[pid %s]" % pid)
     os.kill(int(pid), 15)
-
-    def check(_):
-        cmd = shell.ShellCmd('ps %s > /dev/null' % pid)
-        cmd(False)
-        return cmd.return_code != 0
 
     if wait_callback_success(check, None, timeout):
         return

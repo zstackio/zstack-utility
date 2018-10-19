@@ -227,6 +227,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     MIGRATE_DATA_PATH = "/sharedblock/volume/migrate"
     GET_BLOCK_DEVICES_PATH = "/sharedblock/blockdevices"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download"
+    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download/cancel"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -254,6 +255,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MIGRATE_DATA_PATH, self.migrate_volumes)
         http_server.register_async_uri(self.GET_BLOCK_DEVICES_PATH, self.get_block_devices)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -475,15 +477,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if cmd.folder:
             raise Exception("not support this operation")
 
-        install_abs_path = translate_absolute_path_from_install_path(cmd.path)
+        self.do_delete_bits(cmd.path)
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    def do_delete_bits(self, path):
+        install_abs_path = translate_absolute_path_from_install_path(path)
         if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
             logger.info('deleting lv image: ' + install_abs_path)
             lvm.delete_image(install_abs_path, IMAGE_TAG)
         else:
             logger.info('deleting lv volume: ' + install_abs_path)
             lvm.delete_lv(install_abs_path)
-        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
-        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
@@ -558,6 +564,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, False)
 
+    def cancel_download_from_sftp(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
+        shell.run("pkill -9 -f '%s'" % install_abs_path)
+
+        self.do_delete_bits(cmd.primaryStorageInstallPath)
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     @completetask
     def download_from_kvmhost(self, req):
@@ -574,6 +590,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.do_download_from_sftp(cmd, install_abs_path)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def cancel_download_from_kvmhost(self, req):
+        return self.cancel_download_from_sftp(req)
 
     @kvmagent.replyerror
     def upload_to_imagestore(self, req):

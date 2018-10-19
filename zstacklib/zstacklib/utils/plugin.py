@@ -85,11 +85,13 @@ class TaskManager(object):
 
         assert self.longjob_progress_mapper[cmd.identificationCode], "you must save task before complete it."
         task_info = self.longjob_progress_mapper[cmd.identificationCode]
-        if err:
-            task_info.rsp.success = False
-            task_info.rsp.error = err
 
-        task_info.completed = True
+        with self.mapper_lock:
+            if err:
+                task_info.rsp.success = False
+                task_info.rsp.error = err
+
+            task_info.completed = True
         # threading.Timer(300, self.longjob_progress_mapper.pop, args=[cmd.identificationCode]).start()
 
     def wait_task_complete(self, task_info, timeout=259200):
