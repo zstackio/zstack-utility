@@ -782,15 +782,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     current_backing_file = linux.qcow2_get_backing_file(current_abs_path)  # type: str
                     target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
 
+                    if struct.compareQcow2:
+                        logger.debug("comparing qcow2 between %s and %s" % (current_abs_path, target_abs_path))
+                        if not self.compare_md5sum(current_abs_path, target_abs_path):
+                            raise Exception("qcow2 %s and %s are not identical" % (current_abs_path, target_abs_path))
+                        logger.debug("confirmed qcow2 %s and %s are identical" % (current_abs_path, target_abs_path))
                     if current_backing_file is not None and current_backing_file != "":
                         lvm.do_active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE, False)
                         logger.debug("rebase %s to %s" % (target_abs_path, target_backing_file))
                         linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
-                    if struct.compareQcow2:
-                        logger.debug("comparing qcow2 between %s and %s")
-                        if not self.compare_md5sum(current_abs_path, target_abs_path):
-                            raise Exception("qcow2 %s and %s are not identical" % (current_abs_path, target_abs_path))
-                        logger.debug("confirmed qcow2 %s and %s are identical" % (current_abs_path, target_abs_path))
         except Exception as e:
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
