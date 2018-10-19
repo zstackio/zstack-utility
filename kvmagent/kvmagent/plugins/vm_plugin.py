@@ -490,10 +490,10 @@ def get_console_without_libvirt(vmUuid):
     proto = 'vnc' if int(idx) != 0 else 'spice'
 
     output = bash.bash_o("""lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
-    if len(output) == 1:
-        return proto, int(output[0])
-    logger.warn("get_port_without_libvirt: unexpected output: %s" % output)
-    return None, None
+    if len(output) < 1:
+        logger.warn("get_port_without_libvirt: no port found")
+        return None, None
+    return proto, min([int(port) for port in output])
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
@@ -3685,29 +3685,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         logger.debug('killing vm %s' % vm_uuid)
         vm_pid = shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % vm_uuid).strip()
-
-        def loop_kill(_):
-            if shell.run('ps -p %s > /dev/null' % vm_pid):
-                kill = shell.ShellCmd('kill %s' % vm_pid)
-                kill(False)
-            else:
-                return True
-
-        if not linux.wait_callback_success(loop_kill, None, timeout=60):
-            logger.debug("failed to kill vm[uuid:%s, pid:%s]" % (vm_uuid, vm_pid))
-        else:
-            return
-
-        def loop_kill_force(_):
-            if shell.run('ps -p %s > /dev/null' % vm_pid):
-                kill = shell.ShellCmd('kill -9 %s' % vm_pid)
-                kill(False)
-            else:
-                return True
-
-        if not linux.wait_callback_success(loop_kill_force, None, timeout=60):
-            logger.debug("failed to kill vm[uuid:%s, pid:%s]" % (vm_uuid, vm_pid))
-            raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
+        linux.kill_process(vm_pid)
 
     @kvmagent.replyerror
     def stop_vm(self, req):
