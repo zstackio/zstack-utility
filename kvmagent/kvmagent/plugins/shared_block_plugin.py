@@ -583,10 +583,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = RevertVolumeFromSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
         qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
+        new_volume_path = cmd.installPath
+        if new_volume_path is None or new_volume_path == "":
+            new_volume_path = "/dev/%s/%s" % (cmd.vgUuid, uuidhelper.uuid())
 
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             size = linux.qcow2_virtualsize(snapshot_abs_path)
-            new_volume_path = "/dev/%s/%s" % (cmd.vgUuid, uuidhelper.uuid())
 
             lvm.create_lv_from_cmd(new_volume_path, size, cmd,
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
