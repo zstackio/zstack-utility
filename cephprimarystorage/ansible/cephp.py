@@ -91,30 +91,12 @@ if distro in RPM_BASED_OS:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
-    # name: enable libvirt daemon on RedHat based OS
-    service_status("libvirtd", "state=started enabled=yes", host_post_info)
-    if distro_version >= 7:
-        # name: enable virtlockd daemon on RedHat based OS
-        service_status("virtlockd", "state=started enabled=yes", host_post_info)
-    # name: copy sysconfig libvirtd conf in RedHat
-    copy_arg = CopyArg()
-    copy_arg.src = "%s/../kvm/libvirtd" % file_root
-    copy_arg.dest = "/etc/sysconfig/libvirtd"
-    libvirtd_status = copy(copy_arg, host_post_info)
 
 elif distro in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
     run_remote_command(command, host_post_info)
-    # name: copy default libvirtd conf in Debian
-    copy_arg = CopyArg()
-    copy_arg.src = "%s/../kvm/libvirt-bin" % file_root
-    copy_arg.dest = '/etc/default/libvirt-bin'
-    libvirt_bin_status = copy(copy_arg, host_post_info)
-    if libvirt_bin_status != "changed:False":
-        # name: restart debian libvirtd
-        service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
 else:
     error("unsupported OS!")
 
@@ -169,49 +151,6 @@ elif distro in DEB_BASED_OS:
 run_remote_command(command, host_post_info)
 # change ceph config
 set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
-
-# name: remove libvirt default bridge
-command = '(ifconfig virbr0 &> /dev/null && virsh net-destroy default > ' \
-          '/dev/null && virsh net-undefine default > /dev/null) || true'
-host_post_info.post_label = "ansible.shell.virsh.destroy.bridge"
-host_post_info.post_label_param = None
-run_remote_command(command, host_post_info)
-
-# name: copy libvirtd conf
-copy_arg = CopyArg()
-copy_arg.src = "%s/../kvm/libvirtd.conf" % file_root
-copy_arg.dest = "/etc/libvirt/libvirtd.conf"
-libvirtd_conf_status = copy(copy_arg, host_post_info)
-
-# name: copy qemu conf
-copy_arg = CopyArg()
-copy_arg.src = "%s/../kvm/qemu.conf" % file_root
-copy_arg.dest = "/etc/libvirt/qemu.conf"
-qemu_conf_status = copy(copy_arg, host_post_info)
-
-# name: delete A2 qemu hook
-command = "rm -f /etc/libvirt/hooks/qemu"
-host_post_info.post_label = "ansible.shell.remove.file"
-host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
-run_remote_command(command, host_post_info)
-
-# name: restart libvirt
-if distro in RPM_BASED_OS:
-    if libvirtd_status != "changed:False" or libvirtd_conf_status != "changed:False" \
-            or qemu_conf_status != "changed:False":
-        # name: restart redhat libvirtd
-        service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
-elif distro in DEB_BASED_OS:
-    if libvirt_bin_status != "changed:False" or libvirtd_conf_status != "changed:False" \
-            or qemu_conf_status != "changed:False":
-        # name: restart debian libvirtd
-        service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
-run_remote_command(command, host_post_info)
-# change ceph config
-set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
-
-
-
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy ceph primary agent successful", host_post_info, "INFO")
 
