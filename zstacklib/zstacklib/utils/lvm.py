@@ -1031,9 +1031,16 @@ def set_sanlock_event(lockspace):
     return r == 0
 
 
-def check_sanlock_renewal_failure(lockspace):
+def get_sanlock_renewal(lockspace):
     r, o, e = bash.bash_roe("sanlock client renewal -s %s" % lockspace)
-    last_record = o.strip().splitlines()[-1]
+    return o.strip().splitlines()[-1]
+
+
+def check_sanlock_renewal_failure(lockspace):
+    last_record = linux.wait_callback_success(get_sanlock_renewal, lockspace, 10, 1, True)
+    if last_record is False:
+        logger.warn("unable find correct sanlock renewal record, may be rotated")
+        return True
     if "next_errors=" not in last_record:
         return True, ""
     errors = int(last_record.split("next_errors=")[-1])

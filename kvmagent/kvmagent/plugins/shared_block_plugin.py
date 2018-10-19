@@ -494,18 +494,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if cmd.sharedVolume:
             lvm.do_active_lv(volume_abs_path, lvm.LvmlockdLockType.SHARE, True)
 
+        lv_size = lvm.get_lv_size(volume_abs_path)
+
         with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tag=IMAGE_TAG):
             virtual_size = linux.qcow2_virtualsize(volume_abs_path)
             if not lvm.lv_exists(install_abs_path):
-                lvm.create_lv_from_absolute_path(install_abs_path, virtual_size,
+                lvm.create_lv_from_absolute_path(install_abs_path, lvm.getOriginalSize(lv_size),
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 linux.create_template(volume_abs_path, install_abs_path)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
-                    if not self.compare_md5sum(volume_abs_path, install_abs_path):
-                        raise Exception("qcow2 %s and %s are not identical" % (volume_abs_path, install_abs_path))
+                    bash.bash_errorout("time qemu-img compare %s %s" % (volume_abs_path, install_abs_path))
                     logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
@@ -513,10 +514,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     @bash.in_bash
-    def compare_md5sum(src, dst):
-        src_md5 = bash.bash_o("md5sum %s | awk '{print $1}'" % src).strip()
-        dst_md5 = bash.bash_o("md5sum %s | awk '{print $1}'" % dst).strip()
-        return src_md5 == dst_md5
+    def compare(src, dst):
+        return bash.bash_r("cmp %s %s" % (src, dst))
 
     @kvmagent.replyerror
     def upload_to_sftp(self, req):
@@ -586,6 +585,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         new_volume_path = cmd.installPath
         if new_volume_path is None or new_volume_path == "":
             new_volume_path = "/dev/%s/%s" % (cmd.vgUuid, uuidhelper.uuid())
+        else:
+            new_volume_path = translate_absolute_path_from_install_path(new_volume_path)
 
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             size = linux.qcow2_virtualsize(snapshot_abs_path)
@@ -784,7 +785,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
                     if struct.compareQcow2:
                         logger.debug("comparing qcow2 between %s and %s" % (current_abs_path, target_abs_path))
-                        if not self.compare_md5sum(current_abs_path, target_abs_path):
+                        if not self.compare(current_abs_path, target_abs_path):
                             raise Exception("qcow2 %s and %s are not identical" % (current_abs_path, target_abs_path))
                         logger.debug("confirmed qcow2 %s and %s are identical" % (current_abs_path, target_abs_path))
                     if current_backing_file is not None and current_backing_file != "":
