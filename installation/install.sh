@@ -1771,23 +1771,27 @@ EOF
 cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
 
-    [ -d /var/lib/zstack ] && chown zstack.zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-        fail "failed to change owner for /var/lib/zstack"
+    if [ -d /var/lib/zstack ];then
+        chown zstack.zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -ne 0 ];then
+            fail "failed to change ownership for /var/lib/zstack"
+        fi
     fi
+
     if [ ! -z $ZSTACK_PROPERTIES_REPO ];then
         zstack-ctl configure Ansible.var.zstack_repo=$ZSTACK_PROPERTIES_REPO
+        if [ $? -ne 0 ];then
+            fail "failed to add yum repo to $ZSTACK_PROPERTIES"
+        fi
     fi
-    if [ x"$PRODUCT_NAME" = x"$SS100" ] ; then
-        zstack-ctl configure Fusionstor.type=$SS100_STORAGE
-    fi
+
     if [ ! -z $CONSOLE_PROXY_ADDRESS ];then
         zstack-ctl configure consoleProxyOverriddenIp=${CONSOLE_PROXY_ADDRESS}
+        if [ $? -ne 0 ];then
+            fail "failed to update console proxy overridden IP to $CONSOLE_PROXY_ADDRESS"
+        fi
     fi
-    exit 1
-    if [ $? -ne 0 ];then
-        fail "failed to add yum repo to $ZSTACK_PROPERTIES"
-    fi
+
     pass
 }
 
