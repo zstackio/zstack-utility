@@ -21,6 +21,12 @@ COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
+thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
+
+
+class VolumeProvisioningStrategy(object):
+    ThinProvisioning = "ThinProvisioning"
+    ThickProvisioning = "ThickProvisioning"
 
 
 class VmStruct(object):
@@ -175,7 +181,7 @@ def is_multipath(dev_name):
 
     slaves = shell.call("ls /sys/class/block/%s/slaves/" % dev_name).strip().split("\n")
     if slaves is not None and len(slaves) > 0:
-        if len(slaves) == 0 and slaves[0] == "":
+        if len(slaves) == 1 and slaves[0] == "":
             return False
         return True
     return False
@@ -227,6 +233,12 @@ def calcLvReservedSize(size):
     size = int(size) + 3 * LV_RESERVED_SIZE
     # NOTE(weiw): Add additional 4M per 4GB for qcow2 potential use
     size = int(size) + (size/1024/1024/1024/4) * LV_RESERVED_SIZE
+    return size
+
+
+def getOriginalSize(size):
+    size = int(size) - (int(size) / 1024 / 1024 / 1024 / 4) * LV_RESERVED_SIZE
+    size = int(size) - 3 * LV_RESERVED_SIZE
     return size
 
 
@@ -560,6 +572,13 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
         dd_zero(path)
 
 
+def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume"):
+    if cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
+        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag)
+    else:
+        create_lv_from_absolute_path(path, size, tag)
+
+
 def dd_zero(path):
     cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=65536 count=1 conv=sync,notrunc" % path)
     cmd(is_exception=False)
@@ -581,6 +600,18 @@ def resize_lv(path, size):
     else:
         raise Exception("resize lv %s to size %s failed, return code: %s, stdout: %s, stderr: %s" %
                         (path, size, r, o, e))
+
+
+@bash.in_bash
+def resize_lv_from_cmd(path, size, cmd):
+    if cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
+        resize_lv(path, size)
+
+    current_size = int(get_lv_size(path))
+    if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
+        resize_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
+    else:
+        resize_lv(path, size)
 
 
 @bash.in_bash
@@ -1000,9 +1031,16 @@ def set_sanlock_event(lockspace):
     return r == 0
 
 
-def check_sanlock_renewal_failure(lockspace):
+def get_sanlock_renewal(lockspace):
     r, o, e = bash.bash_roe("sanlock client renewal -s %s" % lockspace)
-    last_record = o.strip().splitlines()[-1]
+    return o.strip().splitlines()[-1]
+
+
+def check_sanlock_renewal_failure(lockspace):
+    last_record = linux.wait_callback_success(get_sanlock_renewal, lockspace, 10, 1, True)
+    if last_record is False:
+        logger.warn("unable find correct sanlock renewal record, may be rotated")
+        return True
     if "next_errors=" not in last_record:
         return True, ""
     errors = int(last_record.split("next_errors=")[-1])

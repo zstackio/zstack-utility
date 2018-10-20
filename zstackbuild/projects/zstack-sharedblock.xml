@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-sharedblock builder" basedir="../">
+    <property name="zsblk.bdir" location="${build.dir}/zsblk-agent/" />
+    <property name="zsblk.ansible.dir" location="${ansible.dir}/zsblkagentansible/" />
+
+    <target name="build-zstack-sharedblock">
+        <makeDir dir="${zsblk.bdir}" />
+
+        <checkProperty property="zstacksharedblock.source" />
+        <checkFile file="${zstacksharedblock.source}" />
+
+        <exec executable="make" dir="${zstacksharedblock.source}" failonerror="true">
+            <arg value="clean" />
+        </exec>
+
+        <exec executable="make" dir="${zstacksharedblock.source}" failonerror="true">
+            <arg value="package" />
+        </exec>
+
+        <copy todir="${zsblk.bdir}/">
+            <fileset dir="${zstacksharedblock.source}/target/package/zsblk-agent">
+                <include name="zsblk-agent.bin" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-zstack-sharedblock">
+        <copy todir="${zsblk.ansible.dir}">
+            <fileset dir="${zsblk.bdir}">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy todir="${zsblk.ansible.dir}">
+            <fileset dir="${zsblkansibleplaybook.source}/ansible">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>

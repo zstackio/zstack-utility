@@ -4093,12 +4093,16 @@ class VmPlugin(kvmagent.KvmAgent):
 
             rsp.size = linux.get_local_file_disk_usage(rsp.snapshotInstallPath)
             if rsp.size is None or rsp.size == 0:
-                rsp.size = linux.qcow2_virtualsize(rsp.snapshotInstallPath)
+                if rsp.snapshotInstallPath.startswith("/dev/"):
+                    rsp.size = int(lvm.get_lv_size(rsp.snapshotInstallPath))
+                else:
+                    rsp.size = linux.qcow2_virtualsize(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
 
+        touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
     def push_backing_files(self, isc, hostname, drivertype, source):
@@ -5104,6 +5108,8 @@ class VolumeSnapshotResultStruct(object):
 @bash.in_bash
 @misc.ignoreerror
 def touchQmpSocketWhenExists(vmUuid):
+    if vmUuid is None:
+        return
     path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
     if os.path.exists(path):
         bash.bash_roe("touch %s" % path)

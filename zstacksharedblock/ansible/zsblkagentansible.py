@@ -1,0 +1,111 @@
+#!/usr/bin/env python
+# encoding: utf-8
+import argparse
+import os.path
+from zstacklib import *
+from datetime import datetime
+
+
+def add_true_in_command(cmd):
+    return "%s || true" % cmd
+
+# create log
+logger_dir = "/var/log/zstack/"
+create_log(logger_dir)
+banner("Starting to deploy zstack sharedblock agent")
+start_time = datetime.now()
+# set default value
+pip_url = "https=//pypi.python.org/simple/"
+proxy = ""
+sproxy = ""
+chroot_env = 'false'
+zstack_repo = 'false'
+current_dir = os.path.dirname(os.path.realpath(__file__))
+file_root = "files/zsblkagentansible"
+pkg_zsblk = ""
+post_url = ""
+chrony_servers = None
+fs_rootpath = ""
+remote_user = "root"
+remote_pass = None
+remote_port = None
+require_python_env = "false"
+
+free_spcae = 1073741824
+increment = 1073741824
+log_file = "/var/log/zstack/zsblk-agent/zsblk-agent.log"
+qmp_socket_dir = "/var/lib/libvirt/qemu/zstack/"
+utilization_percent = 85
+
+# get parameter from shell
+parser = argparse.ArgumentParser(description='Deploy zsblk-agent to host')
+parser.add_argument('-i', type=str, help="""specify inventory host file
+                        default=/etc/ansible/hosts""")
+parser.add_argument('--private-key', type=str, help='use this file to authenticate the connection')
+parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
+args = parser.parse_args()
+argument_dict = eval(args.e)
+
+# update the variable from shell arguments
+locals().update(argument_dict)
+zsblk_root = "%s/zsblk-agent/package" % zstack_root
+
+host_post_info = HostPostInfo()
+host_post_info.host_inventory = args.i
+host_post_info.host = host
+host_post_info.post_url = post_url
+host_post_info.chrony_servers = chrony_servers
+host_post_info.private_key = args.private_key
+host_post_info.remote_user = remote_user
+host_post_info.remote_pass = remote_pass
+host_post_info.remote_port = remote_port
+if remote_pass is not None and remote_user != 'root':
+    host_post_info.become = True
+
+# include zstacklib.py
+(distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
+zstacklib_args = ZstackLibArgs()
+zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
+zstacklib_args.distro_version = distro_version
+zstacklib_args.zstack_repo = zstack_repo
+zstacklib_args.yum_server = yum_server
+zstacklib_args.zstack_root = zstack_root
+zstacklib_args.host_post_info = host_post_info
+zstacklib_args.pip_url = pip_url
+zstacklib_args.trusted_host = trusted_host
+zstacklib_args.require_python_env = require_python_env
+zstacklib = ZstackLib(zstacklib_args)
+
+
+run_remote_command(add_true_in_command("rm -rf %s/*" % zsblk_root), host_post_info)
+command = 'mkdir -p %s ' % (zsblk_root)
+run_remote_command(add_true_in_command(command), host_post_info)
+
+# name: copy zsblk binary
+copy_arg = CopyArg()
+dest_pkg = "%s/%s" % (zsblk_root, pkg_zsblk)
+copy_arg.src = "%s/%s" % (file_root, pkg_zsblk)
+copy_arg.dest = dest_pkg
+copy(copy_arg, host_post_info)
+
+
+# name: install zstack-sharedblock
+command = "bash %s %s " % (dest_pkg, fs_rootpath)
+run_remote_command(add_true_in_command(command), host_post_info)
+
+run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsblk-agent/bin/zstack-sharedblock-agent.service /usr/lib/systemd/system/"), host_post_info)
+
+service_env = "'ZSBLKARGS=-free-space %s -increment %s -log-file %s -qmp-socket-dir %s -utilization-percent %s'" \
+              % (free_spcae, increment, log_file, qmp_socket_dir, utilization_percent)
+service_env = service_env.replace("/", "\/")
+command = "sed -i \"s/.*Environment=.*/Environment=%s/g\" /usr/lib/systemd/system/zstack-sharedblock-agent.service" % service_env
+run_remote_command(add_true_in_command(command), host_post_info)
+
+command = "systemctl daemon-reload && systemctl enable zstack-sharedblock-agent.service && systemctl restart zstack-sharedblock-agent.service"
+run_remote_command(add_true_in_command(command), host_post_info)
+
+host_post_info.start_time = start_time
+handle_ansible_info("SUCC: Deploy zstack sharedblock successful", host_post_info, "INFO")
+sys.exit(0)
+
