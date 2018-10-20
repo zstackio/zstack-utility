@@ -277,6 +277,7 @@ echo_star_line(){
 }
 
 cancel(){
+    sync
     echo ""|tee -a $ZSTACK_INSTALL_LOG
     [ ! -z $PID ] && kill -9 $PID
     tput sgr0
@@ -291,6 +292,7 @@ trap cancel INT
 
 # The params is failed reason
 fail(){
+    sync
     #tput cub 6
     #echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     #echo -e "$(tput setaf 1)  Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
@@ -304,6 +306,7 @@ fail(){
 
 #not for spin task fail
 fail2(){
+    sync
     cleanup_function
     tput cub 6
     echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
@@ -317,6 +320,7 @@ fail2(){
 
 pass(){
     #echo -e "$(tput setaf 2) PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    sync
     return
 }
 
