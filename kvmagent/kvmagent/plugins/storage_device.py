@@ -1,6 +1,7 @@
 import random
 
 from kvmagent import kvmagent
+from kvmagent.plugins import vm_plugin
 
 from zstacklib.utils import lock
 from zstacklib.utils import jsonobject
@@ -24,6 +25,26 @@ class AgentRsp(object):
         self.error = None
 
 
+class ScsiLunStruct(object):
+    def __init__(self):
+        self.wwids = []
+        self.vendor = ""
+        self.model = ""
+        self.wwn = ""
+        self.serial = ""
+        self.type = ""
+        self.path = ""
+        self.size = ""
+        self.hctl = ""
+        self.multipathDeviceUuid = ""
+
+
+class FiberChannelLunStruct(ScsiLunStruct):
+    def __init__(self):
+        super(FiberChannelLunStruct, self).__init__()
+        self.storageWwnn = ""
+
+
 class IscsiTargetStruct(object):
     iscsiLunStructList = None  # type: List[IscsiLunStruct]
 
@@ -32,18 +53,17 @@ class IscsiTargetStruct(object):
         self.iscsiLunStructList = []
 
 
-class IscsiLunStruct(object):
+class IscsiLunStruct(ScsiLunStruct):
     def __init__(self):
-        self.wwids = []
-        self.vendor = ""
-        self.model = ""
-        self.wwn = ""
-        self.serial = ""
+        super(IscsiLunStruct, self).__init__()
         self.hctl = ""
-        self.type = ""
-        self.path = ""
-        self.size = ""
-        self.multipathDeviceUuid = ""
+
+
+class FcSanScanRsp(AgentRsp):
+    def __init__(self):
+        super(FcSanScanRsp, self).__init__()
+        self.fiberChannelLunStructs = []
+        self.hbaWwnns = []
 
 
 class IscsiLoginRsp(AgentRsp):
@@ -59,6 +79,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     ISCSI_LOGOUT_PATH = "/storagedevice/iscsi/logout"
     FC_SCAN_PATH = "/storage/fc/scan"
     MULTIPATH_ENABLE_PATH = "/storage/multipath/enable"
+    ATTACH_SCSI_LUN_PATH = "/storage/scsilun/attach"
+    DETACH_SCSI_LUN_PATH = "/storage/scsilun/detach"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -66,9 +88,53 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ISCSI_LOGOUT_PATH, self.iscsi_logout)
         http_server.register_async_uri(self.FC_SCAN_PATH, self.scan_sg_devices)
         http_server.register_async_uri(self.MULTIPATH_ENABLE_PATH, self.enable_multipath)
+        http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
+        http_server.register_async_uri(self.DETACH_SCSI_LUN_PATH, self.detach_scsi_lun)
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def attach_scsi_lun(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        if not cmd.multipath and "mpath" in cmd.volume.installPath:
+            cmd.volume.installPath = self.get_slave_path(cmd.volume.installPath)
+
+        vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid)
+        vm.attach_data_volume(cmd.volume, cmd.addons)
+        return jsonobject.dumps(rsp)
+
+    @bash.in_bash
+    def get_slave_path(self, multipath_path):
+        def get_wwids(dev_name):
+            result = []
+            wwids = shell.call(
+                "udevadm info -n %s | grep 'by-id' | grep -v DEVLINKS | awk -F 'by-id/' '{print $2}'" % dev_name).strip().split()
+            wwids.sort()
+            for wwid in wwids:
+                if "lvm-pv" not in wwid:
+                    result.append(wwid)
+            if len(result) == 0:
+                return wwids
+
+        dm = bash.bash_o("realpath %s | grep -E -o 'dm-.*'" % multipath_path)
+        slaves = shell.call("ls -1 /sys/class/block/%s/slaves/" % dm).strip().split("\n")
+        if slaves is None or len(slaves) == 0:
+            raise "can not find any slave from multpath device: %s" % multipath_path
+        return "/dev/disk/by-id/%s" % get_wwids(slaves[0])[0]
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def detach_scsi_lun(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid)
+        vm.detach_data_volume(cmd.volume)
+        return jsonobject.dumps(rsp)
 
     @lock.lock('iscsiadm')
     @kvmagent.replyerror
@@ -188,9 +254,43 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @bash.in_bash
     def scan_sg_devices(self, req):
-        rsp = AgentRsp()
+        #1. find fc devices
+        #2. distinct by device wwid and storage wwn
+        rsp = FcSanScanRsp()
         bash.bash_roe("/usr/bin/rescan-scsi-bus.sh")
+        rsp.fiberChannelLunStructs = self.get_fc_luns()
         return jsonobject.dumps(rsp)
+
+    @bash.in_bash
+    def get_fc_luns(self):
+        o = bash.bash_o("ls -1c /sys/bus/scsi/devices/target*/fc_transport | grep ^target | awk -F 'target' '{print $2}'")
+        fc_targets = o.strip().splitlines()
+        if len(fc_targets) == 0 or (len(fc_targets) == 1 and fc_targets[0] == ""):
+            logger.debug("not find any fc targets")
+            return []
+
+        o = bash.bash_o("lsscsi | grep '\/dev\/'").strip().splitlines()
+        if len(o) == 0 or (len(o) == 1 and o[0] == ""):
+            logger.debug("not find any usable fc disks")
+            return []
+
+        luns = []
+        for fc_target in fc_targets:
+            t = filter(lambda x: fc_target in x, o)
+            luns.extend(map(lambda x: self.get_device_info(x.split("/dev/")[1]), t))
+
+        luns_info = {}
+        for lun in luns:  # type: FiberChannelLunStruct
+            if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn])==0:
+                luns_info[lun.storageWwnn] = []
+                luns_info[lun.storageWwnn].append(lun)
+            elif lun.wwids[0] not in map(lambda x:x.wwids[0], luns_info[lun.storageWwnn]):
+                luns_info[lun.storageWwnn].append(lun)
+
+        result = []
+        for i in luns_info.values():
+            result.extend(i)
+        return result
 
     @kvmagent.replyerror
     @bash.in_bash
@@ -204,3 +304,54 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if not lvm.is_multipath_running:
             raise RetryException("multipath still not running")
         return jsonobject.dumps(rsp)
+
+    def get_device_info(self, dev_name):
+        # type: (str) -> FiberChannelLunStruct
+        s = FiberChannelLunStruct()
+        o = shell.call(
+            "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name).strip().split("\n")[0]
+        if o == "":
+            raise Exception("can not get device information from %s" % dev_name)
+
+        def get_data(e):
+            return e.split("=")[1].strip().strip('"')
+
+        def get_wwids(dev):
+            return shell.call(
+                "udevadm info -n %s | grep 'by-id' | grep -v DEVLINKS | awk -F 'by-id/' '{print $2}'" % dev).strip().split()
+
+        def get_path(dev):
+            return shell.call(
+                "udevadm info -n %s | grep 'by-path' | grep -v DEVLINKS | head -n1 | awk -F 'by-path/' '{print $2}'" % dev).strip()
+
+        def get_storage_wwnn(hctl):
+            o = shell.call(
+                "systool -c fc_transport -A node_name | grep 'target%s' -B2 | grep node_name | awk '{print $NF}'" % ":".join(hctl.split(":")[0:3]))
+            return o.strip().strip('"')
+
+        for entry in o.split('" '):  # type: str
+            if entry.startswith("VENDOR"):
+                s.vendor = get_data(entry)
+            elif entry.startswith("MODEL"):
+                s.model = get_data(entry)
+            elif entry.startswith("WWN"):
+                s.wwn = get_data(entry)
+            elif entry.startswith("SERIAL"):
+                s.serial = get_data(entry)
+            elif entry.startswith('HCTL'):
+                s.hctl = get_data(entry)
+            elif entry.startswith('SIZE'):
+                s.size = get_data(entry)
+            elif entry.startswith('TYPE'):
+                s.type = get_data(entry)
+
+        s.wwids = get_wwids(dev_name)
+        s.wwids.sort()
+        s.path = get_path(dev_name)
+        if lvm.is_slave_of_multipath("/dev/%s" % dev_name):
+            s.type = "mpath"
+            wwid = bash.bash_o("multipath -l /dev/%s | head -n1 | awk '{print $2}'" % dev_name).strip().strip("()")
+            s.wwids = [wwid] if wwid != "" else s.wwids
+        s.storageWwnn = get_storage_wwnn(s.hctl)
+
+        return s
