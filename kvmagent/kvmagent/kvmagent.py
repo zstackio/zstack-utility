@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+
 from zstacklib.utils import plugin
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -13,7 +14,6 @@ import traceback
 import pprint
 import functools
 import sys
-import string
 
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -22,27 +22,30 @@ from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
+
 class KvmError(Exception):
     '''kvm error'''
-    
+
+
 class KvmAgent(plugin.Plugin):
     '''
     classdocs
     '''
-    
+
     def __init__(self):
         '''
         Constructor
         '''
-        pass
+        super(KvmAgent, self).__init__()
+
 
 metric_collectors = []
 
 def register_prometheus_collector(collector):
-    logger.debug('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx registered %s' % collector)
+    logger.debug('start registered %s' % collector)
     global metric_collectors
     metric_collectors.append(collector)
-    logger.debug('yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy registered %s' % metric_collectors)
+    logger.debug('success registered %s' % metric_collectors)
 
 _rest_service = None
 _qemu_path = None
