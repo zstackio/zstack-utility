@@ -211,9 +211,9 @@ def mount(url, path, options=None):
         os.makedirs(path, 0775)
 
     if options:
-        o = shell.ShellCmd('timeout 180 mount -o %s %s %s' % (options, url, path))
+        o = shell.ShellCmd('timeout 180 mount -t nfs4 -o %s %s %s' % (options, url, path))
     else:
-        o = shell.ShellCmd("timeout 180 mount %s %s" % (url, path))
+        o = shell.ShellCmd("timeout 180 mount -t nfs4 %s %s" % (url, path))
     o(False)
     if o.return_code == 124:
         raise Exception('unable to mount the nfs primary storage[url:%s] in 180s, timed out' % url)
