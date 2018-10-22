@@ -236,7 +236,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         # To get more accurate progress, we need to report from here someday
 
         # begin migration, then check md5 sums
-        shell.call("mkdir -p %s; cp -r %s/* %s" % (cmd.dstFolderPath, cmd.srcFolderPath, cmd.dstFolderPath))
+        shell.call("mkdir -p %s; cp -r %s/* %s; sync" % (cmd.dstFolderPath, cmd.srcFolderPath, cmd.dstFolderPath))
         src_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcFolderPath)
         dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.dstFolderPath)
         if src_md5 != dst_md5:
@@ -249,7 +249,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def rebase_volume_backing_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = NfsRebaseVolumeBackingFileRsp()
-        qcow2s = shell.call("find %s -type f | egrep \"*.qcow2$\"" % cmd.dstVolumeFolderPath) 
+
+        if not cmd.dstImageCacheTemplateFolderPath:
+            qcow2s = shell.call("find %s -type f -regex '.*\.qcow2$'" % cmd.dstVolumeFolderPath)
+        else:
+            qcow2s = shell.call("find %s %s -type f -regex '.*\.qcow2$'" % cmd.dstVolumeFolderPath, cmd.dstImageCacheTemplateFolderPath)
+
         for qcow2 in qcow2s.split():
             fmt = shell.call("qemu-img info %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % qcow2)
             if fmt.strip() != "qcow2":
