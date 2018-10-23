@@ -202,7 +202,7 @@ def is_mounted(path=None, url=None):
 
     return shell.run(cmdstr) == 0
 
-def mount(url, path, options=None):
+def mount(url, path, options=None, fstype=None):
     cmd = shell.ShellCmd("mount | grep '%s'" % path)
     cmd(is_exception=False)
     if cmd.return_code == 0: raise MountError(url, '%s is occupied by another device. Details[%s]' % (path, cmd.stdout))
@@ -210,15 +210,22 @@ def mount(url, path, options=None):
     if not os.path.exists(path):
         os.makedirs(path, 0775)
 
+    cmdstr = "mount"
+
+    if fstype:
+        cmdstr += " -t %s" % fstype
+
     if options:
-        o = shell.ShellCmd('timeout 180 mount -t nfs4 -o %s %s %s' % (options, url, path))
-    else:
-        o = shell.ShellCmd("timeout 180 mount -t nfs4 %s %s" % (url, path))
+        cmdstr += " -o %s" % options
+
+    cmdstr = "%s %s %s" % (cmdstr, url, path)
+
+    o = shell.ShellCmd("timeout 180 " + cmdstr)
     o(False)
     if o.return_code == 124:
         raise Exception('unable to mount the nfs primary storage[url:%s] in 180s, timed out' % url)
     elif o.return_code != 0:
-        o.raise_error()
+        raise Exception('mount failed: %s' % cmdstr)
 
 def umount(path, is_exception=True):
     cmd = shell.ShellCmd('umount -f -l %s' % path)
