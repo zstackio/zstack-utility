@@ -253,7 +253,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         if not cmd.dstImageCacheTemplateFolderPath:
             qcow2s = shell.call("find %s -type f -regex '.*\.qcow2$'" % cmd.dstVolumeFolderPath)
         else:
-            qcow2s = shell.call("find %s %s -type f -regex '.*\.qcow2$'" % cmd.dstVolumeFolderPath, cmd.dstImageCacheTemplateFolderPath)
+            qcow2s = shell.call("find %s %s -type f -regex '.*\.qcow2$'" % (cmd.dstVolumeFolderPath, cmd.dstImageCacheTemplateFolderPath))
 
         for qcow2 in qcow2s.split():
             fmt = shell.call("qemu-img info %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % qcow2)
