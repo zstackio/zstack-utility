@@ -2194,8 +2194,11 @@ class Vm(object):
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
-            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=1800):
-                raise kvmagent.KvmError('timeout after 1800 seconds')
+            timeo = 1800 if cmd.timeout is None else cmd.timeout
+            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeo):
+                try: self.domain.abortJob()
+                except: pass
+                raise kvmagent.KvmError('timeout after %d seconds' % timeo)
         except kvmagent.KvmError:
             raise
         except:
