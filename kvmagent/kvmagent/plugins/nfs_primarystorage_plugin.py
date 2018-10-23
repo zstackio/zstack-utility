@@ -300,7 +300,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             if linux.is_mounted(cmd.mountPath, cmd.oldMountPoint):
                 linux.umount(cmd.mountPath)
             # mount new
-            linux.mount(cmd.newMountPoint, cmd.mountPath, cmd.options)
+            linux.mount(cmd.newMountPoint, cmd.mountPath, cmd.options, "nfs4")
 
         self.mount_path[cmd.uuid] = cmd.mountPath
         logger.debug('updated the mount path[%s] mounting point from %s to %s' % (cmd.mountPath, cmd.oldMountPoint, cmd.newMountPoint))
@@ -549,7 +549,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         linux.is_valid_nfs_url(cmd.url)
         
         if not linux.is_mounted(cmd.mountPath, cmd.url):
-            linux.mount(cmd.url, cmd.mountPath, cmd.options)
+            linux.mount(cmd.url, cmd.mountPath, cmd.options, "nfs4")
         
         self.mount_path[cmd.uuid] = cmd.mountPath
         logger.debug(http.path_msg(self.MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))
