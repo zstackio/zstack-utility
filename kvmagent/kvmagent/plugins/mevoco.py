@@ -137,9 +137,6 @@ class UserDataEnv(object):
 
 
 class DhcpEnv(object):
-    RADVD_CONFIG_PATH = "/var/lib/zstack/radad/conf/"
-    RADVD_PID_PATH = "/var/lib/zstack/radad/pid/"
-    RADVD_LOG_PATH = "/var/log/zstack/radad/"
     DHCP6_STATEFUL = "Stateful-DHCP"
     DHCP6_STATELESS = "Stateless-DHCP"
 
@@ -151,22 +148,6 @@ class DhcpEnv(object):
         self.ipVersion = 0
         self.prefixLen = 0
         self.addressMode = self.DHCP6_STATEFUL
-
-    @in_bash
-    def stop_radvr_process(self):
-        conf_file = os.path.join(self.RADVD_CONFIG_PATH, self.namespace_name + '.conf')
-        pid_file = os.path.join(self.RADVD_PID_PATH, self.namespace_name + '.pid')
-        log_file = os.path.join(self.RADVD_LOG_PATH, self.namespace_name + '.log')
-
-        if os.path.exists(pid_file):
-            pid = bash_o("cat {{pid_file}}").strip()
-            bash_r('kill -9 {{pid}}')
-
-        if os.path.exists(conf_file):
-            shell.call('rm -f %s' % conf_file)
-
-        if os.path.exists(pid_file):
-            shell.call('rm -f %s' % pid_file)
 
     @lock.lock('prepare_dhcp_namespace')
     @lock.file_lock('/run/xtables.lock')
@@ -225,74 +206,6 @@ class DhcpEnv(object):
         def _get_l3_uuid():
             items = NAMESPACE_NAME.split('_')
             return items[-1]
-
-        @in_bash
-        def _create_radvd_conf_path():
-            if not os.path.exists(self.RADVD_CONFIG_PATH):
-                shell.call('mkdir -p %s' % self.RADVD_CONFIG_PATH)
-
-            if not os.path.exists(self.RADVD_PID_PATH):
-                shell.call('mkdir -p %s' % self.RADVD_PID_PATH)
-
-            if not os.path.exists(self.RADVD_LOG_PATH):
-                shell.call('mkdir -p %s' % self.RADVD_LOG_PATH)
-
-            conf = os.path.join(self.RADVD_CONFIG_PATH, NAMESPACE_NAME + '.conf')
-            pid = os.path.join(self.RADVD_PID_PATH, NAMESPACE_NAME + '.pid')
-            log = os.path.join(self.RADVD_LOG_PATH, NAMESPACE_NAME + '.log')
-
-            return conf, pid, log
-
-        @in_bash
-        def _start_radvd():
-            conf_path, pid_path, log_path = _create_radvd_conf_path()
-            nic_gateway = ip.Ipv6Address(DHCP_IP)
-            nic_prefix = nic_gateway.get_prefix(PREFIX_LEN)
-            conf_file = '''\
-interface {{nic_name}}
-{
-    AdvSendAdvert on;
-    AdvOtherConfigFlag on;
-    AdvDefaultLifetime 1800;
-    AdvLinkMTU 0;
-    AdvCurHopLimit 64;
-    AdvReachableTime 0;
-    MaxRtrAdvInterval 90;
-    MinRtrAdvInterval 30;
-    AdvDefaultPreference low;
-    AdvRetransTimer 0;
-    AdvManagedFlag {{m}};
-    prefix {{prefix}}
-    {
-        AdvValidLifetime 2592000;
-        AdvPreferredLifetime 604800;
-        AdvAutonomous off;
-        AdvOnLink on;
-        AdvRouterAddr off;
-    };
-
-};
-'''
-            if ADDRESS_MODE == self.DHCP6_STATEFUL:
-                m_flag = "on"
-            else:
-                m_flag = "off"
-
-            tmpt = Template(conf_file)
-            conf_file = tmpt.render({
-                'nic_name': INNER_DEV,
-                'prefix': nic_prefix,
-                'm': m_flag
-            })
-
-            with open(conf_path, 'w') as fd:
-                fd.write(conf_file)
-
-            #must set this namespace as ipv6 router before enable radvd
-            bash_r('ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.forwarding=1')
-            bash_r("chmod 755 %s" % conf_path)
-            RADVD = bash_errorout('which radvd').strip(' \t\r\n')
-            bash_r('ip netns exec {{NAMESPACE_NAME}} {{RADVD}} -C {{conf_path}} -p {{pid_path}} -l {{log_path}}')
 
         def _prepare_dhcp6_iptables():
             l3Uuid = _get_l3_uuid()
@@ -411,7 +324,6 @@ interface {{nic_name}}
 
         if self.ipVersion == 6:
             _prepare_dhcp6_iptables()
-            _start_radvd()
         else:
             _prepare_dhcp4_iptables()
 
@@ -526,7 +438,6 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
             p = DhcpEnv()
             p.namespace_name = cmd.namespaceName
-            p.stop_radvr_process()
 
             o = bash_o("ebtables-save | grep {{DHCP6_CHAIN_NAME}} | grep -- -A")
             o = o.strip(" \t\r\n")
@@ -1194,9 +1105,9 @@ dhcp-range={{range}}
                 dhcp_info.update(d.__dict__)
                 if d.dns is not None:
                     dnslist = ['[%s]' % dns for dns in d.dns]
-                    dhcp_info['dnslist'] = ".".join(dnslist)
+                    dhcp_info['dnslist'] = ",".join(dnslist)
                 if d.dnsDomain is not None:
-                    dhcp_info['domainList'] = ".".join(d.dnsDomain)
+                    dhcp_info['domainList'] = ",".join(d.dnsDomain)
                 routes = []
                 # add classless-static-route (option 121) for gateway:
                 if d.isDefaultL3Network:
@@ -1275,8 +1186,9 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
 
         NS_NAME = ns_name
         CONF_FILE = conf_file_path
-        DNSMASQ = bash_errorout('which dnsmasq').strip(' \t\r\n')
-        bash_errorout('ip netns exec {{NS_NAME}} {{DNSMASQ}} --conf-file={{CONF_FILE}} ')
+        #DNSMASQ = bash_errorout('which dnsmasq').strip(' \t\r\n')
+        DNSMASQ_BIN = "/usr/local/zstack/dnsmasq"
+        bash_errorout('ip netns exec {{NS_NAME}} {{DNSMASQ_BIN}} --conf-file={{CONF_FILE}} ')
 
         def check(_):
             pid = linux.find_process_by_cmdline([conf_file_path])

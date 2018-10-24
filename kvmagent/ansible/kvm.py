@@ -123,6 +123,7 @@ if IS_AARCH64:
     node_collectd_pkg = "%s/node_exporter_aarch64" % file_root
     qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
     qemu_img_local_pkg = "%s/qemu-img-aarch64" % kvm_root
+    dnsmasq_img_local_pkg = "%s/dnsmasq-aarch64" % file_root
 else:
     dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % file_root
     dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % kvm_root
@@ -130,8 +131,10 @@ else:
     node_collectd_pkg = "%s/node_exporter" % file_root
     qemu_img_pkg = "%s/qemu-img-kvm" % file_root
     qemu_img_local_pkg = "%s/qemu-img-kvm" % kvm_root
+    dnsmasq_img_local_pkg = "%s/dnsmasq" % file_root
 collectd_local_pkg = "%s/collectd_exporter" % workplace
 node_collectd_local_pkg = "%s/node_exporter" % workplace
+dnsmasq_img_dst_pkg = "/usr/local/zstack/dnsmasq"
 
 # include zstacklib.py
 (distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
@@ -169,7 +172,7 @@ if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
         extra_pkg = 'collectd-virt' if distro_version >= 7 else ""
-        dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath dnsmasq edk2.git-ovmf-x64 expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients OVMF pciutils python-pyudev pv rsync sanlock sysfsutils sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
+        dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath edk2.git-ovmf-x64 expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients OVMF pciutils python-pyudev pv rsync sanlock sysfsutils sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
 
         # name: install kvm related packages on RedHat based OS from user defined repo
         # update some packages if possible
@@ -192,7 +195,7 @@ if distro in RPM_BASED_OS:
     else:
         # name: install kvm related packages on RedHat based OS from online
         for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
-                    'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'dnsmasq', 'iproute', 'sshpass',
+                    'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'iproute', 'sshpass',
                     'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
                     'lvm2', 'lvm2-lockd', 'sanlock', 'sysfsutils', 'smartmontools', 'device-mapper-multipath', 'hwdata', 'sg3_utils']:
             yum_install_package(pkg, host_post_info)
@@ -280,11 +283,16 @@ if distro in RPM_BASED_OS:
     copy_arg.src = "%s" % dnsmasq_pkg
     copy_arg.dest = "%s" % dnsmasq_local_pkg
     copy(copy_arg, host_post_info)
+    copy_arg = CopyArg()
+    copy_arg.src = dnsmasq_local_pkg
+    copy_arg.dest = dnsmasq_img_dst_pkg
+    copy(copy_arg, host_post_info)
+    run_remote_command("chmod +x /usr/local/sbin/dnsmasq || true", host_post_info)
     # name: Update dnsmasq for RHEL6 and RHEL7
     command = "rpm -q dnsmasq-2.76 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
     host_post_info.post_label = "ansible.shell.install.pkg"
     host_post_info.post_label_param = "dnsmasq-2.76"
-    run_remote_command(command, host_post_info)
+    #run_remote_command(command, host_post_info)
     # name: disable selinux on RedHat based OS
     set_selinux("state=disabled", host_post_info)
     run_remote_command("setenforce 0 || true", host_post_info)
@@ -312,7 +320,7 @@ elif distro in DEB_BASED_OS:
     # name: install kvm related packages on Debian based OS
     install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin', 'chrony'
                         'vlan', 'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','pv', 'usbutils', 'pciutils', 'expect',
-                        'lighttpd', 'dnsmasq', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
+                        'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
     apt_install_packages(install_pkg_list, host_post_info)
     # name: copy default libvirtd conf in Debian
     copy_arg = CopyArg()
