@@ -2179,6 +2179,9 @@ class Vm(object):
                 libvirt.VIR_MIGRATE_PEER2PEER |
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
 
+        if cmd.autoConverge:
+            flag |= libvirt.VIR_MIGRATE_AUTO_CONVERGE
+
         if cmd.storageMigrationPolicy == 'FullCopy':
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
         elif cmd.storageMigrationPolicy == 'IncCopy':
