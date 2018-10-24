@@ -42,12 +42,14 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     CHECK_BITS = "/vmwarev2v/conversionhost/checkbits"
     CONFIG_QOS_PATH = "/vmwarev2v/conversionhost/qos/config"
     DELETE_QOS_PATH = "/vmwarev2v/conversionhost/qos/delete"
+    CANCEL_CONVERT_PATH = "/vmwarev2v/conversionhost/convert/cancel"
 
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.INIT_PATH, self.init)
         http_server.register_async_uri(self.CONVERT_PATH, self.convert)
         http_server.register_async_uri(self.CLEAN_PATH, self.clean)
+        http_server.register_async_uri(self.CANCEL_CONVERT_PATH, self.clean_convert)
         http_server.register_async_uri(self.CHECK_BITS, self.check_bits)
         http_server.register_async_uri(self.CONFIG_QOS_PATH, self.config_qos)
         http_server.register_async_uri(self.DELETE_QOS_PATH, self.delete_qos)
@@ -97,7 +99,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConvertRsp()
 
-        storage_dir = '{}/{}'.format(cmd.storagePath, cmd.srcVmUuid)
+        storage_dir = os.path.join(cmd.storagePath, cmd.srcVmUuid)
 
         def validate_and_make_dir(_dir):
             existing = os.path.exists(_dir)
@@ -231,9 +233,22 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         if not cmd.srcVmUuid:
             cleanUpPath = cmd.storagePath
         else:
-            cleanUpPath = '{}/{}'.format(cmd.storagePath, cmd.srcVmUuid)
+            cleanUpPath = os.path.join(cmd.storagePath, cmd.srcVmUuid)
+            shell.run("pkill -9 -f '%s'" % cleanUpPath)
+
         cmdstr = "/bin/rm -rf " + cleanUpPath
         shell.run(cmdstr)
+        return jsonobject.dumps(rsp)
+
+    @in_bash
+    @kvmagent.replyerror
+    def clean_convert(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        clean_up_path = os.path.join(cmd.storagePath, cmd.srcVmUuid)
+        shell.run("pkill -9 -f '%s'" % clean_up_path)
+        shell.run("/bin/rm -rf " + clean_up_path)
         return jsonobject.dumps(rsp)
 
     @in_bash

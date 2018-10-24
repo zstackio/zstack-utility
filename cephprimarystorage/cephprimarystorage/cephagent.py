@@ -37,6 +37,10 @@ class AgentResponse(object):
         self.availableCapacity = None
         self.poolCapacities = None
 
+    def set_err(self, err):
+        self.success = False
+        self.error = err
+
 class CheckIsBitsExistingRsp(AgentResponse):
     def __init__(self):
         super(CheckIsBitsExistingRsp, self).__init__()
@@ -157,6 +161,7 @@ class CephAgent(plugin.TaskManager):
     UPLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/commit"
     DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download"
+    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -194,6 +199,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.MIGRATE_VOLUME_SNAPSHOT_PATH, self.migrate_volume_snapshot)
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -731,6 +737,31 @@ class CephAgent(plugin.TaskManager):
         else:
             shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
 
+    def cancel_sftp_download(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        def check():
+            return shell.run("rbd ls %s | grep -q %s" % (pool, image_name)) != 0
+
+        def remove(target_name):
+            return shell.run("rbd info {0}/{1} || rbd rm {0}/{1}".format(pool, target_name)) == 0
+
+        pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
+        tmp_image_name = 'tmp-%s' % image_name
+
+        if check():
+            return jsonobject.dumps(rsp)
+
+        for image in (tmp_image_name, image_name):
+            shell.run("pkill -9 -f '%s'" % image)
+            linux.wait_callback_success(remove, image, timeout=30)
+
+        if not check():
+            rsp.set_err("remove image %s/%s fail" % (pool, image_name))
+
+        return jsonobject.dumps(rsp)
+
     @replyerror
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -846,6 +877,12 @@ class CephAgent(plugin.TaskManager):
 
         self.do_sftp_download(cmd, pool, image_name)
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    @in_bash
+    def cancel_download_from_kvmhost(self, req):
+        return self.cancel_sftp_download(req)
+
 
 class CephDaemon(daemon.Daemon):
     def __init__(self, pidfile):
