@@ -5,6 +5,7 @@ import Queue
 import functools
 import os.path
 import tempfile
+import threading
 import time
 import traceback
 import xml.etree.ElementTree as etree
@@ -2186,19 +2187,25 @@ class Vm(object):
         if cmd.useNuma:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
-        try:
-            self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)
-        except libvirt.libvirtError as ex:
-            logger.warn(linux.get_exception_stacktrace())
-            raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
+        timeout = 1800 if cmd.timeout is None else cmd.timeout
+        def cancel_migration():
+            logger.debug('timeout after %d seconds, cancelling migration' % timeout)
+            try: self.domain.abortJob()
+            except: pass
+
+        t = threading.Timer(timeout, cancel_migration)
+        t.start()
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
-            timeo = 1800 if cmd.timeout is None else cmd.timeout
-            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeo):
-                try: self.domain.abortJob()
-                except: pass
-                raise kvmagent.KvmError('timeout after %d seconds' % timeo)
+            self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)
+            t.cancel()
+        except libvirt.libvirtError as ex:
+            raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
+
+        try:
+            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=300):
+                raise kvmagent.KvmError('state change timeout after %d seconds' % timeo)
         except kvmagent.KvmError:
             raise
         except:
