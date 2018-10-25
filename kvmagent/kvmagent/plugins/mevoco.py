@@ -137,17 +137,214 @@ class UserDataEnv(object):
 
 
 class DhcpEnv(object):
+    RADVD_CONFIG_PATH = "/var/lib/zstack/radad/conf/"
+    RADVD_PID_PATH = "/var/lib/zstack/radad/pid/"
+    RADVD_LOG_PATH = "/var/log/zstack/radad/"
+    DHCP6_STATEFUL = "Stateful-DHCP"
+    DHCP6_STATELESS = "Stateless-DHCP"
+
     def __init__(self):
         self.bridge_name = None
         self.dhcp_server_ip = None
         self.dhcp_netmask = None
         self.namespace_name = None
+        self.ipVersion = 0
+        self.prefixLen = 0
+        self.addressMode = self.DHCP6_STATEFUL
 
+    @in_bash
+    def stop_radvr_process(self):
+        conf_file = os.path.join(self.RADVD_CONFIG_PATH, self.namespace_name + '.conf')
+        pid_file = os.path.join(self.RADVD_PID_PATH, self.namespace_name + '.pid')
+        log_file = os.path.join(self.RADVD_LOG_PATH, self.namespace_name + '.log')
+
+        if os.path.exists(pid_file):
+            pid = bash_o("cat {{pid_file}}").strip()
+            bash_r('kill -9 {{pid}}')
+
+        if os.path.exists(conf_file):
+            shell.call('rm -f %s' % conf_file)
+
+        if os.path.exists(pid_file):
+            shell.call('rm -f %s' % pid_file)
 
     @lock.lock('prepare_dhcp_namespace')
     @lock.file_lock('/run/xtables.lock')
     @in_bash
     def prepare(self):
+        def _prepare_dhcp4_iptables():
+            ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
+            if ret != 0:
+                bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+
+            ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null')
+            if ret != 0:
+                bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
+
+            ret = bash_r(
+                EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
+            if ret != 0:
+                bash_errorout(
+                    EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
+
+            ret = bash_r(
+                EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
+            if ret != 0:
+                bash_errorout(
+                    EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
+
+            ret = bash_r(
+                EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null')
+            if ret != 0:
+                bash_errorout(
+                    EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
+
+            ret = bash_r(
+                EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null')
+            if ret != 0:
+                bash_errorout(
+                    EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
+
+            ret = bash_r("ebtables-save | grep -- '-A {{CHAIN_NAME}} -j RETURN'")
+            if ret != 0:
+                bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
+
+            # Note(WeiW): fix dhcp checksum, see more at #982
+            ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
+            if ret != 0:
+                bash_errorout(
+                    'iptables -w -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
+
+        def _add_ebtables_rule6(rule):
+            ret = bash_r(
+                EBTABLES_CMD + ' -L {{DHCP6_CHAIN_NAME}} | grep -- {{rule}} > /dev/null')
+            if ret != 0:
+                bash_errorout(
+                    EBTABLES_CMD + ' -I {{DHCP6_CHAIN_NAME}} {{rule}}')
+
+        def _get_l3_uuid():
+            items = NAMESPACE_NAME.split('_')
+            return items[-1]
+
+        @in_bash
+        def _create_radvd_conf_path():
+            if not os.path.exists(self.RADVD_CONFIG_PATH):
+                shell.call('mkdir -p %s' % self.RADVD_CONFIG_PATH)
+
+            if not os.path.exists(self.RADVD_PID_PATH):
+                shell.call('mkdir -p %s' % self.RADVD_PID_PATH)
+
+            if not os.path.exists(self.RADVD_LOG_PATH):
+                shell.call('mkdir -p %s' % self.RADVD_LOG_PATH)
+
+            conf = os.path.join(self.RADVD_CONFIG_PATH, NAMESPACE_NAME + '.conf')
+            pid = os.path.join(self.RADVD_PID_PATH, NAMESPACE_NAME + '.pid')
+            log = os.path.join(self.RADVD_LOG_PATH, NAMESPACE_NAME + '.log')
+
+            return conf, pid, log
+
+        @in_bash
+        def _start_radvd():
+            conf_path, pid_path, log_path = _create_radvd_conf_path()
+            nic_gateway = ip.Ipv6Address(DHCP_IP)
+            nic_prefix = nic_gateway.get_prefix(PREFIX_LEN)
+            conf_file = '''\
+interface {{nic_name}}
+{
+    AdvSendAdvert on;
+    AdvOtherConfigFlag on;
+    AdvDefaultLifetime 1800;
+    AdvLinkMTU 0;
+    AdvCurHopLimit 64;
+    AdvReachableTime 0;
+    MaxRtrAdvInterval 90;
+    MinRtrAdvInterval 30;
+    AdvDefaultPreference low;
+    AdvRetransTimer 0;
+    AdvManagedFlag {{m}};
+    prefix {{prefix}}
+    {
+        AdvValidLifetime 2592000;
+        AdvPreferredLifetime 604800;
+        AdvAutonomous off;
+        AdvOnLink on;
+        AdvRouterAddr off;
+    };
+
+};
+'''
+            if ADDRESS_MODE == self.DHCP6_STATEFUL:
+                m_flag = "on"
+            else:
+                m_flag = "off"
+
+            tmpt = Template(conf_file)
+            conf_file = tmpt.render({
+                'nic_name': INNER_DEV,
+                'prefix': nic_prefix,
+                'm': m_flag
+            })
+
+            with open(conf_path, 'w') as fd:
+                fd.write(conf_file)
+
+            #must set this namespace as ipv6 router before enable radvd
+            bash_r('ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.forwarding=1')
+            bash_r("chmod 755 %s" % conf_path)
+            RADVD = bash_errorout('which radvd').strip(' \t\r\n')
+            bash_r('ip netns exec {{NAMESPACE_NAME}} {{RADVD}} -C {{conf_path}} -p {{pid_path}} -l {{log_path}}')
+
+        def _prepare_dhcp6_iptables():
+            l3Uuid = _get_l3_uuid()
+            DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3Uuid[0:9]
+            serverip = ip.Ipv6Address(DHCP_IP)
+            ns_multicast_address = serverip.get_solicited_node_multicast_address() + "/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+
+            ret = bash_r(EBTABLES_CMD + ' -L {{DHCP6_CHAIN_NAME}} > /dev/null 2>&1')
+            if ret != 0:
+                bash_errorout(EBTABLES_CMD + ' -N {{DHCP6_CHAIN_NAME}}')
+
+            ret = bash_r(EBTABLES_CMD + ' -F {{DHCP6_CHAIN_NAME}} > /dev/null 2>&1')
+
+            ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{DHCP6_CHAIN_NAME}}" > /dev/null')
+            if ret != 0:
+                bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{DHCP6_CHAIN_NAME}}')
+
+            ns_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-solicitation -j DROP"
+            _add_ebtables_rule6(ns_rule_o)
+
+            na_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-advertisement -j DROP"
+            _add_ebtables_rule6(na_rule_o)
+
+            ns_rule_i = "-p IPv6 -i {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-solicitation -j DROP"
+            _add_ebtables_rule6(ns_rule_i)
+
+            na_rule_i = "-p IPv6 -i {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-advertisement -j DROP"
+            _add_ebtables_rule6(na_rule_i)
+
+            ra_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-proto ipv6-icmp --ip6-icmp-type router-advertisement -j DROP"
+            _add_ebtables_rule6(ra_rule_o)
+
+            rs_rule_i = "-p IPv6 -i {{BR_PHY_DEV}} --ip6-proto ipv6-icmp --ip6-icmp-type router-solicitation -j DROP"
+            _add_ebtables_rule6(rs_rule_i)
+
+            # prevent ns for dhcp server from upstream network
+            dhcpv6_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-proto udp --ip6-sport 546:547 -j DROP"
+            _add_ebtables_rule6(dhcpv6_rule_o)
+
+            dhcpv6_rule_i = "-p IPv6 -i {{BR_PHY_DEV}} --ip6-proto udp --ip6-sport 546:547 -j DROP"
+            _add_ebtables_rule6(dhcpv6_rule_i)
+
+            ret = bash_r("ebtables-save | grep -- '-A {{DHCP6_CHAIN_NAME}} -j RETURN'")
+            if ret != 0:
+                bash_errorout(EBTABLES_CMD + ' -A {{DHCP6_CHAIN_NAME}} -j RETURN')
+
+            # Note(WeiW): fix dhcp checksum, see more at #982
+            ret = bash_r("ip6tables-save | grep -- '-p udp -m udp --dport 546 -j CHECKSUM --checksum-fill'")
+            if ret != 0:
+                bash_errorout(
+                    'ip6tables -w -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill')
+
         NAMESPACE_ID = None
 
         NAMESPACE_NAME = self.namespace_name
@@ -166,6 +363,11 @@ class DhcpEnv(object):
         BR_NAME = self.bridge_name
         DHCP_IP = self.dhcp_server_ip
         DHCP_NETMASK = self.dhcp_netmask
+        PREFIX_LEN = self.prefixLen
+        if self.ipVersion == 4:
+            PREFIX_LEN = linux.netmask_to_cidr(DHCP_NETMASK)
+
+        ADDRESS_MODE = self.addressMode
         BR_PHY_DEV = self.bridge_name.replace('br_', '', 1).replace('_', '.', 1)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
@@ -197,48 +399,21 @@ class DhcpEnv(object):
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP_IP}} > /dev/null')
-        if ret != 0 and DHCP_IP != None and DHCP_NETMASK != None:
+        if ret != 0 and DHCP_IP != None and (DHCP_NETMASK != None or self.prefixLen != None):
             bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr flush dev {{INNER_DEV}}')
-            bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{DHCP_NETMASK}} dev {{INNER_DEV}}')
+            bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{PREFIX_LEN}} dev {{INNER_DEV}}')
 
         bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
 
-        if DHCP_IP is None or DHCP_NETMASK is None:
+        if DHCP_IP is None or (DHCP_NETMASK is None and self.prefixLen is None):
             logger.debug("no dhcp ip[{{DHCP_IP}}] or netmask[{{DHCP_NETMASK}}] for {{INNER_DEV}} in {{NAMESPACE_NAME}}, skip ebtables/iptables config")
             return
 
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
-
-        ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null')
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
-
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
-
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
-
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null')
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
-
-        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP" > /dev/null')
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
-
-        ret = bash_r("ebtables-save | grep -- '-A {{CHAIN_NAME}} -j RETURN'")
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
-
-        # Note(WeiW): fix dhcp checksum, see more at #982
-        ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
-        if ret != 0:
-            bash_errorout('iptables -w -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
+        if self.ipVersion == 6:
+            _prepare_dhcp6_iptables()
+            _start_radvd()
+        else:
+            _prepare_dhcp4_iptables()
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
@@ -344,14 +519,16 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     @kvmagent.replyerror
     @in_bash
     def delete_dhcp_namespace(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        dhcp_ip = bash_o("ip netns exec %s ip route | awk '{print $9}'" % cmd.namespaceName)
-        dhcp_ip = dhcp_ip.strip(" \t\n\r")
+        def _delete_dhcp6(namspace):
+            items = namspace.split('_')
+            l3_uuid = items[-1]
+            DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]
 
-        if dhcp_ip:
-            CHAIN_NAME = "ZSTACK-%s" % dhcp_ip
+            p = DhcpEnv()
+            p.namespace_name = cmd.namespaceName
+            p.stop_radvr_process()
 
-            o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
+            o = bash_o("ebtables-save | grep {{DHCP6_CHAIN_NAME}} | grep -- -A")
             o = o.strip(" \t\r\n")
             if o:
                 cmds = []
@@ -360,12 +537,40 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
                 bash_r("\n".join(cmds))
 
-            ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+            ret = bash_r("ebtables-save | grep '\-A {{DHCP6_CHAIN_NAME}} -j RETURN'")
             if ret != 0:
-                bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
+                bash_r(EBTABLES_CMD + ' -D {{DHCP6_CHAIN_NAME}} -j RETURN')
 
-        bash_errorout("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % cmd.namespaceName)
-        bash_errorout("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (cmd.namespaceName, cmd.namespaceName))
+            bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namspace)
+            bash_r("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namspace, namspace))
+
+        def _delete_dhcp4(namspace):
+            dhcp_ip = bash_o("ip netns exec %s ip route | awk '{print $9}'" % namspace)
+            dhcp_ip = dhcp_ip.strip(" \t\n\r")
+
+            if dhcp_ip:
+                CHAIN_NAME = "ZSTACK-%s" % dhcp_ip
+
+                o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
+                o = o.strip(" \t\r\n")
+                if o:
+                    cmds = []
+                    for l in o.split("\n"):
+                        cmds.append(EBTABLES_CMD + " %s" % l.replace("-A", "-D"))
+
+                    bash_r("\n".join(cmds))
+
+                ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+                if ret != 0:
+                    bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -j RETURN')
+
+            bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namspace)
+            bash_r("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namspace, namspace))
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        # don't care about ip4, ipv6 because namespaces are different for l3 networks
+        _delete_dhcp4(cmd.namespaceName)
+        _delete_dhcp6(cmd.namespaceName)
 
         return jsonobject.dumps(DeleteNamespaceRsp())
 
@@ -743,6 +948,9 @@ mimetype.assign = (
         p.dhcp_server_ip = cmd.dhcpServerIp
         p.dhcp_netmask = cmd.dhcpNetmask
         p.namespace_name = cmd.namespaceName
+        p.ipVersion = cmd.ipVersion
+        p.prefixLen = cmd.prefixLen
+        p.addressMode = cmd.addressMode
         p.prepare()
 
         return jsonobject.dumps(PrepareDhcpRsp())
@@ -926,8 +1134,136 @@ tag:{{o.tag}},option:mtu,{{o.mtu}}
             else:
                 self._refresh_dnsmasq(namespace_name, conf_file_path)
 
+        @in_bash
+        def applyv6(dhcp):
+            bridge_name = dhcp[0].bridgeName
+            namespace_name = dhcp[0].namespaceName
+            dnsDomain = dhcp[0].dnsDomain
+            conf_file_path, dhcp_path, dns_path, option_path, log_path = self._make_conf_path(namespace_name)
+
+            conf_file = '''\
+domain-needed
+bogus-priv
+no-hosts
+addn-hosts={{dns}}
+dhcp-option=vendor:MSFT,2,1i
+dhcp-lease-max=65535
+dhcp-hostsfile={{dhcp}}
+dhcp-optsfile={{option}}
+log-facility={{log}}
+interface={{iface_name}}
+except-interface=lo
+bind-interfaces
+leasefile-ro
+dhcp-range={{range}}
+'''
+
+            br_num = shell.call("ip netns list-id | grep -w %s | awk '{print $2}'" % namespace_name)
+            br_num = br_num.strip(' \t\r\n')
+            if not br_num:
+                raise Exception('cannot find the ID for the namespace[%s]' % namespace_name)
+
+            tmpt = Template(conf_file)
+            conf_file = tmpt.render({
+                'dns': dns_path,
+                'dhcp': dhcp_path,
+                'option': option_path,
+                'log': log_path,
+                'iface_name': 'inner%s' % br_num,
+                'range': dhcp[0].firstIp + "," + dhcp[0].endIp + ",static," + str(dhcp[0].prefixLength) + ",24h",
+            })
+
+            restart_dnsmasq = cmd.rebuild
+            if not os.path.exists(conf_file_path) or cmd.rebuild:
+                with open(conf_file_path, 'w') as fd:
+                    fd.write(conf_file)
+            else:
+                with open(conf_file_path, 'r') as fd:
+                    c = fd.read()
+
+                if c != conf_file:
+                    logger.debug('dnsmasq configure file for bridge[%s] changed, restart it' % bridge_name)
+                    restart_dnsmasq = True
+                    with open(conf_file_path, 'w') as fd:
+                        fd.write(conf_file)
+                    logger.debug('wrote dnsmasq configure file for bridge[%s]\n%s' % (bridge_name, conf_file))
+
+            info = []
+            for d in dhcp:
+                dhcp_info = {'tag': d.mac.replace(':', '')}
+                dhcp_info.update(d.__dict__)
+                if d.dns is not None:
+                    dnslist = ['[%s]' % dns for dns in d.dns]
+                    dhcp_info['dnslist'] = ".".join(dnslist)
+                if d.dnsDomain is not None:
+                    dhcp_info['domainList'] = ".".join(d.dnsDomain)
+                routes = []
+                # add classless-static-route (option 121) for gateway:
+                if d.isDefaultL3Network:
+                    routes.append(','.join(['0.0.0.0/0', d.gateway]))
+                for route in d.hostRoutes:
+                    routes.append(','.join([route.prefix, route.nexthop]))
+                dhcp_info['routes'] = ','.join(routes)
+                info.append(dhcp_info)
+
+                if not cmd.rebuild:
+                    self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
+
+            dhcp_conf = '''\
+{% for d in dhcp -%}
+{{d.mac}},set:{{d.tag}},[{{d.ip}}],{{d.hostname}},infinite
+{% endfor -%}
+'''
+
+            tmpt = Template(dhcp_conf)
+            dhcp_conf = tmpt.render({'dhcp': info})
+            mode = 'a+'
+            if cmd.rebuild:
+                mode = 'w'
+
+            with open(dhcp_path, mode) as fd:
+                fd.write(dhcp_conf)
+
+            # for dhcpv6,  if dns-server is not provided, dnsmasq will use dhcp server as dns-server
+            option_conf = '''\
+{% for o in options -%}
+{% if o.dnslist -%}
+tag:{{o.tag}},option6:dns-server,{{o.dnslist}}
+{% endif -%}
+{% if o.domainList -%}
+tag:{{o.tag}},option6:domain-search,{{o.domainList}}
+{% endif -%}
+{% endfor -%}
+'''
+            tmpt = Template(option_conf)
+            option_conf = tmpt.render({'options': info})
+
+            with open(option_path, mode) as fd:
+                fd.write(option_conf)
+
+            hostname_conf = '''\
+{% for h in hostnames -%}
+{% if h.isDefaultL3Network and h.hostname -%}
+{{h.ip}} {{h.hostname}}
+{% endif -%}
+{% endfor -%}
+'''
+            tmpt = Template(hostname_conf)
+            hostname_conf = tmpt.render({'hostnames': info})
+
+            with open(dns_path, mode) as fd:
+                fd.write(hostname_conf)
+
+            if restart_dnsmasq:
+                self._restart_dnsmasq(namespace_name, conf_file_path)
+            else:
+                self._refresh_dnsmasq(namespace_name, conf_file_path)
+
         for k, v in namespace_dhcp.iteritems():
-            apply(v)
+            if v[0].ipVersion == 4:
+                apply(v)
+            else:
+                applyv6(v)
 
         rsp = ApplyDhcpRsp()
         return jsonobject.dumps(rsp)

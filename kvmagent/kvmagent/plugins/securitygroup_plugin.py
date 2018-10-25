@@ -6,6 +6,7 @@ from zstacklib.utils import ipset
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
+from zstacklib.utils import bash
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -26,6 +27,7 @@ class SecurityGroupRuleTO(object):
 
 class RuleTO(object):
     def __init__(self):
+        self.ipVersion = 0
         self.protocol = None
         self.type = None
         self.startPort = None
@@ -92,9 +94,13 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     DEFAULT_POLICY_DROP = 'drop'
 
     WORLD_OPEN_CIDR = '0.0.0.0/0'
+    WORLD_OPEN_CIDR_IPV6 = '::/0'
     
     ZSTACK_DEFAULT_CHAIN = 'sg-default'
     ZSTACK_IPSET_NAME_FORMAT = 'zstack-sg'
+    IPV4 = 4
+    IPV6 = 6
+    ZSTACK_IPSET_FAMILYS = {4: "inet", 6: "inet6"}
     
     def _make_in_chain_name(self, vif_name):
         return '%s-in' % vif_name
@@ -122,7 +128,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         uuid_part = uuid[0:19]
         return '%s-%s' % (self.ZSTACK_IPSET_NAME_FORMAT, uuid_part)
 
-    def _create_rule_from_setting(self, sto, ipset_mn):
+    def _create_rule_from_setting(self, sto, ipset_mn, ip_version):
         vif_name = sto.vmNicInternalName
         in_chain_name = self._make_in_chain_name(vif_name)
         out_chain_name = self._make_out_chain_name(vif_name)
@@ -136,9 +142,15 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 else:
                     icmp_type = '%s/%s' % (rto.startPort, rto.endPort)
 
-                tmpt = ' '.join(
-                    ['-A', in_chain_name, '-p icmp --icmp-type', icmp_type, '-m iprange --src-range %s -j RETURN'])
-                cidr_tmpt = ' '.join(['-A', in_chain_name, '-p icmp --icmp-type', icmp_type, '-s %s -j RETURN'])
+                if int(rto.ipVersion) == 4:
+                    tmpt = ' '.join(
+                        ['-A', in_chain_name, "-p icmp --icmp-type", icmp_type, '-m iprange --src-range %s -j RETURN'])
+                    cidr_tmpt = ' '.join(['-A', in_chain_name, "-p icmp --icmp-type", icmp_type, '-s %s -j RETURN'])
+                else:
+                    tmpt = ' '.join(
+                        ['-A', in_chain_name, '-p ipv6-icmp -m iprange --src-range %s -j RETURN'])
+                    cidr_tmpt = ' '.join(['-A', in_chain_name, "-p ipv6-icmp", '-s %s -j RETURN'])
+
             elif rto.protocol == self.PROTOCOL_ALL:
                 tmpt = ' '.join(
                     ['-A', in_chain_name, '-p all -m state --state NEW -m iprange --src-range %s -j RETURN'])
@@ -165,9 +177,14 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 else:
                     icmp_type = '%s/%s' % (rto.startPort, rto.endPort)
 
-                tmpt = ' '.join(
-                    ['-A', out_chain_name, '-p icmp --icmp-type', icmp_type, '-m iprange --dst-range %s -j RETURN'])
-                cidr_tmpt = ' '.join(['-A', out_chain_name, '-p icmp --icmp-type', icmp_type, '-d %s -j RETURN'])
+                if int(rto.ipVersion) == 4:
+                    tmpt = ' '.join(['-A', out_chain_name, "-p icmp --icmp-type", icmp_type, '-m iprange --dst-range %s -j RETURN'])
+                    cidr_tmpt = ' '.join(['-A', out_chain_name, "-p icmp --icmp-type", icmp_type, '-d %s -j RETURN'])
+                else:
+                    tmpt = ' '.join(
+                        ['-A', out_chain_name, "-p ipv6-icmp" , '-m iprange --dst-range %s -j RETURN'])
+                    cidr_tmpt = ' '.join(['-A', out_chain_name, "-p ipv6-icmp", '-d %s -j RETURN'])
+
             elif rto.protocol == self.PROTOCOL_ALL:
                 tmpt = ' '.join(
                     ['-A', out_chain_name, '-p all -m state --state NEW -m iprange --dst-range %s -j RETURN'])
@@ -200,7 +217,10 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 if sto.ingressDefaultPolicy == self.DEFAULT_POLICY_ACCEPT:
                     tails_rules.append('-A %s -j ACCEPT' % in_chain_name)
                 elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DENY:
-                    tails_rules.append('-A %s -j REJECT --reject-with icmp-host-prohibited' % in_chain_name)
+                    if int(sto.ipVersion) == 4:
+                        tails_rules.append('-A %s -j REJECT --reject-with icmp-host-prohibited' % in_chain_name)
+                    else:
+                        tails_rules.append('-A %s -j REJECT --reject-with icmp6-adm-prohibited' % in_chain_name)
                 elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DROP:
                     tails_rules.append('-A %s -j DROP' % in_chain_name)
                 else:
@@ -224,6 +244,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             group_rules = []
 
             for r in sto.securityGroupBaseRules:
+                if ip_version != int(r.ipVersion):
+                    continue
                 set_name = self._make_security_group_ipset_name(r.remoteGroupUuid)
                 if r.type == self.RULE_TYPE_INGRESS:
                     rule = make_ingress_rule(r)
@@ -234,13 +256,17 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                     rule = make_egress_rule(r)
                     grule = ' '.join([rule, '-m set --match-set %s dst' % set_name])
                     group_rules.append(grule)
-                    if r.securityGroupUuid != r.remoteGroupUuid or r.protocol != self.PROTOCOL_ALL or r.allowedCidr != '0.0.0.0/0':
-                        empty_out_chain[0] = False
+                    if int(r.ipVersion) == 4:
+                        if r.securityGroupUuid != r.remoteGroupUuid or r.protocol != self.PROTOCOL_ALL or r.allowedCidr != self.WORLD_OPEN_CIDR:
+                            empty_out_chain[0] = False
+                    else:
+                        if r.securityGroupUuid != r.remoteGroupUuid or r.protocol != self.PROTOCOL_ALL or r.allowedCidr != self.WORLD_OPEN_CIDR_IPV6:
+                            empty_out_chain[0] = False
                 else:
                     assert 0, 'unknown rule type[%s]' % r.type
 
                 if set_name not in ipset_mn.sets.keys():
-                    ipset_mn.create_set(name=set_name, match_ips=r.remoteGroupVmIps)
+                    ipset_mn.create_set(name=set_name, match_ips=r.remoteGroupVmIps, ip_version=self.ZSTACK_IPSET_FAMILYS[ip_version])
 
             return group_rules
 
@@ -248,6 +274,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             ip_rules = []
 
             for r in sto.rules:
+                if ip_version != int(r.ipVersion):
+                    continue
                 if r.type == self.RULE_TYPE_INGRESS:
                     rule = make_ingress_rule(r)
                     empty_in_chain[0] = False
@@ -278,7 +306,20 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         ipt.add_rule('-A %s -p udp -m physdev  --physdev-is-bridged -m udp --sport 68 --dport 67 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
         ipt.add_rule('-A %s -p udp -m physdev  --physdev-is-bridged -m udp --sport 67 --dport 68 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
         ipt.add_rule('-A %s -p udp -m physdev  --physdev-is-bridged -m udp --dport 53 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
-    
+
+    def _create_default_rules_ip6(self, ipt):
+        ipt.add_rule('-A FORWARD -m physdev  --physdev-is-bridged -j %s' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -m state --state RELATED,ESTABLISHED -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -p udp -m physdev  --physdev-is-bridged -m udp --sport 546 --dport 547 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -p udp -m physdev  --physdev-is-bridged -m udp --sport 547 --dport 546 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -p udp -m physdev  --physdev-is-bridged -m udp --dport 53 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -p ipv6-icmp -m physdev --physdev-is-bridged -m icmp6 --icmpv6-type 133 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -p ipv6-icmp -m physdev --physdev-is-bridged -m icmp6 --icmpv6-type 134 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -p ipv6-icmp -m physdev --physdev-is-bridged -m icmp6 --icmpv6-type 135 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -p ipv6-icmp -m physdev --physdev-is-bridged -m icmp6 --icmpv6-type 136 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        ipt.add_rule('-A %s -p ipv6-icmp -m physdev --physdev-is-bridged -m icmp6 --icmpv6-type 137 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+
+    @bash.in_bash
     def _delete_all_chains(self, ipt):
         filter_table = ipt.get_table()
         chains = filter_table.children[:]
@@ -293,11 +334,20 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             logger.debug('deleted default chain')
 
         ipt.iptable_restore()
-    
+
+    @bash.in_bash
     def _apply_rules_on_vnic_chain(self, ipt, ipset_mn, rto):
         self._delete_vnic_chain(ipt, rto.vmNicInternalName)
 
-        rules = self._create_rule_from_setting(rto, ipset_mn)
+        rules = self._create_rule_from_setting(rto, ipset_mn, self.IPV4)
+
+        for r in rules:
+            ipt.add_rule(r)
+
+    def _apply_rules_on_vnic_chain_ip6(self, ipt, ipset_mn, rto):
+        self._delete_vnic_chain(ipt, rto.vmNicInternalName)
+
+        rules = self._create_rule_from_setting(rto, ipset_mn, self.IPV6)
 
         for r in rules:
             ipt.add_rule(r)
@@ -322,7 +372,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         for r in default_chain.children:
             if ipt.is_target_in_rule(r.identity, out_chain_name):
                 r.delete()
-        
+
+    @bash.in_bash
     def _delete_vnic_chain(self, ipt, nic_name):
         self._delete_vnic_in_chain(ipt, nic_name)
         self._delete_vnic_out_chain(ipt, nic_name)
@@ -338,14 +389,17 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         return False
 
     @misc.ignoreerror
-    def _cleanup_conntrack(self, ip=None):
-        if ip:
-            shell.call("conntrack -d %s -D" % ip, exception=False)
-            logger.debug('clean up conntrack -d %s -D' % ip)
+
+    def _cleanup_conntrack(self, ips=None, ip_version="ipv4"):
+        if ips:
+            for ip in ips:
+                shell.run("sudo conntrack -d %s -f %s -D" % (ip, ip_version))
+                logger.debug('clean up conntrack -d %s -D' % ip)
         else:
-            shell.call("conntrack -D", exception=False)
+            shell.run("sudo conntrack -D")
             logger.debug('clean up conntrack -D')
 
+    @bash.in_bash
     def _apply_rules_using_iprange_match(self, cmd, iptable=None, ipset_mn=None):
         if not iptable:
             ipt = iptables.from_iptables_save()
@@ -380,19 +434,69 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         def match_set_name(name):
             return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
         ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
-        
+
+    def _apply_rules_using_iprange_match_ip6(self, cmd, iptable=None, ipset_mn=None):
+        if not iptable:
+            ipt = iptables.from_ip6tables_save()
+        else:
+            ipt = iptable
+
+        if not ipset_mn:
+            ips_mn = ipset.IPSetManager()
+        else:
+            ips_mn = ipset_mn
+
+        self._create_default_rules_ip6(ipt)
+
+        for rto in cmd.ipv6RuleTOs:
+            if rto.actionCode == self.ACTION_CODE_DELETE_CHAIN:
+                self._delete_vnic_chain(ipt, rto.vmNicInternalName)
+            elif rto.actionCode == self.ACTION_CODE_APPLY_RULE:
+                self._apply_rules_on_vnic_chain_ip6(ipt, ips_mn, rto)
+            else:
+                raise Exception('unknown action code: %s' % rto.actionCode)
+            self._cleanup_conntrack(rto.vmNicIp, "ipv6")
+
+        default_accept_rule = "-A %s -j ACCEPT" % self.ZSTACK_DEFAULT_CHAIN
+        ipt.remove_rule(default_accept_rule)
+        ipt.add_rule(default_accept_rule)
+        self._cleanup_stale_chains(ipt)
+
+        ips_mn.refresh_my_ipsets()
+        ipt.iptable_restore()
+        used_ipset = ipt.list_used_ipset_name()
+
+        def match_set_name(name):
+            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
+
+        ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
+
+    @bash.in_bash
     def _refresh_rules_on_host_using_iprange_match(self, cmd):
-        ipt = iptables.from_iptables_save()
-        self._delete_all_chains(ipt)
-        self._apply_rules_using_iprange_match(cmd, ipt)
-    
+        if cmd.ruleTOs is not None:
+            ipt = iptables.from_iptables_save()
+            self._delete_all_chains(ipt)
+            self._apply_rules_using_iprange_match(cmd, ipt)
+
+        if cmd.ipv6RuleTOs is not None:
+            ip6t = iptables.from_ip6tables_save()
+            self._delete_all_chains(ip6t)
+            self._apply_rules_using_iprange_match_ip6(cmd, ip6t)
+
     @lock.file_lock('/run/xtables.lock')
     @kvmagent.replyerror
     def apply_rules(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ApplySecurityGroupRuleResponse()
+
         try:
-            self._apply_rules_using_iprange_match(cmd)
+            if cmd.ruleTOs is not None:
+                ipt = iptables.from_iptables_save()
+                self._apply_rules_using_iprange_match(cmd, ipt)
+
+            if cmd.ipv6RuleTOs is not None:
+                ip6t = iptables.from_ip6tables_save()
+                self._apply_rules_using_iprange_match_ip6(cmd, ip6t)
         except iptables.IPTablesError as e:
             err_log = linux.get_exception_stacktrace()
             logger.warn(err_log)
@@ -427,8 +531,14 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         ips_mn = ipset.IPSetManager()
         self._cleanup_stale_chains(ipt)
         ipt.iptable_restore()
-
         used_ipset = ipt.list_used_ipset_name()
+
+        ip6t = iptables.from_ip6tables_save()
+        self._cleanup_stale_chains(ip6t)
+        ip6t.iptable_restore()
+        used_ipset6 = ip6t.list_used_ipset_name()
+        for uset in used_ipset6:
+            used_ipset.appaned(uset)
 
         def match_set_name(name):
             return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
@@ -444,15 +554,24 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UpdateGroupMemberResponse()
 
+        utos4 = []
+        utos6 = []
+        for uto in cmd.updateGroupTOs:
+            if int(uto.ipVersion) == 4:
+                utos4.append(uto)
+            else:
+                utos6.append(uto)
+
         ips_mn = ipset.IPSetManager()
         ipt = iptables.from_iptables_save()
         to_del_ipset_names = []
-        for uto in cmd.updateGroupTOs:
+        for uto in utos4:
             if uto.actionCode == self.ACTION_CODE_DELETE_GROUP:
                 to_del_ipset_names.append(self._make_security_group_ipset_name(uto.securityGroupUuid))
             elif uto.actionCode == self.ACTION_CODE_UPDATE_GROUP_MEMBER:
                 set_name = self._make_security_group_ipset_name(uto.securityGroupUuid)
-                ips_mn.create_set(name=set_name, match_ips=uto.securityGroupVmIps)
+                ip_version = self.ZSTACK_IPSET_FAMILYS[int(uto.ipVersion)]
+                ips_mn.create_set(name=set_name, match_ips=uto.securityGroupVmIps, ip_version=ip_version)
 
         ips_mn.refresh_my_ipsets()
         if len(to_del_ipset_names) > 0:
@@ -461,6 +580,26 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 ipt.remove_rule(str(rule))
             ipt.iptable_restore()
             ips_mn.clean_ipsets(to_del_ipset_names)
+
+        ip6s_mn = ipset.IPSetManager()
+        ip6t = iptables.from_ip6tables_save()
+        to_del_ipset_names = []
+        for uto in utos6:
+            if uto.actionCode == self.ACTION_CODE_DELETE_GROUP:
+                to_del_ipset_names.append(self._make_security_group_ipset_name(uto.securityGroupUuid))
+            elif uto.actionCode == self.ACTION_CODE_UPDATE_GROUP_MEMBER:
+                set_name = self._make_security_group_ipset_name(uto.securityGroupUuid)
+                ip_version = self.ZSTACK_IPSET_FAMILYS[int(uto.ipVersion)]
+                ip6s_mn.create_set(name=set_name, match_ips=uto.securityGroupVmIps, ip_version=ip_version)
+
+        ip6s_mn.refresh_my_ipsets()
+        if len(to_del_ipset_names) > 0:
+            to_del_rules = ip6t.list_reference_ipset_rules(to_del_ipset_names)
+            for rule in to_del_rules:
+                ip6t.remove_rule(str(rule))
+            ip6t.iptable_restore()
+            ip6s_mn.clean_ipsets(to_del_ipset_names)
+
         self._cleanup_conntrack()
 
         return jsonobject.dumps(rsp)
@@ -475,6 +614,14 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         if not default_chain:
             self._create_default_rules(ipt)
             ipt.iptable_restore()
+
+        ip6t = iptables.from_ip6tables_save()
+        default_chain6 = ip6t.get_chain(self.ZSTACK_DEFAULT_CHAIN)
+        if not default_chain6:
+            self._create_default_rules_ip6(ip6t)
+            ip6t.iptable_restore()
+
+        if not default_chain or not default_chain6:
             self._cleanup_conntrack()
 
         return jsonobject.dumps(rsp)
