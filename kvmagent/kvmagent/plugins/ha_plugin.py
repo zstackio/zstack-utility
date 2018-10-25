@@ -198,12 +198,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     test_file = os.path.join(mount_path, cmd.heartbeat, '%s-ping-test-file-%s' % (cmd.uuid, kvmagent.HOST_UUID))
                     touch = shell.ShellCmd('timeout 60 touch %s' % test_file)
                     touch(False)
-                    if touch.return_code == 124:
-                        logger.debug('unable to access the mount path[%s] of the aliyun nas primary storage[uuid:%s] in 60s, timeout' %
-                            (mount_path, cmd.uuid))
-                        shell.call('rm -f %s' % test_file)
-                        continue
-                    elif touch.return_code != 0:
+                    if touch.return_code != 0:
                         logger.debug('touch file failed, cause: %s' % touch.stderr)
                         failure += 1
                     else:
