@@ -287,7 +287,7 @@ if distro in RPM_BASED_OS:
     copy_arg.src = dnsmasq_local_pkg
     copy_arg.dest = dnsmasq_img_dst_pkg
     copy(copy_arg, host_post_info)
-    run_remote_command("chmod +x /usr/local/sbin/dnsmasq || true", host_post_info)
+    run_remote_command("chmod +x %s || true" % dnsmasq_img_dst_pkg, host_post_info)
     # name: Update dnsmasq for RHEL6 and RHEL7
     command = "rpm -q dnsmasq-2.76 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
     host_post_info.post_label = "ansible.shell.install.pkg"
