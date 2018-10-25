@@ -148,7 +148,32 @@ class Dnsmasq(virtualrouter.VRAgent):
             lines = fd.read().splitlines()
             return [l for l in lines if l]
 
+    def _cleanup_entries_workaround(self, dhcpEntries):
+        try:
+            for e in dhcpEntries:
+                mac2 = e.mac.replace(':', '')
+                shell.call("sed -i '/%s/d' %s; \
+                        sed -i '/%s/d' %s; \
+                        sed -i '/^$/d' %s; \
+                        sed -i '/%s/d' %s; \
+                        sed -i '/^$/d' %s; \
+                        sed -i '/%s/d' %s; \
+                        sed -i '/^$/d' %s;" \
+                           % (e.mac, self.HOST_DHCP_FILE, \
+                              e.ip, self.HOST_DHCP_FILE, \
+                              self.HOST_DHCP_FILE, \
+                              mac2, self.HOST_OPTION_FILE, \
+                              self.HOST_OPTION_FILE, \
+                              e.ip, self.HOST_DNS_FILE, \
+                              self.HOST_DNS_FILE))
+            shell.call("sync")
+        except virtualrouter.VirtualRouterError as e:
+            logger.warn(linux.get_exception_stacktrace())
+
     def _merge(self, entries):
+        ### there are some duplicate entries during adding and result in the dhcp server fail to assign the ip address for vm
+        ### I don't find the root cause and add the workaround code.' ZSTAC-15116 miao zhanyong
+        self._cleanup_entries_workaround(entries)
         dhcp_entries = set(self._read_current_dhcp_entries())
         dhcp_entries.update([e.to_dhcp_entry_string() for e in entries])
         with open(self.HOST_DHCP_FILE, 'w') as fd:
@@ -279,7 +304,7 @@ class Dnsmasq(virtualrouter.VRAgent):
                         e.ip, self.HOST_DNS_FILE, \
                         self.HOST_DNS_FILE, \
                         net_dev, e.ip, e.mac))
-
+            shell.call("sync")
         except virtualrouter.VirtualRouterError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
