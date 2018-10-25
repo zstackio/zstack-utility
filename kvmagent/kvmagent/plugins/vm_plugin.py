@@ -3326,6 +3326,9 @@ class VmPlugin(kvmagent.KvmAgent):
     timeout_object = linux.TimeoutObject()
     queue = Queue.Queue()
 
+    if not os.path.exists(QMP_SOCKET_PATH):
+        os.mkdir(QMP_SOCKET_PATH)
+
     def _record_operation(self, uuid, op):
         j = VmOperationJudger(op)
         self.timeout_object.put(uuid, j, 300)
