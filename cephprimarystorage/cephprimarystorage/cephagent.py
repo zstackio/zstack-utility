@@ -732,8 +732,7 @@ class CephAgent(plugin.TaskManager):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                # rbd:pool/image_name may already exist
-                shell.call('qemu-img convert -n -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
+                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
                     pool, tmp_image_name, pool, image_name, conf_path))
                 shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
