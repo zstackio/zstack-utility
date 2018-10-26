@@ -1652,6 +1652,7 @@ class Vm(object):
               {'name': 'qemu', 'type': 'raw'})
             e(disk, 'source', None, {'dev': volume.installPath})
             e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+            e(disk, 'shareable', None, )
             #NOTE(weiw): scsi lun not support aio or qos
             return etree.tostring(disk)
 
@@ -3146,10 +3147,11 @@ class Vm(object):
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
-                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun'})
+                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
-                    e(disk, 'target', None, {'bus': 'scsi'})
+                    e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    e(disk, 'shareable', None, )
 
         def make_pci_device(addresses):
             devices = elements['devices']
