@@ -192,8 +192,6 @@ class HaPlugin(kvmagent.KvmAgent):
                     time.sleep(cmd.interval)
 
                     mount_path = cmd.mountPath
-                    if not linux.timeout_isdir(mount_path) or not linux.is_mounted(path=mount_path):
-                        continue
 
                     test_file = os.path.join(mount_path, cmd.heartbeat, '%s-ping-test-file-%s' % (cmd.uuid, kvmagent.HOST_UUID))
                     touch = shell.ShellCmd('timeout 60 touch %s' % test_file)
