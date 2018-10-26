@@ -87,11 +87,14 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return [i.strip().split(" ")[-1] for i in o.splitlines()]
 
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
-        def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iscsiIqn):
+        def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iscsiIqn, e = None):
             disks_by_dev = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (iscsiServerIp, iscsiServerPort, iscsiIqn)).strip().splitlines()
             sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (iscsiServerIp, iscsiServerPort, iscsiIqn)).strip("[]\n ")
             if sid == "" or sid is None:
-                raise RetryException("sid not found")
+                err = "sid not found, this may because chap authentication failed"
+                if e != None and e != "":
+                    err += " ,error: %s" % e
+                raise RetryException(e)
             disks_by_iscsi = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep Lun" % sid).strip().splitlines()
             if len(disks_by_dev) != len(disks_by_iscsi):
                 raise RetryException("disks number by /dev/disk not equal to iscsiadm")
@@ -126,9 +129,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     bash.bash_o(
                         'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
                             iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserPassword))
-                bash.bash_o('iscsiadm --mode node --targetname "%s" -p %s:%s --login' %
+                r, o, e = bash.bash_roe('iscsiadm --mode node --targetname "%s" -p %s:%s --login' %
                             (iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
-                wait_iscsi_mknode(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)
+                wait_iscsi_mknode(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn, e)
             finally:
                 if bash.bash_r("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)) != 0:
                     rsp.iscsiTargetStructList.append(t)
