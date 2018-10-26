@@ -16,6 +16,7 @@ from zstacklib.utils.plugin import completetask
 import os
 from zstacklib.utils import shell
 from zstacklib.utils import plugin
+from zstacklib.utils import ceph
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
@@ -23,11 +24,12 @@ logger = log.get_logger(__name__)
 
 
 class CephPoolCapacity(object):
-    def __init__(self, name, availableCapacity, replicatedSize, used):
+    def __init__(self, name, availableCapacity, replicatedSize, used, totalCapacity):
         self.name = name
         self.availableCapacity = availableCapacity
         self.replicatedSize = replicatedSize
         self.usedCapacity = used
+        self.totalCapacity = totalCapacity
 
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
@@ -227,12 +229,13 @@ class CephAgent(plugin.TaskManager):
         if not df.pools:
             return
 
+        pools = ceph.getCephPoolsCapacity()
+        if not pools:
+            return
+
         rsp.poolCapacities = []
-        for pool in df.pools:
-            poolAvailable = pool.stats.max_avail_
-            poolUsed = pool.stats.bytes_used_
-            poolSize = jsonobject.loads(shell.call('ceph osd pool get %s size -f json' % pool.name)).size
-            poolCapacity = CephPoolCapacity(pool.name, poolAvailable, poolSize, poolUsed)
+        for pool in pools:
+            poolCapacity = CephPoolCapacity(pool.poolName, pool.availableCapacity, pool.replicatedSize, pool.usedCapacity, pool.poolTotalSize)
             rsp.poolCapacities.append(poolCapacity)
 
     def _get_file_size(self, path):
