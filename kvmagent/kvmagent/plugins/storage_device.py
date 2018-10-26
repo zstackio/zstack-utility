@@ -200,6 +200,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         bash.bash_roe("modprobe dm-multipath")
         bash.bash_roe("modprobe dm-round-robin")
         bash.bash_roe("mpathconf --enable --with_multipathd y")
+        bash.bash_roe("systemctl enable multipathd")
         if not lvm.is_multipath_running:
             raise RetryException("multipath still not running")
         return jsonobject.dumps(rsp)
