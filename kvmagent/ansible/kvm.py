@@ -283,8 +283,9 @@ if distro in RPM_BASED_OS:
     copy_arg.src = "%s" % dnsmasq_pkg
     copy_arg.dest = "%s" % dnsmasq_local_pkg
     copy(copy_arg, host_post_info)
+    run_remote_command("mkdir -p /usr/local/zstack/ || true", host_post_info)
     copy_arg = CopyArg()
-    copy_arg.src = qemu_img_local_pkg
+    copy_arg.src = dnsmasq_img_local_pkg
     copy_arg.dest = dnsmasq_img_dst_pkg
     copy(copy_arg, host_post_info)
     run_remote_command("chmod +x %s || true" % dnsmasq_img_dst_pkg, host_post_info)
