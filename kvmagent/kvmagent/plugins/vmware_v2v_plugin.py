@@ -150,6 +150,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         def run_convert_if_need():
             def do_run():
+                self.check_docker()
                 save_pid()
                 ret = shell.run(echo_pid_cmd)
                 new_task.current_process_return_code = ret
@@ -214,6 +215,11 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.bootMode = 'UEFI'
 
         return jsonobject.dumps(rsp)
+
+    def check_docker(self):
+        if shell.run("ip addr show docker0 > /dev/null && /sbin/iptables-save | grep -q 'FORWARD.*docker0'") != 0:
+            logger.warn("cannot find docker iptables rule, restart docker server!")
+            shell.run("systemctl restart docker")
 
     def _check_str_in_file(self, fname, txt):
         with open(fname) as dataf:
