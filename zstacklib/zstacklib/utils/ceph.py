@@ -17,7 +17,12 @@ def getCephPoolsCapacity():
         return result
 
     for pool in df.pools:
-        poolCapacity = CephPoolCapacity(pool.pool_name, pool.size, pool.crush_ruleset)
+        crush_rule = None
+        if pool.crush_ruleset is None:
+            crush_rule = pool.crush_rule
+        else:
+            crush_rule = pool.crush_ruleset
+        poolCapacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule)
         result.append(poolCapacity)
 
     # fill availableCapacity, usedCapacity
@@ -38,32 +43,54 @@ def getCephPoolsCapacity():
     if not crushRules:
         return result
     for poolCapacity in result:
-        crushRule = crushRules[poolCapacity.crushRuleSet]
-        if not crushRule:
+        if poolCapacity.crushRuleSet is None:
             continue
-        for step in crushRule.steps:
-            if step.op == "take":
-                poolCapacity.crushRuleItemName = step.item_name
-            break
+
+        def setCrushRuleName(crushRule):
+            if not crushRule:
+                return
+            for step in crushRule.steps:
+                if step.op == "take":
+                    poolCapacity.crushRuleItemName = step.item_name
+
+        [setCrushRuleName(crushRule) for crushRule in crushRules if crushRule.rule_id == poolCapacity.crushRuleSet]
 
     # fill crushItemOsds
-    o = shell.call('ceph osd crush tree -f json')
-    crushTrees = jsonobject.loads(o)
-    if not crushTrees:
+    o = shell.call('ceph osd tree -f json')
+    tree = jsonobject.loads(o)
+    if not tree.nodes:
         return result
     for poolCapacity in result:
         if not poolCapacity.crushRuleItemName:
             continue
-        for crush in crushTrees:
-            if crush.name != poolCapacity.crushRuleItemName:
+        for node in tree.nodes:
+            if node.name != poolCapacity.crushRuleItemName:
                 continue
-            for item in crush.items:
-                if item.type != "host":
-                    continue
-                for i in item.items:
-                    if i.type != "osd":
-                        continue
-                    poolCapacity.crushItemOsds.append(i.name)
+            if not node.children:
+                continue
+
+            osdNodes = []
+            for hostNodeId in node.children:
+                def addOsdNodes(hostNode):
+                    if hostNode.type != "host":
+                        return
+                    if not hostNode.children:
+                        return
+                    osdNodes.extend(hostNode.children)
+
+                [addOsdNodes(hostNode) for hostNode in tree.nodes if hostNode.id == hostNodeId]
+
+            if not osdNodes:
+                continue
+            for osdNodeId in osdNodes:
+                def addOsd(osdNode):
+                    if osdNode.type != "osd":
+                        return
+                    if osdNode.name in poolCapacity.crushItemOsds:
+                        return
+                    poolCapacity.crushItemOsds.append(osdNode.name)
+
+                [addOsd(osdNode) for osdNode in tree.nodes if osdNode.id == osdNodeId]
 
     # fill crushItemOsdsTotalSize, poolTotalSize
     o = shell.call('ceph osd df -f json')
