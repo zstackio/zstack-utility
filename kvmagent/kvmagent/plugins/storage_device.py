@@ -99,6 +99,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def attach_scsi_lun(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        lvm.unpriv_sgio()
 
         if not cmd.multipath and "mpath" in cmd.volume.installPath:
             cmd.volume.installPath = self.get_slave_path(cmd.volume.installPath)
@@ -226,7 +227,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         lun_struct.wwids = candidate_struct.wwids
         if lvm.is_slave_of_multipath(abs_path):
             lun_struct.type = "mpath"
-            mpath_wwid = bash.bash_o("multipath -l %s | egrep ^mpath | awk '{print $2}'" % abs_path).strip("() \n")
+            mpath_wwid = bash.bash_o("multipath -l %s | head -n1 | awk '{print $2}'" % abs_path).strip("() \n")
             lun_struct.wwids = [mpath_wwid]
         return lun_struct
 
