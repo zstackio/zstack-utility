@@ -1204,3 +1204,8 @@ def remove_partial_lv_dm(vgUuid):
 
     for volume in o:
         bash.bash_roe("dmsetup remove %s" % volume.strip().split(" ")[0])
+
+
+@bash.in_bash
+def unpriv_sgio():
+    bash.bash_roe("for i in `ls /sys/block/`; do echo 1 > $i/queue/unpriv_sgio; done")

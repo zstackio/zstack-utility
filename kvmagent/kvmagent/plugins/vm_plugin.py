@@ -1646,6 +1646,16 @@ class Vm(object):
             volume_native_aio(disk)
             return etree.tostring(disk)
 
+        def scsilun_volume():
+            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+            e(disk, 'driver', None,
+              {'name': 'qemu', 'type': 'raw'})
+            e(disk, 'source', None, {'dev': volume.installPath})
+            e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+            e(disk, 'shareable', None, )
+            #NOTE(weiw): scsi lun not support aio or qos
+            return etree.tostring(disk)
+
         def iscsibased_volume():
             def virtio_iscsi():
                 vi = VirtioIscsi()
@@ -1759,6 +1769,8 @@ class Vm(object):
             xml = ceph_volume()
         elif volume.deviceType == 'fusionstor':
             xml = fusionstor_volume()
+        elif volume.deviceType == 'scsilun':
+            xml = scsilun_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -1790,6 +1802,10 @@ class Vm(object):
                         elif volume.deviceType == 'fusionstor':
                             if xmlobject.has_element(disk,
                                                      'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                                return True
+                        elif volume.deviceType == 'scsilun':
+                            if xmlobject.has_element(disk,
+                                                     'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
                                 return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
@@ -1831,7 +1847,7 @@ class Vm(object):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
 
         def get_disk_name():
-            if volume.deviceType == 'iscsi':
+            if volume.deviceType in ['iscsi', 'scsilun']:
                 fmt = 'sd%s'
             elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
                 fmt = ('hd%s', 'vd%s', 'sd%s')[max(volume.useVirtio, volume.useVirtioSCSI * 2)]
@@ -1896,6 +1912,12 @@ class Vm(object):
                         elif volume.deviceType == 'fusionstor':
                             if xmlobject.has_element(disk,
                                                      'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                                logger.debug(
+                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+                                return False
+                        elif volume.deviceType == 'scsilun':
+                            if xmlobject.has_element(disk,
+                                                     'source') and disk.source.dev__ and volume.installPath in disk.source.dev__:
                                 logger.debug(
                                     'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
                                 return False
@@ -3113,9 +3135,24 @@ class Vm(object):
             if pciDevices:
                 make_pci_device(pciDevices)
 
+            storageDevices = cmd.addons['storageDevice']
+            if storageDevices:
+                make_storage_device(storageDevices)
+
             usbDevices = cmd.addons['usbDevice']
             if usbDevices:
                 make_usb_device(usbDevices)
+
+        def make_storage_device(storageDevices):
+            lvm.unpriv_sgio()
+            devices = elements['devices']
+            for volume in storageDevices:
+                if match_storage_device(volume.installPath):
+                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+                    e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                    e(disk, 'source', None, {'dev': volume.installPath})
+                    e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    e(disk, 'shareable', None, )
 
         def make_pci_device(addresses):
             devices = elements['devices']
@@ -3172,6 +3209,10 @@ class Vm(object):
                         raise kvmagent.KvmError('unknown usb controller %s', bus)
                 else:
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
+
+        #TODO(weiw) validate here
+        def match_storage_device(install_path):
+            return True
 
         # TODO(WeiW) Validate here
         def match_pci_device(addr):
