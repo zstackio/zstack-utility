@@ -2017,7 +2017,7 @@ cs_setup_nfs(){
 
 cs_setup_nginx(){
     echo_subtitle "Configure Nginx Server"
-mkdir -p /etc/nginx/conf.d/8090 && chmod -R 0777 /etc/nginx/conf.d/8090
+mkdir -p /etc/nginx/conf.d/mn_pxe/ && chmod -R 0777 /etc/nginx/conf.d/mn_pxe/
 cp -f /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bck
 cat > /etc/nginx/nginx.conf << EOF
 user nginx;
@@ -2045,7 +2045,7 @@ http {
 
     server {
         listen 8090;
-        include /etc/nginx/conf.d/8090/*;
+        include /etc/nginx/conf.d/mn_pxe/*;
     }
 }
 EOF

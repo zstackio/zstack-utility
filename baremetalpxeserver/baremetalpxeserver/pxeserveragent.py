@@ -96,8 +96,8 @@ class PxeServerAgent(object):
     PXELINUX_DEFAULT_CFG = PXELINUX_CFG_PATH + "default"
     KS_CFG_PATH = VSFTPD_ROOT_PATH + "ks/"
     INSPECTOR_KS_CFG = KS_CFG_PATH + "inspector_ks.cfg"
-    NGINX_MN_PROXY_CONF_PATH = "/etc/nginx/conf.d/%s/" % NGINX_MN_PROXY_PORT
-    NGINX_TERMINAL_PROXY_CONF_PATH = "/etc/nginx/conf.d/%s/" % NGINX_TERMINAL_PROXY_PORT
+    NGINX_MN_PROXY_CONF_PATH = "/etc/nginx/conf.d/pxe_mn/"
+    NGINX_TERMINAL_PROXY_CONF_PATH = "/etc/nginx/conf.d/terminal/"
     NOVNC_INSTALL_PATH = BAREMETAL_LIB_PATH + "noVNC/"
     NOVNC_TOKEN_PATH = NOVNC_INSTALL_PATH + "tokens/"
 
@@ -188,15 +188,15 @@ class PxeServerAgent(object):
         # clean up old configs if newAdd
         if cmd.newAdd:
             if os.path.exists(self.PXELINUX_CFG_PATH):
-                shutil.rmtree(self.PXELINUX_CFG_PATH)
+                bash_r("rm -f %s/*" % self.PXELINUX_CFG_PATH)
             if os.path.exists(self.KS_CFG_PATH):
-                shutil.rmtree(self.KS_CFG_PATH)
+                bash_r("rm -f %s/*" % self.KS_CFG_PATH)
             if os.path.exists(self.NGINX_MN_PROXY_CONF_PATH):
-                shutil.rmtree(self.NGINX_MN_PROXY_CONF_PATH)
+                bash_r("rm -f %s/*" % self.NGINX_MN_PROXY_CONF_PATH)
             if os.path.exists(self.NGINX_TERMINAL_PROXY_CONF_PATH):
-                shutil.rmtree(self.NGINX_TERMINAL_PROXY_CONF_PATH)
+                bash_r("rm -f %s/*" % self.NGINX_TERMINAL_PROXY_CONF_PATH)
             if os.path.exists(self.NOVNC_TOKEN_PATH):
-                shutil.rmtree(self.NOVNC_TOKEN_PATH)
+                bash_r("rm -f %s/*" % self.NOVNC_TOKEN_PATH)
 
         # get pxe server capacity
         self._set_capacity_to_response(rsp)
@@ -293,17 +293,17 @@ http {
 
     server {
         listen 8090;
-        include /etc/nginx/conf.d/8090/*;
+        include /etc/nginx/conf.d/mn_pxe/*;
     }
 
     server {
         listen 7771;
-        include /etc/nginx/conf.d/7771/*;
+        include /etc/nginx/conf.d/pxe_mn/*;
     }
 
     server {
         listen 7772;
-        include /etc/nginx/conf.d/7772/*;
+        include /etc/nginx/conf.d/terminal/*;
     }
 }
 """
@@ -312,7 +312,7 @@ http {
 
         # create nginx proxy for http://MN_IP:8080/zstack/asyncrest/sendcommand
         content = "location / { proxy_pass http://%s:8080/; }" % cmd.managementIp
-        with open("/etc/nginx/conf.d/7771/zstack_mn.conf", 'w') as fw:
+        with open("/etc/nginx/conf.d/pxe_mn/zstack_mn.conf", 'w') as fw:
             fw.write(content)
 
         # install noVNC
