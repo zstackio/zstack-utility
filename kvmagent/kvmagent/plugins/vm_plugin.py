@@ -3144,6 +3144,7 @@ class Vm(object):
                 make_usb_device(usbDevices)
 
         def make_storage_device(storageDevices):
+            lvm.unpriv_sgio()
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
