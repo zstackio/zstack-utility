@@ -136,7 +136,7 @@ class PxeServerAgent(object):
         return total, total - used
 
     def _start_pxe_server(self):
-        ret = bash_r("ps -ef | grep -v 'grep' | grep 'dnsmasq -C {0}' || dnsmasq -C {0} -u zstack".format(self.DNSMASQ_CONF_PATH))
+        ret = bash_r("ps -ef | grep -v 'grep' | grep 'dnsmasq -C {0}' || dnsmasq -C {0} -u root".format(self.DNSMASQ_CONF_PATH))
         if ret != 0:
             raise PxeServerError("failed to start dnsmasq on baremetal pxeserver[uuid:%s]" % self.uuid)
 
@@ -241,7 +241,6 @@ xferlog_file={VSFTPD_LOG_PATH}
            VSFTPD_LOG_PATH=self.VSFTPD_LOG_PATH)
         with open(self.VSFTPD_CONF_PATH, 'w') as f:
             f.write(vsftpd_conf)
-        os.chown(self.VSFTPD_CONF_PATH, 0, 0)
 
         # init pxelinux.cfg
         pxelinux_cfg = """default zstack_baremetal
@@ -320,7 +319,6 @@ http {
             ret = bash_r("tar -xf %s -C %s" % (os.path.join(self.BAREMETAL_LIB_PATH, "noVNC.tar.gz"), self.BAREMETAL_LIB_PATH))
             if ret != 0:
                 raise PxeServerError("failed to install noVNC on baremetal pxeserver[uuid:%s]" % self.uuid)
-        os.chmod(self.NOVNC_TOKEN_PATH, 0777)
 
         # start pxe services
         self._start_pxe_server()
@@ -450,6 +448,7 @@ append initrd={IMAGEUUID}/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXE
         nginx_proxy_file = os.path.join(self.NGINX_TERMINAL_PROXY_CONF_PATH, cmd.bmUuid)
         with open(nginx_proxy_file, 'w') as f:
             f.write(cmd.upstream)
+        bash_r("systemctl reload nginx")
 
         logger.info("successfully create terminal nginx proxy for baremetal instance[uuid:%s] on pxeserver[uuid:%s]" % (cmd.bmUuid, self.uuid))
         return json_object.dumps(rsp)
@@ -462,6 +461,7 @@ append initrd={IMAGEUUID}/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXE
         nginx_proxy_file = os.path.join(self.NGINX_TERMINAL_PROXY_CONF_PATH, cmd.bmUuid)
         if os.path.exists(nginx_proxy_file):
             os.remove(nginx_proxy_file)
+        bash_r("systemctl reload nginx")
 
         logger.info("successfully deleted terminal nginx proxy for baremetal instance[uuid:%s] on pxeserver[uuid:%s]" % (cmd.bmUuid, self.uuid))
         return json_object.dumps(rsp)

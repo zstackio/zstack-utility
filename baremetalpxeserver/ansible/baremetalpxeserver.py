@@ -109,11 +109,10 @@ else:
 command = """
 [ -f /opt/zstack-dvd/GPL ] || exit 1;
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd},tftpboot/{zstack,pxelinux.cfg},vsftpd} /var/log/zstack/baremetal/;
-chown -R zstack:zstack /var/lib/zstack/baremetal;
-cp /usr/share/syslinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
+cp -f /usr/share/syslinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
 umount /var/lib/zstack/baremetal/ftp/zstack-dvd/ || true;
 mount --bind /opt/zstack-dvd /var/lib/zstack/baremetal/ftp/zstack-dvd/
-cp /opt/zstack-dvd/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/;
+cp -f /opt/zstack-dvd/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/;
 """
 run_remote_command(command, host_post_info)
 
