@@ -1209,3 +1209,14 @@ def remove_partial_lv_dm(vgUuid):
 @bash.in_bash
 def unpriv_sgio():
     bash.bash_roe("for i in `ls /sys/block/`; do echo 1 > $i/queue/unpriv_sgio; done")
+
+
+@bash.in_bash
+@linux.retry(times=3, sleep_time=1)
+def enable_multipath():
+    bash.bash_roe("modprobe dm-multipath")
+    bash.bash_roe("modprobe dm-round-robin")
+    bash.bash_roe("mpathconf --enable --with_multipathd y")
+    bash.bash_roe("systemctl enable multipathd")
+    if not is_multipath_running():
+        raise RetryException("multipath still not running")
