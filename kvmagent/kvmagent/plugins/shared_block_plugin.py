@@ -196,6 +196,8 @@ class CheckDisk(object):
             disk_name = self.get_path().split("/")[-1]
         if not lvm.is_multipath(disk_name):
             return
+        if not lvm.is_multipath_running():
+            lvm.enable_multipath()
         multipath_name = lvm.get_multipath_name(disk_name)
         cmd = shell.ShellCmd('dmsetup message %s 0 "fail_if_no_path"' % multipath_name)
         cmd(is_exception=False)
