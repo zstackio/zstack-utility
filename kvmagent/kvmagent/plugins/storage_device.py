@@ -295,15 +295,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @bash.in_bash
-    @linux.retry(times=3, sleep_time=1)
     def enable_multipath(self, req):
         rsp = AgentRsp()
-        bash.bash_roe("modprobe dm-multipath")
-        bash.bash_roe("modprobe dm-round-robin")
-        bash.bash_roe("mpathconf --enable --with_multipathd y")
-        bash.bash_roe("systemctl enable multipathd")
-        if not lvm.is_multipath_running:
-            raise RetryException("multipath still not running")
+        lvm.enable_multipath()
         return jsonobject.dumps(rsp)
 
     def get_device_info(self, dev_name):
