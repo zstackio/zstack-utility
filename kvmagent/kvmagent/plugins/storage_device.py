@@ -277,7 +277,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         luns = []
         for fc_target in fc_targets:
-            t = filter(lambda x: fc_target in x, o)
+            t = filter(lambda x: "[%s" % fc_target in x, o)
             luns.extend(map(lambda x: self.get_device_info(x.split("/dev/")[1]), t))
 
         luns_info = {}
