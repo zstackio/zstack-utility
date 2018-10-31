@@ -11,6 +11,7 @@ import traceback
 import xml.etree.ElementTree as etree
 import re
 import platform
+import netaddr
 
 import libvirt
 #from typing import List, Any, Union
@@ -3291,8 +3292,11 @@ class Vm(object):
         e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
         if nic.ip:
-            filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
-            e(filterref, 'parameter', None, {'name': 'IP', 'value': nic.ip})
+            # TODO shixin ipv6 clean-traffic will be fix in next release
+            nicIp = netaddr.IPAddress(nic.ip)
+            if nicIp.version == 4:
+                filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
+                e(filterref, 'parameter', None, {'name': 'IP', 'value': nic.ip})
         if nic.useVirtio:
             e(interface, 'model', None, attrib={'type': 'virtio'})
         else:
