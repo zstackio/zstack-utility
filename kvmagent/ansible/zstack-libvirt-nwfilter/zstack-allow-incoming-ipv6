@@ -1,0 +1,3 @@
+<filter name='zstack-allow-incoming-ipv6' chain='ipv6' priority='-700'>
+  <rule action='accept' direction='in' priority='500'/>
+</filter>

@@ -1,0 +1,5 @@
+<filter name='zstack-no-ipv6-router-advertisement' chain='ipv6' priority='-600'>
+  <rule action='drop' direction='out' priority='600'>
+    <ipv6 protocol='icmpv6' type='134'/>
+  </rule>
+</filter>
