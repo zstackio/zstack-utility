@@ -7295,13 +7295,13 @@ class ClearLicenseCmd(Command):
         license_files = license_folder + '*.txt'
         license_pri_key = license_folder + 'pri.key'
 
+        shell('''mkdir -p %s''' % license_bck)
+
         if os.path.exists(license_folder + 'license.txt'):
-            shell('''mkdir -p %s''' % license_bck)
             shell('''/bin/mv -f %s %s''' % (license_files, license_bck))
             shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
 
         if os.path.isdir(license_folder + 'packaged'):
-            shell('''mkdir -p %s''' % license_bck)
             shell('''/bin/mv -f %s %s''' % (license_folder + 'packaged', license_bck))
             shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
 
