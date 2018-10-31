@@ -312,7 +312,7 @@ if distro in RPM_BASED_OS:
         copy_arg.dest = "%s" % qemu_img_local_pkg
         copy(copy_arg, host_post_info)
 
-        command = "for i in {1..5}; do /bin/cp %s `which qemu-img` && break || sleep 2; done" % qemu_img_local_pkg
+        command = "for i in {1..5}; do /bin/cp %s `which qemu-img` && break || sleep 2; done; sync" % qemu_img_local_pkg
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = "qemu-img"
         run_remote_command(command, host_post_info)
