@@ -3579,6 +3579,10 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         device_id = self._get_device(cmd.installPath, cmd.vmUuid)
+        if device_id is None:
+            rsp.success = False
+            rsp.error = "Volume is not ready, is it being attached?"
+            return jsonobject.dumps(rsp)
 
         ## total and read/write of bytes_sec cannot be set at the same time
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
