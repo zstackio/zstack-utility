@@ -486,9 +486,48 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         return jsonobject.dumps(DeleteNamespaceRsp())
 
     @kvmagent.replyerror
+    @in_bash
+    def delete_ebtables_nat_chain_except_libvirt(self):
+        def makecmd(cmd):
+            return EBTABLES_CMD + " -t nat " + cmd
+        logger.debug("start clean ebtables...\n")
+        chain = {}
+        chain_names = []
+        chain_name = "libvirt-"
+        o = bash_o("ebtables-save | grep {{chain_name}} |grep -- -A|grep -v ACCEPT|grep -v DROP|grep -v RETURN")
+        o = o.strip(" \t\r\n")
+        if o:
+            #logger.debug("chain_name:%s\n" % o)
+            chain_names.append(chain_name)
+            for l in o.split("\n"):
+                chain_names.append(l.split(" ")[-1])
+            #logger.debug("ebtables chain-name:%s" % chain_names)
+
+            for l in chain_names:
+                if cmp(l, chain_name) == 0:
+                    o = bash_o("ebtables-save | grep {{l}} |grep -- -A")
+                    chain[l] = list( map(makecmd, o.strip(" \t\r\n").split("\n")) )
+                else:
+                    o = bash_o("ebtables-save | grep {{l}} |grep -- -A| grep -v {{chain_name}}")
+                    chain[l] = list( map(makecmd, o.strip(" \t\r\n").split("\n")) )
+                #logger.debug("ebtables chain-name:%s %s\n" %(l, chain[l]) )
+
+        shell.call(EBTABLES_CMD + ' -t nat -F')
+       
+        for l in chain_names:
+            cmds = chain[l]
+            if cmds:
+                logger.debug("ebtables chain-name:%s  cmds:%s\n" % (l, cmds))
+                bash_r("\n".join(cmds))
+        logger.debug("clean ebtables successful\n")
+
+    @kvmagent.replyerror
     def connect(self, req):
         shell.call(EBTABLES_CMD + ' -F')
-        shell.call(EBTABLES_CMD + ' -t nat -F')
+        #shell.call(EBTABLES_CMD + ' -t nat -F')
+        # this is workaround, for anti-spoofing feature, there is no googd way to proccess this reconnect-host case,
+        # it's just keep the ebtables rules from libvirt and remove others when reconnect hosts
+        self.delete_ebtables_nat_chain_except_libvirt()
         return jsonobject.dumps(ConnectRsp())
 
     @kvmagent.replyerror
