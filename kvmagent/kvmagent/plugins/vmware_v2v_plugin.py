@@ -62,6 +62,13 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+
+        cmdstr = 'cd /usr/local/zstack && wget -c {} -O zstack-windows-virtio-driver.iso'.format(cmd.virtioDriverUrl)
+        if shell.run(cmdstr) != 0:
+            rsp.success = False
+            rsp.error = "failed to download zstack-windows-virtio-driver.iso from management node to v2v conversion host"
+            return jsonobject.dumps(rsp)
+
         cmdstr = 'which docker || yum --disablerepo=* --enablerepo={0} clean all; yum --disablerepo=* --enablerepo={0} install docker -y'.format(cmd.zstackRepo)
         if shell.run(cmdstr) != 0:
             rsp.success = False
@@ -82,12 +89,6 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         if shell.run(cmdstr) != 0:
             rsp.success = False
             rsp.error = "failed to import virt_v2v_image to docker in v2v conversion host"
-            return jsonobject.dumps(rsp)
-
-        cmdstr = 'cd /usr/local/zstack && wget -c {} -O zstack-windows-virtio-driver.iso'.format(cmd.virtioDriverUrl)
-        if shell.run(cmdstr) != 0:
-            rsp.success = False
-            rsp.error = "failed to download zstack-windows-virtio-driver.iso from management node to v2v conversion host"
             return jsonobject.dumps(rsp)
 
         return jsonobject.dumps(rsp)
