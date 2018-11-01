@@ -460,9 +460,8 @@ def backup_super_block(disk_path):
 def wipe_fs(disks, expected_vg=None):
     for disk in disks:
         exists_vg = None
-        cmd = shell.ShellCmd("pvdisplay %s | grep %s" % (disk, expected_vg))
-        cmd(is_exception=False)
-        if cmd.return_code == 0:
+        r = bash.bash_r("pvdisplay %s | grep %s" % (disk, expected_vg))
+        if r == 0:
             continue
 
         r, o = bash.bash_ro("pvs --nolocking --noheading -o vg_name %s" % disk)
@@ -472,20 +471,16 @@ def wipe_fs(disks, expected_vg=None):
         backup_super_block(disk)
         need_flush_mpath = False
 
-        cmd_part = shell.ShellCmd("partprobe -s %s" % disk)
-        cmd_part(is_exception=False)
+        bash.bash_roe("partprobe -s %s" % disk)
 
-        cmd_type = shell.ShellCmd("lsblk %s -oTYPE | grep mpath" % disk)
-        cmd_type(is_exception=False)
-        if cmd_type.stdout.strip() != "":
+        cmd_type = bash.bash_o("lsblk %s -oTYPE | grep mpath" % disk)
+        if cmd_type.strip() != "":
             need_flush_mpath = True
 
-        cmd_wipefs = shell.ShellCmd("wipefs -af %s" % disk)
-        cmd_wipefs(is_exception=False)
+        bash.bash_roe("wipefs -af %s" % disk)
 
         if need_flush_mpath:
-            cmd_flush_mpath = shell.ShellCmd("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
-            cmd_flush_mpath(is_exception=False)
+            bash.bash_roe("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
 
         if exists_vg is not None:
             logger.debug("found vg %s exists on this pv %s, start wipe" %
