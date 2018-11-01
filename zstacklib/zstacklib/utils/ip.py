@@ -118,3 +118,9 @@ class Ipv6Address(object):
                     temp.append(item)
 
             return ":".join(temp) + "::/" + str(prefixlen)
+
+def get_link_local_address(mac):
+    macs = mac.strip("\n").split(":")
+    # inverting the "u" bit
+    macs[0] = hex(int(macs[0], 16) ^ 2)[2:].zfill(2)
+    return "fe80::" + macs[0] + macs[1] + ":" + macs[2] + "ff:" + "fe" + macs[3] + ":" + macs[4] + macs[5]

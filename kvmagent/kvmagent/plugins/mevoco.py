@@ -316,6 +316,13 @@ class DhcpEnv(object):
             bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr flush dev {{INNER_DEV}}')
             bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{PREFIX_LEN}} dev {{INNER_DEV}}')
 
+        if self.ipVersion == 6:
+            mac = bash_o("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w 'link/ether' | awk '{print $2}'")
+            link_local = ip.get_link_local_address(mac)
+            ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip add | grep -w {{link_local}} > /dev/null')
+            if ret != 0:
+                bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{link_local}}/64 dev {{INNER_DEV}}')
+
         bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
 
         if DHCP_IP is None or (DHCP_NETMASK is None and self.prefixLen is None):
