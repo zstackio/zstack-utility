@@ -1114,7 +1114,7 @@ def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
         cmd = ShellCmd("grep '^\s*127.0.0.1\s' /etc/hosts | grep -q '\slocalhost\s'")
         cmd(False)
         if cmd.return_code != 0:
-            ShellCmd("sudo sed -i '1i127.0.0.1   localhost ' /etc/hosts; sudo sync")
+            ShellCmd("sed -i '1i127.0.0.1   localhost ' /etc/hosts; sync")
 
     check_hosts()
     what_tool = use_tool()
@@ -1762,6 +1762,10 @@ class StartCmd(Command):
                     shell('iptables-save | grep -- "-A INPUT -p %s -m %s --dport %s -j ACCEPT" > /dev/null || '
                           'iptables -I INPUT -p %s -m %s --dport %s -j ACCEPT ' % (protocol, protocol, port, protocol, protocol, port))
 
+        def restart_console_proxy():
+            cmd = ShellCmd("service zstack-consoleproxy restart")
+            cmd(False)
+
         def check_chrony():
             if ctl.read_property('syncNodeTime') == "false":
                 return
@@ -1915,6 +1919,7 @@ class StartCmd(Command):
         check_9090()
         check_msyql()
         check_chrony()
+        restart_console_proxy()
         prepare_qemu_kvm_repo()
         prepare_setenv()
         open_iptables_port('udp',['123'])
