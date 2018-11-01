@@ -280,7 +280,7 @@ http {
     sendfile            on;
     tcp_nopush          on;
     tcp_nodelay         on;
-    keepalive_timeout   65;
+    keepalive_timeout   1000;
     types_hash_max_size 2048;
     include             /etc/nginx/mime.types;
     default_type        application/octet-stream;
@@ -425,9 +425,15 @@ append initrd={IMAGEUUID}/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXE
         # clean up pxeserver bm configs
         if cmd.pxeNicMac == "*":
             if os.path.exists(self.PXELINUX_CFG_PATH):
-                shutil.rmtree(self.PXELINUX_CFG_PATH)
+                bash_r("rm -f %s/*" % self.PXELINUX_CFG_PATH)
             if os.path.exists(self.KS_CFG_PATH):
-                shutil.rmtree(self.KS_CFG_PATH)
+                bash_r("rm -f %s/*" % self.KS_CFG_PATH)
+            if os.path.exists(self.NGINX_MN_PROXY_CONF_PATH):
+                bash_r("rm -f %s/*" % self.NGINX_MN_PROXY_CONF_PATH)
+            if os.path.exists(self.NGINX_TERMINAL_PROXY_CONF_PATH):
+                bash_r("rm -f %s/*" % self.NGINX_TERMINAL_PROXY_CONF_PATH)
+            if os.path.exists(self.NOVNC_TOKEN_PATH):
+                bash_r("rm -f %s/*" % self.NOVNC_TOKEN_PATH)
         else:
             pxe_cfg_file = os.path.join(self.PXELINUX_CFG_PATH, "01-" + cmd.pxeNicMac.replace(":", "-"))
             if os.path.exists(pxe_cfg_file):
