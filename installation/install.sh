@@ -2033,7 +2033,7 @@ http {
     sendfile            on;
     tcp_nopush          on;
     tcp_nodelay         on;
-    keepalive_timeout   65;
+    keepalive_timeout   1000;
     types_hash_max_size 2048;
     include             /etc/nginx/mime.types;
     default_type        application/octet-stream;
