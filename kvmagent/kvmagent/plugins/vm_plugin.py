@@ -2470,7 +2470,7 @@ class Vm(object):
                 self.domain.detachDevice(xml)
 
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
-                raise Exception('nic device is still attached after 10 seconds')
+                raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
         except:
             # check one more time
             if not check_device(None):
