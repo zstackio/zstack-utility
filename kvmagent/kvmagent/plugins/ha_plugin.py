@@ -194,7 +194,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     mount_path = cmd.mountPath
 
                     test_file = os.path.join(mount_path, cmd.heartbeat, '%s-ping-test-file-%s' % (cmd.uuid, kvmagent.HOST_UUID))
-                    touch = shell.ShellCmd('timeout 60 touch %s' % test_file)
+                    touch = shell.ShellCmd('timeout 5 touch %s' % test_file)
                     touch(False)
                     if touch.return_code != 0:
                         logger.debug('touch file failed, cause: %s' % touch.stderr)
