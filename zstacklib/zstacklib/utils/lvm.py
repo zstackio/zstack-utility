@@ -445,6 +445,7 @@ def get_wwid(disk_path):
     return cmd.stdout.strip()
 
 
+@bash.in_bash
 def backup_super_block(disk_path):
     wwid = get_wwid(disk_path)
     if wwid is None or wwid == "":
@@ -452,8 +453,8 @@ def backup_super_block(disk_path):
 
     current_time = time.time()
     disk_back_file = os.path.join(LVM_CONFIG_BACKUP_PATH, "%s.%s.%s" % (wwid, SUPER_BLOCK_BACKUP, current_time))
-    cmd = shell.ShellCmd("dd if=%s of=%s bs=64KB count=1 conv=notrunc" % (disk_path, disk_back_file))
-    cmd(is_exception=False)
+    bash.bash_roe("dd if=%s of=%s bs=64KB count=1 conv=notrunc" % (disk_path, disk_back_file))
+    return disk_back_file
 
 
 @bash.in_bash
@@ -468,7 +469,9 @@ def wipe_fs(disks, expected_vg=None):
         if r == 0 and o.strip() != "":
             exists_vg = o.strip()
 
-        backup_super_block(disk)
+        backup = backup_super_block(disk)
+        if bash.bash_r("grep %s %s" % (expected_vg, backup)) == 0:
+            raise Exception("found vg uuid in superblock backup while not found in lvm command!")
         need_flush_mpath = False
 
         bash.bash_roe("partprobe -s %s" % disk)
