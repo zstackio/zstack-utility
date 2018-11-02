@@ -726,6 +726,16 @@ class Ctl(object):
                 cmd.install_argparse_arguments(subparsers.add_parser(cmd.name))
         args, self.extra_arguments = self.main_parser.parse_known_args(sys.argv[1:])
 
+        # check the ip address
+        cmd_name = args.sub_command_name
+        if cmd_name == "status" or cmd_name == "start" or cmd_name == "start_node" or cmd_name == "restart_node":
+            ip_info = shell("ip a | grep 'inet ' | grep -v 127.0.0.1", False).strip()
+            if ip_info is None or ip_info == '':
+                if cmd_name == "status":
+                    error_not_exit("Please configure the IP address of this management server correctly.")
+                else:
+                    error("Please configure the IP address of this management server correctly.")
+
         self.verbose = args.verbose
         globals()['verbose'] = self.verbose
 
