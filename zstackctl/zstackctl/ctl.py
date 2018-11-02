@@ -5254,6 +5254,13 @@ class ChangeIpCmd(Command):
             ])
             info("Update management server ip %s in %s " % (args.ip, zstack_conf_file))
 
+            cpo_ip = ctl.read_property('consoleProxyOverriddenIp')
+            if cpo_ip is None or cpo_ip == '' or cpo_ip == old_ip:
+                ctl.write_properties([
+                    ('consoleProxyOverriddenIp', args.ip),
+                ])
+                info("Update console proxy overridden ip %s in %s " % (args.ip, zstack_conf_file))
+
             old_chrony_ips = ctl.read_property_list('chrony.serverIp.')
             if len(old_chrony_ips) == 1 and old_chrony_ips[0][1] == old_ip:
                 # management.server.ip has been setted when zstack install
