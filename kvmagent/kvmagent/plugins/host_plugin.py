@@ -315,6 +315,7 @@ class HostPlugin(kvmagent.KvmAgent):
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
         system_product_name = shell.call('dmidecode -s system-product-name').strip()
+        baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
         host_cpu_info = shell.call("grep -m2 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
         host_cpu_model_name = host_cpu_info[0]
         transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
@@ -323,7 +324,9 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
-        rsp.systemProductName = system_product_name
+        rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
+        if not rsp.systemProductName:
+            rsp.systemProductName = 'unknown'
         rsp.hostCpuModelName = host_cpu_model_name
         rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
         if IS_AARCH64:
