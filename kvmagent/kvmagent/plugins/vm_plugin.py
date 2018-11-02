@@ -2652,7 +2652,7 @@ class Vm(object):
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', attrib={'fallback': 'allow'})
                 elif cmd.nestedVirtualization == 'custom':
-                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
                     e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                 elif IS_AARCH64:
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
