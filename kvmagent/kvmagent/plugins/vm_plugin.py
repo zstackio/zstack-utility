@@ -4362,7 +4362,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
         finally:
-            linux.fumount(d)
+            for i in xrange(6):
+                linux.fumount(d, 5)
             linux.rmdir_if_empty(d)
 
         return jsonobject.dumps(rsp)
@@ -4405,7 +4406,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
 
         finally:
-            linux.fumount(d)
+            for i in xrange(6):
+                linux.fumount(d, 5)
             linux.rmdir_if_empty(d)
 
         return jsonobject.dumps(rsp)
