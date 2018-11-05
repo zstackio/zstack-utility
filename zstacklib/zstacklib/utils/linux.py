@@ -269,8 +269,8 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
     os.remove(fname)
     return ret
 
-def fumount(mountpoint):
-    return shell.run("timeout 10 fusermount -u %s" % mountpoint)
+def fumount(mountpoint, timeout = 10):
+    return shell.run("timeout %s fusermount -u %s" % (timeout, mountpoint))
 
 def is_valid_nfs_url(url):
     ts = url.split(':')
