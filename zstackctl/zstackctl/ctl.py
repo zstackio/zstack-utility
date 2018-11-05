@@ -1141,6 +1141,34 @@ def find_process_by_cmdline(keyword):
 
     return None
 
+class Zsha2Utils(object):
+    def __init__(self):
+        r, _, e = shell_return_stdout_stderr("/usr/local/bin/zsha2 status")
+        if r != 0:
+            error('cannot get zsha2 status, %s' % e)
+
+        r, o, e = shell_return_stdout_stderr("/usr/local/bin/zsha2 show-config")
+        if r != 0:
+            error('cannot get zsha2 config, maybe need upgrade zsha2 first: %s' % e)
+
+        self.config = simplejson.loads(o)
+        self.master = shell_return("ip addr show %s | grep -q '[^0-9]%s[^0-9]'"
+                                   % (self.config['nic'], self.config['dbvip'])) == 0
+        try:
+            ssh_run(self.config['peerip'], "echo 1 > /dev/null")
+        except:
+            error('cannot ssh peer node with sshkey')
+
+    def excute_on_peer(self, cmd):
+        ssh_run_no_pipe(self.config['peerip'], cmd)
+
+
+    def scp_to_peer(self, src_path, dst_path):
+        shell("scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s %s:%s" % (
+            src_path, self.config['peerip'], dst_path))
+
+
+
 class MySqlCommandLineQuery(object):
     def __init__(self):
         self.user = None
@@ -4386,6 +4414,10 @@ class RestoreMysqlCmd(Command):
                             help="skip restore ui db",
                             action="store_true",
                             default=False)
+        parser.add_argument('--only-restore-self',
+                            help="This config is for multi node restore mysql, do not set it manually.",
+                            action="store_true",
+                            default=False)
 
     def test_mysql_connection(self, db_connect_password, db_port, db_hostname):
         command = "mysql -uroot %s -P %s  %s -e 'show databases'  >> /dev/null 2>&1" \
@@ -4411,12 +4443,15 @@ class RestoreMysqlCmd(Command):
             error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
         error_if_tool_is_missing('gunzip')
 
+        # get deploy type
+        restorer = RestorerFactory.get_restorer(db_hostname_origin_cp, db_password, db_port)
+
         # test mysql connection
         if db_password is None or db_password == "":
             db_connect_password = ""
         else:
             db_connect_password = "-p" + db_password
-        if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in RestoreMysqlCmd.all_local_ip):
+        if db_hostname == "localhost" or db_hostname == "127.0.0.1" or restorer.is_local_ip(db_hostname):
             db_hostname = ""
         else:
             db_hostname = "--host %s" % db_hostname
@@ -4426,7 +4461,7 @@ class RestoreMysqlCmd(Command):
             ui_db_connect_password = ""
         else:
             ui_db_connect_password = "-p" + ui_db_password
-        if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1" or (ui_db_hostname in RestoreMysqlCmd.all_local_ip):
+        if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1" or restorer.is_local_ip(db_hostname):
             ui_db_hostname = ""
         else:
             ui_db_hostname = "--host %s" % ui_db_hostname
@@ -4436,7 +4471,7 @@ class RestoreMysqlCmd(Command):
 
         info("Backup mysql before restore data ...")
         ctl.internal_run('dump_mysql')
-        ctl.internal_run('stop_node')
+        restorer.stop_node(args)
 
         info("Starting restore zstack data ...")
         for database in ['zstack', 'zstack_rest']:
@@ -4451,10 +4486,13 @@ class RestoreMysqlCmd(Command):
                   % (db_backup_name, db_hostname_origin_cp, db_connect_password, db_hostname, db_port, database)
             shell_no_pipe(command)
 
+        restorer.restore_other_node(args)
         if args.skip_ui:
             if running:
                 info("Recover data successfully! start management node now")
-                ctl.internal_run('start_node')
+                restorer.start_node(args)
+            else:
+                info("Recover data successfully! You can start node manually")
             return
 
         ctl.internal_run('stop_ui')
@@ -4467,6 +4505,87 @@ class RestoreMysqlCmd(Command):
         shell_no_pipe(command)
 
         info("Recover data successfully! You can start node by: zstack-ctl start")
+
+class RestorerFactory(object):
+    @staticmethod
+    def get_restorer(db_hostname, db_root_password, db_port):
+        def get_deploy_type():
+            ret = shell_return("stat /usr/local/bin/zsha2")
+            return 'multiDatabase' if ret == 0 else 'singleDatabase'
+
+        if get_deploy_type() == 'multiDatabase':
+            return MultiMysqlRestorer()
+        else:
+            return SingleMysqlRestorer()
+
+
+class MysqlRestorer(object):
+    def start_node(self, args):
+        raise Exception('function start_node not be implemented')
+
+    def stop_node(self, args):
+        raise Exception('function stop_node not be implemented')
+
+    def restore_other_node(self, args):
+        raise Exception('function restore_other_node not be implemented')
+
+    def is_local_ip(self, db_hostname):
+        raise Exception('function all_local_ip not be implemented')
+
+
+class MultiMysqlRestorer(MysqlRestorer):
+    def __init__(self):
+        self.utils = Zsha2Utils()
+        _, self.all_local_ip = commands.getstatusoutput("ip a")
+
+    def start_node(self, args):
+        if not args.only_restore_self:
+            info("starting self node...")
+            shell("/usr/local/bin/zsha2 start-node")
+            info("starting peer node...")
+            self.utils.excute_on_peer("/usr/local/bin/zsha2 start-node")
+
+    def stop_node(self, args):
+        if not args.only_restore_self:
+            info("stopping self node...")
+            shell("/usr/local/bin/zsha2 stop-node -keepui")
+            info("stopping peer node...")
+            self.utils.excute_on_peer("/usr/local/bin/zsha2 stop-node -keepui")
+        else:
+            self_running = 'true' in create_check_mgmt_node_command()(False)
+            if self_running:
+                warn("how can I still running? stop it")
+                shell("/usr/local/bin/zsha2 stop-node -keepui")
+
+    def restore_other_node(self, args):
+        if not args.only_restore_self:
+            info("Starting restore zstack peer node data...")
+            slave_file_path = "/var/lib/zstack/tmp-db-backup.gz"
+            self.utils.scp_to_peer(args.from_file, slave_file_path)
+            self.utils.excute_on_peer(
+                "zstack-ctl restore_mysql --mysql-root-password '%s' --skip-ui -f %s --only-restore-self && rm -f %s"
+                % (args.mysql_root_password, slave_file_path, slave_file_path))
+            info("Succeed to restore zstack peer node data")
+
+    def is_local_ip(self, db_hostname):
+        return db_hostname in self.all_local_ip or db_hostname == self.utils.config['dbvip']
+
+
+class SingleMysqlRestorer(MysqlRestorer):
+    def __init__(self):
+        _, self.all_local_ip = commands.getstatusoutput("ip a")
+
+    def start_node(self, args):
+        ctl.internal_run('start_node')
+
+    def stop_node(self, args):
+        ctl.internal_run('stop_node')
+
+    def restore_other_node(self, args):
+        pass
+
+    def is_local_ip(self, db_hostname):
+        return db_hostname in self.all_local_ip
 
 
 class PullDatabaseBackupCmd(Command):
@@ -4511,14 +4630,15 @@ class PullDatabaseBackupCmd(Command):
             if args.json:
                 info(simplejson.dumps(metadata))
             else:
-                info("export path\t\t\t\t\t\t\tversion\t\tcreated time\n%s\t%s\t%s" % (
-                    metadata['installPath'], metadata['version'], metadata['createdTime']))
+                info("export path\t\t\t\t\t\t\tversion\ttype\tcreated time\n%s\t%s\t%s\t%s" % (
+                    metadata['installPath'], metadata['version'], metadata['type'], metadata['createdTime']))
 
         def get_metadata():
             try:
                 root = simplejson.loads(text)
                 desc = root['desc']
                 metadata = simplejson.loads(desc)
+                metadata['type'] = metadata['type'] if 'type' in metadata.keys() else 'unknown'
                 assert metadata['name'] and metadata['version'] and metadata['createdTime']
                 return metadata
             except:
@@ -4530,7 +4650,7 @@ class PullDatabaseBackupCmd(Command):
             metadata = get_metadata()
         os.remove(local_path + ".imf2")
 
-        new_path = os.path.join(self.mysql_backup_dir, get_metadata()['name'])
+        new_path = os.path.join(self.mysql_backup_dir, metadata['name'])
         os.rename(local_path, new_path)
         print_info()
 
@@ -4573,9 +4693,9 @@ class ScanDatabaseBackupCmd(Command):
         if args.json:
             info(simplejson.dumps(backups))
         elif backups:
-            info("name\t\t\tinstall path\t\t\t\tversion\t\t\tcreated time")
+            info("name\t\t\tinstall path\t\t\t\t\tversion\ttype\tcreated time")
             for backup in backups:
-                info("%s\t%s\t%s\t%s" % (backup['name'], backup['installPath'], backup['version'], backup['createdTime']))
+                info("%s\t%s\t%s\t%s\t%s" % (backup['name'], backup['installPath'], backup['version'], backup['type'], backup['createdTime']))
 
 
 def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
