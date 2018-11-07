@@ -100,7 +100,7 @@ def get_block_devices():
     if cmd.return_code == 0 and cmd.stdout.strip() != "":
         mpath_devices = cmd.stdout.strip().split("\n")
 
-    for mpath_device in mpath_devices:
+    for mpath_device in mpath_devices:  # type: str
         try:
             cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
             cmd(is_exception=False)
@@ -111,8 +111,7 @@ def get_block_devices():
             slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
             if slaves is None or len(slaves) == 0:
                 struct = SharedBlockCandidateStruct()
-                cmd = shell.ShellCmd("multipath -l /dev/mapper/%s | grep %s | grep -o ' (.*) '" % (
-                    mpath_device, mpath_device))
+                cmd = shell.ShellCmd("udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
                 cmd(is_exception=True)
                 struct.wwids = [cmd.stdout.strip().strip("()")]
                 struct.type = "mpath"
@@ -120,8 +119,7 @@ def get_block_devices():
                 continue
 
             struct = get_device_info(slaves[0])
-            cmd = shell.ShellCmd("multipath -l /dev/mapper/%s | grep %s | grep -o ' (.*) '" % (
-                mpath_device, mpath_device))
+            cmd = shell.ShellCmd("udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
             cmd(is_exception=True)
             struct.wwids = [cmd.stdout.strip().strip("()")]
             struct.type = "mpath"
