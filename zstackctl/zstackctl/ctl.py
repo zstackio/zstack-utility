@@ -1153,7 +1153,7 @@ def find_process_by_cmdline(keyword):
 
 class Zsha2Utils(object):
     def __init__(self):
-        r, _, e = shell_return_stdout_stderr("/usr/local/bin/zsha2 status")
+        r, _, e = shell_return_stdout_stderr("sudo -i /usr/local/bin/zsha2 status")
         if r != 0:
             error('cannot get zsha2 status, %s' % e)
 
