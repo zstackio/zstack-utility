@@ -38,6 +38,7 @@ class AgentResponse(object):
         self.totalCapacity = None
         self.availableCapacity = None
         self.poolCapacities = None
+        self.xsky = False
 
     def set_err(self, err):
         self.success = False
@@ -225,6 +226,12 @@ class CephAgent(plugin.TaskManager):
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
+
+        try:
+            shell.call('which xms-cli')
+            rsp.xsky = True
+        except:
+            rsp.xsky = False
 
         if not df.pools:
             return
