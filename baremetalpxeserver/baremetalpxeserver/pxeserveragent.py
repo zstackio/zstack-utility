@@ -179,7 +179,7 @@ class PxeServerAgent(object):
         self.storage_path = cmd.storagePath
 
         # check dhcp interface and dhcp range
-        pxeserver_dhcp_nic_ip = linux.get_device_ip(cmd.dhcpInterface).strip()
+        pxeserver_dhcp_nic_ip = linux.get_device_ip(cmd.dhcpInterface).strip("/")[0]
         pxeserver_dhcp_nic_nm = linux.get_netmask_of_nic(cmd.dhcpInterface).strip()
         if not self._is_belong_to_same_subnet(cmd.dhcpRangeBegin, pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_nm) or \
                 not self._is_belong_to_same_subnet(cmd.dhcpRangeEnd, pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_nm):
@@ -384,7 +384,7 @@ http {
         self.dhcp_interface = cmd.dhcpInterface
 
         # create ks.cfg
-        pxeserver_dhcp_nic_ip = linux.get_device_ip(cmd.dhcpInterface).strip()
+        pxeserver_dhcp_nic_ip = linux.get_device_ip(cmd.dhcpInterface).strip("/")[0]
         ks_cfg_name = cmd.pxeNicMac.replace(":", "-")
         ks_cfg_file = os.path.join(self.KS_CFG_PATH, ks_cfg_name)
         ks_tmpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ks_tmpl')
