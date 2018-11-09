@@ -4,6 +4,9 @@ import os
 import os.path
 import pprint
 import shutil
+import socket
+import fcntl
+import struct
 import traceback
 from netaddr import IPNetwork, IPAddress
 
@@ -163,6 +166,15 @@ class PxeServerAgent(object):
         bash_r("kill -9 `ps -ef | grep -v grep | grep 'dnsmasq -C %s' | awk '{ print $2 }'`" % self.DNSMASQ_CONF_PATH)
 
     @staticmethod
+    def _get_ip_address(ifname):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return socket.inet_ntoa(fcntl.ioctl(
+            s.fileno(),
+            0x8915,  # SIOCGIFADDR
+            struct.pack('256s', ifname[:15])
+        )[20:24])
+
+    @staticmethod
     def _is_belong_to_same_subnet(addr1, addr2, netmask):
         return IPAddress(addr1) in IPNetwork("%s/%s" % (addr2, netmask))
 
@@ -179,7 +191,7 @@ class PxeServerAgent(object):
         self.storage_path = cmd.storagePath
 
         # check dhcp interface and dhcp range
-        pxeserver_dhcp_nic_ip = linux.get_device_ip(cmd.dhcpInterface).strip("/")[0]
+        pxeserver_dhcp_nic_ip = self._get_ip_address(cmd.dhcpInterface).strip()
         pxeserver_dhcp_nic_nm = linux.get_netmask_of_nic(cmd.dhcpInterface).strip()
         if not self._is_belong_to_same_subnet(cmd.dhcpRangeBegin, pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_nm) or \
                 not self._is_belong_to_same_subnet(cmd.dhcpRangeEnd, pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_nm):
@@ -396,7 +408,7 @@ http {
         self.dhcp_interface = cmd.dhcpInterface
 
         # create ks.cfg
-        pxeserver_dhcp_nic_ip = linux.get_device_ip(cmd.dhcpInterface).strip("/")[0]
+        pxeserver_dhcp_nic_ip = self._get_ip_address(cmd.dhcpInterface).strip()
         ks_cfg_name = cmd.pxeNicMac.replace(":", "-")
         ks_cfg_file = os.path.join(self.KS_CFG_PATH, ks_cfg_name)
         ks_tmpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ks_tmpl')
