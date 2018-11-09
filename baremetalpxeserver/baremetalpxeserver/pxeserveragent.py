@@ -86,7 +86,7 @@ class PxeServerAgent(object):
     BAREMETAL_LIB_PATH = "/var/lib/zstack/baremetal/"
     BAREMETAL_LOG_PATH = "/var/log/zstack/baremetal/"
     DNSMASQ_CONF_PATH = BAREMETAL_LIB_PATH + "dnsmasq/dnsmasq.conf"
-    DHCP_HOSTS_FILE = BAREMETAL_LIB_PATH + "dnsmasq/hosts.dhcp"
+    HOSTS_DHCP_FILE = BAREMETAL_LIB_PATH + "dnsmasq/hosts.dhcp"
     DNSMASQ_LOG_PATH = BAREMETAL_LOG_PATH + "dnsmasq.log"
     TFTPBOOT_PATH = BAREMETAL_LIB_PATH + "tftpboot/"
     VSFTPD_CONF_PATH = BAREMETAL_LIB_PATH + "vsftpd/vsftpd.conf"
@@ -201,7 +201,7 @@ class PxeServerAgent(object):
         # get pxe server capacity
         self._set_capacity_to_response(rsp)
 
-        # init dhcp.conf
+        # init dnsmasq.conf
         dhcp_conf = """interface={DHCP_INTERFACE}
 port=0
 dhcp-boot=pxelinux.0
@@ -211,14 +211,19 @@ log-dhcp
 log-facility={DNSMASQ_LOG_PATH}
 dhcp-range={DHCP_RANGE}
 dhcp-option=1,{DHCP_NETMASK}
-dhcp-hostsfile={DHCP_HOSTS_FILE}
+dhcp-hostsfile={HOSTS_DHCP_FILE}
 """.format(DHCP_INTERFACE=cmd.dhcpInterface,
            DHCP_RANGE="%s,%s,%s" % (cmd.dhcpRangeBegin, cmd.dhcpRangeEnd, cmd.dhcpRangeNetmask),
            DHCP_NETMASK=cmd.dhcpRangeNetmask,
            TFTPBOOT_PATH=self.TFTPBOOT_PATH,
-           DHCP_HOSTS_FILE=self.DHCP_HOSTS_FILE,
+           HOSTS_DHCP_FILE=self.HOSTS_DHCP_FILE,
            DNSMASQ_LOG_PATH=self.DNSMASQ_LOG_PATH)
         with open(self.DNSMASQ_CONF_PATH, 'w') as f:
+            f.write(dhcp_conf)
+
+        # init hosts.dhcp
+        dhcp_conf = """de:ad:c0:de:ca:fe,ignore"""
+        with open(self.HOSTS_DHCP_FILE, 'w') as f:
             f.write(dhcp_conf)
 
         # init vsftpd.conf
@@ -330,6 +335,13 @@ http {
     def ping(self, req):
         rsp = PingResponse()
         rsp.uuid = self.uuid
+
+        # DETECT ROGUE DHCP SERVER
+        cmd = json_object.loads(req[http.REQUEST_BODY])
+        ret, output = bash_ro("nmap -sU -p67 --script broadcast-dhcp-discover -e %s | grep 'Server Identifier'" % cmd.dhcpInterface)
+        if ret == 0:
+            raise PxeServerError("rogue dhcp server[IP:%s] detected" % output.strip().split(' ')[-1])
+
         return json_object.dumps(rsp)
 
     @reply_error

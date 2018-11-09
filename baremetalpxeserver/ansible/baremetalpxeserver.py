@@ -89,17 +89,17 @@ run_remote_command(command, host_post_info)
 # name: install dependencies
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q dnsmasq nginx syslinux vsftpd | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+        command = ("pkg_list=`rpm -q dnsmasq nginx syslinux vsftpd nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
     else:
-        for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux"]:
+        for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap"]:
             yum_install_package(pkg, host_post_info)
     command = "(which firewalld && systemctl stop firewalld && systemctl enable firewalld) || true"
     run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
 
 elif distro in DEB_BASED_OS:
-    install_pkg_list = ["dnsmasq", "vsftpd", "syslinux", "nginx"]
+    install_pkg_list = ["dnsmasq", "vsftpd", "syslinux", "nginx", "nmap"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
 else:
