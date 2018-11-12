@@ -139,7 +139,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 --vddk-thumbprint={3}    \
                 -o local -os {2} \
                 --password-file {2}/passwd \
-                -of qcow2 --compress > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir, cmd.thumbprint)
+                -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir, cmd.thumbprint, cmd.format)
         docker_run_cmd = 'systemctl start docker && docker run --rm -v /usr/local/zstack:/usr/local/zstack -v {0}:{0} \
                 -e VIRTIO_WIN=/usr/local/zstack/zstack-windows-virtio-driver.iso \
                 -e PATH=/home/v2v/nbdkit:$PATH \
