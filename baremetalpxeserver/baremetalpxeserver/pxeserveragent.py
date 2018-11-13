@@ -104,6 +104,8 @@ class PxeServerAgent(object):
     NOVNC_INSTALL_PATH = BAREMETAL_LIB_PATH + "noVNC/"
     NOVNC_TOKEN_PATH = NOVNC_INSTALL_PATH + "tokens/"
 
+    NMAP_BROADCAST_DHCP_DISCOVER_PATH = "/usr/share/nmap/scripts/broadcast-dhcp-discover.nse"
+
     def __init__(self):
         self.uuid = None
         self.storage_path = None
@@ -164,6 +166,12 @@ class PxeServerAgent(object):
         bash_r("kill -9 `ps -ef | grep -v grep | grep 'vsftpd %s' | awk '{ print $2 }'`" % self.VSFTPD_CONF_PATH)
         bash_r("kill -9 `ps -ef | grep -v grep | grep websockify | grep baremetal | awk '{ print $2 }'`")
         bash_r("kill -9 `ps -ef | grep -v grep | grep 'dnsmasq -C %s' | awk '{ print $2 }'`" % self.DNSMASQ_CONF_PATH)
+
+    @staticmethod
+    def _get_mac_address(ifname):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        info = fcntl.ioctl(s.fileno(), 0x8927,  struct.pack('256s', ifname[:15]))
+        return ':'.join(['%02x' % ord(char) for char in info[18:24]])
 
     @staticmethod
     def _get_ip_address(ifname):
@@ -234,9 +242,15 @@ dhcp-hostsfile={HOSTS_DHCP_FILE}
             f.write(dhcp_conf)
 
         # init hosts.dhcp
-        dhcp_conf = """de:ad:c0:de:ca:fe,ignore"""
+        mac_address = self._get_mac_address(cmd.dhcpInterface)
+        dhcp_conf = "%s,ignore" % mac_address
         with open(self.HOSTS_DHCP_FILE, 'w') as f:
             f.write(dhcp_conf)
+
+        # hack nmap script
+        splited_mac_address = "0x" + mac_address.replace(":", ",0x")
+        bash_r("sed -i '/local mac = string.char/s/0x..,0x..,0x..,0x..,0x..,0x../%s/g' %s" % \
+                (splited_mac_address, self.NMAP_BROADCAST_DHCP_DISCOVER_PATH))
 
         # init vsftpd.conf
         vsftpd_conf = """anonymous_enable=YES
@@ -337,7 +351,8 @@ http {
             if ret != 0:
                 raise PxeServerError("failed to install noVNC on baremetal pxeserver[uuid:%s]" % self.uuid)
 
-        # start pxe services
+        # restart pxe services
+        self._stop_pxe_server()
         self._start_pxe_server()
 
         logger.info("successfully inited and started baremetal pxeserver[uuid:%s]" % self.uuid)
