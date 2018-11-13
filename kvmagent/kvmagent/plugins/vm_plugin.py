@@ -3796,7 +3796,15 @@ class VmPlugin(kvmagent.KvmAgent):
     def get_vm_console_info(self, vmUuid):
         try:
             vm = get_vm_by_uuid(vmUuid)
-            return vm.get_console_protocol(), vm.get_console_port()
+            proto, port = vm.get_console_protocol(), vm.get_console_port()
+            if port > 0:
+                return proto, port
+
+            # Occasionally, 'virsh list' would list nothing but conn.lookupByName()
+            # can find the VM and dom.XMLDesc(0) will return VNC port '-1'.
+            err = 'libvirt failed to get console port for VM %s' % vmUuid
+            logger.warn(err)
+            raise kvmagent.KvmError(err)
         except kvmagent.KvmError as e:
             proto, port = get_console_without_libvirt(vmUuid)
             if port:
