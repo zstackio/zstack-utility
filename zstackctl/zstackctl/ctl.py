@@ -6565,7 +6565,7 @@ class UpgradeMultiManagementNodeCmd(Command):
                 SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
                 SpinnerInfo.spinner_status['upgrade'] = True
                 ZstackSpinner(spinner_info)
-                war_file = ctl.zstack_home + "/../../../apache-tomcat-7.0.35/webapps/zstack.war"
+                war_file = ctl.zstack_home + "/../../../apache-tomcat-8.5.35/webapps/zstack.war"
                 ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
                 status,output = commands.getstatusoutput("zstack-ctl upgrade_management_node --host %s --ssh-key %s --war-file %s" % (mn_ip, ssh_key, war_file))
                 if status != 0:
