@@ -11,6 +11,7 @@ import thread
 import logging
 import logging.handlers
 
+import os
 import urllib3
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
@@ -223,6 +224,7 @@ class HttpServer(object):
         site_config = {}
         site_config['server.socket_host'] = '0.0.0.0'
         site_config['server.socket_port'] = self.port
+        site_config['server.thread_pool'] = int(os.getenv('POOLSIZE', '10'))
 
         # remove limitation of request body size, default is 100MB.
         site_config['server.max_request_body_size'] = 0
