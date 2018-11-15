@@ -1825,6 +1825,7 @@ class Vm(object):
                         elif volume.deviceType == 'scsilun':
                             if xmlobject.has_element(disk,
                                                      'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
+                                return True
                         elif volume.deviceType == 'block':
                             if xmlobject.has_element(disk,
                                                      'source') and disk.source.dev__ and disk.source.dev_ in volume.installPath:
@@ -2253,8 +2254,12 @@ class Vm(object):
             raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
 
         try:
-            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=300):
-                raise kvmagent.KvmError('state change timeout after %d seconds' % timeo)
+            logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
+            timeo = 1800 if cmd.timeout is None else cmd.timeout
+            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeo):
+                try: self.domain.abortJob()
+                except: pass
+                raise kvmagent.KvmError('timeout after %d seconds' % timeo)
         except kvmagent.KvmError:
             raise
         except:
@@ -3786,11 +3791,11 @@ class VmPlugin(kvmagent.KvmAgent):
         #             logger.warn(linux.get_exception_stacktrace())
         #
         # rsp.states = running_vms
-        rsp.states = get_all_vm_states()
-
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
+        rsp.states = get_all_vm_states()
+
         output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
             if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
