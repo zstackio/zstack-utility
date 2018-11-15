@@ -368,6 +368,10 @@ http {
         if ret == 0:
             raise PxeServerError("rogue dhcp server[IP:%s] detected" % output.strip().split(' ')[-1])
 
+        # make sure pxeserver is running if it's Enabled
+        if cmd.enabled:
+            self._start_pxe_server()
+
         return json_object.dumps(rsp)
 
     @reply_error
