@@ -2047,6 +2047,16 @@ http {
         listen 8090;
         include /etc/nginx/conf.d/mn_pxe/*;
     }
+
+    server {
+        listen 7771;
+        include /etc/nginx/conf.d/pxe_mn/*;
+    }
+
+    server {
+        listen 7772;
+        include /etc/nginx/conf.d/terminal/*;
+    }
 }
 EOF
 iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8090 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8090 -j ACCEPT >/dev/null 2>&1
