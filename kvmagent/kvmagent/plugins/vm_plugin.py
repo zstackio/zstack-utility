@@ -1825,6 +1825,7 @@ class Vm(object):
                         elif volume.deviceType == 'scsilun':
                             if xmlobject.has_element(disk,
                                                      'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
+                                return True
                         elif volume.deviceType == 'block':
                             if xmlobject.has_element(disk,
                                                      'source') and disk.source.dev__ and disk.source.dev_ in volume.installPath:
