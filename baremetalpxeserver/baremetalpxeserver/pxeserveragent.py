@@ -205,21 +205,20 @@ class PxeServerAgent(object):
                 not self._is_belong_to_same_subnet(cmd.dhcpRangeEnd, pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_nm):
             raise PxeServerError("%s ~ %s cannot connect to dhcp interface %s" % (cmd.dhcpRangeBegin, cmd.dhcpRangeEnd, cmd.dhcpInterface))
 
-        # clean up old configs if newAdd
-        if cmd.newAdd:
-            if os.path.exists(self.PXELINUX_CFG_PATH):
-                bash_r("rm -f %s/*" % self.PXELINUX_CFG_PATH)
-            if os.path.exists(self.KS_CFG_PATH):
-                bash_r("rm -f %s/*" % self.KS_CFG_PATH)
-            if os.path.exists(self.NGINX_MN_PROXY_CONF_PATH):
-                bash_r("rm -f %s/*" % self.NGINX_MN_PROXY_CONF_PATH)
-            if os.path.exists(self.NGINX_TERMINAL_PROXY_CONF_PATH):
-                bash_r("rm -f %s/*" % self.NGINX_TERMINAL_PROXY_CONF_PATH)
-            if os.path.exists(self.NOVNC_TOKEN_PATH):
-                bash_r("rm -f %s/*" % self.NOVNC_TOKEN_PATH)
-
         # get pxe server capacity
         self._set_capacity_to_response(rsp)
+
+        # clean up old configs
+        if os.path.exists(self.PXELINUX_CFG_PATH):
+            bash_r("rm -f %s/*" % self.PXELINUX_CFG_PATH)
+        if os.path.exists(self.KS_CFG_PATH):
+            bash_r("rm -f %s/*" % self.KS_CFG_PATH)
+        if os.path.exists(self.NGINX_MN_PROXY_CONF_PATH):
+            bash_r("rm -f %s/*" % self.NGINX_MN_PROXY_CONF_PATH)
+        if os.path.exists(self.NGINX_TERMINAL_PROXY_CONF_PATH):
+            bash_r("rm -f %s/*" % self.NGINX_TERMINAL_PROXY_CONF_PATH)
+        if os.path.exists(self.NOVNC_TOKEN_PATH):
+            bash_r("rm -f %s/*" % self.NOVNC_TOKEN_PATH)
 
         # init dnsmasq.conf
         dhcp_conf = """interface={DHCP_INTERFACE}
