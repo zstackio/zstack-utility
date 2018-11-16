@@ -4,6 +4,7 @@
 '''
 import os.path
 import traceback
+import tempfile
 
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
@@ -232,16 +233,47 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = NfsToNfsMigrateBitsRsp()
 
-        # Report task progress based on flow chain for now
-        # To get more accurate progress, we need to report from here someday
+        mount_path = cmd.mountPath
+        dst_folder_path = cmd.dstFolderPath
+        temp_dir = None
 
-        # begin migration, then check md5 sums
-        shell.call("mkdir -p %s; cp -r %s/* %s; sync" % (cmd.dstFolderPath, cmd.srcFolderPath, cmd.dstFolderPath))
-        src_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcFolderPath)
-        dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.dstFolderPath)
-        if src_md5 != dst_md5:
-            rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcFolderPath, cmd.dstFolderPath)
-            rsp.success = False
+        try:
+            if not cmd.isMounted:
+                linux.is_valid_nfs_url(cmd.url)
+
+                temp_dir = tempfile.mkdtemp()
+
+                # dst folder is absolute path
+                mount_path = temp_dir + mount_path
+                dst_folder_path = temp_dir + dst_folder_path
+
+                if not linux.is_mounted(mount_path, cmd.url):
+                    linux.mount(cmd.url, mount_path, cmd.options, "nfs4")
+
+            # Report task progress based on flow chain for now
+            # To get more accurate progress, we need to report from here someday
+
+            # begin migration, then check md5 sums
+            shell.call("mkdir -p %s; cp -r %s/* %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path))
+            src_md5 = shell.call(
+                "find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcFolderPath)
+            dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % dst_folder_path)
+            if src_md5 != dst_md5:
+                rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcFolderPath, dst_folder_path)
+                rsp.success = False
+
+            if not cmd.isMounted:
+                linux.umount(mount_path)
+        finally:
+            if temp_dir is not None:
+                return_code = shell.run("mount | grep '%s'" % temp_dir)
+                if return_code != 0:
+                    return_code = shell.run('rm -rf %s' % temp_dir)
+
+                    if return_code != 0:
+                        logger.debug("failed to remove temp_dir %s", temp_dir)
+                else:
+                    logger.debug("temp_dir still had mounted destination primary storage, skip cleanup operation")
 
         return jsonobject.dumps(rsp)
 
