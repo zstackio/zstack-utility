@@ -486,6 +486,17 @@ def find_zstack_metadata_node(root, name):
 
     return zs.find(name)
 
+def find_domain_disk_address(domain_xml, disk_device, target_dev):
+    domain_xmlobject = xmlobject.loads(domain_xml)
+    disks = domain_xmlobject.devices.get_children_nodes()['disk']
+    for d in disks:
+        if d.device_ != disk_device:
+            continue
+        if d.get_child_node('target').dev_ != target_dev:
+            continue
+        return d.get_child_node('address')
+    return None
+
 def compare_version(version1, version2):
     def normalize(v):
         return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
@@ -496,6 +507,7 @@ def get_libvirt_version():
     return ret.split()[-1]
 
 LIBVIRT_VERSION = get_libvirt_version()
+LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
@@ -2298,6 +2310,11 @@ class Vm(object):
 
         xml = etree.tostring(cdrom)
 
+        if LIBVIRT_MAJOR_VERSION >= 3:
+            addr = find_domain_disk_address(self.domain.XMLDesc(0), 'cdrom', dev)
+            ridx = xml.rindex('<')
+            xml = xml[:ridx] + addr.dump() + xml[ridx:]
+
         logger.debug('attaching ISO to the vm[uuid:%s]:\n%s' % (self.uuid, xml))
 
         try:
@@ -2344,6 +2361,11 @@ class Vm(object):
         e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
+
+        if LIBVIRT_MAJOR_VERSION >= 3:
+            addr = find_domain_disk_address(self.domain.XMLDesc(0), 'cdrom', dev)
+            ridx = xml.rindex('<')
+            xml = xml[:ridx] + addr.dump() + xml[ridx:]
 
         logger.debug('detaching ISO from the vm[uuid:%s]:\n%s' % (self.uuid, xml))
 
@@ -2564,7 +2586,6 @@ class Vm(object):
             self._wait_until_qemuga_ready(timeout, uuid)
             try:
                 escape_password = self._escape_char_password(cmd.accountPerference.accountPassword)
-                logger.debug("escape_password is: %s" % escape_password)
                 shell.call('virsh set-user-password %s %s %s' % (self.uuid,
                                                                  cmd.accountPerference.userAccount,
                                                                  escape_password))
@@ -2576,7 +2597,7 @@ class Vm(object):
                 else:
                     raise e
         else:
-            raise kvmagent.KvmError("vm may not be running, cannot connect to qemu-ga")
+            raise kvmagent.KvmError("vm is not running, cannot connect to qemu-ga")
 
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
