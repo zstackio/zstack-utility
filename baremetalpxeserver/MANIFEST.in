@@ -1,0 +1,2 @@
+include baremetalpxeserver
+recursive-include baremetalpxeserver/ks_tmpl *

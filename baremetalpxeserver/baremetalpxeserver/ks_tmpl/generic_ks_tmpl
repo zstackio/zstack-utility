@@ -1,0 +1,64 @@
+auth --enableshadow --passalgo=sha512
+graphical
+lang en_US.UTF-8
+keyboard us
+timezone Asia/Shanghai --isUtc
+firstboot --disable
+selinux --disabled
+reboot
+
+url --url=ftp://PXESERVER_DHCP_NIC_IP/IMAGEUUID
+EXTRA_REPO
+
+ROOT_PASSWORD
+NETWORK_SETTING
+
+# Ignore UDISK
+%include /tmp/ignoredisk.cfg
+
+%pre
+touch /tmp/ignoredisk.cfg
+ls /dev/disk/by-path/*usb* && echo "ignoredisk --drives=/dev/disk/by-path/*usb*" >/tmp/ignoredisk.cfg
+ls /dev/hda && echo "ignoredisk --only-use=hda" > /tmp/ignoredisk.cfg
+ls /dev/vda && echo "ignoredisk --only-use=vda" > /tmp/ignoredisk.cfg
+ls /dev/sda && echo "ignoredisk --only-use=sda" > /tmp/ignoredisk.cfg
+%end
+
+%pre --interpreter /usr/bin/python
+import commands
+
+# notify deploy begin
+cmd = 'sleep 3 && curl -X POST -H "Content-Type:application/json" -H "commandpath:/baremetal/instance/deploybegin" -d \'{"baremetalInstanceUuid":"BMUUID"}\' --retry 5 http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand'
+commands.getstatusoutput(cmd)
+%end
+
+%post --interpreter /bin/bash
+# notify deploy complete
+curl -X POST -H "Content-Type:application/json" \
+-H "commandpath:/baremetal/instance/deploycomplete" \
+-d '{"baremetalInstanceUuid":"BMUUID"}' \
+--retry 5 \
+http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand
+
+# baby agent
+wget -P /usr/bin ftp://PXESERVER_DHCP_NIC_IP/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://PXESERVER_DHCP_NIC_IP/shellinaboxd
+chmod a+x /usr/bin/shellinaboxd
+
+if [ ! -f /etc/rc.local ]; then
+cat > /etc/rc.local << EOF
+#!/bin/bash
+EOF
+chmod a+x /etc/rc.local
+fi
+[ -f /etc/rc.d/rc.local ] && chmod a+x /etc/rc.d/rc.local
+cat >> /etc/rc.local << EOF
+iptables-save | grep -- "-I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT && service iptables save)
+firewall-cmd --query-port=4200/tcp || (firewall-cmd --zone=public --add-port=4200/tcp --permanent && service firewalld restart)
+shellinaboxd -b -t -s /:SSH
+curl -X POST -H "Content-Type:application/json" \
+-H "commandpath:/baremetal/instance/osrunning" \
+-d '{"baremetalInstanceUuid":"BMUUID"}' \
+--retry 5 \
+http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand
+EOF
+%end
