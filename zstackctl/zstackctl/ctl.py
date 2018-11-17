@@ -7443,6 +7443,9 @@ class ClearLicenseCmd(Command):
             shell('''/bin/mv -f %s %s''' % (license_files, license_bck))
             shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
 
+        if os.path.exists(license_folder + 'license.bak'):
+            shell('''/bin/mv %s %s''' % (os.path.join(license_folder, 'license.bak'), license_bck))
+
         if os.path.isdir(license_folder + 'packaged'):
             shell('''/bin/mv -f %s %s''' % (license_folder + 'packaged', license_bck))
             shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
