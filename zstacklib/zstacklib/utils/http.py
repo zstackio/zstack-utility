@@ -276,19 +276,19 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
         try:
             pool = urllib3.PoolManager(timeout=120.0, retries=urllib3.util.retry.Retry(15))
             header = {'Content-Type': 'application/json', 'Connection': 'close'}
+            content = None
             for k in headers.keys():
                 header[k] = headers[k]
 
             if body is not None:
                 assert isinstance(body, types.StringType)
                 header['Content-Length'] = str(len(body))
-                content = pool.urlopen(method, uri, headers=header, body=str(body)).data
-
-                #(resp, content) = http_obj.request(uri, 'POST', body='%s' % body, headers=header)
+                with pool.urlopen(method, uri, headers=header, body=str(body)) as resp:
+                    content = resp.data
             else:
                 header['Content-Length'] = '0'
-                #(resp, content) = http_obj.request(uri, 'POST', headers=header)
-                content = pool.urlopen(method, uri, headers=header).data
+                with pool.urlopen(method, uri, headers=header) as resp:
+                    content = resp.data
 
             pool.clear()
             ret.append(content)
