@@ -431,9 +431,78 @@ http {
         ks_cfg_file = os.path.join(self.KS_CFG_PATH, ks_cfg_name)
         ks_tmpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ks_tmpl')
         is_zstack_iso = os.path.exists(os.path.join(self.VSFTPD_ROOT_PATH, cmd.imageUuid, "Extra", "qemu-kvm-ev"))
+
+        # if is_zstack_iso, then need more post script
+        zstack_iso_post_script = """
+# wget zstack-dvd from ftp server
+cd /opt && wget -e robots=off -r -l 10 --no-parent --reject "index.html*" -nH ftp://{PXESERVER_DHCP_NIC_IP}/zstack-dvd/
+
+# modify logind.conf, so that only two ttys are avaiable
+echo "NAutoVTs=2" >> /etc/systemd/logind.conf
+echo "ReserveVT=2" >> /etc/systemd/logind.conf
+
+# set tuned profile to virtual-host
+echo virtual-host > /etc/tuned/active_profile
+
+# install npyscreen and psutil
+cd /opt/zstack-dvd/Extra/pip/npyscreen
+python setup.py install
+cd /opt/zstack-dvd/Extra/pip/psutil
+python setup.py install
+
+# hide native yum repos
+mkdir -p /opt/zstack-dvd/Extra/native-repos
+mv /etc/yum.repos.d/CentOS-*.repo /opt/zstack-dvd/Extra/native-repos
+
+# install zstack repos
+cp /opt/zstack-dvd/repos/* /etc/yum.repos.d/
+
+# install scripts
+install /opt/zstack-dvd/scripts/zs* /usr/local/bin/
+
+# configs
+sed -i "s/ONBOOT.*/ONBOOT\=yes/g" /etc/sysconfig/network-scripts/ifcfg-*
+sed -i "s/SELINUX\=enforcing/SELINUX\=disabled/g" /etc/selinux/config
+sed -i "s/#UseDNS yes/UseDNS no/g" /etc/ssh/sshd_config
+echo 'IndexOptions NameWidth=*' >> /etc/httpd/conf/httpd.conf
+rm -f /etc/httpd/conf.d/welcome.conf
+echo -e 'export TMOUT=6000\nreadonly TMOUT' >> /etc/profile
+unlink /etc/libvirt/qemu/networks/autostart/default.xml
+
+# history
+cat > /etc/profile.d/history.sh << EOF
+shopt -s histappend
+HISTTIMEFORMAT='%F %T '
+HISTSIZE="5000"
+HISTFILESIZE=5000
+PROMPT_COMMAND="history -a"
+export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND
+EOF
+
+# services
+chkconfig NetworkManager off
+chkconfig firewalld off
+chkconfig httpd off
+chkconfig nfs off
+chkconfig iptables on
+chkconfig network on
+chkconfig atd on
+""".format(PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
+
+        zstack_iso_packages = """
+%packages
+@^zstack-host
+@core
+@zstack-host
+chrony
+kexec-tools
+%end
+"""
         with open("%s/generic_ks_tmpl" % ks_tmpl_path, 'r') as fr:
             generic_ks_cfg = fr.read() \
                 .replace("EXTRA_REPO", "repo --name=qemu-kvm-ev --baseurl=ftp://%s/%s/Extra/qemu-kvm-ev" % (pxeserver_dhcp_nic_ip, cmd.imageUuid) if is_zstack_iso else "") \
+                .replace("PACKAGES_FOR_ZSTACK_ISO", zstack_iso_packages if is_zstack_iso else "") \
+                .replace("POST_SCRIPT_FOR_ZSTACK_ISO", zstack_iso_post_script if is_zstack_iso else "") \
                 .replace("PXESERVER_DHCP_NIC_IP", pxeserver_dhcp_nic_ip) \
                 .replace("BMUUID", cmd.bmUuid) \
                 .replace("IMAGEUUID", cmd.imageUuid) \

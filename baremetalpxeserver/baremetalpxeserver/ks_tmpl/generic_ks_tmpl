@@ -33,6 +33,8 @@ commands.getstatusoutput(cmd)
 %end
 
 %post --interpreter /bin/bash
+POST_SCRIPT_FOR_ZSTACK_ISO
+
 # notify deploy complete
 curl -X POST -H "Content-Type:application/json" \
 -H "commandpath:/baremetal/instance/deploycomplete" \
@@ -54,7 +56,7 @@ fi
 cat >> /etc/rc.local << EOF
 iptables-save | grep -- "-I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT && service iptables save)
 firewall-cmd --query-port=4200/tcp || (firewall-cmd --zone=public --add-port=4200/tcp --permanent && service firewalld restart)
-shellinaboxd -b -t -s /:SSH
+shellinaboxd -b -t -s /:SSH:127.0.0.1
 curl -X POST -H "Content-Type:application/json" \
 -H "commandpath:/baremetal/instance/osrunning" \
 -d '{"baremetalInstanceUuid":"BMUUID"}' \
@@ -62,3 +64,5 @@ curl -X POST -H "Content-Type:application/json" \
 http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand
 EOF
 %end
+
+PACKAGES_FOR_ZSTACK_ISO
