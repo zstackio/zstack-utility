@@ -33,6 +33,8 @@ commands.getstatusoutput(cmd)
 %end
 
 %post --interpreter /bin/bash
+POST_SCRIPT_FOR_ZSTACK_ISO
+
 # notify deploy complete
 curl -X POST -H "Content-Type:application/json" \
 -H "commandpath:/baremetal/instance/deploycomplete" \
@@ -62,3 +64,5 @@ curl -X POST -H "Content-Type:application/json" \
 http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand
 EOF
 %end
+
+PACKAGES_FOR_ZSTACK_ISO
