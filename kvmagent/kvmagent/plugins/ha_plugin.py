@@ -501,7 +501,9 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
-                        killed_vm_pids = kill_vm(cmd.maxAttempts, [mount_path], True).values()
+                        killed_vms = kill_vm(cmd.maxAttempts, [mount_path], True)
+                        self.report_self_fencer_triggered([ps_uuid], ','.join(killed_vms.keys()))
+                        killed_vm_pids = killed_vms.values()
                         after_kill_vm()
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
