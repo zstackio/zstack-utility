@@ -16,16 +16,18 @@ from zstacklib.utils import thread
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
 from zstacklib.utils import shell
+from zstacklib.utils import ceph
 from zstacklib.utils.rollback import rollback, rollbackable
 
 logger = log.get_logger(__name__)
 
 class CephPoolCapacity(object):
-    def __init__(self, name, availableCapacity, replicatedSize, used):
+    def __init__(self, name, availableCapacity, replicatedSize, used, totalCapacity):
         self.name = name
         self.availableCapacity = availableCapacity
         self.replicatedSize = replicatedSize
         self.usedCapacity = used
+        self.totalCapacity = totalCapacity
 
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
@@ -34,6 +36,7 @@ class AgentResponse(object):
         self.totalCapacity = None
         self.availableCapacity = None
         self.poolCapacities = None
+        self.xsky = False
 
 class InitRsp(AgentResponse):
     def __init__(self):
@@ -386,24 +389,32 @@ class CephAgent(object):
 
         poolCapacities = []
 
-        if not df.pools:
-            return total, avail, poolCapacities
+        xsky = True
+        try:
+            shell.call('which xms-cli')
+        except:
+            xsky = False
 
-        for pool in df.pools:
-            poolAvailable = pool.stats.max_avail_
-            poolUsed = pool.stats.bytes_used_
-            poolSize = jsonobject.loads(shell.call('ceph osd pool get %s size -f json' % pool.name)).size
-            poolCapacity = CephPoolCapacity(pool.name, poolAvailable, poolSize, poolUsed)
+        if not df.pools:
+            return total, avail, poolCapacities, xsky
+
+        pools = ceph.getCephPoolsCapacity()
+        if not pools:
+            return total, avail, poolCapacities, xsky
+
+        for pool in pools:
+            poolCapacity = CephPoolCapacity(pool.poolName, pool.availableCapacity, pool.replicatedSize, pool.usedCapacity, pool.poolTotalSize)
             poolCapacities.append(poolCapacity)
 
-        return total, avail, poolCapacities
+        return total, avail, poolCapacities, xsky
 
     def _set_capacity_to_response(self, rsp):
-        total, avail, poolCapacities = self._get_capacity()
+        total, avail, poolCapacities, xsky = self._get_capacity()
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
         rsp.poolCapacities = poolCapacities
+        rsp.xsky = xsky
 
     @replyerror
     def echo(self, req):
@@ -618,7 +629,7 @@ class CephAgent(object):
             raise Exception('image not found %s' % imageUuid)
 
         task.expectedSize = long(imageSize)
-        total, avail, poolCapacities = self._get_capacity()
+        total, avail, poolCapacities, xsky = self._get_capacity()
         if avail <= task.expectedSize:
             self._fail_task(task, 'capacity not enough for size: ' + imageSize)
 
