@@ -987,6 +987,7 @@ upgrade_zstack(){
     show_spinner is_enable_chronyd
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
+    show_spinner cs_setup_nginx
 
     # if -i is used, then do not upgrade zstack ui
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -1189,6 +1190,8 @@ is_install_general_libs_rh(){
             dmidecode \
             $mysql_pkg \
             MySQL-python \
+            ipmitool \
+            nginx \
             python-backports-ssl_match_hostname \
             python-setuptools"
 
@@ -1808,6 +1811,7 @@ config_system(){
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
     show_spinner cs_append_iptables
+    show_spinner cs_setup_nginx
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
     fi
@@ -2089,6 +2093,56 @@ cs_setup_nfs(){
         iptables -I INPUT -p udp -m udp --dport 662 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     pass
+}
+
+cs_setup_nginx(){
+    echo_subtitle "Configure Nginx Server"
+mkdir -p /etc/nginx/conf.d/mn_pxe/ && chmod -R 0777 /etc/nginx/conf.d/mn_pxe/
+cp -f /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bck
+cat > /etc/nginx/nginx.conf << EOF
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+include /usr/share/nginx/modules/*.conf;
+events {
+    worker_connections 1024;
+}
+http {
+    access_log          /var/log/nginx/access.log;
+    sendfile            on;
+    tcp_nopush          on;
+    tcp_nodelay         on;
+    keepalive_timeout   1000;
+    types_hash_max_size 2048;
+    include             /etc/nginx/mime.types;
+    default_type        application/octet-stream;
+
+    map \$http_upgrade \$connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    server {
+        listen 8090;
+        include /etc/nginx/conf.d/mn_pxe/*;
+    }
+
+    server {
+        listen 7771;
+        include /etc/nginx/conf.d/pxe_mn/*;
+    }
+
+    server {
+        listen 7772;
+        include /etc/nginx/conf.d/terminal/*;
+    }
+}
+EOF
+iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8090 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8090 -j ACCEPT >/dev/null 2>&1
+service iptables save >/dev/null 2>&1
+systemctl enable nginx > /dev/null 2>&1
+systemctl start nginx > /dev/null 2>&1
 }
 
 cs_setup_http(){
