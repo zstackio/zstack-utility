@@ -226,7 +226,6 @@ port=0
 dhcp-boot=pxelinux.0
 enable-tftp
 tftp-root={TFTPBOOT_PATH}
-log-dhcp
 log-facility={DNSMASQ_LOG_PATH}
 dhcp-range={DHCP_RANGE}
 dhcp-option=1,{DHCP_NETMASK}
