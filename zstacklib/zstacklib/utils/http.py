@@ -285,12 +285,14 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
             if body is not None:
                 assert isinstance(body, types.StringType)
                 header['Content-Length'] = str(len(body))
-                with pool.urlopen(method, uri, headers=header, body=str(body)) as resp:
-                    content = resp.data
+                resp = pool.urlopen(method, uri, headers=header, body=str(body))
+                content = resp.data
+                resp.close()
             else:
                 header['Content-Length'] = '0'
-                with pool.urlopen(method, uri, headers=header) as resp:
-                    content = resp.data
+                resp = pool.urlopen(method, uri, headers=header)
+                content = resp.data
+                resp.close()
 
             pool.clear()
             ret.append(content)
