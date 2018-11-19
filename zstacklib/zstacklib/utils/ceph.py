@@ -25,17 +25,6 @@ def getCephPoolsCapacity():
         poolCapacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule)
         result.append(poolCapacity)
 
-    # fill usedCapacity
-    o = shell.call('ceph df -f json')
-    pools = jsonobject.loads(o).pools
-    if not pools:
-        return result
-    for pool in pools:
-        for poolCapacity in result:
-            if pool.name == poolCapacity.poolName:
-                poolCapacity.usedCapacity = pool.stats.bytes_used
-                break
-
     # fill crushRuleItemName
     o = shell.call('ceph osd crush rule dump -f json')
     crushRules = jsonobject.loads(o)
@@ -105,11 +94,14 @@ def getCephPoolsCapacity():
                     continue
                 poolCapacity.crushItemOsdsTotalSize = poolCapacity.crushItemOsdsTotalSize + osd.kb * 1024
                 poolCapacity.availableCapacity = poolCapacity.availableCapacity + osd.kb_avail * 1024
+                poolCapacity.usedCapacity = poolCapacity.usedCapacity + osd.kb_used * 1024
 
         if poolCapacity.crushItemOsdsTotalSize != 0 and poolCapacity.replicatedSize != 0:
             poolCapacity.poolTotalSize = poolCapacity.crushItemOsdsTotalSize / poolCapacity.replicatedSize
-        if poolCapacity.availableCapacity != 0:
+        if poolCapacity.availableCapacity != 0 and poolCapacity.replicatedSize != 0:
             poolCapacity.availableCapacity = poolCapacity.availableCapacity / poolCapacity.replicatedSize
+        if poolCapacity.usedCapacity != 0 and poolCapacity.replicatedSize != 0:
+            poolCapacity.usedCapacity = poolCapacity.usedCapacity / poolCapacity.replicatedSize
 
     return result
 
