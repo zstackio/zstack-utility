@@ -339,17 +339,18 @@ echo_subtitle(){
 enable_tomcat_linking() {
     local context_xml_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf/context.xml
     if ! grep -q -w allowLinking $context_xml_file; then
-        new_line="    <Resources allowLinking=\"true\"></Resources>\r"
+        local new_line="    <Resources allowLinking=\"true\"></Resources>\r"
         sed -i "/<Context>/a\\$new_line" $context_xml_file
-        # echo "Tomcat allowLinking enabled."
+        echo "Tomcat allowLinking enabled." >>$ZSTACK_INSTALL_LOG
         sync
     fi
 }
 
-disable_more_methods() {
-    web_xml_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf/web.xml
-    sed -i "/<\/web-app>/d" $web_xml_file
-    echo -e "$(cat <<EOF
+disable_tomcat_methods() {
+    local web_xml_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf/web.xml
+    if ! grep -q "<security-constraint>" $web_xml_file; then
+        sed -i "/<\/web-app>/d" $web_xml_file
+        echo -e "$(cat <<EOF
     <security-constraint>\r
         <web-resource-collection>\r
             <web-resource-name>tomcat-security</web-resource-name>\r
@@ -372,42 +373,55 @@ disable_more_methods() {
 </web-app>\r
 EOF
 )" >> $web_xml_file
-    # echo "Tomcat HTTP methods updated."
-    sync
+        echo "Tomcat HTTP methods updated." >>$ZSTACK_INSTALL_LOG
+        sync
+    fi
 }
 
 udpate_tomcat_info() {
     ## update catalina.jar/ServerInfo.properties
-    jar_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/lib/catalina.jar
+    local jar_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/lib/catalina.jar
 
-    work_path=$PWD
-    temp_path=`mktemp`
+    local work_path=$PWD
+    local temp_path=`mktemp`
     rm -f $temp_path
     mkdir -p $temp_path
 
     cd $temp_path
     jar xvf $jar_file > /dev/nul
     if [ $? -eq 0 ]; then
-        properties_file=org/apache/catalina/util/ServerInfo.properties
-        sed -i "/^server.info=/c\server.info=X\r" $properties_file
-        sed -i "/^server.number=/c\server.number=5.5\r" $properties_file
-        sed -i "/^server.built=/c\server.built=Dec 1 2015 22:30:46 UTC\r" $properties_file
-        sync
+        local properties_file=org/apache/catalina/util/ServerInfo.properties
+        if grep -q "server.info=Apache Tomcat" $properties_file; then
+	        sed -i "/^server.info=/c\server.info=X\r" $properties_file
+	        sed -i "/^server.number=/c\server.number=5.5\r" $properties_file
+	        sed -i "/^server.built=/c\server.built=Dec 1 2015 22:30:46 UTC\r" $properties_file
+	        sync
 
-        jar cvf catalina.jar org META-INF > /dev/nul
-        if [ $? -eq 0 ]; then
-            rm -f $jar_file
-            mv catalina.jar $jar_file
-            # echo "Tomcat server info updated."
-        else
-            echo "Zip $jar_file error."
+	        jar cvf catalina.jar org META-INF > /dev/nul
+	        if [ $? -eq 0 ]; then
+	            rm -f $jar_file
+	            mv catalina.jar $jar_file
+	            echo "Tomcat server info updated." >>$ZSTACK_INSTALL_LOG
+	        else
+	            echo "Zip $jar_file error." >>$ZSTACK_INSTALL_LOG
+	        fi
         fi
     else
-        echo "Unzip $jar_file error."
+        echo "Unzip $jar_file error." >>$ZSTACK_INSTALL_LOG
     fi
 
     rm -rf $temp_path
     cd $work_path
+}
+
+upgrade_tomcat_security() {
+    echo_subtitle "Upgrade Tomcat Security"
+
+    enable_tomcat_linking
+    disable_tomcat_methods
+    udpate_tomcat_info
+
+    pass
 }
 
 set_tomcat_config() {
@@ -421,10 +435,6 @@ set_tomcat_config() {
     # Fix ZSTAC-13580
     sed -i -e '/allowLinking/d' -e  '/autoDeploy/a \ \ \ \ \ \ \ \ <Context path="/zstack" reloadable="false" crossContext="true" allowLinking="true"/>' $tomcat_config_path/server.xml
     sync
-
-    enable_tomcat_linking
-    disable_more_methods
-    udpate_tomcat_info
 }
 
 cs_check_hostname(){
@@ -979,7 +989,9 @@ upgrade_zstack(){
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
+    show_spinner upgrade_tomcat_security
     show_spinner iu_deploy_zstack_repo
+
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_install_zstack_service
@@ -1807,6 +1819,7 @@ config_system(){
     show_spinner cs_config_zstack_properties
     show_spinner cs_config_generate_ssh_key
     show_spinner cs_config_tomcat
+    show_spinner upgrade_tomcat_security
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
