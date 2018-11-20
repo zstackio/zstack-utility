@@ -862,8 +862,8 @@ class Ctl(object):
             cmd(False)
             if cmd.return_code != 0:
                 errors.append(
-                    'failed to connect to the mysql server[hostname:%s, port:%s, user:%s, password:%s]: %s %s' % (
-                        hostname, port, user, password, cmd.stderr, cmd.stdout
+                    'connect MySQL server[hostname:%s, port:%s, user:%s]: %s %s' % (
+                        hostname, port, user, cmd.stderr, cmd.stdout
                     ))
                 continue
 
@@ -1297,8 +1297,8 @@ class ShowStatusCmd(Command):
         def show_version():
             try:
                 db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
-            except:
-                info('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+            except CtlError as e:
+                info('version: %s' % colored('unknown, %s' % e.message.strip(), 'yellow'))
                 return
 
             if db_password:
@@ -1310,7 +1310,8 @@ class ShowStatusCmd(Command):
 
             cmd(False)
             if cmd.return_code != 0:
-                info('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                msg = 'unknown, %s %s' % (cmd.stderr, cmd.stdout)
+                info('version: %s' % colored(msg.strip(), 'yellow'))
                 return
 
             out = cmd.stdout
