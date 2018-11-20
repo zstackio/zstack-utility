@@ -172,26 +172,28 @@ if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
         extra_pkg = 'collectd-virt' if distro_version >= 7 else ""
-        dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath edk2.git-ovmf-x64 expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients OVMF pciutils python-pyudev pv rsync sanlock sysfsutils sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
 
-        # name: install kvm related packages on RedHat based OS from user defined repo
-        # update some packages if possible
-        command = ("echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd' && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done;") % (dep_list, zstack_repo, dep_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
+        # common kvmagent deps of x86 and arm
+        common_dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sanlock sysfsutils sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
+        # common kvmagent deps of x86 and arm that need to update
+        common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd"
+
+        # arch specific deps
+        if IS_AARCH64:
+            dep_list = common_dep_list + " AAVMF edk2.git-aarch64"
+            update_list = common_update_list
+        else:
+            dep_list = common_dep_list + " OVMF edk2.git-ovmf-x64"
+            update_list = common_update_list
+
+        # name: install/update kvm related packages on RedHat based OS from user defined repo
+        command = ("echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
+                pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' %s' && \
+                for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done; \
+                ") % (dep_list, zstack_repo, dep_list, update_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = dep_list
         run_remote_command(command, host_post_info)
-
-        if IS_AARCH64:
-            # name: aarch64 specific packages from user defined repos
-            arm_dep_list = 'AAVMF edk2.git-aarch64'
-            command = ("echo %s >>/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata && "
-                       "pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
-                       "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
-                       "--nogpgcheck install -y $pkg; done;") % (arm_dep_list, zstack_repo, arm_dep_list, zstack_repo)
-            host_post_info.post_label = "ansible.shell.install.pkg"
-            host_post_info.post_label_param = "AAVMF,edk2.git-aarch64"
-            run_remote_command(command, host_post_info)
-
     else:
         # name: install kvm related packages on RedHat based OS from online
         for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
