@@ -73,13 +73,12 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        startCmd = shell.ShellCmd("/opt/tdc/tdc_admin lsi")
         if cmd.version != tdcversion:
             rsp.error = "no matched tdc version found, agent need version %d" % tdcversion
         else:
-            s = shell.ShellCmd("/opt/tdc/tdc_admin lsi")
-            s(False)
-            if s.return_code != 0:
+            startCmd = shell.ShellCmd("/opt/tdc/tdc_admin lsi")
+            startCmd(False)
+            if startCmd.return_code != 0:
                 linux.mkdir("/apsara", 0755)
                 kernel_version = shell.call("uname -r")
                 yum_cmd = "yum --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata"
@@ -96,6 +95,7 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
                     shell.call(yum_cmd)
                 shell.call("service tdc restart")
 
+                startCmd = shell.ShellCmd("/opt/tdc/tdc_admin lsi")
                 startCmd(False)
                 if startCmd.return_code != 0:
                     rsp.success = False
