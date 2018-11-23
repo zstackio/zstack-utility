@@ -806,7 +806,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     zstack_home=`eval echo ~zstack`
     if [ ! -d $zstack_home ];then
         mkdir -p $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
-        chown -R zstack.zstack $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
+        chown -R zstack:zstack $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     do_enable_sudo
     do_config_limits
@@ -948,6 +948,7 @@ iu_deploy_zstack_repo() {
     ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
     ln -s /opt/zstack-dvd-altarch/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/os >/dev/null 2>&1
     ln -s /opt/zstack-dvd-altarch/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/qemu-kvm-ev >/dev/null 2>&1
+    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
 }
 
 unpack_zstack_into_tomcat(){
@@ -1031,7 +1032,7 @@ upgrade_zstack(){
     #check old license folder and copy old license files to new folder.
     if [ -d $ZSTACK_OLD_LICENSE_FOLDER ] && [ ! -d $LICENSE_FOLDER ]; then
         mv $ZSTACK_OLD_LICENSE_FOLDER  $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
-        chown -R zstack.zstack $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
+        chown -R zstack:zstack $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     # check whether needs to install license or not
@@ -1600,7 +1601,7 @@ uz_upgrade_zstack(){
     fi
 
     bash ${zstore_bin} >>$ZSTACK_INSTALL_LOG 2>&1
-    chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
+    chown -R zstack:zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
 
     if [ ! -z $DEBUG ]; then
         zstack-ctl upgrade_management_node --war-file $upgrade_folder/zstack.war 
@@ -1739,7 +1740,7 @@ iz_install_zstackcli(){
     fi
 
     bash ${zstore_bin} >>$ZSTACK_INSTALL_LOG 2>&1
-    chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
+    chown -R zstack:zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
     pass
 }
 
@@ -1869,7 +1870,7 @@ cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
 
     if [ -d /var/lib/zstack ];then
-        chown zstack.zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
+        chown zstack:zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
             fail "failed to change ownership for /var/lib/zstack"
         fi
@@ -1901,15 +1902,15 @@ cs_config_generate_ssh_key(){
     if [ $? -ne 0 ];then
         fail "failed to generate local ssh keys in ${rsa_key_folder}"
     fi
-    chown -R zstack.zstack ${rsa_key_folder}
+    chown -R zstack:zstack ${rsa_key_folder}
     pass
 }
 
 iz_chown_install_root(){
     echo_subtitle "Change Owner in ${PRODUCT_NAME}"
-    chown -R zstack.zstack $ZSTACK_INSTALL_ROOT >>$ZSTACK_INSTALL_LOG 2>&1
+    chown -R zstack:zstack $ZSTACK_INSTALL_ROOT >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
-        fail "failed to chown for $ZSTACK_INSTALL_ROOT with zstack.zstack"
+        fail "failed to chown for $ZSTACK_INSTALL_ROOT with zstack:zstack"
     fi
     pass
 }
