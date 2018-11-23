@@ -87,14 +87,20 @@ if [ $? -ne 0 ]; then
     sed -i '/\[mysqld\]/a log-bin=mysql-binlog\' $mysql_conf
 fi
 
+# wanted_files = 10+max_connections+table_open_cache*2
+# 'table_open_cache' is default to 400 as of 5.5.x
 grep 'max_connections' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-    echo "max_connections=1024"
-    sed -i '/\[mysqld\]/a max_connections=1024\' $mysql_conf
+    echo "max_connections=400"
+    sed -i '/\[mysqld\]/a max_connections=400\' $mysql_conf
 else
-    echo "max_connections=1024"
-    sed -i 's/max_connections.*/max_connections=1024/g' $mysql_conf
+    echo "max_connections=400"
+    sed -i 's/max_connections.*/max_connections=400/g' $mysql_conf
 fi
+
+mkdir -p /etc/systemd/system/mariadb.service.d/
+echo -e "[Service]\nLimitNOFILE=2048" > /etc/systemd/system/mariadb.service.d/limits.conf
+systemctl daemon-reload || true
 
 grep '^character-set-server' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
