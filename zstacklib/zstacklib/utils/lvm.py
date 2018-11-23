@@ -425,6 +425,12 @@ def stop_vg_lock(vgUuid):
 
 
 @bash.in_bash
+def quitLockServices():
+    bash.bash_roe("sanlock client shutdown")
+    bash.bash_roe("lvmlockctl -q")
+
+
+@bash.in_bash
 def drop_vg_lock(vgUuid):
     bash.bash_roe("lvmlockctl --drop %s" % vgUuid)
 
@@ -1044,7 +1050,7 @@ def check_sanlock_renewal_failure(lockspace):
     last_record = linux.wait_callback_success(get_sanlock_renewal, lockspace, 10, 1, True)
     if last_record is False:
         logger.warn("unable find correct sanlock renewal record, may be rotated")
-        return True
+        return True, ""
     if "next_errors=" not in last_record:
         return True, ""
     errors = int(last_record.split("next_errors=")[-1])
