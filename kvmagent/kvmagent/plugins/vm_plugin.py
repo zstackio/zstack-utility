@@ -815,7 +815,7 @@ class IsoCeph(object):
         for minfo in self.iso.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         if IS_AARCH64:
-            e(disk, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            e(disk, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
         else:
             e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
             if bus and unit:
@@ -891,7 +891,7 @@ class VirtioSCSICeph(object):
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
-        e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(self.volume.deviceId)})
+        e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(self.volume.deviceId)})
         if self.volume.shareable:
             e(disk, 'shareable')
         return disk
@@ -940,7 +940,7 @@ class IsoFusionstor(object):
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
         if IS_AARCH64:
-            e(disk, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            e(disk, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
         else:
             e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
             if bus and unit:
@@ -1287,9 +1287,40 @@ class Vm(object):
         VIR_DOMAIN_PMSUSPENDED: VM_STATE_SUSPENDED,
     }
 
-    # letter 'c' is reserved for cdrom
-    DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
-    ISO_DEVICE_LETTERS = 'c' if IS_AARCH64 else 'cde'
+    # IDE and SATA is not supported in aarch64/i440fx
+    # so cdroms and volumes need to share sd[a-z]
+    #
+    # IDE is supported in x86_64/i440fx
+    # so cdroms use hd[c-e]
+    # virtio and virtioSCSI volumes share (sd[a-z] - sdc)
+    if IS_AARCH64:
+        DEVICE_LETTERS = 'abfghijklmnopqrstuvwxyz'
+    else:
+        DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
+    ISO_DEVICE_LETTERS = 'cde'
+
+    @staticmethod
+    def get_device_unit(device_id):
+        if device_id >= len(Vm.DEVICE_LETTERS):
+            err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (device_id, len(Vm.DEVICE_LETTERS) - 1)
+            logger.warn(err)
+            raise kvmagent.KvmError(err)
+
+        # aarch64 use device_letter as address->unit
+        # e.g. sda -> unit 0    sdf -> unit 5
+        if IS_AARCH64:
+            return str(ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0]))
+
+        # x86_64 use device_id as address->unit
+        return str(device_id)
+
+    @staticmethod
+    def get_iso_device_unit(device_id):
+        if device_id >= len(Vm.ISO_DEVICE_LETTERS):
+            err = "exceeds max iso limit, device id[%s], but only 0 ~ %d are allowed" % (device_id, len(Vm.ISO_DEVICE_LETTERS) - 1)
+            logger.warn(err)
+            raise kvmagent.KvmError(err)
+        return str(ord(Vm.ISO_DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0]))
 
     timeout_object = linux.TimeoutObject()
 
@@ -1604,8 +1635,7 @@ class Vm(object):
 
     def _attach_data_volume(self, volume, addons):
         if volume.deviceId >= len(self.DEVICE_LETTERS):
-            err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 24 allowed" % (
-                self.uuid, volume.deviceId)
+            err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (self.uuid, volume.deviceId, len(self.DEVICE_LETTERS) - 1)
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
@@ -1634,7 +1664,7 @@ class Vm(object):
             if volume.useVirtioSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
-                e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(volume.deviceId)})
+                e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': self.get_device_unit(volume.deviceId)})
             else:
                 if volume.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
@@ -2269,12 +2299,12 @@ class Vm(object):
         iso = cmd.iso
 
         if iso.deviceId >= len(self.ISO_DEVICE_LETTERS):
-            err = 'vm[uuid:%s] exceeds max iso limit, device id[%s], but only %s allowed' % (
-                self.uuid, iso.deviceId, len(self.ISO_DEVICE_LETTERS))
+            err = 'vm[uuid:%s] exceeds max iso limit, device id[%s], but only 0 ~ %d are allowed' % (self.uuid, iso.deviceId, len(self.ISO_DEVICE_LETTERS) - 1)
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
-        dev = "sdc" if IS_AARCH64 else 'hd%s' % self.ISO_DEVICE_LETTERS[iso.deviceId]
+        device_letter = self.ISO_DEVICE_LETTERS[iso.deviceId]
+        dev = "sd%s" % device_letter if IS_AARCH64 else 'hd%s' % device_letter
 
         if iso.path.startswith('ceph'):
             ic = IsoCeph()
@@ -2291,7 +2321,7 @@ class Vm(object):
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
             if IS_AARCH64:
-                e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+                e(cdrom, 'target', None, {'dev': dev, 'bus': 'scsi'})
             else:
                 e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
             e(cdrom, 'readonly', None)
@@ -2333,12 +2363,13 @@ class Vm(object):
         if not cdrom:
             return
 
-        dev = "sdc" if IS_AARCH64 else 'hd%s' % self.ISO_DEVICE_LETTERS[cmd.deviceId]
+        device_letter = self.ISO_DEVICE_LETTERS[cmd.deviceId]
+        dev = "sd%s" % device_letter if IS_AARCH64 else 'hd%s' % device_letter
 
         cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
         e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
         if IS_AARCH64:
-            e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            e(cdrom, 'target', None, {'dev': dev, 'bus': 'scsi'})
         else:
             e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
         e(cdrom, 'readonly', None)
@@ -2791,9 +2822,11 @@ class Vm(object):
             EMPTY_CDROM_CONFIGS = None
 
             if IS_AARCH64:
-                # AArch64 Does not support the attachment of multiple iso
+                # SCSI controller only supports 1 bus
                 EMPTY_CDROM_CONFIGS = [
-                    EmptyCdromConfig(None, None, None)
+                    EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', Vm.get_iso_device_unit(0)),
+                    EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[1], '0', Vm.get_iso_device_unit(1)),
+                    EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[2], '0', Vm.get_iso_device_unit(2))
                 ]
             else:
                 # bus 0 unit 0 already use by root volume
@@ -2810,7 +2843,8 @@ class Vm(object):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 if IS_AARCH64:
-                    e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+                    e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
+                    e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
                 else:
                     e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'ide'})
                     e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
@@ -2859,7 +2893,7 @@ class Vm(object):
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
-                    e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(_v.deviceId)})
+                    e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(_v.deviceId)})
                     return disk
 
                 if _v.useVirtio:
@@ -2979,7 +3013,7 @@ class Vm(object):
             scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
             for v in volumes:
                 if v.deviceId >= len(Vm.DEVICE_LETTERS):
-                    err = "exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
+                    err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (v.deviceId, len(Vm.DEVICE_LETTERS) - 1)
                     logger.warn(err)
                     raise kvmagent.KvmError(err)
 
