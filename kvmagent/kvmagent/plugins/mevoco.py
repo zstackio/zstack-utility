@@ -19,6 +19,7 @@ import re
 import threading
 import time
 import email
+import tempfile
 import cStringIO as c
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
@@ -494,6 +495,90 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @kvmagent.replyerror
     @in_bash
+    def restore_ebtables_nat_chain_except_libvirt(self):
+        class EbtablesRules(object):
+            @in_bash
+            def __init__(self):
+                self.raw_text = bash_o("ebtables-save").strip(" \t\r\n").splitlines()
+                self.nat_table = self._get_nat_table()
+                self.nat_chain_names = self._get_nat_chain_names()
+
+            def _get_nat_table(self):
+                result = []
+                is_nat_table = False
+
+                for line in self.raw_text:
+                    if len(line) < 1:
+                        continue
+                    if "*nat" in line:
+                        is_nat_table = True
+                    elif line[0] == "*":
+                        is_nat_table = False
+
+                    if is_nat_table:
+                        result.append(line)
+
+                return result
+
+            def _get_nat_chain_names(self):
+                result = []
+                for line in self.nat_table:
+                    if line[0] == ':':
+                        result.append(line.split(" ")[0].strip(":"))
+
+                return result
+
+            def get_related_nat_chain_names(self, keyword):
+                # type: (str) -> list[str]
+                result = []
+                for name in self.nat_chain_names:
+                    if keyword in name:
+                        result.append(name)
+
+                for line in self.nat_table:
+                    if line[0] == ':':
+                        continue
+                    if len(list(filter(lambda x: '-A %s ' % x in line, result))) < 1:
+                        continue
+                    jump_chain = self._get_jump_nat_chain_name_from_cmd(line)
+                    if jump_chain:
+                        result.extend(self.get_related_nat_chain_names(jump_chain))
+
+                return list(set(result))
+
+            def _get_jump_nat_chain_name_from_cmd(self, cmd):
+                jump = cmd.split(" -j ")[1]
+                if jump in self.nat_chain_names:
+                    return jump
+                return None
+
+            def get_related_nat_rules(self, keyword):
+                result = []
+                related_chains = self.get_related_nat_chain_names(keyword)
+                for line in self.nat_table:
+                    if len(list(filter(lambda x: x in line, related_chains))) > 0:
+                        result.append(line)
+
+                default_rules = """*nat
+        :PREROUTING ACCEPT
+        :OUTPUT ACCEPT
+        :POSTROUTING ACCEPT"""
+                r = default_rules.splitlines()
+                r.extend(result)
+                return r
+
+        logger.debug("start clean ebtables...")
+        ebtables_obj = EbtablesRules()
+        fd, path = temp_file = tempfile.mkstemp("ebtables-")
+        restore_data = "\n".join(ebtables_obj.get_related_nat_chain_names("libvirt")) + "\n"
+        logger.debug("restore ebtables: %s" % restore_data)
+        os.fdopen(fd, 'w').write(restore_data)
+        bash_o("ebtables-restore < %s" % path)
+        logger.debug("clean ebtables successfully")
+
+
+    @kvmagent.replyerror
+    @in_bash
     def delete_ebtables_nat_chain_except_libvirt(self):
         def makecmd(cmd):
             return EBTABLES_CMD + " -t nat " + cmd
@@ -534,7 +619,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         #shell.call(EBTABLES_CMD + ' -t nat -F')
         # this is workaround, for anti-spoofing feature, there is no googd way to proccess this reconnect-host case,
         # it's just keep the ebtables rules from libvirt and remove others when reconnect hosts
-        self.delete_ebtables_nat_chain_except_libvirt()
+        self.restore_ebtables_nat_chain_except_libvirt()
         return jsonobject.dumps(ConnectRsp())
 
     @kvmagent.replyerror
