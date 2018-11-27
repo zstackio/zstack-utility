@@ -2802,11 +2802,10 @@ class Vm(object):
                             EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1')
                         ]
                     else:
-                        cdrom_list = cdroms.split(',')
+                        cdrom_device_id_list = cdroms.split(',')
 
                         EMPTY_CDROM_CONFIGS = []
-                        for cdrom in cdrom_list:
-                            device_id = cdrom.split('_')[1]
+                        for device_id in cdrom_device_id_list:
                             EMPTY_CDROM_CONFIGS.append(
                                 EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', device_id))
                 else:
