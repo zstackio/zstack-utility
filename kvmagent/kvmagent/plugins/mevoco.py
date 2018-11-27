@@ -528,7 +528,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
                 return result
 
-            def get_related_nat_chain_names(self, keyword):
+            def _get_related_nat_chain_names(self, keyword):
                 # type: (str) -> list[str]
                 result = []
                 for name in self.nat_chain_names:
@@ -542,7 +542,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                         continue
                     jump_chain = self._get_jump_nat_chain_name_from_cmd(line)
                     if jump_chain:
-                        result.extend(self.get_related_nat_chain_names(jump_chain))
+                        result.extend(self._get_related_nat_chain_names(jump_chain))
 
                 return list(set(result))
 
@@ -554,26 +554,28 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
             def get_related_nat_rules(self, keyword):
                 result = []
-                related_chains = self.get_related_nat_chain_names(keyword)
+                related_chains = self._get_related_nat_chain_names(keyword)
                 for line in self.nat_table:
                     if len(list(filter(lambda x: x in line, related_chains))) > 0:
                         result.append(line)
 
                 default_rules = """*nat
-        :PREROUTING ACCEPT
-        :OUTPUT ACCEPT
-        :POSTROUTING ACCEPT"""
+                    :PREROUTING ACCEPT
+                    :OUTPUT ACCEPT
+                    :POSTROUTING ACCEPT"""
                 r = default_rules.splitlines()
                 r.extend(result)
                 return r
 
         logger.debug("start clean ebtables...")
         ebtables_obj = EbtablesRules()
-        fd, path = temp_file = tempfile.mkstemp("ebtables-")
-        restore_data = "\n".join(ebtables_obj.get_related_nat_chain_names("libvirt")) + "\n"
+        fd, path = tempfile.mkstemp(".ebtables.dump")
+        restore_data = "\n".join(ebtables_obj.get_related_nat_rules("libvirt")) + "\n"
         logger.debug("restore ebtables: %s" % restore_data)
-        os.fdopen(fd, 'w').write(restore_data)
+        with os.fdopen(fd, 'w') as fs:
+            fs.write(restore_data)
         bash_o("ebtables-restore < %s" % path)
+        os.remove(path)
         logger.debug("clean ebtables successfully")
 
 
