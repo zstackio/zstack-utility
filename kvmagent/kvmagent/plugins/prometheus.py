@@ -162,19 +162,18 @@ LoadPlugin virt
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def install_iptables(self):
-        def install_iptables_port(port):
-            r, o, e = bash_roe("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport %s'" % port)
-            if r == 0:
-                rules = o.split('\n')
-                for rule in rules:
-                    rule = rule.replace("-A ", "-D ")
-                    bash_r("iptables %s" % rule)
+        def install_iptables_port(rules, port):
+            needle = '-A INPUT -p tcp -m tcp --dport %d' % port
+            drules = [ r.replace("-A ", "-D ") for r in rules if needle in r ]
+            for rule in drules:
+                bash_r("iptables -w %s" % rule)
 
-            bash_r("iptables -w -A INPUT -p tcp --dport %s -j ACCEPT" % port)
+            bash_r("iptables -w -I INPUT -p tcp --dport %s -j ACCEPT" % port)
 
-        install_iptables_port(7069)
-        install_iptables_port(9100)
-        install_iptables_port(9103)
+        rules = bash_o("iptables -w -S INPUT").splitlines()
+        install_iptables_port(rules, 7069)
+        install_iptables_port(rules, 9100)
+        install_iptables_port(rules, 9103)
 
     def install_colletor(self):
         class Collector(object):
