@@ -4303,17 +4303,23 @@ class VmPlugin(kvmagent.KvmAgent):
             source = target_disk.source
             bitmap = bitmaps[deviceId]
 
-            if bitmap:
-                backupArgs[deviceId] = bitmap, 'auto', nodename, speed
-            else:
+            def get_backup_args():
+                if bitmap:
+                    return bitmap, 'full' if cmd.mode == 'full' else 'auto', nodename, speed
+
                 bm = 'zsbitmap%d' % deviceId
+                if cmd.mode == 'full':
+                    return bm, 'full', nodename, speed
+
                 imf = self.push_backing_files(isc, cmd.hostname, drivertype, source)
-                if imf:
-                    parent = isc._build_install_path(imf.name, imf.id)
-                    parents[deviceId] = parent
-                    backupArgs[deviceId] = bm, 'top', nodename, speed
-                else:
-                    backupArgs[deviceId] = bm, 'full', nodename, speed
+                if not imf:
+                    return bm, 'full', nodename, speed
+
+                parent = isc._build_install_path(imf.name, imf.id)
+                parents[deviceId] = parent
+                return bm, 'top', nodename, speed
+
+            backupArgs[deviceId] = get_backup_args()
 
         logger.info('taking backup for vm: %s' % cmd.vmUuid)
         res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir)
@@ -4362,20 +4368,26 @@ class VmPlugin(kvmagent.KvmAgent):
         if drivertype == 'qcow2':
             topoverlay = source.file_
 
-        if not cmd.bitmap:
+        def get_parent_bitmap_mode():
+            if cmd.bitmap:
+                return None, cmd.bitmap, 'full' if cmd.mode == 'full' else 'auto'
+
             bitmap = 'zsbitmap%d' % (cmd.deviceId)
             if drivertype != 'qcow2':
-                mode = 'full'
-            else:
-                bf = linux.qcow2_get_backing_file(topoverlay)
-                if bf:
-                    imf = isc.upload_image(cmd.hostname, bf)
-                    parent = isc._build_install_path(imf.name, imf.id)
-                    mode = 'top'
-                else:
-                    mode = 'full'
-        else:
-            bitmap, mode = cmd.bitmap, 'auto'
+                return None, bitmap, 'full'
+
+            if cmd.mode == 'full':
+                return None, bitmap, 'full'
+
+            bf = linux.qcow2_get_backing_file(topoverlay)
+            if not bf:
+                return None, bitmap, 'full'
+
+            imf = isc.upload_image(cmd.hostname, bf)
+            parent = isc._build_install_path(imf.name, imf.id)
+            return parent, bitmap, 'top'
+
+        parent, bitmap, mode = get_parent_bitmap_mode()
 
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
@@ -4506,7 +4518,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.backupFile = os.path.join(cmd.uploadDir, fname)
 
         except Exception as e:
-            logger.warn("take volume backup failed: " + str(e))
+            content = traceback.format_exc()
+            logger.warn("take volume backup failed: " + str(e)) + '\n' + content
             rsp.error = str(e)
             rsp.success = False
 
