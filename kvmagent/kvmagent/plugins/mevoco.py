@@ -559,10 +559,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                     if len(list(filter(lambda x: x in line, related_chains))) > 0:
                         result.append(line)
 
-                default_rules = """*nat
-                    :PREROUTING ACCEPT
-                    :OUTPUT ACCEPT
-                    :POSTROUTING ACCEPT"""
+                default_rules = "*nat\n:PREROUTING ACCEPT\n:OUTPUT ACCEPT\n:POSTROUTING ACCEPT\n"
                 r = default_rules.splitlines()
                 r.extend(result)
                 return r
