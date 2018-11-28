@@ -2805,9 +2805,9 @@ class Vm(object):
                         cdrom_device_id_list = cdroms.split(',')
 
                         EMPTY_CDROM_CONFIGS = []
-                        for device_id in cdrom_device_id_list:
+                        for i in xrange(len(cdrom_device_id_list)):
                             EMPTY_CDROM_CONFIGS.append(
-                                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', device_id))
+                                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[i], str(i / 2), str(i % 2)))
                 else:
                     # bus 0 unit 0 already use by root volume
                     EMPTY_CDROM_CONFIGS = [
