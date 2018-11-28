@@ -294,6 +294,9 @@ class HostPlugin(kvmagent.KvmAgent):
         # create udev rule
         self.handle_usb_device_events()
 
+        ignore_msrs = 1 if cmd.ignoreMsrs else 0
+        shell.run("/bin/echo %s > /sys/module/kvm/parameters/ignore_msrs" % ignore_msrs)
+
         vm_plugin.cleanup_stale_vnc_iptable_chains()
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
         rsp.iptablesSucc = apply_iptables_result
@@ -312,10 +315,6 @@ class HostPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def fact(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        ignore_msrs = 1 if cmd.ignoreMsrs else 0
-        shell.run("/bin/echo %s > /sys/module/kvm/parameters/ignore_msrs" % ignore_msrs)
-
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
