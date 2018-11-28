@@ -3271,7 +3271,6 @@ if [ -n "$NEED_DROP_DB" ]; then
   pkill -9 influxd 2>/dev/null
   rm -rf /var/lib/zstack/prometheus/data
   rm -rf /var/lib/zstack/influxdb/
-  find /var/lib/zstack/license/ -name 'license*' -type f -exec rm -f {} \;
 fi
 
 zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
