@@ -281,13 +281,21 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ConnectResponse()
+
+        # page table extension
+        new_ept = False if cmd.pageTableExtensionDisabled else True
+        rsp.error = self._set_intel_ept(new_ept)
+        if rsp.error is not None:
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
         self.host_uuid = cmd.hostUuid
         self.config[kvmagent.HOST_UUID] = self.host_uuid
         self.config[kvmagent.SEND_COMMAND_URL] = cmd.sendCommandUrl
         Report.serverUuid = self.host_uuid
         Report.url = cmd.sendCommandUrl
         logger.debug(http.path_msg(self.CONNECT_PATH, 'host[uuid: %s] connected' % cmd.hostUuid))
-        rsp = ConnectResponse()
         rsp.libvirtVersion = self.libvirt_version
         rsp.qemuVersion = self.qemu_version
 
@@ -401,6 +409,28 @@ class HostPlugin(kvmagent.KvmAgent):
         with open(heartbeat_file, 'w') as fd:
             fd.write(jsonobject.dumps(hb))
         return True
+
+    def _get_intel_ept(self):
+        text = None
+        with open('/sys/module/kvm_intel/parameters/ept', 'r') as reader:
+            text = reader.read()
+        return text is None or text.strip() == "Y"
+
+    def _set_intel_ept(self, new_ept):
+        error = None
+        old_ept = self._get_intel_ept()
+        if new_ept != old_ept:
+            param = "ept=%d" % new_ept
+            if shell.run("modprobe -r kvm-intel") != 0 or shell.run("modprobe kvm-intel %s" % param) != 0:
+                error = "failed to reload kvm-intel, please stop the running VM on the host and try again."
+            else:
+                with open('/etc/modprobe.d/intel-ept.conf', 'w') as writer:
+                    writer.write("options kvm_intel %s" % param)
+                logger.info("_set_intel_ept(%s) OK." % new_ept)
+
+        if error is not None:
+            logger.warn("_set_intel_ept: %s" % error)
+        return error
 
     @kvmagent.replyerror
     def setup_heartbeat_file(self, req):
