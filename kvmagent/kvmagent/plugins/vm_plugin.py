@@ -2350,6 +2350,12 @@ class Vm(object):
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to attach the iso to the VM[uuid:%s], %s' % (self.uuid, err))
+
+            if "QEMU command 'change': error connecting: Operation not supported" in err:
+                raise Exception('cannot hotplug ISO to the VM[uuid:%s]. It is a libvirt bug: %s.'
+                        ' you can power-off the vm and attach again.' %
+                        (self.uuid, 'https://bugzilla.redhat.com/show_bug.cgi?id=1541702'))
+
             if 'timed out waiting for disk tray status update' in err:
                 raise Exception(
                     'unable to attach the iso to the VM[uuid:%s]. It seems met some internal error,'
