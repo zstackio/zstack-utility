@@ -2851,7 +2851,7 @@ class Vm(object):
                     cdrom = makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit)
                     e(cdrom, 'source', None, {'file': iso.path})
 
-            emptyCdrom = set(range(MAX_CDROM_NUM)).difference(notEmptyCdrom)
+            emptyCdrom = set(range(len(EMPTY_CDROM_CONFIGS))).difference(notEmptyCdrom)
             for i in emptyCdrom:
                 cdromConfig = EMPTY_CDROM_CONFIGS[i]
                 makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus, cdromConfig.unit)
