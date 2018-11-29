@@ -1,0 +1,22 @@
+<filter name='zstack-clean-traffic-ip46' chain='root'>
+  <uuid></uuid>
+  <filterref filter='no-mac-spoofing'/>
+  <filterref filter='no-ip-spoofing'/>
+  <filterref filter='zstack-no-ipv6-spoofing'/>
+  <filterref filter='zstack-no-ipv6-router-advertisement'/>
+  <filterref filter='zstack-no-dhcpv6-server'/>
+  <rule action='accept' direction='out' priority='-650'>
+    <mac protocolid='ipv4'/>
+  </rule>
+  <rule action='accept' direction='out' priority='-650'>
+    <mac protocolid='ipv6'/>
+  </rule>
+  <filterref filter='no-arp-spoofing'/>
+  <rule action='accept' direction='inout' priority='-500'>
+    <mac protocolid='arp'/>
+  </rule>
+  <filterref filter='allow-incoming-ipv4'/>
+  <filterref filter='zstack-allow-incoming-ipv6'/>
+  <filterref filter='no-other-l2-traffic'/>
+  <filterref filter='qemu-announce-self'/>
+</filter>

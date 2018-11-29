@@ -1,0 +1,5 @@
+<filter name='zstack-no-dhcpv6-server' chain='ipv6' priority='-600'>
+  <rule action='drop' direction='out' priority='100'>
+    <ipv6 protocol='udp' dstportstart='546'/>
+  </rule>
+</filter>

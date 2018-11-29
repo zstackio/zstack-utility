@@ -1,0 +1,9 @@
+<filter name='zstack-no-ipv6-spoofing' chain='ipv6' priority='-710'>
+  <rule action='return' direction='out' priority='500'>
+    <ipv6 srcipaddr='$LINK_LOCAL_IP'/>
+  </rule>
+  <rule action='return' direction='out' priority='500'>
+    <ipv6 srcipaddr='$GLOBAL_IP'/>
+  </rule>
+  <rule action='drop' direction='out' priority='1000'/>
+</filter>

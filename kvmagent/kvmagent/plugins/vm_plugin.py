@@ -16,6 +16,7 @@ import netaddr
 import libvirt
 #from typing import List, Any, Union
 
+import zstacklib.utils.ip as ip
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
@@ -3385,12 +3386,30 @@ class Vm(object):
         e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
         e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-        if nic.ip:
-            # TODO shixin ipv6 clean-traffic will be fix in next release
-            nicIp = netaddr.IPAddress(nic.ip)
-            if nicIp.version == 4:
+        if nic.ips:
+            ip4Addr = None
+            ip6Addrs = []
+            for addr in nic.ips:
+                version = netaddr.IPAddress(addr).version
+                if version == 4:
+                    ip4Addr = addr
+                else:
+                    ip6Addrs.append(addr)
+            # ipv4 nic
+            if ip4Addr is not None and len(ip6Addrs) == 0:
                 filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
-                e(filterref, 'parameter', None, {'name': 'IP', 'value': nic.ip})
+                e(filterref, 'parameter', None, {'name': 'IP', 'value': ip4Addr})
+            elif ip4Addr is None and len(ip6Addrs) > 0:  # ipv6 nic
+                filterref = e(interface, 'filterref', None, {'filter': 'zstack-clean-traffic-ipv6'})
+                for addr6 in ip6Addrs:
+                    e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
+                e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
+            else:  # dual stack nic
+                filterref = e(interface, 'filterref', None, {'filter': 'zstack-clean-traffic-ip46'})
+                e(filterref, 'parameter', None, {'name': 'IP', 'value': ip4Addr})
+                for addr6 in ip6Addrs:
+                    e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
+                e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
         if nic.useVirtio:
             e(interface, 'model', None, attrib={'type': 'virtio'})
         else:
