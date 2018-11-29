@@ -2522,11 +2522,11 @@ fi
 C72_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm'
 C74_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm'
 if ls ${C72_CENTOS_RELEASE} >/dev/null 2>&1; then
-    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}_c72
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_c72
 elif ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
-    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}_c74
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_c74
 else
-    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}
 fi
 
 echo_subtitle "Prepare repo files for syncing"
@@ -2583,120 +2583,23 @@ baseurl=file:///opt/zstack-dvd/Extra/virtio-win
 gpgcheck=0
 enabled=0
 EOF
-
-cat > /etc/yum.repos.d/zstack-online-base.repo << EOF
-[zstack-online-base]
-name=zstack-online-base
-baseurl=${BASEURL}
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-ceph.repo << EOF
-[zstack-online-ceph]
-name=zstack-online-ceph
-baseurl=${BASEURL}/Extra/ceph
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-uek4.repo << EOF
-[zstack-online-uek4]
-name=zstack-online-uek4
-baseurl=${BASEURL}/Extra/uek4
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-galera.repo << EOF
-[zstack-online-galera]
-name=zstack-online-galera
-baseurl=${BASEURL}/Extra/galera
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
-[zstack-online-qemu-kvm-ev]
-name=zstack-online-qemu-kvm-ev
-baseurl=${BASEURL}/Extra/qemu-kvm-ev
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-virtio-win.repo << EOF
-[zstack-online-virtio-win]
-name=zstack-online-virtio-win
-baseurl=${BASEURL}/Extra/virtio-win
-gpgcheck=0
-enabled=0
-EOF
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Install necessary packages"
-pkg_list="createrepo curl yum-utils"
+pkg_list="createrepo curl yum-utils rsync"
 missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo_subtitle "Test network connection"
-curl -L ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-
-yum clean all >/dev/null 2>&1
-if [ -f /etc/yum.repos.d/epel.repo ]; then
-    sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
-fi
-
-umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-rm -rf /opt/zstack-dvd/Base && mkdir -p /opt/zstack-dvd/Base
-/bin/cp -r /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
-reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d || return 1
-reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d || return 1
-reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d || return 1
-reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d || return 1
-reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d || return 1
-reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d || return 1
-rm -f /etc/yum.repos.d/zstack-online-*.repo
+# it takes about 2 min to compare md5sum of 1800+ files in iso
 echo_subtitle "Sync from repo.zstack.io"
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-
-echo_subtitle "Update metadata"
-createrepo -g /opt/zstack-dvd/Base/comps.xml /opt/zstack-dvd/Base/ >/dev/null 2>&1 || return 1
-rm -rf /opt/zstack-dvd/{Packages,repodata} >/dev/null 2>&1
-mv /opt/zstack-dvd/Base/* /opt/zstack-dvd/ >/dev/null 2>&1
-rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
-createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || return 1
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-
-# Update non-rpm archives
-# - update squashfs.img if .repo_version < 170704
-REMOTESQUASHFS=${BASEURL}/LiveOS/squashfs.img
-LOCALSQUASHFS=/opt/zstack-dvd/LiveOS/squashfs.img
-REMOTEV2VIMG=${BASEURL}/virt_v2v_image.tgz
-LOCALV2VIMG=/opt/zstack-dvd/virt_v2v_image.tgz
-REPOVERSION=`cat /opt/zstack-dvd/.repo_version`
-if [ $REPOVERSION -lt 170704 ]; then
-	rm -f $LOCALSQUASHFS
-	wget -c $REMOTESQUASHFS -O $LOCALSQUASHFS || return 1
-fi
-if [ $REPOVERSION -lt 180920 ]; then
-	wget -c $REMOTEV2VIMG -O $LOCALV2VIMG || return 1
-fi
-echo_subtitle "Update non-rpm archives"
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-
-echo_subtitle "Update /opt/zstack-dvd/.repo_version"
-cat .repo_version > /opt/zstack-dvd/.repo_version
+umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
+rsync -a --partial --delete --exclude zstack-installer.bin ${BASEURL} /opt/zstack-dvd || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Cleanup"
-rm -f /opt/zstack-dvd/comps.xml
-yum clean all >/dev/null 2>&1
+[ -f /etc/yum.repos.d/epel.repo ] && sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+yum --enablerepo=* clean all >/dev/null 2>&1
 rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 }
