@@ -1,33 +1,43 @@
 host:
     description: host server
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select h.managementIp from HostVO h where h.hypervisorType = \"KVM\"'"}
+    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select h.managementIp from HostVO h where h.status =  \"Connected\" and h.hypervisorType = \"KVM\"'"}
     logs:
-     - {name: kvmagent-logs, dir: /var/log/zstack/, file: zstack-kvmagent.log*}
-     - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
-     - {name: dashboard-logs, dir: /var/log/zstack/, file: zstack-dashboard.log*}
-     - {name: iscsi-logs, dir: /var/log/zstack/, file: zstack-iscsi-filesystem-agent*}
-     - {name: agentcollectd-logs, dir: /var/log/zstack/zstack-agent/, file: collectd.log*}
-     - {name: agentserver-logs, dir: /var/log/zstack/zstack-agent/, file: server.log*}
-     - {name: dmesg-logs, exec: 'dmesg -T'}
-     - {name: message-logs, dir: /var/log/, file: messages*}
-     - {name: route-logs, exec: 'route -n'}
-     - {name: iptables-logs, exec: 'iptables-save'}
-     - {name: ebtables-logs, exec: 'ebtables-save'}
-     - {name: journalctl-info, exec: 'journalctl -x'}
+      - {name: kvmagent-logs, dir: /var/log/zstack/, file: zstack-kvmagent.log*}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+      - {name: iscsi-logs, dir: /var/log/zstack/, file: zstack-iscsi-filesystem-agent*}
+      - {name: agentcollectd-logs, dir: /var/log/zstack/zstack-agent/, file: collectd.log*}
+      - {name: agentserver-logs, dir: /var/log/zstack/zstack-agent/, file: server.log*}
+      - {name: dmesg-logs, exec: 'dmesg -T'}
+      - {name: message-logs, dir: /var/log/, file: messages*}
+      - {name: route-logs, exec: 'route -n'}
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: ebtables-logs, exec: 'ebtables-save'}
+      - {name: journalctl-info, exec: 'journalctl -x'}
+      - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
 mn:
     description: management node
     type: target
     list: "localhost"
     logs:
-     - {name: mn-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'management-server*'}
-     - {name: ui-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'zstack-ui*'}
-     - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
-     - {name: api-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'zstack-api*'}
-     - {name: catalina-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'catalina*'}
-     - {name: deploy-logs, dir: /var/log/zstack/, file: 'deploy.log*'}
-     - {name: ctl-logs, dir: /var/log/zstack/, file: 'zstack-ctl*'}
-     - {name: cli-logs, dir: /var/log/zstack/, file: 'zstack-cli*'}
-     - {name: pkg-list, exec: 'rpm -qa | sort'}
-     - {name: journalctl-info, exec: 'journalctl -x'}
-
+      - {name: mn-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'management-server*'}
+      - {name: ui-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'zstack-ui*'}
+      - {name: mysql-database, exec: 'mysqldump --database -uzstack -pzstack.password -P 3306 --single-transaction --quick zstack zstack_rest'}
+      - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
+      - {name: api-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'zstack-api*'}
+      - {name: catalina-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'catalina*'}
+      - {name: deploy-logs, dir: /var/log/zstack/, file: 'deploy.log*'}
+      - {name: ctl-logs, dir: /var/log/zstack/, file: 'zstack-ctl*'}
+      - {name: cli-logs, dir: /var/log/zstack/, file: 'zstack-cli*'}
+      - {name: dashboard-logs, dir: /var/log/zstack/, file: 'zstack-dashboard.log*'}
+      - {name: zstack-console-logs, dir: /var/log/zstack/, file: 'zstack-console-proxy*'}
+      - {name: dmesg-logs, exec: 'dmesg -T'}
+      - {name: message-logs, dir: /var/log/, file: messages*}
+      - {name: route-logs, exec: 'route -n'}
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: ebtables-logs, exec: 'ebtables-save'}
+      - {name: journalctl-info, exec: 'journalctl -x'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
+      - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: git-commit, dir: /usr/local/zstack/apache-tomcat/webapps/zstack/, file: '*git-commit'}
