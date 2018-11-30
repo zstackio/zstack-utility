@@ -335,9 +335,12 @@ class DEip(kvmagent.KvmAgent):
                     bash_errorout('eval {{NS}} {{iptableCmd}} -w {{table}} -A {{rule}}')
 
         @bash.in_bash
-        def create_ebtable_rule_if_needed(table, chain, rule):
+        def create_ebtable_rule_if_needed(table, chain, rule, at_head=False):
             if bash_r(EBTABLES_CMD + ' -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:
-                bash_errorout(EBTABLES_CMD + ' -t {{table}} -A {{chain}} {{rule}}')
+                if at_head:
+                    bash_errorout(EBTABLES_CMD + ' -t {{table}} -I {{chain}} {{rule}}')
+                else:
+                    bash_errorout(EBTABLES_CMD + ' -t {{table}} -A {{chain}} {{rule}}')
 
         @bash.in_bash
         def set_eip_rules():
@@ -423,7 +426,7 @@ class DEip(kvmagent.KvmAgent):
             if bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
-            create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}')
+            create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}', at_head=True)
             GATEWAY = bash_o("eval {{NS}} ip link | grep -w {{PRI_IDEV}} -A 1 | awk '/link\/ether/{print $2}'").strip()
             if not GATEWAY:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))

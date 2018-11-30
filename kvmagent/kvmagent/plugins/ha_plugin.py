@@ -34,6 +34,12 @@ class ReportPsStatusCmd(object):
         self.psStatus = None
         self.reason = None
 
+class ReportSelfFencerCmd(object):
+    def __init__(self):
+        self.hostUuid = None
+        self.psUuids = None
+        self.reason = None
+
 
 def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
     zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
@@ -68,7 +74,7 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
         else:
             logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
-    return vm_pids_dict.values()
+    return vm_pids_dict
 
 
 def mount_path_is_nfs(mount_path):
@@ -209,7 +215,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     try:
                         logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
-                        kill_vm(cmd.maxAttempts)
+                        vm_uuids = kill_vm(cmd.maxAttempts).keys()
+
+                        if vm_uuids:
+                            self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
 
                         # reset the failure count
                         failure = 0
@@ -398,7 +407,10 @@ class HaPlugin(kvmagent.KvmAgent):
                         #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
                         if ceph_in_error_stat():
                             path = (os.path.split(cmd.heartbeatImagePath))[0]
-                            kill_vm(cmd.maxAttempts, [path], False)
+                            vm_uuids = kill_vm(cmd.maxAttempts, [path], False).keys()
+
+                            if vm_uuids:
+                                self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
                         else:
                             delete_heartbeat_file()
 
@@ -489,7 +501,9 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
-                        killed_vm_pids = kill_vm(cmd.maxAttempts, [mount_path], True)
+                        killed_vms = kill_vm(cmd.maxAttempts, [mount_path], True)
+                        self.report_self_fencer_triggered([ps_uuid], ','.join(killed_vms.keys()))
+                        killed_vm_pids = killed_vms.values()
                         after_kill_vm()
 
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
@@ -565,6 +579,32 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def configure(self, config):
         self.config = config
+
+    def report_self_fencer_triggered(self, ps_uuids, vm_uuids_string):
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            logger.warn('cannot find SEND_COMMAND_URL, unable to report self fencer triggered on [psList:%s]' % ps_uuids)
+            return
+
+        host_uuid = self.config.get(kvmagent.HOST_UUID)
+        if not host_uuid:
+            logger.warn(
+                'cannot find HOST_UUID, unable to report self fencer triggered on [psList:%s]' % ps_uuids)
+            return
+
+        def report_to_management_node():
+            cmd = ReportSelfFencerCmd()
+            cmd.psUuids = ps_uuids
+            cmd.hostUuid = host_uuid
+            cmd.reason = "primary storage[uuids:%s] on host[uuid:%s] heartbeat fail, self fencer has been triggered" % (ps_uuids, host_uuid)
+
+            logger.debug(
+                'host[uuid:%s] primary storage[psList:%s], triggered self fencer, report it to %s' % (
+                    host_uuid, ps_uuids, url))
+            http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportselffencer'})
+
+        report_to_management_node()
+
 
     @thread.AsyncThread
     def report_storage_status(self, ps_uuids, ps_status, reason=""):

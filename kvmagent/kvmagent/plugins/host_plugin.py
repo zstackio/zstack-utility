@@ -250,6 +250,14 @@ class HostPlugin(kvmagent.KvmAgent):
 
         raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
+    def _prepare_firewall_for_migration(self):
+        """Prepare firewall rules for libvirt live migration."""
+
+        mrule = "-A INPUT -p tcp -m tcp --dport 49152:49261 -j ACCEPT"
+        rules = bash_o("iptables -w -S INPUT").splitlines()
+        if not mrule in rules:
+            bash_r("iptables -w %s" % mrule.replace("-A ", "-I "))
+
     @lock.file_lock('/run/xtables.lock')
     @in_bash
     def apply_iptables_rules(self, rules):
@@ -273,18 +281,29 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ConnectResponse()
+
+        # page table extension
+        new_ept = False if cmd.pageTableExtensionDisabled else True
+        rsp.error = self._set_intel_ept(new_ept)
+        if rsp.error is not None:
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
         self.host_uuid = cmd.hostUuid
         self.config[kvmagent.HOST_UUID] = self.host_uuid
         self.config[kvmagent.SEND_COMMAND_URL] = cmd.sendCommandUrl
         Report.serverUuid = self.host_uuid
         Report.url = cmd.sendCommandUrl
         logger.debug(http.path_msg(self.CONNECT_PATH, 'host[uuid: %s] connected' % cmd.hostUuid))
-        rsp = ConnectResponse()
         rsp.libvirtVersion = self.libvirt_version
         rsp.qemuVersion = self.qemu_version
 
         # create udev rule
         self.handle_usb_device_events()
+
+        ignore_msrs = 1 if cmd.ignoreMsrs else 0
+        shell.run("/bin/echo %s > /sys/module/kvm/parameters/ignore_msrs" % ignore_msrs)
 
         vm_plugin.cleanup_stale_vnc_iptable_chains()
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
@@ -304,10 +323,6 @@ class HostPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def fact(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        ignore_msrs = 1 if cmd.ignoreMsrs else 0
-        shell.run("/bin/echo %s > /sys/module/kvm/parameters/ignore_msrs" % ignore_msrs)
-
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
@@ -316,10 +331,6 @@ class HostPlugin(kvmagent.KvmAgent):
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
         system_product_name = shell.call('dmidecode -s system-product-name').strip()
         baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
-        host_cpu_info = shell.call("grep -m2 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
-        host_cpu_model_name = host_cpu_info[0]
-        transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
-        static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
@@ -327,8 +338,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
         if not rsp.systemProductName:
             rsp.systemProductName = 'unknown'
-        rsp.hostCpuModelName = host_cpu_model_name
-        rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
+
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
@@ -341,6 +351,10 @@ class HostPlugin(kvmagent.KvmAgent):
                     cpu_model = shell.call('uname -p').strip("\t\r\n")
 
             rsp.cpuModelName = cpu_model
+            rsp.hostCpuModelName = "aarch64"
+
+            cpuMHz = shell.call("lscpu | grep 'max MHz' | awk '{ print $NF }'")
+            rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
         else:
             if shell.run('grep vmx /proc/cpuinfo') == 0:
                 rsp.hvmCpuFlag = 'vmx'
@@ -350,6 +364,14 @@ class HostPlugin(kvmagent.KvmAgent):
                     rsp.hvmCpuFlag = 'svm'
 
             rsp.cpuModelName = self._get_host_cpu_model()
+
+            host_cpu_info = shell.call("grep -m2 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
+            host_cpu_model_name = host_cpu_info[0]
+            rsp.hostCpuModelName = host_cpu_model_name
+
+            transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
+            static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
+            rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
         return jsonobject.dumps(rsp)
 
@@ -387,6 +409,28 @@ class HostPlugin(kvmagent.KvmAgent):
         with open(heartbeat_file, 'w') as fd:
             fd.write(jsonobject.dumps(hb))
         return True
+
+    def _get_intel_ept(self):
+        text = None
+        with open('/sys/module/kvm_intel/parameters/ept', 'r') as reader:
+            text = reader.read()
+        return text is None or text.strip() == "Y"
+
+    def _set_intel_ept(self, new_ept):
+        error = None
+        old_ept = self._get_intel_ept()
+        if new_ept != old_ept:
+            param = "ept=%d" % new_ept
+            if shell.run("modprobe -r kvm-intel") != 0 or shell.run("modprobe kvm-intel %s" % param) != 0:
+                error = "failed to reload kvm-intel, please stop the running VM on the host and try again."
+            else:
+                with open('/etc/modprobe.d/intel-ept.conf', 'w') as writer:
+                    writer.write("options kvm_intel %s" % param)
+                logger.info("_set_intel_ept(%s) OK." % new_ept)
+
+        if error is not None:
+            logger.warn("_set_intel_ept: %s" % error)
+        return error
 
     @kvmagent.replyerror
     def setup_heartbeat_file(self, req):
@@ -581,6 +625,7 @@ if __name__ == "__main__":
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
         self.qemu_version = self._get_qemu_version()
+        self._prepare_firewall_for_migration()
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)

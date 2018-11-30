@@ -29,6 +29,7 @@ import glob
 from shutil import copyfile
 
 from zstacklib import *
+import log_collector
 import jinja2
 import socket
 import struct
@@ -87,14 +88,20 @@ if [ $? -ne 0 ]; then
     sed -i '/\[mysqld\]/a log-bin=mysql-binlog\' $mysql_conf
 fi
 
+# wanted_files = 10+max_connections+table_open_cache*2
+# 'table_open_cache' is default to 400 as of 5.5.x
 grep 'max_connections' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-    echo "max_connections=1024"
-    sed -i '/\[mysqld\]/a max_connections=1024\' $mysql_conf
+    echo "max_connections=400"
+    sed -i '/\[mysqld\]/a max_connections=400\' $mysql_conf
 else
-    echo "max_connections=1024"
-    sed -i 's/max_connections.*/max_connections=1024/g' $mysql_conf
+    echo "max_connections=400"
+    sed -i 's/max_connections.*/max_connections=400/g' $mysql_conf
 fi
+
+mkdir -p /etc/systemd/system/mariadb.service.d/
+echo -e "[Service]\nLimitNOFILE=2048" > /etc/systemd/system/mariadb.service.d/limits.conf
+systemctl daemon-reload || true
 
 grep '^character-set-server' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
@@ -862,8 +869,8 @@ class Ctl(object):
             cmd(False)
             if cmd.return_code != 0:
                 errors.append(
-                    'failed to connect to the mysql server[hostname:%s, port:%s, user:%s, password:%s]: %s %s' % (
-                        hostname, port, user, password, cmd.stderr, cmd.stdout
+                    'connect MySQL server[hostname:%s, port:%s, user:%s]: %s %s' % (
+                        hostname, port, user, cmd.stderr, cmd.stdout
                     ))
                 continue
 
@@ -1297,8 +1304,8 @@ class ShowStatusCmd(Command):
         def show_version():
             try:
                 db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
-            except:
-                info('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+            except CtlError as e:
+                info('version: %s' % colored('unknown, %s' % e.message.strip(), 'yellow'))
                 return
 
             if db_password:
@@ -1310,7 +1317,8 @@ class ShowStatusCmd(Command):
 
             cmd(False)
             if cmd.return_code != 0:
-                info('version: %s' % colored('unknown, MySQL is not running', 'yellow'))
+                msg = 'unknown, %s %s' % (cmd.stderr, cmd.stdout)
+                info('version: %s' % colored(msg.strip(), 'yellow'))
                 return
 
             out = cmd.stdout
@@ -4745,6 +4753,9 @@ def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
 
     return code, o, e
 
+def get_db(self, collect_dir):
+    command = "cp `zstack-ctl dump_mysql | awk '{ print $10 }'` %s" % collect_dir
+    shell(command, False)
 
 class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack/"
@@ -4775,10 +4786,6 @@ class CollectLogCmd(Command):
         parser.add_argument('--mn-only', help='only collect management log', action="store_true", default=False)
         parser.add_argument('--full', help='collect full management logs and host logs', action="store_true", default=False)
         parser.add_argument('--host', help='only collect management log and specific host log')
-
-    def get_db(self, collect_dir):
-        command = "cp `zstack-ctl dump_mysql | awk '{ print $10 }'` %s" % collect_dir
-        shell(command, False)
 
     def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info):
         command = "cd %s && tar zcf ../collect-log.tar.gz . --ignore-failed-read --warning=no-file-changed || true" % tmp_log_dir
@@ -5196,6 +5203,7 @@ class CollectLogCmd(Command):
         host_post_info.post_url = ""
         return host_post_info
 
+
     def run(self, args):
         # dump mn status
         mn_pid = get_management_node_pid()
@@ -5272,7 +5280,7 @@ class CollectLogCmd(Command):
             self.get_vrouter_log(self.generate_host_post_info(vrouter_ip, "vrouter"),collect_dir)
 
         if args.db is True:
-            self.get_db(collect_dir)
+            get_db(collect_dir)
         if args.mn_only is not True:
             host_vo = get_host_list("HostVO")
 
@@ -5297,6 +5305,59 @@ class CollectLogCmd(Command):
             info_verbose(colored("Please check the reason of failed task in log: %s\n" % (CollectLogCmd.logger_dir + CollectLogCmd.logger_file), 'yellow'))
         else:
             info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
+
+
+class ConfiguredCollectLogCmd(Command):
+    logger_dir = '/var/log/zstack/'
+    logger_file = 'zstack-ctl.log'
+    zstack_log_dir = "/var/log/zstack/"
+
+    def __init__(self):
+        super(ConfiguredCollectLogCmd, self).__init__()
+        self.name = "configured_collect_log"
+        self.description = (
+            "Configured collect log for diagnose"
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--from-date',
+                            help='collect logs from datetime below format:\'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\'',
+                            default=None)
+        parser.add_argument('--to-date',
+                            help='collect logs up to datetime below format:\'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\'',
+                            default=None)
+        parser.add_argument('--since',
+                            help='collect logs from N days(--since Nd) or hours(--since Nh) before, for example,if you input \'--since 2d\',\
+                                 we will collect logs from the previous two days',
+                            default=None)
+        parser.add_argument('--check', help='preview collection file size', action="store_true", default=False)
+        parser.add_argument('-p', help='input the path to your custom yaml',
+                            default=None)
+        parser.add_argument('--full', help='collect full log except db (default choose)', action="store_true",
+                            default=False)
+        parser.add_argument('--full-db', help='collect full log and db', action="store_true", default=False)
+        parser.add_argument('--mn-only', help='only collect managenode log', action="store_true", default=False)
+        parser.add_argument('--mn-db', help='collect managementnode log and db', action="store_true", default=False)
+        parser.add_argument('--mn-host', help='collect managementnode and host log', action="store_true", default=False)
+
+    def run(self, args):
+        # dump mn status
+        mn_pid = get_management_node_pid()
+        if mn_pid:
+            os.kill(int(mn_pid), 3)
+        run_command_dir = os.getcwd()
+        time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        # create log
+        create_log(self.logger_dir, self.logger_file)
+        if get_detail_version() is not None:
+            detail_version = get_detail_version().replace(' ', '_')
+        else:
+            hostname, port, user, password = ctl.get_live_mysql_portal()
+            detail_version = get_zstack_version(hostname, port, user, password)
+        # collect_dir used to store the collect-log
+        collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
+        log_collector.CollectFromYml(ctl, collect_dir, detail_version, time_stamp, args)
 
 
 class ChangeIpCmd(Command):
@@ -6565,7 +6626,7 @@ class UpgradeMultiManagementNodeCmd(Command):
                 SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
                 SpinnerInfo.spinner_status['upgrade'] = True
                 ZstackSpinner(spinner_info)
-                war_file = ctl.zstack_home + "/../../../apache-tomcat-7.0.35/webapps/zstack.war"
+                war_file = ctl.zstack_home + "/../../../apache-tomcat-8.5.35/webapps/zstack.war"
                 ssh_key = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
                 status,output = commands.getstatusoutput("zstack-ctl upgrade_management_node --host %s --ssh-key %s --war-file %s" % (mn_ip, ssh_key, war_file))
                 if status != 0:
@@ -7443,6 +7504,9 @@ class ClearLicenseCmd(Command):
             shell('''/bin/mv -f %s %s''' % (license_files, license_bck))
             shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
 
+        if os.path.exists(license_folder + 'license.bak'):
+            shell('''/bin/mv %s %s''' % (os.path.join(license_folder, 'license.bak'), license_bck))
+
         if os.path.isdir(license_folder + 'packaged'):
             shell('''/bin/mv -f %s %s''' % (license_folder + 'packaged', license_bck))
             shell('''/bin/cp -f %s %s''' % (license_pri_key, license_bck))
@@ -8158,6 +8222,7 @@ def main():
     ChangeIpCmd()
     CollectLogCmd()
     ConfigureCmd()
+    ConfiguredCollectLogCmd()
     DumpMysqlCmd()
     ChangeMysqlPasswordCmd()
     DeployDBCmd()

@@ -11,6 +11,7 @@ import thread
 import logging
 import logging.handlers
 
+import os
 import urllib3
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
@@ -223,6 +224,7 @@ class HttpServer(object):
         site_config = {}
         site_config['server.socket_host'] = '0.0.0.0'
         site_config['server.socket_port'] = self.port
+        site_config['server.thread_pool'] = int(os.getenv('POOLSIZE', '10'))
 
         # remove limitation of request body size, default is 100MB.
         site_config['server.max_request_body_size'] = 0
@@ -276,19 +278,21 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
         try:
             pool = urllib3.PoolManager(timeout=120.0, retries=urllib3.util.retry.Retry(15))
             header = {'Content-Type': 'application/json', 'Connection': 'close'}
+            content = None
             for k in headers.keys():
                 header[k] = headers[k]
 
             if body is not None:
                 assert isinstance(body, types.StringType)
                 header['Content-Length'] = str(len(body))
-                content = pool.urlopen(method, uri, headers=header, body=str(body)).data
-
-                #(resp, content) = http_obj.request(uri, 'POST', body='%s' % body, headers=header)
+                resp = pool.urlopen(method, uri, headers=header, body=str(body))
+                content = resp.data
+                resp.close()
             else:
                 header['Content-Length'] = '0'
-                #(resp, content) = http_obj.request(uri, 'POST', headers=header)
-                content = pool.urlopen(method, uri, headers=header).data
+                resp = pool.urlopen(method, uri, headers=header)
+                content = resp.data
+                resp.close()
 
             pool.clear()
             ret.append(content)

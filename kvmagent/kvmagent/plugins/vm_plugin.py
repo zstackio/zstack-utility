@@ -16,6 +16,7 @@ import netaddr
 import libvirt
 #from typing import List, Any, Union
 
+import zstacklib.utils.ip as ip
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
@@ -486,6 +487,17 @@ def find_zstack_metadata_node(root, name):
 
     return zs.find(name)
 
+def find_domain_disk_address(domain_xml, disk_device, target_dev):
+    domain_xmlobject = xmlobject.loads(domain_xml)
+    disks = domain_xmlobject.devices.get_children_nodes()['disk']
+    for d in disks:
+        if d.device_ != disk_device:
+            continue
+        if d.get_child_node('target').dev_ != target_dev:
+            continue
+        return d.get_child_node('address')
+    return None
+
 def compare_version(version1, version2):
     def normalize(v):
         return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
@@ -496,6 +508,7 @@ def get_libvirt_version():
     return ret.split()[-1]
 
 LIBVIRT_VERSION = get_libvirt_version()
+LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
@@ -815,7 +828,7 @@ class IsoCeph(object):
         for minfo in self.iso.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         if IS_AARCH64:
-            e(disk, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            e(disk, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
         else:
             e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
             if bus and unit:
@@ -891,7 +904,7 @@ class VirtioSCSICeph(object):
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
-        e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(self.volume.deviceId)})
+        e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(self.volume.deviceId)})
         if self.volume.shareable:
             e(disk, 'shareable')
         return disk
@@ -940,7 +953,7 @@ class IsoFusionstor(object):
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
         if IS_AARCH64:
-            e(disk, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            e(disk, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
         else:
             e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
             if bus and unit:
@@ -1287,9 +1300,40 @@ class Vm(object):
         VIR_DOMAIN_PMSUSPENDED: VM_STATE_SUSPENDED,
     }
 
-    # letter 'c' is reserved for cdrom
-    DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
-    ISO_DEVICE_LETTERS = 'c' if IS_AARCH64 else 'cde'
+    # IDE and SATA is not supported in aarch64/i440fx
+    # so cdroms and volumes need to share sd[a-z]
+    #
+    # IDE is supported in x86_64/i440fx
+    # so cdroms use hd[c-e]
+    # virtio and virtioSCSI volumes share (sd[a-z] - sdc)
+    if IS_AARCH64:
+        DEVICE_LETTERS = 'abfghijklmnopqrstuvwxyz'
+    else:
+        DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
+    ISO_DEVICE_LETTERS = 'cde'
+
+    @staticmethod
+    def get_device_unit(device_id):
+        if device_id >= len(Vm.DEVICE_LETTERS):
+            err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (device_id, len(Vm.DEVICE_LETTERS) - 1)
+            logger.warn(err)
+            raise kvmagent.KvmError(err)
+
+        # aarch64 use device_letter as address->unit
+        # e.g. sda -> unit 0    sdf -> unit 5
+        if IS_AARCH64:
+            return str(ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0]))
+
+        # x86_64 use device_id as address->unit
+        return str(device_id)
+
+    @staticmethod
+    def get_iso_device_unit(device_id):
+        if device_id >= len(Vm.ISO_DEVICE_LETTERS):
+            err = "exceeds max iso limit, device id[%s], but only 0 ~ %d are allowed" % (device_id, len(Vm.ISO_DEVICE_LETTERS) - 1)
+            logger.warn(err)
+            raise kvmagent.KvmError(err)
+        return str(ord(Vm.ISO_DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0]))
 
     timeout_object = linux.TimeoutObject()
 
@@ -1604,8 +1648,7 @@ class Vm(object):
 
     def _attach_data_volume(self, volume, addons):
         if volume.deviceId >= len(self.DEVICE_LETTERS):
-            err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 24 allowed" % (
-                self.uuid, volume.deviceId)
+            err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (self.uuid, volume.deviceId, len(self.DEVICE_LETTERS) - 1)
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
@@ -1634,7 +1677,7 @@ class Vm(object):
             if volume.useVirtioSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
-                e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(volume.deviceId)})
+                e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': self.get_device_unit(volume.deviceId)})
             else:
                 if volume.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
@@ -1762,6 +1805,22 @@ class Vm(object):
                 else:
                     return blk_fusionstor()
 
+        def block_volume():
+            def blk():
+                disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
+                e(disk, 'driver', None,
+                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                e(disk, 'source', None, {'dev': volume.installPath})
+
+                if volume.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    e(disk, 'wwn', volume.wwn)
+                else:
+                    e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+
+                return etree.tostring(disk)
+            return blk()
+
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
         elif volume.deviceType == 'file':
@@ -1772,6 +1831,8 @@ class Vm(object):
             xml = fusionstor_volume()
         elif volume.deviceType == 'scsilun':
             xml = scsilun_volume()
+        elif volume.deviceType == 'block':
+            xml = block_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -1808,6 +1869,10 @@ class Vm(object):
                             if xmlobject.has_element(disk,
                                                      'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
                                 return True
+                        elif volume.deviceType == 'block':
+                            if xmlobject.has_element(disk,
+                                                     'source') and disk.source.dev__ and disk.source.dev_ in volume.installPath:
+                                return True
 
                     logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
                     return False
@@ -1832,7 +1897,7 @@ class Vm(object):
                        ' the VM and try again' % (volume.volumeUuid, self.uuid, err))
             elif 'No more available PCI slots' in err:
                 err = ('vm[uuid: %s] has no more PCI slots for volume[%s]. This is a Libvirt issue, please reboot'
-                       ' the VM and try again' % (volume.volumeUuid, self.uuid))
+                       ' the VM and try again' % (self.uuid, volume.volumeUuid))
             else:
                 err = 'unable to attach the volume[%s] to vm[uuid: %s], %s.' % (volume.volumeUuid, self.uuid, err)
             logger.warn(linux.get_exception_stacktrace())
@@ -1852,6 +1917,8 @@ class Vm(object):
                 fmt = 'sd%s'
             elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
                 fmt = ('hd%s', 'vd%s', 'sd%s')[max(volume.useVirtio, volume.useVirtioSCSI * 2)]
+            elif volume.deviceType == 'block':
+                fmt = 'vd%s'
             else:
                 raise Exception('unsupported deviceType[%s]' % volume.deviceType)
 
@@ -2230,8 +2297,12 @@ class Vm(object):
             raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
 
         try:
-            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=300):
-                raise kvmagent.KvmError('state change timeout after %d seconds' % timeo)
+            logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
+            timeo = 1800 if cmd.timeout is None else cmd.timeout
+            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeo):
+                try: self.domain.abortJob()
+                except: pass
+                raise kvmagent.KvmError('timeout after %d seconds' % timeo)
         except kvmagent.KvmError:
             raise
         except:
@@ -2269,12 +2340,12 @@ class Vm(object):
         iso = cmd.iso
 
         if iso.deviceId >= len(self.ISO_DEVICE_LETTERS):
-            err = 'vm[uuid:%s] exceeds max iso limit, device id[%s], but only %s allowed' % (
-                self.uuid, iso.deviceId, len(self.ISO_DEVICE_LETTERS))
+            err = 'vm[uuid:%s] exceeds max iso limit, device id[%s], but only 0 ~ %d are allowed' % (self.uuid, iso.deviceId, len(self.ISO_DEVICE_LETTERS) - 1)
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
-        dev = "sdc" if IS_AARCH64 else 'hd%s' % self.ISO_DEVICE_LETTERS[iso.deviceId]
+        device_letter = self.ISO_DEVICE_LETTERS[iso.deviceId]
+        dev = "sd%s" % device_letter if IS_AARCH64 else 'hd%s' % device_letter
 
         if iso.path.startswith('ceph'):
             ic = IsoCeph()
@@ -2291,12 +2362,17 @@ class Vm(object):
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
             if IS_AARCH64:
-                e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+                e(cdrom, 'target', None, {'dev': dev, 'bus': 'scsi'})
             else:
                 e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
             e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
+
+        if LIBVIRT_MAJOR_VERSION >= 3:
+            addr = find_domain_disk_address(self.domain.XMLDesc(0), 'cdrom', dev)
+            ridx = xml.rindex('<')
+            xml = xml[:ridx] + addr.dump() + xml[ridx:]
 
         logger.debug('attaching ISO to the vm[uuid:%s]:\n%s' % (self.uuid, xml))
 
@@ -2305,6 +2381,12 @@ class Vm(object):
         except libvirt.libvirtError as ex:
             err = str(ex)
             logger.warn('unable to attach the iso to the VM[uuid:%s], %s' % (self.uuid, err))
+
+            if "QEMU command 'change': error connecting: Operation not supported" in err:
+                raise Exception('cannot hotplug ISO to the VM[uuid:%s]. It is a libvirt bug: %s.'
+                        ' you can power-off the vm and attach again.' %
+                        (self.uuid, 'https://bugzilla.redhat.com/show_bug.cgi?id=1541702'))
+
             if 'timed out waiting for disk tray status update' in err:
                 raise Exception(
                     'unable to attach the iso to the VM[uuid:%s]. It seems met some internal error,'
@@ -2333,17 +2415,23 @@ class Vm(object):
         if not cdrom:
             return
 
-        dev = "sdc" if IS_AARCH64 else 'hd%s' % self.ISO_DEVICE_LETTERS[cmd.deviceId]
+        device_letter = self.ISO_DEVICE_LETTERS[cmd.deviceId]
+        dev = "sd%s" % device_letter if IS_AARCH64 else 'hd%s' % device_letter
 
         cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
         e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
         if IS_AARCH64:
-            e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+            e(cdrom, 'target', None, {'dev': dev, 'bus': 'scsi'})
         else:
             e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
         e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
+
+        if LIBVIRT_MAJOR_VERSION >= 3:
+            addr = find_domain_disk_address(self.domain.XMLDesc(0), 'cdrom', dev)
+            ridx = xml.rindex('<')
+            xml = xml[:ridx] + addr.dump() + xml[ridx:]
 
         logger.debug('detaching ISO from the vm[uuid:%s]:\n%s' % (self.uuid, xml))
 
@@ -2440,6 +2528,9 @@ class Vm(object):
             if 'Duplicate ID' in err:
                 err = ('unable to attach a L3 network to the vm[uuid:%s], %s. This is a KVM issue, please reboot'
                        ' the vm and try again' % (self.uuid, err))
+            elif 'No more available PCI slots' in err:
+                err = ('vm[uuid: %s] has no more PCI slots for vm nic[mac:%s]. This is a Libvirt issue, please reboot'
+                       ' the VM and try again' % (self.uuid, cmd.nic.mac))
             else:
                 err = 'unable to attach a L3 network to the vm[uuid:%s], %s' % (self.uuid, err)
             raise kvmagent.KvmError(err)
@@ -2564,7 +2655,6 @@ class Vm(object):
             self._wait_until_qemuga_ready(timeout, uuid)
             try:
                 escape_password = self._escape_char_password(cmd.accountPerference.accountPassword)
-                logger.debug("escape_password is: %s" % escape_password)
                 shell.call('virsh set-user-password %s %s %s' % (self.uuid,
                                                                  cmd.accountPerference.userAccount,
                                                                  escape_password))
@@ -2576,7 +2666,7 @@ class Vm(object):
                 else:
                     raise e
         else:
-            raise kvmagent.KvmError("vm may not be running, cannot connect to qemu-ga")
+            raise kvmagent.KvmError("vm is not running, cannot connect to qemu-ga")
 
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.deviceId)
@@ -2787,12 +2877,13 @@ class Vm(object):
             MAX_CDROM_NUM = len(Vm.ISO_DEVICE_LETTERS)
             EMPTY_CDROM_CONFIGS = None
 
-            if IS_AARCH64 :
-                # AArch64 Does not support the attachment of multiple iso
+            if IS_AARCH64:
+                # SCSI controller only supports 1 bus
                 EMPTY_CDROM_CONFIGS = [
-                    EmptyCdromConfig(None, None, None)
+                    EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', Vm.get_iso_device_unit(0)),
+                    EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[1], '0', Vm.get_iso_device_unit(1)),
+                    EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[2], '0', Vm.get_iso_device_unit(2))
                 ]
-
             else:
                 if cmd.fromForeignHypervisor:
                     cdroms = cmd.addons['FIXED_CDROMS']
@@ -2823,7 +2914,8 @@ class Vm(object):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 if IS_AARCH64:
-                    e(cdrom, 'target', None, {'dev': 'sdc', 'bus': 'scsi'})
+                    e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
+                    e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
                 else:
                     e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'ide'})
                     e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
@@ -2872,7 +2964,7 @@ class Vm(object):
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
-                    e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(_v.deviceId)})
+                    e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(_v.deviceId)})
                     return disk
 
                 if _v.useVirtio:
@@ -2974,6 +3066,46 @@ class Vm(object):
                 else:
                     return fusionstor_blk()
 
+            def block_volume(_dev_letter, _v):
+                disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
+                e(disk, 'driver', None,
+                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                e(disk, 'source', None, {'dev': _v.installPath})
+
+                if _v.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
+                    e(disk, 'wwn', _v.wwn)
+                else:
+                    e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+
+                return disk
+
+            def volume_qos(volume_xml_obj):
+                if not cmd.addons:
+                    return
+
+                vol_qos = cmd.addons['VolumeQos']
+                if not vol_qos:
+                    return
+
+                qos = vol_qos[v.volumeUuid]
+                if not qos:
+                    return
+
+                if not qos.totalBandwidth and not qos.totalIops:
+                    return
+
+                iotune = e(volume_xml_obj, 'iotune')
+                if qos.totalBandwidth:
+                    e(iotune, 'total_bytes_sec', str(qos.totalBandwidth))
+                if qos.totalIops:
+                    # e(iotune, 'total_iops_sec', str(qos.totalIops))
+                    e(iotune, 'read_iops_sec', str(qos.totalIops))
+                    e(iotune, 'write_iops_sec', str(qos.totalIops))
+                    # e(iotune, 'read_iops_sec_max', str(qos.totalIops))
+                    # e(iotune, 'write_iops_sec_max', str(qos.totalIops))
+                    # e(iotune, 'total_iops_sec_max', str(qos.totalIops))
+
             def volume_native_aio(volume_xml_obj):
                 if not cmd.addons:
                     return
@@ -2992,7 +3124,7 @@ class Vm(object):
             scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
             for v in volumes:
                 if v.deviceId >= len(Vm.DEVICE_LETTERS):
-                    err = "exceeds max disk limit, it's %s but only 26 allowed" % v.deviceId
+                    err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (v.deviceId, len(Vm.DEVICE_LETTERS) - 1)
                     logger.warn(err)
                     raise kvmagent.KvmError(err)
 
@@ -3008,6 +3140,8 @@ class Vm(object):
                     vol = ceph_volume(dev_letter, v)
                 elif v.deviceType == 'fusionstor':
                     vol = fusionstor_volume(dev_letter, v)
+                elif v.deviceType == 'block':
+                    vol = block_volume(dev_letter, v)
                 else:
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
@@ -3307,12 +3441,30 @@ class Vm(object):
         e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
         e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-        if nic.ip:
-            # TODO shixin ipv6 clean-traffic will be fix in next release
-            nicIp = netaddr.IPAddress(nic.ip)
-            if nicIp.version == 4:
+        if nic.ips:
+            ip4Addr = None
+            ip6Addrs = []
+            for addr in nic.ips:
+                version = netaddr.IPAddress(addr).version
+                if version == 4:
+                    ip4Addr = addr
+                else:
+                    ip6Addrs.append(addr)
+            # ipv4 nic
+            if ip4Addr is not None and len(ip6Addrs) == 0:
                 filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
-                e(filterref, 'parameter', None, {'name': 'IP', 'value': nic.ip})
+                e(filterref, 'parameter', None, {'name': 'IP', 'value': ip4Addr})
+            elif ip4Addr is None and len(ip6Addrs) > 0:  # ipv6 nic
+                filterref = e(interface, 'filterref', None, {'filter': 'zstack-clean-traffic-ipv6'})
+                for addr6 in ip6Addrs:
+                    e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
+                e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
+            else:  # dual stack nic
+                filterref = e(interface, 'filterref', None, {'filter': 'zstack-clean-traffic-ip46'})
+                e(filterref, 'parameter', None, {'name': 'IP', 'value': ip4Addr})
+                for addr6 in ip6Addrs:
+                    e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
+                e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
         if nic.useVirtio:
             e(interface, 'model', None, attrib={'type': 'virtio'})
         else:
@@ -3363,6 +3515,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_VM_CHECK_STATE = "/vm/checkstate"
     KVM_VM_CHANGE_PASSWORD_PATH = "/vm/changepasswd"
     KVM_SET_VOLUME_BANDWIDTH = "/set/volume/bandwidth"
+    KVM_DELETE_VOLUME_BANDWIDTH = "/delete/volume/bandwidth"
     KVM_GET_VOLUME_BANDWIDTH = "/get/volume/bandwidth"
     KVM_SET_NIC_QOS = "/set/nic/qos"
     KVM_GET_NIC_QOS = "/get/nic/qos"
@@ -3403,7 +3556,6 @@ class VmPlugin(kvmagent.KvmAgent):
             return None
         return o[0]
 
-    @lock.lock('libvirt-startvm')
     def _start_vm(self, cmd):
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
@@ -3607,30 +3759,44 @@ class VmPlugin(kvmagent.KvmAgent):
         ## total and read/write of bytes_sec cannot be set at the same time
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
-        if cmd.totalBandwidth > 0:  # to set
-            if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
-                shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
-            elif cmd.mode == "read":  # to set read(write reserved, total reset)
-                write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
-                shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.totalBandwidth, write_bytes_sec))
-            elif cmd.mode == "write":  # to set write(read reserved, total reset)
-                read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
-                shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, read_bytes_sec, cmd.totalBandwidth))
-        else:  # to delete
-            is_total_mode = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "total") != "0"
-            if cmd.mode == "all":  # to delete all(read/write reset)
+        if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
+            shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
+        elif cmd.mode == "read":  # to set read(write reserved, total reset)
+            write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
+            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, write_bytes_sec))
+        elif cmd.mode == "write":  # to set write(read reserved, total reset)
+            read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
+            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, read_bytes_sec, cmd.writeBandwidth))
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def delete_volume_bandwidth(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
+        if device_id is None:
+            rsp.success = False
+            rsp.error = "Volume is not ready, is it being attached?"
+            return jsonobject.dumps(rsp)
+
+        ## total and read/write of bytes_sec cannot be set at the same time
+        ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
+        cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
+        is_total_mode = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "total") != "0"
+        if cmd.mode == "all":  # to delete all(read/write reset)
+            shell.call('%s --total_bytes_sec 0' % (cmd_base))
+        elif (cmd.mode == "total") or (cmd.mode is None):  # to delete total
+            if is_total_mode:
                 shell.call('%s --total_bytes_sec 0' % (cmd_base))
-            elif (cmd.mode == "total") or (cmd.mode is None):  # to delete total
-                if is_total_mode:
-                    shell.call('%s --total_bytes_sec 0' % (cmd_base))
-            elif cmd.mode == "read":  # to delete read(write reserved, total reset)
-                if not is_total_mode:
-                    write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
-                    shell.call('%s --read_bytes_sec 0 --write_bytes_sec %s' % (cmd_base, write_bytes_sec))
-            elif cmd.mode == "write":  # to delete write(read reserved, total reset)
-                if not is_total_mode:
-                    read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
-                    shell.call('%s --read_bytes_sec %s --write_bytes_sec 0' % (cmd_base, read_bytes_sec))
+        elif cmd.mode == "read":  # to delete read(write reserved, total reset)
+            if not is_total_mode:
+                write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
+                shell.call('%s --read_bytes_sec 0 --write_bytes_sec %s' % (cmd_base, write_bytes_sec))
+        elif cmd.mode == "write":  # to delete write(read reserved, total reset)
+            if not is_total_mode:
+                read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
+                shell.call('%s --read_bytes_sec %s --write_bytes_sec 0' % (cmd_base, read_bytes_sec))
 
         return jsonobject.dumps(rsp)
 
@@ -3737,11 +3903,11 @@ class VmPlugin(kvmagent.KvmAgent):
         #             logger.warn(linux.get_exception_stacktrace())
         #
         # rsp.states = running_vms
-        rsp.states = get_all_vm_states()
-
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
+        rsp.states = get_all_vm_states()
+
         output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
             if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
@@ -4821,6 +4987,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
         http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
         http_server.register_async_uri(self.KVM_SET_VOLUME_BANDWIDTH, self.set_volume_bandwidth)
+        http_server.register_async_uri(self.KVM_DELETE_VOLUME_BANDWIDTH, self.delete_volume_bandwidth)
         http_server.register_async_uri(self.KVM_GET_VOLUME_BANDWIDTH, self.get_volume_bandwidth)
         http_server.register_async_uri(self.KVM_SET_NIC_QOS, self.set_nic_qos)
         http_server.register_async_uri(self.KVM_GET_NIC_QOS, self.get_nic_qos)

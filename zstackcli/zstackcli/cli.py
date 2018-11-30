@@ -67,7 +67,8 @@ def escape_split(str, deli=','):
     return csv.reader(c.StringIO(str), delimiter=deli, escapechar='\\').next()
 
 def clean_password_in_cli_history():
-    cmd_historys = open(CLI_HISTORY, 'r').readlines()
+    cmd_historys = None
+    with open(CLI_HISTORY, 'r') as f: cmd_historys = f.readlines()
     new_cmd_historys = []
     for cmd in cmd_historys:
         if 'password=' in cmd:
@@ -81,7 +82,7 @@ def clean_password_in_cli_history():
             new_cmd_historys.append(' '.join(cmd_list))
         else:
             new_cmd_historys.append(cmd)
-    open(CLI_HISTORY, 'w').write('\n'.join(new_cmd_historys))
+    with open(CLI_HISTORY, 'w') as f: f.write('\n'.join(new_cmd_historys))
 
 
 class CliError(Exception):
@@ -524,22 +525,22 @@ Parse command parameters error:
                 self.account_name = None
                 self.user_name = None
 
-                session_file_writer = open(SESSION_FILE, 'w')
-                session_file_writer.write(self.session_uuid)
-                account_name_field = 'accountName'
-                user_name_field = 'userName'
+                with open(SESSION_FILE, 'w') as session_file_writer:
+                    session_file_writer.write(self.session_uuid)
+                    account_name_field = 'accountName'
+                    user_name_field = 'userName'
 
-                if apiname == self.LOGIN_BY_LDAP_MESSAGE_NAME:
-                    self.account_name = event.accountInventory.name
-                    session_file_writer.write("\n" + self.account_name)
-                elif apiname == self.LOGIN_MESSAGE_NAME:
-                    self.account_name = all_params[account_name_field]
-                    session_file_writer.write("\n" + self.account_name)
-                elif apiname == self.LOGIN_BY_USER_NAME:
-                    self.account_name = all_params[account_name_field]
-                    self.user_name = all_params[user_name_field]
-                    session_file_writer.write("\n" + self.account_name)
-                    session_file_writer.write("\n" + self.user_name)
+                    if apiname == self.LOGIN_BY_LDAP_MESSAGE_NAME:
+                        self.account_name = event.accountInventory.name
+                        session_file_writer.write("\n" + self.account_name)
+                    elif apiname == self.LOGIN_MESSAGE_NAME:
+                        self.account_name = all_params[account_name_field]
+                        session_file_writer.write("\n" + self.account_name)
+                    elif apiname == self.LOGIN_BY_USER_NAME:
+                        self.account_name = all_params[account_name_field]
+                        self.user_name = all_params[user_name_field]
+                        session_file_writer.write("\n" + self.account_name)
+                        session_file_writer.write("\n" + self.user_name)
 
             if apiname == self.LOGOUT_MESSAGE_NAME:
                 clear_session()
@@ -755,7 +756,7 @@ Parse command parameters error:
             self.hd.rem(str(start_value))
 
         result_file = '%s%d' % (CLI_RESULT_FILE, start_value)
-        open(result_file, 'w').write(result)
+        with open(result_file, 'w') as f: f.write(result)
         if not self.no_secure and 'password=' in ' '.join(cmd):
             cmds2 = []
             for cmd2 in cmd:
@@ -801,9 +802,10 @@ Parse command parameters error:
 
                 # print key
                 result_list = self.hd.get(str(key))
+                result = None
 
                 result_file = '%s%d' % (CLI_RESULT_FILE, key)
-                result = open(result_file, 'r').read()
+                with open(result_file, 'r') as f: result = f.read()
 
                 if result_list:
                     output = 'Command: \n\t%s\nResult:\n%s' % \
@@ -860,7 +862,7 @@ Parse command parameters error:
 
         def write_to_file(output, file_name, num):
             file_name = os.path.abspath(file_name)
-            open(file_name, 'w').write(output)
+            with open(file_name, 'w') as f: f.write(output)
             print "Saved command: %s result to file: %s" % (str(num), file_name)
 
         if not all_params:
@@ -1078,11 +1080,11 @@ Parse command parameters error:
         self.user_name = None
         self.session_uuid = None
         if os.path.exists(SESSION_FILE):
-            session_file_reader = open(SESSION_FILE, 'r')
-            self.session_uuid = session_file_reader.readline().rstrip()
             try:
-                self.account_name = session_file_reader.readline().rstrip()
-                self.user_name = session_file_reader.readline().rstrip()
+                with open(SESSION_FILE, 'r') as session_file_reader:
+                    self.session_uuid = session_file_reader.readline().rstrip()
+                    self.account_name = session_file_reader.readline().rstrip()
+                    self.user_name = session_file_reader.readline().rstrip()
             except EOFError:
                 pass
 

@@ -26,6 +26,8 @@ remote_pass = None
 remote_port = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
 update_packages = 'false'
+zstack_lib_dir = "/var/lib/zstack"
+zstack_libvirt_nwfilter_dir = "%s/nwfilter/" % zstack_lib_dir
 
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
@@ -172,26 +174,28 @@ if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
         extra_pkg = 'collectd-virt' if distro_version >= 7 else ""
-        dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath edk2.git-ovmf-x64 expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients OVMF pciutils python-pyudev pv rsync sanlock sysfsutils sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
 
-        # name: install kvm related packages on RedHat based OS from user defined repo
-        # update some packages if possible
-        command = ("echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd' && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done;") % (dep_list, zstack_repo, dep_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
+        # common kvmagent deps of x86 and arm
+        common_dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sanlock sysfsutils sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
+        # common kvmagent deps of x86 and arm that need to update
+        common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd"
+
+        # arch specific deps
+        if IS_AARCH64:
+            dep_list = common_dep_list + " AAVMF edk2.git-aarch64"
+            update_list = common_update_list
+        else:
+            dep_list = common_dep_list + " OVMF edk2.git-ovmf-x64"
+            update_list = common_update_list
+
+        # name: install/update kvm related packages on RedHat based OS from user defined repo
+        command = ("echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
+                pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' %s' && \
+                for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done; \
+                ") % (dep_list, zstack_repo, dep_list, update_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = dep_list
         run_remote_command(command, host_post_info)
-
-        if IS_AARCH64:
-            # name: aarch64 specific packages from user defined repos
-            arm_dep_list = 'AAVMF edk2.git-aarch64'
-            command = ("echo %s >>/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata && "
-                       "pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg "
-                       "in $pkg_list; do yum --disablerepo=* --enablerepo=%s "
-                       "--nogpgcheck install -y $pkg; done;") % (arm_dep_list, zstack_repo, arm_dep_list, zstack_repo)
-            host_post_info.post_label = "ansible.shell.install.pkg"
-            host_post_info.post_label_param = "AAVMF,edk2.git-aarch64"
-            run_remote_command(command, host_post_info)
-
     else:
         # name: install kvm related packages on RedHat based OS from online
         for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
@@ -277,6 +281,29 @@ if distro in RPM_BASED_OS:
             # name: enable virtlockd daemon on RedHat based OS
             service_status("virtlockd", "state=stopped enabled=no", host_post_info)
             service_status("virtlogd", "state=started enabled=yes", host_post_info, True)
+
+    # name: copy libvirt nw-filter
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/zstack-libvirt-nwfilter/" % file_root
+    copy_arg.dest = "%s/" % zstack_libvirt_nwfilter_dir
+    copy(copy_arg, host_post_info)
+    command = ("(virsh nwfilter-undefine %s/zstack-allow-incoming-ipv6; \
+               virsh nwfilter-define %s/zstack-allow-incoming-ipv6;  \
+               virsh nwfilter-undefine %s/zstack-no-dhcpv6-server;  \
+               virsh nwfilter-define %s/zstack-no-dhcpv6-server;  \
+               virsh nwfilter-undefine %s/zstack-no-ipv6-router-advertisement;  \
+               virsh nwfilter-define %s/zstack-no-ipv6-router-advertisement;  \
+               virsh nwfilter-undefine %s/zstack-no-ipv6-spoofing; \
+               virsh nwfilter-define %s/zstack-no-ipv6-spoofing; \
+               virsh nwfilter-undefine %s/zstack-clean-traffic-ipv6; \
+               virsh nwfilter-define %s/zstack-clean-traffic-ipv6; \
+               virsh nwfilter-undefine %s/zstack-clean-traffic-ip46; \
+               virsh nwfilter-define %s/zstack-clean-traffic-ip46) || true") \
+              % (zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
+                 zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
+                 zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
+                 zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir)
+    run_remote_command(command,host_post_info)
 
     # name: copy updated dnsmasq for RHEL6 and RHEL7
     copy_arg = CopyArg()

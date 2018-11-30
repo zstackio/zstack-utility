@@ -133,6 +133,7 @@ upgrade_params_array[0]='1.3,-DsyncImageActualSize=true'
 upgrade_params_array[1]='1.4,-DtapResourcesForBilling=true'
 upgrade_params_array[2]='2.2.2,-DupdateLdapUidToLdapDn=true'
 upgrade_params_array[3]='2.3.1,-Dzwatch.migrateFromOldMonitorImplementation=true'
+upgrade_params_array[4]='3.2.0,-DupgradeVolumeQos=true'
 
 # version compare
 # eg. 1 = 1.0
@@ -336,6 +337,94 @@ echo_subtitle(){
     echo -n "    $*:"|tee -a $ZSTACK_INSTALL_LOG
 }
 
+enable_tomcat_linking() {
+    local context_xml_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf/context.xml
+    if ! grep -q -w allowLinking $context_xml_file; then
+        local new_line="    <Resources allowLinking=\"true\"></Resources>\r"
+        sed -i "/<Context>/a\\$new_line" $context_xml_file
+        echo "Tomcat allowLinking enabled." >>$ZSTACK_INSTALL_LOG
+        sync
+    fi
+}
+
+disable_tomcat_methods() {
+    local web_xml_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf/web.xml
+    if ! grep -q "<security-constraint>" $web_xml_file; then
+        sed -i "/<\/web-app>/d" $web_xml_file
+        echo -e "$(cat <<EOF
+    <security-constraint>\r
+        <web-resource-collection>\r
+            <web-resource-name>tomcat-security</web-resource-name>\r
+            <url-pattern>/*</url-pattern>\r
+            <http-method>OPTIONS</http-method>\r
+            <http-method>TRACE</http-method>\r
+            <http-method>PATCH</http-method>\r
+            <http-method>COPY</http-method>\r
+            <http-method>LINK</http-method>\r
+            <http-method>UNLINK</http-method>\r
+            <http-method>PURGE</http-method>\r
+            <http-method>LOCK</http-method>\r
+            <http-method>UNLOCK</http-method>\r
+            <http-method>PROPFIND</http-method>\r
+            <http-method>VIEW</http-method>\r
+        </web-resource-collection>\r
+        <auth-constraint></auth-constraint>\r
+    </security-constraint>\r
+\r
+</web-app>\r
+EOF
+)" >> $web_xml_file
+        echo "Tomcat HTTP methods updated." >>$ZSTACK_INSTALL_LOG
+        sync
+    fi
+}
+
+udpate_tomcat_info() {
+    ## update catalina.jar/ServerInfo.properties
+    local jar_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/lib/catalina.jar
+
+    local work_path=$PWD
+    local temp_path=`mktemp`
+    rm -f $temp_path
+    mkdir -p $temp_path
+
+    cd $temp_path
+    jar xvf $jar_file > /dev/nul
+    if [ $? -eq 0 ]; then
+        local properties_file=org/apache/catalina/util/ServerInfo.properties
+        if grep -q "server.info=Apache Tomcat" $properties_file; then
+	        sed -i "/^server.info=/c\server.info=X\r" $properties_file
+	        sed -i "/^server.number=/c\server.number=5.5\r" $properties_file
+	        sed -i "/^server.built=/c\server.built=Dec 1 2015 22:30:46 UTC\r" $properties_file
+	        sync
+
+	        jar cvf catalina.jar org META-INF > /dev/nul
+	        if [ $? -eq 0 ]; then
+	            rm -f $jar_file
+	            mv catalina.jar $jar_file
+	            echo "Tomcat server info updated." >>$ZSTACK_INSTALL_LOG
+	        else
+	            echo "Zip $jar_file error." >>$ZSTACK_INSTALL_LOG
+	        fi
+        fi
+    else
+        echo "Unzip $jar_file error." >>$ZSTACK_INSTALL_LOG
+    fi
+
+    rm -rf $temp_path
+    cd $work_path
+}
+
+upgrade_tomcat_security() {
+    echo_subtitle "Upgrade Tomcat Security"
+
+    enable_tomcat_linking
+    disable_tomcat_methods
+    udpate_tomcat_info
+
+    pass
+}
+
 set_tomcat_config() {
     new_timeout=120000
     new_max_thread_num=400
@@ -345,7 +434,8 @@ set_tomcat_config() {
     sed -i 's/redirectPort="8443" \/>/redirectPort="8443" maxHttpHeaderSize="65536" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>/g' $tomcat_config_path/server.xml
 
     # Fix ZSTAC-13580
-    sed -i '/autoDeploy/a \ \ \ \ \ \ \ \ <Context path="/zstack" reloadable="false" crossContext="true" allowLinking="true"/>' $tomcat_config_path/server.xml
+    sed -i -e '/allowLinking/d' -e  '/autoDeploy/a \ \ \ \ \ \ \ \ <Context path="/zstack" reloadable="false" crossContext="true" allowLinking="true"/>' $tomcat_config_path/server.xml
+    sync
 }
 
 cs_check_hostname(){
@@ -717,7 +807,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     zstack_home=`eval echo ~zstack`
     if [ ! -d $zstack_home ];then
         mkdir -p $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
-        chown -R zstack.zstack $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
+        chown -R zstack:zstack $zstack_home >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     do_enable_sudo
     do_config_limits
@@ -859,6 +949,7 @@ iu_deploy_zstack_repo() {
     ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
     ln -s /opt/zstack-dvd-altarch/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/os >/dev/null 2>&1
     ln -s /opt/zstack-dvd-altarch/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/qemu-kvm-ev >/dev/null 2>&1
+    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
 }
 
 unpack_zstack_into_tomcat(){
@@ -900,7 +991,9 @@ upgrade_zstack(){
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
+    show_spinner upgrade_tomcat_security
     show_spinner iu_deploy_zstack_repo
+
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_install_zstack_service
@@ -908,6 +1001,7 @@ upgrade_zstack(){
     show_spinner is_enable_chronyd
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
+    show_spinner cs_setup_nginx
 
     # if -i is used, then do not upgrade zstack ui
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -939,7 +1033,7 @@ upgrade_zstack(){
     #check old license folder and copy old license files to new folder.
     if [ -d $ZSTACK_OLD_LICENSE_FOLDER ] && [ ! -d $LICENSE_FOLDER ]; then
         mv $ZSTACK_OLD_LICENSE_FOLDER  $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
-        chown -R zstack.zstack $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
+        chown -R zstack:zstack $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     # check whether needs to install license or not
@@ -1081,6 +1175,7 @@ is_install_general_libs_rh(){
     # Just install what is not installed
     deps_list="libselinux-python \
             java-1.8.0-openjdk \
+            java-1.8.0-openjdk-devel \
             bridge-utils \
             wget \
             nfs-utils \
@@ -1109,6 +1204,8 @@ is_install_general_libs_rh(){
             dmidecode \
             $mysql_pkg \
             MySQL-python \
+            ipmitool \
+            nginx \
             python-backports-ssl_match_hostname \
             python-setuptools"
 
@@ -1505,7 +1602,7 @@ uz_upgrade_zstack(){
     fi
 
     bash ${zstore_bin} >>$ZSTACK_INSTALL_LOG 2>&1
-    chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
+    chown -R zstack:zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
 
     if [ ! -z $DEBUG ]; then
         zstack-ctl upgrade_management_node --war-file $upgrade_folder/zstack.war 
@@ -1644,7 +1741,7 @@ iz_install_zstackcli(){
     fi
 
     bash ${zstore_bin} >>$ZSTACK_INSTALL_LOG 2>&1
-    chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
+    chown -R zstack:zstack $ZSTACK_INSTALL_ROOT/imagestore >/dev/null 2>&1
     pass
 }
 
@@ -1724,10 +1821,12 @@ config_system(){
     show_spinner cs_config_zstack_properties
     show_spinner cs_config_generate_ssh_key
     show_spinner cs_config_tomcat
+    show_spinner upgrade_tomcat_security
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
     show_spinner cs_append_iptables
+    show_spinner cs_setup_nginx
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
     fi
@@ -1772,7 +1871,7 @@ cs_config_zstack_properties(){
     echo_subtitle "Config zstack.properties"
 
     if [ -d /var/lib/zstack ];then
-        chown zstack.zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
+        chown zstack:zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
             fail "failed to change ownership for /var/lib/zstack"
         fi
@@ -1804,15 +1903,15 @@ cs_config_generate_ssh_key(){
     if [ $? -ne 0 ];then
         fail "failed to generate local ssh keys in ${rsa_key_folder}"
     fi
-    chown -R zstack.zstack ${rsa_key_folder}
+    chown -R zstack:zstack ${rsa_key_folder}
     pass
 }
 
 iz_chown_install_root(){
     echo_subtitle "Change Owner in ${PRODUCT_NAME}"
-    chown -R zstack.zstack $ZSTACK_INSTALL_ROOT >>$ZSTACK_INSTALL_LOG 2>&1
+    chown -R zstack:zstack $ZSTACK_INSTALL_ROOT >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
-        fail "failed to chown for $ZSTACK_INSTALL_ROOT with zstack.zstack"
+        fail "failed to chown for $ZSTACK_INSTALL_ROOT with zstack:zstack"
     fi
     pass
 }
@@ -2009,6 +2108,56 @@ cs_setup_nfs(){
         iptables -I INPUT -p udp -m udp --dport 662 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     pass
+}
+
+cs_setup_nginx(){
+    echo_subtitle "Configure Nginx Server"
+mkdir -p /etc/nginx/conf.d/mn_pxe/ && chmod -R 0777 /etc/nginx/conf.d/mn_pxe/
+cp -f /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bck
+cat > /etc/nginx/nginx.conf << EOF
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+include /usr/share/nginx/modules/*.conf;
+events {
+    worker_connections 1024;
+}
+http {
+    access_log          /var/log/nginx/access.log;
+    sendfile            on;
+    tcp_nopush          on;
+    tcp_nodelay         on;
+    keepalive_timeout   1000;
+    types_hash_max_size 2048;
+    include             /etc/nginx/mime.types;
+    default_type        application/octet-stream;
+
+    map \$http_upgrade \$connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    server {
+        listen 8090;
+        include /etc/nginx/conf.d/mn_pxe/*;
+    }
+
+    server {
+        listen 7771;
+        include /etc/nginx/conf.d/pxe_mn/*;
+    }
+
+    server {
+        listen 7772;
+        include /etc/nginx/conf.d/terminal/*;
+    }
+}
+EOF
+iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8090 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8090 -j ACCEPT >/dev/null 2>&1
+service iptables save >/dev/null 2>&1
+systemctl enable nginx > /dev/null 2>&1
+systemctl start nginx > /dev/null 2>&1
 }
 
 cs_setup_http(){
@@ -2373,11 +2522,11 @@ fi
 C72_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm'
 C74_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm'
 if ls ${C72_CENTOS_RELEASE} >/dev/null 2>&1; then
-    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}_c72
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_c72
 elif ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
-    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}_c74
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_c74
 else
-    BASEURL=http://repo.zstack.io/${VERSION_RELEASE_NR}
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}
 fi
 
 echo_subtitle "Prepare repo files for syncing"
@@ -2434,120 +2583,23 @@ baseurl=file:///opt/zstack-dvd/Extra/virtio-win
 gpgcheck=0
 enabled=0
 EOF
-
-cat > /etc/yum.repos.d/zstack-online-base.repo << EOF
-[zstack-online-base]
-name=zstack-online-base
-baseurl=${BASEURL}
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-ceph.repo << EOF
-[zstack-online-ceph]
-name=zstack-online-ceph
-baseurl=${BASEURL}/Extra/ceph
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-uek4.repo << EOF
-[zstack-online-uek4]
-name=zstack-online-uek4
-baseurl=${BASEURL}/Extra/uek4
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-galera.repo << EOF
-[zstack-online-galera]
-name=zstack-online-galera
-baseurl=${BASEURL}/Extra/galera
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
-[zstack-online-qemu-kvm-ev]
-name=zstack-online-qemu-kvm-ev
-baseurl=${BASEURL}/Extra/qemu-kvm-ev
-gpgcheck=0
-enabled=0
-EOF
-
-cat > /etc/yum.repos.d/zstack-online-virtio-win.repo << EOF
-[zstack-online-virtio-win]
-name=zstack-online-virtio-win
-baseurl=${BASEURL}/Extra/virtio-win
-gpgcheck=0
-enabled=0
-EOF
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Install necessary packages"
-pkg_list="createrepo curl yum-utils"
+pkg_list="createrepo curl yum-utils rsync"
 missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo_subtitle "Test network connection"
-curl -L ${BASEURL} --connect-timeout ${CURL_CONNECT_TIMEOUT:-10} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-
-yum clean all >/dev/null 2>&1
-if [ -f /etc/yum.repos.d/epel.repo ]; then
-    sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
-fi
-
-umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-rm -rf /opt/zstack-dvd/Base && mkdir -p /opt/zstack-dvd/Base
-/bin/cp -r /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
-reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d || return 1
-reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d || return 1
-reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d || return 1
-reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d || return 1
-reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d || return 1
-reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d || return 1
-rm -f /etc/yum.repos.d/zstack-online-*.repo
+# it takes about 2 min to compare md5sum of 1800+ files in iso
 echo_subtitle "Sync from repo.zstack.io"
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-
-echo_subtitle "Update metadata"
-createrepo -g /opt/zstack-dvd/Base/comps.xml /opt/zstack-dvd/Base/ >/dev/null 2>&1 || return 1
-rm -rf /opt/zstack-dvd/{Packages,repodata} >/dev/null 2>&1
-mv /opt/zstack-dvd/Base/* /opt/zstack-dvd/ >/dev/null 2>&1
-rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
-createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || return 1
-createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || return 1
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-
-# Update non-rpm archives
-# - update squashfs.img if .repo_version < 170704
-REMOTESQUASHFS=${BASEURL}/LiveOS/squashfs.img
-LOCALSQUASHFS=/opt/zstack-dvd/LiveOS/squashfs.img
-REMOTEV2VIMG=${BASEURL}/virt_v2v_image.tgz
-LOCALV2VIMG=/opt/zstack-dvd/virt_v2v_image.tgz
-REPOVERSION=`cat /opt/zstack-dvd/.repo_version`
-if [ $REPOVERSION -lt 170704 ]; then
-	rm -f $LOCALSQUASHFS
-	wget -c $REMOTESQUASHFS -O $LOCALSQUASHFS || return 1
-fi
-if [ $REPOVERSION -lt 180920 ]; then
-	wget -c $REMOTEV2VIMG -O $LOCALV2VIMG || return 1
-fi
-echo_subtitle "Update non-rpm archives"
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-
-echo_subtitle "Update /opt/zstack-dvd/.repo_version"
-cat .repo_version > /opt/zstack-dvd/.repo_version
+umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
+rsync -a --partial --delete --exclude zstack-installer.bin ${BASEURL} /opt/zstack-dvd || return 1
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
 echo_subtitle "Cleanup"
-rm -f /opt/zstack-dvd/comps.xml
-yum clean all >/dev/null 2>&1
+[ -f /etc/yum.repos.d/epel.repo ] && sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+yum --enablerepo=* clean all >/dev/null 2>&1
 rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
 echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 }
@@ -3123,7 +3175,6 @@ if [ -n "$NEED_DROP_DB" ]; then
   pkill -9 influxd 2>/dev/null
   rm -rf /var/lib/zstack/prometheus/data
   rm -rf /var/lib/zstack/influxdb/
-  find /var/lib/zstack/license/ -name 'license*' -type f -exec rm -f {} \;
 fi
 
 zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"

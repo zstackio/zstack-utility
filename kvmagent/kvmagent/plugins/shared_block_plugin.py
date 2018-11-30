@@ -417,6 +417,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         deactive_lvs_on_vg(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.stop_vg_lock(cmd.vgUuid)
+        if cmd.stopServices:
+            lvm.quitLockServices()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -678,6 +680,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
                 else:
                     tmp_lv = 'tmp_%s' % uuidhelper.uuid()
+                    tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), tmp_lv)
                     tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), tmp_lv)
                     logger.debug("creating temp lv %s" % tmp_abs_path)
                     lvm.create_lv_from_absolute_path(tmp_abs_path, virtual_size,
