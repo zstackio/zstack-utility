@@ -4705,15 +4705,17 @@ class ScanDatabaseBackupCmd(Command):
         backups = []
         for root in roots:
             metadata = simplejson.loads(root['desc'])
+            metadata['size'] = root['size'] if root['size'] else root['virtualsize']
             metadata['installPath'] = "%s%s/%s" % (self.ZSTORE_PROTOSTR, root['name'], root['id'])
             backups.append(metadata)
 
         if args.json:
             info(simplejson.dumps(backups))
         elif backups:
-            info("name\t\t\tinstall path\t\t\t\t\tversion\ttype\tcreated time")
+            info("name\t\t\tinstall path\t\t\t\t\tversion\ttype\tsize\t\tcreated time")
             for backup in backups:
-                info("%s\t%s\t%s\t%s\t%s" % (backup['name'], backup['installPath'], backup['version'], backup['type'], backup['createdTime']))
+                info("%s\t%s\t%s\t%s\t%s\t%s" % (backup['name'], backup['installPath'], backup['version'],
+                                                 backup['type'], backup['size'], backup['createdTime']))
 
 
 def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
