@@ -2502,20 +2502,8 @@ get_zstack_repo(){
     fi
 }
 
-check_upgrade_local_repos() {
-echo_subtitle "Check local repo version"
-[ -f ".repo_version" ] || return 1
-[ -f "/opt/zstack-dvd/.repo_version" ] || return 1
-cmp -s .repo_version /opt/zstack-dvd/.repo_version
-if [ $? -eq 0 ]; then
-    echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
-    return 0
-elif [ x"$SKIP_SYNC" = x'y' ]; then
-    echo " ... $(tput setaf 1)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
-    return 1
-else
-    echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
-fi
+sync_local_repos() {
+echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
 
 # if current local repo is based on centos7.2, then sync with eg. 2.3.1_c72
 # if current local repo is based on centos7.4, then sync with eg. 2.3.1_c74
@@ -2529,7 +2517,6 @@ else
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}
 fi
 
-echo_subtitle "Prepare repo files for syncing"
 mkdir -p /opt/zstack-dvd/
 cat > /etc/yum.repos.d/zstack-local.repo << EOF
 [zstack-local]
@@ -2583,25 +2570,43 @@ baseurl=file:///opt/zstack-dvd/Extra/virtio-win
 gpgcheck=0
 enabled=0
 EOF
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
 
-echo_subtitle "Install necessary packages"
 pkg_list="createrepo curl yum-utils rsync"
 missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
-[ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || return 1
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+[ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && fail "failed to install rsync etc."
 
 # it takes about 2 min to compare md5sum of 1800+ files in iso
-echo_subtitle "Sync from repo.zstack.io"
 umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-rsync -a --partial --delete --exclude zstack-installer.bin ${BASEURL} /opt/zstack-dvd || return 1
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL} /opt/zstack-dvd >> $ZSTACK_INSTALL_LOG 2>&1
+[ $? -ne 0 ] && fail "failed to sync from repo.zstack.io"
 
-echo_subtitle "Cleanup"
 [ -f /etc/yum.repos.d/epel.repo ] && sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
 yum --enablerepo=* clean all >/dev/null 2>&1
 rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
-echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+
+# update .repo_version after syncing
+cat .repo_version > /opt/zstack-dvd/.repo_version
+
+pass
+}
+
+check_sync_local_repos() {
+  echo_subtitle "Check local repo version"
+  [ -f ".repo_version" ] || return 1
+  [ -f "/opt/zstack-dvd/.repo_version" ] || return 1
+  cmp -s .repo_version /opt/zstack-dvd/.repo_version
+  if [ $? -eq 0 ]; then
+      echo -e " ... $(tput setaf 2)PASS$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+      return 0
+  elif [ x"$SKIP_SYNC" = x'y' ]; then
+      echo " ... $(tput setaf 1)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
+      return 1
+  else
+      echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
+  fi
+
+  show_spinner sync_local_repos
 }
 
 usage (){
@@ -2944,7 +2949,7 @@ echo_chrony_server_warning_if_need()
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     echo_title "Check Repo Version"
     echo
-    check_upgrade_local_repos
+    check_sync_local_repos
     if [ $? -ne 0 ]; then
         if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
             ISO_NAME="ZStack-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
