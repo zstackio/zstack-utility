@@ -2787,18 +2787,34 @@ class Vm(object):
             MAX_CDROM_NUM = len(Vm.ISO_DEVICE_LETTERS)
             EMPTY_CDROM_CONFIGS = None
 
-            if IS_AARCH64:
+            if IS_AARCH64 :
                 # AArch64 Does not support the attachment of multiple iso
                 EMPTY_CDROM_CONFIGS = [
                     EmptyCdromConfig(None, None, None)
                 ]
+
             else:
-                # bus 0 unit 0 already use by root volume
-                EMPTY_CDROM_CONFIGS = [
-                    EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
-                    EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '1', '0'),
-                    EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '1', '1')
-                ]
+                if cmd.fromForeignHypervisor:
+                    cdroms = cmd.addons['FIXED_CDROMS']
+
+                    if cdroms is None:
+                        EMPTY_CDROM_CONFIGS = [
+                            EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1')
+                        ]
+                    else:
+                        cdrom_device_id_list = cdroms.split(',')
+
+                        EMPTY_CDROM_CONFIGS = []
+                        for i in xrange(len(cdrom_device_id_list)):
+                            EMPTY_CDROM_CONFIGS.append(
+                                EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[i], str(i / 2), str(i % 2)))
+                else:
+                    # bus 0 unit 0 already use by root volume
+                    EMPTY_CDROM_CONFIGS = [
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '1', '0'),
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '1', '1')
+                    ]
 
             if len(EMPTY_CDROM_CONFIGS) != MAX_CDROM_NUM:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
@@ -2835,7 +2851,7 @@ class Vm(object):
                     cdrom = makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit)
                     e(cdrom, 'source', None, {'file': iso.path})
 
-            emptyCdrom = set(range(MAX_CDROM_NUM)).difference(notEmptyCdrom)
+            emptyCdrom = set(range(len(EMPTY_CDROM_CONFIGS))).difference(notEmptyCdrom)
             for i in emptyCdrom:
                 cdromConfig = EMPTY_CDROM_CONFIGS[i]
                 makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus, cdromConfig.unit)
