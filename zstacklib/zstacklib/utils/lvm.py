@@ -991,9 +991,12 @@ def lvm_vgck(vgUuid, timeout):
             if "Duplicate sanlock global lock" in es:
                 fix_global_lock()
                 continue
-            if es.strip() == "":
+            if "have changed sizes" in es:
                 continue
-            s = "vgck %s failed, details: %s" % (vgUuid, o)
+            if es.strip() == "":
+                logger.debug("found pv of vg %s size may changed, details: %s" % (vgUuid, es))
+                continue
+            s = "vgck %s failed, details: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, health, o, e)
             logger.warn(s)
             return False, s
     return True, ""
