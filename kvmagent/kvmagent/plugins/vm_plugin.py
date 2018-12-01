@@ -2250,6 +2250,17 @@ class Vm(object):
         if not linux.wait_callback_success(wait_job, timeout=21600, ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream failed')
 
+    def list_blk_sources(self):
+        """list domain blocks (aka. domblklist) -- but with sources only"""
+        tree = etree.fromstring(self.domain_xml)
+        res = []
+
+        for disk in tree.findall("device/disk"):
+            for src in disk.findall("source"):
+                res.append(src.get("file"))
+
+        return res
+
     def migrate(self, cmd):
         current_hostname = shell.call('hostname')
         current_hostname = current_hostname.strip(' \t\n\r')
@@ -2276,6 +2287,11 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
         elif cmd.storageMigrationPolicy == 'IncCopy':
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_INC
+
+        # to workaround libvirt bug (c.f. RHBZ#1494454)
+        if LIBVIRT_MAJOR_VERSION >= 4:
+            if any(s.startswith('/dev/') for s in self.list_blk_sources()):
+                flag |= libvirt.VIR_MIGRATE_UNSAFE
 
         if cmd.useNuma:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
@@ -2369,7 +2385,7 @@ class Vm(object):
 
         xml = etree.tostring(cdrom)
 
-        if LIBVIRT_MAJOR_VERSION >= 3:
+        if LIBVIRT_MAJOR_VERSION >= 4:
             addr = find_domain_disk_address(self.domain.XMLDesc(0), 'cdrom', dev)
             ridx = xml.rindex('<')
             xml = xml[:ridx] + addr.dump() + xml[ridx:]
@@ -2428,7 +2444,7 @@ class Vm(object):
 
         xml = etree.tostring(cdrom)
 
-        if LIBVIRT_MAJOR_VERSION >= 3:
+        if LIBVIRT_MAJOR_VERSION >= 4:
             addr = find_domain_disk_address(self.domain.XMLDesc(0), 'cdrom', dev)
             ridx = xml.rindex('<')
             xml = xml[:ridx] + addr.dump() + xml[ridx:]
