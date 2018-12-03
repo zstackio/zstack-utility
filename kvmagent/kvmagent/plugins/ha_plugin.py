@@ -165,6 +165,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.run_filesystem_fencer_timestamp = {}
         self.fencer_lock = threading.RLock()
         self.run_sharedblock_fencer = {}
+        self.run_sharedblock_fencer_timestamp = {}
 
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
@@ -245,6 +246,14 @@ class HaPlugin(kvmagent.KvmAgent):
         self.run_sharedblock_fencer[cmd.vgUuid] = False
         return jsonobject.dumps(AgentRsp())
 
+    def sharedblock_fencer_judger(self, vg_uuid, created_time):
+        with self.fencer_lock:
+            if not self.run_sharedblock_fencer[vg_uuid] or self.run_sharedblock_fencer_timestamp[vg_uuid] > created_time:
+                return False
+
+            self.run_sharedblock_fencer_timestamp[vg_uuid] = created_time
+            return True
+
     @kvmagent.replyerror
     def setup_sharedblock_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -254,7 +263,7 @@ class HaPlugin(kvmagent.KvmAgent):
         def heartbeat_on_sharedblock():
             failure = 0
 
-            while self.run_sharedblock_fencer[cmd.vgUuid] is True:
+            while self.sharedblock_fencer_judger(cmd.vgUuid, created_time) is True:
                 try:
                     time.sleep(cmd.interval)
 
@@ -317,8 +326,14 @@ class HaPlugin(kvmagent.KvmAgent):
                     content = traceback.format_exc()
                     logger.warn(content)
 
-            logger.debug('stop self-fencer on sharedblock primary storage %s' % cmd.vgUuid)
+            if not self.sharedblock_fencer_judger(cmd.vgUuid, created_time):
+                logger.debug('stop self-fencer on sharedblock primary storage %s for judger failed' % cmd.vgUuid)
+            else:
+                logger.warn('stop self-fencer on sharedblock primary storage %s' % cmd.vgUuid)
 
+        created_time = time.time()
+        with self.fencer_lock:
+            self.run_sharedblock_fencer_timestamp[cmd.vgUuid] = created_time
         heartbeat_on_sharedblock()
         return jsonobject.dumps(AgentRsp())
 

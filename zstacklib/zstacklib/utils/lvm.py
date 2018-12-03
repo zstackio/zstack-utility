@@ -881,11 +881,13 @@ class RecursiveOperateLv(object):
             active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)
 
 
+@linux.retry(times=3, sleep_time=0.5)
 def get_lockspace(vgUuid):
     output = bash.bash_o("sanlock client gets | awk '{print $2}' | grep %s" % vgUuid)
     return output.strip()
 
 
+@linux.retry(times=3, sleep_time=0.5)
 def examine_lockspace(lockspace):
     r = bash.bash_r("sanlock client examine -s %s" % lockspace)
     if r != 0:
@@ -1034,6 +1036,7 @@ def check_vg_status(vgUuid, check_timeout, check_pv=True):
     return check_pv_status(vgUuid, check_timeout)
 
 
+@linux.retry(times=3, sleep_time=0.5)
 def set_sanlock_event(lockspace):
     """
 
