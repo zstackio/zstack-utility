@@ -2255,7 +2255,7 @@ class Vm(object):
         tree = etree.fromstring(self.domain_xml)
         res = []
 
-        for disk in tree.findall("device/disk"):
+        for disk in tree.findall("devices/disk"):
             for src in disk.findall("source"):
                 res.append(src.get("file"))
 
