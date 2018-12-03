@@ -906,6 +906,7 @@ class VirtioSCSICeph(object):
         e(disk, 'wwn', self.volume.wwn)
         e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(self.volume.deviceId)})
         if self.volume.shareable:
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
             e(disk, 'shareable')
         return disk
 
