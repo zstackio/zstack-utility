@@ -95,6 +95,7 @@ def get_block_devices():
     # 3. get information of other devices
     mpath_devices = []
     block_devices = []  # type: List[SharedBlockCandidateStruct]
+    slave_devices = []
     cmd = shell.ShellCmd("multipath -l -v1")
     cmd(is_exception=False)
     if cmd.return_code == 0 and cmd.stdout.strip() != "":
@@ -118,6 +119,7 @@ def get_block_devices():
                 block_devices.append(struct)
                 continue
 
+            slave_devices.extend(slaves)
             struct = get_device_info(slaves[0])
             cmd = shell.ShellCmd("udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
             cmd(is_exception=True)
@@ -131,7 +133,7 @@ def get_block_devices():
     disks = shell.call("lsblk -p -o NAME,TYPE | grep disk | awk '{print $1}'").strip().split()
     for disk in disks:
         try:
-            if is_slave_of_multipath(disk):
+            if disk.split("/")[-1] in slave_devices or is_slave_of_multipath(disk):
                 continue
             d = get_device_info(disk.strip().split("/")[-1])
             if len(d.wwids) is 0:
