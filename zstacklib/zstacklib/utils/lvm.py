@@ -341,7 +341,7 @@ def start_lvmlockd():
 
     config_lvmlockd_by_sed()
     for service in ["wdmd", "sanlock", "lvm2-lvmlockd"]:
-        cmd = shell.ShellCmd("systemctl start %s" % service)
+        cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
 
     if not os.path.exists(LVMLOCKD_LOG_LOGROTATE_PATH):
