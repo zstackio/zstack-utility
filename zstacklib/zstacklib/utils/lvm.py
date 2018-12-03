@@ -435,6 +435,11 @@ def drop_vg_lock(vgUuid):
     bash.bash_roe("lvmlockctl --drop %s" % vgUuid)
 
 
+@bash.in_bash
+def get_vg_lvm_uuid(vgUuid):
+    return bash.bash_o("vgs --nolocking --noheading --readonly -ouuid %s" % vgUuid).strip()
+
+
 def get_running_host_id(vgUuid):
     cmd = shell.ShellCmd("sanlock client gets | grep %s | awk -F':' '{ print $2 }'" % vgUuid)
     cmd(is_exception=False)
