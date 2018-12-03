@@ -39,6 +39,8 @@ class ConnectRsp(AgentRsp):
         super(ConnectRsp, self).__init__()
         self.isFirst = False
         self.hostId = None
+        self.vgLvmUuid = None
+        self.hostUuid = None
 
 
 class RevertVolumeFromSnapshotRsp(AgentRsp):
@@ -371,6 +373,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
+        rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
+        rsp.hostUuid = cmd.hostUuid
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
