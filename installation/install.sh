@@ -1108,6 +1108,7 @@ upgrade_zstack(){
 
 cs_pre_check(){
     echo_subtitle "Pre-Checking"
+
     if [ -f $PRODUCT_TITLE_FILE ]; then
         #check cpu number
         current_cpu=`cat /proc/cpuinfo |grep processor|wc -l`
@@ -1128,6 +1129,17 @@ cs_pre_check(){
     fi
     [ -f $zstack_properties ] && sed -i 's/Ansible.var.yum_repo/Ansible.var.zstack_repo/' $zstack_properties >>$ZSTACK_INSTALL_LOG 2>&1
     pass
+}
+
+sharedblock_check_qcow2_volume(){
+    db_ip=`zstack-ctl getenv MYSQL_LATEST_IP | awk -F '=' '{print $2}'`
+    db_port=`zstack-ctl getenv MYSQL_LATEST_PORT | awk -F '=' '{print $2}'`
+    db_username=`zstack-ctl show_configuration | grep DB.user | awk -F '=' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+    db_password=`zstack-ctl show_configuration | grep DB.password | awk -F '=' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+    result=`mysql --vertical -h $db_ip -P $db_port -u $db_username -p$db_password zstack -e 'select count(vol.uuid) from VolumeVO vol, PrimaryStorageVO ps where ps.Type="sharedblock" and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ="qcow2"' | grep count | awk -F ':' '{print $2}' | tr -d '[:space:]'`
+    if [ x"$result" != x'0' ]; then
+        fail "There are $result qcow2 format shared volume on sharedblock group primary storage, please contact technical support to convert volumes and then upgrade zstack"
+    fi
 }
 
 install_ansible(){
@@ -1525,6 +1537,7 @@ uz_upgrade_zstack_ctl(){
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade zstack-ctl"
     fi
+    sharedblock_check_qcow2_volume
     pass
 }
 
