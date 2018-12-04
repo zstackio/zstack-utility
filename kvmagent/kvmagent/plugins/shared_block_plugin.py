@@ -362,7 +362,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         logger.debug("starting vg %s lock..." % cmd.vgUuid)
         lvm.start_vg_lock(cmd.vgUuid)
 
-        if lvm.lvm_vgck(cmd.vgUuid, 15)[0] is False:
+        if lvm.lvm_vgck(cmd.vgUuid, 15)[0] is False and lvm.lvm_check_operation(cmd.vgUuid) is False:
             lvm.drop_vg_lock(cmd.vgUuid)
             logger.debug("restarting vg %s lock..." % cmd.vgUuid)
             lvm.check_gl_lock()
