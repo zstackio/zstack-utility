@@ -1,7 +1,7 @@
 mn:
     description: management node
     type: target
-    list: "localhost"
+    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select h.hostName from ManagementNodeVO h'"}
     logs:
       - {name: mn-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'management-server*'}
       - {name: ui-logs, dir: /usr/local/zstack/apache-tomcat/logs/, file: 'zstack-ui*'}
