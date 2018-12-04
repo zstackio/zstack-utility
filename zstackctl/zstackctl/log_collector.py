@@ -220,17 +220,6 @@ class CollectFromYml(object):
 
     def generate_host_post_info(self, host_ip, type):
         host_post_info = HostPostInfo()
-        if type == "mn":
-            if os.path.exists(self.ha_conf_file) is not True:
-                raise CtlError('you are not in ha mode,please mn list use \'localhost\'')
-            host_post_info.remote_user = 'root'
-            # this will be changed in the future
-            host_post_info.remote_port = '22'
-            host_post_info.host = host_ip
-            host_post_info.host_inventory = self.ha_conf_dir + 'host'
-            host_post_info.post_url = ""
-            host_post_info.private_key = self.ha_conf_dir + 'ha_key'
-            return host_post_info
         # update inventory
         with open(self.ctl.zstack_home + "/../../../ansible/hosts") as f:
             old_hosts = f.read()
@@ -238,6 +227,15 @@ class CollectFromYml(object):
                 with open(self.ctl.zstack_home + "/../../../ansible/hosts", "w") as f:
                     new_hosts = host_ip + "\n" + old_hosts
                     f.write(new_hosts)
+        if type == "mn":
+            host_post_info.remote_user = 'root'
+            # this will be changed in the future
+            host_post_info.remote_port = '22'
+            host_post_info.host = host_ip
+            host_post_info.host_inventory = self.ctl.zstack_home + "/../../../ansible/hosts"
+            host_post_info.post_url = ""
+            host_post_info.private_key = self.ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/id_rsa"
+            return host_post_info
         (host_user, host_password, host_port) = self.get_host_ssh_info(host_ip, type)
         if host_user != 'root' and host_password is not None:
             host_post_info.become = True
@@ -333,7 +331,7 @@ class CollectFromYml(object):
         fetch_arg.dest = local_collect_dir
         fetch_arg.args = "fail_on_missing=yes flat=yes"
         fetch(fetch_arg, host_post_info)
-        command = "rm -rf %s %s/../collect-log.tar.gz" % (tmp_log_dir, tmp_log_dir)
+        command = "rm -rf %s/../collect-log.tar.gz %s" % (tmp_log_dir, tmp_log_dir)
         run_remote_command(command, host_post_info)
         (status, output) = commands.getstatusoutput("cd %s && tar zxf collect-log.tar.gz" % local_collect_dir)
         if status != 0:
@@ -361,7 +359,7 @@ class CollectFromYml(object):
         if isinstance(host_list, str):
             if host_list is None:
                 return
-            if host_list == 'localhost':
+            if host_list == 'localhost' or host_list == get_default_ip():
                 self.add_collect_thread(self.local_type, [log_list, collect_dir, type])
                 return
             else:
@@ -383,7 +381,7 @@ class CollectFromYml(object):
         for host_ip in host_list:
             if host_ip is None or host_ip == '':
                 return
-            if host_ip == 'localhost':
+            if host_ip == 'localhost' or host_ip == get_default_ip():
                 self.add_collect_thread(self.local_type, [log_list, collect_dir, type])
             else:
                 self.add_collect_thread(self.host_type, [self.generate_host_post_info(host_ip, type), log_list, collect_dir, type])
@@ -432,8 +430,8 @@ class CollectFromYml(object):
                                 command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % dest_log_dir
                                 (status, output) = commands.getstatusoutput(command)
                                 if "The directory is empty" in output:
-                                    warn("Didn't find log:%s on %s localhost" % (log['name'], type))
-                                    logger.warn("Didn't find log:%s on %s" % (log['name'], type))
+                                    warn("Didn't find log [%s] on %s localhost" % (log['name'], type))
+                                    logger.warn("Didn't find log [%s] on %s" % (log['name'], type))
                             else:
                                 self.add_fail_count(1, error_log_name, output)
                         else:
@@ -569,8 +567,8 @@ class CollectFromYml(object):
                                         command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % dest_log_dir
                                         (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
                                         if "The directory is empty" in output:
-                                            warn("Didn't find log:%s on %s %s" % (log['name'], type, host_post_info.host))
-                                            logger.warn("Didn't find log:%s on %s %s" % (log['name'], type, host_post_info.host))
+                                            warn("Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
+                                            logger.warn("Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
                                     else:
                                         self.add_fail_count(1, error_log_name, output)
                                 else:
@@ -600,9 +598,9 @@ class CollectFromYml(object):
                         return 0
                     self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
             else:
-                warn("Host %s is unreachable!" % host_post_info.host)
+                warn("%s %s is unreachable!" % (type, host_post_info.host))
                 self.add_fail_count(len(log_list), "%s\t%s\t%s" % (type, host_post_info.host, 'unreachable'),
-                                    ("Host %s is unreachable!" % host_post_info.host))
+                                    ("%s %s is unreachable!" % (type, host_post_info.host)))
 
     def get_total_size(self):
         values = self.check_result.values()
