@@ -960,9 +960,9 @@ def check_pv_status(vgUuid, timeout):
             logger.warn("%s, details: %s" % (s, o))
             return False, s
 
-    r, s = lvm_vgck(vgUuid, timeout)
-    if r is False:
-        return r, s
+    # r, s = lvm_vgck(vgUuid, timeout)
+    # if r is False:
+    #     return r, s
 
     health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking --readonly --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
     if health == "":
@@ -1009,6 +1009,20 @@ def lvm_vgck(vgUuid, timeout):
             logger.warn(s)
             return False, s
     return True, ""
+
+
+def lvm_check_operation(vgUuid):
+    test_lv = "/dev/%s/zscheckvolume%s" % (vgUuid, random.randint(100000, 999999))
+    try:
+        create_lv_from_absolute_path(test_lv, 1024*1024*4)
+        delete_lv(test_lv, True)
+    except Exception as e:
+        if "already exists" in e.message:
+            return True
+        return False
+    finally:
+        delete_lv(test_lv, False)
+    return True
 
 
 def check_vg_status(vgUuid, check_timeout, check_pv=True):
