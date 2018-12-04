@@ -641,9 +641,9 @@ class CollectFromYml(object):
                     return datetime(int(year), int(month), int(day)).strftime('%Y-%m-%d:%H:%M:%S')
                 else:
                     hms_array = d_arr[1].split(':')
-                    hour = hms_array[0] if len(hms_array) == 1 is not None else '00'
-                    minute = hms_array[1] if len(hms_array) == 2 is not None else '00'
-                    sec = hms_array[2] if len(hms_array) == 3 is not None else '00'
+                    hour = hms_array[0] if len(hms_array) > 0 is not None else '00'
+                    minute = hms_array[1] if len(hms_array) > 1 is not None else '00'
+                    sec = hms_array[2] if len(hms_array) > 2 is not None else '00'
                     return datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec))\
                         .strftime('%Y-%m-%d:%H:%M:%S')
             else:
@@ -658,7 +658,7 @@ class CollectFromYml(object):
 
         if args.since is None:
             if args.from_date is None:
-                self.f_date = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d:%H:%M')
+                self.f_date = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d:%H:%M:%S')
             elif args.from_date == '-1':
                 self.f_date = '0000-00-00:00:00'
             else:
@@ -666,15 +666,19 @@ class CollectFromYml(object):
             if args.to_date is not None and args.to_date != '-1':
                 self.t_date = self.format_date(args.to_date)
             else:
-                self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M')
+                self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
         else:
             if args.since.endswith('d') or args.since.endswith('D'):
-                self.f_date = (datetime.now() + timedelta(days=float('-%s' % (args.since[:-1])))).strftime('%Y-%m-%d:%H:%M')
+                self.f_date = (datetime.now() + timedelta(days=float('-%s' % (args.since[:-1])))).strftime('%Y-%m-%d:%H:%M:%S')
             elif args.since.endswith('h') or args.since.endswith('H'):
-                self.f_date = (datetime.now() + timedelta(days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M')
+                self.f_date = (datetime.now() + timedelta(days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
             else:
-                self.f_date = (datetime.now() + timedelta(days=float(-args.sincep[:-1]))).strftime('%Y-%m-%d:%H:%M')
-            self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M')
+                self.f_date = (datetime.now() + timedelta(days=float(-args.sincep[:-1]))).strftime('%Y-%m-%d:%H:%M:%S')
+            self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
+
+        if self.f_date > self.t_date:
+            raise CtlError("from datetime [%s] can not be later than to datetime [%s]"
+                           % (self.f_date, self.t_date))
 
         self.check = True if args.check else False
 
