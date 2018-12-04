@@ -5324,10 +5324,10 @@ class ConfiguredCollectLogCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--from-date',
-                            help='collect logs from datetime below format:\'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\'',
+                            help='collect logs from datetime below format:\'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\',default datetime is 24h ago',
                             default=None)
         parser.add_argument('--to-date',
-                            help='collect logs up to datetime below format:\'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\'',
+                            help='collect logs up to datetime below format:\'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\',default datetime is current datetime',
                             default=None)
         parser.add_argument('--since',
                             help='collect logs from N days(--since Nd) or hours(--since Nh) before, for example,if you input \'--since 2d\',\
