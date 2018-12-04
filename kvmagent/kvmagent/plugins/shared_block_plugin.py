@@ -716,12 +716,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                     linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options)
         elif not lvm.lv_exists(install_abs_path):
-            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, False, cmd.provisioning)
             lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
-                linux.qcow2_fill(0, 1048576, install_abs_path)
+            if cmd.volumeFormat != 'raw':
+                qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, False, cmd.provisioning)
+                with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
+                    linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
+                    linux.qcow2_fill(0, 1048576, install_abs_path)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
