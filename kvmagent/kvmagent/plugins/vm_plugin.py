@@ -2258,7 +2258,11 @@ class Vm(object):
 
         for disk in tree.findall("devices/disk"):
             for src in disk.findall("source"):
-                res.append(src.get("file"))
+                src_file = src.get("file")
+                if src_file is None:
+                    continue
+
+                res.append(src_file)
 
         return res
 
