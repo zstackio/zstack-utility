@@ -158,8 +158,7 @@ class CephAgent(plugin.TaskManager):
     ADD_POOL_PATH = "/ceph/primarystorage/addpool"
     CHECK_POOL_PATH = "/ceph/primarystorage/checkpool"
     RESIZE_VOLUME_PATH = "/ceph/primarystorage/volume/resize"
-    MIGRATE_VOLUME_PATH = "/ceph/primarystorage/volume/migrate"
-    MIGRATE_VOLUME_SNAPSHOT_PATH = "/ceph/primarystorage/volume/snapshot/migrate"
+    MIGRATE_VOLUME_SEGMENT_PATH = "/ceph/primarystorage/volume/migratesegment"
     GET_VOLUME_SNAPINFOS_PATH = "/ceph/primarystorage/volume/getsnapinfos"
     UPLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/commit"
     DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
@@ -198,8 +197,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         self.http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
-        self.http_server.register_async_uri(self.MIGRATE_VOLUME_PATH, self.migrate_volume)
-        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SNAPSHOT_PATH, self.migrate_volume_snapshot)
+        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SEGMENT_PATH, self.migrate_volume_segment)
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
@@ -799,62 +797,44 @@ class CephAgent(plugin.TaskManager):
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
-    def _migrate_volume(self, volume_uuid, volume_size, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
+    def _migrate_volume_segment(self, parent_uuid, resource_uuid, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        # Report task progress based on flow chain for now
-        # To get more accurate progress, we need to report from here someday, using pv
-        ret = shell.run('rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s\'' % (src_install_path, volume_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid, dst_install_path))
+        ret = shell.run('rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
+            PARENT_UUID = parent_uuid,
+            DST_MON_ADDR = dst_mon_addr,
+            DST_MON_PORT = dst_mon_port,
+            DST_MON_USER = dst_mon_user,
+            DST_MON_PASSWD = dst_mon_passwd,
+            RESOURCE_UUID = resource_uuid,
+            SRC_INSTALL_PATH = src_install_path,
+            DST_INSTALL_PATH = dst_install_path,
+            FROM_SNAP = '--from-snap ' + parent_uuid if parent_uuid != '' else ''))
         if ret != 0:
             return ret
 
-        src_md5 = self._read_file_content('/tmp/%s_src_md5' % volume_uuid)
-        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, volume_uuid))
-        if src_md5 != dst_md5:
+        # compare md5sum of src/dst segments
+        src_segment_md5 = self._read_file_content('/tmp/%s_src_md5' % resource_uuid)
+        dst_segment_md5 = shell.call('sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'cat /tmp/{RESOURCE_UUID}_dst_md5\''.format(
+            DST_MON_ADDR = dst_mon_addr,
+            DST_MON_PORT = dst_mon_port,
+            DST_MON_USER = dst_mon_user,
+            DST_MON_PASSWD = dst_mon_passwd,
+            RESOURCE_UUID = resource_uuid))
+        if src_segment_md5 != dst_segment_md5:
             return -1
-        else:
-            return 0
+        return 0
 
     @replyerror
     @in_bash
-    def migrate_volume(self, req):
+    def migrate_volume_segment(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
-        ret = self._migrate_volume(cmd.volumeUuid, cmd.volumeSize, cmd.srcInstallPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
+        ret = self._migrate_volume_segment(cmd.parentUuid, cmd.resourceUuid, cmd.srcInstallPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
         if ret != 0:
             rsp.success = False
-            rsp.error = "Failed to migrate volume from one ceph primary storage to another."
-        self._set_capacity_to_response(rsp)
-        return jsonobject.dumps(rsp)
-
-    def _migrate_volume_snapshot(self, parent_uuid, snapshot_uuid, snapshot_size, src_snapshot_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
-        src_snapshot_path = self._normalize_install_path(src_snapshot_path)
-        dst_install_path = self._normalize_install_path(dst_install_path)
-
-        if parent_uuid == "":
-            ret = shell.run('rbd export-diff %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (src_snapshot_path, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
-        else:
-            ret = shell.run('rbd export-diff --from-snap %s %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s\'' % (parent_uuid, src_snapshot_path, snapshot_uuid, dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid, dst_install_path))
-        if ret != 0:
-            return ret
-
-        src_md5 = self._read_file_content('/tmp/%s_src_md5' % snapshot_uuid)
-        dst_md5 = shell.call('sshpass -p "%s" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s \'cat /tmp/%s_dst_md5\'' % (dst_mon_passwd, dst_mon_user, dst_mon_addr, dst_mon_port, snapshot_uuid))
-        if src_md5 != dst_md5:
-            return -1
-        else:
-            return 0
-
-    @replyerror
-    @in_bash
-    def migrate_volume_snapshot(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
-        ret = self._migrate_volume_snapshot(cmd.parentUuid, cmd.snapshotUuid, cmd.snapshotSize, cmd.srcSnapshotPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
-        if ret != 0:
-            rsp.success = False
-            rsp.error = "Failed to migrate volume snapshot from one ceph primary storage to another."
+            rsp.error = "Failed to migrate volume segment from one ceph primary storage to another."
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
