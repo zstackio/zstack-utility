@@ -1489,12 +1489,31 @@ uz_upgrade_tomcat(){
     ZSTACK_HOME=${ZSTACK_HOME:-"/usr/local/zstack/apache-tomcat/webapps/zstack/"}
     TOMCAT_PATH=${ZSTACK_HOME%/apache-tomcat*}
 
+    local TOMCAT_FILE=$(basename $upgrade_folder/apache-tomcat-*.zip)
+    local TOMCAT_NAME=${TOMCAT_FILE%.*}
+
     cd $upgrade_folder
-    unzip -o -d $TOMCAT_PATH apache-tomcat*.zip >>$ZSTACK_INSTALL_LOG 2>&1
-    unzip -o -d $ZSTACK_HOME/../ libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
+    /bin/mv $TOMCAT_PATH/apache-tomcat/{bin/setenv.sh,webapps} $upgrade_folder/
+    rm -rf $TOMCAT_PATH/{apache-tomcat-*.zip,apache-tomcat-*,apache-tomcat,VERSION}
+    unzip -o -d $TOMCAT_PATH $TOMCAT_NAME.zip >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
-       fail "failed to unzip Tomcat package: $upgrade_folder/apache-tomcat*.zip."
+       fail "failed to unzip Tomcat package: $upgrade_folder/$TOMCAT_NAME.zip."
     fi
+
+    /bin/cp $TOMCAT_NAME.zip $TOMCAT_PATH
+    rm -rf $TOMCAT_PATH/$TOMCAT_NAME/webapps/*
+    unzip -o -d $TOMCAT_PATH/$TOMCAT_NAME/webapps libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+       fail "failed to unzip Tomcat package: $upgrade_folder/libs/tomcat_root_app.zip."
+    fi
+
+    cd $TOMCAT_PATH
+    ln -sf $TOMCAT_NAME apache-tomcat
+    ln -sf apache-tomcat/webapps/zstack/VERSION VERSION
+    /bin/mv $upgrade_folder/setenv.sh apache-tomcat/bin/
+    /bin/mv $upgrade_folder/webapps/zstack apache-tomcat/webapps/
+    chown -R zstack:zstack $TOMCAT_NAME.zip $TOMCAT_NAME apache-tomcat VERSION
+    cd $upgrade_folder
 
     chmod a+x $TOMCAT_PATH/apache-tomcat/bin/*
     if [ $? -ne 0 ];then
