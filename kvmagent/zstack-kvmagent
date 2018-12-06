@@ -43,6 +43,18 @@ apply_resource_settings() {
 	# try to avoid 'hung_task_timeout_secs' issue
 	sysctl -w vm.dirty_ratio=10
 	sysctl -w vm.dirty_background_ratio=5
+
+	# try to avoid kmem alloc failure
+	totalMemGiB=`free -g | awk '/^Mem/{print $2}'`
+	if $totalMemGiB -gt 255; then
+		sysctl -w vm.min_free_kbytes=$((3*1024*1024))
+	elif $totalMemGiB -gt 127; then
+		sysctl -w vm.min_free_kbytes=$((2*1024*1024))
+	elif $totalMemGiB -gt 63; then
+		sysctl -w vm.min_free_kbytes=$((1024*1024))
+	elif $totalMemGiB -gt 31; then
+		sysctl -w vm.min_free_kbytes=$((1024*384))
+	fi
 }
 
 rm_ebtables_dangling_lock() {
