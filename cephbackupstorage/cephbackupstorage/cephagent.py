@@ -779,7 +779,7 @@ class CephAgent(object):
             def _getProgress(synced):
                 logger.debug("getProgress in ceph-bs-agent, synced: %s, total: %s" % (synced, total))
                 last = shell.call('tail -1 %s' % PFILE).strip()
-                if not last or len(last.split()) < 1:
+                if not last or len(last.split()) < 1 or 'HTTP request sent, awaiting response' in last:
                     return synced
                 logger.debug("last synced: %s" % last)
                 written = _getRealSize(last.split()[0])
