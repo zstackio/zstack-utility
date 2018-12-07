@@ -23,24 +23,12 @@ class PrometheusPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @in_bash
     def start_collectd_exporter(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentResponse()
 
-        eths = bash_o("ls /sys/class/net").split()
-        interfaces = []
-        for eth in eths:
-            eth = eth.strip(' \t\n\r')
-            if eth == 'lo': continue
-            elif eth.startswith('vnic'): continue
-            elif eth.startswith('outer'): continue
-            elif eth.startswith('br_'): continue
-            elif not eth: continue
-            else:
-                interfaces.append(eth)
+        @in_bash
+        def start_exporter(cmd):
+            conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
 
-        conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
-
-        conf = '''Interval {{INTERVAL}}
+            conf = '''Interval {{INTERVAL}}
 FQDNLookup false
 
 LoadPlugin syslog
@@ -112,48 +100,66 @@ LoadPlugin virt
 
 '''
 
-        tmpt = Template(conf)
-        conf = tmpt.render({
-            'INTERVAL': cmd.interval,
-            'INTERFACES': interfaces,
-        })
+            tmpt = Template(conf)
+            conf = tmpt.render({
+                'INTERVAL': cmd.interval,
+                'INTERFACES': interfaces,
+            })
 
-        need_restart_collectd = False
-        if os.path.exists(conf_path):
-            with open(conf_path, 'r') as fd:
-                old_conf = fd.read()
+            need_restart_collectd = False
+            if os.path.exists(conf_path):
+                with open(conf_path, 'r') as fd:
+                    old_conf = fd.read()
 
-            if old_conf != conf:
+                if old_conf != conf:
+                    with open(conf_path, 'w') as fd:
+                        fd.write(conf)
+                    need_restart_collectd = True
+            else:
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
                 need_restart_collectd = True
-        else:
-            with open(conf_path, 'w') as fd:
-                fd.write(conf)
-            need_restart_collectd = True
 
-        cpid = linux.find_process_by_cmdline(['collectd', conf_path])
-        mpid = linux.find_process_by_cmdline(['collectdmon', conf_path])
+            cpid = linux.find_process_by_cmdline(['collectd', conf_path])
+            mpid = linux.find_process_by_cmdline(['collectdmon', conf_path])
 
-        if not cpid:
-            bash_errorout('collectdmon -- -C %s' % conf_path)
-        else:
-            if need_restart_collectd:
-                if not mpid:
-                    bash_errorout('kill -TERM %s' % cpid)
-                    bash_errorout('collectdmon -- -C %s' % conf_path)
-                else:
-                    bash_errorout('kill -HUP %s' % mpid)
+            if not cpid:
+                bash_errorout('collectdmon -- -C %s' % conf_path)
+            else:
+                if need_restart_collectd:
+                    if not mpid:
+                        bash_errorout('kill -TERM %s' % cpid)
+                        bash_errorout('collectdmon -- -C %s' % conf_path)
+                    else:
+                        bash_errorout('kill -HUP %s' % mpid)
 
-        pid = linux.find_process_by_cmdline([cmd.binaryPath])
-        if not pid:
-            EXPORTER_PATH = cmd.binaryPath
-            LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
-            ARGUMENTS  = cmd.startupArguments
-            if not ARGUMENTS:
-                ARGUMENTS = ""
-            bash_errorout('chmod +x {{EXPORTER_PATH}}')
-            bash_errorout("nohup {{EXPORTER_PATH}} {{ARGUMENTS}} >{{LOG_FILE}} 2>&1 < /dev/null &\ndisown")
+            pid = linux.find_process_by_cmdline([cmd.binaryPath])
+            if not pid:
+                EXPORTER_PATH = cmd.binaryPath
+                LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
+                ARGUMENTS = cmd.startupArguments
+                if not ARGUMENTS:
+                    ARGUMENTS = ""
+                bash_errorout('chmod +x {{EXPORTER_PATH}}')
+                bash_errorout("nohup {{EXPORTER_PATH}} {{ARGUMENTS}} >{{LOG_FILE}} 2>&1 < /dev/null &\ndisown")
+
+        para = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        eths = bash_o("ls /sys/class/net").split()
+        interfaces = []
+        for eth in eths:
+            eth = eth.strip(' \t\n\r')
+            if eth == 'lo': continue
+            elif eth.startswith('vnic'): continue
+            elif eth.startswith('outer'): continue
+            elif eth.startswith('br_'): continue
+            elif not eth: continue
+            else:
+                interfaces.append(eth)
+
+        for cmd in para.cmds:
+            start_exporter(cmd)
 
         self.install_iptables()
 
