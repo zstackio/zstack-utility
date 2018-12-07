@@ -193,15 +193,10 @@ class CheckDisk(object):
             if cmd.return_code == 0:
                 return cmd.stdout.strip()
 
-    def set_fail_if_no_path(self, disk_name=None):
-        if disk_name is None:
-            disk_name = self.get_path().split("/")[-1]
-        if not lvm.is_multipath(disk_name):
-            return
+    def set_fail_if_no_path(self):
         if not lvm.is_multipath_running():
-            lvm.enable_multipath()
-        multipath_name = lvm.get_multipath_name(disk_name)
-        cmd = shell.ShellCmd('dmsetup message %s 0 "fail_if_no_path"' % multipath_name)
+            return
+        cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
         cmd(is_exception=False)
 
 
@@ -276,7 +271,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if cmd.rescan:
                 disk.rescan(path.split("/")[-1])
             if cmd.failIfNoPath:
-                disk.set_fail_if_no_path(path.split("/")[-1])
+                disk.set_fail_if_no_path()
 
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
