@@ -8225,7 +8225,7 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
         self.name = "fix_sharedvolume"
         self.description = "fix qcow2 format shared volume on shared block primary storage"
         ctl.register_command(self)
-        self.support_operations = ["convert_volume", "delete_qcow2_volume", "convert_snapshot"]
+        self.support_operations = ["convert_volume", "delete_qcow2_volume", "commit_snapshot_to_image", "delete_shared_volume_snapshots"]
         self.key = "/usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/ansible/rsaKeys/id_rsa"
         self.script_path = "/tmp/zstack-convert-volume.py"
 
@@ -8233,14 +8233,17 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
         parser.add_argument('--admin-password', help='password of zstack admin user', required=True)
         parser.add_argument('--operation', help='operation, may be: %s' % self.support_operations, required=True)
         parser.add_argument('--dryrun', help='run in dry run mode, default is True, be carefully if set to False', default="True")
+        parser.add_argument('--backup-storage-uuid', help='backup storage uuid, need to specify in commit_snapshot_to_image', required=False)
 
     def run(self, args):
         if args.operation == "convert_volume":
             self._convert_volume(args)
         elif args.operation == "delete_qcow2_volume":
             self._delete_qcow2_volume(args)
-        elif args.operation == "convert_snapshot":
+        elif args.operation == "commit_snapshot_to_image":
             self._convert_snapshot(args)
+        elif args.operation == "delete_shared_volume_snapshots":
+            self._delete_snapshot(args)
         else:
             raise Exception("not in supported operations: %s" % self.support_operations)
 
@@ -8310,10 +8313,17 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
 
     def _select_host(self, ps_uuid):
         sql = "select host.* from HostVO host, SharedBlockGroupPrimaryStorageHostRefVO ref where ref.hostUuid=host.uuid and ref.primaryStorageUuid='%s' and ref.status='Connected' and host.status='Connected' order by ref.hostId" % ps_uuid
-        return self._run_sql(sql)
+        r = self._run_sql(sql)
+        if len(r) == 0:
+            error("can not find proper host via sql: %s" % sql)
+        return r
 
     def _find_shared_volumes(self, format="qcow2"):
         sql = "select vol.* from VolumeVO vol, PrimaryStorageVO ps where ps.Type='sharedblock' and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ='%s'" % format
+        return self._run_sql(sql)
+
+    def _find_shared_snapshots(self):
+        sql = "select snap.* from VolumeVO vol, PrimaryStorageVO ps, VolumeSnapshotEO snap where ps.Type='sharedblock' and vol.primaryStorageUuid=ps.uuid and vol.uuid=snap.volumeUuid and vol.isShareable <> 0"
         return self._run_sql(sql)
 
     def _update_format(self, volumeUuid, format):
@@ -8339,15 +8349,70 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
         if args.dryrun.lower() != "false":
             info("run in dryrun mode, return now")
             return
+        qcow2_files = []
         for primary_storage_uuid in primary_storage_uuids:
             hosts = self._select_host(primary_storage_uuid)
             cmd = ShellCmd("ssh -i %s root@%s 'python %s %s %s'" %
                            (self.key, hosts[0]["managementIp"], self.script_path, "delete_qcow2", primary_storage_uuid))
             cmd(True)
+            qcow2_files.append(cmd.stdout)
+        info("deleted qcow2 files: %s" % qcow2_files)
 
     def _convert_snapshot(self, args):
-        pass
+        snaps = self._find_shared_snapshots()
+        if len(snaps) == 0:
+            info("not found any snapshots of shared volume on sharedblock group storage")
+            return
+        warn("find snapshots of shared volume on sharedblock group primary storage: [name: %s, uuid: %s]" %
+             (map(lambda x: x["name"], snaps), map(lambda x: x["uuid"], snaps)))
+        if args.dryrun.lower() != "false":
+            info("run in dryrun mode, return now")
+            return
+        if args.backup_storage_uuid is None or args.backup_storage_uuid == "":
+            error("not specify backup_storage_uuid")
 
+        for snap in snaps:
+            info("start CreateDataVolumeTemplateFromVolumeSnapshot on snapshot[name:%s, uuid:%s]" % (snap["name"], snap["uuid"]))
+            cmd = ShellCmd("zstack-cli LogInByAccount accountName=admin password=%s" % args.admin_password)
+            cmd(True)
+            imageName = "from-shared-volume-%s-snapshot-%s-%s" % (snap["volumeUuid"], snap["name"], snap["uuid"])
+            cmd = ShellCmd("zstack-cli CreateDataVolumeTemplateFromVolumeSnapshot name=%s description=%s snapshotUuid=%s backupStorageUuids=%s" %
+                           (imageName, imageName, snap["uuid"], args.backup_storage_uuid))
+            cmd(True)
+            info("CreateDataVolumeTemplateFromVolumeSnapshot on snapshot[name:%s, uuid:%s] done, named %s" % (snap["name"], snap["uuid"], imageName))
+
+    def _delete_snapshot(self, args):
+        snaps = self._find_shared_snapshots()
+        if len(snaps) == 0:
+            info("not found any snapshots of shared volume on sharedblock group storage")
+            return
+        warn("find snapshots of shared volume on sharedblock group primary storage: [name: %s, uuid: %s, installPath: %s]" %
+             (map(lambda x: x["name"], snaps), map(lambda x: x["uuid"], snaps), map(lambda x: x["primaryStorageInstallPath"], snaps)))
+        if args.dryrun.lower() != "false":
+            info("run in dryrun mode, return now")
+            return
+
+        for snap in snaps:
+            hosts = self._select_host(snap["primaryStorageUuid"])
+            snapAbsPath = snap["primaryStorageInstallPath"].replace("sharedblock:/", "/dev")
+            info("start delete on snapshot[name:%s, uuid:%s, installPath: %s] on host[ip: %s]" % (
+                snap["name"], snap["uuid"], snap["primaryStorageInstallPath"], hosts[0]["managementIp"]))
+            for host in hosts:
+                cmd = ShellCmd(
+                    "ssh -i %s root@%s 'lvchange -an %s'" % (self.key, host["managementIp"], snapAbsPath))
+                cmd(True)
+            cmd = ShellCmd("ssh -i %s root@%s 'lvremove -y %s'" % (self.key, hosts[0]["managementIp"], snapAbsPath))
+            cmd(True)
+            self._update_volumeSnapshotEO(snap["uuid"])
+            self._update_VolumeSnapshotTreeEO(snap["volumeUuid"])
+
+    def _update_volumeSnapshotEO(self, snapshotUuid):
+        sql = "update VolumeSnapshotEO set VolumeSnapshotEO.deleted=NOW() where VolumeSnapshotEO.uuid='%s'" % snapshotUuid
+        self._run_sql(sql)
+
+    def _update_VolumeSnapshotTreeEO(self, volumeUuid):
+        sql = "update VolumeSnapshotTreeEO set VolumeSnapshotTreeEO.deleted=NOW() where VolumeSnapshotTreeEO.volumeUuid='%s'" % volumeUuid
+        self._run_sql(sql)
 
 def main():
     AddManagementNodeCmd()
