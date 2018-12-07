@@ -8218,6 +8218,137 @@ class ResetAdminPasswordCmd(Command):
 
         info("reset password succeed")
 
+
+class SharedBlockQcow2SharedVolumeFixCmd(Command):
+    def __init__(self):
+        super(SharedBlockQcow2SharedVolumeFixCmd, self).__init__()
+        self.name = "fix_sharedvolume"
+        self.description = "fix qcow2 format shared volume on shared block primary storage"
+        ctl.register_command(self)
+        self.support_operations = ["convert_volume", "delete_qcow2_volume", "convert_snapshot"]
+        self.key = "/usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/ansible/rsaKeys/id_rsa"
+        self.script_path = "/tmp/zstack-convert-volume.py"
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--admin-password', help='password of zstack admin user', required=True)
+        parser.add_argument('--operation', help='operation, may be: %s' % self.support_operations, required=True)
+        parser.add_argument('--dryrun', help='run in dry run mode, default is True, be carefully if set to False', default="True")
+
+    def run(self, args):
+        if args.operation == "convert_volume":
+            self._convert_volume(args)
+        elif args.operation == "delete_qcow2_volume":
+            self._delete_qcow2_volume(args)
+        elif args.operation == "convert_snapshot":
+            self._convert_snapshot(args)
+        else:
+            raise Exception("not in supported operations: %s" % self.support_operations)
+
+    def _copy_script(self, hostIp):
+        local_script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fix_shared_volume.py")
+        cmd = ShellCmd("scp -i %s %s root@%s:%s" % (self.key, local_script_path, hostIp, self.script_path))
+        cmd(True)
+
+    def _convert_volume(self, args):
+        shared_volumes = self._find_shared_volumes()
+        if len(shared_volumes) == 0:
+            info("not found any shared volume need to be convert")
+            return
+        warn("found shared volumes[uuid: %s, name: %s] need to be convert" %
+             (map(lambda x: x["uuid"], shared_volumes), map(lambda x: x["name"], shared_volumes)))
+        for volume in shared_volumes:
+            self._check_attached_vm_online(volume["uuid"])
+        if args.dryrun.lower() != "false":
+            info("run in dryrun mode, return now")
+            return
+        for volume in shared_volumes:
+            hosts = self._select_host(volume["primaryStorageUuid"])
+            self._deactivate_volume(volume, hosts)
+            info("start do convert volume[uuid: %s, name: %s, installPath: %s] on host[ip: %s]" % (volume["uuid"], volume["name"], volume["installPath"], hosts[0]["managementIp"]))
+            self._do_convert_volume(volume["installPath"], hosts[0]["managementIp"], volume["primaryStorageUuid"])
+            info("do convert volume[uuid: %s, name: %s, installPath: %s] on host[ip: %s] done" % (volume["uuid"], volume["name"], volume["installPath"], hosts[0]["managementIp"]))
+            self._update_format(volume["uuid"], "raw")
+
+    def _run_sql(self, sql):
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        query = MySqlCommandLineQuery()
+        query.host = db_hostname
+        query.port = db_port
+        query.user = db_user
+        query.password = db_password
+        query.table = 'zstack'
+        query.sql = sql
+        return query.query()
+
+    def _deactivate_volume(self, volume, hosts):
+        info("deactivating volume[uuid: %s, name: %s, installPath: %s] on hosts[%s]..." %
+             (volume["uuid"], volume["name"], volume["installPath"], map(lambda x: x["managementIp"], hosts)))
+        volume_abs_path = volume["installPath"].replace("sharedblock:/", "/dev")
+        for host in hosts:
+            cmd = ShellCmd("ssh -i %s root@%s 'lvchange -an %s'" % (self.key, host["managementIp"], volume_abs_path))
+            cmd(True)
+
+    def _do_convert_volume(self, volume_install_path, hostIp, psUuid):
+        # type: (str, str, str) -> void
+        # 0. check lv tag, if start convet exists, raise;
+        #    if convert done exists, raise
+        # 1. create a lv with original lv size
+        # 2. add tag start convert to original lv
+        # 3. qemu-img convert
+        # 4. add tag convert done and if success or remove tag and target lv if fail
+        # 5. exchange name
+        volume_abs_path = volume_install_path.replace("sharedblock:/", "/dev")
+        self._copy_script(hostIp)
+        cmd = ShellCmd("ssh -i %s root@%s 'python %s %s %s'" % (self.key, hostIp, self.script_path, "convert", volume_abs_path))
+        cmd(True)
+
+    def _check_attached_vm_online(self, volumeUuid):
+        sql = "select vm.uuid from VmInstanceVO vm, ShareableVolumeVmInstanceRefVO ref where ref.vmInstanceUuid=vm.uuid and vm.state!='Stopped' and ref.volumeUuid='%s'" % volumeUuid
+        result = self._run_sql(sql)
+        if len(result) != 0:
+            error("shared volume %s is attach on not stopped vm: %s, can not proceed" % (volumeUuid, result))
+
+    def _select_host(self, ps_uuid):
+        sql = "select host.* from HostVO host, SharedBlockGroupPrimaryStorageHostRefVO ref where ref.hostUuid=host.uuid and ref.primaryStorageUuid='%s' and ref.status='Connected' and host.status='Connected' order by ref.hostId" % ps_uuid
+        return self._run_sql(sql)
+
+    def _find_shared_volumes(self, format="qcow2"):
+        sql = "select vol.* from VolumeVO vol, PrimaryStorageVO ps where ps.Type='sharedblock' and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ='%s'" % format
+        return self._run_sql(sql)
+
+    def _update_format(self, volumeUuid, format):
+        sql = "update VolumeVO set VolumeVO.format='%s' where VolumeVO.uuid='%s'" % (format, volumeUuid)
+        self._run_sql(sql)
+
+    def _delete_qcow2_volume(self, args):
+        shared_volumes = self._find_shared_volumes("raw")
+        if len(shared_volumes) == 0:
+            info("not found any shared volume need to be delete qcow2 file")
+            return
+
+        primary_storage_uuids = set()
+        for volume in shared_volumes:
+            primary_storage_uuids.add(volume["primaryStorageUuid"])
+        for primary_storage_uuid in primary_storage_uuids:
+            hosts = self._select_host(primary_storage_uuid)
+            self._copy_script(hosts[0]["managementIp"])
+            cmd = ShellCmd("ssh -i %s root@%s 'python %s %s %s'" %
+                           (self.key, hosts[0]["managementIp"], self.script_path, "find_qcow2", primary_storage_uuid))
+            cmd(True)
+            warn("find qcow2 file [%s] of primary storage %s need to be delete" % (cmd.stdout, primary_storage_uuid))
+        if args.dryrun.lower() != "false":
+            info("run in dryrun mode, return now")
+            return
+        for primary_storage_uuid in primary_storage_uuids:
+            hosts = self._select_host(primary_storage_uuid)
+            cmd = ShellCmd("ssh -i %s root@%s 'python %s %s %s'" %
+                           (self.key, hosts[0]["managementIp"], self.script_path, "delete_qcow2", primary_storage_uuid))
+            cmd(True)
+
+    def _convert_snapshot(self, args):
+        pass
+
+
 def main():
     AddManagementNodeCmd()
     BootstrapCmd()
@@ -8268,6 +8399,7 @@ def main():
     ShowSessionCmd()
     DropSessionCmd()
     GetZStackVersion()
+    SharedBlockQcow2SharedVolumeFixCmd()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard
