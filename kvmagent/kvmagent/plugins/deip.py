@@ -353,7 +353,7 @@ class DEip(kvmagent.KvmAgent):
 
             FWD_NAME = "FWD-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{FWD_NAME}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} iptables -N {{FWD_NAME}}')
+                bash_errorout('eval {{NS}} iptables -w -N {{FWD_NAME}}')
 
             create_iptable_rule_if_needed("iptables", "-t filter", "FORWARD ! -d {{NIC_IP}}/32 -i {{PUB_IDEV}} -j REJECT --reject-with icmp-port-unreachable")
             create_iptable_rule_if_needed("iptables", "-t filter", "FORWARD -i {{PRI_IDEV}} -o {{PUB_IDEV}} -j {{FWD_NAME}}")
@@ -378,7 +378,7 @@ class DEip(kvmagent.KvmAgent):
 
             FWD_NAME = "EIP6-FWD-{{EIP_UUID}}"
             if bash_r('eval {{NS}} ip6tables-save | grep -w ":{{FWD_NAME}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} ip6tables -N {{FWD_NAME}}')
+                bash_errorout('eval {{NS}} ip6tables -w -N {{FWD_NAME}}')
 
             create_iptable_rule_if_needed("ip6tables", "-t filter", "FORWARD ! -d {{NIC_IP}}/128 -i {{PUB_IDEV}} -j REJECT --reject-with icmp6-addr-unreachable")
             create_iptable_rule_if_needed("ip6tables", "-t filter", "FORWARD -i {{PRI_IDEV}} -o {{PUB_IDEV}} -j {{FWD_NAME}}")
@@ -464,7 +464,7 @@ class DEip(kvmagent.KvmAgent):
                 raise Exception("cannot find CIDR of vnic ip[%s] in namespace %s" % (NIC_IP, NS_NAME))
 
             CHAIN_NAME = "vip-perf"
-            bash_r("eval {{NS}} iptables -N {{CHAIN_NAME}} > /dev/null")
+            bash_r("eval {{NS}} iptables -w -N {{CHAIN_NAME}} > /dev/null")
             create_iptable_rule_if_needed("iptables", "-t filter", "FORWARD -s {{NIC_IP}}/32 ! -d {{cidr}} -j {{CHAIN_NAME}}", True)
             create_iptable_rule_if_needed("iptables", "-t filter", "FORWARD ! -s {{cidr}} -d {{NIC_IP}}/32 -j {{CHAIN_NAME}}", True)
             create_iptable_rule_if_needed("iptables", "-t filter", "{{CHAIN_NAME}} -s {{NIC_IP}}/32 -j RETURN")
@@ -488,7 +488,7 @@ class DEip(kvmagent.KvmAgent):
                 raise Exception("cannot find CIDR of vnic ip[%s] in namespace %s" % (NIC_IP, NS_NAME))
 
             CHAIN_NAME = "vip-perf"
-            bash_r("eval {{NS}} ip6tables -N {{CHAIN_NAME}} > /dev/null")
+            bash_r("eval {{NS}} ip6tables -w -N {{CHAIN_NAME}} > /dev/null")
             create_iptable_rule_if_needed("ip6tables", "-t filter", "FORWARD -s {{NIC_IP}}/128 ! -d {{cidr}} -j {{CHAIN_NAME}}", True)
             create_iptable_rule_if_needed("ip6tables", "-t filter", "FORWARD ! -s {{cidr}} -d {{NIC_IP}}/128 -j {{CHAIN_NAME}}", True)
             create_iptable_rule_if_needed("ip6tables", "-t filter", "{{CHAIN_NAME}} -s {{NIC_IP}}/128 -j RETURN")
