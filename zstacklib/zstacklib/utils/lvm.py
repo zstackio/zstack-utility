@@ -322,7 +322,7 @@ def config_lvmlockd_by_sed():
         cmd = shell.ShellCmd(
             "sed -i '/ExecStart/a StandardError=%s' /usr/lib/systemd/system/lvm2-lvmlockd.service" % LVMLOCKD_LOG_FILE_PATH)
         cmd(is_exception=False)
-    cmd = shell.ShellCmd("sync")
+    cmd = shell.ShellCmd("sync;systemctl daemon-reload")
     cmd(is_exception=False)
 
 
@@ -888,22 +888,34 @@ class RecursiveOperateLv(object):
             active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)
 
 
-@linux.retry(times=3, sleep_time=0.5)
 def get_lockspace(vgUuid):
-    output = bash.bash_o("sanlock client gets | awk '{print $2}' | grep %s" % vgUuid)
-    return output.strip()
+    @linux.retry(times=3, sleep_time=0.5)
+    def _do_get_lockspace(vgUuid):
+        o = bash.bash_o("sanlock client gets | awk '{print $2}' | grep %s" % vgUuid).strip()
+        if o == "":
+            raise RetryException
+        return o
+    try:
+        out = _do_get_lockspace(vgUuid)
+    except Exception as e:
+        out = bash.bash_o("sanlock client gets | awk '{print $2}' | grep %s" % vgUuid).strip()
+    finally:
+        return out
 
 
-@linux.retry(times=3, sleep_time=0.5)
 def examine_lockspace(lockspace):
-    r = bash.bash_r("sanlock client examine -s %s" % lockspace)
-    if r != 0:
-        logger.warn("sanlock examine %s failed, return %s" % (lockspace, r))
+    @linux.retry(times=3, sleep_time=0.5)
+    def _do_examine_lockspace(lockspace):
+        r, _, _ = bash.bash_roe("sanlock client examine -s %s" % lockspace, errorout=True)
+        if r != 0:
+            raise RetryException("can not examine lockspace")
         return r
-    # r = bash.bash_r("sanlock direct read_leader -s %s" % lockspace)
-    # if r != 0:
-    #     logger.warn("sanlock read leader %s failed, return %s" % (lockspace, r))
-    return r
+    try:
+        r = _do_examine_lockspace(lockspace)
+    except Exception as e:
+        r, _, _ = bash.bash_roe("sanlock client examine -s %s" % lockspace, errorout=False)
+    finally:
+        return r
 
 
 def check_stuck_vglk():
@@ -1057,15 +1069,26 @@ def check_vg_status(vgUuid, check_timeout, check_pv=True):
     return check_pv_status(vgUuid, check_timeout)
 
 
-@linux.retry(times=3, sleep_time=0.5)
 def set_sanlock_event(lockspace):
     """
 
     :type lockspace: str
     """
-    host_id = lockspace.split(":")[1]
-    r, o, e = bash.bash_roe("sanlock client set_event -s %s -i %s -e 1 -d 1" % (lockspace, host_id))
-    return r == 0
+
+    @linux.retry(times=3, sleep_time=0.5)
+    def _set_sanlock_event(lockspace):
+        host_id = lockspace.split(":")[1]
+        r, _, _ = bash.bash_roe("sanlock client set_event -s %s -i %s -e 1 -d 1" % (lockspace, host_id), errorout=True)
+        if r != 0:
+            raise RetryException("set sanlock event failed")
+        return r
+    try:
+        r = _set_sanlock_event(lockspace)
+    except Exception as e:
+        host_id = lockspace.split(":")[1]
+        r, _, _ = bash.bash_roe("sanlock client set_event -s %s -i %s -e 1 -d 1" % (lockspace, host_id), errorout=False)
+    finally:
+        return r
 
 
 def get_sanlock_renewal(lockspace):
