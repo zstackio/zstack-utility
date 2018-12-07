@@ -538,7 +538,7 @@ class IPTables(Node):
         content = self._to_iptables_string(marshall_func, sort_nat_func, sort_filter_func, sort_mangle_func)
         f = linux.write_to_temp_file(content)
         try:
-            shell.call('/sbin/iptables-restore < %s' % f)
+            shell.call('/sbin/iptables-restore -w < %s' % f)
         except Exception as e:
             res = shell.call('lsof /run/xtables.lock')
             err ='''Failed to apply iptables rules:
@@ -938,7 +938,7 @@ class IP6Tables(Node):
         content = self._to_iptables_string(marshall_func, sort_nat_func, sort_filter_func, sort_mangle_func)
         f = linux.write_to_temp_file(content)
         try:
-            shell.call('/sbin/ip6tables-restore < %s' % f)
+            shell.call('/sbin/ip6tables-restore -w < %s' % f)
         except Exception as e:
             res = shell.call('lsof /run/xtables.lock')
             err = '''Failed to apply ip6tables rules:
