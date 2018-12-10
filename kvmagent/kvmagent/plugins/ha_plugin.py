@@ -161,40 +161,41 @@ class HaPlugin(kvmagent.KvmAgent):
     RET_NOT_STABLE = "unstable"
 
     def __init__(self):
-        self.run_ceph_fencer = False
-        self.run_filesystem_fencer_timestamp = {}
+        # {ps_uuid: created_time} e.g. {'07ee15b2f68648abb489f43182bd59d7': 1544513500.163033}
+        self.run_fencer_timestamp = {}  # type: dict[str, float]
         self.fencer_lock = threading.RLock()
-        self.run_sharedblock_fencer = {}
-        self.run_sharedblock_fencer_timestamp = {}
 
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
-        self.run_ceph_fencer = False
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.cancel_fencer(cmd.uuid)
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
     def cancel_filesystem_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        with self.fencer_lock:
-            for ps_uuid in cmd.psUuids:
-                self.run_filesystem_fencer_timestamp.pop(ps_uuid, None)
+        for ps_uuid in cmd.psUuids:
+            self.cancel_fencer(ps_uuid)
+
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
     def cancel_aliyun_nas_self_fencer(self, req):
-        self.run_aliyunnas_fencer = False
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.cancel_fencer(cmd.uuid)
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
     def setup_aliyun_nas_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.run_aliyunnas_fencer = True
+        created_time = time.time()
+        self.setup_fencer(cmd.uuid, created_time)
 
         @thread.AsyncThread
         def heartbeat_on_aliyunnas():
             failure = 0
 
-            while self.run_aliyunnas_fencer:
+            while self.run_fencer(cmd.uuid, created_time):
                 try:
                     time.sleep(cmd.interval)
 
@@ -243,27 +244,18 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def cancel_sharedblock_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.run_sharedblock_fencer[cmd.vgUuid] = False
+        self.cancel_fencer(cmd.vgUuid)
         return jsonobject.dumps(AgentRsp())
-
-    def sharedblock_fencer_judger(self, vg_uuid, created_time):
-        with self.fencer_lock:
-            if not self.run_sharedblock_fencer[vg_uuid] or self.run_sharedblock_fencer_timestamp[vg_uuid] > created_time:
-                return False
-
-            self.run_sharedblock_fencer_timestamp[vg_uuid] = created_time
-            return True
 
     @kvmagent.replyerror
     def setup_sharedblock_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.run_sharedblock_fencer[cmd.vgUuid] = True
 
         @thread.AsyncThread
         def heartbeat_on_sharedblock():
             failure = 0
 
-            while self.sharedblock_fencer_judger(cmd.vgUuid, created_time) is True:
+            while self.run_fencer(cmd.vgUuid, created_time):
                 try:
                     time.sleep(cmd.interval)
 
@@ -322,18 +314,17 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn("traceback: %s" % content)
 
                 except Exception as e:
-                    logger.debug('self-fencer on sharedblock primary storage %s stopped abnormally' % cmd.vgUuid)
+                    logger.debug('self-fencer on sharedblock primary storage %s stopped abnormally, try again soon...' % cmd.vgUuid)
                     content = traceback.format_exc()
                     logger.warn(content)
 
-            if not self.sharedblock_fencer_judger(cmd.vgUuid, created_time):
+            if not self.run_fencer(cmd.vgUuid, created_time):
                 logger.debug('stop self-fencer on sharedblock primary storage %s for judger failed' % cmd.vgUuid)
             else:
                 logger.warn('stop self-fencer on sharedblock primary storage %s' % cmd.vgUuid)
 
         created_time = time.time()
-        with self.fencer_lock:
-            self.run_sharedblock_fencer_timestamp[cmd.vgUuid] = created_time
+        self.setup_fencer(cmd.vgUuid, created_time)
         heartbeat_on_sharedblock()
         return jsonobject.dumps(AgentRsp())
 
@@ -359,7 +350,8 @@ class HaPlugin(kvmagent.KvmAgent):
         mon_url = '\;'.join(cmd.monUrls)
         mon_url = mon_url.replace(':', '\\\:')
 
-        self.run_ceph_fencer = True
+        created_time = time.time()
+        self.setup_fencer(cmd.uuid, created_time)
 
         def get_ceph_rbd_args():
             if cmd.userKey is None:
@@ -408,7 +400,7 @@ class HaPlugin(kvmagent.KvmAgent):
             try:
                 failure = 0
 
-                while self.run_ceph_fencer:
+                while self.run_fencer(cmd.uuid, created_time):
                     time.sleep(cmd.interval)
 
                     if heartbeat_file_exists() or create_heartbeat_file():
@@ -452,7 +444,7 @@ class HaPlugin(kvmagent.KvmAgent):
                 if mount_path_is_nfs(mount_path):
                     shell.run("systemctl start nfs-client.target")
 
-                while self.run_filesystem_fencer(ps_uuid, created_time):
+                while self.run_fencer(ps_uuid, created_time):
                     if linux.is_mounted(path=mount_path) and touch_heartbeat_file():
                         self.report_storage_status([ps_uuid], 'Connected')
                         logger.debug("fs[uuid:%s] is reachable again, report to management" % ps_uuid)
@@ -460,7 +452,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.debug('fs[uuid:%s] is unreachable, it will be remounted after 180s' % ps_uuid)
                         time.sleep(180)
-                        if not self.run_filesystem_fencer(ps_uuid, created_time):
+                        if not self.run_fencer(ps_uuid, created_time):
                             break
                         linux.remount(url, mount_path, options)
                         self.report_storage_status([ps_uuid], 'Connected')
@@ -488,7 +480,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
                 try_remount_fs()
 
-
             def touch_heartbeat_file():
                 touch = shell.ShellCmd('timeout %s touch %s' % (cmd.storageCheckerTimeout, heartbeat_file_path))
                 touch(False)
@@ -498,14 +489,13 @@ class HaPlugin(kvmagent.KvmAgent):
 
             heartbeat_file_path = os.path.join(mount_path, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
             created_time = time.time()
-            with self.fencer_lock:
-                self.run_filesystem_fencer_timestamp[ps_uuid] = created_time
+            self.setup_fencer(ps_uuid, created_time)
             try:
                 failure = 0
                 url = shell.call("mount | grep -e '%s' | awk '{print $1}'" % mount_path).strip()
                 options = shell.call("mount | grep -e '%s' | awk -F '[()]' '{print $2}'" % mount_path).strip()
 
-                while self.run_filesystem_fencer(ps_uuid, created_time):
+                while self.run_fencer(ps_uuid, created_time):
                     time.sleep(cmd.interval)
                     if touch_heartbeat_file():
                         failure = 0
@@ -649,11 +639,18 @@ class HaPlugin(kvmagent.KvmAgent):
 
         report_to_management_node()
 
-    def run_filesystem_fencer(self, ps_uuid, created_time):
+    def run_fencer(self, ps_uuid, created_time):
         with self.fencer_lock:
-            if not self.run_filesystem_fencer_timestamp[ps_uuid] or self.run_filesystem_fencer_timestamp[ps_uuid] > created_time:
+            if not self.run_fencer_timestamp[ps_uuid] or self.run_fencer_timestamp[ps_uuid] > created_time:
                 return False
 
-            self.run_filesystem_fencer_timestamp[ps_uuid] = created_time
+            self.run_fencer_timestamp[ps_uuid] = created_time
             return True
 
+    def setup_fencer(self, ps_uuid, created_time):
+        with self.fencer_lock:
+            self.run_fencer_timestamp[ps_uuid] = created_time
+
+    def cancel_fencer(self, ps_uuid):
+        with self.fencer_lock:
+            self.run_fencer_timestamp.pop(ps_uuid, None)
