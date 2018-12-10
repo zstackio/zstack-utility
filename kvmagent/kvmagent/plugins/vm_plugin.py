@@ -1697,7 +1697,6 @@ class Vm(object):
               {'name': 'qemu', 'type': 'raw'})
             e(disk, 'source', None, {'dev': volume.installPath})
             e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
-            e(disk, 'shareable', None, )
             #NOTE(weiw): scsi lun not support aio or qos
             return etree.tostring(disk)
 
