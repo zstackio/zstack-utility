@@ -895,27 +895,37 @@ def get_lockspace(vgUuid):
         if o == "":
             raise RetryException
         return o
+
+    out = bash.bash_o("sanlock client gets | awk '{print $2}' | grep %s" % vgUuid).strip()
+    if out != "":
+        return out
     try:
+        logger.debug("retrying get lockspace for vg %s" % vgUuid)
         out = _do_get_lockspace(vgUuid)
     except Exception as e:
         out = bash.bash_o("sanlock client gets | awk '{print $2}' | grep %s" % vgUuid).strip()
-    finally:
-        return out
+
+    return out
 
 
 def examine_lockspace(lockspace):
     @linux.retry(times=3, sleep_time=0.5)
     def _do_examine_lockspace(lockspace):
-        r, _, _ = bash.bash_roe("sanlock client examine -s %s" % lockspace, errorout=True)
+        r, _, _ = bash.bash_roe("sanlock client examine -s %s" % lockspace, errorout=False)
         if r != 0:
             raise RetryException("can not examine lockspace")
         return r
+
+    r, _, _ = bash.bash_roe("sanlock client examine -s %s" % lockspace, errorout=False)
+    if r == 0:
+        return r
     try:
+        logger.debug("retrying examine lockspace for %s" % lockspace)
         r = _do_examine_lockspace(lockspace)
     except Exception as e:
         r, _, _ = bash.bash_roe("sanlock client examine -s %s" % lockspace, errorout=False)
-    finally:
-        return r
+
+    return r
 
 
 def check_stuck_vglk():
@@ -1043,6 +1053,11 @@ def check_vg_status(vgUuid, check_timeout, check_pv=True):
     # 2. check the consistency of volume group
     # 3. check ps missing
     # 4. check vg attr
+    return_code = bash.bash_r("sanlock client status | grep -E 's lvm_%s.*\\:0 ADD'" % vgUuid)
+    if return_code == 0:
+        logger.debug("lockspace for vg %s is adding, skip run fencer" % vgUuid)
+        return True, ""
+
     lock_space = get_lockspace(vgUuid)
     if lock_space == "":
         s = "can not find lockspace of %s" % vgUuid
@@ -1057,11 +1072,11 @@ def check_vg_status(vgUuid, check_timeout, check_pv=True):
     if r is False:
         return r, s
 
-    if examine_lockspace(lock_space) != 0:
-        return False, "examine lockspace %s failed" % lock_space
-
-    if not set_sanlock_event(lock_space):
-        return False, "sanlock set event on lock space %s failed" % lock_space
+    # if examine_lockspace(lock_space) != 0:
+    #     return False, "examine lockspace %s failed" % lock_space
+    #
+    # if set_sanlock_event(lock_space) != 0:
+    #     return False, "sanlock set event on lock space %s failed" % lock_space
 
     if not check_pv:
         return True, ""
@@ -1070,22 +1085,22 @@ def check_vg_status(vgUuid, check_timeout, check_pv=True):
 
 
 def set_sanlock_event(lockspace):
-    """
-
-    :type lockspace: str
-    """
-
     @linux.retry(times=3, sleep_time=0.5)
     def _set_sanlock_event(lockspace):
         host_id = lockspace.split(":")[1]
-        r, _, _ = bash.bash_roe("sanlock client set_event -s %s -i %s -e 1 -d 1" % (lockspace, host_id), errorout=True)
+        r, _, _ = bash.bash_roe("sanlock client set_event -s %s -i %s -e 1 -d 1" % (lockspace, host_id), errorout=False)
         if r != 0:
             raise RetryException("set sanlock event failed")
         return r
+
+    host_id = lockspace.split(":")[1]
+    r, _, _ = bash.bash_roe("sanlock client set_event -s %s -i %s -e 1 -d 1" % (lockspace, host_id), errorout=False)
+    if r == 0:
+        return r
     try:
+        logger.debug("retrying set sanlock event for %s" % lockspace)
         r = _set_sanlock_event(lockspace)
     except Exception as e:
-        host_id = lockspace.split(":")[1]
         r, _, _ = bash.bash_roe("sanlock client set_event -s %s -i %s -e 1 -d 1" % (lockspace, host_id), errorout=False)
     finally:
         return r
