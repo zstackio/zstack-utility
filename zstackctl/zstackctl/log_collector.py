@@ -184,7 +184,7 @@ class CollectFromYml(object):
             cmd = cmd + '| awk -F \'|\' \'BEGIN{size=0;} \
                    {size = size + $2/1024/1024;}  END{size=sprintf("%.1f", size); print size\"M\";}\''
         else:
-            cmd = cmd + ' | awk -F \'|\' \'{print $1}\'| xargs -I {} /bin/cp -rf {} %s' % collect_dir
+            cmd = cmd + ' | awk -F \'|\' \'{print $1}\'| xargs -I {} /bin/cp -rpf {} %s' % collect_dir
         return cmd
 
     def build_collect_cmd_old(self, dir_value, file_value, collect_dir):
@@ -323,21 +323,21 @@ class CollectFromYml(object):
         if status != 0:
             error("Generate tarball failed: %s " % output)
 
-    def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info):
-        command = "cd %s && tar zcf ../collect-log.tar.gz . --ignore-failed-read --warning=no-file-changed || true" % tmp_log_dir
+    def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info, type):
+        command = "cd %s && tar zcf ../%s-collect-log.tar.gz . --ignore-failed-read --warning=no-file-changed || true" % (tmp_log_dir, type)
         run_remote_command(command, host_post_info)
         fetch_arg = FetchArg()
-        fetch_arg.src = "%s../collect-log.tar.gz " % tmp_log_dir
+        fetch_arg.src = "%s../%s-collect-log.tar.gz " % (tmp_log_dir, type)
         fetch_arg.dest = local_collect_dir
         fetch_arg.args = "fail_on_missing=yes flat=yes"
         fetch(fetch_arg, host_post_info)
-        command = "rm -rf %s/../collect-log.tar.gz %s" % (tmp_log_dir, tmp_log_dir)
+        command = "rm -rf %s/../%s-collect-log.tar.gz %s" % (tmp_log_dir, type, tmp_log_dir)
         run_remote_command(command, host_post_info)
-        (status, output) = commands.getstatusoutput("cd %s && tar zxf collect-log.tar.gz" % local_collect_dir)
+        (status, output) = commands.getstatusoutput("cd %s && tar zxf %s-collect-log.tar.gz" % (local_collect_dir, type))
         if status != 0:
-            warn("Uncompress %s/collect-log.tar.gz meet problem: %s" % (local_collect_dir, output))
+            warn("Uncompress %s/%s-collect-log.tar.gz meet problem: %s" % (local_collect_dir, type, output))
 
-        (status, output) = commands.getstatusoutput("rm -f %s/collect-log.tar.gz" % local_collect_dir)
+        (status, output) = commands.getstatusoutput("rm -f %s/%s-collect-log.tar.gz" % (local_collect_dir, type))
 
     def add_collect_thread(self, type, params):
         if type == 'host':
@@ -596,7 +596,7 @@ class CollectFromYml(object):
                         command = 'rm -rf %s' % tmp_log_dir
                         run_remote_command(command, host_post_info)
                         return 0
-                    self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
+                    self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info, type)
             else:
                 warn("%s %s is unreachable!" % (type, host_post_info.host))
                 self.add_fail_count(len(log_list), "%s\t%s\t%s" % (type, host_post_info.host, 'unreachable'),
