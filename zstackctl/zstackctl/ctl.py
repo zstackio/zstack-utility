@@ -1812,6 +1812,13 @@ class StartCmd(Command):
             cmd = ShellCmd("service zstack-consoleproxy restart")
             cmd(False)
 
+        def check_mn_ip():
+            mn_ip = ctl.read_property('management.server.ip')
+            if not mn_ip:
+                error("management.server.ip not configured")
+            if 0 != shell_return("ip a | grep 'inet ' | grep -w '%s'" % mn_ip):
+                error("management.server.ip[%s] is not found on any device" % mn_ip)
+
         def check_chrony():
             if ctl.read_property('syncNodeTime') == "false":
                 return
@@ -1900,7 +1907,8 @@ class StartCmd(Command):
                 fd.write('export CATALINA_OPTS=" %s"' % ' '.join(catalina_opts))
 
         def start_mgmt_node():
-            shell('sudo -u zstack sh %s -DappName=zstack' % os.path.join(ctl.zstack_home, self.START_SCRIPT))
+            log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
+            shell('chown zstack:zstack %s || true; sudo -u zstack sh %s -DappName=zstack' % (log_path, os.path.join(ctl.zstack_home, self.START_SCRIPT)))
 
             info("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 
@@ -1964,6 +1972,7 @@ class StartCmd(Command):
         check_8080()
         check_9090()
         check_msyql()
+        check_mn_ip()
         check_chrony()
         restart_console_proxy()
         prepare_qemu_kvm_repo()
