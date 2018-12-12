@@ -71,3 +71,22 @@ class PeriodicTimer(object):
         
 def timer(interval, function, args=[], kwargs={}, stop_on_exception=True):
     return PeriodicTimer(interval, function, args, kwargs, stop_on_exception)
+
+class AtomicInteger(object):
+    def __init__(self, value=0):
+        self._value = value
+        self._lock = threading.Lock()
+
+    def inc(self):
+        with self._lock:
+            self._value += 1
+            return self._value
+
+    def dec(self):
+        with self._lock:
+            self._value -= 1
+            return self._value
+
+    def get(self):
+        with self._lock:
+            return self._value

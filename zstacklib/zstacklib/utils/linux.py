@@ -1609,3 +1609,7 @@ def read_file(path):
         return None
     with open(path, 'r') as fd:
         return fd.read()
+
+def get_libvirtd_pid():
+    with open('/var/run/libvirtd.pid') as f:
+        return int(f.read())
