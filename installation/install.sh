@@ -787,8 +787,10 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     ia_check_ip_hijack
 
     #stop zstack before change zstack home dir
+    current_zstack_home=`echo $ZSTACK_HOME | awk -F '/' '{printf("%s/%s/%s/%s",$1,$2,$3,$4)}'`
     which zstack-ctl >/dev/null 2>&1
-    if [ $? -eq 0 ];then
+    if [ $? -eq 0 ] && [ $current_zstack_home != $ZSTACK_INSTALL_ROOT ];then
+        echo "\nzstack host changed, before: $current_zstack_home, now: $ZSTACK_INSTALL_ROOT, stopping zstack"
         zstack-ctl stop >/dev/null 2>&1
     fi
     #add user: zstack and add sudo permission for it.
