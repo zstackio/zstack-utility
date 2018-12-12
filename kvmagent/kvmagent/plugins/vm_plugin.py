@@ -2,7 +2,6 @@
 @author: Frank
 '''
 import Queue
-import functools
 import os.path
 import tempfile
 import threading
@@ -673,7 +672,7 @@ class LibvirtAutoReconnect(object):
 
         logger.warn("the libvirt connection is broken, there is no safeway to auto-reconnect without fd leak, we"
                     " will ask the mgmt server to reconnect us after self quit")
-        VmPlugin.queue.put("exit")
+        _stop_world()
 
         # old_conn = LibvirtAutoReconnect.conn
         # LibvirtAutoReconnect.conn = libvirt.open('qemu:///system')
@@ -3502,6 +3501,10 @@ class Vm(object):
         if qos.inboundBandwidth:
             e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 1024 / 8)})
 
+def _stop_world():
+    http.AsyncUirHandler.STOP_WORLD = True
+    VmPlugin.queue.put("exit")
+
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
     KVM_STOP_VM_PATH = "/vm/stop"
@@ -5050,6 +5053,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 try:
                     self.queue.get(True)
 
+                    while http.AsyncUirHandler.HANDLER_COUNTER.get() != 0:
+                        time.sleep(0.1)
+
                     # the libvirt has been stopped or restarted
                     # to prevent fd leak caused by broken libvirt connection
                     # we have to ask mgmt server to reboot the agent
@@ -5078,10 +5084,11 @@ class VmPlugin(kvmagent.KvmAgent):
         @thread.AsyncThread
         def monitor_libvirt():
             while True:
-                if shell.run('pid=$(cat /var/run/libvirtd.pid); ps -p $pid > /dev/null') != 0:
+                pid = linux.get_libvirtd_pid()
+                if not linux.process_exists(pid):
                     logger.warn(
                         "cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
-                    self.queue.put("exit")
+                    _stop_world()
 
                 time.sleep(20)
 
