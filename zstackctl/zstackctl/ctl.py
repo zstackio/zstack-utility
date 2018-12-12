@@ -4787,6 +4787,10 @@ class CollectLogCmd(Command):
         parser.add_argument('--full', help='collect full management logs and host logs', action="store_true", default=False)
         parser.add_argument('--host', help='only collect management log and specific host log')
 
+    def get_db(self, collect_dir):
+        command = "cp `zstack-ctl dump_mysql | awk '{ print $10 }'` %s" % collect_dir
+        shell(command, False)
+
     def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info):
         command = "cd %s && tar zcf ../collect-log.tar.gz . --ignore-failed-read --warning=no-file-changed || true" % tmp_log_dir
         run_remote_command(command, host_post_info)
@@ -5280,7 +5284,7 @@ class CollectLogCmd(Command):
             self.get_vrouter_log(self.generate_host_post_info(vrouter_ip, "vrouter"),collect_dir)
 
         if args.db is True:
-            get_db(collect_dir)
+            self.get_db(collect_dir)
         if args.mn_only is not True:
             host_vo = get_host_list("HostVO")
 
