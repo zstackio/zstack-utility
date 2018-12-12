@@ -601,6 +601,7 @@ class HaPlugin(kvmagent.KvmAgent):
             cmd = ReportSelfFencerCmd()
             cmd.psUuids = ps_uuids
             cmd.hostUuid = host_uuid
+            cmd.vmUuidsString = vm_uuids_string
             cmd.reason = "primary storage[uuids:%s] on host[uuid:%s] heartbeat fail, self fencer has been triggered" % (ps_uuids, host_uuid)
 
             logger.debug(
