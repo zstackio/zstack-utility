@@ -101,6 +101,9 @@ class RawUriHandler(object):
             return str(e)
 
 class AsyncUirHandler(SyncUriHandler):
+    HANDLER_COUNTER = thread.AtomicInteger(0)
+    STOP_WORLD = False
+
     def __init__(self, uri_obj):
         super(AsyncUirHandler, self).__init__(uri_obj)
     
@@ -115,8 +118,11 @@ class AsyncUirHandler(SyncUriHandler):
             content = traceback.format_exc()
             logger.warn('[WARN]: %s]' % content)
             headers[ERROR_CODE] = content
-            
-        json_post(callback_uri, content, headers)
+
+        try:
+            json_post(callback_uri, content, headers)
+        finally:
+            self.HANDLER_COUNTER.dec()
         
     def _get_callback_uri(self, req):
         callback_uri = None
@@ -132,11 +138,17 @@ class AsyncUirHandler(SyncUriHandler):
         
     @cherrypy.expose
     def index(self):
+        if self.STOP_WORLD:
+            err = 'kvmagent is stopping'
+            logger.warn(err)
+            raise cherrypy.HTTPError(400, err)
+
         if not cherrypy.request.headers.has_key(TASK_UUID):
             err = 'taskUuid missing in request header'
             logger.warn(err)
             raise cherrypy.HTTPError(400, err)
-        
+
+        self.HANDLER_COUNTER.inc()
         task_uuid = cherrypy.request.headers[TASK_UUID]
         req = Request.from_cherrypy_request(cherrypy.request)
         logger.debug('async http call[task uuid: %s], body: %s' % (task_uuid, req.body))
