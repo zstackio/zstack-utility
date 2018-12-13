@@ -261,7 +261,7 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
                  "-o 'ProxyCommand pv -q -L %sk | nc %s %s' "
                  "-o StrictHostKeyChecking=no "
                  "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
-                     password, writebandwidth / 1024, hostname, port, port))
+                     password, writebandwidth / 1024 / 8, hostname, port, port))
 
     os.close(fd)
 
