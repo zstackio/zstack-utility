@@ -1509,30 +1509,32 @@ uz_upgrade_tomcat(){
     ZSTACK_HOME=${ZSTACK_HOME:-"/usr/local/zstack/apache-tomcat/webapps/zstack/"}
     TOMCAT_PATH=${ZSTACK_HOME%/apache-tomcat*}
 
-    local TOMCAT_FILE=$(basename $upgrade_folder/apache-tomcat-*.zip)
-    local TOMCAT_NAME=${TOMCAT_FILE%.*}
+    local TOMCAT_FILE_OLD=$(basename $TOMCAT_PATH/apache-tomcat-*.zip)
+    local TOMCAT_FILE_NEW=$(basename $upgrade_folder/apache-tomcat-*.zip)
+    local TOMCAT_NAME_OLD=${TOMCAT_FILE_OLD%.*}
+    local TOMCAT_NAME_NEW=${TOMCAT_FILE_NEW%.*}
 
     cd $upgrade_folder
-    /bin/mv $TOMCAT_PATH/apache-tomcat/{bin/setenv.sh,webapps} $upgrade_folder/
-    rm -rf $TOMCAT_PATH/{apache-tomcat-*.zip,apache-tomcat-*,apache-tomcat,VERSION}
-    unzip -o -d $TOMCAT_PATH $TOMCAT_NAME.zip >>$ZSTACK_INSTALL_LOG 2>&1
+    /bin/cp $TOMCAT_NAME_NEW.zip $TOMCAT_PATH
+    unzip -o -d $TOMCAT_PATH $TOMCAT_NAME_NEW.zip >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
-       fail "failed to unzip Tomcat package: $upgrade_folder/$TOMCAT_NAME.zip."
+       fail "failed to unzip Tomcat package: $upgrade_folder/$TOMCAT_NAME_NEW.zip."
     fi
 
-    /bin/cp $TOMCAT_NAME.zip $TOMCAT_PATH
-    rm -rf $TOMCAT_PATH/$TOMCAT_NAME/webapps/*
-    unzip -o -d $TOMCAT_PATH/$TOMCAT_NAME/webapps libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
+    cd $TOMCAT_PATH
+    rm -rf $TOMCAT_NAME_NEW/{webapps,logs}/*
+    /bin/mv $TOMCAT_NAME_OLD/logs/* $TOMCAT_NAME_NEW/logs/
+    /bin/mv $TOMCAT_NAME_OLD/bin/setenv.sh $TOMCAT_NAME_NEW/bin/
+    /bin/mv $TOMCAT_NAME_OLD/webapps/zstack $TOMCAT_NAME_NEW/webapps/
+    unzip -o -d $TOMCAT_NAME_NEW/webapps $upgrade_folder/libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to unzip Tomcat package: $upgrade_folder/libs/tomcat_root_app.zip."
     fi
 
-    cd $TOMCAT_PATH
-    ln -sf $TOMCAT_NAME apache-tomcat
+    rm -rf $TOMCAT_NAME_OLD.zip $TOMCAT_NAME_OLD apache-tomcat VERSION
+    ln -sf $TOMCAT_NAME_NEW apache-tomcat
     ln -sf apache-tomcat/webapps/zstack/VERSION VERSION
-    /bin/mv $upgrade_folder/setenv.sh apache-tomcat/bin/
-    /bin/mv $upgrade_folder/webapps/zstack apache-tomcat/webapps/
-    chown -R zstack:zstack $TOMCAT_NAME.zip $TOMCAT_NAME apache-tomcat VERSION
+    chown -R zstack:zstack $TOMCAT_NAME_NEW.zip $TOMCAT_NAME_NEW apache-tomcat VERSION
     cd $upgrade_folder
 
     chmod a+x $TOMCAT_PATH/apache-tomcat/bin/*
