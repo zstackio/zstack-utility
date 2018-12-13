@@ -1515,35 +1515,37 @@ uz_upgrade_tomcat(){
     local TOMCAT_NAME_NEW=${TOMCAT_FILE_NEW%.*}
 
     cd $upgrade_folder
-    /bin/cp $TOMCAT_NAME_NEW.zip $TOMCAT_PATH
-    unzip -o -d $TOMCAT_PATH $TOMCAT_NAME_NEW.zip >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-       fail "failed to unzip Tomcat package: $upgrade_folder/$TOMCAT_NAME_NEW.zip."
+    if [ "$TOMCAT_NAME_OLD" != "$TOMCAT_NAME_NEW" ]; then
+        /bin/cp $TOMCAT_NAME_NEW.zip $TOMCAT_PATH
+        unzip -o -d $TOMCAT_PATH $TOMCAT_NAME_NEW.zip >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -ne 0 ];then
+           fail "failed to unzip Tomcat package: $upgrade_folder/$TOMCAT_NAME_NEW.zip."
+        fi
+
+        cd $TOMCAT_PATH
+        rm -rf $TOMCAT_NAME_NEW/{webapps,logs}/*
+        /bin/mv $TOMCAT_NAME_OLD/logs/* $TOMCAT_NAME_NEW/logs/
+        /bin/mv $TOMCAT_NAME_OLD/bin/setenv.sh $TOMCAT_NAME_NEW/bin/
+        /bin/mv $TOMCAT_NAME_OLD/webapps/zstack $TOMCAT_NAME_NEW/webapps/
+        unzip -o -d $TOMCAT_NAME_NEW/webapps $upgrade_folder/libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -ne 0 ];then
+           fail "failed to unzip Tomcat package: $upgrade_folder/libs/tomcat_root_app.zip."
+        fi
+
+        rm -rf $TOMCAT_NAME_OLD.zip $TOMCAT_NAME_OLD apache-tomcat VERSION
+        ln -sf $TOMCAT_NAME_NEW apache-tomcat
+        ln -sf apache-tomcat/webapps/zstack/VERSION VERSION
+        chown -R zstack:zstack $TOMCAT_NAME_NEW.zip $TOMCAT_NAME_NEW apache-tomcat VERSION
+        cd $upgrade_folder
+
+        chmod a+x $TOMCAT_PATH/apache-tomcat/bin/*
+        if [ $? -ne 0 ];then
+           fail "chmod failed in: $TOMCAT_PATH/apache-tomcat/bin/*."
+        fi
+
+        #If tomcat use the default conf update it
+        set_tomcat_config
     fi
-
-    cd $TOMCAT_PATH
-    rm -rf $TOMCAT_NAME_NEW/{webapps,logs}/*
-    /bin/mv $TOMCAT_NAME_OLD/logs/* $TOMCAT_NAME_NEW/logs/
-    /bin/mv $TOMCAT_NAME_OLD/bin/setenv.sh $TOMCAT_NAME_NEW/bin/
-    /bin/mv $TOMCAT_NAME_OLD/webapps/zstack $TOMCAT_NAME_NEW/webapps/
-    unzip -o -d $TOMCAT_NAME_NEW/webapps $upgrade_folder/libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -ne 0 ];then
-       fail "failed to unzip Tomcat package: $upgrade_folder/libs/tomcat_root_app.zip."
-    fi
-
-    rm -rf $TOMCAT_NAME_OLD.zip $TOMCAT_NAME_OLD apache-tomcat VERSION
-    ln -sf $TOMCAT_NAME_NEW apache-tomcat
-    ln -sf apache-tomcat/webapps/zstack/VERSION VERSION
-    chown -R zstack:zstack $TOMCAT_NAME_NEW.zip $TOMCAT_NAME_NEW apache-tomcat VERSION
-    cd $upgrade_folder
-
-    chmod a+x $TOMCAT_PATH/apache-tomcat/bin/*
-    if [ $? -ne 0 ];then
-       fail "chmod failed in: $TOMCAT_PATH/apache-tomcat/bin/*."
-    fi
-
-    #If tomcat use the default conf update it
-    set_tomcat_config
 
     pass
 }
