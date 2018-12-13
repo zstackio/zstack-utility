@@ -3322,7 +3322,6 @@ class Vm(object):
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
-                    e(disk, 'shareable', None, )
 
         def make_pci_device(addresses):
             devices = elements['devices']
