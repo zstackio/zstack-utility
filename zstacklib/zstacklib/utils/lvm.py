@@ -290,11 +290,26 @@ def config_lvm_by_sed(keyword, entry, files):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
     for file in files:
-        cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s/%s" %
+        cmd = shell.ShellCmd("sed -i 's/.*\\b%s.*/%s/g' %s/%s" %
                              (keyword, entry, LVM_CONFIG_PATH, file))
         cmd(is_exception=False)
     cmd = shell.ShellCmd("sync")
     cmd(is_exception=False)
+
+
+@bash.in_bash
+def config_lvm_filter(files):
+    if not os.path.exists(LVM_CONFIG_PATH):
+        raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
+
+    vgs = bash.bash_o("vgs --nolocking -oname --noheading").splitlines()
+    filter_str = 'filter=["r|\\/dev\\/cdrom|"'
+    for vg in vgs:
+        filter_str += ', "r\\/dev\\/mapper\\/%s.*\\/"' % vg.strip()
+    filter_str += ']'
+
+    for file in files:
+        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, file))
 
 
 def config_sanlock_by_sed(keyword, entry):
@@ -439,7 +454,7 @@ def drop_vg_lock(vgUuid):
 
 @bash.in_bash
 def get_vg_lvm_uuid(vgUuid):
-    return bash.bash_o("vgs --nolocking --noheading --readonly -ouuid %s" % vgUuid).strip()
+    return bash.bash_o("vgs --nolocking --noheading -ouuid %s" % vgUuid).strip()
 
 
 def get_running_host_id(vgUuid):
@@ -515,7 +530,7 @@ def add_pv(vg_uuid, disk_path, metadata_size):
 
 
 def get_vg_size(vgUuid, raise_exception=True):
-    cmd = shell.ShellCmd("vgs --nolocking --readonly %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
+    cmd = shell.ShellCmd("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
     cmd(is_exception=raise_exception)
     if cmd.return_code != 0:
         return None, None
@@ -531,7 +546,7 @@ def has_lv_tag(path, tag):
     if tag == "":
         logger.debug("check tag is empty, return false")
         return False
-    o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings --readonly 2>/dev/null | wc -l" % (tag, path))
+    o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings 2>/dev/null | wc -l" % (tag, path))
     return o.strip() == '1'
 
 
@@ -602,7 +617,7 @@ def dd_zero(path):
 
 
 def get_lv_size(path):
-    cmd = shell.ShellCmd("lvs --nolocking --readonly --noheading -osize --units b %s" % path)
+    cmd = shell.ShellCmd("lvs --nolocking --noheading -osize --units b %s" % path)
     cmd(is_exception=True)
     return cmd.stdout.strip().strip("B")
 
@@ -684,7 +699,7 @@ def remove_device_map_for_vg(vgUuid):
 
 @bash.in_bash
 def lv_exists(path):
-    r = bash.bash_r("lvs --nolocking --readonly %s" % path)
+    r = bash.bash_r("lvs --nolocking %s" % path)
     return r == 0
 
 
@@ -696,7 +711,7 @@ def vg_exists(vgUuid):
 
 
 def lv_uuid(path):
-    cmd = shell.ShellCmd("lvs --nolocking --readonly --noheadings %s -ouuid" % path)
+    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -ouuid" % path)
     cmd(is_exception=False)
     return cmd.stdout.strip()
 
@@ -986,7 +1001,7 @@ def check_pv_status(vgUuid, timeout):
     # if r is False:
     #     return r, s
 
-    health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking --readonly --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
+    health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
     if health == "":
         logger.warn("can not get proper attr of vg, return false")
         return False, "primary storage %s attr get error, expect 'wz--ns' got %s" % (vgUuid, health)
@@ -1265,7 +1280,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
 
 @bash.in_bash
 def remove_partial_lv_dm(vgUuid):
-    o = bash.bash_o("lvs --noheading --nolocking --readonly %s -opath,tags -Slv_health_status=partial | grep %s" % (vgUuid, COMMON_TAG)).strip().splitlines()
+    o = bash.bash_o("lvs --noheading --nolocking %s -opath,tags -Slv_health_status=partial | grep %s" % (vgUuid, COMMON_TAG)).strip().splitlines()
     if len(o) == 0:
         return
 
