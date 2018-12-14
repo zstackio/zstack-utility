@@ -282,7 +282,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid, raise_exception = True):
-            cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code != 0 and raise_exception:
                 raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
@@ -324,16 +324,21 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = ConnectRsp()
         diskPaths = set()
 
-        def config_lvm(host_id):
+        def config_lvm(host_id, enableLvmetad=False):
             lvm.backup_lvm_config()
             lvm.reset_lvm_conf_default()
             lvm.config_lvm_by_sed("use_lvmlockd", "use_lvmlockd=1", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=0", ["lvm.conf", "lvmlocal.conf"])
+            if enableLvmetad:
+                lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=1", ["lvm.conf", "lvmlocal.conf"])
+            else:
+                lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=0", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("host_id", "host_id=%s" % host_id, ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("sanlock_lv_extend", "sanlock_lv_extend=%s" % DEFAULT_SANLOCK_LV_SIZE, ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("lvmlockd_lock_retries", "lvmlockd_lock_retries=6", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("issue_discards", "issue_discards=1", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=65536", ["lvm.conf", "lvmlocal.conf"])
+
+            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"])
 
             lvm.config_sanlock_by_sed("sh_retries", "sh_retries=20")
             lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
@@ -344,7 +349,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], bash.bash_o("hostname").strip()[:20])
             lvm.config_sanlock_by_sed("our_host_name", "our_host_name=%s" % sanlock_hostname)
 
-        config_lvm(cmd.hostId)
+        config_lvm(cmd.hostId, cmd.enableLvmetad)
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
             diskPaths.add(disk.get_path())
@@ -380,7 +385,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid):
-            cmd = shell.ShellCmd("vgs %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 return True
@@ -425,7 +430,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def add_disk(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         disk = CheckDisk(cmd.diskUuid)
-        command = shell.ShellCmd("vgs %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
+        command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
