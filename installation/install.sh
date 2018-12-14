@@ -2994,6 +2994,29 @@ echo_chrony_server_warning_if_need()
     fi
 }
 
+enforce_history() {
+mkdir -p /var/log/history.d/
+cat << 'EOF' > /etc/logrotate.d/history
+/var/log/history.d/history {
+    create 0666 root root
+    monthly
+    rotate 6
+    create
+    dateext
+    compress
+    minsize 1M
+}
+EOF
+cat << 'EOF' > /etc/profile.d/history.sh
+shopt -s histappend
+HISTTIMEFORMAT='%F %T '
+HISTSIZE="5000"
+HISTFILESIZE=5000
+PROMPT_COMMAND='(umask 000; msg=$(history 1 | { read x y; echo $y; }); echo [$(who am i | awk "{print \$(NF-2),\$(NF-1),\$NF}")] [$(whoami)@`pwd`]" $msg" >>/var/log/history.d/history)'
+export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND
+EOF
+}
+
 # CHECK_REPO_VERSION
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     echo_title "Check Repo Version"
@@ -3012,6 +3035,9 @@ if [ ! -z $HTTP_PROXY ]; then
     export http_proxy=$HTTP_PROXY
     export https_proxy=$HTTP_PROXY
 fi
+
+# enforce history
+enforce_history
 
 if [ x"$UPGRADE" = x'y' ]; then
     if [ -f $UPGRADE_LOCK ]; then
