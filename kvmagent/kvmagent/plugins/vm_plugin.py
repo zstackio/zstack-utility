@@ -2981,8 +2981,8 @@ class Vm(object):
                     raise kvmagent.KvmError(err)
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
-                if v.useVirtioSCSI:
-                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_ids.pop()]
+                # if v.useVirtioSCSI:
+                #    dev_letter = Vm.DEVICE_LETTERS[scsi_device_ids.pop()]
 
                 if v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
