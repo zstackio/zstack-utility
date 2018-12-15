@@ -108,5 +108,5 @@ class VirtualRouterPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def delete_bootstrap_iso(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        shell.ShellCmd('rm -f %s' % cmd.isoPath)()
+        linux.rm_file_force(cmd.isoPath)
         return jsonobject.dumps(DeleteVirtualRouterBootstrapIsoRsp())

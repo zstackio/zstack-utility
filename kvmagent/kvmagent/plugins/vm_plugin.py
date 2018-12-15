@@ -1449,7 +1449,7 @@ class Vm(object):
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
                 if chan.type_ == 'unix':
                     path = chan.source.path_
-                    shell.call('rm -f %s' % path)
+                    linux.rm_file_force(path)
 
         def loop_shutdown(_):
             try:
