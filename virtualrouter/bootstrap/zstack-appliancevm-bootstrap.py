@@ -5,6 +5,7 @@ This file must be self-contained
 '''
 
 import os
+import os.path
 import subprocess
 import sys
 import logging
@@ -289,7 +290,7 @@ class VRBootStrap(object):
         with open(auth_file, 'w') as fd:
             fd.write(pub_key)
 
-        shell('chmod 0600 {0}'.format(auth_file))
+        os.chmod(auth_file, 0600)
 
     def wait_for_iptables_come_up(self):
         def test_iptables(variable):
@@ -331,7 +332,8 @@ class VRBootStrap(object):
             shell('service sshd restart')
 
             self.configure_public_key(public_key_info)
-            shell('rm -f %s' % self.ERROR_LOG)
+            if os.path.exists(self.ERROR_LOG):
+                os.remove(self.ERROR_LOG)
         except Exception as e:
             logger.warn(traceback.format_exc())
 

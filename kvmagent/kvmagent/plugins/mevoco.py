@@ -951,7 +951,7 @@ mimetype.assign = (
     def release_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName, 'html', cmd.vmIp)
-        shell.call('rm -rf %s' % html_folder)
+        linux.rm_dir_force(html_folder)
         return jsonobject.dumps(ReleaseUserdataRsp())
 
     def _make_conf_path(self, namespace_name):

@@ -243,8 +243,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             cleanUpPath = os.path.join(cmd.storagePath, cmd.srcVmUuid)
             shell.run("pkill -9 -f '%s'" % cleanUpPath)
 
-        cmdstr = "/bin/rm -rf " + cleanUpPath
-        shell.run(cmdstr)
+        linux.rm_dir_force(cleanUpPath)
         return jsonobject.dumps(rsp)
 
     @in_bash
@@ -255,7 +254,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         clean_up_path = os.path.join(cmd.storagePath, cmd.srcVmUuid)
         shell.run("pkill -9 -f '%s'" % clean_up_path)
-        shell.run("/bin/rm -rf " + clean_up_path)
+        linux.rm_dir_force(clean_up_path)
         return jsonobject.dumps(rsp)
 
     @in_bash

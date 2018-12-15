@@ -7,6 +7,7 @@ import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
+from zstacklib.utils import linux
 from zstacklib.utils import shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
@@ -632,7 +633,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        shell.call('rm -rf %s' % cmd.path)
+        linux.rm_dir_checked(cmd.path)
+
         logger.debug('successfully delete %s' % cmd.path)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
