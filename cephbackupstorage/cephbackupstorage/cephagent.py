@@ -12,6 +12,7 @@ import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import lock
+from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
@@ -490,14 +491,14 @@ class CephAgent(object):
 
     def get_metadata_file(self, bs_uuid, file_name):
         local_file_name = "/tmp/%s" % file_name
-        bash_ro("rm -rf %s" % local_file_name)
+        linux.rm_file_force(local_file_name)
         bash_ro("rados -p bak-t-%s get %s %s" % (bs_uuid, file_name, local_file_name))
 
     def put_metadata_file(self, bs_uuid, file_name):
         local_file_name = "/tmp/%s" % file_name
         ret, output = bash_ro("rados -p bak-t-%s put %s %s" % (bs_uuid, file_name, local_file_name))
         if ret == 0:
-            bash_ro("rm -rf %s" % local_file_name)
+            linux.rm_file_force(local_file_name)
 
     @in_bash
     @replyerror

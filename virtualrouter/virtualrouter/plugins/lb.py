@@ -52,11 +52,11 @@ listen {{listenerUuid}}
 
         pid_file = self._make_pid_file_path(to.lbUuid, to.listenerUuid)
         if not os.path.exists(pid_file):
-            shell.call('touch %s' % pid_file)
+            linux.touch_file(pid_file)
 
         @rollbackable
         def _0():
-            shell.call('rm -f %s' % pid_file)
+            linux.rm_file_force(pid_file)
         _0()
 
         conf_file = self._make_conf_file_path(to.lbUuid, to.listenerUuid)
@@ -110,8 +110,8 @@ listen {{listenerUuid}}
         if pid:
             shell.call('kill %s' % pid)
 
-        shell.call('rm -f %s' % pid_file_path)
-        shell.call('rm -f %s' % self._make_conf_file_path(to.lbUuid, to.listenerUuid))
+        linux.rm_file_force(pid_file_path)
+        linux.rm_file_force(self._make_conf_file_path(to.lbUuid, to.listenerUuid))
 
         ipt = iptables.from_iptables_save()
         ipt.delete_chain(self._make_chain_name(to))

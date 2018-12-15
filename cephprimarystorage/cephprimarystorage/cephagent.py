@@ -16,6 +16,7 @@ from zstacklib.utils.plugin import completetask
 import os
 from zstacklib.utils import shell
 from zstacklib.utils import plugin
+from zstacklib.utils import linux
 from zstacklib.utils import ceph
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote

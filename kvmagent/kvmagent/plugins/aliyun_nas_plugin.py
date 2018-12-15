@@ -8,6 +8,7 @@ from zstacklib.utils.bash import *
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.utils import linux
 from zstacklib.utils import shell
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -266,7 +267,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         elif touch.return_code != 0:
             touch.raise_error()
 
-        shell.call('rm -f %s' % test_file)
+        linux.rm_file_force(test_file)
         return jsonobject.dumps(AliyunNasResponse())
 
     @kvmagent.replyerror
@@ -381,7 +382,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
 
     def delNasBits(self, folder, path):
         if folder:
-            shell.call('rm -rf %s' % path)
+            linux.rm_dir_checked(path)
         else:
             kvmagent.deleteImage(path)
         # pdir = os.path.dirname(path)
