@@ -595,7 +595,7 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
-    bash.bash_errorout("lvcreate -an --addtag %s --size %sb --name %s %s" %
+    bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
                          (tag, calcLvReservedSize(size), lvName, vgName))
     if not lv_exists(path):
         raise Exception("can not find lv %s after create", path)
