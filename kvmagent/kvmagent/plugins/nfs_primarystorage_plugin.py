@@ -373,7 +373,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         elif touch.return_code != 0:
             touch.raise_error()
 
-        shell.call('rm -f %s' % test_file)
+        linux.rm_file_force(test_file)
         return jsonobject.dumps(NfsResponse())
 
     @kvmagent.replyerror
@@ -547,7 +547,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = DeleteResponse()
 
         if cmd.folder:
-            shell.call('rm -rf %s' % cmd.installPath)
+            linux.rm_dir_checked(cmd.installPath)
         else:
             kvmagent.deleteImage(cmd.installPath)
         logger.debug('successfully delete %s' % cmd.installPath)

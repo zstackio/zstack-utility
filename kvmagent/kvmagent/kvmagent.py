@@ -140,13 +140,13 @@ def replyerror(func):
 
 
 def deleteImage(path):
-     shell.call('rm -f %s' % path)
+     linux.rm_file_checked(path)
      logger.debug('successfully delete %s' % path)
      if (path.endswith('.qcow2')):
         imfFiles = [".imf",".imf2"]
         for f in imfFiles:
             filePath = path.replace(".qcow2", f)
-            shell.call('rm -f %s' % filePath)
+            linux.rm_file_force(filePath)
      pdir = os.path.dirname(path)
      linux.rmdir_if_empty(pdir)
 

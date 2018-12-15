@@ -176,7 +176,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                 # check if hosts in the same cluster mount the same path but different storages.
                 rsp.isFirst = True
                 for file_uuid in file_uuids:
-                    shell.call("rm -rf %s" % os.path.join(id_dir, file_uuid))
+                    linux.rm_file_force(os.path.join(id_dir, file_uuid))
                 shell.call("touch %s && sync" % self.id_files[uuid])
 
         rsp = ConnectRsp()
@@ -208,7 +208,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         if cmd.folder:
-            shell.call('rm -rf %s' % cmd.path)
+            linux.rm_dir_checked(cmd.path)
         else:
             kvmagent.deleteImage(cmd.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)

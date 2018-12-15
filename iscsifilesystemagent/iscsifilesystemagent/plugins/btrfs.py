@@ -164,7 +164,7 @@ class BtrfsPlugin(plugin.Plugin):
 
     def _delete_target(self, target_name, conf_uuid):
         conf_file = os.path.join('/etc/tgt/conf.d/%s.conf' % conf_uuid)
-        shell.call('rm -f %s' % conf_file)
+        linux.rm_file_force(conf_file)
 
         output = shell.call('tgt-admin --show')
         if target_name not in output:

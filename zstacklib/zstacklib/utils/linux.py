@@ -10,6 +10,7 @@ import datetime
 import time
 import tempfile
 import traceback
+import shutil
 import struct
 import netaddr
 import functools
@@ -70,11 +71,39 @@ def retry(times=3, sleep_time=3):
 def get_current_timestamp():
     return time.mktime(datetime.datetime.now().timetuple())
 
+def exception_on_opened_file(f):
+    s = shell.call("timeout 10 lsof -Fc %s" % f).splitlines()
+    if s:
+        raise Exception('file %s is still opened: %s' % (f, ' '.join(s)))
+
+def exception_on_opened_dir(d):
+    s = shell.call("timeout 10 lsof -Fc +D %s" % d).splitlines()
+    if s:
+        raise Exception('dir %s is still opened: %s' % (d, ' '.join(s)))
+
 def rm_file_force(fpath):
     try:
         os.remove(fpath)
     except:
         pass
+
+def rm_dir_force(dpath):
+    if os.path.exists(dpath):
+        shutil.rmtree(dpath)
+
+def rm_file_checked(fpath):
+    if not os.path.exists(fpath):
+        return
+
+    exception_on_opened_file(fpath)
+    os.remove(fpath)
+
+def rm_dir_checked(dpath):
+    if not os.path.exists(dpath):
+        return
+
+    exception_on_opened_dir(dpath)
+    shutil.rmtree(dpath)
 
 def process_exists(pid):
     return os.path.exists("/proc/" + str(pid))
@@ -1603,6 +1632,10 @@ def linux_lsof(file):
     cmd = shell.ShellCmd("lsof %s | grep -v '^COMMAND'" % file)
     cmd(is_exception=False)
     return cmd.stdout
+
+def touch_file(fpath):
+    with open(fpath, 'a'):
+        os.utime(fpath, None)
 
 def read_file(path):
     if not os.path.exists(path):

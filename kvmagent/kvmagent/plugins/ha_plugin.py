@@ -209,7 +209,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         failure += 1
                     else:
                         failure = 0
-                        shell.call('rm -f %s' % test_file)
+                        linux.rm_file_force(test_file)
                         continue
 
                     if failure < cmd.maxAttempts:
