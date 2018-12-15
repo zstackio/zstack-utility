@@ -1577,6 +1577,35 @@ def enable_chrony(trusted_host, host_post_info, distro):
     logger.debug("Starting enable chrony service")
     do_deploy_chrony(host_post_info, svrs, distro)
 
+def enforce_history(trusted_host, host_post_info):
+    enforce_history_cmd = '''
+mkdir -p /var/log/history.d/
+cat << 'EOF' > /etc/logrotate.d/history
+/var/log/history.d/history {
+    create 0666 root root
+    monthly
+    rotate 6
+    create
+    dateext
+    compress
+    minsize 1M
+}'''
+    host_post_info.post_label = "ansible.shell.enforce.history"
+    host_post_info.post_label_param = None
+    run_remote_command(enforce_history_cmd, host_post_info)
+
+    enforce_history_cmd = '''
+cat << 'EOF' > /etc/profile.d/history.sh
+shopt -s histappend
+HISTTIMEFORMAT='%F %T '
+HISTSIZE="5000"
+HISTFILESIZE=5000
+PROMPT_COMMAND='(umask 000; msg=$(history 1 | { read x y; echo $y; }); echo [$(who am i | awk "{print \$(NF-2),\$(NF-1),\$NF}")] [$(whoami)@`pwd`]" $msg" >>/var/log/history.d/history)'
+export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND'''
+    host_post_info.post_label = "ansible.shell.enforce.history"
+    host_post_info.post_label_param = None
+    run_remote_command(enforce_history_cmd, host_post_info)
+
 class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
@@ -1595,6 +1624,9 @@ class ZstackLib(object):
             require_python_env = args.require_python_env
         else:
             require_python_env = "true"
+
+        # enforce history
+        enforce_history(trusted_host, host_post_info)
 
         if distro in RPM_BASED_OS:
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
