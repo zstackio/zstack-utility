@@ -72,14 +72,14 @@ def get_current_timestamp():
     return time.mktime(datetime.datetime.now().timetuple())
 
 def exception_on_opened_file(f):
-    s = shell.call("timeout 10 lsof -Fc %s" % f).splitlines()
+    s = shell.call("timeout 10 lsof -Fc %s" % f, exception=False)
     if s:
-        raise Exception('file %s is still opened: %s' % (f, ' '.join(s)))
+        raise Exception('file %s is still opened: %s' % (f, ' '.join(s.splitlines())))
 
 def exception_on_opened_dir(d):
-    s = shell.call("timeout 10 lsof -Fc +D %s" % d).splitlines()
+    s = shell.call("timeout 10 lsof -Fc +D %s" % d, exception=False)
     if s:
-        raise Exception('dir %s is still opened: %s' % (d, ' '.join(s)))
+        raise Exception('dir %s is still opened: %s' % (d, ' '.join(s.splitlines())))
 
 def rm_file_force(fpath):
     try:
