@@ -5203,13 +5203,13 @@ class VmPlugin(kvmagent.KvmAgent):
             lv_size = int(lvm.get_lv_size(file))
             # image_offest = int(bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % file).strip())
             # virtual_size = int(linux.qcow2_virtualsize(file))
-            return image_offest < lv_size < virtual_size, image_offest, lv_size, virtual_size
+            return int(lv_size) < int(virtual_size), image_offest, lv_size, virtual_size
 
         def extend_lv(event, path, vm, device):
             r, image_offest, lv_size, virtual_size = check_lv(path, vm, device)
             logger.debug("lv %s image offest: %s, lv size: %s, virtual size: %s" %
                          (path, image_offest, lv_size, virtual_size))
-            if r:
+            if not r:
                 logger.debug("lv %s skip to extend for event %s" % (path, event))
                 return
 
@@ -5230,20 +5230,26 @@ class VmPlugin(kvmagent.KvmAgent):
             fixed = False
             vm = get_vm_by_uuid_no_retry(dom.name(), False)
 
+            if len(disk_errors) == 0:
+                logger.debug("no error in vm %s. skip to check and extend volume" % vm_uuid)
+                return
+
             for device, error in disk_errors.viewitems():
                 if error == libvirt.VIR_DOMAIN_DISK_ERROR_NO_SPACE:
                     fixed = True
                     logger.debug("disk %s of vm %s got ENOSPC" % (device, dom.name()))
                     path = get_path_by_device(device, vm)
+                    if not lvm.lv_exists(path):
+                        logger.debug("it is not a lvm volume %s, skip to extend" % path)
+                        continue
                     extend_lv(event, path, vm, device)
 
             if fixed is True:
                 vm.resume()
+                touchQmpSocketWhenExists(vm_uuid)
 
         event = LibvirtEventManager.event_to_string(event)
         if event not in (LibvirtEventManager.EVENT_SUSPENDED,):
-            return
-        if detail not in (libvirt.VIR_DOMAIN_EVENT_SUSPENDED_IOERROR,):
             return
         handle_event(dom, event)
 
