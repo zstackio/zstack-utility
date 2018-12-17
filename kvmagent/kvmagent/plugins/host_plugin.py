@@ -177,11 +177,12 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp = ConnectResponse()
 
         # page table extension
-        new_ept = False if cmd.pageTableExtensionDisabled else True
-        rsp.error = self._set_intel_ept(new_ept)
-        if rsp.error is not None:
-            rsp.success = False
-            return jsonobject.dumps(rsp)
+        if shell.run('lscpu | grep -q -w GenuineIntel') == 0:
+            new_ept = False if cmd.pageTableExtensionDisabled else True
+            rsp.error = self._set_intel_ept(new_ept)
+            if rsp.error is not None:
+                rsp.success = False
+                return jsonobject.dumps(rsp)
 
         self.host_uuid = cmd.hostUuid
         self.config[kvmagent.HOST_UUID] = self.host_uuid
