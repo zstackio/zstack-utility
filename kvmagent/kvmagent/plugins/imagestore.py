@@ -52,19 +52,22 @@ class ImageStoreClient(object):
         return jsonobject.loads(output.splitlines()[-1])
 
     def stop_backup_jobs(self, vm):
-        cmdstr = '%s stopbak -domain %s' % (self.ZSTORE_CLI_PATH, vm)
-        return shell.call(cmdstr).strip()
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s stopbak -domain %s' % (self.ZSTORE_CLI_PATH, vm)
+            return shell.call(cmdstr).strip()
 
     def backup_volume(self, vm, node, bitmap, mode, dest, speed):
-        cmdstr = '%s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s -speed %s' % (self.ZSTORE_CLI_PATH, bitmap, dest, vm, node, mode, speed)
-        return shell.call(cmdstr).strip()
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s -speed %s' % (self.ZSTORE_CLI_PATH, bitmap, dest, vm, node, mode, speed)
+            return shell.call(cmdstr).strip()
 
     # args -> (bitmap, mode, drive)
     # {'drive-virtio-disk0': { "backupFile": "foo", "mode":"full" },
     #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
     def backup_volumes(self, vm, args, dstdir):
-        cmdstr = '%s batbak -domain %s -destdir %s -args %s' % (self.ZSTORE_CLI_PATH, vm, dstdir, ':'.join([ "%s,%s,%s,%s" % x for x in args ]))
-        return shell.call(cmdstr).strip()
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s batbak -domain %s -destdir %s -args %s' % (self.ZSTORE_CLI_PATH, vm, dstdir, ':'.join([ "%s,%s,%s,%s" % x for x in args ]))
+            return shell.call(cmdstr).strip()
 
     def image_already_pushed(self, hostname, imf):
         cmdstr = '%s -url %s:%s info %s' % (self.ZSTORE_CLI_PATH, hostname, self.ZSTORE_DEF_PORT, self._build_install_path(imf.name, imf.id))
