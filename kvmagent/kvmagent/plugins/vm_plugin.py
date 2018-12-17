@@ -4630,7 +4630,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         except Exception as e:
             content = traceback.format_exc()
-            logger.warn("take volume backup failed: " + str(e)) + '\n' + content
+            logger.warn("take volume backup failed: " + str(e) + '\n' + content)
             rsp.error = str(e)
             rsp.success = False
 
