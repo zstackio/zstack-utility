@@ -1604,6 +1604,20 @@ def is_zstack_vm(vmUuid):
     cmd(is_exception=False)
     return cmd.return_code == 0
 
+class ShowLibvirtErrorOnException(object):
+    def __init__(self, vmUuid):
+        self.vmUuid = vmUuid
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_val is not None:
+            try:
+                logger.info(shell.call('virsh domblkerror %s' % self.vmUuid))
+                logger.info(shell.call('virsh domjobinfo %s' % self.vmUuid))
+            except:
+                pass
 
 def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
     libvirt_uuid_pattern = "'[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}'"
