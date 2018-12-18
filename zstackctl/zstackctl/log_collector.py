@@ -256,7 +256,7 @@ class CollectFromYml(object):
         query.user = db_user
         query.password = db_password
         query.table = 'zstack'
-        if type == 'host':
+        if type == 'host' or type == 'sharedblock':
             query.sql = "select * from HostVO where managementIp='%s'" % host_ip
             host_uuid = query.query()[0]['uuid']
             query.sql = "select * from KVMHostVO where uuid='%s'" % host_uuid
@@ -340,9 +340,9 @@ class CollectFromYml(object):
         (status, output) = commands.getstatusoutput("rm -f %s/%s-collect-log.tar.gz" % (local_collect_dir, type))
 
     def add_collect_thread(self, type, params):
-        if type == 'host':
+        if type == self.host_type:
             thread = threading.Thread(target=self.get_host_log, args=(params))
-        elif type == 'local':
+        elif type == self.local_type:
             thread = threading.Thread(target=self.get_local_log, args=(params))
         else:
             return
@@ -392,11 +392,12 @@ class CollectFromYml(object):
                 if 'exec' in log:
                     continue
                 else:
-                    command = self.build_collect_cmd(log['dir'], log['file'], None)
-                    (status, output) = commands.getstatusoutput(command)
-                    if status == 0:
-                        key = "%s:%s:%s" % (type, 'localhost', log['name'])
-                        self.check_result[key] = output
+                    if os.path.exists(log['dir']):
+                        command = self.build_collect_cmd(log['dir'], log['file'], None)
+                        (status, output) = commands.getstatusoutput(command)
+                        if status == 0:
+                            key = "%s:%s:%s" % (type, 'localhost', log['name'])
+                            self.check_result[key] = output
         else:
             info_verbose("Collecting log from %s localhost ..." % type)
             start = datetime.now()
@@ -419,7 +420,7 @@ class CollectFromYml(object):
                         if status == 0:
                             self.add_success_count()
                             logger.info("exec shell %s successfully!You can check the file at %s" % (command, file_path))
-                        else:
+                        elif type != 'sharedblock':
                             self.add_fail_count(1, error_log_name, output)
                     else:
                         if os.path.exists(log['dir']):
@@ -522,14 +523,14 @@ class CollectFromYml(object):
                         if 'exec' in log:
                             continue
                         else:
-                            command = self.build_collect_cmd(log['dir'], log['file'], None)
-                            (status, output) = run_remote_command(command, host_post_info, return_status=True,
-                                                                  return_output=True)
-                            if status is True:
-                                key = "%s:%s:%s" % (type, host_post_info.host, log['name'])
-                                self.check_result[key] = output
+                            if file_dir_exist("path=%s" % log['dir'], host_post_info):
+                                command = self.build_collect_cmd(log['dir'], log['file'], None)
+                                (status, output) = run_remote_command(command, host_post_info, return_status=True,
+                                                                      return_output=True)
+                                if status is True:
+                                    key = "%s:%s:%s" % (type, host_post_info.host, log['name'])
+                                    self.check_result[key] = output
                 else:
-                    local_collect_dir = None
                     info_verbose("Collecting log from %s %s ..." % (type, host_post_info.host))
                     start = datetime.now()
                     local_collect_dir = collect_dir + '%s-%s/' % (type, host_post_info.host)
@@ -556,7 +557,7 @@ class CollectFromYml(object):
                                 if status is True:
                                     self.add_success_count()
                                     logger.info("exec shell %s successfully!You can check the file at %s" % (command, file_path))
-                                else:
+                                elif type != 'sharedblock':
                                     self.add_fail_count(1, error_log_name, output)
                             else:
                                 if file_dir_exist("path=%s" % log['dir'], host_post_info):
@@ -575,8 +576,6 @@ class CollectFromYml(object):
                                     self.add_fail_count(1, error_log_name, "the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
                                     logger.warn("the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
                                     warn("the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
-                        if type == 'host':
-                            self.get_sharedblock_log(host_post_info, tmp_log_dir)
                     except SystemExit:
                         warn("collect log on host %s failed" % host_post_info.host)
                         logger.warn("collect log on host %s failed" % host_post_info.host)
