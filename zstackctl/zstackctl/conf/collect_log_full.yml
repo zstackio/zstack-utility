@@ -104,5 +104,22 @@ ceph-ps:
       - {name: journalctl-info, exec: 'journalctl -x'}
       - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
-
+sharedblock:
+    description: sharedblock log
+    type: target
+    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select h.managementIp from HostVO h where h.status =  \"Connected\" and h.hypervisorType = \"KVM\"'"}
+    logs:
+      - {name: lsblk-info, exec: 'lsblk -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN,SIZE'}
+      - {name: ls_dev_disk_by-id_info, exec: 'ls -l /dev/disk/by-id'}
+      - {name: ls_dev_disk_by-path_info, exec: 'ls -l /dev/disk/by-path'}
+      - {name: multipath-info, exec: 'multipath -ll -v3'}
+      - {name: sanlock-logs, dir: /var/log/, file: sanlock.log*}
+      - {name: lvmlock-logs, dir: /var/log/lvmlock/, file: lvmlockd.log*}
+      - {name: sanlock_client_info, exec: 'sanlock client status'}
+      - {name: sanlock_host_info, exec: 'sanlock client host_status'}
+      - {name: lvm_lvs_info, exec: 'lvs --nolocking -oall'}
+      - {name: lvm_vgs_info, exec: 'vgs --nolocking -oall'}
+      - {name: lvm_config_diff_info, exec: 'lvmconfig --type diff'}
+      - {name: lvm-etc, dir: /etc/lvm/, file: }
+      - {name: sanlock-etc, dir: /etc/sanlock/, file: }
 
