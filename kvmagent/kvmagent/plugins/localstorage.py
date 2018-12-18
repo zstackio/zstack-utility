@@ -400,7 +400,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if cmd.dstUsername == 'root':
                 _, _, err = bash_progress_1(
                     # Fixes ZSTAC-13430: handle extremely complex password like ~ ` !@#$%^&*()_+-=[]{}|?<>;:'"/ .
-                    'echo \'{{PASSWORD}}\' > /tmp/tmp_passwd && rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -f/tmp/tmp_passwd ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
+                    'echo \"{{PASSWORD}}\" > /tmp/tmp_passwd && rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -f/tmp/tmp_passwd ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
 
                 if err:
                     raise Exception('fail to migrate vm to host, because %s' % str(err))
