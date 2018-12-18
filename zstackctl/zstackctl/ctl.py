@@ -1349,7 +1349,12 @@ class ShowStatusCmd(Command):
                         error_msg['details'] = json.loads(error_msg['details'].replace('org.zstack.header.errorcode.OperationFailureException: ', ''))
                     except (KeyError, ValueError, TypeError):
                         pass
-                    info(colored(json.dumps(error_msg, indent=4), 'red'))
+
+                    if 'Prometheus boot error' in error_msg:
+                        filtered_msg = [x for x in json.dumps(error_msg).split('\\n') if 'error' in x]
+                        info(colored('\r\n'.join(filtered_msg), 'red'))
+                    else:
+                        info(colored(json.dumps(error_msg, indent=4), 'red'))
 
         ctl.internal_run('ui_status', args='-q')
 
