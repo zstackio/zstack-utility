@@ -100,6 +100,15 @@ class GetBlockDevicesRsp(AgentRsp):
         self.blockDevices = None
 
 
+
+class GetBackingChainRsp(AgentRsp):
+    backingChain = None  # type: list[str]
+
+    def __init__(self):
+        super(GetBackingChainRsp, self).__init__()
+        self.backingChain = None
+
+
 class SharedBlockMigrateVolumeStruct:
     volumeUuid = None  # type: str
     snapshotUuid = None  # type: str
@@ -227,6 +236,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     GET_BLOCK_DEVICES_PATH = "/sharedblock/blockdevices"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download/cancel"
+    GET_BACKING_CHAIN_PATH = "/sharedblock/volume/backingchain"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -255,6 +265,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_BLOCK_DEVICES_PATH, self.get_block_devices)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
+        http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -870,4 +881,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def get_block_devices(self, req):
         rsp = GetBlockDevicesRsp()
         rsp.blockDevices = lvm.get_block_devices()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBackingChainRsp()
+        abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+
+        with lvm.RecursiveOperateLv(abs_path, shared=True, skip_deactivate_tag=IMAGE_TAG, delete_when_exception=False):
+            rsp.backingChain = linux.get_qcow2_base_backing_file_recusively(abs_path)
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
