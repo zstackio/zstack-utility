@@ -527,6 +527,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             for qcow2 in linux.qcow2_get_file_chain(volume_abs_path):
                 total_size += int(lvm.get_lv_size(qcow2))
 
+            if total_size > virtual_size:
+                total_size = virtual_size
+
             if not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
