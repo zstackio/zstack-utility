@@ -344,6 +344,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @in_bash
     def copy_bits_to_remote(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.dstUsername != 'root':
+            raise Exception("cannot support migrate to non-root user host")
+
         chain = sum([linux.qcow2_get_file_chain(p) for p in cmd.paths], [])
         if cmd.sendCommandUrl:
             Report.url = cmd.sendCommandUrl
@@ -351,7 +354,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "LocalStorageMigrateVolume"
         report.resourceUuid = cmd.volumeUuid
+
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
+        PASSWORD_FILE = linux.write_to_temp_file(cmd.dstPassword)
 
         start = 10
         end = 90
@@ -391,28 +396,25 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         for path in set(chain):
             PATH = path
-            PASSWORD = cmd.dstPassword
             USER = cmd.dstUsername
             IP = cmd.dstIp
             PORT = (cmd.dstPort and cmd.dstPort or "22")
             DIR = os.path.dirname(path)
+            _, _, err = bash_progress_1(
+                # Fixes ZSTAC-13430: handle extremely complex password like ~ ` !@#$%^&*()_+-=[]{}|?<>;:'"/ .
+                'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -f{{PASSWORD_FILE}} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
+            if err:
+                linux.rm_file_force(PASSWORD_FILE)
+                linux.rm_file_force(PFILE)
+                raise Exception('fail to migrate vm to host, because %s' % str(err))
 
-            if cmd.dstUsername == 'root':
-                _, _, err = bash_progress_1(
-                    # Fixes ZSTAC-13430: handle extremely complex password like ~ ` !@#$%^&*()_+-=[]{}|?<>;:'"/ .
-                    'echo \"{{PASSWORD}}\" > /tmp/tmp_passwd && rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -f/tmp/tmp_passwd ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
-
-                if err:
-                    raise Exception('fail to migrate vm to host, because %s' % str(err))
-            else:
-                raise Exception("cannot support migrate to non-root user host")
             written += os.path.getsize(path)
-            bash_errorout('/usr/bin/sshpass -f/tmp/tmp_passwd ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
+            bash_errorout('/usr/bin/sshpass -f{{PASSWORD_FILE}} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
             percent = int(round(float(written) / float(total) * (end - start) + start))
             report.progress_report(percent, "report")
 
-        if os.path.exists(PFILE):
-            os.remove(PFILE)
+        linux.rm_file_force(PASSWORD_FILE)
+        linux.rm_file_force(PFILE)
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
