@@ -521,12 +521,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if cmd.sharedVolume:
             lvm.do_active_lv(volume_abs_path, lvm.LvmlockdLockType.SHARE, True)
 
-        lv_size = lvm.get_lv_size(volume_abs_path)
-
         with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tag=IMAGE_TAG):
             virtual_size = linux.qcow2_virtualsize(volume_abs_path)
+            total_size = 0
+            for qcow2 in linux.qcow2_get_file_chain(volume_abs_path):
+                total_size += int(lvm.get_lv_size(qcow2))
+
             if not lvm.lv_exists(install_abs_path):
-                lvm.create_lv_from_absolute_path(install_abs_path, lvm.getOriginalSize(lv_size),
+                lvm.create_lv_from_absolute_path(install_abs_path, total_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 linux.create_template(volume_abs_path, install_abs_path)
