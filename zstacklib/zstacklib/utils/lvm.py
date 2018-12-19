@@ -400,9 +400,12 @@ def start_vg_lock(vgUuid):
 
     @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
     def start_lock(vgUuid):
-        return_code = bash.bash_r("vgchange --lock-start %s" % vgUuid)
-        if return_code != 0:
-            raise Exception("vgchange --lock-start failed")
+        r, o, e = bash.bash_roe("vgchange --lock-start %s" % vgUuid)
+        if r != 0:
+            if ("Device or resource busy" in o+e) :
+                bash.bash_roe("dmsetup remove %s-lvmlock" % vgUuid)
+            raise Exception("vgchange --lock-start failed: return code: %s, stdout: %s, stderr: %s" %
+                            (r, o, e))
 
         vg_lock_exists(vgUuid)
 
