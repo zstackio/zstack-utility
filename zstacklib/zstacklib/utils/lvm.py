@@ -897,7 +897,7 @@ class RecursiveOperateLv(object):
                          (self.abs_path, has_lv_tag(self.abs_path, self.skip_deactivate_tag)))
             return
 
-        if self.exists_lock < self.target_lock:
+        if self.exists_lock > self.target_lock:
             return
 
         if self.exists_lock == LvmlockdLockType.NULL:
