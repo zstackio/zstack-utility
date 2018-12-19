@@ -24,6 +24,7 @@ VOLUME_TAG = "zs::sharedblock::volume"
 IMAGE_TAG = "zs::sharedblock::image"
 DEFAULT_VG_METADATA_SIZE = "2g"
 DEFAULT_SANLOCK_LV_SIZE = "1024"
+QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 
 
 class AgentRsp(object):
@@ -381,12 +382,39 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
+        self.clear_stalled_qmp_socket()
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    @bash.in_bash
+    def clear_stalled_qmp_socket():
+        def get_used_qmp_file():
+            t = bash.bash_o("ps aux | grep -Eo -- '-qmp unix:%s/\w*\.sock'" % QMP_SOCKET_PATH).splitlines()
+            qmp = []
+            for i in t:
+                qmp.append(i.split("/")[-1])
+            return qmp
+
+        exists_qmp_files = set(bash.bash_o("ls %s" % QMP_SOCKET_PATH).splitlines())
+        if len(exists_qmp_files) == 0:
+            return
+
+        running_qmp_files = set(get_used_qmp_file())
+        if len(running_qmp_files) == 0:
+            bash.bash_roe("/bin/rm %s/*" % QMP_SOCKET_PATH)
+            return
+
+        need_delete_qmp_files = exists_qmp_files.difference(running_qmp_files)
+        if len(need_delete_qmp_files) == 0:
+            return
+
+        for f in need_delete_qmp_files:
+            bash.bash_roe("/bin/rm %s/%s" % (QMP_SOCKET_PATH, f))
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)
