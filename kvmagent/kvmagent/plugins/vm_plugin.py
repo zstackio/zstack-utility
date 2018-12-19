@@ -5049,7 +5049,7 @@ class VmPlugin(kvmagent.KvmAgent):
         self.register_libvirt_event()
 
         self.enable_auto_extend = True
-        self.auto_extend_size = 1073741824
+        self.auto_extend_size = 1073741824 * 2
 
         # the virtio-channel directory used by VR.
         # libvirt won't create this directory when migrating a VR,
@@ -5223,8 +5223,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.debug("lv %s skip to extend for event %s" % (path, event))
                 return
 
-            extend_size = lv_size + self.auto_extend_size if virtual_size> lv_size + self.auto_extend_size else virtual_size
-            lvm.resize_lv(path, extend_size)
+            extend_size = lv_size + self.auto_extend_size if virtual_size > lv_size + self.auto_extend_size else virtual_size
+            try:
+                lvm.resize_lv(path, extend_size)
+            except Exception as e:
+                logger.warn("extend lv[%s] to size[%s] failed" % (path, extend_size))
             logger.debug("lv %s extend to %s success" % (path, extend_size))
 
         def get_path_by_device(device_name, vm):
@@ -5244,15 +5247,18 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.debug("no error in vm %s. skip to check and extend volume" % vm_uuid)
                 return
 
-            for device, error in disk_errors.viewitems():
-                if error == libvirt.VIR_DOMAIN_DISK_ERROR_NO_SPACE:
-                    fixed = True
-                    logger.debug("disk %s of vm %s got ENOSPC" % (device, dom.name()))
-                    path = get_path_by_device(device, vm)
-                    if not lvm.lv_exists(path):
-                        logger.debug("it is not a lvm volume %s, skip to extend" % path)
-                        continue
-                    extend_lv(event, path, vm, device)
+            try:
+                for device, error in disk_errors.viewitems():
+                    if error == libvirt.VIR_DOMAIN_DISK_ERROR_NO_SPACE:
+                        fixed = True
+                        logger.debug("disk %s of vm %s got ENOSPC" % (device, dom.name()))
+                        path = get_path_by_device(device, vm)
+                        if not lvm.lv_exists(path):
+                            logger.debug("it is not a lvm volume %s, skip to extend" % path)
+                            continue
+                        extend_lv(event, path, vm, device)
+            except Exception as e:
+                logger.warn("got excetion: %s" % e)
 
             if fixed is True:
                 vm.resume()
