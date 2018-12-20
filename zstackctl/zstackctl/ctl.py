@@ -4320,11 +4320,11 @@ class DumpMysqlCmd(Command):
         if status != 0:
             error(stderr)
         if args.delete_expired_file is True:
-            sync_command = "rsync -lr --delete -e 'ssh -i %s'  %s %s %s:%s" % (private_key, self.mysql_backup_dir,
-                                                                               self.ui_backup_dir, remote_host_ip, self.remote_backup_dir)
+            sync_command = "rsync -lr --delete -e 'ssh -i %s'  %s %s %s@%s:%s" % (private_key, self.mysql_backup_dir,
+                                                                               self.ui_backup_dir, user, remote_host_ip, self.remote_backup_dir)
         else:
-            sync_command = "rsync -lr -e 'ssh -i %s'  %s %s %s:%s" % (private_key, self.mysql_backup_dir,
-                                                                               self.ui_backup_dir, remote_host_ip, self.remote_backup_dir)
+            sync_command = "rsync -lr -e 'ssh -i %s'  %s %s %s@%s:%s" % (private_key, self.mysql_backup_dir,
+                                                                               self.ui_backup_dir, user, remote_host_ip, self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(sync_command)
         if status != 0:
             error(stderr)
@@ -4350,9 +4350,9 @@ class DumpMysqlCmd(Command):
             host_connect_info_list = check_host_info_format(host_info, with_public_key=True)
             remote_host_user = host_connect_info_list[0]
             remote_host_ip = host_connect_info_list[2]
-            key_path = os.path.expanduser('~%s' % remote_host_user) + "/.ssh/"
-            private_key= key_path + "id_rsa"
-            public_key= key_path + "id_rsa.pub"
+            key_path = os.path.expanduser("~/.ssh/")
+            private_key = key_path + "id_rsa"
+            public_key = key_path + "id_rsa.pub"
             if os.path.isfile(public_key) is not True:
                 error("Didn't find public key: %s" % public_key)
             if os.path.isfile(private_key) is not True:
