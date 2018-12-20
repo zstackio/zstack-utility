@@ -348,7 +348,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("sanlock_lv_extend", "sanlock_lv_extend=%s" % DEFAULT_SANLOCK_LV_SIZE, ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("lvmlockd_lock_retries", "lvmlockd_lock_retries=6", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("issue_discards", "issue_discards=1", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=65536", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("reserved_stack", "reserved_stack=256", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=131072", ["lvm.conf", "lvmlocal.conf"])
 
             lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"])
 
