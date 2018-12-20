@@ -18,15 +18,18 @@ from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
 
+
 class CheckBitsRsp(AgentRsp):
     def __init__(self):
         super(CheckBitsRsp, self).__init__()
         self.existing = False
+
 
 class ConvertRsp(AgentRsp):
     def __init__(self):
@@ -34,6 +37,7 @@ class ConvertRsp(AgentRsp):
         self.rootVolumeInfo = None
         self.dataVolumeInfos = []
         self.bootMode = None
+
 
 class VMwareV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/vmwarev2v/conversionhost/init"
@@ -60,35 +64,15 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     @in_bash
     @kvmagent.replyerror
     def init(self, req):
+        # TODO do not use docker
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        cmdstr = 'cd /usr/local/zstack && wget -c {} -O zstack-windows-virtio-driver.iso'.format(cmd.virtioDriverUrl)
+        cmdstr = 'mkdir -p /var/lib/zstack/v2v && cd /var/lib/zstack/v2v && wget -c {} -O zstack-windows-virtio-driver.iso'.format(
+            cmd.virtioDriverUrl)
         if shell.run(cmdstr) != 0:
             rsp.success = False
             rsp.error = "failed to download zstack-windows-virtio-driver.iso from management node to v2v conversion host"
-            return jsonobject.dumps(rsp)
-
-        cmdstr = 'which docker || yum --disablerepo=* --enablerepo={0} clean all; yum --disablerepo=* --enablerepo={0} install docker -y'.format(cmd.zstackRepo)
-        if shell.run(cmdstr) != 0:
-            rsp.success = False
-            rsp.error = "failed to install docker in conversion host"
-            return jsonobject.dumps(rsp)
-
-        cmdstr = 'systemctl start docker && docker history zs_virt_v2v'
-        if (shell.run(cmdstr)) == 0:
-            return jsonobject.dumps(rsp)
-
-        cmdstr = 'mkdir -p {0} && cd {0} && wget -c {1} -O virt_v2v_image.tgz && tar xvf virt_v2v_image.tgz'.format(cmd.storagePath, cmd.v2vImageUrl)
-        if shell.run(cmdstr) != 0:
-            rsp.success = False
-            rsp.error = "failed to download virt_v2v_image.tgz from management node to v2v conversion host"
-            return jsonobject.dumps(rsp)
-
-        cmdstr = 'systemctl start docker && docker load < {0}/virt_v2v_image.tar && rm -f {0}/virt_v2v_image*'.format(cmd.storagePath)
-        if shell.run(cmdstr) != 0:
-            rsp.success = False
-            rsp.error = "failed to import virt_v2v_image to docker in v2v conversion host"
             return jsonobject.dumps(rsp)
 
         return jsonobject.dumps(rsp)
@@ -121,7 +105,6 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "failed to create passwd {} in v2v conversion host".format(storage_dir)
             return jsonobject.dumps(rsp)
 
-
         @thread.AsyncThread
         def save_pid():
             linux.wait_callback_success(os.path.exists, v2v_pid_path)
@@ -132,26 +115,20 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             logger.debug("longjob[uuid:%s] saved process[pid:%s, name:%s]" %
                          (cmd.longJobUuid, new_task.current_pid, new_task.current_process_name))
 
-        virt_v2v_cmd = 'virt-v2v \
-                -ic vpx://{0}?no_verify=1 {1} \
-                -it vddk \
-                --vddk-libdir=/home/v2v/vmware-vix-disklib-distrib \
-                --vddk-thumbprint={3}    \
-                -o local -os {2} \
-                --password-file {2}/passwd \
-                -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir, cmd.thumbprint, cmd.format)
-        docker_run_cmd = 'systemctl start docker && docker run --rm -v /usr/local/zstack:/usr/local/zstack -v {0}:{0} \
-                -e VIRTIO_WIN=/usr/local/zstack/zstack-windows-virtio-driver.iso \
-                -e PATH=/home/v2v/nbdkit:$PATH \
-                zs_virt_v2v {1}'.format(cmd.storagePath.rstrip('/'), virt_v2v_cmd)
+        virt_v2v_cmd = 'VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso ' \
+                       'virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk ' \
+                       '--vddk-libdir=/var/lib/zstack/v2v/vmware-vix-disklib-distrib ' \
+                       '--vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd ' \
+                       '-of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir,
+                                                                cmd.thumbprint, cmd.format)
 
         v2v_pid_path = os.path.join(storage_dir, "convert.pid")
         v2v_cmd_ret_path = os.path.join(storage_dir, "convert.ret")
-        echo_pid_cmd = "echo $$ > %s; %s; ret=$?; echo $ret > %s; exit $ret" % (v2v_pid_path, docker_run_cmd, v2v_cmd_ret_path)
+        echo_pid_cmd = "echo $$ > %s; %s; ret=$?; echo $ret > %s; exit $ret" % (
+        v2v_pid_path, virt_v2v_cmd, v2v_cmd_ret_path)
 
         def run_convert_if_need():
             def do_run():
-                self.check_docker()
                 save_pid()
                 ret = shell.run(echo_pid_cmd)
                 new_task.current_process_return_code = ret
@@ -169,6 +146,18 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 return do_run()
 
             if process_still_running:
+                src_vm_uri = cmd.srcVmUri
+                vmware_host_ip = src_vm_uri.split('/')[-1]
+                interface = shell.call("ip r get %s | head -1 | awk '{ print $4,$5 }'" % vmware_host_ip)
+
+                if interface:
+                    cmdstr = "tc qdisc del %s root >/dev/null 2>&1;" \
+                             "tc qdisc add %s root handle 1: htb;" \
+                             "tc class add %s parent 1: classid 1:1 htb rate %sbit burst 100m" \
+                             "tc filter replace %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
+                             % (interface, interface, interface, cmd.inboundBandwidth, interface, vmware_host_ip)
+                    shell.run(cmdstr)
+
                 linux.wait_callback_success(os.path.exists, v2v_cmd_ret_path, timeout=259200, interval=60)
 
             ret = linux.read_file(v2v_cmd_ret_path)
@@ -185,7 +174,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             shell.run(tail_cmd)
             with open(v2v_log_file, 'a') as fd:
                 fd.write('\n>>> VCenter Password: %s\n' % cmd.vCenterPassword)
-                fd.write('\n>>> virt_v2v command: %s\n' % docker_run_cmd)
+                fd.write('\n>>> virt_v2v command: %s\n' % virt_v2v_cmd)
             return jsonobject.dumps(rsp)
 
         root_vol = r"%s/%s-sda" % (storage_dir, cmd.srcVmName)
@@ -215,12 +204,22 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         if self._check_str_in_file(xml, "<nvram "):
             rsp.bootMode = 'UEFI'
 
-        return jsonobject.dumps(rsp)
+        def collect_time_cost():
+            s = shell.ShellCmd("grep 'Copying disk' %s  | awk '{ print $2 }' | sed 's/]//g'"
+                               % os.path.join(storage_dir, 'virt_v2v_log'))
+            s(False)
+            if s.return_code != 0:
+                return
 
-    def check_docker(self):
-        if shell.run("ip addr show docker0 > /dev/null && /sbin/iptables-save | grep -q 'FORWARD.*docker0'") != 0:
-            logger.warn("cannot find docker iptables rule, restart docker server!")
-            shell.run("systemctl restart docker")
+            times = s.stdout.split('\n')
+            times.insert(0, 0)
+            for i in xrange(1, len(rsp.dataVolumeInfos)):
+                if i < len(times):
+                    rsp.dataVolumeInfos[i]["downloadTime"] = times[i] - times[i - 1]
+
+        collect_time_cost()
+
+        return jsonobject.dumps(rsp)
 
     def _check_str_in_file(self, fname, txt):
         with open(fname) as dataf:
@@ -270,8 +269,13 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     def config_qos(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        cmdstr = "tc qdisc del dev docker0 root >/dev/null 2>&1; tc qdisc add dev docker0 root tbf rate %sbit latency 10ms burst 100m" % cmd.inboundBandwidth
-        shell.run(cmdstr)
+
+        # TODO do not delete already set rules
+        if return_code != 0:
+            rsp.error = 'fail to set up conversion host qos'
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
         return jsonobject.dumps(rsp)
 
     @in_bash
@@ -279,6 +283,6 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     def delete_qos(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        cmdstr = "tc qdisc del dev docker0 root >/dev/null 2>&1"
+        cmdstr = "tc qdisc del dev eth0 root >/dev/null 2>&1"
         shell.run(cmdstr)
         return jsonobject.dumps(rsp)

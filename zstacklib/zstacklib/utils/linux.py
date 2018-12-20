@@ -1092,6 +1092,13 @@ def get_pid_by_process_name(name):
         return None
     return output.split()[0]
 
+def get_pids_by_process_name(name):
+    cmd = shell.ShellCmd("ps -ae | grep -w %s | awk '{ print $1 }'" % name)
+    output = cmd(False)
+    if cmd.return_code != 0:
+        return None
+    return output.split('\n')
+
 def get_nic_name_by_mac(mac):
     names = get_nic_names_by_mac(mac)
     if len(names) > 1:
