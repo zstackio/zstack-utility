@@ -350,7 +350,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "LocalStorageMigrateVolume"
-        report.resourceUuid = cmd.uuid
+        report.resourceUuid = cmd.volumeUuid
         PFILE = shell.call('mktemp /tmp/tmp-XXXXXX').strip()
 
         start = 10
@@ -585,7 +585,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
-            rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.uuid, cmd.name, str(e))
+            rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.volumeUuid, cmd.name, str(e))
             rsp.success = False
             return jsonobject.dumps(rsp)
 
