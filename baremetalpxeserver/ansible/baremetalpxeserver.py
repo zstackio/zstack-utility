@@ -108,7 +108,7 @@ else:
 # name: check and mount /opt/zstack-dvd
 command = """
 [ -f /opt/zstack-dvd/GPL ] || exit 1;
-mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd},tftpboot/{zstack,pxelinux.cfg},vsftpd} /var/log/zstack/baremetal/;
+mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd,scripts},tftpboot/{zstack,pxelinux.cfg},vsftpd} /var/log/zstack/baremetal/;
 cp -f /usr/share/syslinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
 umount /var/lib/zstack/baremetal/ftp/zstack-dvd/ || true;
 mount --bind /opt/zstack-dvd /var/lib/zstack/baremetal/ftp/zstack-dvd/
