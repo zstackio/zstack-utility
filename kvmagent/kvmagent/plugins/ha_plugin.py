@@ -507,7 +507,9 @@ class HaPlugin(kvmagent.KvmAgent):
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
                         killed_vms = kill_vm(cmd.maxAttempts, [mount_path], True)
-                        self.report_self_fencer_triggered([ps_uuid], ','.join(killed_vms.keys()))
+
+                        if len(killed_vms) != 0:
+                            self.report_self_fencer_triggered([ps_uuid], ','.join(killed_vms.keys()))
                         killed_vm_pids = killed_vms.values()
                         after_kill_vm()
 
@@ -585,7 +587,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def configure(self, config):
         self.config = config
 
-    def report_self_fencer_triggered(self, ps_uuids, vm_uuids_string):
+    def report_self_fencer_triggered(self, ps_uuids, vm_uuids_string=None):
         url = self.config.get(kvmagent.SEND_COMMAND_URL)
         if not url:
             logger.warn('cannot find SEND_COMMAND_URL, unable to report self fencer triggered on [psList:%s]' % ps_uuids)
