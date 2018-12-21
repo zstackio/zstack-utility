@@ -8389,7 +8389,7 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
             cmd = ShellCmd("zstack-cli LogInByAccount accountName=admin password=%s" % args.admin_password)
             cmd(True)
             imageName = "from-shared-volume-%s-snapshot-%s-%s" % (snap["volumeUuid"], snap["name"], snap["uuid"])
-            cmd = ShellCmd("zstack-cli CreateDataVolumeTemplateFromVolumeSnapshot name=%s description=%s snapshotUuid=%s backupStorageUuids=%s" %
+            cmd = ShellCmd("zstack-cli CreateDataVolumeTemplateFromVolumeSnapshot timeout=259200000 name=%s description=%s snapshotUuid=%s backupStorageUuids=%s" %
                            (imageName, imageName, snap["uuid"], args.backup_storage_uuid))
             cmd(True)
             info("CreateDataVolumeTemplateFromVolumeSnapshot on snapshot[name:%s, uuid:%s] done, named %s" % (snap["name"], snap["uuid"], imageName))
