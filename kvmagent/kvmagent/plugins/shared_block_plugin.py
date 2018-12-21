@@ -508,7 +508,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
 
-        with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tag=IMAGE_TAG):
+        with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
             if not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
@@ -550,7 +550,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if cmd.sharedVolume:
             lvm.do_active_lv(volume_abs_path, lvm.LvmlockdLockType.SHARE, True)
 
-        with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tag=IMAGE_TAG):
+        with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(volume_abs_path)
             total_size = 0
             for qcow2 in linux.qcow2_get_file_chain(volume_abs_path):
@@ -923,7 +923,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = GetBackingChainRsp()
         abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
-        with lvm.RecursiveOperateLv(abs_path, shared=True, skip_deactivate_tag=IMAGE_TAG, delete_when_exception=False):
+        with lvm.RecursiveOperateLv(abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG], delete_when_exception=False):
             rsp.backingChain = linux.qcow2_get_file_chain(abs_path)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
