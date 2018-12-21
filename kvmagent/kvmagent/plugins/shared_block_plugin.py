@@ -924,7 +924,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         with lvm.RecursiveOperateLv(abs_path, shared=True, skip_deactivate_tag=IMAGE_TAG, delete_when_exception=False):
-            rsp.backingChain = linux.get_qcow2_base_backing_file_recusively(abs_path)
+            rsp.backingChain = linux.qcow2_get_file_chain(abs_path)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
