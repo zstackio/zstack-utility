@@ -672,7 +672,7 @@ class CollectFromYml(object):
             elif args.since.endswith('h') or args.since.endswith('H'):
                 self.f_date = (datetime.now() + timedelta(days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
             else:
-                self.f_date = (datetime.now() + timedelta(days=float(-args.sincep[:-1]))).strftime('%Y-%m-%d:%H:%M:%S')
+                raise CtlError("error since format:[%s], it must end with d or h." % args.since)
             self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
 
         if self.f_date > self.t_date:
