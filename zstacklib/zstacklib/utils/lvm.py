@@ -5,6 +5,7 @@ import time
 
 from zstacklib.utils import shell
 from zstacklib.utils import bash
+from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import linux
 
@@ -45,7 +46,7 @@ class LvmlockdLockType(object):
     EXCLUSIVE = 2
 
     @staticmethod
-    def from_abbr(abbr):
+    def from_abbr(abbr, raise_exception=False):
         if abbr.strip() == "sh":
             return LvmlockdLockType.SHARE
         elif abbr.strip() == "ex":
@@ -53,6 +54,8 @@ class LvmlockdLockType(object):
         elif abbr.strip() == "un":
             return LvmlockdLockType.NULL
         elif abbr.strip() == "":
+            if raise_exception:
+                raise RetryException("can not get locking type sice it is active without lvmlock info")
             logger.warn("can not get correct lvm lock type! use null as a safe choice")
             return LvmlockdLockType.NULL
         else:
@@ -546,11 +549,25 @@ def add_vg_tag(vgUuid, tag):
 
 
 def has_lv_tag(path, tag):
+    # type: (str, str) -> bool
     if tag == "":
         logger.debug("check tag is empty, return false")
         return False
     o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings 2>/dev/null | wc -l" % (tag, path))
     return o.strip() == '1'
+
+
+def has_one_lv_tag_sub_string(path, tags):
+    # type: (str, list) -> bool
+    if not tags or len(tags) == 0:
+        logger.debug("check tag is empty, return false")
+        return False
+    exists_tags = set(shell.call("lvs %s -otags --nolocking --noheadings" % path).strip().split(","))
+    for tag in tags:
+        for exists_tag in exists_tags:
+            if tag in exists_tag:
+                return True
+    return False
 
 
 def clean_lv_tag(path, tag):
@@ -812,12 +829,23 @@ def do_active_lv(absolutePath, lockType, recursive):
 
 
 @bash.in_bash
-@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
 def get_lv_locking_type(path):
-    if not lv_is_active(path):
-        return LvmlockdLockType.NULL
-    output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
-    return LvmlockdLockType.from_abbr(output.strip())
+    @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+    def _get_lv_locking_type(path):
+        output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
+        return LvmlockdLockType.from_abbr(output.strip(), raise_exception=True)
+
+    locking_type = LvmlockdLockType.NULL
+    with lock.FileLock(path.split("/")[-1]):
+        try:
+            if not lv_is_active(path):
+                return locking_type
+            locking_type = _get_lv_locking_type(path)
+        except Exception as e:
+            output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
+            locking_type = LvmlockdLockType.from_abbr(output.strip(), raise_exception=False)
+
+    return locking_type
 
 
 def lv_operate(abs_path, shared=False):
@@ -866,21 +894,22 @@ class OperateLv(object):
 
 
 class RecursiveOperateLv(object):
-    def __init__(self, abs_path, shared=False, skip_deactivate_tag="", delete_when_exception=False):
+    def __init__(self, abs_path, shared=False, skip_deactivate_tags=None, delete_when_exception=False):
+        # type: (str, bool, list[str], bool) -> object
         self.abs_path = abs_path
         self.shared = shared
         self.exists_lock = get_lv_locking_type(abs_path)
         self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
         self.backing = None
         self.delete_when_exception = delete_when_exception
-        self.skip_deactivate_tag = skip_deactivate_tag
+        self.skip_deactivate_tags = skip_deactivate_tags
 
     def __enter__(self):
         if self.exists_lock < self.target_lock:
             active_lv(self.abs_path, self.shared)
         if linux.qcow2_get_backing_file(self.abs_path) != "":
             self.backing = RecursiveOperateLv(
-                linux.qcow2_get_backing_file(self.abs_path), True, self.skip_deactivate_tag, False)
+                linux.qcow2_get_backing_file(self.abs_path), True, self.skip_deactivate_tags, False)
 
         if self.backing is not None:
             self.backing.__enter__()
@@ -891,13 +920,13 @@ class RecursiveOperateLv(object):
 
         if exc_val is not None \
                 and self.delete_when_exception is True\
-                and not has_lv_tag(self.abs_path, self.skip_deactivate_tag):
+                and not has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags):
             delete_lv(self.abs_path, False)
             return
 
-        if has_lv_tag(self.abs_path, self.skip_deactivate_tag):
+        if has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags):
             logger.debug("the volume %s has skip tag: %s" %
-                         (self.abs_path, has_lv_tag(self.abs_path, self.skip_deactivate_tag)))
+                         (self.abs_path, has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags)))
             return
 
         if self.exists_lock > self.target_lock:
