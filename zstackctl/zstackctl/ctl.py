@@ -7817,6 +7817,18 @@ class StartUiCmd(Command):
         if not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
             self._gen_default_ssl_keystore()
 
+        # set http to https is enable ssl set
+        if args.enable_ssl:
+            sns_url = ctl.read_property('sns.systemTopic.endpoints.http.url')
+
+            if sns_url:
+                ctl.write_property('sns.systemTopic.endpoints.http.url', sns_url.replace('http:', 'https:'))
+
+            ticket_url = ctl.read_property('ticket.sns.topic.http.url')
+
+            if ticket_url:
+                ctl.write_property('ticket.sns.topic.http.url', sns_url.replace('http:', 'https:'))
+
         # server_port default value is 5443 if enable_ssl is True
         if args.enable_ssl and args.webhook_port == '5000':
             args.webhook_port = '5443'
