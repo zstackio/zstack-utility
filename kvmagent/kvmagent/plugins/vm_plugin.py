@@ -818,7 +818,7 @@ class IsoCeph(object):
     def __init__(self):
         self.iso = None
 
-    def to_xmlobject(self, targetDev, bus = None, unit = None):
+    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None):
         disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
         source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.iso.secretUuid:
@@ -826,20 +826,19 @@ class IsoCeph(object):
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
         for minfo in self.iso.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
-        if IS_AARCH64:
-            e(disk, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
-        else:
-            e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
-            if bus and unit:
-                e(disk, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
+
+        e(disk, 'target', None, {'dev': target_dev, 'bus': target_bus_type})
+        if bus and unit:
+            e(disk, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
         e(disk, 'readonly', None)
         return disk
 
 
-class IdeCeph(object):
+class BlkCeph(object):
     def __init__(self):
         self.volume = None
         self.dev_letter = None
+        self.bus_type = None
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
@@ -850,24 +849,11 @@ class IdeCeph(object):
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
-        e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
+
+        dev_format = Vm._get_disk_target_dev_format(self.bus_type)
+        e(disk, 'target', None, {'dev': dev_format % self.dev_letter, 'bus': self.bus_type})
         return disk
 
-class ScsiCeph(object):
-    def __init__(self):
-        self.volume = None
-        self.dev_letter = None
-
-    def to_xmlobject(self):
-        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        source = e(disk, 'source', None,
-                   {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
-        auth = e(disk, 'auth', attrib={'username': 'zstack'})
-        e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
-        for minfo in self.volume.monInfo:
-            e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
-        e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
-        return disk
 
 class VirtioCeph(object):
     def __init__(self):
@@ -914,7 +900,7 @@ class IsoFusionstor(object):
     def __init__(self):
         self.iso = None
 
-    def to_xmlobject(self, targetDev, bus = None, unit = None):
+    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None):
         protocol = lichbd.get_protocol()
         snap = self.iso.path.lstrip('fusionstor:').lstrip('//')
         path = self.iso.path.lstrip('fusionstor:').lstrip('//').split('@')[0]
@@ -952,20 +938,18 @@ class IsoFusionstor(object):
             e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        if IS_AARCH64:
-            e(disk, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
-        else:
-            e(disk, 'target', None, {'dev': targetDev, 'bus': 'ide'})
-            if bus and unit:
-                e(disk, 'address', None, {'type' : 'drive', 'bus' : bus, 'unit' : unit})
+        e(disk, 'target', None, {'dev': target_dev, 'bus': target_bus_type})
+        if bus and unit:
+            e(disk, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
         e(disk, 'readonly', None)
         return disk
 
 
-class IdeFusionstor(object):
+class BlkFusionstor(object):
     def __init__(self):
         self.volume = None
         self.dev_letter = None
+        self.bus_type = None
 
     def to_xmlobject(self):
         protocol = lichbd.get_protocol()
@@ -985,10 +969,9 @@ class IdeFusionstor(object):
             e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
         elif protocol == 'nbd':
             e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        if IS_AARCH64:
-            e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
-        else:
-            e(disk, 'target', None, {'dev': 'hd%s' % self.dev_letter, 'bus': 'ide'})
+
+        dev_format = Vm._get_disk_target_dev_format(self.bus_type)
+        e(disk, 'target', None, {'dev': dev_format % self.dev_letter, 'bus': self.bus_type})
         e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
         return disk
 
@@ -1678,13 +1661,12 @@ class Vm(object):
                 e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
                 e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': self.get_device_unit(volume.deviceId)})
+            elif volume.useVirtio:
+                e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
             else:
-                if volume.useVirtio:
-                    e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
-                elif IS_AARCH64:
-                    e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
-                else:
-                    e(disk, 'target', None, {'dev': 'hd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'ide'})
+                bus_type = self._get_controller_type()
+                dev_format = Vm._get_disk_target_dev_format(bus_type)
+                e(disk, 'target', None, {'dev': dev_format % self.DEVICE_LETTERS[volume.deviceId], 'bus': bus_type})
 
             Vm.set_volume_qos(addons, volume.volumeUuid, disk)
             volume_native_aio(disk)
@@ -1740,12 +1722,10 @@ class Vm(object):
                 return etree.tostring(xml_obj)
 
             def blk_ceph():
-                if not IS_AARCH64:
-                    ic = IdeCeph()
-                else:
-                    ic = ScsiCeph()
+                ic = BlkCeph()
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                ic.bus_type = self._get_controller_type()
                 xml_obj = ic.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
@@ -1779,9 +1759,10 @@ class Vm(object):
                 return etree.tostring(xml_obj)
 
             def blk_fusionstor():
-                ic = IdeFusionstor()
+                ic = BlkFusionstor()
                 ic.volume = volume
                 ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                ic.bus_type = self._get_controller_type()
                 xml_obj = ic.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
@@ -2364,26 +2345,25 @@ class Vm(object):
             raise kvmagent.KvmError(err)
 
         device_letter = self.ISO_DEVICE_LETTERS[iso.deviceId]
-        dev = "sd%s" % device_letter if IS_AARCH64 else 'hd%s' % device_letter
+        dev = self._get_iso_target_dev(device_letter)
+        bus = self._get_controller_type()
 
         if iso.path.startswith('ceph'):
             ic = IsoCeph()
             ic.iso = iso
-            cdrom = ic.to_xmlobject(dev)
+            cdrom = ic.to_xmlobject(dev, bus)
         elif iso.path.startswith('fusionstor'):
             ic = IsoFusionstor()
             ic.iso = iso
-            cdrom = ic.to_xmlobject(dev)
+            cdrom = ic.to_xmlobject(dev, bus)
         else:
             if iso.path.startswith('sharedblock'):
                 iso.path = shared_block_to_file(iso.path)
+
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(cdrom, 'source', None, {'file': iso.path})
-            if IS_AARCH64:
-                e(cdrom, 'target', None, {'dev': dev, 'bus': 'scsi'})
-            else:
-                e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
+            e(cdrom, 'target', None, {'dev': dev, 'bus': bus})
             e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -2435,14 +2415,12 @@ class Vm(object):
             return
 
         device_letter = self.ISO_DEVICE_LETTERS[cmd.deviceId]
-        dev = "sd%s" % device_letter if IS_AARCH64 else 'hd%s' % device_letter
+        dev = self._get_iso_target_dev(device_letter)
+        bus = self._get_controller_type()
 
         cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
         e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-        if IS_AARCH64:
-            e(cdrom, 'target', None, {'dev': dev, 'bus': 'scsi'})
-        else:
-            e(cdrom, 'target', None, {'dev': dev, 'bus': 'ide'})
+        e(cdrom, 'target', None, {'dev': dev, 'bus': bus})
         e(cdrom, 'readonly', None)
 
         xml = etree.tostring(cdrom)
@@ -2476,8 +2454,19 @@ class Vm(object):
             raise Exception('cannot detach the cdrom from the VM[uuid:%s]. The device is still present after 30s' %
                             self.uuid)
 
-    def hotplug_mem(self, memory_size):
+    def _get_controller_type(self):
+        is_q35 = 'q35' in self.domain_xmlobject.os.type.machine_
+        return ('ide', 'sata', 'scsi')[max(is_q35, IS_AARCH64 * 2)]
 
+    @staticmethod
+    def _get_iso_target_dev(device_letter):
+        return "sd%s" % device_letter if IS_AARCH64 else 'hd%s' % device_letter
+
+    @staticmethod
+    def _get_disk_target_dev_format(bus_type):
+        return {'virtio': 'vd%s', 'scsi': 'sd%s', 'sata': 'hd%s', 'ide': 'hd%s'}[bus_type]
+
+    def hotplug_mem(self, memory_size):
         mem_size = (memory_size - self.get_memory()) / 1024
         xml = "<memory model='dimm'><target><size unit='KiB'>%d</size><node>0</node></target></memory>" % mem_size
         logger.debug('hot plug memory: %d KiB' % mem_size)
@@ -2737,10 +2726,8 @@ class Vm(object):
     @staticmethod
     def from_StartVmCmd(cmd):
         use_numa = cmd.useNuma
-        machineType = cmd.machineType
-        if machineType != "pc" and machineType != "q35":
-            machineType = "pc"
-
+        machine_type = cmd.machineType if cmd.machineType else 'pc'
+        default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', IS_AARCH64 * 2)]
         elements = {}
 
         def make_root():
@@ -2822,7 +2809,7 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
                 e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
             else:
-                e(os, 'type', 'hvm', attrib={'machine': machineType})
+                e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI":
                     e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
@@ -2921,12 +2908,13 @@ class Vm(object):
                         for i in xrange(len(cdrom_device_id_list)):
                             empty_cdrom_configs.append(
                                 EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[i], str(i / 2), str(i % 2)))
-                elif machineType == 'q35':
-                    EMPTY_CDROM_CONFIGS = [
+                elif machine_type == 'q35':
+                    empty_cdrom_configs = [
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '0'),
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '0', '1'),
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '0', '2'),
                     ]
-                else:  ## machineType=pc
+                else:  # machine_type=pc
                     # bus 0 unit 0 already use by root volume
                     empty_cdrom_configs = [
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
@@ -2937,16 +2925,11 @@ class Vm(object):
             if len(empty_cdrom_configs) != max_cdrom_num:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
 
-            def make_empty_cdrom(targetDev, bus, unit):
+            def make_empty_cdrom(target_dev, bus, unit):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                if IS_AARCH64:
-                    e(cdrom, 'target', None, {'dev': targetDev, 'bus': 'scsi'})
-                    e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
-                else:
-                    target_bus = 'sata' if (machineType == 'q35') else 'ide'
-                    e(cdrom, 'target', None, {'dev': targetDev, 'bus': target_bus})
-                    e(cdrom, 'address', None,{'type' : 'drive', 'bus' : bus, 'unit' : unit})
+                e(cdrom, 'target', None, {'dev': target_dev, 'bus': default_bus_type})
+                e(cdrom, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
                 e(cdrom, 'readonly', None)
                 return cdrom
 
@@ -2969,11 +2952,11 @@ class Vm(object):
                 if iso.path.startswith('ceph'):
                     ic = IsoCeph()
                     ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit))
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit))
                 elif iso.path.startswith('fusionstor'):
                     ic = IsoFusionstor()
                     ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit))
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit))
                 else:
                     cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit)
                     e(cdrom, 'source', None, {'file': iso.path})
@@ -2999,10 +2982,9 @@ class Vm(object):
 
                 if _v.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
-                elif IS_AARCH64:
-                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                 else:
-                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'ide'})
+                    dev_format = Vm._get_disk_target_dev_format(default_bus_type)
+                    e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
                 return disk
 
             def iscsibased_volume(_dev_letter, _v):
@@ -3041,12 +3023,10 @@ class Vm(object):
                     return vc.to_xmlobject()
 
                 def ceph_blk():
-                    if not IS_AARCH64:
-                        ic = IdeCeph()
-                    else:
-                        ic = ScsiCeph()
+                    ic = BlkCeph()
                     ic.volume = _v
                     ic.dev_letter = _dev_letter
+                    ic.bus_type = default_bus_type
                     return ic.to_xmlobject()
 
                 def ceph_virtio_scsi():
@@ -3074,9 +3054,10 @@ class Vm(object):
                     return vc.to_xmlobject()
 
                 def fusionstor_blk():
-                    ic = IdeFusionstor()
+                    ic = BlkFusionstor()
                     ic.volume = _v
                     ic.dev_letter = _dev_letter
+                    ic.bus_type = default_bus_type
                     return ic.to_xmlobject()
 
                 def fusionstor_virtio_scsi():
@@ -3248,7 +3229,7 @@ class Vm(object):
                 return
 
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
-            model_value = 'ich9-ehci1' if (machineType == 'q35') else 'ehci'
+            model_value = 'ich9-ehci1' if machine_type == 'q35' else 'ehci'
             e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': model_value})
             e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
@@ -3425,7 +3406,7 @@ class Vm(object):
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
-            if machineType == "q35":
+            if machine_type == "q35":
                 controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
                 e(controller, 'alias', None, {'name': 'sata'})
                 e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
