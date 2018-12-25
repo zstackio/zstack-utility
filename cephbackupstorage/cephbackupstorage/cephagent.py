@@ -774,7 +774,7 @@ class CephAgent(object):
             _1()
 
             _, PFILE = tempfile.mkstemp()
-            content_length = shell.call('curl -sI %s|grep Content-Length' % cmd.url).strip().split()[1]
+            content_length = shell.call("""curl -sLI %s|awk '/[cC]ontent-[lL]ength/{print $NF}'""" % cmd.url).splitlines()[-1]
             total = _getRealSize(content_length)
 
             def _getProgress(synced):
