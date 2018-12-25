@@ -32,7 +32,3 @@ fi
 
 . $VIRTUAL_ENV/bin/activate
 python -u -c "from zstackctl import ctl; ctl.main()" $@
-
-retval=$?
-sync; sync
-exit $retval
