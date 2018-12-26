@@ -238,6 +238,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download/cancel"
     GET_BACKING_CHAIN_PATH = "/sharedblock/volume/backingchain"
+    CONVERT_VOLUME_PROVISIONING_PATH = "/sharedblock/volume/convertprovisioning"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -267,6 +268,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
+        http_server.register_async_uri(self.CONVERT_VOLUME_PROVISIONING_PATH, self.convert_volume_provisioning)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -927,4 +929,27 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             rsp.backingChain = linux.qcow2_get_file_chain(abs_path)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def convert_volume_provisioning(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        if cmd.provisioningStrategy != "ThinProvisioning":
+            raise NotImplementedError
+
+        abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        with lvm.RecursiveOperateLv(abs_path, shared=False):
+            image_offest = long(
+                bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % abs_path).strip())
+            current_size = long(lvm.get_lv_size(abs_path))
+            virtual_size = linux.qcow2_virtualsize(abs_path)
+            size = image_offest + cmd.addons[lvm.thinProvisioningInitializeSize]
+            if size > current_size:
+                return jsonobject.dumps(rsp)
+            if size > virtual_size:
+                size = virtual_size
+            lvm.resize_lv(abs_path, size, True)
+
         return jsonobject.dumps(rsp)
