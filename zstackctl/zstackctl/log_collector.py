@@ -457,6 +457,7 @@ class CollectFromYml(object):
                 command = 'rm -rf %s' % local_collect_dir
                 commands.getstatusoutput(command)
                 return 0
+            info_verbose("Successfully collect log from %s localhost !" % type)
 
     def add_success_count(self):
         self.lock.acquire()
@@ -596,6 +597,7 @@ class CollectFromYml(object):
                         run_remote_command(command, host_post_info)
                         return 0
                     self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info, type)
+                    info_verbose("Successfully collect log from %s %s!" % (type, host_post_info.host))
             else:
                 warn("%s %s is unreachable!" % (type, host_post_info.host))
                 self.add_fail_count(len(log_list), "%s\t%s\t%s" % (type, host_post_info.host, 'unreachable'),
@@ -672,14 +674,18 @@ class CollectFromYml(object):
             elif args.since.endswith('h') or args.since.endswith('H'):
                 self.f_date = (datetime.now() + timedelta(days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
             else:
-                self.f_date = (datetime.now() + timedelta(days=float(-args.sincep[:-1]))).strftime('%Y-%m-%d:%H:%M:%S')
+                raise CtlError("error since format:[%s], it must end with d or h." % args.since)
             self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
 
         if self.f_date > self.t_date:
             raise CtlError("from datetime [%s] can not be later than to datetime [%s]"
                            % (self.f_date, self.t_date))
 
-        self.check = True if args.check else False
+        if args.check:
+            self.check = True
+            info_verbose("Start checking the file size ,,,")
+        else:
+            self.check = False
 
         decode_result = decode_conf_yml(args)
 
