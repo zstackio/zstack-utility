@@ -30,6 +30,11 @@ def collect_fail_verbose(*msg):
     return out
 
 
+def error_verbose(msg):
+    sys.stderr.write(colored('ERROR: %s\n' % msg, 'red'))
+    sys.exit(1)
+
+
 class CtlError(Exception):
     pass
 
@@ -374,9 +379,9 @@ class CollectFromYml(object):
                     if status == 0 and output.startswith('ERROR') is not True:
                         host_list = output.split('\n')
                     else:
-                        raise CtlError('fail to exec %s' % host_list['exec'])
+                        error_verbose('fail to exec %s' % host_list['exec'])
                 except Exception:
-                    raise CtlError('fail to exec %s' % host_list['exec'])
+                    error_verbose('fail to exec %s' % host_list['exec'])
         host_list = list(set(host_list))
         for host_ip in host_list:
             if host_ip is None or host_ip == '':
@@ -648,9 +653,9 @@ class CollectFromYml(object):
                     return datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec))\
                         .strftime('%Y-%m-%d:%H:%M:%S')
             else:
-                raise CtlError('error datetime format:%s' % str_date)
+                error_verbose('error datetime format:%s' % str_date)
         else:
-            raise CtlError('error datetime format:%s' % str_date)
+            error_verbose('error datetime format:%s' % str_date)
 
     def run(self, collect_dir, detail_version, time_stamp, args):
         run_command_dir = os.getcwd()
@@ -674,11 +679,11 @@ class CollectFromYml(object):
             elif args.since.endswith('h') or args.since.endswith('H'):
                 self.f_date = (datetime.now() + timedelta(days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
             else:
-                raise CtlError("error since format:[%s], it must end with d or h." % args.since)
+                error_verbose("error since format:[%s], it must end with d or h." % args.since)
             self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
 
         if self.f_date > self.t_date:
-            raise CtlError("from datetime [%s] can not be later than to datetime [%s]"
+            error_verbose("from datetime [%s] can not be later than to datetime [%s]"
                            % (self.f_date, self.t_date))
 
         if args.check:
@@ -690,7 +695,7 @@ class CollectFromYml(object):
         decode_result = decode_conf_yml(args)
 
         if decode_result['decode_error'] is not None:
-            raise CtlError(decode_result['decode_error'])
+            error_verbose(decode_result['decode_error'])
 
         for key, value in decode_result.items():
             if key == 'decode_error':
