@@ -643,8 +643,9 @@ def get_lv_size(path):
 
 
 @bash.in_bash
-def resize_lv(path, size):
-    r, o, e = bash.bash_roe("lvresize --size %sb %s" % (calcLvReservedSize(size), path))
+def resize_lv(path, size, force=False):
+    _force = "" if force is False else " --force "
+    r, o, e = bash.bash_roe("lvresize %s --size %sb %s" % (_force, calcLvReservedSize(size), path))
     if r == 0:
         return
     elif "matches existing size" in e or "matches existing size" in o:
