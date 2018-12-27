@@ -153,11 +153,11 @@ class Dnsmasq(virtualrouter.VRAgent):
             for e in dhcpEntries:
                 mac2 = e.mac.replace(':', '')
                 shell.call("sed -i '/%s/d' %s; \
-                        sed -i '/%s/d' %s; \
+                        sed -i '/\<%s\>/d' %s; \
                         sed -i '/^$/d' %s; \
                         sed -i '/%s/d' %s; \
                         sed -i '/^$/d' %s; \
-                        sed -i '/%s/d' %s; \
+                        sed -i '/\<%s\>/d' %s; \
                         sed -i '/^$/d' %s;" \
                            % (e.mac, self.HOST_DHCP_FILE, \
                               e.ip, self.HOST_DHCP_FILE, \
@@ -173,20 +173,30 @@ class Dnsmasq(virtualrouter.VRAgent):
     def _merge(self, entries):
         ### there are some duplicate entries during adding and result in the dhcp server fail to assign the ip address for vm
         ### I don't find the root cause and add the workaround code.' ZSTAC-15116 miao zhanyong
-        self._cleanup_entries_workaround(entries)
+        #self._cleanup_entries_workaround(entries)
         dhcp_entries = set(self._read_current_dhcp_entries())
-        dhcp_entries.update([e.to_dhcp_entry_string() for e in entries])
+        #logger.debug('merge dhcp entries:{0}, total:{1} before'.format(len(entries), len(dhcp_entries)))
+        for e in entries:
+            dhcp_entries = set(filter((lambda o: o.find(e.ip+',') == -1 and o.find(e.mac) == -1), dhcp_entries))
+            dhcp_entries.update([e.to_dhcp_entry_string()])
+            #logger.debug('merge dhcp entries:{0} {2}, total:{1}'.format(len(entries), len(dhcp_entries), e.ip))
+
         with open(self.HOST_DHCP_FILE, 'w') as fd:
             fd.write('\n'.join(dhcp_entries))
+        #logger.debug('merge dhcp entries:{0}, total:{1} after'.format(len(entries), len(dhcp_entries)))
 
         option_entries = set(self._read_current_option_entries())
         for e in entries:
+            option_entries = set(filter((lambda o: o.find(e.tag) == -1), option_entries))
             option_entries.update(e.to_dhcp_option_string_list())
         with open(self.HOST_OPTION_FILE, 'w') as fd:
             fd.write('\n'.join(option_entries))
 
         host_entries = set(self._read_current_host_entries())
-        host_entries.update([e.to_host_entry_string() for e in entries if e.to_host_entry_string()])
+        for e in entries:
+            if e.to_host_entry_string():
+                host_entries = set(filter((lambda o: o.find(e.ip+' ') == -1), host_entries))
+                host_entries.update([e.to_host_entry_string()])
         with open(self.HOST_DNS_FILE, 'w') as fd:
             fd.write('\n'.join(host_entries))
 
@@ -290,11 +300,12 @@ class Dnsmasq(virtualrouter.VRAgent):
                 net_dev = shell.call("ifconfig|grep -i %s|awk '{print $1}'" % e.vrNicMac)
                 net_dev = net_dev.strip('\t\r\n ')
                 mac2 = e.mac.replace(':', '')
+
                 shell.call("sed -i '/%s/d' %s; \
                         sed -i '/^$/d' %s; \
                         sed -i '/%s/d' %s; \
                         sed -i '/^$/d' %s; \
-                        sed -i '/%s/d' %s; \
+                        sed -i '/\<%s\>/d' %s; \
                         sed -i '/^$/d' %s; \
                         dhcp_release %s %s %s"\
                         % (e.mac, self.HOST_DHCP_FILE, \
@@ -304,6 +315,7 @@ class Dnsmasq(virtualrouter.VRAgent):
                         e.ip, self.HOST_DNS_FILE, \
                         self.HOST_DNS_FILE, \
                         net_dev, e.ip, e.mac))
+            #logger.debug("remove dhcp entries:%s" % (len(cmd.dhcpEntries)))
             shell.call("sync")
         except virtualrouter.VirtualRouterError as e:
             logger.warn(linux.get_exception_stacktrace())
