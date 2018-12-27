@@ -115,17 +115,26 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             logger.debug("longjob[uuid:%s] saved process[pid:%s, name:%s]" %
                          (cmd.longJobUuid, new_task.current_pid, new_task.current_process_name))
 
-        virt_v2v_cmd = 'VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso ' \
-                       'virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk ' \
-                       '--vddk-libdir=/var/lib/zstack/v2v/vmware-vix-disklib-distrib ' \
-                       '--vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd ' \
-                       '-of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir,
+        virt_v2v_cmd = 'VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
+                        virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
+                        --vddk-libdir=/var/lib/zstack/v2v/vmware-vix-disklib-distrib \
+                        --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd \
+                        -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir,
                                                                 cmd.thumbprint, cmd.format)
 
         v2v_pid_path = os.path.join(storage_dir, "convert.pid")
         v2v_cmd_ret_path = os.path.join(storage_dir, "convert.ret")
         echo_pid_cmd = "echo $$ > %s; %s; ret=$?; echo $ret > %s; exit $ret" % (
         v2v_pid_path, virt_v2v_cmd, v2v_cmd_ret_path)
+
+        src_vm_uri = cmd.srcVmUri
+        vmware_host_ip = src_vm_uri.split('/')[-1]
+        interface = shell.call("ip r get %s | head -1 | awk '{ print $4,$5 }'" % vmware_host_ip)
+
+        if interface:
+            cmdstr = "tc filter replace %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
+                     % (interface.replace('\n', ''), vmware_host_ip)
+            shell.run(cmdstr)
 
         def run_convert_if_need():
             def do_run():
@@ -146,18 +155,6 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 return do_run()
 
             if process_still_running:
-                src_vm_uri = cmd.srcVmUri
-                vmware_host_ip = src_vm_uri.split('/')[-1]
-                interface = shell.call("ip r get %s | head -1 | awk '{ print $4,$5 }'" % vmware_host_ip)
-
-                if interface:
-                    cmdstr = "tc qdisc del %s root >/dev/null 2>&1;" \
-                             "tc qdisc add %s root handle 1: htb;" \
-                             "tc class add %s parent 1: classid 1:1 htb rate %sbit burst 100m" \
-                             "tc filter replace %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
-                             % (interface, interface, interface, cmd.inboundBandwidth, interface, vmware_host_ip)
-                    shell.run(cmdstr)
-
                 linux.wait_callback_success(os.path.exists, v2v_cmd_ret_path, timeout=259200, interval=60)
 
             ret = linux.read_file(v2v_cmd_ret_path)
@@ -178,6 +175,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         root_vol = r"%s/%s-sda" % (storage_dir, cmd.srcVmName)
+        logger.debug(root_vol)
         if not os.path.exists(root_vol):
             rsp.success = False
             rsp.error = "failed to convert root volume of " + cmd.srcVmName
@@ -205,17 +203,21 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.bootMode = 'UEFI'
 
         def collect_time_cost():
-            s = shell.ShellCmd("grep 'Copying disk' %s  | awk '{ print $2 }' | sed 's/]//g'"
-                               % os.path.join(storage_dir, 'virt_v2v_log'))
+            s = shell.ShellCmd("grep 'Copying disk' %s/virt_v2v_log  | awk '{ print $2 }' | sed 's/]//g'"
+                               % storage_dir)
             s(False)
             if s.return_code != 0:
                 return
 
             times = s.stdout.split('\n')
-            times.insert(0, 0)
-            for i in xrange(1, len(rsp.dataVolumeInfos)):
-                if i < len(times):
-                    rsp.dataVolumeInfos[i]["downloadTime"] = times[i] - times[i - 1]
+
+            if len(times) == 0:
+                return
+
+            rsp.rootVolumeInfo['downloadTime'] = times[0]
+            for i in xrange(0, len(rsp.dataVolumeInfos)):
+                if i + 1 < len(times):
+                    rsp.dataVolumeInfos[i]["downloadTime"] = int(float(times[i + 1]) - float(times[i]))
 
         collect_time_cost()
 
@@ -264,17 +266,75 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         rsp.existing = os.path.exists(cmd.path)
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def _get_network_interface_to_ip_address(ip_address):
+        s = shell.ShellCmd("ip r get %s | head -1 | awk '{ print $4,$5 }'" % ip_address)
+        s(False)
+
+        if s.return_code == 0:
+            return s.stdout.replace('\n', '')
+        else:
+            return None
+
+    @staticmethod
+    def _get_ip_address_to_domain(domain):
+        s = shell.ShellCmd("ping -c 1 %s | head -2 | tail -1 | awk '{ print $5 }' |"
+                           " sed 's/(//g' | sed 's/)://g'" % domain)
+        s(False)
+
+        if s.return_code == 0:
+            return s.stdout
+        else:
+            return None
+
     @in_bash
     @kvmagent.replyerror
     def config_qos(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        # TODO do not delete already set rules
-        if return_code != 0:
-            rsp.error = 'fail to set up conversion host qos'
-            rsp.success = False
-            return jsonobject.dumps(rsp)
+        if cmd.vCenterIps:
+            interface_setup_rule = []
+
+            def set_up_qos_rules(target_interface):
+                config_qos_cmd = "tc qdisc del %s root >/dev/null 2>&1;" \
+                                 "tc qdisc add %s root handle 1: htb;" \
+                                 "tc class add %s parent 1: classid 1:1 htb rate %sbit burst 100m" \
+                                 % (target_interface, target_interface, target_interface, cmd.inboundBandwidth)
+                return shell.run(config_qos_cmd)
+
+            for vcenter_ip in cmd.vCenterIps:
+                interface = self._get_network_interface_to_ip_address(vcenter_ip)
+
+                if interface is None:
+                    interface = self._get_network_interface_to_ip_address(self._get_ip_address_to_domain(vcenter_ip))
+
+                if interface and interface not in interface_setup_rule:
+                    if set_up_qos_rules(interface) == 0:
+                        interface_setup_rule.append(interface)
+                    else:
+                        logger.debug("Failed to set up qos rules on interface %s" % interface)
+                    continue
+
+            list_url_cmd = shell.ShellCmd("ps aux | grep '[v]irt-v2v' | grep -v convert.ret | awk '{print $13}'")
+            list_url_cmd(False)
+
+            limited_interface = []
+            if list_url_cmd.return_code == 0 and list_url_cmd.stdout:
+                # will get a url format like
+                # vpx://administrator%40vsphere.local@xx.xx.xx.xx/Datacenter-xxx/Cluster-xxx/127.0.0.1?no_verify=1
+                for url in list_url_cmd.stdout.split('\n'):
+                    vmware_host_ip = url.split('/')[-1].split('?')[0]
+                    interface = self._get_network_interface_to_ip_address(vmware_host_ip)
+
+                    if interface:
+                        cmdstr = "tc filter replace %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
+                                 % (interface, vmware_host_ip)
+                        if shell.run(cmdstr) != 0:
+                            logger.debug("Failed to set up tc filter on interface %s for ip %s"
+                                         % (interface, vmware_host_ip))
+                        else:
+                            limited_interface.append(interface)
 
         return jsonobject.dumps(rsp)
 
@@ -283,6 +343,20 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     def delete_qos(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        cmdstr = "tc qdisc del dev eth0 root >/dev/null 2>&1"
-        shell.run(cmdstr)
+
+        if cmd.vCenterIps:
+            def delete_qos_rules(target_interface):
+                if target_interface:
+                    cmdstr = "tc qdisc del %s root >/dev/null 2>&1" % target_interface
+                    shell.run(cmdstr) == 0
+
+            for vcenter_ip in cmd.vCenterIps:
+                interface = self._get_network_interface_to_ip_address(vcenter_ip)
+
+                if interface is None:
+                    interface = self._get_network_interface_to_ip_address(self._get_ip_address_to_domain(vcenter_ip))
+
+                if interface:
+                    delete_qos_rules(interface)
+
         return jsonobject.dumps(rsp)
