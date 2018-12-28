@@ -149,13 +149,16 @@ class CollectFromYml(object):
     threads = []
     local_type = 'local'
     host_type = 'host'
-    lock = threading.Lock()
+    check_lock = threading.Lock()
+    suc_lock = threading.Lock()
+    fail_lock = threading.Lock()
     fail_list = []
     collect_time_list = []
     ha_conf_dir = "/var/lib/zstack/ha/"
     ha_conf_file = ha_conf_dir + "ha.yaml"
     check = False
     check_result = {}
+    vrouter_task_list = []
 
     def __init__(self, ctl, collect_dir, detail_version, time_stamp, args):
         self.ctl = ctl
@@ -345,6 +348,9 @@ class CollectFromYml(object):
         (status, output) = commands.getstatusoutput("rm -f %s/%s-collect-log.tar.gz" % (local_collect_dir, type))
 
     def add_collect_thread(self, type, params):
+        if "vrouter" in params:
+            self.vrouter_task_list.append(params)
+            return
         if type == self.host_type:
             thread = threading.Thread(target=self.get_host_log, args=(params))
         elif type == self.local_type:
@@ -359,6 +365,8 @@ class CollectFromYml(object):
             t.start()
         for t in self.threads:
             t.join()
+        for param in self.vrouter_task_list:
+            self.get_host_log(param[0], param[1], param[2], param[3])
 
     def collect_configure_log(self, host_list, log_list, collect_dir, type):
         if isinstance(host_list, str):
@@ -391,6 +399,7 @@ class CollectFromYml(object):
             else:
                 self.add_collect_thread(self.host_type, [self.generate_host_post_info(host_ip, type), log_list, collect_dir, type])
 
+    @ignoreerror
     def get_local_log(self, log_list, collect_dir, type):
         if self.check:
             for log in log_list:
@@ -465,18 +474,18 @@ class CollectFromYml(object):
             info_verbose("Successfully collect log from %s localhost !" % type)
 
     def add_success_count(self):
-        self.lock.acquire()
+        self.suc_lock.acquire()
         self.success_count += 1
-        self.lock.release()
+        self.suc_lock.release()
 
     def add_fail_count(self, fail_log_number, fail_log_name, fail_cause):
-        self.lock.acquire()
+        self.fail_lock.acquire()
         try:
             self.fail_count += fail_log_number
             self.fail_list.append('%s\t%s\n' % (fail_log_name, fail_cause))
         except Exception:
-            self.lock.release()
-        self.lock.release()
+            self.fail_lock.release()
+        self.fail_lock.release()
 
     @ignoreerror
     def get_sharedblock_log(self, host_post_info, tmp_log_dir):
@@ -517,11 +526,12 @@ class CollectFromYml(object):
         run_remote_command(command, host_post_info)
 
     def check_host_reachable_in_queen(self, host_post_info):
-        self.lock.acquire()
+        self.check_lock.acquire()
         result = check_host_reachable(host_post_info)
-        self.lock.release()
+        self.check_lock.release()
         return result
 
+    @ignoreerror
     def get_host_log(self, host_post_info, log_list, collect_dir, type):
             if self.check_host_reachable_in_queen(host_post_info) is True:
                 if self.check:
@@ -551,7 +561,7 @@ class CollectFromYml(object):
                             error_log_name = "%s\t%s\t%s" % (type, host_post_info.host, log['name'])
                             dest_log_dir = tmp_log_dir
                             if 'name' in log:
-                                command = "mkdir -p %s" % tmp_log_dir + '/%s/' % log['name']
+                                command = "mkdir -p %s" % tmp_log_dir + '%s/' % log['name']
                                 run_remote_command(command, host_post_info)
                                 dest_log_dir = tmp_log_dir + '%s/' % log['name']
                             if 'exec' in log:
