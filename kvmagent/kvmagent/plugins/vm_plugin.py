@@ -2062,47 +2062,42 @@ class Vm(object):
         return not job_ended
 
     def _get_target_disk(self, volume):
-        device_id = volume.deviceId
-        wwn = None
-        if volume.useVirtioSCSI:
-            wwn = volume.wwn
+        if volume.installPath.startswith('sharedblock'):
+            volume.installPath = shared_block_to_file(volume.installPath)
 
-        def find_by_wwn(_wwn):
-            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                if disk.get('wwn') == _wwn:
-                    return disk
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if volume.deviceType == 'iscsi':
+                if volume.useVirtio:
+                    if xmlobject.has_element(disk,
+                                             'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                        return disk, disk.target.dev_
+                else:
+                    if xmlobject.has_element(disk,
+                                             'source') and disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
+                        return disk, disk.target.dev_
+            elif volume.deviceType == 'file':
+                if xmlobject.has_element(disk,
+                                         'source') and disk.source.file__ and disk.source.file_ == volume.installPath:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'ceph':
+                if xmlobject.has_element(disk,
+                                         'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'fusionstor':
+                if xmlobject.has_element(disk,
+                                         'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'scsilun':
+                if xmlobject.has_element(disk,
+                                         'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'block':
+                if xmlobject.has_element(disk,
+                                         'source') and disk.source.dev__ and disk.source.dev_ in volume.installPath:
+                    return disk, disk.target.dev_
 
-            raise kvmagent.KvmError('unable to find volume[wwn:%s] on vm[uuid:%s]' % (_wwn, self.uuid))
-
-        def find(disk_name):
-            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                if disk.target.dev_ == disk_name:
-                    return disk
-
-            return None
-
-        if wwn:
-            target_disk = find_by_wwn(wwn)
-            return target_disk, target_disk.target.dev_
-
-        disk_name = 'vd%s' % self.DEVICE_LETTERS[device_id]
-        target_disk = find(disk_name)
-
-        if not target_disk:
-            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
-            disk_name = 'sd%s' % self.DEVICE_LETTERS[device_id]
-            target_disk = find(disk_name)
-
-        if not target_disk:
-            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
-            disk_name = 'hd%s' % self.DEVICE_LETTERS[device_id]
-            target_disk = find(disk_name)
-
-        if not target_disk:
-            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
-            raise kvmagent.KvmError('unable to find volume[device ID:%s] on vm[uuid:%s]' % (device_id, self.uuid))
-
-        return target_disk, disk_name
+        logger.debug('%s is not found on the vm[uuid:%s]' % (volume.installPath, self.uuid))
+        raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (volume.installPath, self.uuid))
 
     def resize_volume(self, volume, device_type, size):
         device_id = volume.deviceId
