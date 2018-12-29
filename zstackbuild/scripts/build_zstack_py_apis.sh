@@ -7,4 +7,4 @@ else
     cd ${ZSTACK_SOURCE}/test
 fi
 
-mvn test -Dtest=TestGenerateApiPythonClassAndJsonTemplate -DpythonApisDir=${PYTHON_APIS_DIR}
+mvn test -Dtest=TestGenerateApiPythonClassAndJsonTemplate -Djacoco.skip=true -DpythonApisDir=${PYTHON_APIS_DIR}
