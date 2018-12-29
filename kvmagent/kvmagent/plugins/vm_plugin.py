@@ -1824,39 +1824,11 @@ class Vm(object):
             def attach():
                 def wait_for_attach(_):
                     me = get_vm_by_uuid(self.uuid)
-                    for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                        if volume.deviceType == 'iscsi':
-                            if volume.useVirtio:
-                                if xmlobject.has_element(disk,
-                                                         'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                    return True
-                            else:
-                                if xmlobject.has_element(disk,
-                                                         'source') and disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
-                                    return True
-                        elif volume.deviceType == 'file':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.file__ and disk.source.file_ == volume.installPath:
-                                return True
-                        elif volume.deviceType == 'ceph':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                return True
-                        elif volume.deviceType == 'fusionstor':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                return True
-                        elif volume.deviceType == 'scsilun':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
-                                return True
-                        elif volume.deviceType == 'block':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.dev__ and disk.source.dev_ in volume.installPath:
-                                return True
+                    disk, _ = me._get_target_disk(volume, is_exception=False)
 
-                    logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
-                    return False
+                    if not disk:
+                        logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
+                    return bool(disk)
 
                 try:
                     self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -1933,46 +1905,12 @@ class Vm(object):
             def detach():
                 def wait_for_detach(_):
                     me = get_vm_by_uuid(self.uuid)
-                    for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                        if volume.deviceType == 'file':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.file__ and disk.source.file_ == volume.installPath:
-                                logger.debug(
-                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
-                        elif volume.deviceType == 'iscsi':
-                            if volume.useVirtio:
-                                if xmlobject.has_element(disk,
-                                                         'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                    logger.debug(
-                                        'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                    return False
-                            else:
-                                if xmlobject.has_element(disk,
-                                                         'source') and disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
-                                    logger.debug(
-                                        'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                    return False
-                        elif volume.deviceType == 'ceph':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                logger.debug(
-                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
-                        elif volume.deviceType == 'fusionstor':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                logger.debug(
-                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
-                        elif volume.deviceType == 'scsilun':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.dev__ and volume.installPath in disk.source.dev__:
-                                logger.debug(
-                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
+                    disk, _ = me._get_target_disk(volume, is_exception=False)
 
-                    return True
+                    if disk:
+                        logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+
+                    return not bool(disk)
 
                 try:
                     self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -2061,40 +1999,38 @@ class Vm(object):
 
         return not job_ended
 
-    def _get_target_disk(self, volume):
+    def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if not xmlobject.has_element(disk, 'source'):
+                continue
+
             if volume.deviceType == 'iscsi':
                 if volume.useVirtio:
-                    if xmlobject.has_element(disk,
-                                             'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                    if disk.source.name__ and disk.source.name_ in volume.installPath:
                         return disk, disk.target.dev_
                 else:
-                    if xmlobject.has_element(disk,
-                                             'source') and disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
+                    if disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
                         return disk, disk.target.dev_
             elif volume.deviceType == 'file':
-                if xmlobject.has_element(disk,
-                                         'source') and disk.source.file__ and disk.source.file_ == volume.installPath:
+                if disk.source.file__ and disk.source.file_ == volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'ceph':
-                if xmlobject.has_element(disk,
-                                         'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                if disk.source.name__ and disk.source.name_ in volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'fusionstor':
-                if xmlobject.has_element(disk,
-                                         'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
+                if disk.source.name__ and disk.source.name_ in volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'scsilun':
-                if xmlobject.has_element(disk,
-                                         'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
+                if disk.source.dev__ and volume.installPath in disk.source.dev_:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'block':
-                if xmlobject.has_element(disk,
-                                         'source') and disk.source.dev__ and disk.source.dev_ in volume.installPath:
+                if disk.source.dev__ and disk.source.dev_ in volume.installPath:
                     return disk, disk.target.dev_
+        if not is_exception:
+            return None, None
 
         logger.debug('%s is not found on the vm[uuid:%s]' % (volume.installPath, self.uuid))
         raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (volume.installPath, self.uuid))
@@ -2144,7 +2080,7 @@ class Vm(object):
                                         "can not proceed")
             target_disk, disk_name = self._get_target_disk(vs_struct.volume)
             if target_disk is None:
-                logger.debug("can not find %s" % vs_struct.addons['volume'].deviceId)
+                logger.debug("can not find %s" % vs_struct.volume.deviceId)
                 continue
 
             snapshot_dir = os.path.dirname(vs_struct.installPath)
@@ -3756,33 +3692,6 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             return self._get_image_mb_size(backing) + self._escape(size)
 
-    def _get_device(self, path, uuid):
-        @LibvirtAutoReconnect
-        def call_libvirt(conn):
-            return conn.lookupByName(uuid)
-        domain = call_libvirt()
-        domain_xml = domain.XMLDesc(0)
-        domain_xml_obj = xmlobject.loads(domain_xml)
-        device_id = None
-        if path.startswith('sharedblock://'):
-            path = shared_block_to_file(path)
-        for disk in domain_xml_obj.devices.get_child_node_as_list('disk'):
-            if disk.device_ == 'disk':
-                for source in disk.get_child_node_as_list('source'):
-                    if source.hasattr('file_') and source.file_ == path:
-                        device_id = disk.get_child_node('target').dev_
-                    elif source.hasattr('protocol_') and source.protocol_ == 'rbd' \
-                        and source.name_ == path[7:]:
-                        '''ceph://xxx'''
-                        device_id = disk.get_child_node('target').dev_
-                    elif source.hasattr('protocol_') and source.protocol_ == 'nbd' \
-                        and source.name_ == path[13:]:
-                        '''fusionstor://xxx'''
-                        device_id = disk.get_child_node('target').dev_
-                    else:
-                        pass
-        return device_id
-
     def _get_volume_bandwidth_value(self, vm_uuid, device_id, mode):
         cmd_base = "virsh blkdeviotune %s %s" % (vm_uuid, device_id)
         if mode == "total":
@@ -3796,11 +3705,8 @@ class VmPlugin(kvmagent.KvmAgent):
     def set_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        if device_id is None:
-            rsp.success = False
-            rsp.error = "Volume is not ready, is it being attached?"
-            return jsonobject.dumps(rsp)
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        _, device_id = vm._get_target_disk(cmd.volume)
 
         ## total and read/write of bytes_sec cannot be set at the same time
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
@@ -3820,11 +3726,8 @@ class VmPlugin(kvmagent.KvmAgent):
     def delete_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        if device_id is None:
-            rsp.success = False
-            rsp.error = "Volume is not ready, is it being attached?"
-            return jsonobject.dumps(rsp)
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        _, device_id = vm._get_target_disk(cmd.volume)
 
         ## total and read/write of bytes_sec cannot be set at the same time
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
@@ -3850,11 +3753,8 @@ class VmPlugin(kvmagent.KvmAgent):
     def get_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        if device_id is None:
-            rsp.success = False
-            rsp.error = "Volume is not ready, is it being attached?"
-            return jsonobject.dumps(rsp)
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        _, device_id = vm._get_target_disk(cmd.volume)
 
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
         bandWidth = shell.call('%s | grep -w total_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
@@ -5436,7 +5336,7 @@ class EmptyCdromConfig():
 
 class VolumeSnapshotJobStruct(object):
     def __init__(self, volumeUuid, volume, installPath, vmInstanceUuid, previousInstallPath,
-                 newVolumeInstallPath, live=True, full=False, addons={}):
+                 newVolumeInstallPath, live=True, full=False):
         self.volumeUuid = volumeUuid
         self.volume = volume
         self.installPath = installPath
@@ -5445,7 +5345,6 @@ class VolumeSnapshotJobStruct(object):
         self.newVolumeInstallPath = newVolumeInstallPath
         self.live = live
         self.full = full
-        self.addons = addons
 
 
 class VolumeSnapshotResultStruct(object):
