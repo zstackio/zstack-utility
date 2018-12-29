@@ -203,8 +203,13 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.bootMode = 'UEFI'
 
         def collect_time_cost():
-            s = shell.ShellCmd("grep 'Copying disk' %s/virt_v2v_log  | awk '{ print $2 }' | sed 's/]//g'"
-                               % storage_dir)
+            # [ 138.3] Copying disk 1/13 to
+            # [ 408.1] Copying disk 2/13 to
+            # ...
+            # [1055.2] Copying disk 11/13 to
+            # [1082.3] Copying disk 12/13 to
+            # [1184.9] Copying disk 13/13 to
+            s = shell.ShellCmd("""awk -F"[\[\]]" '{print $2}' %s/virt_v2v_log""" % storage_dir)
             s(False)
             if s.return_code != 0:
                 return
