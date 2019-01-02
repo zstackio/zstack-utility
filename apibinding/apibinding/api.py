@@ -50,7 +50,7 @@ class Api(object):
 
     def _error_code_to_string(self, error):
         if error.elaboration is not None:
-            return "[code: %s, description: %s, details: %s, elaboration: \n%s]" % \
+            return "[code: %s, description: %s, details: %s, elaboration: \n%s" % \
                    (error.code, error.description, error.details, error.elaboration)
         else:
             return "[code: %s, description: %s, details: %s]" % \
