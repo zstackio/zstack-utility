@@ -219,6 +219,7 @@ class ConsoleProxyAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = EstablishProxyRsp()
         log_file = os.path.join(self.PROXY_LOG_DIR, cmd.proxyHostname)
+        port_conflict_msg = None
         ##
         def check_parameters():
             if not cmd.targetHostname:
@@ -230,8 +231,25 @@ class ConsoleProxyAgent(object):
             if not cmd.proxyHostname:
                 raise ConsoleProxyError('proxyHostname cannot be null')
 
+        def check_port_conflict():
+            if cmd.proxyPort is None or str(cmd.proxyPort).isdigit() is False:
+                raise ConsoleProxyError('proxyPort is None or is not a Number')
+            system_port_cmd = 'sysctl -n net.ipv4.ip_local_port_range'
+            ret, out, err = bash_roe(system_port_cmd)
+            if ret != 0:
+                logger.warn(err)
+            elif out.strip() is None:
+                logger.warn("None is net.ipv4.ip_local_port_range in current system")
+            else:
+                port_range = out.strip().split()
+                if len(port_range) == 2 and str(port_range[0]).isdigit() and str(port_range[1]).isdigit():
+                    if int(port_range[0]) < int(cmd.proxyPort) < int(port_range[1]):
+                        port_conflict_msg = "cmd.proxyPort [%s] is probably conflict with linux ip_local_port_range: %s" % (cmd.proxyPort, port_range)
+                        logger.warn(port_conflict_msg)
+
         try:
             check_parameters()
+            check_port_conflict()
         except ConsoleProxyError as e:
             err = linux.get_exception_stacktrace()
             logger.warn(err)
@@ -299,10 +317,13 @@ class ConsoleProxyAgent(object):
             ret,out,err = bash_roe(start_cmd)
             if ret != 0:
                 err = []
-                err.append('failed to execute bash command: %s' % start_cmd)
-                err.append('return code: %s' % ret)
-                err.append('stdout: %s' % out)
-                err.append('stderr: %s' % err)
+                if port_conflict_msg is not None:
+                    err.append(port_conflict_msg)
+                else:
+                    err.append('failed to execute bash command: %s' % start_cmd)
+                    err.append('return code: %s' % ret)
+                    err.append('stdout: %s' % out)
+                    err.append('stderr: %s' % err)
                 raise ConsoleProxyError('\n'.join(err))
             else:
                 enable_proxy_port()
