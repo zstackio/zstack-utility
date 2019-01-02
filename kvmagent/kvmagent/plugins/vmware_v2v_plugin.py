@@ -302,10 +302,11 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             interface_setup_rule = []
 
             def set_up_qos_rules(target_interface):
+                # a bare number in tc class use bytes as unit
                 config_qos_cmd = "tc qdisc del %s root >/dev/null 2>&1;" \
                                  "tc qdisc add %s root handle 1: htb;" \
-                                 "tc class add %s parent 1: classid 1:1 htb rate %sbit burst 100m" \
-                                 % (target_interface, target_interface, target_interface, cmd.inboundBandwidth)
+                                 "tc class add %s parent 1: classid 1:1 htb rate %s burst 100m" \
+                                 % (target_interface, target_interface, target_interface, cmd.inboundBandwidth / 8)
                 return shell.run(config_qos_cmd)
 
             for vcenter_ip in cmd.vCenterIps:
