@@ -38,7 +38,12 @@ class ConvertRsp(AgentRsp):
         self.dataVolumeInfos = []
         self.bootMode = None
 
+
 QOS_IFB = "ifb0"
+
+VDDK_VERSION = '/var/lib/zstack/v2v/vddk_version'
+WINDOWS_VIRTIO_DRIVE_ISO_VERSION = '/var/lib/zstack/v2v/windows_virtio_version'
+V2V_LIB_PATH = '/var/lib/zstack/v2v/'
 
 class VMwareV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/vmwarev2v/conversionhost/init"
@@ -65,16 +70,57 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     @in_bash
     @kvmagent.replyerror
     def init(self, req):
-        # TODO do not use docker
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        cmdstr = 'mkdir -p /var/lib/zstack/v2v && cd /var/lib/zstack/v2v && wget -c {} -O zstack-windows-virtio-driver.iso'.format(
-            cmd.virtioDriverUrl)
-        if shell.run(cmdstr) != 0:
-            rsp.success = False
-            rsp.error = "failed to download zstack-windows-virtio-driver.iso from management node to v2v conversion host"
-            return jsonobject.dumps(rsp)
+        path = "/var/lib/zstack/v2v"
+        if not os.path.exists(path):
+            os.makedirs(path, 0775)
+
+        if not os.path.exists(WINDOWS_VIRTIO_DRIVE_ISO_VERSION) \
+                and os.path.exists(V2V_LIB_PATH + 'zstack-windows-virtio-driver.iso'):
+            last_modified = shell.call("curl -I %s | grep 'Last-Modified'" % cmd.virtioDriverUrl)
+            with open(WINDOWS_VIRTIO_DRIVE_ISO_VERSION, 'w') as fd:
+                fd.write(last_modified.strip('\n\r'))
+        else:
+            last_modified = shell.call("curl -I %s | grep 'Last-Modified'" % cmd.virtioDriverUrl).strip('\n\r')
+
+            with open(WINDOWS_VIRTIO_DRIVE_ISO_VERSION, 'r') as fd:
+                version = fd.readline()
+
+            if version != last_modified:
+                cmdstr = 'cd /var/lib/zstack/v2v && wget -c {} -O zstack-windows-virtio-driver.iso'.format(
+                    cmd.virtioDriverUrl)
+                if shell.run(cmdstr) != 0:
+                    rsp.success = False
+                    rsp.error = "failed to download zstack-windows-virtio-driver.iso " \
+                                "from management node to v2v conversion host"
+                    return jsonobject.dumps(rsp)
+
+                with open(WINDOWS_VIRTIO_DRIVE_ISO_VERSION, 'w') as fd:
+                    fd.write(last_modified)
+
+        if not os.path.exists(VDDK_VERSION) and os.path.exists(V2V_LIB_PATH + 'vmware-vix-disklib-distrib.tar.gz'):
+            with open(VDDK_VERSION, 'w') as fd:
+                fd.write(cmd.vddkLibUrl.split('/')[-1])
+        else:
+            current_version = cmd.vddkLibUrl.split('/')[-1]
+
+            with open(VDDK_VERSION, 'r') as fd:
+                version = fd.readline()
+
+            if current_version != version:
+                cmdstr = 'cd /var/lib/zstack/v2v && wget -c {} -O vmware-vix-disklib-distrib.tar.gz && ' \
+                         'tar zxf vmware-vix-disklib-distrib.tar.gz'.format(
+                    cmd.vddkLibUrl)
+                if shell.run(cmdstr) != 0:
+                    rsp.success = False
+                    rsp.error = "failed to download vmware-vix-disklib-distrib.tar.gz " \
+                                "from management node to v2v conversion host"
+                    return jsonobject.dumps(rsp)
+
+                with open(VDDK_VERSION, 'w') as fd:
+                    fd.write(current_version)
 
         return jsonobject.dumps(rsp)
 
