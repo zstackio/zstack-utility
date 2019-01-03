@@ -38,6 +38,7 @@ class ConvertRsp(AgentRsp):
         self.dataVolumeInfos = []
         self.bootMode = None
 
+QOS_IFB = "ifb0"
 
 class VMwareV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/vmwarev2v/conversionhost/init"
@@ -132,8 +133,8 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         interface = self._get_network_interface_to_ip_address(vmware_host_ip)
 
         if interface:
-            cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
-                     % (interface.replace('\n', ''), vmware_host_ip)
+            cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
+                     % (QOS_IFB, vmware_host_ip)
             shell.run(cmdstr)
 
         def run_convert_if_need():
@@ -301,16 +302,20 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
+        shell.run("modprobe ifb; ip link set %s up" % QOS_IFB)
+
         if cmd.vCenterIps:
             interface_setup_rule = []
 
             def set_up_qos_rules(target_interface):
                 # a bare number in tc class use bytes as unit
-                config_qos_cmd = "tc qdisc del dev %s root >/dev/null 2>&1;" \
-                                 "tc qdisc add dev %s root handle 1: htb;" \
-                                 "tc class add dev %s parent 1: classid 1:1 htb rate %s burst 100m" \
-                                 % (target_interface, target_interface, target_interface, cmd.inboundBandwidth / 8)
-
+                config_qos_cmd = "tc qdisc add dev {0} ingress;" \
+                                 "tc filter add dev {0} parent ffff: protocol ip u32 match " \
+                                 "u32 0 0 flowid 1:1 action mirred egress redirect dev {1};" \
+                                 "tc qdisc del dev {1} root >/dev/null 2>&1;" \
+                                 "tc qdisc add dev {1} root handle 1: htb;" \
+                                 "tc class add dev {1} parent 1: classid 1:1 htb rate {2} burst 100m" \
+                                 .format(target_interface, QOS_IFB, cmd.inboundBandwidth)
                 return shell.run(config_qos_cmd)
 
             for vcenter_ip in cmd.vCenterIps:
@@ -338,8 +343,8 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     interface = self._get_network_interface_to_ip_address(vmware_host_ip)
 
                     if interface:
-                        cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
-                                 % (interface, vmware_host_ip)
+                        cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
+                                 % (QOS_IFB, vmware_host_ip)
                         if shell.run(cmdstr) != 0:
                             logger.debug("Failed to set up tc filter on interface %s for ip %s"
                                          % (interface, vmware_host_ip))
@@ -358,7 +363,9 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             def delete_qos_rules(target_interface):
                 if target_interface:
                     cmdstr = "tc qdisc del dev %s root >/dev/null 2>&1" % target_interface
-                    shell.run(cmdstr) == 0
+                    shell.run(cmdstr)
+                    cmdstr = "tc qdisc del dev %s ingress >/dev/null 2>&1" % QOS_IFB
+                    shell.run(cmdstr)
 
             for vcenter_ip in cmd.vCenterIps:
                 interface = self._get_network_interface_to_ip_address(vcenter_ip)
