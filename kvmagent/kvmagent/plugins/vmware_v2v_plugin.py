@@ -129,10 +129,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         src_vm_uri = cmd.srcVmUri
         vmware_host_ip = src_vm_uri.split('/')[-1]
-        interface = shell.call("ip r get %s | head -1 | awk '{ print $4,$5 }'" % vmware_host_ip)
+        interface = self._get_network_interface_to_ip_address(vmware_host_ip)
 
         if interface:
-            cmdstr = "tc filter replace %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
+            cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
                      % (interface.replace('\n', ''), vmware_host_ip)
             shell.run(cmdstr)
 
@@ -276,7 +276,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def _get_network_interface_to_ip_address(ip_address):
-        s = shell.ShellCmd("ip r get %s | head -1 | awk '{ print $4,$5 }'" % ip_address)
+        s = shell.ShellCmd("ip r get %s | sed 's/^.*dev \([^ ]*\).*$/\\1/;q'" % ip_address)
         s(False)
 
         if s.return_code == 0:
@@ -306,10 +306,11 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
             def set_up_qos_rules(target_interface):
                 # a bare number in tc class use bytes as unit
-                config_qos_cmd = "tc qdisc del %s root >/dev/null 2>&1;" \
-                                 "tc qdisc add %s root handle 1: htb;" \
-                                 "tc class add %s parent 1: classid 1:1 htb rate %s burst 100m" \
+                config_qos_cmd = "tc qdisc del dev %s root >/dev/null 2>&1;" \
+                                 "tc qdisc add dev %s root handle 1: htb;" \
+                                 "tc class add dev %s parent 1: classid 1:1 htb rate %s burst 100m" \
                                  % (target_interface, target_interface, target_interface, cmd.inboundBandwidth / 8)
+
                 return shell.run(config_qos_cmd)
 
             for vcenter_ip in cmd.vCenterIps:
@@ -337,7 +338,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     interface = self._get_network_interface_to_ip_address(vmware_host_ip)
 
                     if interface:
-                        cmdstr = "tc filter replace %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
+                        cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:1" \
                                  % (interface, vmware_host_ip)
                         if shell.run(cmdstr) != 0:
                             logger.debug("Failed to set up tc filter on interface %s for ip %s"
@@ -356,7 +357,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         if cmd.vCenterIps:
             def delete_qos_rules(target_interface):
                 if target_interface:
-                    cmdstr = "tc qdisc del %s root >/dev/null 2>&1" % target_interface
+                    cmdstr = "tc qdisc del dev %s root >/dev/null 2>&1" % target_interface
                     shell.run(cmdstr) == 0
 
             for vcenter_ip in cmd.vCenterIps:
