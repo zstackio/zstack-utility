@@ -261,7 +261,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             nics = temp_nics
 
         ips = set(map(lambda d: d.values()[0], nics))
-        nicnames = set(map(lambda d: d.keys()[0], nics))
+        nicnames = list(set(map(lambda d: d.keys()[0], nics)))
 
         ''' there are 4 cases:
             1. there is no interface has ip address matched the vxlan or vxpool cidr
