@@ -77,6 +77,13 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         if not os.path.exists(path):
             os.makedirs(path, 0775)
 
+        def get_dep_version_from_version_file(version_file):
+            if not os.path.exists(version_file):
+                return None
+            else:
+                with open(version_file, 'r') as vfd:
+                    return vfd.readline()
+
         if not os.path.exists(WINDOWS_VIRTIO_DRIVE_ISO_VERSION) \
                 and os.path.exists(V2V_LIB_PATH + 'zstack-windows-virtio-driver.iso'):
             last_modified = shell.call("curl -I %s | grep 'Last-Modified'" % cmd.virtioDriverUrl)
@@ -85,8 +92,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         else:
             last_modified = shell.call("curl -I %s | grep 'Last-Modified'" % cmd.virtioDriverUrl).strip('\n\r')
 
-            with open(WINDOWS_VIRTIO_DRIVE_ISO_VERSION, 'r') as fd:
-                version = fd.readline()
+            version = get_dep_version_from_version_file(WINDOWS_VIRTIO_DRIVE_ISO_VERSION)
 
             if version != last_modified:
                 cmdstr = 'cd /var/lib/zstack/v2v && wget -c {} -O zstack-windows-virtio-driver.iso'.format(
@@ -106,8 +112,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         else:
             current_version = cmd.vddkLibUrl.split('/')[-1]
 
-            with open(VDDK_VERSION, 'r') as fd:
-                version = fd.readline()
+            version = get_dep_version_from_version_file(VDDK_VERSION)
 
             if current_version != version:
                 cmdstr = 'cd /var/lib/zstack/v2v && wget -c {} -O vmware-vix-disklib-distrib.tar.gz && ' \
