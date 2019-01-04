@@ -408,9 +408,11 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         if cmd.vCenterIps:
             def delete_qos_rules(target_interface):
                 if target_interface:
-                    cmdstr = "tc qdisc del dev %s root >/dev/null 2>&1" % target_interface
+                    # delete ifb interface tc rules
+                    cmdstr = "tc qdisc del dev %s root >/dev/null 2>&1" % QOS_IFB
                     shell.run(cmdstr)
-                    cmdstr = "tc qdisc del dev %s ingress >/dev/null 2>&1" % QOS_IFB
+                    # delete target interface tc rules
+                    cmdstr = "tc qdisc del dev %s ingress >/dev/null 2>&1" % target_interface
                     shell.run(cmdstr)
 
             for vcenter_ip in cmd.vCenterIps:
