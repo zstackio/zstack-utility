@@ -1474,6 +1474,15 @@ class Vm(object):
                 if disk.type_ == 'block' and disk.device_ == 'lun':
                     BlkIscsi.logout_portal(disk.source.dev_)
 
+        def ivshmem_cleanup():
+            shmems = self.domain_xmlobject.devices.get_child_node_as_list('shmem')
+            for shmem in shmems:
+                if not shmem.name__:
+                    continue
+                path = os.path.join('/dev/shm', shmem.name_)
+                linux.rm_file_force(path)
+                logger.debug('successfully clean ivshmem file %s' % path)
+
         def loop_undefine(_):
             if not undefine:
                 return True
@@ -1529,6 +1538,7 @@ class Vm(object):
                 raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
         cleanup_addons()
+        ivshmem_cleanup()
 
         vm = get_vm_by_uuid(self.uuid, False)
         if vm:
@@ -2326,6 +2336,18 @@ class Vm(object):
             raise
         except:
             logger.debug(linux.get_exception_stacktrace())
+
+        def ivshmem_cleanup():
+            shmems = self.domain_xmlobject.devices.get_child_node_as_list('shmem')
+            for shmem in shmems:
+                if not shmem.name__:
+                    continue
+                path = os.path.join('/dev/shm', shmem.name_)
+                linux.rm_file_force(path)
+                logger.debug('successfully clean ivshmem file %s' % path)
+
+        if not cmd.migrateFromDestination:
+            ivshmem_cleanup()
 
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
@@ -3301,6 +3323,9 @@ class Vm(object):
             if cephSecretKey and cephSecretUuid:
                 VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
 
+            if cmd.ivshmem:
+                make_ivshmem(cmd.ivshmem)
+
             pciDevices = cmd.addons['pciDevice']
             if pciDevices:
                 make_pci_device(pciDevices)
@@ -3322,6 +3347,12 @@ class Vm(object):
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+
+        def make_ivshmem(ivshmem):
+            devices = elements['devices']
+            shmem = e(devices, "shmem", None, {'name': ivshmem.namePrefix + uuidhelper.to_full_uuid(cmd.vmInstanceUuid)})
+            e(shmem, "model", None, {'type': 'ivshmem-plain'})
+            e(shmem, "size", str(ivshmem.size), {'unit': 'M'})
 
         def make_pci_device(addresses):
             devices = elements['devices']
