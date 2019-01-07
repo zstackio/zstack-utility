@@ -2035,7 +2035,7 @@ class Vm(object):
         logger.debug('%s is not found on the vm[uuid:%s]' % (volume.installPath, self.uuid))
         raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (volume.installPath, self.uuid))
 
-    def resize_volume(self, volume, device_type, size):
+    def resize_volume(self, volume, size):
         device_id = volume.deviceId
         target_disk, disk_name = self._get_target_disk(volume)
 
@@ -4930,7 +4930,7 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = KvmResizeVolumeRsp()
 
         vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
-        vm.resize_volume(cmd.volume, cmd.deviceType, cmd.size)
+        vm.resize_volume(cmd.volume, cmd.size)
 
         touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
