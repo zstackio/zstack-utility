@@ -3912,24 +3912,16 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def vm_sync(self, req):
         rsp = VmSyncResponse()
-        # vms = get_running_vms()
-        # running_vms = {}
-        # for vm in vms:
-        #     if vm.state == Vm.VM_STATE_RUNNING:
-        #         running_vms[vm.uuid] = Vm.VM_STATE_RUNNING
-        #     else:
-        #         try:
-        #             logger.debug('VM[uuid:%s] is in state of %s, destroy it' % (vm.uuid, vm.state))
-        #             vm.destroy()
-        #         except:
-        #             logger.warn(linux.get_exception_stacktrace())
-        #
-        # rsp.states = running_vms
+        rsp.states = get_all_vm_states()
+
+        # In case of an reboot inside the VM.  Note that ZS will only define transient VM's.
+        for uuid in rsp.states:
+            if rsp.states[uuid] == Vm.VM_STATE_SHUTDOWN:
+                rsp.states[uuid] = Vm.VM_STATE_RUNNING
+
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
-        rsp.states = get_all_vm_states()
-
         output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
             if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
