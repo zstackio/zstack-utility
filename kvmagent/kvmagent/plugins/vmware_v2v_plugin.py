@@ -261,7 +261,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             # [1055.2] Copying disk 11/13 to
             # [1082.3] Copying disk 12/13 to
             # [1184.9] Copying disk 13/13 to
-            s = shell.ShellCmd("""awk -F"[][]" '/Copying disk/{print $2}'""" % storage_dir)
+            s = shell.ShellCmd("""awk -F"[][]" '/Copying disk/{print $2}' %s/virt_v2v_log""" % storage_dir)
             s(False)
             if s.return_code != 0:
                 return
