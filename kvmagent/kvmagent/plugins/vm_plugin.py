@@ -3352,7 +3352,7 @@ class Vm(object):
             devices = elements['devices']
             shmem = e(devices, "shmem", None, {'name': ivshmem.namePrefix + uuidhelper.to_full_uuid(cmd.vmInstanceUuid)})
             e(shmem, "model", None, {'type': 'ivshmem-plain'})
-            e(shmem, "size", str(ivshmem.size), {'unit': 'M'})
+            e(shmem, "size", str(ivshmem.size / 1024 / 1024), {'unit': 'M'})
 
         def make_pci_device(addresses):
             devices = elements['devices']
