@@ -3229,12 +3229,11 @@ class Vm(object):
                 return
 
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
-            model_value = 'ich9-ehci1' if machine_type == 'q35' else 'ehci'
-            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': model_value})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
             e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
             # USB2.0 Controller for redirect
-            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': model_value})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
             e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
             chan = e(devices, 'channel', None, {'type': 'spicevmc'})
             e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
