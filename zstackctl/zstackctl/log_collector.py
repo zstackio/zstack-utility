@@ -77,6 +77,10 @@ def decode_conf_yml(args):
 
     decode_result = {}
     decode_error = None
+    if not os.path.exists(yml_conf_dir):
+        decode_error = 'do not find conf path %s' % yml_conf_dir
+        decode_result['decode_error'] = decode_error
+        return decode_result
     f = open(yml_conf_dir)
     try:
         conf_dict = yaml.load(f)
@@ -646,32 +650,31 @@ class CollectFromYml(object):
 
 
     def format_date(self, str_date):
-        d_arr = str_date.split('_')
-        if len(d_arr) == 1 or len(d_arr) == 2:
-            ymd_array = d_arr[0].split('-')
-            if len(ymd_array) == 3:
-                year = ymd_array[0]
-                month = ymd_array[1]
-                day = ymd_array[2]
-                if len(d_arr) == 1:
-                    return datetime(int(year), int(month), int(day)).strftime('%Y-%m-%d:%H:%M:%S')
+        try:
+            d_arr = str_date.split('_')
+            if len(d_arr) == 1 or len(d_arr) == 2:
+                ymd_array = d_arr[0].split('-')
+                if len(ymd_array) == 3:
+                    year = ymd_array[0]
+                    month = ymd_array[1]
+                    day = ymd_array[2]
+                    if len(d_arr) == 1:
+                        return datetime(int(year), int(month), int(day)).strftime('%Y-%m-%d:%H:%M:%S')
+                    else:
+                        hms_array = d_arr[1].split(':')
+                        hour = hms_array[0] if len(hms_array) > 0 is not None else '00'
+                        minute = hms_array[1] if len(hms_array) > 1 is not None else '00'
+                        sec = hms_array[2] if len(hms_array) > 2 is not None else '00'
+                        return datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec))\
+                            .strftime('%Y-%m-%d:%H:%M:%S')
                 else:
-                    hms_array = d_arr[1].split(':')
-                    hour = hms_array[0] if len(hms_array) > 0 is not None else '00'
-                    minute = hms_array[1] if len(hms_array) > 1 is not None else '00'
-                    sec = hms_array[2] if len(hms_array) > 2 is not None else '00'
-                    return datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec))\
-                        .strftime('%Y-%m-%d:%H:%M:%S')
+                    error_verbose("make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
             else:
-                error_verbose('error datetime format:%s' % str_date)
-        else:
-            error_verbose('error datetime format:%s' % str_date)
+                error_verbose("make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
+        except ValueError:
+            error_verbose("make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
 
-    def run(self, collect_dir, detail_version, time_stamp, args):
-        run_command_dir = os.getcwd()
-        if not os.path.exists(collect_dir) and args.check is not True:
-            os.makedirs(collect_dir)
-
+    def param_validate(self, args):
         if args.since is None:
             if args.from_date is None:
                 self.f_date = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d:%H:%M:%S')
@@ -684,23 +687,32 @@ class CollectFromYml(object):
             else:
                 self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
         else:
-            if args.since.endswith('d') or args.since.endswith('D'):
-                self.f_date = (datetime.now() + timedelta(days=float('-%s' % (args.since[:-1])))).strftime('%Y-%m-%d:%H:%M:%S')
-            elif args.since.endswith('h') or args.since.endswith('H'):
-                self.f_date = (datetime.now() + timedelta(days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
-            else:
-                error_verbose("error since format:[%s], it must end with d or h." % args.since)
-            self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
+            try:
+                if args.since.endswith('d') or args.since.endswith('D'):
+                    self.f_date = (datetime.now() + timedelta(days=float('-%s' % (args.since[:-1])))).strftime('%Y-%m-%d:%H:%M:%S')
+                elif args.since.endswith('h') or args.since.endswith('H'):
+                    self.f_date = (datetime.now() + timedelta(days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
+                else:
+                    error_verbose("error since format:[%s], correct format example '--since 2d'" % args.since)
+                self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
+            except ValueError:
+                error_verbose("error since format:[%s], correct format example '--since 2d'" % args.since)
 
         if self.f_date > self.t_date:
-            error_verbose("from datetime [%s] can not be later than to datetime [%s]"
-                           % (self.f_date, self.t_date))
+            error_verbose("from datetime [%s] can not be later than to datetime [%s]" % (self.f_date, self.t_date))
 
         if args.check:
             self.check = True
             info_verbose("Start checking the file size ,,,")
         else:
             self.check = False
+
+    def run(self, collect_dir, detail_version, time_stamp, args):
+        run_command_dir = os.getcwd()
+        if not os.path.exists(collect_dir) and args.check is not True:
+            os.makedirs(collect_dir)
+
+        self.param_validate(args)
 
         decode_result = decode_conf_yml(args)
 
