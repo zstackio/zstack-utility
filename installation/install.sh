@@ -1127,6 +1127,7 @@ cs_pre_check(){
     fi
     #change zstack.properties config
     if [ x"$UPGRADE" != x'n' ]; then
+        sharedblock_check_qcow2_volume
         zstack_properties=`zstack-ctl status 2>/dev/null|grep zstack.properties|awk '{print $2}'`
     else
         zstack_properties=$ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES
@@ -1576,7 +1577,7 @@ uz_upgrade_zstack_ctl(){
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade zstack-ctl"
     fi
-    sharedblock_check_qcow2_volume
+
     pass
 }
 
