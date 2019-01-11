@@ -4294,11 +4294,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 for snapshot_job in cmd.snapshotJobs:
                     if snapshot_job.full:
                         rsp.snapshots.append(VolumeSnapshotResultStruct(
-                            *take_full_snapshot_by_qemu_img_convert(
+                            snapshot_job.volumeUuid, *take_full_snapshot_by_qemu_img_convert(
                                 snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath)))
                     else:
                         rsp.snapshots.append(VolumeSnapshotResultStruct(
-                            *take_delta_snapshot_by_qemu_img_convert(
+                            snapshot_job.volumeUuid, *take_delta_snapshot_by_qemu_img_convert(
                                 snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath)))
 
         except kvmagent.KvmError as error:
