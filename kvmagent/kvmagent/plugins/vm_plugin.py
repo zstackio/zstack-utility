@@ -3410,6 +3410,11 @@ class Vm(object):
                 e(controller, 'alias', None, {'name': 'sata'})
                 e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
 
+                e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root'})
+                for i in range(cmd.pciePortNums):
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port'})
+
+
         make_root()
         make_meta()
         make_cpu()
