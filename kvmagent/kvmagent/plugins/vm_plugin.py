@@ -2893,12 +2893,12 @@ class Vm(object):
         def make_cdrom():
             devices = elements['devices']
 
-            MAX_CDROM_NUM = len(Vm.ISO_DEVICE_LETTERS)
-            EMPTY_CDROM_CONFIGS = None
+            max_cdrom_num = len(Vm.ISO_DEVICE_LETTERS)
+            empty_cdrom_configs = None
 
             if IS_AARCH64:
                 # SCSI controller only supports 1 bus
-                EMPTY_CDROM_CONFIGS = [
+                empty_cdrom_configs = [
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', Vm.get_iso_device_unit(0)),
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[1], '0', Vm.get_iso_device_unit(1)),
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[2], '0', Vm.get_iso_device_unit(2))
@@ -2908,28 +2908,28 @@ class Vm(object):
                     cdroms = cmd.addons['FIXED_CDROMS']
 
                     if cdroms is None:
-                        EMPTY_CDROM_CONFIGS = [
+                        empty_cdrom_configs = [
                             EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1')
                         ]
                     else:
                         cdrom_device_id_list = cdroms.split(',')
 
-                        EMPTY_CDROM_CONFIGS = []
+                        empty_cdrom_configs = []
                         for i in xrange(len(cdrom_device_id_list)):
-                            EMPTY_CDROM_CONFIGS.append(
+                            empty_cdrom_configs.append(
                                 EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[i], str(i / 2), str(i % 2)))
                 else:
                     # bus 0 unit 0 already use by root volume
-                    EMPTY_CDROM_CONFIGS = [
+                    empty_cdrom_configs = [
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '1', '0'),
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '1', '1')
                     ]
 
-            if len(EMPTY_CDROM_CONFIGS) != MAX_CDROM_NUM:
+            if len(empty_cdrom_configs) != max_cdrom_num:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
 
-            def makeEmptyCdrom(targetDev, bus, unit):
+            def make_empty_cdrom(targetDev, bus, unit):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 if IS_AARCH64:
@@ -2941,31 +2941,33 @@ class Vm(object):
                 e(cdrom, 'readonly', None)
                 return cdrom
 
+            """
             if not cmd.bootIso:
-                for config in EMPTY_CDROM_CONFIGS:
+                for config in empty_cdrom_configs:
                     makeEmptyCdrom(config.targetDev, config.bus, config.unit)
                 return
+            """
+            if not cmd.cdRoms:
+                return
 
-            notEmptyCdrom = set([])
-            for iso in cmd.bootIso:
-                notEmptyCdrom.add(iso.deviceId)
-                cdromConfig = EMPTY_CDROM_CONFIGS[iso.deviceId]
+            for iso in cmd.cdRoms:
+                cdrom_config = empty_cdrom_configs[iso.deviceId]
+
+                if iso.isEmpty:
+                    make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus, cdrom_config.unit)
+                    continue
+
                 if iso.path.startswith('ceph'):
                     ic = IsoCeph()
                     ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit))
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit))
                 elif iso.path.startswith('fusionstor'):
                     ic = IsoFusionstor()
                     ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit))
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit))
                 else:
-                    cdrom = makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit)
+                    cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit)
                     e(cdrom, 'source', None, {'file': iso.path})
-
-            emptyCdrom = set(range(len(EMPTY_CDROM_CONFIGS))).difference(notEmptyCdrom)
-            for i in emptyCdrom:
-                cdromConfig = EMPTY_CDROM_CONFIGS[i]
-                makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus, cdromConfig.unit)
 
         def make_volumes():
             devices = elements['devices']
