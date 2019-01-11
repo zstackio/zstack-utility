@@ -60,8 +60,8 @@ class IscsiAgent(object):
 
 
 class IscsiDaemon(daemon.Daemon):
-    def __init__(self, pidfile):
-        super(IscsiDaemon, self).__init__(pidfile)
+    def __init__(self, pidfile, py_process_name):
+        super(IscsiDaemon, self).__init__(pidfile, py_process_name)
 
     def run(self):
         self.agent = IscsiAgent()

@@ -17,11 +17,12 @@ class Daemon(object):
     """
     atexit_hooks = []
     
-    def __init__(self, pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
+    def __init__(self, pidfile, py_process_name, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
         self.stdin = stdin
         self.stdout = stdout
         self.stderr = stderr
         self.pidfile = pidfile
+        self.py_process_name = py_process_name
     
     @staticmethod
     def register_atexit_hook(hook):
@@ -89,23 +90,20 @@ class Daemon(object):
         """
         Start the daemon
         """
+        logger.debug("Start Daemon...")
         print "Start Daemon..."
-        # Check for a pidfile to see if the daemon already runs
-        try:
-            locale.setlocale(locale.LC_ALL, 'C')
 
-            pf = file(self.pidfile,'r')
-            pid = int(pf.read().strip())
-            pf.close()
-        except IOError:
-            pid = None
-    
-        if pid:
-            if linux.process_exists(pid):
-                message = "Daemon already running, pid is %s\n"
-                sys.stderr.write(message % pid)
-                sys.exit(0)
-        
+        locale.setlocale(locale.LC_ALL, 'C')
+        pids = linux.get_agent_pid_by_name(self.py_process_name)
+
+        for pid in pids.split('\n'):
+            if pid and int(pid) != os.getpid():
+                pid = int(pid)
+                if linux.process_exists(pid):
+                    message = "Daemon already running, pid is %s\n"
+                    sys.stderr.write(message % pid)
+                    sys.exit(0)
+
         # Start the daemon
         self.daemonize()
 
@@ -122,43 +120,42 @@ class Daemon(object):
         """
         Stop the daemon
         """
+        logger.debug("Stop Daemon...")
         print "Stop Daemon..."
         #wait 2s for gracefully shutdown, then will force kill
         wait_stop = 2
-        # Get the pid from the pidfile
-        try:
-            pf = file(self.pidfile,'r')
-            pid = int(pf.read().strip())
-            pf.close()
-        except IOError:
-            pid = None
-    
-        if not pid:
-            message = "pidfile %s does not exist. Daemon not running?\n"
-            sys.stderr.write(message % self.pidfile)
+
+        pids = linux.get_agent_pid_by_name(self.py_process_name)
+
+        if not pids:
+            message = "Daemon not running?\n"
+            sys.stderr.write(message)
             return # not an error in a restart
 
-        # Try killing the daemon process    
-        start_time = time.time()
-        while 1:
-            if linux.process_exists(pid):
-                curr_time = time.time()
-                if (curr_time - start_time) > wait_stop:
-                    os.kill(pid, SIGKILL)
-                else:
-                    os.kill(pid, SIGTERM)
-                time.sleep(0.3)
-            else:
-                if os.path.exists(self.pidfile):
-                    self.delpid()
-                break
+        # exclude self pid
+        for pid in pids.split('\n'):
+            if pid and int(pid) != os.getpid():
+                pid = int(pid)
+                # Try killing the daemon process
+                start_time = time.time()
+                while 1:
+                    if linux.process_exists(pid):
+                        curr_time = time.time()
+                        if (curr_time - start_time) > wait_stop:
+                            os.kill(pid, SIGKILL)
+                        else:
+                            os.kill(pid, SIGTERM)
+                        time.sleep(0.3)
+                    else:
+                        break
 
-        print "Stop Daemon Successfully"
+                print "Stop Daemon Successfully"
 
     def restart(self):
         """
         Restart the daemon
         """
+        logger.debug("Restart Daemon...")
         self.stop()
         self.start()
 

@@ -1660,3 +1660,13 @@ def read_file(path):
 def get_libvirtd_pid():
     with open('/var/run/libvirtd.pid') as f:
         return int(f.read())
+
+def get_agent_pid_by_name(name):
+    cmd = shell.ShellCmd('ps -aux | grep \'%s\' | grep -E \'start|restart\' | grep -v grep | awk \'{print $2}\'' % name)
+    output = cmd(False)
+    print output
+    if cmd.return_code != 0:
+        return None
+    output = output.strip(" \t\r")
+    return output
+

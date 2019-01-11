@@ -32,7 +32,8 @@ def main():
         iptc.iptable_restore()
 
         cmd = sys.argv[1]
-        agentdaemon = cephagent.CephDaemon(pidfile)
+        py_process_name = 'from cephprimarystorage import cdaemon'
+        agentdaemon = cephagent.CephDaemon(pidfile, py_process_name)
         if cmd == 'start':
             logger.debug('zstack-ceph-primarystorage starts')
             agentdaemon.start()
