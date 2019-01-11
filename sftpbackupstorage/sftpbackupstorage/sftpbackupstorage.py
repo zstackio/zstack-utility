@@ -533,8 +533,8 @@ class SftpBackupStorageAgent(object):
         self.uuid = None
 
 class SftpBackupStorageDaemon(daemon.Daemon):
-    def __init__(self, pidfile):
-        super(SftpBackupStorageDaemon, self).__init__(pidfile)
+    def __init__(self, pidfile, py_process_name):
+        super(SftpBackupStorageDaemon, self).__init__(pidfile, py_process_name)
 
     def run(self):
         self.agent = SftpBackupStorageAgent()

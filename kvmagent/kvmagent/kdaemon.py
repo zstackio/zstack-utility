@@ -34,7 +34,8 @@ def main():
         iptc.iptable_restore()
 
         cmd = sys.argv[1]
-        agentdaemon = kvmagent.KvmDaemon(pidfile)
+        py_process_name = 'from kvmagent import kdaemon'
+        agentdaemon = kvmagent.KvmDaemon(pidfile, py_process_name)
         if cmd == 'start':
             logger.debug('zstack-kvmagent starts')
             agentdaemon.start()

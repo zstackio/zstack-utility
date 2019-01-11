@@ -161,8 +161,8 @@ def listPath(path):
     return s
 
 class KvmDaemon(daemon.Daemon):
-    def __init__(self, pidfile, config={}):
-        super(KvmDaemon, self).__init__(pidfile)
+    def __init__(self, pidfile, py_process_name, config={}):
+        super(KvmDaemon, self).__init__(pidfile, py_process_name)
         
     def run(self):
         self.agent = new_rest_service()

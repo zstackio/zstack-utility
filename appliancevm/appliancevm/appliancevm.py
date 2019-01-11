@@ -162,8 +162,8 @@ class ApplianceVm(object):
         self.http_server.stop()
 
 class ApplianceVmDaemon(daemon.Daemon):
-    def __init__(self, pidfile):
-        super(ApplianceVmDaemon, self).__init__(pidfile)
+    def __init__(self, pidfile, py_process_name):
+        super(ApplianceVmDaemon, self).__init__(pidfile, py_process_name)
         self.agent = ApplianceVm()
 
     def run(self):

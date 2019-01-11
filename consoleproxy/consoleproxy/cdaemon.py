@@ -28,7 +28,8 @@ def main():
     try:
         iptables.insert_single_rule_to_filter_table('-A INPUT -p tcp -m tcp --dport 7758 -j ACCEPT')
         cmd = sys.argv[1]
-        agentdaemon = console_proxy_agent.ConsoleProxyDaemon(pidfile)
+        py_process_name = 'from consoleproxy import cdaemon'
+        agentdaemon = console_proxy_agent.ConsoleProxyDaemon(pidfile, py_process_name)
         if cmd == 'start':
             agentdaemon.start()
         elif cmd == 'stop':
