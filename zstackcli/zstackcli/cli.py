@@ -321,6 +321,10 @@ Parse command parameters error:
                 if len(params) != 2:
                     raise CliError('Invalid parameter[%s], the parameter must be split by "="' % param_str)
 
+                iam2_attribute_related_api_names = ['APIAddAttributesToIAM2VirtualIDMsg',
+                                                    'APIAddAttributesToIAM2ProjectMsg',
+                                                    'APIAddAttributesToIAM2VirtualIDGroupMsg']
+
                 if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
                     all_params[params[0]] = eval(params[1])
                 elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg',
@@ -349,6 +353,8 @@ Parse command parameters error:
                 elif apiname == 'APICreateRoleMsg' and params[0] == 'statements':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreatePolicyMsg' and params[0] == 'statements':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname in iam2_attribute_related_api_names and params[0] == 'attributes':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif is_api_param_a_list(apiname, params[0]):
                     all_params[params[0]] = escape_split(params[1])

@@ -101,7 +101,6 @@ class GetBlockDevicesRsp(AgentRsp):
         self.blockDevices = None
 
 
-
 class GetBackingChainRsp(AgentRsp):
     backingChain = None  # type: list[str]
 
@@ -121,6 +120,14 @@ class SharedBlockMigrateVolumeStruct:
 
     def __init__(self):
         pass
+
+
+class ConvertVolumeProvisioningRsp(AgentRsp):
+    actualSize = None  # type: int
+
+    def __init__(self):
+        super(ConvertVolumeProvisioningRsp, self).__init__()
+        self.actualSize = 0
 
 
 def translate_absolute_path_from_install_path(path):
@@ -932,9 +939,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @bash.in_bash
     def convert_volume_provisioning(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = ConvertVolumeProvisioningRsp()
 
         if cmd.provisioningStrategy != "ThinProvisioning":
             raise NotImplementedError
@@ -947,9 +955,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             virtual_size = linux.qcow2_virtualsize(abs_path)
             size = image_offest + cmd.addons[lvm.thinProvisioningInitializeSize]
             if size > current_size:
-                return jsonobject.dumps(rsp)
+                size = current_size
             if size > virtual_size:
                 size = virtual_size
             lvm.resize_lv(abs_path, size, True)
 
+        rsp.actualSize = size
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)

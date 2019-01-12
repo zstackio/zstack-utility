@@ -4242,6 +4242,10 @@ class ChangeMysqlPasswordCmd(Command):
         self.description = (
             "Change mysql password for root or normal user"
         )
+
+        # non-root users whose password can be changed by this command
+        self.normal_users = ['zstack', 'zstack_ui']
+
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -4269,7 +4273,7 @@ class ChangeMysqlPasswordCmd(Command):
 
     def run(self, args):
         self.check_username_password(args)
-        if args.user_name == 'zstack':
+        if args.user_name in self.normal_users:
             if args.remote_ip is not None:
                 sql = "mysql -u root -p'%s' -h '%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') , Host = \'%s\' WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.remote_ip, args.new_password,args.remote_ip, args.user_name)
             else:
@@ -4278,7 +4282,10 @@ class ChangeMysqlPasswordCmd(Command):
             if status != 0:
                 error(output)
             info("Change mysql password for user '%s' successfully! " % args.user_name)
-            info(colored("Please change 'DB.password' in 'zstack.properties' then restart zstack to make the changes effective" , 'yellow'))
+            if args.user_name == 'zstack':
+                info(colored("Please change 'DB.password' in 'zstack.properties' then restart zstack to make the changes effective" , 'yellow'))
+            elif args.user_name == 'zstack_ui':
+                info(colored("Please change 'db_password' in 'zstack.ui.properties' then restart zstack ui to make the changes effective" , 'yellow'))
         elif args.user_name == 'root':
            if args.remote_ip is not None:
                status, output = commands.getstatusoutput("mysqladmin -u %s -p'%s' password %s -h %s" % (args.user_name, args.root_password, args.new_password, args.remote_ip))
@@ -4288,7 +4295,7 @@ class ChangeMysqlPasswordCmd(Command):
                error(output)
            info("Change mysql password for user '%s' successfully!" % args.user_name)
         else:
-           error("Only support change 'zstack' and 'root' password")
+           error("Only support changing %s and root password" % ', '.join(self.normal_users))
 
 class DumpMysqlCmd(Command):
     mysql_backup_dir = "/var/lib/zstack/mysql-backup/"

@@ -276,6 +276,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         # we will check one qcow2 per pv to determine volumes on pv should be kill
                         invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
                         vms = lvm.get_running_vm_root_volume_on_pv(cmd.vgUuid, invalid_pv_uuids, True)
+                        killed_vm_uuids = []
                         for vm in vms:
                             kill = shell.ShellCmd('kill -9 %s' % vm.pid)
                             kill(False)
@@ -283,7 +284,7 @@ class HaPlugin(kvmagent.KvmAgent):
                                 logger.warn(
                                     'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.'
                                     'failed to run health check %s times' % (vm.uuid, vm.pid, cmd.maxAttempts))
-
+                                killed_vm_uuids.append(vm.uuid)
                             else:
                                 logger.warn(
                                     'failed to kill the vm[uuid:%s, pid:%s] %s' % (vm.uuid, vm.pid, kill.stderr))
@@ -300,6 +301,8 @@ class HaPlugin(kvmagent.KvmAgent):
                                 else:
                                     logger.debug("volume %s still used: %s, skip to deactivate" % (volume, used_process))
 
+                        if len(killed_vm_uuids) != 0:
+                            self.report_self_fencer_triggered([cmd.vgUuid], ','.join(killed_vm_uuids))
                         lvm.remove_partial_lv_dm(cmd.vgUuid)
 
                         if lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, True)[0] is False:
@@ -587,6 +590,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def configure(self, config):
         self.config = config
 
+    @thread.AsyncThread
     def report_self_fencer_triggered(self, ps_uuids, vm_uuids_string=None):
         url = self.config.get(kvmagent.SEND_COMMAND_URL)
         if not url:

@@ -2893,12 +2893,12 @@ class Vm(object):
         def make_cdrom():
             devices = elements['devices']
 
-            MAX_CDROM_NUM = len(Vm.ISO_DEVICE_LETTERS)
-            EMPTY_CDROM_CONFIGS = None
+            max_cdrom_num = len(Vm.ISO_DEVICE_LETTERS)
+            empty_cdrom_configs = None
 
             if IS_AARCH64:
                 # SCSI controller only supports 1 bus
-                EMPTY_CDROM_CONFIGS = [
+                empty_cdrom_configs = [
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', Vm.get_iso_device_unit(0)),
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[1], '0', Vm.get_iso_device_unit(1)),
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[2], '0', Vm.get_iso_device_unit(2))
@@ -2908,28 +2908,28 @@ class Vm(object):
                     cdroms = cmd.addons['FIXED_CDROMS']
 
                     if cdroms is None:
-                        EMPTY_CDROM_CONFIGS = [
+                        empty_cdrom_configs = [
                             EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1')
                         ]
                     else:
                         cdrom_device_id_list = cdroms.split(',')
 
-                        EMPTY_CDROM_CONFIGS = []
+                        empty_cdrom_configs = []
                         for i in xrange(len(cdrom_device_id_list)):
-                            EMPTY_CDROM_CONFIGS.append(
+                            empty_cdrom_configs.append(
                                 EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[i], str(i / 2), str(i % 2)))
                 else:
                     # bus 0 unit 0 already use by root volume
-                    EMPTY_CDROM_CONFIGS = [
+                    empty_cdrom_configs = [
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '1', '0'),
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '1', '1')
                     ]
 
-            if len(EMPTY_CDROM_CONFIGS) != MAX_CDROM_NUM:
+            if len(empty_cdrom_configs) != max_cdrom_num:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
 
-            def makeEmptyCdrom(targetDev, bus, unit):
+            def make_empty_cdrom(targetDev, bus, unit):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 if IS_AARCH64:
@@ -2941,31 +2941,33 @@ class Vm(object):
                 e(cdrom, 'readonly', None)
                 return cdrom
 
+            """
             if not cmd.bootIso:
-                for config in EMPTY_CDROM_CONFIGS:
+                for config in empty_cdrom_configs:
                     makeEmptyCdrom(config.targetDev, config.bus, config.unit)
                 return
+            """
+            if not cmd.cdRoms:
+                return
 
-            notEmptyCdrom = set([])
-            for iso in cmd.bootIso:
-                notEmptyCdrom.add(iso.deviceId)
-                cdromConfig = EMPTY_CDROM_CONFIGS[iso.deviceId]
+            for iso in cmd.cdRoms:
+                cdrom_config = empty_cdrom_configs[iso.deviceId]
+
+                if iso.isEmpty:
+                    make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus, cdrom_config.unit)
+                    continue
+
                 if iso.path.startswith('ceph'):
                     ic = IsoCeph()
                     ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit))
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit))
                 elif iso.path.startswith('fusionstor'):
                     ic = IsoFusionstor()
                     ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit))
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit))
                 else:
-                    cdrom = makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus , cdromConfig.unit)
+                    cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit)
                     e(cdrom, 'source', None, {'file': iso.path})
-
-            emptyCdrom = set(range(len(EMPTY_CDROM_CONFIGS))).difference(notEmptyCdrom)
-            for i in emptyCdrom:
-                cdromConfig = EMPTY_CDROM_CONFIGS[i]
-                makeEmptyCdrom(cdromConfig.targetDev, cdromConfig.bus, cdromConfig.unit)
 
         def make_volumes():
             devices = elements['devices']
@@ -3912,24 +3914,16 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def vm_sync(self, req):
         rsp = VmSyncResponse()
-        # vms = get_running_vms()
-        # running_vms = {}
-        # for vm in vms:
-        #     if vm.state == Vm.VM_STATE_RUNNING:
-        #         running_vms[vm.uuid] = Vm.VM_STATE_RUNNING
-        #     else:
-        #         try:
-        #             logger.debug('VM[uuid:%s] is in state of %s, destroy it' % (vm.uuid, vm.state))
-        #             vm.destroy()
-        #         except:
-        #             logger.warn(linux.get_exception_stacktrace())
-        #
-        # rsp.states = running_vms
+        rsp.states = get_all_vm_states()
+
+        # In case of an reboot inside the VM.  Note that ZS will only define transient VM's.
+        for uuid in rsp.states:
+            if rsp.states[uuid] == Vm.VM_STATE_SHUTDOWN:
+                rsp.states[uuid] = Vm.VM_STATE_RUNNING
+
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
-        rsp.states = get_all_vm_states()
-
         output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
             if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
@@ -4302,11 +4296,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 for snapshot_job in cmd.snapshotJobs:
                     if snapshot_job.full:
                         rsp.snapshots.append(VolumeSnapshotResultStruct(
-                            *take_full_snapshot_by_qemu_img_convert(
+                            snapshot_job.volumeUuid, *take_full_snapshot_by_qemu_img_convert(
                                 snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath)))
                     else:
                         rsp.snapshots.append(VolumeSnapshotResultStruct(
-                            *take_delta_snapshot_by_qemu_img_convert(
+                            snapshot_job.volumeUuid, *take_delta_snapshot_by_qemu_img_convert(
                                 snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath)))
 
         except kvmagent.KvmError as error:
