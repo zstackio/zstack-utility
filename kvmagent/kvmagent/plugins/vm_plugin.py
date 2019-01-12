@@ -3410,9 +3410,12 @@ class Vm(object):
                 e(controller, 'alias', None, {'name': 'sata'})
                 e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
 
-                e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root'})
-                for i in range(cmd.pciePortNums):
-                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port'})
+                pci_idx_generator = range(cmd.pciePortNums + 3).__iter__()
+                e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root', 'index': str(pci_idx_generator.next())})
+                e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
+                e(devices, 'controller', None, {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
+                for i in pci_idx_generator:
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
 
 
         make_root()
