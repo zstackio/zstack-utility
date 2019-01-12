@@ -261,17 +261,20 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             # [1055.2] Copying disk 11/13 to
             # [1082.3] Copying disk 12/13 to
             # [1184.9] Copying disk 13/13 to
-            s = shell.ShellCmd("""awk -F"[][]" '/Copying disk/{print $2}' %s/virt_v2v_log""" % storage_dir)
+            # [1218.0] Finishing off
+            # Copying disk is start time of copy, so also get finish off time for calculating last disk's time cost
+            s = shell.ShellCmd("""awk -F"[][]" '/Copying disk|Finishing off/{print $2}' %s/virt_v2v_log""" % storage_dir)
             s(False)
             if s.return_code != 0:
                 return
 
             times = s.stdout.split('\n')
 
-            if len(times) == 0:
+            if len(times) < 2:
                 return
 
-            rsp.rootVolumeInfo['downloadTime'] = times[0]
+            rsp.rootVolumeInfo['downloadTime'] = float(times[1]) - float(times[0])
+            times = times[1:]
             for i in xrange(0, len(rsp.dataVolumeInfos)):
                 if i + 1 < len(times):
                     rsp.dataVolumeInfos[i]["downloadTime"] = int(float(times[i + 1]) - float(times[i]))
