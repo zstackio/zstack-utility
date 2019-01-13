@@ -8,7 +8,6 @@ import traceback
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.lock as lock
-import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils.report import *
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
@@ -646,8 +645,8 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         path = self._normalize_install_path(cmd.installPath)
-        size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
-        call_string = 'rbd create --size %s --image-format 2 %s ' % (size_M, path)
+        # do NOT round to MB
+        call_string = 'rbd create --size %dB --image-format 2 %s' % (cmd.size, path)
         if cmd.shareable:
             call_string = call_string + " --image-shared"
 
