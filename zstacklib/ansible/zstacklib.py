@@ -1876,10 +1876,10 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
                 copy_arg.dest = "%s/pip-7.0.3.tar.gz" % zstack_root
                 copy(copy_arg, host_post_info)
                 # install pip 7.0.3
-                pip_install_arg = PipInstallArg()
-                pip_install_arg.extra_args = "\"--ignore-installed\""
-                pip_install_arg.name = "%s/pip-7.0.3.tar.gz" % zstack_root
-                pip_install_package(pip_install_arg, host_post_info)
+                pip_install_dir = copy_arg.dest.rstrip("pip-7.0.3.tar.gz")
+                install_pip_command = "tar zxvf %s -C %s;python %s install;rm -rf %s" % (copy_arg.dest, pip_install_dir, pip_install_dir + "pip-7.0.3/setup.py", pip_install_dir + "pip-7.0.3")
+                logger.debug(install_pip_command)
+                run_remote_command(install_pip_command, host_post_info)
 
 
 def main():
