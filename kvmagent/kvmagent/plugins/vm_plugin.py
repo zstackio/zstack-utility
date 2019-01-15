@@ -4886,6 +4886,11 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotUnplugPciDeviceRsp()
         addr = cmd.pciDeviceAddress
+
+        if not find_pci_device(cmd.vmUuid, addr):
+            logger.debug("pci device %s not found" % addr)
+            return jsonobject.dumps(rsp)
+
         domain = hex(0) if len(addr.split(":")) == 2 else hex(int(addr.split(":")[0], 16))
         bus = hex(int(addr.split(":")[-2], 16))
         slot = hex(int(addr.split(":")[-1].split(".")[0], 16))
@@ -4905,9 +4910,9 @@ class VmPlugin(kvmagent.KvmAgent):
         if r!= 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
-        if find_pci_device(cmd.vmUuid, addr):
+        if not linux.wait_callback_success(lambda args: not find_pci_device(args[0], args[1]), [cmd.vmUuid, addr], timeout=20):
             rsp.success = False
-            rsp.error = "pci device %s still exists on vm %s" % (addr, cmd.vmUuid)
+            rsp.error = "pci device %s still exists on vm %s after 20s" % (addr, cmd.vmUuid)
 
         return jsonobject.dumps(rsp)
 
