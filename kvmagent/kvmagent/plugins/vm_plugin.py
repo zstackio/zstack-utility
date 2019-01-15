@@ -3829,8 +3829,20 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        bandWidth = shell.call('virsh blkdeviotune %s %s | grep "total_bytes_sec:"|awk \'{print $2}\'' % (cmd.vmUuid, device_id)).strip()
-        rsp.bandWidth = bandWidth
+        if device_id is None:
+            rsp.success = False
+            rsp.error = "Volume is not ready, is it being attached?"
+            return jsonobject.dumps(rsp)
+
+        cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
+        bandWidth = shell.call('%s | grep -w total_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
+        bandWidthRead = shell.call('%s | grep -w read_bytes_sec | awk \'{print $3}\'' % cmd_base).strip()
+        bandWidthWrite = shell.call('%s | grep -w write_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
+
+        rsp.bandWidth = bandWidth if long(bandWidth) > 0 else -1
+        rsp.bandWidthWrite = bandWidthWrite if long(bandWidthWrite) > 0 else -1
+        rsp.bandWidthRead = bandWidthRead if long(bandWidthRead) > 0 else -1
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -3858,8 +3870,10 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
         inbound = shell.call('virsh domiftune %s %s | grep "inbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
         outbound = shell.call('virsh domiftune %s %s | grep "outbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
-        rsp.inbound = long(inbound) * 8 * 1024
-        rsp.outbound = long(outbound) * 8 * 1024
+
+        rsp.inbound = long(inbound) * 8 * 1024 if long(inbound) > 0 else -1
+        rsp.outbound = long(outbound) * 8 * 1024 if long(outbound) > 0 else -1
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
