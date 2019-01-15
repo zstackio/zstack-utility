@@ -154,7 +154,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return [i.strip().split(" ")[-1] for i in o.splitlines()]
 
         @linux.retry(times=20, sleep_time=1)
-        def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iscsiIqn, e = None):
+        def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iscsiIqn, e=None):
             disks_by_dev = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (iscsiServerIp, iscsiServerPort, iscsiIqn)).strip().splitlines()
             sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (iscsiServerIp, iscsiServerPort, iscsiIqn)).strip("[]\n ")
             if sid == "" or sid is None:
@@ -164,8 +164,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 raise RetryException(e)
             disks_by_iscsi = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep Lun" % sid).strip().splitlines()
             if len(disks_by_dev) < len(disks_by_iscsi):
-                raise RetryException("iscsiadm says there are [%s] disks but only found [%s] disks on /dev/disk: [%s], so not all disks loged in, "
-                                     "it may recover after a while so check and login again" %(len(disks_by_dev), len(disks_by_iscsi), disks_by_iscsi))
+                raise RetryException("iscsiadm says there are [%s] disks[%s] but only found [%s] disks on /dev/disk[%s], so not all disks loged in, "
+                                     "it may recover after a while so check and login again" %(len(disks_by_iscsi), disks_by_iscsi, len(disks_by_dev), disks_by_dev))
 
         iqns = cmd.iscsiTargets
         if iqns is None or len(iqns) == 0:
