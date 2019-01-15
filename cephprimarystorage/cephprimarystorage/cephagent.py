@@ -8,7 +8,6 @@ import traceback
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.lock as lock
-import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils.report import *
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
@@ -646,8 +645,8 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         path = self._normalize_install_path(cmd.installPath)
-        size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
-        call_string = 'rbd create --size %s --image-format 2 %s ' % (size_M, path)
+        # do NOT round to MB
+        call_string = 'rbd create --size %dB --image-format 2 %s' % (cmd.size, path)
         if cmd.shareable:
             call_string = call_string + " --image-shared"
 
@@ -802,7 +801,7 @@ class CephAgent(plugin.TaskManager):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        ret = shell.run('rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
+        r, _, e = bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
             PARENT_UUID = parent_uuid,
             DST_MON_ADDR = dst_mon_addr,
             DST_MON_PORT = dst_mon_port,
@@ -812,8 +811,9 @@ class CephAgent(plugin.TaskManager):
             SRC_INSTALL_PATH = src_install_path,
             DST_INSTALL_PATH = dst_install_path,
             FROM_SNAP = '--from-snap ' + parent_uuid if parent_uuid != '' else ''))
-        if ret != 0:
-            return ret
+        if r != 0:
+            logger.error('failed to migrate volume %s: %s' % (src_install_path, e))
+            return r
 
         # compare md5sum of src/dst segments
         src_segment_md5 = self._read_file_content('/tmp/%s_src_md5' % resource_uuid)
@@ -824,6 +824,7 @@ class CephAgent(plugin.TaskManager):
             DST_MON_PASSWD = dst_mon_passwd,
             RESOURCE_UUID = resource_uuid))
         if src_segment_md5 != dst_segment_md5:
+            logger.error('check sum mismatch after migration: %s' % src_install_path)
             return -1
         return 0
 
