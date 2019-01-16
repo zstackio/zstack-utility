@@ -1785,9 +1785,12 @@ class StartCmd(Command):
             if shell_return('netstat -nap | grep :8080[[:space:]] | grep LISTEN > /dev/null') == 0:
                 raise CtlError('8080 is occupied by some process. Please use netstat to find out and stop it')
 
-        def check_9090():
-            if shell_return('netstat -nap | grep :9090[[:space:]] | grep LISTEN | grep -v prometheus > /dev/null') == 0:
-                raise CtlError('9090 is occupied by some process. Please use netstat to find out and stop it')
+        def check_prometheus_port():
+            port = ctl.read_property('Prometheus.port')
+            if not port:
+                port = 9090
+            if shell_return('netstat -nap | grep :%s[[:space:]] | grep LISTEN | grep -v prometheus > /dev/null' % port) == 0:
+                raise CtlError('%s is occupied by some process. Please use netstat to find out and stop it' % port)
 
         def check_msyql():
             db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
@@ -1975,7 +1978,7 @@ class StartCmd(Command):
         prepare_env()
         check_java_version()
         check_8080()
-        check_9090()
+        check_prometheus_port()
         check_msyql()
         check_mn_ip()
         check_chrony()
