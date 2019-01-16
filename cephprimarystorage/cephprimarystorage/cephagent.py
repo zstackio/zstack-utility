@@ -8,6 +8,7 @@ import traceback
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.lock as lock
+import zstacklib.utils.sizeunit as sizeunit
 from zstacklib.utils.report import *
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
@@ -114,6 +115,9 @@ class GetVolumeSnapInfosRsp(AgentResponse):
     def __init__(self):
         super(GetVolumeSnapInfosRsp, self).__init__()
         self.snapInfos = None
+
+def isXsky():
+    return os.path.exists("/usr/bin/xms-cli")
 
 def replyerror(func):
     @functools.wraps(func)
@@ -224,12 +228,7 @@ class CephAgent(plugin.TaskManager):
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
-
-        try:
-            shell.call('which xms-cli')
-            rsp.xsky = True
-        except:
-            rsp.xsky = False
+        rsp.xsky = isXsky()
 
         if not df.pools:
             return
@@ -645,8 +644,15 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         path = self._normalize_install_path(cmd.installPath)
-        # do NOT round to MB
-        call_string = 'rbd create --size %dB --image-format 2 %s' % (cmd.size, path)
+
+        call_string = None
+        if isXsky():
+            # do NOT round to MB
+            call_string = 'rbd create --size %dB --image-format 2 %s' % (cmd.size, path)
+        else:
+            size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
+            call_string = 'rbd create --size %s --image-format 2 %s' % (size_M, path)
+
         if cmd.shareable:
             call_string = call_string + " --image-shared"
 
