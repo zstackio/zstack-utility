@@ -190,6 +190,21 @@ def is_multipath(dev_name):
     return False
 
 
+def get_multipath_dmname(dev_name):
+    # if is multipath dev, return;
+    # if is one of multipath paths, return multipath dev(dm-xxx);
+    # else return None
+    slaves = shell.call("ls /sys/class/block/%s/slaves/" % dev_name).strip().splitlines()
+    if slaves is not None and len(slaves) > 0 and slaves[0].strip() != "":
+        return dev_name
+
+    r = bash.bash_r("multipath /dev/%s -l | grep policy" % dev_name)
+    if r != 0:
+        return None
+    o = bash.bash_o("multipath -l /dev/%s | head -n1 | awk -F 'dm' '{print $2}' | awk '{print $1}'" % dev_name).strip()
+    return "dm%s" % o
+
+
 def get_multipath_name(dev_name):
     return bash.bash_o("multipath /dev/%s -l -v1" % dev_name).strip()
 

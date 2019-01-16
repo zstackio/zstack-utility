@@ -159,6 +159,7 @@ class CheckDisk(object):
         raise Exception("can not find disk with %s as wwid, uuid or wwn, "
                         "or multiple disks qualify but no mpath device found" % self.identifier)
 
+    @bash.in_bash
     def rescan(self, disk_name=None):
         """
 
@@ -173,10 +174,12 @@ class CheckDisk(object):
             logger.debug("rescaned disk %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
                          (slave, self.identifier, _cmd.return_code, _cmd.stdout, _cmd.stderr))
 
-        if lvm.is_multipath(disk_name):
+        multipath_dev = lvm.get_multipath_dmname(disk_name)
+        if multipath_dev:
+            t, disk_name = disk_name, multipath_dev
             # disk name is dm-xx when multi path
             slaves = shell.call("ls /sys/class/block/%s/slaves/" % disk_name).strip().split("\n")
-            if slaves is None or len(slaves) == 0:
+            if slaves is None or len(slaves) == 0 or (len(slaves) == 1 and slaves[0].strip() == ""):
                 logger.debug("can not get any slaves of multipath device %s" % disk_name)
                 rescan_slave(disk_name, False)
             else:
@@ -186,13 +189,16 @@ class CheckDisk(object):
                 cmd(is_exception=True)
                 logger.debug("resized multipath device %s, return code: %s, stdout %s, stderr: %s" %
                              (disk_name, cmd.return_code, cmd.stdout, cmd.stderr))
+            disk_name = t
         else:
             rescan_slave(disk_name)
 
-        cmd = shell.ShellCmd("pvresize /dev/%s" % disk_name)
-        cmd(is_exception=True)
+        command = "pvresize /dev/%s" % disk_name
+        if multipath_dev is not None and multipath_dev != disk_name:
+            command = "pvresize /dev/%s || pvresize /dev/%s" % (disk_name, multipath_dev)
+        r, o, e = bash.bash_roe(command, errorout=True)
         logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
-                     (disk_name, self.identifier, cmd.return_code, cmd.stdout, cmd.stderr))
+                     (disk_name, self.identifier, r, o, e))
 
     def check_disk_by_uuid(self):
         for cond in ['TYPE=\\\"mpath\\\"', '\"\"']:
