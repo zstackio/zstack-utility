@@ -322,7 +322,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         def get_storage_wwnn(hctl):
             o = shell.call(
-                "systool -c fc_transport -A node_name | grep 'target%s' -B2 | grep node_name | awk '{print $NF}'" % ":".join(hctl.split(":")[0:3]))
+                "systool -c fc_transport -A node_name | grep '\"target%s\"' -B2 | grep node_name | awk '{print $NF}'" % ":".join(hctl.split(":")[0:3]))
             return o.strip().strip('"')
 
         for entry in o.split('" '):  # type: str
