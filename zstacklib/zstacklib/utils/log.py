@@ -7,6 +7,7 @@ import logging.handlers
 import sys
 import os.path
 import gzip
+import shutil
 from concurrentlog_handler import ConcurrentRotatingFileHandler
 from random import randint
 
@@ -20,7 +21,7 @@ class ZstackRotatingFileHandler(ConcurrentRotatingFileHandler):
         try:
             with open(old_log) as log:
                 with gzip.open(old_log + '.gz', 'wb') as comp_log:
-                    comp_log.writelines(log)
+                    shutil.copyfileobj(log, comp_log)
         except:
             pass
         finally:
