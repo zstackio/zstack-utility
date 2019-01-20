@@ -8,8 +8,6 @@ import types
 
 import cherrypy
 import thread
-import logging
-import logging.handlers
 
 import os
 import urllib3
