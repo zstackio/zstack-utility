@@ -5490,7 +5490,7 @@ class ChangeIpCmd(Command):
 
             # update zstack db url
             db_url = ctl.read_property('DB.url')
-            db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
+            db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}|localhost', db_url)
             db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
             ctl.write_properties([
               ('DB.url', db_new_url),
@@ -5500,7 +5500,7 @@ class ChangeIpCmd(Command):
             # update zstack_ui db url
             if os.path.isfile(ctl.ui_properties_file_path):
                 db_url = ctl.read_ui_property('db_url')
-                db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}', db_url)
+                db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}|localhost', db_url)
                 db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
                 ctl.write_ui_properties([
                     ('db_url', db_new_url),
