@@ -26,7 +26,8 @@ def main():
     try:
         iptables.insert_single_rule_to_filter_table('-A INPUT -i eth0 -p tcp -m tcp --dport 7272 -j ACCEPT')
         cmd = sys.argv[1]
-        agentdaemon = virtualrouter.VirutalRouterDaemon(pidfile)
+        py_process_name = 'from virtualrouter import virtualrouterdaemon'
+        agentdaemon = virtualrouter.VirutalRouterDaemon(pidfile, py_process_name)
         if cmd == 'start':
             agentdaemon.start()
         elif cmd == 'stop':

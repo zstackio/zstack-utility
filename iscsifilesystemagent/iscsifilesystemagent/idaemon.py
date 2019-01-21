@@ -32,7 +32,8 @@ def main():
         iptc.iptable_restore()
 
         cmd = sys.argv[1]
-        agentdaemon = iscsiagent.IscsiDaemon(pidfile)
+        py_process_name = 'from iscsifilesystemagent import idaemon'
+        agentdaemon = iscsiagent.IscsiDaemon(pidfile, py_process_name)
         if cmd == 'start':
             logger.debug('zstack-iscsi starts')
             agentdaemon.start()

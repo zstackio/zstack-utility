@@ -334,8 +334,8 @@ class ConsoleProxyAgent(object):
 
 
 class ConsoleProxyDaemon(daemon.Daemon):
-    def __init__(self, pidfile):
-        super(ConsoleProxyDaemon, self).__init__(pidfile)
+    def __init__(self, pidfile, py_process_name):
+        super(ConsoleProxyDaemon, self).__init__(pidfile, py_process_name)
 
     def run(self):
         self.agent = ConsoleProxyAgent()
