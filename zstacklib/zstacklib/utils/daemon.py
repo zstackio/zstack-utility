@@ -94,15 +94,23 @@ class Daemon(object):
         print "Start Daemon..."
 
         locale.setlocale(locale.LC_ALL, 'C')
-        pids = linux.get_agent_pid_by_name(self.py_process_name)
 
-        for pid in pids.split('\n'):
-            if pid and int(pid) != os.getpid():
-                pid = int(pid)
-                if linux.process_exists(pid):
-                    message = "Daemon already running, pid is %s\n"
-                    sys.stderr.write(message % pid)
-                    sys.exit(0)
+        # Get the pid from the pidfile
+        try:
+            pf = file(self.pidfile, 'r')
+            pid = int(pf.read().strip())
+            pf.close()
+        except IOError:
+            pid = None
+
+        if pid and linux.process_exists(pid):
+            message = "Daemon already running, pid is %s\n"
+            sys.stderr.write(message % pid)
+            sys.exit(0)
+        else:
+            message = "pidfile %s does not exist. Daemon not running?\n"
+            sys.stderr.write(message % self.pidfile)
+            self.get_start_agent_by_name()
 
         # Start the daemon
         self.daemonize()
@@ -125,31 +133,31 @@ class Daemon(object):
         #wait 2s for gracefully shutdown, then will force kill
         wait_stop = 2
 
-        pids = linux.get_agent_pid_by_name(self.py_process_name)
+        try:
+            pf = file(self.pidfile, 'r')
+            pid = int(pf.read().strip())
+            pf.close()
+        except IOError:
+            pid = None
 
-        if not pids:
-            message = "Daemon not running?\n"
-            sys.stderr.write(message)
-            return # not an error in a restart
+        if pid and linux.process_exists(pid):
+            self.stop_agent_by_pid(pid, wait_stop)
+        else:
+            message = "pidfile %s does not exist. Daemon not running?\n"
+            sys.stderr.write(message % self.pidfile)
 
-        # exclude self pid
-        for pid in pids.split('\n'):
-            if pid and int(pid) != os.getpid():
-                pid = int(pid)
-                # Try killing the daemon process
-                start_time = time.time()
-                while 1:
-                    if linux.process_exists(pid):
-                        curr_time = time.time()
-                        if (curr_time - start_time) > wait_stop:
-                            os.kill(pid, SIGKILL)
-                        else:
-                            os.kill(pid, SIGTERM)
-                        time.sleep(0.3)
-                    else:
-                        break
+            pids = linux.get_agent_pid_by_name(self.py_process_name)
 
-                print "Stop Daemon Successfully"
+            if not pids:
+                message = "Daemon not running?\n"
+                sys.stderr.write(message)
+                return # not an error in a restart
+
+            # exclude self pid
+            for pid in pids.split('\n'):
+                if pid and int(pid) != os.getpid():
+                    pid = int(pid)
+                    self.stop_agent_by_pid(pid, wait_stop)
 
     def restart(self):
         """
@@ -164,3 +172,30 @@ class Daemon(object):
         You should override this method when you subclass Daemon. It will be called after the process has been
         daemonized by start() or restart().
         """
+
+    def get_start_agent_by_name(self):
+        pids = linux.get_agent_pid_by_name(self.py_process_name)
+
+        for pid in pids.split('\n'):
+            if pid and int(pid) != os.getpid():
+                pid = int(pid)
+                if linux.process_exists(pid):
+                    message = "Daemon already running, pid is %s\n"
+                    sys.stderr.write(message % pid)
+                    sys.exit(0)
+
+    def stop_agent_by_pid(self, pid, wait_stop):
+        # Try killing the daemon process
+        start_time = time.time()
+        while 1:
+            if linux.process_exists(pid):
+                curr_time = time.time()
+                if (curr_time - start_time) > wait_stop:
+                    os.kill(pid, SIGKILL)
+                else:
+                    os.kill(pid, SIGTERM)
+                time.sleep(0.3)
+            else:
+                break
+
+        print "Stop Daemon Successfully"
