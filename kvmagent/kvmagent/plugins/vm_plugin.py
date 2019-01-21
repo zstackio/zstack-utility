@@ -2909,13 +2909,14 @@ class Vm(object):
                             empty_cdrom_configs.append(
                                 EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[i], str(i / 2), str(i % 2)))
                 elif machine_type == 'q35':
+                    # bus 0 unit 0 already use by root volume if it is on sata
                     empty_cdrom_configs = [
-                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '0'),
-                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '0', '1'),
-                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '0', '2'),
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '0', '2'),
+                        EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[2], '0', '3'),
                     ]
                 else:  # machine_type=pc
-                    # bus 0 unit 0 already use by root volume
+                    # bus 0 unit 0 already use by root volume if it is on ide
                     empty_cdrom_configs = [
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', '1'),
                         EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[1], '1', '0'),
