@@ -683,8 +683,8 @@ append initrd={IMAGEUUID}/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXE
 
 
 class PxeServerDaemon(daemon.Daemon):
-    def __init__(self, pidfile):
-        super(PxeServerDaemon, self).__init__(pidfile)
+    def __init__(self, pidfile, py_process_name):
+        super(PxeServerDaemon, self).__init__(pidfile, py_process_name)
         self.agent = PxeServerAgent()
 
     def run(self):

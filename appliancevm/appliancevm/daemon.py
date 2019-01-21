@@ -21,7 +21,8 @@ def main():
     try:
         iptables.insert_single_rule_to_filter_table('-A INPUT -i eth0 -p tcp -m tcp --dport 7759 -j ACCEPT')
         cmd = sys.argv[1]
-        agentdaemon = appliancevm.ApplianceVmDaemon(pidfile)
+        py_process_name = 'from appliancevm import daemon'
+        agentdaemon = appliancevm.ApplianceVmDaemon(pidfile, py_process_name)
         if cmd == 'start':
             agentdaemon.start()
         elif cmd == 'stop':

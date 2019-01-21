@@ -436,8 +436,8 @@ class FusionstorAgent(object):
 
 
 class FusionstorDaemon(daemon.Daemon):
-    def __init__(self, pidfile):
-        super(FusionstorDaemon, self).__init__(pidfile)
+    def __init__(self, pidfile, py_process_name):
+        super(FusionstorDaemon, self).__init__(pidfile, py_process_name)
 
     def run(self):
         self.agent = FusionstorAgent()

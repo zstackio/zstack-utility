@@ -108,8 +108,8 @@ class VirtualRouter(object):
 
 
 class VirutalRouterDaemon(daemon.Daemon):
-    def __init__(self, pidfile):
-        super(VirutalRouterDaemon, self).__init__(pidfile)
+    def __init__(self, pidfile, py_process_name):
+        super(VirutalRouterDaemon, self).__init__(pidfile, py_process_name)
     
     def run(self):
         self.agent = VirtualRouter()
