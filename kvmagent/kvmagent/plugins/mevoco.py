@@ -435,19 +435,43 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         self._restart_dnsmasq(cmd.nameSpace, conf_file_path)
 
-
-    @kvmagent.replyerror
     @in_bash
-    def delete_dhcp_namespace(self, req):
-        def _delete_dhcp6(namspace):
-            items = namspace.split('_')
-            l3_uuid = items[-1]
-            DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]
+    def _delete_dhcp6(self, namspace):
+        items = namspace.split('_')
+        l3_uuid = items[-1]
+        DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]
 
-            p = DhcpEnv()
-            p.namespace_name = cmd.namespaceName
+        o = bash_o("ebtables-save | grep {{DHCP6_CHAIN_NAME}} | grep -- -A")
+        o = o.strip(" \t\r\n")
+        if o:
+            cmds = []
+            for l in o.split("\n"):
+                cmds.append(EBTABLES_CMD + " %s" % l.replace("-A", "-D"))
 
-            o = bash_o("ebtables-save | grep {{DHCP6_CHAIN_NAME}} | grep -- -A")
+            bash_r("\n".join(cmds))
+
+        ret = bash_r("ebtables-save | grep '\-A {{DHCP6_CHAIN_NAME}} -j RETURN'")
+        if ret != 0:
+            bash_r(EBTABLES_CMD + ' -D {{DHCP6_CHAIN_NAME}} -j RETURN')
+
+        ret = bash_r("ebtables-save | grep '\-A FORWARD -j {{DHCP6_CHAIN_NAME}}'")
+        if ret != 0:
+            bash_r(EBTABLES_CMD + ' -D FORWARD -j {{DHCP6_CHAIN_NAME}}')
+            bash_r(EBTABLES_CMD + ' -X {{DHCP6_CHAIN_NAME}}')
+
+        bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namspace)
+        bash_r(
+            "ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namspace, namspace))
+
+    @in_bash
+    def _delete_dhcp4(self, namspace):
+        dhcp_ip = bash_o("ip netns exec %s ip route | awk '{print $9}'" % namspace)
+        dhcp_ip = dhcp_ip.strip(" \t\n\r")
+
+        if dhcp_ip:
+            CHAIN_NAME = "ZSTACK-%s" % dhcp_ip
+
+            o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
             o = o.strip(" \t\r\n")
             if o:
                 cmds = []
@@ -456,40 +480,26 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
                 bash_r("\n".join(cmds))
 
-            ret = bash_r("ebtables-save | grep '\-A {{DHCP6_CHAIN_NAME}} -j RETURN'")
+            ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
             if ret != 0:
-                bash_r(EBTABLES_CMD + ' -D {{DHCP6_CHAIN_NAME}} -j RETURN')
+                bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -j RETURN')
 
-            bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namspace)
-            bash_r("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namspace, namspace))
+            ret = bash_r("ebtables-save | grep '\-A FORWARD -j {{CHAIN_NAME}}'")
+            if ret != 0:
+                bash_r(EBTABLES_CMD + ' -D FORWARD -j {{CHAIN_NAME}}')
+                bash_r(EBTABLES_CMD + ' -X {{CHAIN_NAME}}')
 
-        def _delete_dhcp4(namspace):
-            dhcp_ip = bash_o("ip netns exec %s ip route | awk '{print $9}'" % namspace)
-            dhcp_ip = dhcp_ip.strip(" \t\n\r")
+        bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namspace)
+        bash_r(
+            "ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namspace, namspace))
 
-            if dhcp_ip:
-                CHAIN_NAME = "ZSTACK-%s" % dhcp_ip
-
-                o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
-                o = o.strip(" \t\r\n")
-                if o:
-                    cmds = []
-                    for l in o.split("\n"):
-                        cmds.append(EBTABLES_CMD + " %s" % l.replace("-A", "-D"))
-
-                    bash_r("\n".join(cmds))
-
-                ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
-                if ret != 0:
-                    bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -j RETURN')
-
-            bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namspace)
-            bash_r("ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namspace, namspace))
-
+    @kvmagent.replyerror
+    @in_bash
+    def delete_dhcp_namespace(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         # don't care about ip4, ipv6 because namespaces are different for l3 networks
-        _delete_dhcp4(cmd.namespaceName)
-        _delete_dhcp6(cmd.namespaceName)
+        self._delete_dhcp4(cmd.namespaceName)
+        self._delete_dhcp6(cmd.namespaceName)
 
         return jsonobject.dumps(DeleteNamespaceRsp())
 
@@ -980,6 +990,26 @@ mimetype.assign = (
 
         return conf, dhcp, dns, option, log
 
+    @in_bash
+    def _get_dhcp_server_ip_from_namespace(self, namespace_name):
+        '''
+        :param namespace_name:
+        :return: dhcp server ip address in namespace
+        # ip netns exec br_eth0_100_a9c8b01132444866a61d4c2ae03230ba ip add
+        1: lo: <LOOPBACK> mtu 65536 qdisc noop state DOWN qlen 1
+        link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+        13: inner0@if14: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP qlen 1000
+        link/ether 16:25:4f:33:6c:32 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+        inet 192.168.100.119/24 scope global inner0
+        valid_lft forever preferred_lft forever
+        inet 169.254.169.254/32 scope global inner1
+        valid_lft forever preferred_lft forever
+        inet6 fe80::fc34:72ff:fe29:3564/64 scope link
+        valid_lft forever preferred_lft forever
+        '''
+        dhcp_ip = bash_o("ip netns exec {{namespace_name}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+        return dhcp_ip.strip(" \t\r\n")
+
     @lock.lock('prepare_dhcp')
     @kvmagent.replyerror
     def prepare_dhcp(self, req):
@@ -992,6 +1022,14 @@ mimetype.assign = (
         p.ipVersion = cmd.ipVersion
         p.prefixLen = cmd.prefixLen
         p.addressMode = cmd.addressMode
+
+        old_dhcp_ip = self._get_dhcp_server_ip_from_namespace(cmd.namespaceName)
+        if old_dhcp_ip != cmd.dhcpServerIp:
+            if cmd.ipVersion == 4:
+                self._delete_dhcp4(cmd.namespaceName)
+            else:
+                self._delete_dhcp6(cmd.namespaceName)
+
         p.prepare()
 
         return jsonobject.dumps(PrepareDhcpRsp())
