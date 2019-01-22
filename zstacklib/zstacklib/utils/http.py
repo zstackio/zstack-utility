@@ -247,6 +247,7 @@ class HttpServer(object):
         site_config['engine.timeout_monitor.on'] = False
 
         cherrypy.config.update(site_config)
+        cherrypy.log.error_log.propagate = 0  # NOTE(weiw): disable cherrypy logging
 
         self.server = cherrypy.tree.mount(root=None, config={'/' : self.server_conf})
 
