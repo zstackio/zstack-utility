@@ -2556,6 +2556,70 @@ get_zstack_repo(){
     fi
 }
 
+create_local_repo_files() {
+mkdir -p /opt/zstack-dvd/Extra/{qemu-kvm-ev,ceph,galera,virtio-win}
+
+repo_file=/etc/yum.repos.d/zstack-local.repo
+if [ ! -f $repo_file ]; then
+echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
+cat > $repo_file << EOF
+[zstack-local]
+name=zstack-local
+baseurl=file:///opt/zstack-dvd/
+gpgcheck=0
+enabled=1
+EOF
+fi
+
+repo_file=/etc/yum.repos.d/qemu-kvm-ev.repo
+if [ ! -f $repo_file ]; then
+echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
+cat > $repo_file << EOF
+[qemu-kvm-ev]
+name=Qemu KVM EV
+baseurl=file:///opt/zstack-dvd/Extra/qemu-kvm-ev
+gpgcheck=0
+enabled=0
+EOF
+fi
+
+repo_file=/etc/yum.repos.d/ceph.repo
+if [ ! -f $repo_file ]; then
+echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
+cat > $repo_file << EOF
+[ceph]
+name=Ceph
+baseurl=file:///opt/zstack-dvd/Extra/ceph
+gpgcheck=0
+enabled=0
+EOF
+fi
+
+repo_file=/etc/yum.repos.d/galera.repo
+if [ ! -f $repo_file ]; then
+echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
+cat > $repo_file << EOF
+[mariadb]
+name = MariaDB
+baseurl=file:///opt/zstack-dvd/Extra/galera
+gpgcheck=0
+enabled=0
+EOF
+fi
+
+repo_file=/etc/yum.repos.d/virt-win.repo
+if [ ! -f $repo_file ]; then
+echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
+cat > $repo_file << EOF
+[virtio-win]
+name=virtio-win
+baseurl=file:///opt/zstack-dvd/Extra/virtio-win
+gpgcheck=0
+enabled=0
+EOF
+fi
+}
+
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
   [ -f ".repo_version" -a -f "/opt/zstack-dvd/.repo_version" ] || echo_hints_to_upgrade_iso
@@ -2581,60 +2645,6 @@ elif ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
 else
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}
 fi
-
-mkdir -p /opt/zstack-dvd/
-cat > /etc/yum.repos.d/zstack-local.repo << EOF
-[zstack-local]
-name=zstack-local
-baseurl=file:///opt/zstack-dvd/
-gpgcheck=0
-enabled=1
-EOF
-
-mkdir -p /opt/zstack-dvd/Extra/ceph
-cat > /etc/yum.repos.d/ceph.repo << EOF
-[ceph]
-name=Ceph
-baseurl=file:///opt/zstack-dvd/Extra/ceph
-gpgcheck=0
-enabled=0
-EOF
-
-mkdir -p /opt/zstack-dvd/Extra/uek4
-cat > /etc/yum.repos.d/uek4-ocfs2.repo << EOF
-[uek4-ocfs2]
-name=UEK4-OCFS2
-baseurl=file:///opt/zstack-dvd/Extra/uek4
-gpgcheck=0
-enabled=0
-EOF
-
-mkdir -p /opt/zstack-dvd/Extra/galera
-cat > /etc/yum.repos.d/galera.repo << EOF
-[mariadb]
-name = MariaDB
-baseurl=file:///opt/zstack-dvd/Extra/galera
-gpgcheck=0
-enabled=0
-EOF
-
-mkdir -p /opt/zstack-dvd/Extra/qemu-kvm-ev
-cat > /etc/yum.repos.d/qemu-kvm-ev.repo << EOF
-[qemu-kvm-ev]
-name=Qemu KVM EV
-baseurl=file:///opt/zstack-dvd/Extra/qemu-kvm-ev
-gpgcheck=0
-enabled=0
-EOF
-
-mkdir -p /opt/zstack-dvd/Extra/virtio-win
-cat > /etc/yum.repos.d/virtio-win.repo << EOF
-[virtio-win]
-name=virtio-win
-baseurl=file:///opt/zstack-dvd/Extra/virtio-win
-gpgcheck=0
-enabled=0
-EOF
 
 pkg_list="createrepo curl yum-utils rsync"
 missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
@@ -3026,6 +3036,9 @@ PROMPT_COMMAND='(umask 000; msg=$(history 1 | { read x y; echo $y; }); echo [$(w
 export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND
 EOF
 }
+
+# make sure local repo files exist
+create_local_repo_files
 
 # CHECK_REPO_VERSION
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
