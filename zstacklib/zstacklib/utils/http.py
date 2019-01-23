@@ -14,6 +14,7 @@ import urllib3
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import linux
+from zstacklib.utils import debug
 
 TASK_UUID = 'taskuuid'
 ERROR_CODE = 'error'
@@ -22,6 +23,7 @@ REQUEST_BODY = 'body'
 CALLBACK_URI = 'callbackurl'
 
 logger = log.get_logger(__name__)
+debug.install_runtime_tracedumper()
 
 class SyncUri(object):
     def __init__(self):
