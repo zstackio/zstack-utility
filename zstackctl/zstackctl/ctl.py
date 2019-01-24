@@ -6714,6 +6714,15 @@ class UpgradeDbCmd(Command):
             info('Dry run finished. Database could be upgraded. ')
             return True
 
+        def update_db_config():
+            update_db_config_script = mysql_db_config_script
+
+            fd, update_db_config_script_path = tempfile.mkstemp()
+            os.fdopen(fd, 'w').write(update_db_config_script)
+            info('update_db_config_script_path is: %s' % update_db_config_script_path)
+            ShellCmd('bash %s' % update_db_config_script_path)()
+            os.remove(update_db_config_script_path)
+
         def backup_current_database():
             if args.no_backup:
                 return
@@ -6759,6 +6768,7 @@ class UpgradeDbCmd(Command):
 
             info('Successfully upgraded the database to the latest version.\n')
 
+        update_db_config()
         backup_current_database()
         create_schema_version_table_if_needed()
         migrate()
