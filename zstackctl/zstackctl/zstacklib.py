@@ -1004,11 +1004,12 @@ def get_remote_host_info(host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'ansible_facts' in result['contacted'][host]:
-            (distro, version, release) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
+            (distro, major_version, release, distro_version) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
                                  int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
-                                 result['contacted'][host]['ansible_facts']['ansible_distribution_release']]
+                                 result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
+                                 result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
-            return (distro, version, release)
+            return (distro, major_version, release, distro_version)
         else:
             logger.warning("get_remote_host_info on host %s failed!" % host)
             raise Exception(result)
