@@ -30,8 +30,11 @@ def dump_stack():
     return message
 
 def dump_debug_info(signum, fram, *argv):
-    dump_threads()
-    dump_objects()
+    try:
+        dump_threads()
+        dump_objects()
+    except Exception as e:
+        logger.warn(e)
 
 def dump_threads():
     logger.debug('dumping threads')
@@ -40,8 +43,11 @@ def dump_threads():
     for th in threading.enumerate():
         threads += 1
         output = "%s\n%s\n" % (output, th)
-        for stack in traceback.format_stack(sys._current_frames()[th.ident]):
-            output = "%s%s" % (output, stack)
+        try:
+            for stack in traceback.format_stack(sys._current_frames()[th.ident]):
+                output = "%s%s" % (output, stack)
+        except Exception as e:
+            logger.warn(e)
     output = "there are %s threads: \n%s" % (threads, output)
     logger.debug(output)
     return
