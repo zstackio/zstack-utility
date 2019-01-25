@@ -140,11 +140,11 @@ node_collectd_local_pkg = "%s/node_exporter" % workplace
 dnsmasq_img_dst_pkg = "/usr/local/zstack/dnsmasq"
 
 # include zstacklib.py
-(distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
-zstacklib_args.distro_version = distro_version
+zstacklib_args.distro_version = major_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
@@ -173,8 +173,8 @@ if not IS_AARCH64:
 if distro in RPM_BASED_OS:
     # handle zstack_repo
     if zstack_repo != 'false':
-        qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
-        extra_pkg = 'collectd-virt' if distro_version >= 7 else ""
+        qemu_pkg = 'qemu-kvm-ev' if major_version >= 7 else 'qemu-kvm'
+        extra_pkg = 'collectd-virt' if major_version >= 7 else ""
 
         # common kvmagent deps of x86 and arm
         common_dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath expect hwdata iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport virt-v2v libvirt libvirt-client libvirt-python lighttpd lvm2 lvm2-lockd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sanlock sysfsutils sed sg3_utils smartmontools sshpass usbutils vconfig wget %s %s" % (qemu_pkg, extra_pkg)
@@ -188,6 +188,15 @@ if distro in RPM_BASED_OS:
         else:
             dep_list = common_dep_list + " OVMF edk2.git-ovmf-x64"
             update_list = common_update_list
+
+        command = "which virsh"
+        host_post_info.post_label = "ansible.shell.install.pkg"
+        host_post_info.post_label_param = "libvirt"
+        (status, output) = run_remote_command(command, host_post_info, True, True)
+
+        versions = distro_version.split('.')
+        if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
+            dep_list = dep_list.replace('libguestfs-tools libguestfs-winsupport virt-v2v libvirt libvirt-client libvirt-python ', '')
 
         # name: install/update kvm related packages on RedHat based OS from user defined repo
         command = ("echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
@@ -204,7 +213,7 @@ if distro in RPM_BASED_OS:
                     'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
                     'lvm2', 'lvm2-lockd', 'sanlock', 'sysfsutils', 'smartmontools', 'device-mapper-multipath', 'hwdata', 'sg3_utils']:
             yum_install_package(pkg, host_post_info)
-        if distro_version >= 7:
+        if major_version >= 7:
             # name: RHEL7 specific packages from online
             for pkg in ['qemu-kvm-ev', 'qemu-img-ev', 'collectd-virt']:
                 yum_install_package(pkg, host_post_info)
@@ -225,7 +234,7 @@ if distro in RPM_BASED_OS:
     copy(copy_arg, host_post_info)
 
     # handle distro version specific task
-    if distro_version < 7:
+    if major_version < 7:
         # name: copy name space supported iproute for RHEL6
         copy_arg = CopyArg()
         copy_arg.src = iproute_pkg
@@ -268,7 +277,7 @@ if distro in RPM_BASED_OS:
     if chroot_env == 'false':
         # name: enable libvirt daemon on RedHat based OS
         service_status("libvirtd", "state=started enabled=yes", host_post_info)
-        if distro_version >= 7:
+        if major_version >= 7:
             # name: enable virtlockd daemon on RedHat based OS
             service_status("virtlockd", "state=stopped enabled=no", host_post_info)
             service_status("virtlogd", "state=started enabled=yes", host_post_info, True)
@@ -300,7 +309,7 @@ if distro in RPM_BASED_OS:
 
     # replace qemu-img binary
     command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
-    qemu_img_version = run_remote_command(command, host_post_info, False, True)
+    (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
     if '2.6.0' not in qemu_img_version:
         copy_arg = CopyArg()
         copy_arg.src = "%s" % qemu_img_pkg
@@ -485,7 +494,7 @@ if chroot_env == 'false':
             service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
-    if distro in RPM_BASED_OS and distro_version >= 7:
+    if distro in RPM_BASED_OS and major_version >= 7:
         command = "systemctl stop zstack-kvmagent && systemctl start zstack-kvmagent && systemctl enable zstack-kvmagent"
     elif distro in RPM_BASED_OS:
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"

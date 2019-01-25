@@ -45,7 +45,7 @@ host_post_info.chrony_servers = chrony_servers
 host_post_info.transport = 'local'
 
 # include zstacklib.py
-(distro, distro_version, distro_release) = get_remote_host_info(host_post_info)
+(distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
