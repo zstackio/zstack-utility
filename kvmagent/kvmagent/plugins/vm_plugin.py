@@ -1595,7 +1595,7 @@ class Vm(object):
         self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('detach-volume-%s' % self.uuid)
         self._attach_data_volume(volume, addons)
-        self.timeout_object.put('attach-volume-%s' % self.uuid, 10)
+        self.timeout_object.put('attach-volume-%s' % self.uuid, timeout=10)
 
     @staticmethod
     def set_volume_qos(addons, volumeUuid, volume_xml_obj):
@@ -1887,7 +1887,7 @@ class Vm(object):
         self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('attach-volume-%s' % self.uuid)
         self._detach_data_volume(volume)
-        self.timeout_object.put('detach-volume-%s' % self.uuid, 10)
+        self.timeout_object.put('detach-volume-%s' % self.uuid, timeout=10)
 
     def _detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
@@ -2545,7 +2545,7 @@ class Vm(object):
 
         # in 10 seconds, no detach-nic operation can be performed,
         # work around libvirt bug
-        self.timeout_object.put('%s-detach-nic' % self.uuid, 10)
+        self.timeout_object.put('%s-detach-nic' % self.uuid, timeout=10)
 
     @linux.retry(times=3, sleep_time=5)
     def _detach_nic(self, cmd):
@@ -2582,14 +2582,13 @@ class Vm(object):
         self._detach_nic(cmd)
         # in 10 seconds, no attach-nic operation can be performed,
         # to work around libvirt bug
-        self.timeout_object.put('%s-attach-nic' % self.uuid, 10)
+        self.timeout_object.put('%s-attach-nic' % self.uuid, timeout=10)
 
     def update_nic(self, cmd):
         self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('%s-update-nic' % self.uuid)
         self._update_nic(cmd)
-
-        self.timeout_object.put('%s-update-nic' % self.uuid, 10)
+        self.timeout_object.put('%s-update-nic' % self.uuid, timeout=10)
 
     def _update_nic(self, cmd):
         if not cmd.nics:
