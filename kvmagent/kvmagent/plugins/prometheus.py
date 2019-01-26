@@ -25,6 +25,14 @@ class PrometheusPlugin(kvmagent.KvmAgent):
     def start_collectd_exporter(self, req):
 
         @in_bash
+        def is_slave_interface(eth):
+            slave = bash_o("ip link show {{eth}} | grep 'MULTICAST,SLAVE,'")
+            if slave == "":
+                return False
+            else:
+                return True
+
+        @in_bash
         def start_exporter(cmd):
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
 
@@ -154,6 +162,7 @@ LoadPlugin virt
             elif eth.startswith('vnic'): continue
             elif eth.startswith('outer'): continue
             elif eth.startswith('br_'): continue
+            elif is_slave_interface(eth): continue
             elif not eth: continue
             else:
                 interfaces.append(eth)
