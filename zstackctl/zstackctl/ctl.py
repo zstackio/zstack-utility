@@ -2060,7 +2060,8 @@ class StopCmd(Command):
             if not args.force:
                 info('unable to stop management node within %s seconds, kill it' % timeout)
             with on_error('unable to kill -9 %s' % pid):
-                shell('kill -9 %s' % pid)
+                logger.info('graceful shutdown failed, try to kill management node process:%s' % pid)
+                os.kill(int(pid), signal.SIGKILL)
 
 class RestartNodeCmd(Command):
 
