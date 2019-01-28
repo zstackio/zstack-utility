@@ -4608,7 +4608,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.backupInfos = res
 
         except Exception as e:
-            logger.warn("take vm[uuid:%s] backup failed: %s" % (cmd.vmUuid, str(e)))
+            content = traceback.format_exc()
+            logger.warn("take vm[uuid:%s] backup failed: %s\n%s" % (cmd.vmUuid, str(e), content))
             rsp.error = str(e)
             rsp.success = False
         finally:
