@@ -419,7 +419,7 @@ def check_host_info_format(host_info, with_public_key=False):
             if with_public_key is False:
                 user = host_info.split('@')[0].split(':')[0]
                 password = host_info.split('@')[0].split(':')[1]
-                if  user != "root":
+                if user != "root":
                     error("Only root user can be supported, please change user to root")
         # get ip and port
         if ':' not in host_info.split('@')[1]:
@@ -441,8 +441,8 @@ def check_host_password(password, ip):
         error("Connect to host: '%s' with password '%s' failed! Please check password firstly and make sure you have "
               "disabled UseDNS in '/etc/ssh/sshd_config' on %s" % (ip, password, ip))
 
-def check_host_connection_with_key(ip, user="root", private_key=""):
-    command ='timeout 5 sshpass ssh -q %s@%s echo ""' % (user, ip)
+def check_host_connection_with_key(ip, user="root", private_key="", remote_host_port='22'):
+    command ='timeout 5 sshpass ssh -p %s %s@%s echo ""' % (remote_host_port, user, ip)
     (status, stdout, stderr) = shell_return_stdout_stderr(command)
     if status != 0:
         error("Connect to host: '%s' with private key: '%s' failed, please transfer your public key "
@@ -4327,7 +4327,7 @@ class DumpMysqlCmd(Command):
                             default=60)
         parser.add_argument('--host-info','--host','--h',
                            help="ZStack will sync the backup database and ui data to remote host dir '/var/lib/zstack/from-zstack-remote-backup/', "
-                                "the host-info format: 'root@ip_address' ",
+                                "the host-info format: 'root@ip_address:port(default port 22)' ",
                            required=False)
         parser.add_argument('--delete-expired-file','--delete','--d',
                             action='store_true',
@@ -4335,20 +4335,20 @@ class DumpMysqlCmd(Command):
                                  "to make sure the content under remote host backup dir synchronize with local backup dir",
                             required=False)
 
-    def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip):
+    def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip, remote_host_port):
         (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
         if status != 0:
             error(stderr)
 
-        command ='timeout 10 sshpass ssh -q -i %s %s@%s "mkdir -p %s"' % (private_key, user, remote_host_ip, self.remote_backup_dir)
+        command ='timeout 10 sshpass ssh -p %s -i %s %s@%s "mkdir -p %s"' % (remote_host_port, private_key, user, remote_host_ip, self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(command)
         if status != 0:
             error(stderr)
         if args.delete_expired_file is True:
-            sync_command = "rsync -lr --delete -e 'ssh -i %s'  %s %s %s@%s:%s" % (private_key, self.mysql_backup_dir,
+            sync_command = "rsync -lr --delete -e 'ssh -i %s -p %s'  %s %s %s@%s:%s" % (private_key, remote_host_port, self.mysql_backup_dir,
                                                                                self.ui_backup_dir, user, remote_host_ip, self.remote_backup_dir)
         else:
-            sync_command = "rsync -lr -e 'ssh -i %s'  %s %s %s@%s:%s" % (private_key, self.mysql_backup_dir,
+            sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s@%s:%s" % (private_key, remote_host_port, self.mysql_backup_dir,
                                                                                self.ui_backup_dir, user, remote_host_ip, self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(sync_command)
         if status != 0:
@@ -4375,6 +4375,7 @@ class DumpMysqlCmd(Command):
             host_connect_info_list = check_host_info_format(host_info, with_public_key=True)
             remote_host_user = host_connect_info_list[0]
             remote_host_ip = host_connect_info_list[2]
+            remote_host_port = host_connect_info_list[3]
             key_path = os.path.expanduser("~/.ssh/")
             private_key = key_path + "id_rsa"
             public_key = key_path + "id_rsa.pub"
@@ -4382,7 +4383,7 @@ class DumpMysqlCmd(Command):
                 error("Didn't find public key: %s" % public_key)
             if os.path.isfile(private_key) is not True:
                 error("Didn't find private key: %s" % private_key)
-            check_host_connection_with_key(remote_host_ip, remote_host_user, private_key)
+            check_host_connection_with_key(remote_host_ip, remote_host_user, private_key, remote_host_port)
 
         mysqldump_options = "--single-transaction --quick"
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
@@ -4424,7 +4425,7 @@ class DumpMysqlCmd(Command):
                     os.remove(db_backup_dir + expired_file)
         #remote backup
         if args.host_info is not None:
-            self.sync_local_backup_db_to_remote_host(args, remote_host_user, private_key, remote_host_ip)
+            self.sync_local_backup_db_to_remote_host(args, remote_host_user, private_key, remote_host_ip, remote_host_port)
             if args.delete_expired_file is False:
                 info("Sync ZStack backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
             else:
