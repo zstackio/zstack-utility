@@ -19,18 +19,11 @@ logger = log.get_logger(__name__)
 class PrometheusPlugin(kvmagent.KvmAgent):
 
     COLLECTD_PATH = "/prometheus/collectdexporter/start"
+    ZS_COLLECTD_PLUGIN_PATH = "/var/lib/zstack/prometheus/zstack_collectd_plugin.sh"
 
     @kvmagent.replyerror
     @in_bash
     def start_collectd_exporter(self, req):
-
-        @in_bash
-        def is_slave_interface(eth):
-            slave = bash_o("ip link show {{eth}} | grep 'MULTICAST,SLAVE,'")
-            if slave == "":
-                return False
-            else:
-                return True
 
         @in_bash
         def start_exporter(cmd):
@@ -47,6 +40,7 @@ LoadPlugin interface
 LoadPlugin memory
 LoadPlugin network
 LoadPlugin virt
+LoadPlugin exec
 
 <Plugin aggregation>
 	<Aggregation>
@@ -106,12 +100,17 @@ LoadPlugin virt
 	Server "localhost" "25826"
 </Plugin>
 
+<Plugin exec>
+	Exec zstack "{{ZS_COLLECTD_PLUGIN_PATH}}"
+</Plugin>
+
 '''
 
             tmpt = Template(conf)
             conf = tmpt.render({
                 'INTERVAL': cmd.interval,
                 'INTERFACES': interfaces,
+                'ZS_COLLECTD_PLUGIN_PATH': self.ZS_COLLECTD_PLUGIN_PATH,
             })
 
             need_restart_collectd = False
@@ -130,6 +129,7 @@ LoadPlugin virt
 
             cpid = linux.find_process_by_cmdline(['collectd', conf_path])
             mpid = linux.find_process_by_cmdline(['collectdmon', conf_path])
+            zspid = linux.find_process_by_cmdline([self.ZS_COLLECTD_PLUGIN_PATH])
 
             if not cpid:
                 bash_errorout('collectdmon -- -C %s' % conf_path)
@@ -137,6 +137,7 @@ LoadPlugin virt
                 if need_restart_collectd:
                     if not mpid:
                         bash_errorout('kill -TERM %s' % cpid)
+                        bash_errorout('kill -TERM %s' % zspid)
                         bash_errorout('collectdmon -- -C %s' % conf_path)
                     else:
                         bash_errorout('kill -HUP %s' % mpid)
@@ -159,10 +160,10 @@ LoadPlugin virt
         for eth in eths:
             eth = eth.strip(' \t\n\r')
             if eth == 'lo': continue
+            if eth == 'bonding_masters': continue
             elif eth.startswith('vnic'): continue
             elif eth.startswith('outer'): continue
             elif eth.startswith('br_'): continue
-            elif is_slave_interface(eth): continue
             elif not eth: continue
             else:
                 interfaces.append(eth)
