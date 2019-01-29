@@ -29,6 +29,7 @@ update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter/" % zstack_lib_dir
 skipIpv6 = 'false'
+zstack_collectd_plugin = "/var/lib/zstack/prometheus/zstack_collectd_plugin.sh"
 
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
@@ -428,6 +429,14 @@ copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root, pkg_kvmagent)
 copy_arg.dest = "%s/%s" % (kvm_root, pkg_kvmagent)
 copy_kvmagent = copy(copy_arg, host_post_info)
+
+# name: copy customer collectd plugin
+copy_arg = CopyArg()
+copy_arg.src = "%s/zstack_collectd_plugin.sh" % file_root
+copy_arg.dest = zstack_collectd_plugin
+copy(copy_arg, host_post_info)
+command = "chown zstack:zstack %s && chmod 777 %s " % (zstack_collectd_plugin, zstack_collectd_plugin)
+run_remote_command(command, host_post_info)
 
 # only for os using init.d not systemd
 # name: copy kvm service file
