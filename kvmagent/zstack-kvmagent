@@ -58,7 +58,7 @@ apply_resource_settings() {
 }
 
 rm_ebtables_dangling_lock() {
-        lockfile='/var/lib/ebtables/lock'
+        lockfile=$1
         test -e $lockfile || return
         lsof $lockfile 2>/dev/null >/dev/null && return
         unlink $lockfile
@@ -68,7 +68,8 @@ if [ "$@" = "status" ]; then
 	check_status
 else
 	apply_resource_settings
-	rm_ebtables_dangling_lock
+	rm_ebtables_dangling_lock '/var/lib/ebtables/lock' #C72
+	rm_ebtables_dangling_lock '/run/ebtables.lock'   #C74
 
 	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" $@
 fi
