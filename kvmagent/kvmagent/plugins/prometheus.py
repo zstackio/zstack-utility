@@ -16,10 +16,76 @@ from prometheus_client import start_http_server
 
 logger = log.get_logger(__name__)
 
+def collect_host_network_statistics():
+
+    all_eths = bash_o("ls /sys/class/net/").split()
+    virtual_eths = bash_o("ls /sys/devices/virtual/net/").split()
+
+    interfaces = []
+    for eth in all_eths:
+        eth = eth.strip(' \t\n\r')
+        if eth in virtual_eths: continue
+        if eth == 'bonding_masters':
+            continue
+        elif not eth:
+            continue
+        else:
+            interfaces.append(eth)
+
+    all_in_bytes = 0
+    all_in_packets = 0
+    all_in_errors = 0
+    all_out_bytes = 0
+    all_out_packets = 0
+    all_out_errors = 0
+    for intf in interfaces:
+        res = bash_o("cat /sys/class/net/{}/statistics/rx_bytes".format(intf))
+        all_in_bytes += int(res)
+
+        res = bash_o("cat /sys/class/net/{}/statistics/rx_packets".format(intf))
+        all_in_packets += int(res)
+
+        res = bash_o("cat /sys/class/net/{}/statistics/rx_errors".format(intf))
+        all_in_errors += int(res)
+
+        res = bash_o("cat /sys/class/net/{}/statistics/tx_bytes".format(intf))
+        all_out_bytes += int(res)
+
+        res = bash_o("cat /sys/class/net/{}/statistics/tx_packets".format(intf))
+        all_out_packets += int(res)
+
+        res = bash_o("cat /sys/class/net/{}/statistics/tx_errors".format(intf))
+        all_out_errors += int(res)
+
+    metrics = {
+        'host_network_all_in_bytes': GaugeMetricFamily('host_network_all_in_bytes',
+                                                       'Host all inbound traffic in bytes'),
+        'host_network_all_in_packages': GaugeMetricFamily('host_network_all_in_packages',
+                                                          'Host all inbound traffic in packages'),
+        'host_network_all_in_errors': GaugeMetricFamily('host_network_all_in_errors',
+                                                        'Host all inbound traffic errors'),
+        'host_network_all_out_bytes': GaugeMetricFamily('host_network_all_out_bytes',
+                                                        'Host all outbound traffic in bytes'),
+        'host_network_all_out_packages': GaugeMetricFamily('host_network_all_out_packages',
+                                                           'Host all outbound traffic in packages'),
+        'host_network_all_out_errors': GaugeMetricFamily('host_network_all_out_errors',
+                                                         'Host all outbound traffic errors'),
+    }
+
+    metrics['host_network_all_in_bytes'].add_metric([], float(all_in_bytes))
+    metrics['host_network_all_in_packages'].add_metric([], float(all_in_packets))
+    metrics['host_network_all_in_errors'].add_metric([], float(all_in_errors))
+    metrics['host_network_all_out_bytes'].add_metric([], float(all_out_bytes))
+    metrics['host_network_all_out_packages'].add_metric([], float(all_out_packets))
+    metrics['host_network_all_out_errors'].add_metric([], float(all_out_errors))
+
+    return metrics.values()
+
+kvmagent.register_prometheus_collector(collect_host_network_statistics)
+
 class PrometheusPlugin(kvmagent.KvmAgent):
 
     COLLECTD_PATH = "/prometheus/collectdexporter/start"
-    ZS_COLLECTD_PLUGIN_PATH = "/var/lib/zstack/prometheus/zstack_collectd_plugin.sh"
 
     @kvmagent.replyerror
     @in_bash
@@ -40,7 +106,6 @@ LoadPlugin interface
 LoadPlugin memory
 LoadPlugin network
 LoadPlugin virt
-LoadPlugin exec
 
 <Plugin aggregation>
 	<Aggregation>
@@ -100,17 +165,12 @@ LoadPlugin exec
 	Server "localhost" "25826"
 </Plugin>
 
-<Plugin exec>
-	Exec zstack "{{ZS_COLLECTD_PLUGIN_PATH}}"
-</Plugin>
-
 '''
 
             tmpt = Template(conf)
             conf = tmpt.render({
                 'INTERVAL': cmd.interval,
                 'INTERFACES': interfaces,
-                'ZS_COLLECTD_PLUGIN_PATH': self.ZS_COLLECTD_PLUGIN_PATH,
             })
 
             need_restart_collectd = False
@@ -129,7 +189,6 @@ LoadPlugin exec
 
             cpid = linux.find_process_by_cmdline(['collectd', conf_path])
             mpid = linux.find_process_by_cmdline(['collectdmon', conf_path])
-            zspid = linux.find_process_by_cmdline([self.ZS_COLLECTD_PLUGIN_PATH])
 
             if not cpid:
                 bash_errorout('collectdmon -- -C %s' % conf_path)
@@ -137,7 +196,6 @@ LoadPlugin exec
                 if need_restart_collectd:
                     if not mpid:
                         bash_errorout('kill -TERM %s' % cpid)
-                        bash_errorout('kill -TERM %s' % zspid)
                         bash_errorout('collectdmon -- -C %s' % conf_path)
                     else:
                         bash_errorout('kill -HUP %s' % mpid)
