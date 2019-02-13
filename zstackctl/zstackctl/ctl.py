@@ -808,6 +808,11 @@ class Ctl(object):
         with on_error('property must be in format of "key=value", no space before and after "="'):
             prop.write_property(key, value)
 
+    # for zstack ui properties
+    def read_all_ui_properties(self):
+        prop = PropertyFile(self.ui_properties_file_path)
+        return prop.read_all_properties()
+
     def read_ui_property(self, key):
         prop = PropertyFile(self.ui_properties_file_path)
         val = prop.read_property(key)
@@ -826,6 +831,13 @@ class Ctl(object):
         prop = PropertyFile(self.ui_properties_file_path)
         with on_error('property must be in format of "key=value", no space before and after "="'):
             prop.write_property(key, value)
+
+    def clear_ui_properties(self):
+        prop = PropertyFile(self.ui_properties_file_path)
+        with on_error('property must be in format of "key=value", no space before and after "="'):
+            props = prop.read_all_properties()
+            keys = [ p[0] for p in props ]
+            prop.delete_properties(keys)
 
     def get_db_url(self):
         db_url = self.read_property("DB.url")
@@ -7684,6 +7696,7 @@ class StartUiCmd(Command):
         parser.add_argument('--webhook-port', help="Webhook Host port.")
         parser.add_argument('--server-port', help="UI server port.")
         parser.add_argument('--log', help="UI log folder.")
+        parser.add_argument('--catalina-opts', help="UI catalina options, seperated by `,`")
         parser.add_argument('--timeout', help='Wait for ZStack UI startup timeout, default is 120 seconds.',
                             default=120)
 
@@ -7798,7 +7811,13 @@ class StartUiCmd(Command):
         cfg_ssl_keystore = ctl.read_ui_property("ssl_keystore")
         cfg_ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
         cfg_ssl_keystore_password = ctl.read_ui_property("ssl_keystore_password")
-        cfg_catalina_opts = ctl.read_ui_property("catalina_opts") + ' ' + ' '.join(ctl.extra_arguments)
+        cfg_catalina_opts = ctl.read_ui_property("catalina_opts")
+
+        custom_props = ""
+        predefined_props = ["db_url", "db_username", "db_password", "mn_host", "mn_port", "webhook_host", "webhook_port", "server_port", "log", "enable_ssl", "ssl_keyalias", "ssl_keystore", "ssl_keystore_type", "ssl_keystore_password", "catalina_opts"]
+        for k, v in ctl.read_all_ui_properties():
+            if k not in predefined_props:
+                custom_props += " --%s=%s" % (k, v)
 
         if not args.mn_host:
             args.mn_host = cfg_mn_host
@@ -7822,6 +7841,9 @@ class StartUiCmd(Command):
             args.ssl_keystore_type = cfg_ssl_keystore_type
         if not args.ssl_keystore_password:
             args.ssl_keystore_password = cfg_ssl_keystore_password
+        if not args.catalina_opts:
+            args.catalina_opts = cfg_catalina_opts
+        args.catalina_opts = ' '.join(args.catalina_opts.split(','))
 
         # create default ssl keystore anyway
         if not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
@@ -7883,9 +7905,9 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
         if args.enable_ssl:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s >/dev/null 2>&1 &'" % (args.log, cfg_catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s %s >/dev/null 2>&1 &'" % (args.log, args.catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, custom_props)
         else:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s >/dev/null 2>&1 &'" % (args.log, cfg_catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password)
+            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s %s >/dev/null 2>&1 &'" % (args.log, args.catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, custom_props)
 
         script(scmd, no_pipe=True)
 
@@ -7949,6 +7971,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000")
         parser.add_argument('--ui-address', help="ZStack UI Address.")
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
+        parser.add_argument('--catalina-opts', help="UI catalina options, seperated by `,`")
 
         # arguments for https
         parser.add_argument('--enable-ssl', choices=['True', 'False'], type=str.title, help="Enable HTTPS for ZStack UI. [DEFAULT] False")
@@ -8018,6 +8041,7 @@ class ConfigUiCmd(Command):
 
         # restore to default values
         if args.restore:
+            ctl.clear_ui_properties()
             ctl.write_ui_property("mn_host", '127.0.0.1')
             ctl.write_ui_property("mn_port", '8080')
             ctl.write_ui_property("webhook_host", '127.0.0.1')
@@ -8034,6 +8058,14 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("db_password", 'zstack.ui.password')
             ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
             return
+
+        # `--key=value` type of params
+        if ctl.extra_arguments:
+            properties = [ l.split('=', 1) for l in ctl.extra_arguments ]
+            for k, v in properties:
+                if not k.startswith('--'):
+                    raise CtlError('custom param %s is invalid, must begin with --' % k)
+                ctl.write_ui_property(k.lstrip('--'), v)
 
         # use 5443 instead if enable_ssl
         if args.enable_ssl and args.enable_ssl.lower() == 'true':
@@ -8088,8 +8120,8 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("ui_address", args.ui_address.strip())
 
         # catalina opts
-        if ctl.extra_arguments:
-            ctl.write_ui_property("catalina_opts", ' '.join(ctl.extra_arguments))
+        if args.catalina_opts:
+            ctl.write_ui_property("catalina_opts", args.catalina_opts)
 
 # For UI 2.0
 class ShowUiCfgCmd(Command):
