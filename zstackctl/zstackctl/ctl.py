@@ -4821,6 +4821,7 @@ class CollectLogCmd(Command):
         self.description = (
             "Collect log for diagnose"
         )
+        self.hide = True
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
