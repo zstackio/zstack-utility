@@ -273,7 +273,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             if len(times) < 2:
                 return
 
-            rsp.rootVolumeInfo['downloadTime'] = float(times[1]) - float(times[0])
+            rsp.rootVolumeInfo['downloadTime'] = int(float(times[1]) - float(times[0]))
             times = times[1:]
             for i in xrange(0, len(rsp.dataVolumeInfos)):
                 if i + 1 < len(times):
