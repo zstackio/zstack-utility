@@ -267,13 +267,15 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         finally:
             if temp_dir is not None:
                 return_code = shell.run("mount | grep '%s'" % temp_dir)
-                if return_code != 0:
-                    return_code = shell.run('rm -rf %s' % temp_dir)
 
-                    if return_code != 0:
-                        logger.debug("failed to remove temp_dir %s", temp_dir)
+                if return_code != 0:
+                    # in case dir is not empty
+                    try:
+                        os.rmdir(temp_dir)
+                    except OSError as e:
+                        logger.warn("delete temp_dir %s failed: %s", (temp_dir, str(e)))
                 else:
-                    logger.debug("temp_dir still had mounted destination primary storage, skip cleanup operation")
+                    logger.warn("temp_dir %s still had mounted destination primary storage, skip cleanup operation" % temp_dir)
 
         return jsonobject.dumps(rsp)
 
