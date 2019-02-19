@@ -87,6 +87,11 @@ class ListResponse(AgentResponse):
         super(ListResponse, self).__init__()
         self.paths = []
 
+class CheckInitializedFileRsp(AgentResponse):
+    def __init__(self):
+        super(CheckInitializedFileRsp, self).__init__()
+        self.existed = True
+
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
@@ -120,6 +125,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CONVERT_QCOW2_TO_RAW = "/localstorage/imagestore/convert/raw"
     RESIZE_VOLUME_PATH = "/localstorage/volume/resize"
     REINIT_IMAGE_PATH = "/localstorage/reinit/image"
+    CHECK_INITIALIZED_FILE = "/localstorage/check/initializedfile"
+    CREATE_INITIALIZED_FILE = "/localstorage/create/initializedfile"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -156,11 +163,41 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
         http_server.register_async_uri(self.CONVERT_QCOW2_TO_RAW, self.convert_qcow2_to_raw)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.CHECK_INITIALIZED_FILE, self.check_initialized_file)
+        http_server.register_async_uri(self.CREATE_INITIALIZED_FILE, self.create_initialized_file)
 
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def check_initialized_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        file_path = cmd.filePath
+        rsp = CheckInitializedFileRsp()
+        if file_path is None:
+            rsp.success = False
+            rsp.error = "input file path is None"
+        else:
+            rsp.existed = os.path.exists(file_path)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def create_initialized_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        file_path = cmd.filePath
+        rsp = AgentResponse()
+        if file_path is None:
+            rsp.success = False
+            rsp.error = "input file path is None"
+        else:
+            if not os.path.exists(file_path):
+                f = open(file_path, 'w')
+                f.close()
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def resize_volume(self, req):
