@@ -353,6 +353,10 @@ class Mevoco(kvmagent.KvmAgent):
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
 
     USERDATA_ROOT = "/var/lib/zstack/userdata/"
+    USERDATA_INNER_IP = "169.254.0.2"
+    USERDATA_INNER_IP_MASK_BIT = 17
+    USERDATA_OUTER_IP = "169.254.0.1"
+    KVM_HOST_PUSHGATEWAY_PORT = "9092"
 
     def __init__(self):
         self.signal_count = 0
@@ -726,6 +730,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
         if (ret != 0 and INNER_DEV != None):
             bash_errorout('ip netns exec {{NS_NAME}} ip addr add 169.254.169.254 dev {{INNER_DEV}}')
+            bash_errorout('ip netns exec {{NS_NAME}} ip addr add %s/%s dev {{INNER_DEV}}' % (self.USERDATA_INNER_IP, self.USERDATA_INNER_IP_MASK_BIT))
 
         r, o = bash_ro('ip netns exec {{NS_NAME}} ip r | wc -l')
         if not to.hasattr("dhcpServerIp") and int(o) == 0:
@@ -798,20 +803,26 @@ server.bind = "169.254.169.254"
 dir-listing.activate = "enable"
 index-file.names = ( "index.html" )
 
-server.modules += ( "mod_rewrite" )
+server.modules += ("mod_proxy", "mod_rewrite")
 
 $HTTP["remoteip"] =~ "^(.*)$" {
-    url.rewrite-once = (
-        "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
-        "^/.*/meta-data$" => "../%1/meta-data",
-        "^/.*/meta-data/$" => "../%1/meta-data/",
-        "^/.*/user-data$" => "../%1/user-data",
-        "^/.*/user_data$" => "../%1/user_data",
-        "^/.*/meta_data.json$" => "../%1/meta_data.json",
-        "^/.*/password$" => "../%1/password",
-        "^/.*/$" => "../%1/$1"
-    )
-    dir-listing.activate = "enable"
+    $HTTP["url"] =~ "^/metrics" {
+        proxy.server = ( "" =>
+           ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
+        )
+    } else $HTTP["remoteip"] =~ "^(.*)$" {
+        url.rewrite-once = (
+            "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
+            "^/.*/meta-data$" => "../%1/meta-data",
+            "^/.*/meta-data/$" => "../%1/meta-data/",
+            "^/.*/user-data$" => "../%1/user-data",
+            "^/.*/user_data$" => "../%1/user_data",
+            "^/.*/meta_data.json$" => "../%1/meta_data.json",
+            "^/.*/password$" => "../%1/password",
+            "^/.*/$" => "../%1/$1"
+        )
+        dir-listing.activate = "enable"
+    }
 }
 
 mimetype.assign = (
@@ -824,7 +835,9 @@ mimetype.assign = (
         tmpt = Template(conf)
         conf = tmpt.render({
             'http_root': http_root,
-            'port': to.port
+            'port': to.port,
+            'pushgateway_ip' : self.USERDATA_OUTER_IP,
+            'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT
         })
 
         if not os.path.exists(conf_path):
@@ -837,6 +850,12 @@ mimetype.assign = (
             if current_conf != conf:
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
+
+        self.apply_zwatch_vm_agent(http_root)
+
+    def apply_zwatch_vm_agent(self, http_root):
+        shell.call('cp -f %s %s' % ("/var/lib/zstack/kvm/zwatch-vm-agent.bin", http_root))
+        shell.call('cp -f %s %s' % ("/var/lib/zstack/kvm/zstack-tools.sh", http_root))
 
     @in_bash
     @lock.file_lock('/run/xtables.lock')
