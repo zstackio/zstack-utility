@@ -7870,6 +7870,16 @@ class StartUiCmd(Command):
         if args.enable_ssl and args.server_port == '5000':
             args.server_port = '5443'
 
+        # set http to https is enable ssl set
+        system_webhook_url = 'localhost:%s/zwatch/webhook' % args.webhook_port
+        if args.enable_ssl:
+            system_webhook_url = 'https://' + system_webhook_url
+        else:
+            system_webhook_url = 'http://' + system_webhook_url
+
+        ctl.write_property('ticket.sns.topic.http.url', system_webhook_url)
+        ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
+
         if not os.path.exists(args.ssl_keystore):
             raise CtlError('%s not found.' % args.ssl_keystore)
         # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
