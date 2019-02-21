@@ -18,6 +18,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import plugin
 from zstacklib.utils import linux
 from zstacklib.utils import ceph
+from zstacklib.utils import bash
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
@@ -242,6 +243,22 @@ class CephAgent(plugin.TaskManager):
             poolCapacity = CephPoolCapacity(pool.poolName, pool.availableCapacity, pool.replicatedSize, pool.usedCapacity, pool.poolTotalSize)
             rsp.poolCapacities.append(poolCapacity)
 
+    @in_bash
+    def _get_file_actual_size(self, path):
+        ret = bash.bash_r("rbd info %s | grep -q fast-diff" % path)
+
+        # if no fast-diff supported and not xsky ceph skip actual size check
+        if ret != 0 and not isXsky():
+            return None
+
+        r, size = bash.bash_ro("rbd du %s | tail -1 | awk '{ print $3 }'" % path)
+
+        if r != 0:
+            return None
+
+        size = size.strip('\t\n ')
+        return sizeunit.get_size(size)
+
     def _get_file_size(self, path):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
@@ -379,6 +396,7 @@ class CephAgent(plugin.TaskManager):
         path = self._normalize_install_path(cmd.installPath)
         rsp = GetVolumeSizeRsp()
         rsp.size = self._get_file_size(path)
+        rsp.actualSize = self._get_file_actual_size(path)
         return jsonobject.dumps(rsp)
 
     @replyerror
