@@ -803,6 +803,31 @@ class CephAgent(plugin.TaskManager):
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
+    def _get_dst_volume_size(self, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
+        o = shell.call('sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'rbd --format json info {DST_INSTALL_PATH}\''.format(
+            DST_MON_ADDR=dst_mon_addr,
+            DST_MON_PORT=dst_mon_port,
+            DST_MON_USER=dst_mon_user,
+            DST_MON_PASSWD=dst_mon_passwd,
+            DST_INSTALL_PATH = dst_install_path
+        ))
+        o = jsonobject.loads(o)
+        return long(o.size_)
+
+    def _resize_dst_volume(self, dst_install_path, size, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
+        r, _, e = bash_roe('sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'qemu-img resize -f raw rbd:{DST_INSTALL_PATH} {SIZE}\''.format(
+                DST_MON_ADDR=dst_mon_addr,
+                DST_MON_PORT=dst_mon_port,
+                DST_MON_USER=dst_mon_user,
+                DST_MON_PASSWD=dst_mon_passwd,
+                DST_INSTALL_PATH=dst_install_path,
+                SIZE = size
+        ))
+        if r != 0:
+            logger.error('failed to resize volume %s before migrate, cause: %s' % (dst_install_path, e))
+            return r
+        return 0
+
     def _migrate_volume_segment(self, parent_uuid, resource_uuid, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
@@ -839,6 +864,22 @@ class CephAgent(plugin.TaskManager):
     def migrate_volume_segment(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
+        src_install_path = self._normalize_install_path(cmd.srcInstallPath)
+        dst_install_path = self._normalize_install_path(cmd.dstInstallPath)
+        src_size = self._get_file_size(src_install_path)
+        dst_size = self._get_dst_volume_size(dst_install_path, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
+        if dst_size > src_size:
+            rsp.success = False
+            rsp.error = "Failed to migrate volume segment because dst size: %s < src size: %s" % (dst_size, src_size)
+            return jsonobject.dumps(rsp)
+        if dst_size < src_size:
+            ret = self._resize_dst_volume(dst_install_path, src_size, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
+            if ret != 0:
+                rsp.success = False
+                rsp.error = "Failed to resize volume before migrate."
+                return jsonobject.dumps(rsp)
+
+
         ret = self._migrate_volume_segment(cmd.parentUuid, cmd.resourceUuid, cmd.srcInstallPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
         if ret != 0:
             rsp.success = False
