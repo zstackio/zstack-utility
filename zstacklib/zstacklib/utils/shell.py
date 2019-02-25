@@ -35,7 +35,7 @@ class ShellCmd(object):
 
     def raise_error(self):
         err = []
-        err.append('failed to execute shell command: %s' % self.cmd)
+        err.append('failed to execute shell command: %s' % self.cmd.split(' ', 1)[0])
         err.append('return code: %s' % self.process.returncode)
         err.append('stdout: %s' % self.stdout)
         err.append('stderr: %s' % self.stderr)

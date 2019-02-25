@@ -294,7 +294,7 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
 
     os.close(fd)
 
-    ret = shell.run("/usr/bin/sshfs %s@%s:%s %s -o reconnect,allow_root,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
+    ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o reconnect,allow_root,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
     os.remove(fname)
     return ret
 
