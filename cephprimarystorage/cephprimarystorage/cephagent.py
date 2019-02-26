@@ -117,6 +117,11 @@ class GetVolumeSnapInfosRsp(AgentResponse):
         super(GetVolumeSnapInfosRsp, self).__init__()
         self.snapInfos = None
 
+class CreateEmptyVolumeRsp(AgentResponse):
+    def __init__(self):
+        super(CreateEmptyVolumeRsp, self).__init__()
+        self.size = 0
+
 def isXsky():
     return os.path.exists("/usr/bin/xms-cli")
 
@@ -662,14 +667,17 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         path = self._normalize_install_path(cmd.installPath)
+        rsp = CreateEmptyVolumeRsp()
 
         call_string = None
         if isXsky():
             # do NOT round to MB
             call_string = 'rbd create --size %dB --image-format 2 %s' % (cmd.size, path)
+            rsp.size = cmd.size
         else:
             size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
             call_string = 'rbd create --size %s --image-format 2 %s' % (size_M, path)
+            rsp.size = cmd.size + sizeunit.MegaByte.toByte(1)
 
         if cmd.shareable:
             call_string = call_string + " --image-shared"
@@ -677,7 +685,7 @@ class CephAgent(plugin.TaskManager):
         skip_cmd = "rbd info %s ||" % path if cmd.skipIfExisting else ""
         shell.call(skip_cmd + call_string)
 
-        rsp = AgentResponse()
+
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
@@ -887,8 +895,19 @@ class CephAgent(plugin.TaskManager):
         src_size = self._get_file_size(src_install_path)
         dst_size = self._get_dst_volume_size(dst_install_path, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
         if dst_size > src_size:
-            rsp.success = False
-            rsp.error = "Failed to migrate volume segment because dst size: %s < src size: %s" % (dst_size, src_size)
+            if cmd.isXsky:
+                # xsky / ceph -> xsky, size must be equal
+                rsp.success = False
+                rsp.error = "Failed to migrate volume segment because dst size: %s > src size: %s" % (dst_size, src_size)
+            elif isXsky() == False:
+                # ceph -> ceph, dst - src = 1 MB
+                if dst_size - src_size != sizeunit.MegaByte.toByte(1):
+                    rsp.success = False
+                    rsp.error = "Failed to migrate volume segment because (dst size(%s) - src size(%s)) <> %s" % (dst_size, src_size, sizeunit.MegaByte.toByte(1))
+            else:
+                # xsky -> ceph, not supported
+                rsp.success = False
+                rsp.error = "Failed to migrate volume segment because xsky migrate to ceph is not supported now"
             return jsonobject.dumps(rsp)
         if dst_size < src_size:
             ret = self._resize_dst_volume(dst_install_path, src_size, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
