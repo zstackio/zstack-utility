@@ -9,7 +9,6 @@ SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
-ZSTACK_UI_HOME=${ZSTACK_UI_HOME:-"/usr/local/zstack/zstack-ui"}
 
 OS=''
 CENTOS6='CENTOS6'
@@ -1032,7 +1031,7 @@ upgrade_zstack(){
         fi
     elif [ -f /etc/init.d/zstack-ui ]; then
         # fill CATALINA_ZSTACK_TOOLS with old zstack-ui.war if not exists
-        /bin/cp -n $ZSTACK_UI_HOME/zstack-ui.war $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
+        /bin/cp -n $ZSTACK_INSTALL_ROOT/zstack-ui/zstack-ui.war $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
     fi
 
     #check old license folder and copy old license files to new folder.
@@ -1078,6 +1077,10 @@ upgrade_zstack(){
     # set sns.systemTopic.endpoints.http.url if not exists
     zstack-ctl show_configuration | grep 'sns.systemTopic.endpoints.http.url' >/dev/null 2>&1
     [ $? -ne 0 ] && zstack-ctl configure sns.systemTopic.endpoints.http.url=http://localhost:5000/zwatch/webhook
+
+    # update consoleProxyCertFile if necessary
+    certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
+    [ x"$certfile" != x"" ] && zstack-ctl configure consoleProxyCertFile=`echo $certfile | sed "s~/usr/local/zstack/~$ZSTACK_INSTALL_ROOT/~g"`
 
     #When using -i option, will not upgrade kariosdb and not start zstack
     if [ -z $ONLY_INSTALL_ZSTACK ]; then

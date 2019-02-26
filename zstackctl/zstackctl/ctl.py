@@ -644,7 +644,8 @@ class Ctl(object):
     LAST_ALIVE_MYSQL_PORT = "MYSQL_LATEST_PORT"
     LOGGER_DIR = "/var/log/zstack/"
     LOGGER_FILE = "zstack-ctl.log"
-    ZSTACK_UI_HOME = '/usr/local/zstack/zstack-ui/'
+    # always install zstack-ui inside zstack_install_root
+    ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
     ZSTACK_UI_KEYSTORE = ZSTACK_UI_HOME + 'ui.keystore.p12'
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
     # for console proxy https
