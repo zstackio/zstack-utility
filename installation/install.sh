@@ -2610,7 +2610,7 @@ enabled=0
 EOF
 fi
 
-repo_file=/etc/yum.repos.d/virt-win.repo
+repo_file=/etc/yum.repos.d/virtio-win.repo
 if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
@@ -2621,6 +2621,10 @@ gpgcheck=0
 enabled=0
 EOF
 fi
+
+# Fixes ZSTAC-18536: delete invalid repo file virt-win.repo
+invalid_virt_win_repo=/etc/yum.repos.d/virt-win.repo
+[ -f $invalid_virt_win_repo ] && rm -f $invalid_virt_win_repo
 }
 
 check_sync_local_repos() {

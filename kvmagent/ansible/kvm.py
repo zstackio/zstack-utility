@@ -177,7 +177,7 @@ if distro in RPM_BASED_OS:
         extra_pkg = 'collectd-virt' if major_version >= 7 else ""
 
         # common kvmagent deps of x86 and arm that need to update
-        common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd zstack-host"
+        common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd"
         # common kvmagent deps of x86 and arm that no need to update
         common_dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath expect iproute ipset iputils iscsi-initiator-utils libguestfs-tools libguestfs-winsupport virt-v2v libvirt libvirt-client libvirt-python lighttpd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
 
@@ -199,10 +199,12 @@ if distro in RPM_BASED_OS:
             dep_list = dep_list.replace('libguestfs-tools libguestfs-winsupport virt-v2v libvirt libvirt-client libvirt-python ', '')
 
         # name: install/update kvm related packages on RedHat based OS from user defined repo
-        command = ("echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
+        # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
+        command = ("rpm -q zstack-manager >/dev/null 2>&1 || yum --disablerepo=* --enablerepo=%s install -y zstack-host >/dev/null; \
+                echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
                 pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' %s' && \
                 for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done; \
-                ") % (dep_list, zstack_repo, dep_list, update_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
+                ") % (zstack_repo, dep_list, zstack_repo, dep_list, update_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = dep_list
         run_remote_command(command, host_post_info)
