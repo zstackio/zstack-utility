@@ -788,18 +788,18 @@ You can also add '-q' to installer, then Installer will help you to remove it.
 
     ia_check_ip_hijack
 
-    #stop zstack before change zstack home dir
-    current_zstack_home=`echo $ZSTACK_HOME | awk -F '/' '{printf("%s/%s/%s/%s",$1,$2,$3,$4)}'`
-    which zstack-ctl >/dev/null 2>&1
-    if [ $? -eq 0 ] && [ $current_zstack_home != $ZSTACK_INSTALL_ROOT ];then
-        echo "\nzstack host changed, before: $current_zstack_home, now: $ZSTACK_INSTALL_ROOT, stopping zstack"
-        zstack-ctl stop >/dev/null 2>&1
-    fi
     #add user: zstack and add sudo permission for it.
     id -u zstack >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         useradd -d $ZSTACK_INSTALL_ROOT zstack >/dev/null >>$ZSTACK_INSTALL_LOG 2>&1
     elif [ $(readlink -f $ZSTACK_INSTALL_ROOT) != $(echo ~zstack) ] ; then
+        #stop zstack before change zstack home dir
+        which zstack-ctl >/dev/null 2>&1
+        if [ $? -eq 0 ] ;then
+            echo "\nzstack host changed, before: $(echo ~zstack), now: $ZSTACK_INSTALL_ROOT, stopping zstack" >>$ZSTACK_INSTALL_LOG
+            zstack-ctl stop >/dev/null 2>&1
+        fi
+
         killall -u zstack >/dev/null 2>&1
         i=5
         while (ps -u zstack > /dev/null) && ((i-- > 0)); do
@@ -1239,6 +1239,7 @@ is_install_general_libs_rh(){
             MySQL-python \
             ipmitool \
             nginx \
+            psmisc \
             python-backports-ssl_match_hostname \
             python-setuptools"
 
