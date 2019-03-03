@@ -825,12 +825,12 @@ class CephAgent(plugin.TaskManager):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        r, _, e = bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
+        r, _, e = bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | sshpass -p {DST_MON_PASSWD} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
             PARENT_UUID = parent_uuid,
             DST_MON_ADDR = dst_mon_addr,
             DST_MON_PORT = dst_mon_port,
             DST_MON_USER = dst_mon_user,
-            DST_MON_PASSWD = dst_mon_passwd,
+            DST_MON_PASSWD = linux.shellquote(dst_mon_passwd),
             RESOURCE_UUID = resource_uuid,
             SRC_INSTALL_PATH = src_install_path,
             DST_INSTALL_PATH = dst_install_path,
@@ -841,11 +841,11 @@ class CephAgent(plugin.TaskManager):
 
         # compare md5sum of src/dst segments
         src_segment_md5 = self._read_file_content('/tmp/%s_src_md5' % resource_uuid)
-        dst_segment_md5 = shell.call('sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'cat /tmp/{RESOURCE_UUID}_dst_md5\''.format(
+        dst_segment_md5 = shell.call('sshpass -p {DST_MON_PASSWD} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'cat /tmp/{RESOURCE_UUID}_dst_md5\''.format(
             DST_MON_ADDR = dst_mon_addr,
             DST_MON_PORT = dst_mon_port,
             DST_MON_USER = dst_mon_user,
-            DST_MON_PASSWD = dst_mon_passwd,
+            DST_MON_PASSWD = linux.shellquote(dst_mon_passwd),
             RESOURCE_UUID = resource_uuid))
         if src_segment_md5 != dst_segment_md5:
             logger.error('check sum mismatch after migration: %s' % src_install_path)
