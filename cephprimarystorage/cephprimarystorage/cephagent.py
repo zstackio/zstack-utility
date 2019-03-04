@@ -900,10 +900,8 @@ class CephAgent(plugin.TaskManager):
                 rsp.success = False
                 rsp.error = "Failed to migrate volume segment because dst size: %s > src size: %s" % (dst_size, src_size)
             elif isXsky() == False:
-                # ceph -> ceph, dst - src = 1 MB
-                if dst_size - src_size != sizeunit.MegaByte.toByte(1):
-                    rsp.success = False
-                    rsp.error = "Failed to migrate volume segment because (dst size(%s) - src size(%s)) <> %s" % (dst_size, src_size, sizeunit.MegaByte.toByte(1))
+                # ceph -> ceph, don't check size
+                rsp.success = True
             else:
                 # xsky -> ceph, not supported
                 rsp.success = False
