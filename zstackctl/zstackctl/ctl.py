@@ -434,8 +434,8 @@ def check_host_info_format(host_info, with_public_key=False):
         return (user, password, ip, port)
 
 def check_host_password(password, ip):
-    command ='timeout 10 sshpass -p "%s" ssh -q -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no -o ' \
-             'StrictHostKeyChecking=no root@%s echo ""' % (password, ip)
+    command ='timeout 10 sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no -o ' \
+             'StrictHostKeyChecking=no root@%s echo ""' % (shell_quote(password), ip)
     (status, output) = commands.getstatusoutput(command)
     if status != 0:
         error("Connect to host: '%s' with password '%s' failed! Please check password firstly and make sure you have "
@@ -464,6 +464,9 @@ def start_remote_mn( host_post_info):
     if status != 0:
         error("Something wrong on host: %s\n %s" % (host_post_info.host, output))
     logger.debug("[ HOST: %s ] SUCC: shell command: '%s' successfully" % (host_post_info.host, command))
+
+def shell_quote(s):
+    return "'" + s.replace("'", "'\\''") + "'"
 
 class SpinnerInfo(object):
     spinner_status = {}
@@ -2614,8 +2617,8 @@ class AddManagementNodeCmd(Command):
                             default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no' \
-                 ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
+        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no' \
+                 ' -o StrictHostKeyChecking=no -i %s root@%s' % (shell_quote(host_info.remote_pass), key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
             error("Copy public key '%s' to host: '%s' failed:\n %s" % (key_path, host_info.host,  output))
@@ -3137,26 +3140,26 @@ class InstallHACmd(Command):
                                       % (public_key.strip('\n'), public_key.strip('\n'), public_key.strip('\n'))
 
         # add ha public key to host1
-        ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
+        ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no root@%s '%s'" % \
-                                  (args.host1_password, args.host1, add_public_key_command)
+                                  (shell_quote(args.host1_password), args.host1, add_public_key_command)
         (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
         if status != 0:
             error(output)
 
         # add ha public key to host2
-        ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
+        ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                   "PubkeyAuthentication=no -o StrictHostKeyChecking=no root@%s '%s' " % \
-                                  (args.host2_password, args.host2, add_public_key_command)
+                                  (shell_quote(args.host2_password), args.host2, add_public_key_command)
         (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
         if status != 0:
             error(output)
 
         # add ha public key to host3
         if args.host3_info is not False:
-            ssh_add_public_key_command = "sshpass -p \"%s\" ssh -q -o UserKnownHostsFile=/dev/null -o " \
+            ssh_add_public_key_command = "sshpass -p %s ssh -q -o UserKnownHostsFile=/dev/null -o " \
                                               "PubkeyAuthentication=no -o StrictHostKeyChecking=no root@%s '%s' " % \
-                                              (args.host3_password, args.host3, add_public_key_command)
+                                              (shell_quote(args.host3_password), args.host3, add_public_key_command)
             (status, output) = commands.getstatusoutput(ssh_add_public_key_command)
             if status != 0:
                 error(output)
@@ -4766,15 +4769,15 @@ def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
 
     def prepare_ca():
         temp_dir = tempfile.mkdtemp()
-        scp_cmd = "sshpass -p '%s' scp -P %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s@%s:%s %s" % \
-                  (password, port, username, hostname, ZSTORE_CLI_CA, temp_dir)
+        scp_cmd = "sshpass -p %s scp -P %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s@%s:%s %s" % \
+                  (shell_quote(password), port, username, hostname, ZSTORE_CLI_CA, temp_dir)
         shell(scp_cmd)
         return os.path.join(temp_dir, 'ca.pem')
 
     def check_server():
         start_cmd = "/usr/local/zstack/imagestore/bin/zstore -conf /usr/local/zstack/imagestore/bin/zstore.yaml -logfile /var/log/zstack/zstack-store/zstore.log"
-        ssh_cmd = "sshpass -p '%s' ssh -p %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s@%s" % (
-            password, port, username, hostname)
+        ssh_cmd = "sshpass -p %s ssh -p %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s@%s" % (
+            shell_quote(password), port, username, hostname)
 
         shell("%s 'ps -e | grep zstore || %s'" % (ssh_cmd, start_cmd))
 
@@ -5582,8 +5585,8 @@ class InstallManagementNodeCmd(Command):
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
-        command ='timeout 10 sshpass -p "%s" ssh-copy-id -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no' \
-                 ' -o StrictHostKeyChecking=no -i %s root@%s' % (host_info.remote_pass, key_path, host_info.host)
+        command ='timeout 10 sshpass -p %s ssh-copy-id -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no' \
+                 ' -o StrictHostKeyChecking=no -i %s root@%s' % (shell_quote(host_info.remote_pass), key_path, host_info.host)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
             error("Copy public key '%s' to host: '%s' failed:\n %s" % (key_path, host_info.host,  output))
