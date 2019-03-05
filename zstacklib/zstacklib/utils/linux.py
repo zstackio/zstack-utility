@@ -1668,6 +1668,20 @@ def get_libvirtd_pid():
     with open('/var/run/libvirtd.pid') as f:
         return int(f.read())
 
+def fake_dead(name):
+    fakedead_file = '/tmp/fakedead-%s' % name
+    if not os.path.exists(fakedead_file):
+        return False
+    ctx = file(fakedead_file).read().strip()
+    if ctx == 'fakedead':
+        return True
+    return False
+
+def recover_fake_dead(name):
+    fakedead_file = '/tmp/fakedead-%s' % name
+    if os.path.exists(fakedead_file):
+        os.remove(fakedead_file)
+
 def get_agent_pid_by_name(name):
     cmd = shell.ShellCmd('ps -aux | grep \'%s\' | grep -E \'start|restart\' | grep -v grep | awk \'{print $2}\'' % name)
     output = cmd(False)

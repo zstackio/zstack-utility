@@ -213,6 +213,9 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def echo(self, req):
         logger.debug('get echoed')
+        while linux.fake_dead('kvmagent') is True:
+            logger.debug('checked fake dead, sleep 3 secs')
+            time.sleep(3)
         return ''
 
     @kvmagent.replyerror
