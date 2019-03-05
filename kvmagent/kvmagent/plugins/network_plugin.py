@@ -10,6 +10,7 @@ from zstacklib.utils import log
 from zstacklib.utils import lock
 from zstacklib.utils import shell
 from zstacklib.utils import linux
+from zstacklib.utils.bash import *
 import os
 import traceback
 import netaddr
@@ -231,6 +232,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def check_vxlan_cidr(self, req):
 
+        def install_iptables(rules, port):
+            needle = '-A INPUT -p udp -m udp --dport %d' % port
+            drules = [r.replace("-A ", "-D ") for r in rules if needle in r]
+            for rule in drules:
+                bash_r("iptables -w %s" % rule)
+
+            bash_r("iptables -w -I INPUT -p udp --dport %s -j ACCEPT" % port)
+
         def filter_vxlan_nics(nics, interf, requireIp):
             valid_nics = copy.copy(nics)
 
@@ -301,6 +310,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
             rsp.error = "the qualified vtep ip bound to multiple interfaces"
         else:
             rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % cmd.cidr
+
+        rules = bash_o("iptables -w -S INPUT").splitlines()
+        install_iptables(rules, 8472)
+        install_iptables(rules, 4789)
 
         return jsonobject.dumps(rsp)
 
