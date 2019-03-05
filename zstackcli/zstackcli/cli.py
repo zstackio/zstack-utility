@@ -101,6 +101,8 @@ class Cli(object):
     LOGOUT_MESSAGE_NAME = 'APILogOutMsg'
     LOGIN_BY_USER_NAME = 'APILogInByUserMsg'
     LOGIN_BY_USER_IAM2 = 'APILoginIAM2VirtualIDMsg'
+    CREATE_USER_IAM2 = 'APICreateIAM2VirtualIDMsg'
+    LOGIN_BY_IAM2_PROJECT_NAME = 'APILoginIAM2ProjectMsg'
     CREATE_ACCOUNT_NAME = 'APICreateAccountMsg'
     CREATE_USER_NAME = 'APICreateUserMsg'
     ACCOUNT_RESET_PASSWORD_NAME = 'APIUpdateAccountMsg'
@@ -513,7 +515,7 @@ Parse command parameters error:
         set_session_to_api(msg)
         try:
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.CREATE_ACCOUNT_NAME,
-                           self.CREATE_USER_NAME]:
+                           self.CREATE_USER_NAME, self.LOGIN_BY_USER_IAM2, self.CREATE_USER_IAM2]:
                 if not msg.password:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
@@ -530,7 +532,8 @@ Parse command parameters error:
             (name, event) = self.api.async_call_wait_for_complete(msg, fail_soon=True)
             end_time = time.time()
 
-            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME]:
+            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,
+                           self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2]:
                 self.session_uuid = event.inventory.uuid
                 self.account_name = None
                 self.user_name = None
@@ -551,6 +554,15 @@ Parse command parameters error:
                         self.user_name = all_params[user_name_field]
                         session_file_writer.write("\n" + self.account_name)
                         session_file_writer.write("\n" + self.user_name)
+                    elif apiname == self.LOGIN_BY_IAM2_PROJECT_NAME:
+                        self.account_name = 'project[%s]' % all_params['projectName']
+                        session_file_writer.write("\n" + self.account_name)
+                    elif apiname == self.LOGIN_BY_USER_IAM2:
+                        if event.inventory.accountUuid == '2dce5dc485554d21a3796500c1db007a':
+                            self.account_name = 'no project selected'
+                        else:
+                            self.account_name = 'admin'
+                        session_file_writer.write("\n" + self.account_name)
 
             if apiname == self.LOGOUT_MESSAGE_NAME:
                 clear_session()
