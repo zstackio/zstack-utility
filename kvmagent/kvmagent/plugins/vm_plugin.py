@@ -3683,6 +3683,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
             self._start_vm(cmd)
             logger.debug('successfully started vm[uuid:%s, name:%s]' % (cmd.vmInstanceUuid, cmd.vmName))
+            vm_pid = linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid)
+            linux.enable_process_coredump(vm_pid)
         except kvmagent.KvmError as e:
             e_str = linux.get_exception_stacktrace()
             logger.warn(e_str)
@@ -4073,7 +4075,7 @@ class VmPlugin(kvmagent.KvmAgent):
             return
 
         logger.debug('killing vm %s' % vm_uuid)
-        vm_pid = shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % vm_uuid).strip()
+        vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
         linux.kill_process(vm_pid)
 
     @kvmagent.replyerror

@@ -57,6 +57,13 @@ apply_resource_settings() {
 	fi
 }
 
+# enable coredump for existing qemu-kvm processes
+enable_qemukvm_coredump() {
+	for pid in `ps -x -ocomm,pid | awk '$1 == "qemu-kvm" {print $2}'`; do
+		prlimit --core=$((4*1024*1024)) --pid $pid || true
+	done
+}
+
 rm_ebtables_dangling_lock() {
         lockfile=$1
         test -e $lockfile || return
@@ -68,6 +75,7 @@ if [ "$@" = "status" ]; then
 	check_status
 else
 	apply_resource_settings
+	enable_qemukvm_coredump
 	rm_ebtables_dangling_lock '/var/lib/ebtables/lock' #C72
 	rm_ebtables_dangling_lock '/run/ebtables.lock'   #C74
 
