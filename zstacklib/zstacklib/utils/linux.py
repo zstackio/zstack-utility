@@ -1208,6 +1208,13 @@ def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None):
     move_route = True
     create_bridge(bridgename, vlan_dev_name, move_route)
 
+def enable_process_coredump(pid):
+    memsize = 4 * 1024 * 1024
+    shell.run('prlimit --core=%d --pid %s' % (memsize, pid))
+
+def find_vm_pid_by_uuid(uuid):
+    return shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % vm_uuid).strip()
+
 def find_process_by_cmdline(cmdlines):
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
     for pid in pids:
