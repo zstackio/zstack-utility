@@ -779,7 +779,7 @@ class CephAgent(object):
 
             def _getProgress(synced):
                 logger.debug("getProgress in ceph-bs-agent, synced: %s, total: %s" % (synced, total))
-                last = shell.call('tail -1 %s' % PFILE).strip()
+                last = linux.tail_1(PFILE).strip()
                 if not last or len(last.split()) < 1 or 'HTTP request sent, awaiting response' in last:
                     return synced
                 logger.debug("last synced: %s" % last)
@@ -823,7 +823,7 @@ class CephAgent(object):
                 logger.debug("getProgress in add image")
                 if not os.path.exists(PFILE):
                     return synced
-                last = shell.call('tail -1 %s' % PFILE).strip()
+                last = linux.tail_1(PFILE).strip()
                 if not last or not last.isdigit():
                     return synced
                 report.progress_report(int(last)*90/100, "report")
