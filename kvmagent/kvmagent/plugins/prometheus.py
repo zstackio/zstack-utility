@@ -81,7 +81,31 @@ def collect_host_network_statistics():
 
     return metrics.values()
 
+
+def collect_host_capacity_statistics():
+
+    zstack_dir = ['/var/lib/zstack', '/usr/local/zstack', '/opt/zstack-dvd/',
+                  '/var/log/zstack', '/var/lib/mysql', '/var/lib/libvirt', '/tmp/zstack']
+
+    metrics = {
+        'zstack_used_capacity_in_bytes': GaugeMetricFamily('zstack_used_capacity_in_bytes',
+                                                       'ZStack used capacity in bytes')
+    }
+
+    zstack_used_capacity = 0
+    for dir in zstack_dir:
+        if not os.path.exists(dir):
+            continue
+        cmd = "du -bs %s | awk {\'print $1\'}" % dir
+        res = bash_o(cmd)
+        zstack_used_capacity += int(res)
+
+    metrics['zstack_used_capacity_in_bytes'].add_metric([], float(zstack_used_capacity))
+    return metrics.values()
+
+
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
+kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
 
 class PrometheusPlugin(kvmagent.KvmAgent):
 
