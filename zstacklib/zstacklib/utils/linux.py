@@ -1671,6 +1671,20 @@ def read_file(path):
     with open(path, 'r') as fd:
         return fd.read()
 
+
+def tail_1(path):
+    if not os.path.exists(path):
+        return None
+    if os.path.getsize(path) <= 2:
+        return read_file(path)
+
+    with open(path, 'rb') as f:
+        f.seek(-2, os.SEEK_END)
+        while f.tell() > 0 and f.read(1) != b"\n":
+            f.seek(-2, os.SEEK_CUR)
+        return f.readline()
+
+
 def get_libvirtd_pid():
     with open('/var/run/libvirtd.pid') as f:
         return int(f.read())
