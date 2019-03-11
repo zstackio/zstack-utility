@@ -899,6 +899,7 @@ class CephAgent(plugin.TaskManager):
                 # xsky / ceph -> xsky, size must be equal
                 rsp.success = False
                 rsp.error = "Failed to migrate volume segment because dst size: %s > src size: %s" % (dst_size, src_size)
+                return jsonobject.dumps(rsp)
             elif isXsky() == False:
                 # ceph -> ceph, don't check size
                 rsp.success = True
@@ -906,7 +907,7 @@ class CephAgent(plugin.TaskManager):
                 # xsky -> ceph, not supported
                 rsp.success = False
                 rsp.error = "Failed to migrate volume segment because xsky migrate to ceph is not supported now"
-            return jsonobject.dumps(rsp)
+                return jsonobject.dumps(rsp)
         if dst_size < src_size:
             ret = self._resize_dst_volume(dst_install_path, src_size, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
             if ret != 0:
