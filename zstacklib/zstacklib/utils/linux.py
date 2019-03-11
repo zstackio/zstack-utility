@@ -1213,7 +1213,7 @@ def enable_process_coredump(pid):
     shell.run('prlimit --core=%d --pid %s' % (memsize, pid))
 
 def find_vm_pid_by_uuid(uuid):
-    return shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % vm_uuid).strip()
+    return shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % uuid).strip()
 
 def find_process_by_cmdline(cmdlines):
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
