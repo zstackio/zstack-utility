@@ -4,6 +4,7 @@
 import os
 import json
 import commands
+import platform
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -72,6 +73,21 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+
+        _, os_version, _ = platform.dist()
+        versions = os_version.split('.')
+        # check if os is centos 7.2
+        if len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
+            rsp.success = False
+            rsp.error = "v2v feature is not supported on centos 7.2"
+            return jsonobject.dumps(rsp)
+
+        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
+                  "install libguestfs-tools libguestfs-winsupport virt-v2v -y"
+        if shell.run(yum_cmd) != 0:
+            rsp.success = False
+            rsp.error = "failed to update install conversion host dependencies from zstack-mn,qemu-kvm-ev-mn repo"
+            return jsonobject.dumps(rsp)
 
         path = "/var/lib/zstack/v2v"
         if not os.path.exists(path):

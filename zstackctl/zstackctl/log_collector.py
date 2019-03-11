@@ -381,7 +381,7 @@ class CollectFromYml(object):
                 return
             else:
                 self.add_collect_thread(self.host_type,
-                                        [self.generate_host_post_info(host_list. type), log_list, collect_dir, type])
+                                        [self.generate_host_post_info(host_list, type), log_list, collect_dir, type])
                 return
         if isinstance(host_list, dict):
             if host_list['exec'] is not None:

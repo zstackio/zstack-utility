@@ -36,6 +36,7 @@ class KvmAgent(plugin.Plugin):
         '''
         Constructor
         '''
+        linux.recover_fake_dead('kvmagent')
         super(KvmAgent, self).__init__()
 
 

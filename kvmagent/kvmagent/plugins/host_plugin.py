@@ -213,6 +213,11 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def echo(self, req):
         logger.debug('get echoed')
+        loop = 0
+        while linux.fake_dead('kvmagent') is True and loop < 1200:
+            logger.debug('checked fake dead, sleep 3 secs')
+            time.sleep(3)
+            loop += 1
         return ''
 
     @kvmagent.replyerror
@@ -485,16 +490,7 @@ if __name__ == "__main__":
     @in_bash
     def update_dependency(self, req):
         rsp = UpdateDependencyRsp()
-
-        _, os_version, _ = platform.dist()
-        versions = os_version.split('.')
-        with open('/var/lib/zstack/dependencies', 'r') as fd:
-            dep_list = fd.readline().strip('\t\n\r')
-        # check if os is centos 7.2
-        if len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
-            dep_list = dep_list.replace('libguestfs-tools libguestfs-winsupport virt-v2v libvirt libvirt-client libvirt-python ', '')
-
-        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install %s -y" % dep_list
+        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y"
         if shell.run("which yum") != 0:
             rsp.success = False
             rsp.error = "no yum command found, cannot update kvmagent dependencies"
