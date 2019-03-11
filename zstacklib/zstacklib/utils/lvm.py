@@ -1073,7 +1073,7 @@ def check_pv_status(vgUuid, timeout):
 
 
 def lvm_vgck(vgUuid, timeout):
-    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (15 if timeout < 15 else timeout, vgUuid))
+    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (60 if timeout < 60 else timeout, vgUuid))
     check_stuck_vglk()
 
     if health != 0:
@@ -1084,6 +1084,8 @@ def lvm_vgck(vgUuid, timeout):
     if o is not None and o != "":
         for es in o.strip().splitlines():
             if "WARNING" in es:
+                continue
+            if "Retrying" in es:
                 continue
             if "Duplicate sanlock global lock" in es:
                 fix_global_lock()
