@@ -551,6 +551,16 @@ cs_check_mysql_password () {
                 fi
             fi
         fi
+    elif [ -z $ONLY_INSTALL_ZSTACK ] && [ -z $NEED_KEEP_DB ]; then
+      # Fixes ZSTAC-18778
+      # If database zstack-ui doesn't exists, then we need mysql root password when upgrading zstack.
+      zstack-ctl show_ui_config 2>/dev/null | grep db_username >/dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        # grant all to root@127.0.0.1
+        mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" \
+          -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' IDENTIFIED BY '$MYSQL_NEW_ROOT_PASSWORD' WITH GRANT OPTION; FLUSH PRIVILEGES" >/dev/null 2>&1
+        [ $? -eq 0 ] || fail2 "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
+      fi
     fi
 }
 
@@ -1617,14 +1627,7 @@ uz_upgrade_zstack(){
     cd $upgrade_folder
 
     #Do not upgrade db, when using -i or -k
-    if [ -z $ONLY_INSTALL_ZSTACK ] || [ -z $NEED_KEEP_DB ]; then
-        # check mysql root password
-        mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" >/dev/null 2>&1
-        [ $? -eq 0 ] || fail "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
-
-        # grant all to root@127.0.0.1
-        mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' IDENTIFIED BY '$MYSQL_NEW_ROOT_PASSWORD' WITH GRANT OPTION; FLUSH PRIVILEGES"
-
+    if [ -z $ONLY_INSTALL_ZSTACK ] && [ -z $NEED_KEEP_DB ]; then
         upgrade_mysql_configuration
         if [ ! -z $DEBUG ]; then
             if [ x"$FORCE" = x'n' ];then
