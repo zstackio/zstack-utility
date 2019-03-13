@@ -1077,6 +1077,48 @@ class VirtioIscsi(object):
         secret.setValue(self.chap_password)
         return secret.UUIDString()
 
+class UpdateConfigration(object):
+    def __init__(self):
+        self.path = None
+        self.enableIommu = None
+    
+    def executeCmdOnFile(self, shellCmd):
+        return bash.bash_roe("%s %s" % (shellCmd, self.path))
+
+    def updateHostIommu(self):
+        r_on, o_on, e_on = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*on'")
+        r_off, o_off, e_off = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*off'")
+        r_modprobe_blacklist, o_modprobe_blacklist, e_modprobe_blacklist = self.executeCmdOnFile("grep -E 'modprobe.blacklist(\ )*='")
+     
+        if r_on == 0: 
+            r, o, e = self.executeCmdOnFile( "sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'")
+            if r != 0:
+                return False, "%s %s" % (e, o)
+        if r_off == 0:
+            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*off//g'")
+            if r != 0:
+                return False, "%s %s" % (e, o)
+        if r_modprobe_blacklist == 0:
+            r, o, e = self.executeCmdOnFile("grep -E '[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*\"$'")
+            if r == 0:
+                r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*\"$/\"/g'")
+                if r != 0:
+                    return False, "%s %s" % (e, o)
+            else:
+                r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g'")
+                if r != 0:
+                    return False, "%s %s" % (e, o)
+        
+        if self.enableIommu is True:        
+            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g'")
+            if r != 0:
+                return False, "%s %s" % (e, o)
+        return True, None
+
+    def updatePcideviceConfigration(self):
+        bash.bash_errorout("grub2-mkconfig -o /boot/grub2/grub.cfg")
+        bash.bash_errorout("grub2-mkconfig -o /etc/grub2-efi.cfg")
+        bash.bash_errorout("modprobe vfio && modprobe vfio-pci")
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
     try:
@@ -4775,39 +4817,18 @@ class VmPlugin(kvmagent.KvmAgent):
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
-        r, o, e = bash.bash_roe("grep -E 'intel_iommu(\ )*=(\ )*on' /etc/default/grub")
-        # Note(WeiW): Skip config iommu if enable iommu is false
-        if cmd.enableIommu is False:
-            r = 0
-        # Note(WeiW): Add amdgpu to blacklist for upgrade
-        elif r == 0:
-            success, error = self.add_amdgpu_to_blacklist()
-            if success is False:
-                rsp.success = False
-                rsp.error = error
-                return jsonobject.dumps(rsp)
 
-        if r != 0:
-            r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g' /etc/default/grub")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "%s %s" % (e, o)
-                return jsonobject.dumps(rsp)
-            r, o, e = bash.bash_roe("grub2-mkconfig -o /boot/grub2/grub.cfg")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "%s %s" % (e, o)
-                return jsonobject.dumps(rsp)
-            r, o, e = bash.bash_roe("grub2-mkconfig -o /etc/grub2-efi.cfg")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "%s %s" % (e, o)
-                return jsonobject.dumps(rsp)
-            r, o, e = bash.bash_roe("modprobe vfio && modprobe vfio-pci")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "%s %s" % (e, o)
-                return jsonobject.dumps(rsp)
+        updateConfigration = UpdateConfigration()
+        updateConfigration.path = "/etc/default/grub"
+        updateConfigration.enableIommu = cmd.enableIommu
+        success, error = updateConfigration.updateHostIommu()
+        if success is False:
+            rsp.success = False
+            rsp.error = error
+            return jsonobject.dumps(rsp)
+
+        updateConfigration.updatePcideviceConfigration()
+        
         r_bios, o_bios, e_bios = bash.bash_roe("find /sys -iname dmar*")
         r_kernel, o_kernel, e_kernel = bash.bash_roe("grep 'intel_iommu=on' /proc/cmdline")
         if o_bios != '' and r_kernel == 0:
