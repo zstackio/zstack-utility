@@ -49,13 +49,13 @@ def get_default_ip():
     return cmd.stdout.strip()
 
 
-def decode_conf_yml(args):
+def decode_conf_yml(args, zstack_home_path):
     base_conf_path = '/var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/zstackctl/conf/'
-    default_yml_mn_only = 'collect_log_mn_only.yml'
-    default_yml_mn_db = 'collect_log_mn_db.yml'
-    default_yml_full = 'collect_log_full.yml'
-    default_yml_full_db = 'collect_log_full_db.yml'
-    default_yml_mn_host = "collect_log_mn_host.yml"
+    default_yml_mn_only = 'collect_log_mn_only.yaml'
+    default_yml_mn_db = 'collect_log_mn_db.yaml'
+    default_yml_full = 'collect_log_full.yaml'
+    default_yml_full_db = 'collect_log_full_db.yaml'
+    default_yml_mn_host = "collect_log_mn_host.yaml"
     yml_conf_dir = None
     name_array = []
 
@@ -97,16 +97,20 @@ def decode_conf_yml(args):
             decode_error = 'host or log can not be empty in %s' % log
             break
         else:
-            if '\n' in list_value:
-                temp_array = list_value.split('\n')
-                conf_value['list'] = temp_array
-            elif ',' in list_value:
-                temp_array = list_value.split(',')
-                conf_value['list'] = temp_array
-            else:
-                if ' ' in list_value:
-                    temp_array = list_value.split()
+            if 'exec' not in list_value:
+                if '\n' in list_value:
+                    temp_array = list_value.split('\n')
                     conf_value['list'] = temp_array
+                elif ',' in list_value:
+                    temp_array = list_value.split(',')
+                    conf_value['list'] = temp_array
+                else:
+                    if ' ' in list_value:
+                        temp_array = list_value.split()
+                        conf_value['list'] = temp_array
+            if collect_type == 'host' or collect_type == 'sharedblock':
+                if args.host is not None:
+                    conf_value['list'] = args.host
         for log in logs:
             name_value = log.get('name')
             dir_value = log.get('dir')
@@ -126,7 +130,10 @@ def decode_conf_yml(args):
                     decode_error = 'dir, exec cannot be empty at the same time in  %s' % log
                     break
             else:
-                if dir_value.startswith('/') is not True:
+                if str(dir_value).startswith('$ZSTACK_HOME'):
+                    dir_value = str(dir_value).replace('$ZSTACK_HOME', zstack_home_path)
+                    log['dir'] = dir_value
+                if str(dir_value).startswith('/') is not True:
                     decode_error = 'dir must be an absolute path in %s' % log
                     break
                 if file_value is not None and file_value.startswith('/'):
@@ -163,6 +170,8 @@ class CollectFromYml(object):
     check = False
     check_result = {}
     vrouter_task_list = []
+    max_thread_num = 20
+    DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
 
     def __init__(self, ctl, collect_dir, detail_version, time_stamp, args):
         self.ctl = ctl
@@ -367,6 +376,9 @@ class CollectFromYml(object):
     def thread_run(self):
         for t in self.threads:
             t.start()
+            while True:
+                if len(threading.enumerate()) <= int(self.max_thread_num):
+                    break
         for t in self.threads:
             t.join()
         for param in self.vrouter_task_list:
@@ -709,14 +721,27 @@ class CollectFromYml(object):
         else:
             self.check = False
 
+        if args.thread and not str(args.thread).isdigit():
+            error_verbose("thread number must be a positive integer")
+        if args.thread and int(args.thread) < 2:
+            error_verbose("at least 2 threads")
+
     def run(self, collect_dir, detail_version, time_stamp, args):
+
+        zstack_path = os.environ.get('ZSTACK_HOME', None)
+        if zstack_path and zstack_path != self.DEFAULT_ZSTACK_HOME:
+            self.DEFAULT_ZSTACK_HOME = zstack_path
+
         run_command_dir = os.getcwd()
         if not os.path.exists(collect_dir) and args.check is not True:
             os.makedirs(collect_dir)
 
         self.param_validate(args)
 
-        decode_result = decode_conf_yml(args)
+        if args.thread is not None:
+            self.max_thread_num = args.thread
+
+        decode_result = decode_conf_yml(args, self.DEFAULT_ZSTACK_HOME)
 
         if decode_result['decode_error'] is not None:
             error_verbose(decode_result['decode_error'])
