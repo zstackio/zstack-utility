@@ -729,19 +729,23 @@ DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf $2 }'`{%- 
 {% endif %}
 
 echo "auto ${DEVNAME}" >> /etc/network/interfaces
-echo "iface ${DEVNAME} inet manual" >> /etc/network/interfaces
+echo "iface ${DEVNAME} inet static" >> /etc/network/interfaces
 echo 'address {{ cfg.ip }}' >> /etc/network/interfaces
 echo 'netmask {{ cfg.netmask }}' >> /etc/network/interfaces
 echo 'gateway {{ cfg.gateway }}' >> /etc/network/interfaces
 
 {% if cfg.bondName %}
-echo 'bond-mode {{ cfg.bondMode }} >> /etc/network/interfaces
-echo '{{ cfg.bondOpts }}' >> /etc/network/interfaces
+echo 'bond-mode {{ cfg.bondMode }}' >> /etc/network/interfaces
+{% if cfg.bondOpts %}echo '{{ cfg.bondOpts }}' >> /etc/network/interfaces{% endif %}
 echo 'bond-slaves '{%- for slave in cfg.bondSlaves -%}`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf $2 }'` {{ PH }}{%- endfor -%}
 {% endif %}
 
 {% if cfg.vlanid %}
+{% if cfg.bondName %}
+RAWDEVNAME={{ cfg.bondName }}
+{% else %}
 RAWDEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf $2 }'`
+{% endif %}
 echo "vlan-raw-device ${RAWDEVNAME}" >> /etc/network/interfaces
 {% endif %}
 
