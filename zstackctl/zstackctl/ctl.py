@@ -5345,8 +5345,6 @@ class CollectLogCmd(Command):
                 host_type = host['hypervisorType']
                 if host_type == "KVM":
                     self.get_host_log(self.generate_host_post_info(host_ip, "host"), collect_dir, args.full)
-                else:
-                    warn("host %s is not a KVM host, skip..." % host_ip)
                 if args.host is not None:
                     break
 
@@ -5391,6 +5389,8 @@ class ConfiguredCollectLogCmd(Command):
         parser.add_argument('--mn-only', help='only collect managenode log', action="store_true", default=False)
         parser.add_argument('--mn-db', help='collect managementnode log and db', action="store_true", default=False)
         parser.add_argument('--mn-host', help='collect managementnode and host log', action="store_true", default=False)
+        parser.add_argument('--thread', help='max collect log thread number', default=None)
+        parser.add_argument('--host', help='only collect specific host log')
 
     def run(self, args):
         # dump mn status
