@@ -216,7 +216,7 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
                 bash_errorout(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
 
-            for BLOCK_DEV in [PRI_ODEV, PUB_ODEV]:
+            for BLOCK_DEV in [PRI_ODEV, PUB_ODEV, NIC_NAME]:
                 BLOCK_CHAIN_NAME = '{{BLOCK_DEV}}-arp'
 
                 if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
@@ -418,6 +418,14 @@ class DEip(kvmagent.KvmAgent):
 
                 create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}")
                 create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{BLOCK_DEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
+
+            BLOCK_CHAIN_NAME = '{{NIC_NAME}}-arp'
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
+                bash_errorout(EBTABLES_CMD + ' -t nat -N {{BLOCK_CHAIN_NAME}}')
+
+            create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{NIC_NAME}} -j {{BLOCK_CHAIN_NAME}}")
+            create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME,
+                                          "-p ARP -o {{NIC_NAME}} --arp-op Request --arp-ip-src {{NIC_GATEWAY}} --arp-mac-src ! {{GATEWAY}} -j DROP")
 
         @bash.in_bash
         def set_gateway_arp_if_needed_v6():
