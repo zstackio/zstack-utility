@@ -107,6 +107,7 @@ class Cli(object):
     CREATE_USER_NAME = 'APICreateUserMsg'
     ACCOUNT_RESET_PASSWORD_NAME = 'APIUpdateAccountMsg'
     USER_RESET_PASSWORD_NAME = 'APIUpdateUserMsg'
+    IAM2_USER_RESET_PASSWORD_NAME = 'APIUpdateIAM2VirtualIDMsg'
     QUERY_ACCOUNT_NAME = 'APIQueryAccountMsg'
     GET_LICENSE_INFO = 'APIGetLicenseInfoMsg'
     GET_TWO_FACTOR_AUTHENTICATION_SECRET = 'APIGetTwoFactorAuthenticationSecretMsg'
@@ -323,10 +324,6 @@ Parse command parameters error:
                 if len(params) != 2:
                     raise CliError('Invalid parameter[%s], the parameter must be split by "="' % param_str)
 
-                iam2_attribute_related_api_names = ['APIAddAttributesToIAM2VirtualIDMsg',
-                                                    'APIAddAttributesToIAM2ProjectMsg',
-                                                    'APIAddAttributesToIAM2VirtualIDGroupMsg']
-
                 if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
                     all_params[params[0]] = eval(params[1])
                 elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg',
@@ -358,7 +355,12 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreatePolicyMsg' and params[0] == 'statements':
                     all_params[params[0]] = eval_string(params[0], params[1])
-                elif apiname in iam2_attribute_related_api_names and params[0] == 'attributes':
+                elif apiname == 'APIAddPolicyStatementsToRoleMsg' and params[0] == 'statements':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname in ['APIAddAttributesToIAM2VirtualIDMsg',
+                                 'APIAddAttributesToIAM2ProjectMsg',
+                                 'APIAddAttributesToIAM2VirtualIDGroupMsg',
+                                 'APICreateIAM2VirtualIDMsg'] and params[0] == 'attributes':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreateTicketMsg' and params[0] == 'requests':
                     all_params[params[0]] = eval_string(params[0], params[1])
@@ -520,7 +522,8 @@ Parse command parameters error:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
 
-            if apiname in [self.USER_RESET_PASSWORD_NAME, self.ACCOUNT_RESET_PASSWORD_NAME]:
+            if apiname in [self.USER_RESET_PASSWORD_NAME, self.ACCOUNT_RESET_PASSWORD_NAME,
+                           self.IAM2_USER_RESET_PASSWORD_NAME]:
                 if msg.password:
                     msg.password = hashlib.sha512(msg.password).hexdigest()
 
