@@ -26,6 +26,14 @@ def get_exact_percent(percent, stage):
     return int(float(percent)/100 * (end - start) + start)
 
 
+def get_task_stage(cmd):
+    stage = None
+    if cmd.threadContext:
+        if cmd.threadContext['task-stage']:
+            stage = cmd.threadContext['task-stage']
+    return stage
+
+
 class Report(object):
     url = None
     serverUuid = None
@@ -37,6 +45,15 @@ class Report(object):
         self.processType = None
         self.ctxMap = ctxMap
         self.ctxStack = ctxStack
+
+    @staticmethod
+    def from_cmd(cmd, progress_type):
+        if cmd.sendCommandUrl:
+            Report.url = cmd.sendCommandUrl
+
+        report = Report(cmd.threadContext, cmd.threadContextStack)
+        report.processType = progress_type
+        return report
 
     def progress_report(self, percent, flag):
         try:

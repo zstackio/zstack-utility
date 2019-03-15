@@ -18,6 +18,7 @@ import libvirt
 import zstacklib.utils.ip as ip
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
+
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import bash
@@ -34,6 +35,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
+from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
 
@@ -4459,7 +4461,7 @@ class VmPlugin(kvmagent.KvmAgent):
             backupArgs[deviceId] = get_backup_args()
 
         logger.info('taking backup for vm: %s' % cmd.vmUuid)
-        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir)
+        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir, Report.from_cmd(cmd, "VmBackup"), get_task_stage(cmd))
         logger.info('completed backup for vm: %s' % cmd.vmUuid)
 
         backres = jsonobject.loads(res)
@@ -4529,7 +4531,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
 
-        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed)
+        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed, Report.from_cmd(cmd, "VolumeBackup"), get_task_stage(cmd))
         logger.info('finished backup volume with mode: %s' % mode)
 
         if mode == 'incremental':
