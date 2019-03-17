@@ -761,8 +761,8 @@ class CollectFromYml(object):
         else:
             if len(threading.enumerate()) > 1:
                 info_verbose("It seems that some collect log thread timeout, "
-                             "if compress failed, please use \'tar zcvf collect-log-%s-%s.tar.gz collect-log-%s-%s\' manually"
-                             , detail_version, time_stamp, detail_version, time_stamp)
+                             "if compress failed, please use \'cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s\' manually"
+                             % (run_command_dir, detail_version, time_stamp, detail_version, time_stamp))
             self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
             if self.failed_flag is True:
                 info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
