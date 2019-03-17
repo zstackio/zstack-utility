@@ -17,6 +17,7 @@ host:
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
       - {name: qemu-log, dir: /var/log/libvirt/, file: }
+      - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
 mn:
     description: management node
     type: target
