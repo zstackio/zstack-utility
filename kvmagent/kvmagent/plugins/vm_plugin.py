@@ -486,11 +486,11 @@ def find_zstack_metadata_node(root, name):
 
     return zs.find(name)
 
-def find_domain_disk_address(domain_xml, disk_device, target_dev):
+def find_domain_cdrom_address(domain_xml, target_dev):
     domain_xmlobject = xmlobject.loads(domain_xml)
     disks = domain_xmlobject.devices.get_children_nodes()['disk']
     for d in disks:
-        if d.device_ != disk_device:
+        if d.device_ != 'cdrom':
             continue
         if d.get_child_node('target').dev_ != target_dev:
             continue
@@ -1658,7 +1658,7 @@ class Vm(object):
                 e(disk, 'shareable')
 
             if volume.useVirtioSCSI:
-                e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
                 e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': self.get_device_unit(volume.deviceId)})
             elif volume.useVirtio:
@@ -1666,7 +1666,7 @@ class Vm(object):
             else:
                 bus_type = self._get_controller_type()
                 dev_format = Vm._get_disk_target_dev_format(bus_type)
-                e(disk, 'target', None, {'dev': dev_format % self.DEVICE_LETTERS[volume.deviceId], 'bus': bus_type})
+                e(disk, 'target', None, {'dev': dev_format % dev_letter, 'bus': bus_type})
 
             Vm.set_volume_qos(addons, volume.volumeUuid, disk)
             volume_native_aio(disk)
@@ -1677,7 +1677,7 @@ class Vm(object):
             e(disk, 'driver', None,
               {'name': 'qemu', 'type': 'raw'})
             e(disk, 'source', None, {'dev': volume.installPath})
-            e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
             #NOTE(weiw): scsi lun not support aio or qos
             return etree.tostring(disk)
 
@@ -1686,7 +1686,7 @@ class Vm(object):
                 vi = VirtioIscsi()
                 portal, vi.target, vi.lun = volume.installPath.lstrip('iscsi://').split('/')
                 vi.server_hostname, vi.server_port = portal.split(':')
-                vi.device_letter = self.DEVICE_LETTERS[volume.deviceId]
+                vi.device_letter = dev_letter
                 vi.volume_uuid = volume.volumeUuid
                 vi.chap_username = volume.chapUsername
                 vi.chap_password = volume.chapPassword
@@ -1698,7 +1698,7 @@ class Vm(object):
                 bi = BlkIscsi()
                 portal, bi.target, bi.lun = volume.installPath.lstrip('iscsi://').split('/')
                 bi.server_hostname, bi.server_port = portal.split(':')
-                bi.device_letter = self.DEVICE_LETTERS[volume.deviceId]
+                bi.device_letter = dev_letter
                 bi.volume_uuid = volume.volumeUuid
                 bi.chap_username = volume.chapUsername
                 bi.chap_password = volume.chapPassword
@@ -1715,7 +1715,7 @@ class Vm(object):
             def virtoio_ceph():
                 vc = VirtioCeph()
                 vc.volume = volume
-                vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                vc.dev_letter = dev_letter
                 xml_obj = vc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
@@ -1724,7 +1724,7 @@ class Vm(object):
             def blk_ceph():
                 ic = BlkCeph()
                 ic.volume = volume
-                ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                ic.dev_letter = dev_letter
                 ic.bus_type = self._get_controller_type()
                 xml_obj = ic.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
@@ -1734,7 +1734,7 @@ class Vm(object):
             def virtio_scsi_ceph():
                 vsc = VirtioSCSICeph()
                 vsc.volume = volume
-                vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                vsc.dev_letter = dev_letter
                 xml_obj = vsc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
@@ -1752,7 +1752,7 @@ class Vm(object):
             def virtoio_fusionstor():
                 vc = VirtioFusionstor()
                 vc.volume = volume
-                vc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                vc.dev_letter = dev_letter
                 xml_obj = vc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
@@ -1761,7 +1761,7 @@ class Vm(object):
             def blk_fusionstor():
                 ic = BlkFusionstor()
                 ic.volume = volume
-                ic.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                ic.dev_letter = dev_letter
                 ic.bus_type = self._get_controller_type()
                 xml_obj = ic.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
@@ -1771,7 +1771,7 @@ class Vm(object):
             def virtio_scsi_fusionstor():
                 vsc = VirtioSCSIFusionstor()
                 vsc.volume = volume
-                vsc.dev_letter = self.DEVICE_LETTERS[volume.deviceId]
+                vsc.dev_letter = dev_letter
                 xml_obj = vsc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
@@ -1793,14 +1793,15 @@ class Vm(object):
                 e(disk, 'source', None, {'dev': volume.installPath})
 
                 if volume.useVirtioSCSI:
-                    e(disk, 'target', None, {'dev': 'sd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', volume.wwn)
                 else:
-                    e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+                    e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
 
                 return etree.tostring(disk)
             return blk()
 
+        dev_letter = self._get_device_letter(volume, addons)
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
         elif volume.deviceType == 'file':
@@ -1823,39 +1824,11 @@ class Vm(object):
             def attach():
                 def wait_for_attach(_):
                     me = get_vm_by_uuid(self.uuid)
-                    for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                        if volume.deviceType == 'iscsi':
-                            if volume.useVirtio:
-                                if xmlobject.has_element(disk,
-                                                         'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                    return True
-                            else:
-                                if xmlobject.has_element(disk,
-                                                         'source') and disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
-                                    return True
-                        elif volume.deviceType == 'file':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.file__ and disk.source.file_ == volume.installPath:
-                                return True
-                        elif volume.deviceType == 'ceph':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                return True
-                        elif volume.deviceType == 'fusionstor':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                return True
-                        elif volume.deviceType == 'scsilun':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.dev__ and volume.installPath in disk.source.dev_:
-                                return True
-                        elif volume.deviceType == 'block':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.dev__ and disk.source.dev_ in volume.installPath:
-                                return True
+                    disk, _ = me._get_target_disk(volume, is_exception=False)
 
-                    logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
-                    return False
+                    if not disk:
+                        logger.debug('volume[%s] is still in process of attaching, wait it' % volume.installPath)
+                    return bool(disk)
 
                 try:
                     self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -1883,6 +1856,34 @@ class Vm(object):
             logger.warn(linux.get_exception_stacktrace())
             raise kvmagent.KvmError(err)
 
+    def _get_device_letter(self, volume, addons):
+        default_letter = Vm.DEVICE_LETTERS[volume.deviceId]
+        if not volume.useVirtioSCSI:
+            return default_letter
+
+        # usually, device_letter_index equals device_id, but reversed when volume use VirtioSCSI because of ZSTAC-9641
+        # so when attach SCSI volume again after detached it, device_letter should be same as origin name,
+        # otherwise it will fail for duplicate device name.
+
+        def get_reversed_disks():
+            results = {}
+            for vol in addons.attachedDataVolumes:
+                _, disk_name = self._get_target_disk(vol)
+                if disk_name and disk_name[-1] != Vm.DEVICE_LETTERS[vol.deviceId]:
+                    results[disk_name[-1]] = vol.deviceId
+
+            return results
+
+        # {actual_dev_letter: device_id_in_db}
+        # type: dict[str, int]
+        reversed_disks = get_reversed_disks()
+        if default_letter not in reversed_disks.keys():
+            return default_letter
+        else:
+            # letter has been occupied, so return reversed letter
+            logger.debug("reversed disk name: %s" % reversed_disks)
+            return Vm.DEVICE_LETTERS[reversed_disks[default_letter]]
+
     def detach_data_volume(self, volume):
         self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('attach-volume-%s' % self.uuid)
@@ -1892,34 +1893,7 @@ class Vm(object):
     def _detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
 
-        def get_disk_name():
-            if volume.deviceType in ['iscsi', 'scsilun']:
-                fmt = 'sd%s'
-            elif volume.deviceType in ['file', 'ceph', 'fusionstor']:
-                fmt = ('hd%s', 'vd%s', 'sd%s')[max(volume.useVirtio, volume.useVirtioSCSI * 2)]
-            elif volume.deviceType == 'block':
-                fmt = 'vd%s'
-            else:
-                raise Exception('unsupported deviceType[%s]' % volume.deviceType)
-
-            return fmt % self.DEVICE_LETTERS[volume.deviceId]
-
-        def get_wwn():
-            if volume.useVirtioSCSI:
-                return volume.wwn
-
-        disk_name = get_disk_name()
-        wwn = get_wwn()
-
-        def get_target_disk():
-            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                if wwn and disk.get('wwn') == wwn:
-                    return disk
-
-                if not wwn and disk.target.dev_ == disk_name:
-                    return disk
-
-        target_disk = get_target_disk()
+        target_disk, disk_name = self._get_target_disk(volume)
         if not target_disk:
             raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
 
@@ -1931,46 +1905,12 @@ class Vm(object):
             def detach():
                 def wait_for_detach(_):
                     me = get_vm_by_uuid(self.uuid)
-                    for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                        if volume.deviceType == 'file':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.file__ and disk.source.file_ == volume.installPath:
-                                logger.debug(
-                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
-                        elif volume.deviceType == 'iscsi':
-                            if volume.useVirtio:
-                                if xmlobject.has_element(disk,
-                                                         'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                    logger.debug(
-                                        'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                    return False
-                            else:
-                                if xmlobject.has_element(disk,
-                                                         'source') and disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
-                                    logger.debug(
-                                        'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                    return False
-                        elif volume.deviceType == 'ceph':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                logger.debug(
-                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
-                        elif volume.deviceType == 'fusionstor':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.name__ and disk.source.name_ in volume.installPath:
-                                logger.debug(
-                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
-                        elif volume.deviceType == 'scsilun':
-                            if xmlobject.has_element(disk,
-                                                     'source') and disk.source.dev__ and volume.installPath in disk.source.dev__:
-                                logger.debug(
-                                    'volume[%s] is still in process of detaching, wait for it' % volume.installPath)
-                                return False
+                    disk, _ = me._get_target_disk(volume, is_exception=False)
 
-                    return True
+                    if disk:
+                        logger.debug('volume[%s] is still in process of detaching, wait for it' % volume.installPath)
+
+                    return not bool(disk)
 
                 try:
                     self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -2059,36 +1999,45 @@ class Vm(object):
 
         return not job_ended
 
-    def _get_target_disk(self, device_id):
+    def _get_target_disk(self, volume, is_exception=True):
+        if volume.installPath.startswith('sharedblock'):
+            volume.installPath = shared_block_to_file(volume.installPath)
 
-        def find(disk_name):
-            for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                if disk.target.dev_ == disk_name:
-                    return disk
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if not xmlobject.has_element(disk, 'source'):
+                continue
 
-            return None
+            if volume.deviceType == 'iscsi':
+                if volume.useVirtio:
+                    if disk.source.name__ and disk.source.name_ in volume.installPath:
+                        return disk, disk.target.dev_
+                else:
+                    if disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
+                        return disk, disk.target.dev_
+            elif volume.deviceType == 'file':
+                if disk.source.file__ and disk.source.file_ == volume.installPath:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'ceph':
+                if disk.source.name__ and disk.source.name_ in volume.installPath:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'fusionstor':
+                if disk.source.name__ and disk.source.name_ in volume.installPath:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'scsilun':
+                if disk.source.dev__ and volume.installPath in disk.source.dev_:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'block':
+                if disk.source.dev__ and disk.source.dev_ in volume.installPath:
+                    return disk, disk.target.dev_
+        if not is_exception:
+            return None, None
 
-        disk_name = 'vd%s' % self.DEVICE_LETTERS[device_id]
-        target_disk = find(disk_name)
+        logger.debug('%s is not found on the vm[uuid:%s]' % (volume.installPath, self.uuid))
+        raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (volume.installPath, self.uuid))
 
-        if not target_disk:
-            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
-            disk_name = 'sd%s' % self.DEVICE_LETTERS[device_id]
-            target_disk = find(disk_name)
-
-        if not target_disk:
-            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
-            disk_name = 'hd%s' % self.DEVICE_LETTERS[device_id]
-            target_disk = find(disk_name)
-
-        if not target_disk:
-            logger.debug('%s is not found on the vm[uuid:%s]' % (disk_name, self.uuid))
-            raise kvmagent.KvmError('unable to find volume[device ID:%s] on vm[uuid:%s]' % (device_id, self.uuid))
-
-        return target_disk, disk_name
-
-    def resize_volume(self, device_id, device_type, size):
-        target_disk, disk_name = self._get_target_disk(device_id)
+    def resize_volume(self, volume, size):
+        device_id = volume.deviceId
+        target_disk, disk_name = self._get_target_disk(volume)
 
         alias_name = target_disk.alias.name_
 
@@ -2129,9 +2078,9 @@ class Vm(object):
             if vs_struct.live is False or vs_struct.full is True:
                 raise kvmagent.KvmError("volume %s is not live or full snapshot specified, "
                                         "can not proceed")
-            target_disk, disk_name = self._get_target_disk(vs_struct.deviceId)
+            target_disk, disk_name = self._get_target_disk(vs_struct.volume)
             if target_disk is None:
-                logger.debug("can not find %s" % vs_struct.deviceId)
+                logger.debug("can not find %s" % vs_struct.volume.deviceId)
                 continue
 
             snapshot_dir = os.path.dirname(vs_struct.installPath)
@@ -2166,8 +2115,9 @@ class Vm(object):
             raise kvmagent.KvmError(
                 'unable to take live snapshot of vm[uuid:{0}] volumes[id:{1}], {2}'.format(self.uuid, disk_names, str(ex)))
 
-    def take_volume_snapshot(self, device_id, install_path, full_snapshot=False):
-        target_disk, disk_name = self._get_target_disk(device_id)
+    def take_volume_snapshot(self, volume, install_path, full_snapshot=False):
+        device_id = volume.deviceId
+        target_disk, disk_name = self._get_target_disk(volume)
         snapshot_dir = os.path.dirname(install_path)
         if not os.path.exists(snapshot_dir):
             os.makedirs(snapshot_dir)
@@ -2203,7 +2153,7 @@ class Vm(object):
                     'unable to take snapshot of vm[uuid:{0}] volume[id:{1}], {2}'.format(self.uuid, device_id, str(ex)))
 
         def take_full_snapshot():
-            self.block_stream_disk(device_id)
+            self.block_stream_disk(volume)
             return take_delta_snapshot()
 
         if first_snapshot:
@@ -2216,8 +2166,8 @@ class Vm(object):
         else:
             return take_delta_snapshot()
 
-    def block_stream_disk(self, device_id):
-        target_disk, disk_name = self._get_target_disk(device_id)
+    def block_stream_disk(self, volume):
+        target_disk, disk_name = self._get_target_disk(volume)
         logger.debug('start block stream for disk %s' % disk_name)
         self.domain.blockRebase(disk_name, None, 0, 0)
 
@@ -2369,7 +2319,7 @@ class Vm(object):
         xml = etree.tostring(cdrom)
 
         if LIBVIRT_MAJOR_VERSION >= 4:
-            addr = find_domain_disk_address(self.domain.XMLDesc(0), 'cdrom', dev)
+            addr = find_domain_cdrom_address(self.domain.XMLDesc(0), dev)
             ridx = xml.rindex('<')
             xml = xml[:ridx] + addr.dump() + xml[ridx:]
 
@@ -2426,7 +2376,7 @@ class Vm(object):
         xml = etree.tostring(cdrom)
 
         if LIBVIRT_MAJOR_VERSION >= 4:
-            addr = find_domain_disk_address(self.domain.XMLDesc(0), 'cdrom', dev)
+            addr = find_domain_cdrom_address(self.domain.XMLDesc(0), dev)
             ridx = xml.rindex('<')
             xml = xml[:ridx] + addr.dump() + xml[ridx:]
 
@@ -2676,7 +2626,7 @@ class Vm(object):
             raise kvmagent.KvmError("vm is not running, cannot connect to qemu-ga")
 
     def merge_snapshot(self, cmd):
-        target_disk, disk_name = self._get_target_disk(cmd.deviceId)
+        target_disk, disk_name = self._get_target_disk(cmd.volume)
 
         @linux.retry(times=3, sleep_time=3)
         def do_pull(base, top):
@@ -3140,8 +3090,8 @@ class Vm(object):
                     raise kvmagent.KvmError(err)
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
-                # if v.useVirtioSCSI:
-                #    dev_letter = Vm.DEVICE_LETTERS[scsi_device_ids.pop()]
+                if v.useVirtioSCSI:
+                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_ids.pop()]
 
                 if v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
@@ -3742,33 +3692,6 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             return self._get_image_mb_size(backing) + self._escape(size)
 
-    def _get_device(self, path, uuid):
-        @LibvirtAutoReconnect
-        def call_libvirt(conn):
-            return conn.lookupByName(uuid)
-        domain = call_libvirt()
-        domain_xml = domain.XMLDesc(0)
-        domain_xml_obj = xmlobject.loads(domain_xml)
-        device_id = None
-        if path.startswith('sharedblock://'):
-            path = shared_block_to_file(path)
-        for disk in domain_xml_obj.devices.get_child_node_as_list('disk'):
-            if disk.device_ == 'disk':
-                for source in disk.get_child_node_as_list('source'):
-                    if source.hasattr('file_') and source.file_ == path:
-                        device_id = disk.get_child_node('target').dev_
-                    elif source.hasattr('protocol_') and source.protocol_ == 'rbd' \
-                        and source.name_ == path[7:]:
-                        '''ceph://xxx'''
-                        device_id = disk.get_child_node('target').dev_
-                    elif source.hasattr('protocol_') and source.protocol_ == 'nbd' \
-                        and source.name_ == path[13:]:
-                        '''fusionstor://xxx'''
-                        device_id = disk.get_child_node('target').dev_
-                    else:
-                        pass
-        return device_id
-
     def _get_volume_bandwidth_value(self, vm_uuid, device_id, mode):
         cmd_base = "virsh blkdeviotune %s %s" % (vm_uuid, device_id)
         if mode == "total":
@@ -3782,11 +3705,8 @@ class VmPlugin(kvmagent.KvmAgent):
     def set_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        if device_id is None:
-            rsp.success = False
-            rsp.error = "Volume is not ready, is it being attached?"
-            return jsonobject.dumps(rsp)
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        _, device_id = vm._get_target_disk(cmd.volume)
 
         ## total and read/write of bytes_sec cannot be set at the same time
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
@@ -3806,11 +3726,8 @@ class VmPlugin(kvmagent.KvmAgent):
     def delete_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        if device_id is None:
-            rsp.success = False
-            rsp.error = "Volume is not ready, is it being attached?"
-            return jsonobject.dumps(rsp)
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        _, device_id = vm._get_target_disk(cmd.volume)
 
         ## total and read/write of bytes_sec cannot be set at the same time
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
@@ -3836,11 +3753,8 @@ class VmPlugin(kvmagent.KvmAgent):
     def get_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        device_id = self._get_device(cmd.installPath, cmd.vmUuid)
-        if device_id is None:
-            rsp.success = False
-            rsp.error = "Volume is not ready, is it being attached?"
-            return jsonobject.dumps(rsp)
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        _, device_id = vm._get_target_disk(cmd.volume)
 
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
         bandWidth = shell.call('%s | grep -w total_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
@@ -4371,10 +4285,10 @@ class VmPlugin(kvmagent.KvmAgent):
                 if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
                     raise kvmagent.KvmError(
                         'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
-                            vm.uuid, cmd.deviceId, vm.state))
+                            vm.uuid, cmd.volume.deviceId, vm.state))
 
                 if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
-                    rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.deviceId,
+                    rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.volume,
                                                                                                 cmd.installPath,
                                                                                                 cmd.fullSnapshot)
                 else:
@@ -4388,11 +4302,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 if cmd.fullSnapshot:
                     logger.debug(
                         'took full snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
-                            cmd.vmUuid, cmd.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
+                            cmd.vmUuid, cmd.volume.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
                 else:
                     logger.debug(
                         'took delta snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
-                            cmd.vmUuid, cmd.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
+                            cmd.vmUuid, cmd.volume.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
             rsp.size = linux.get_local_file_disk_usage(rsp.snapshotInstallPath)
             if rsp.size is None or rsp.size == 0:
@@ -4433,7 +4347,8 @@ class VmPlugin(kvmagent.KvmAgent):
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
 
-        for deviceId in cmd.deviceIds:
+        device_ids = [volume.deviceId for volume in cmd.volumes]
+        for deviceId in device_ids:
             target_disk = target_disks[deviceId]
             drivertype = target_disk.driver.type_
             nodename = 'drive-' + target_disk.alias.name_
@@ -4465,7 +4380,7 @@ class VmPlugin(kvmagent.KvmAgent):
         backres = jsonobject.loads(res)
         bkinfos = []
 
-        for deviceId in cmd.deviceIds:
+        for deviceId in device_ids:
             nodename = backupArgs[deviceId][2]
             nodebak = backres[nodename]
 
@@ -4509,7 +4424,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if cmd.bitmap:
                 return None, cmd.bitmap, 'full' if cmd.mode == 'full' else 'auto'
 
-            bitmap = 'zsbitmap%d' % (cmd.deviceId)
+            bitmap = 'zsbitmap%d' % (cmd.volume.deviceId)
             if drivertype != 'qcow2':
                 return None, bitmap, 'full'
 
@@ -4593,12 +4508,13 @@ class VmPlugin(kvmagent.KvmAgent):
                     raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % cmd.vmUuid)
 
             target_disks = {}
-            for deviceId in cmd.deviceIds:
-                target_disk, _ = vm._get_target_disk(deviceId)
-                target_disks[deviceId] = target_disk
+            for volume in cmd.volumes:
+                target_disk, _ = vm._get_target_disk(volume)
+                target_disks[volume.deviceId] = target_disk
 
             bitmaps = {}
-            for deviceId in cmd.deviceIds:
+            device_ids = [volume.deviceId for volume in cmd.volumes]
+            for deviceId in device_ids:
                 bitmap = self.getBitmap(deviceId, cmd.backupInfos)
                 bitmaps[deviceId] = bitmap
 
@@ -4638,13 +4554,13 @@ class VmPlugin(kvmagent.KvmAgent):
             if not cmd.networkWriteBandwidth:
                 if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
                     raise kvmagent.KvmError(
-                        "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
+                        "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.volume.deviceId))
             else:
                 if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
                     raise kvmagent.KvmError(
-                        "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.deviceId))
+                        "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.volume.deviceId))
 
-            target_disk, _ = vm._get_target_disk(cmd.deviceId)
+            target_disk, _ = vm._get_target_disk(cmd.volume)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
                     'drive-' + target_disk.alias.name_,  # 'virtio-disk0' etc.
@@ -4681,7 +4597,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = True
             return jsonobject.dumps(rsp)
 
-        vm.block_stream_disk(cmd.deviceId)
+        vm.block_stream_disk(cmd.volume)
         rsp.success = True
         return jsonobject.dumps(rsp)
 
@@ -5014,7 +4930,7 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = KvmResizeVolumeRsp()
 
         vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
-        vm.resize_volume(cmd.deviceId, cmd.deviceType, cmd.size)
+        vm.resize_volume(cmd.volume, cmd.size)
 
         touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
@@ -5419,10 +5335,10 @@ class EmptyCdromConfig():
 
 
 class VolumeSnapshotJobStruct(object):
-    def __init__(self, volumeUuid, deviceId, installPath, vmInstanceUuid, previousInstallPath,
+    def __init__(self, volumeUuid, volume, installPath, vmInstanceUuid, previousInstallPath,
                  newVolumeInstallPath, live=True, full=False):
         self.volumeUuid = volumeUuid
-        self.deviceId = deviceId
+        self.volume = volume
         self.installPath = installPath
         self.vmInstanceUuid = vmInstanceUuid
         self.previousInstallPath = previousInstallPath
