@@ -5201,6 +5201,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.warn("got excetion: %s" % e)
 
             if fixed is True:
+                logger.debug("resume vm %s" % dom.name)
                 vm.resume()
                 touchQmpSocketWhenExists(vm_uuid)
 

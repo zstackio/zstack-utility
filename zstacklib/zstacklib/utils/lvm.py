@@ -308,10 +308,11 @@ def config_lvm_by_sed(keyword, entry, files):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
     for file in files:
-        cmd = shell.ShellCmd("sed -i 's/.*\\b%s.*/%s/g' %s/%s" %
+        cmd = shell.ShellCmd("sed -i 's/.*\\b%s\\b.*/%s/g' %s/%s" %
                              (keyword, entry, LVM_CONFIG_PATH, file))
         cmd(is_exception=False)
     linux.sync()
+    logger.debug(bash.bash_o("lvmconfig --type diff"))
 
 
 @bash.in_bash
@@ -503,7 +504,7 @@ def backup_super_block(disk_path):
 
 
 @bash.in_bash
-def wipe_fs(disks, expected_vg=None):
+def wipe_fs(disks, expected_vg=None, with_lock=True):
     for disk in disks:
         exists_vg = None
         r = bash.bash_r("pvdisplay %s | grep %s" % (disk, expected_vg))
@@ -534,7 +535,8 @@ def wipe_fs(disks, expected_vg=None):
             logger.debug("found vg %s exists on this pv %s, start wipe" %
                          (exists_vg, disk))
             try:
-                drop_vg_lock(exists_vg)
+                if with_lock:
+                    drop_vg_lock(exists_vg)
                 remove_device_map_for_vg(exists_vg)
             finally:
                 pass
@@ -638,11 +640,43 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
 
 
 def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume"):
+    # TODO(weiw): fix it
+    if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
+        create_thin_lv_from_absolute_path(path, size, tag)
     if cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
         create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag)
     else:
         create_lv_from_absolute_path(path, size, tag)
 
+@bash.in_bash
+@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+def create_thin_lv_from_absolute_path(path, size, tag):
+    vgName = path.split("/")[2]
+    lvName = path.split("/")[3]
+
+    thin_pool = get_thin_pool_from_vg(vgName)
+    assert thin_pool != ""
+
+    bash.bash_roe("lvcreate --addtag %s -n %s -V %sb --thinpool %s %s" %
+                  (tag, lv_rename, calcLvReservedSize(size), thin_pool, vgName))
+    if not lv_exists(path):
+        raise Exception("can not find lv %s after create", path)
+
+    with OperateLv(path, shared=False):
+        dd_zero(path)
+
+
+def get_thin_pool_from_vg(vgName):
+    thin_pools = bash.bash_o("lvs -Slayout=pool -oname,data_percent,lv_size --noheading --unit B").splitlines()
+    most_free = [""]
+    for pool in thin_pools:
+        free_percent = 1 - int(pool.strip().split(" ")[1])
+        total = pool.strip().split(" ")[2]
+        free = total * free_percent
+        if len(most_free) < 2 or most_free[1] < free:
+            most_free = [pool.strip().split(" ")[0], free]
+
+    return most_free[0]
 
 def dd_zero(path):
     cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=65536 count=1 conv=sync,notrunc" % path)
