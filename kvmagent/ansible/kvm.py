@@ -127,6 +127,9 @@ if IS_AARCH64:
     qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
     qemu_img_local_pkg = "%s/qemu-img-aarch64" % kvm_root
     dnsmasq_img_local_pkg = "%s/dnsmasq-aarch64" % file_root
+    zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.bin" % file_root
+    zwatch_vm_agent_install_sh_local = "%s/zstack-tools.sh" % file_root
+    pushgateway_local_pkg = "%s/pushgateway" % file_root
 else:
     dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % file_root
     dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % kvm_root
@@ -135,9 +138,15 @@ else:
     qemu_img_pkg = "%s/qemu-img-kvm" % file_root
     qemu_img_local_pkg = "%s/qemu-img-kvm" % kvm_root
     dnsmasq_img_local_pkg = "%s/dnsmasq" % file_root
+    zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.bin" % file_root
+    zwatch_vm_agent_install_sh_local = "%s/zstack-tools.sh" % file_root
+    pushgateway_local_pkg = "%s/pushgateway" % file_root
 collectd_local_pkg = "%s/collectd_exporter" % workplace
 node_collectd_local_pkg = "%s/node_exporter" % workplace
 dnsmasq_img_dst_pkg = "/usr/local/zstack/dnsmasq"
+zwatch_vm_agent_dst_pkg = "%s/zwatch-vm-agent.bin" % workplace
+zwatch_vm_agent_install_sh_dst = "%s/zstack-tools.sh" % workplace
+pushgateway_dst_pkg = "%s/pushgateway" % workplace
 
 # include zstacklib.py
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
@@ -233,6 +242,24 @@ if distro in RPM_BASED_OS:
     copy_arg = CopyArg()
     copy_arg.src = node_collectd_pkg
     copy_arg.dest = node_collectd_local_pkg
+    copy(copy_arg, host_post_info)
+
+    # copy pushgateway
+    copy_arg = CopyArg()
+    copy_arg.src = pushgateway_local_pkg
+    copy_arg.dest = pushgateway_dst_pkg
+    copy(copy_arg, host_post_info)
+
+    # copy zwatch-vm-agent.bin
+    copy_arg = CopyArg()
+    copy_arg.src = zwatch_vm_agent_local_pkg
+    copy_arg.dest = zwatch_vm_agent_dst_pkg
+    copy(copy_arg, host_post_info)
+
+    # copy zwatch-vm-agent install sh
+    copy_arg = CopyArg()
+    copy_arg.src = zwatch_vm_agent_install_sh_local
+    copy_arg.dest = zwatch_vm_agent_install_sh_dst
     copy(copy_arg, host_post_info)
 
     # handle distro version specific task
