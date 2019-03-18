@@ -23,6 +23,7 @@ import tempfile
 import cStringIO as c
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
+import shutil
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
@@ -840,6 +841,8 @@ mimetype.assign = (
             'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT
         })
 
+        linux.mkdir(http_root, 0777)
+
         if not os.path.exists(conf_path):
             with open(conf_path, 'w') as fd:
                 fd.write(conf)
@@ -854,8 +857,25 @@ mimetype.assign = (
         self.apply_zwatch_vm_agent(http_root)
 
     def apply_zwatch_vm_agent(self, http_root):
-        shell.call('cp -f %s %s' % ("/var/lib/zstack/kvm/zwatch-vm-agent.bin", http_root))
-        shell.call('cp -f %s %s' % ("/var/lib/zstack/kvm/zstack-tools.sh", http_root))
+        agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent.bin"
+        if not os.path.exists(agent_file_source_path):
+            logger.error("Can't find file %s" % agent_file_source_path)
+            return
+
+        agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent.bin")
+        if not os.path.exists(agent_file_target_path):
+            shutil.copyfile(agent_file_source_path, agent_file_target_path)
+        else:
+            source_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % agent_file_source_path)
+            target_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % agent_file_target_path)
+            if source_md5 != target_md5:
+                shutil.copyfile(agent_file_source_path, agent_file_target_path)
+
+        tool_sh_file_path = "/var/lib/zstack/kvm/zstack-tools.sh"
+        if not os.path.exists(tool_sh_file_path):
+            logger.error("Can't find file %s" % tool_sh_file_path)
+            return
+        shutil.copyfile(tool_sh_file_path, os.path.join(http_root, "zstack-tools.sh"))
 
     @in_bash
     @lock.file_lock('/run/xtables.lock')
