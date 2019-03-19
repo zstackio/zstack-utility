@@ -83,14 +83,45 @@ def collect_host_network_statistics():
 
 
 def collect_host_capacity_statistics():
+    default_zstack_path = '/usr/local/zstack/apache-tomcat/webapps/zstack'
 
-    zstack_dir = ['/var/lib/zstack', '/usr/local/zstack', '/opt/zstack-dvd/',
+    zstack_env_path = os.environ.get('ZSTACK_HOME', None)
+    if zstack_env_path and zstack_env_path != default_zstack_path:
+        default_zstack_path = zstack_env_path
+
+    zstack_dir = ['/var/lib/zstack', '%s/../../../' % default_zstack_path, '/opt/zstack-dvd/',
                   '/var/log/zstack', '/var/lib/mysql', '/var/lib/libvirt', '/tmp/zstack']
 
     metrics = {
         'zstack_used_capacity_in_bytes': GaugeMetricFamily('zstack_used_capacity_in_bytes',
-                                                       'ZStack used capacity in bytes')
+                                                           'ZStack used capacity in bytes'),
+        'host_fs_size': GaugeMetricFamily('host_fs_size',
+                                          'Host filesystem total capacity in bytes', None, ['device', 'mountpoint']),
+        'host_fs_avail': GaugeMetricFamily('host_fs_avail',
+                                           'Host filesystem available capacity in bytes', None, ['device', 'mountpoint']),
+        'host_root_fs_size': GaugeMetricFamily('host_root_fs_size',
+                                               'Host root filesystem available capacity in bytes', None,
+                                               ['device', 'mountpoint']),
+        'host_root_fs_avail': GaugeMetricFamily('host_root_fs_avail',
+                                                'Host root filesystem available capacity in bytes', None,
+                                                ['device', 'mountpoint']),
+        'host_root_fs_avail': GaugeMetricFamily('host_root_fs_avail',
+                                                'Host root filesystem available capacity in bytes', None,
+                                                ['device', 'mountpoint']),
+        'host_root_fs_used': GaugeMetricFamily('host_root_fs_used',
+                                               'Host root filesystem used capacity in bytes', None,
+                                               ['device', 'mountpoint'])
     }
+
+    file_sizes = bash_o('df -k').splitlines()
+    for i in range(1, len(file_sizes)):
+        info = file_sizes[i].split()
+        metrics['host_fs_size'].add_metric([info[0], info[5]], float(info[1])*1024)
+        metrics['host_fs_avail'].add_metric([info[0], info[5]], float(info[3])*1024)
+        if info[5] == '/':
+            metrics['host_root_fs_size'].add_metric([info[0], info[5]], float(info[1])*1024)
+            metrics['host_root_fs_avail'].add_metric([info[0], info[5]], float(info[3])*1024)
+            metrics['host_root_fs_used'].add_metric([info[0], info[5]], float(info[2])*1024)
 
     zstack_used_capacity = 0
     for dir in zstack_dir:
