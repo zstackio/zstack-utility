@@ -976,7 +976,6 @@ def create_bridge(bridge_name, interface, move_route=True):
     ip = out.strip().split()[1]
     shell.call('ip addr del %s dev %s' % (ip, interface))
     shell.call('ip addr add %s dev %s' % (ip, bridge_name))
-    shell.call('ip addr add %s dev %s' % ("169.254.0.1/17", bridge_name))
 
     #restore routes on bridge
     for r in routes:
