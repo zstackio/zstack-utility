@@ -134,6 +134,7 @@ upgrade_params_array[2]='2.2.2,-DupdateLdapUidToLdapDn=true'
 upgrade_params_array[3]='2.3.1,-Dzwatch.migrateFromOldMonitorImplementation=true'
 upgrade_params_array[4]='3.2.0,-DupgradeVolumeQos=true'
 upgrade_params_array[5]='3.3.0,-DaddCdRomToHistoricalVm=true'
+upgrade_params_array[6]='3.4.0,-DupgradeTwoFactorAuthenticationSecret=true'
 
 # version compare
 # eg. 1 = 1.0
