@@ -24,6 +24,8 @@ import cStringIO as c
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
 import shutil
+import struct
+import socket
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
@@ -354,9 +356,12 @@ class Mevoco(kvmagent.KvmAgent):
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
 
     USERDATA_ROOT = "/var/lib/zstack/userdata/"
-    USERDATA_INNER_IP = "169.254.0.2"
-    USERDATA_INNER_IP_MASK_BIT = 17
-    USERDATA_OUTER_IP = "169.254.0.1"
+
+    CONNECT_ALL_NETNS_BR_NAME = "br_connect_all_netns"
+    CONNECT_ALL_NETNS_BR_OUTER_IP = "169.254.64.1"
+    CONNECT_ALL_NETNS_BR_INNER_IP = "169.254.64.2"
+    IP_MASK_BIT = 18
+
     KVM_HOST_PUSHGATEWAY_PORT = "9092"
 
     def __init__(self):
@@ -619,7 +624,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 #logger.debug("ebtables chain-name:%s %s\n" %(l, chain[l]) )
 
         shell.call(EBTABLES_CMD + ' -t nat -F')
-       
+
         for l in chain_names:
             cmds = chain[l]
             if cmds:
@@ -710,6 +715,53 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_xtables(self, to):
+        def prepare_br_connect_ns(ns, ns_inner_dev, ns_outer_dev):
+            bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
+            bridge_ip = "%s/%s" % (self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT)
+
+            if not linux.is_network_device_existing(bridge_name):
+                shell.call("brctl addbr %s" % bridge_name)
+                shell.call("brctl setfd %s 0" % bridge_name)
+                shell.call("brctl stp %s off" % bridge_name)
+                shell.call('ip addr add %s dev %s' % (bridge_ip, bridge_name))
+                shell.call("ip link set %s up" % bridge_name)
+
+            ret = bash_r('ip addr show %s | grep -w %s > /dev/null' %
+                         (bridge_name, bridge_ip))
+            if ret != 0:
+                bash_errorout('ip addr add %s dev %s' % (bridge_ip, bridge_name))
+
+            userdata_br_outer_dev = "userdata_" + ns_outer_dev
+            userdata_br_inner_dev = "userdata_" + ns_inner_dev
+
+            ret = bash_r('ip link | grep -w %s > /dev/null' % userdata_br_outer_dev)
+            if ret != 0:
+                bash_errorout('ip link add %s type veth peer name %s' % (userdata_br_outer_dev, userdata_br_inner_dev))
+
+            bash_errorout('ip link set %s up' % userdata_br_outer_dev)
+
+            ret = bash_r('brctl show %s | grep -w %s > /dev/null' % (bridge_name, userdata_br_outer_dev))
+            if ret != 0:
+                bash_errorout('brctl addif %s %s' % (bridge_name, userdata_br_outer_dev))
+
+            ret = bash_r('ip netns exec %s ip link | grep -w %s > /dev/null' % (ns, userdata_br_inner_dev))
+            if ret != 0:
+                bash_errorout('ip link set %s netns %s' % (userdata_br_inner_dev, ns))
+
+            ns_id = ns_inner_dev[5:]
+            if int(ns_id) > 16381:
+                # 169.254.64.1/18 The maximum available ip is only 16381 (exclude 169.254.64.1)
+                # It is impossible to configure tens of thousands of networks on host
+                raise Exception('add ip addr fail, namespace id exceeds limit')
+            ip2int = struct.unpack('!L', socket.inet_aton(self.CONNECT_ALL_NETNS_BR_INNER_IP))[0]
+            userdata_br_inner_dev_ip = socket.inet_ntoa(struct.pack('!L', ip2int + int(ns_id)))
+            ret = bash_r('ip netns exec %s ip addr show %s | grep -w %s > /dev/null' %
+                         (ns, userdata_br_inner_dev, userdata_br_inner_dev_ip))
+            if ret != 0:
+                bash_errorout('ip netns exec %s ip addr add %s/%s dev %s' % (
+                    ns, userdata_br_inner_dev_ip, self.IP_MASK_BIT, userdata_br_inner_dev))
+            bash_errorout('ip netns exec %s ip link set %s up' % (ns, userdata_br_inner_dev))
+
         p = UserDataEnv(to.bridgeName, to.namespaceName)
         INNER_DEV = None
         DHCP_IP = None
@@ -728,10 +780,12 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if not INNER_DEV:
             raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
 
+        outer_dev = p.outer_dev if(p.outer_dev != None) else ("outer" + INNER_DEV[5:])
+        prepare_br_connect_ns(NS_NAME, INNER_DEV, outer_dev)
+
         ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
         if (ret != 0 and INNER_DEV != None):
             bash_errorout('ip netns exec {{NS_NAME}} ip addr add 169.254.169.254 dev {{INNER_DEV}}')
-            bash_errorout('ip netns exec {{NS_NAME}} ip addr add %s/%s dev {{INNER_DEV}}' % (self.USERDATA_INNER_IP, self.USERDATA_INNER_IP_MASK_BIT))
 
         r, o = bash_ro('ip netns exec {{NS_NAME}} ip r | wc -l')
         if not to.hasattr("dhcpServerIp") and int(o) == 0:
@@ -762,6 +816,10 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
             bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
+
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "--arp-ip-dst %s" > /dev/null' % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}}  -p arp  --arp-ip-dst %s -j DROP' % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
 
         ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
         if ret != 0:
@@ -807,7 +865,7 @@ index-file.names = ( "index.html" )
 server.modules += ("mod_proxy", "mod_rewrite")
 
 $HTTP["remoteip"] =~ "^(.*)$" {
-    $HTTP["url"] =~ "^/metrics" {
+    $HTTP["url"] =~ "^/metrics/job" {
         proxy.server = ( "" =>
            ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
         )
@@ -837,7 +895,7 @@ mimetype.assign = (
         conf = tmpt.render({
             'http_root': http_root,
             'port': to.port,
-            'pushgateway_ip' : self.USERDATA_OUTER_IP,
+            'pushgateway_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
             'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT
         })
 
